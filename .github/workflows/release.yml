@@ -88,6 +88,39 @@ jobs:
           min_from=$( [ -f release/min_from ] && tr -d ' \n' < release/min_from || echo 0.1.0 )
           { echo "tag=$TAG"; echo "version=$version"; echo "channel=$channel"; echo "min_from=$min_from"; echo "publish=$PUBLISH"; } >> "$GITHUB_OUTPUT"
           echo "$TAG: version $version, channel $channel, min_from $min_from, publish $PUBLISH" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: What changed in the signing path since the last published release, for the approver
+        # The approval on the release environment happens BEFORE the release job starts, so the look has to be here, in a job whose summary is already
+        # written while the approval is pending. The base is the last release the publish step actually made (a tag anyone can push proves nothing).
+        # The paths are everything that runs with the signing key or decides what it signs: the workflows, the signing and gate scripts, the wrapper
+        # the release ships, and the phone app's dependency lockfile (its build is signed too).
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+        run: |
+          prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
+          if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
+          else prev=""; base=$(git hash-object -t tree /dev/null); fi
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          {
+            echo "### Signing path: $TAG vs ${prev:-nothing (no published release yet)}"
+            # shellcheck disable=SC2086
+            if git diff --quiet "$base" HEAD -- $paths; then
+              echo "no changes to the signing path"
+            else
+              echo '```'
+              # shellcheck disable=SC2086
+              git diff --stat "$base" HEAD -- $paths
+              echo '```'
+              # shellcheck disable=SC2086
+              git diff "$base" HEAD -- $paths > "$RUNNER_TEMP/signing.diff" || true
+              n=$(wc -l < "$RUNNER_TEMP/signing.diff" | tr -d ' ')
+              echo "full diff: $n lines"
+              echo '```diff'
+              head -n 600 "$RUNNER_TEMP/signing.diff"
+              echo '```'
+              if [ "$n" -gt 600 ]; then echo "**TRUNCATED: $((n - 600)) more lines. Read the full diff before approving.**"; fi
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh

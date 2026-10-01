@@ -42,3 +42,13 @@ test("release.yml: every action is pinned by commit sha (the release job holds t
   const loose = [...yml.matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
   assert.deepEqual(loose.map(m => `${m[1]}@${m[2]}`), []);
 });
+
+test("release.yml: the approver's signing-path diff is written in the prepare job (before the environment approval) and covers the signing scripts, the wrapper and the phone app's lockfile", () => {
+  const i = yml.indexOf("What changed in the signing path since the last published release, for the approver");
+  assert.ok(i > 0, "the step exists");
+  const prepare = yml.indexOf("  prepare:"), images = yml.indexOf("\n  images:");
+  assert.ok(prepare < i && i < images, "it is a step of the prepare job, which needs no approval");
+  const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
+  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
+  assert.match(step, /TRUNCATED/, "a truncated diff says so");
+});
