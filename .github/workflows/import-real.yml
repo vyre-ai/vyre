@@ -5,7 +5,7 @@ name: import-real
 on:
   workflow_dispatch:
   push:
-    paths: ["core/import/**", "scripts/import-real-check.mjs", ".github/workflows/import-real.yml"]
+    paths: ["core/import/**", "scripts/import-real-check.mjs", "scripts/import-real-claude-check.mjs", ".github/workflows/import-real.yml"]
 permissions:
   contents: read
 concurrency:
@@ -28,3 +28,19 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/codex" @openai/codex
       - name: Import reads a real Codex session file
         run: node scripts/import-real-check.mjs "$RUNNER_TEMP/codex/node_modules/.bin/codex"
+  claude:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code into a temp prefix
+        run: npm install --prefix "$RUNNER_TEMP/claude" @anthropic-ai/claude-code
+      - name: Import reads a real Claude Code transcript
+        run: node scripts/import-real-claude-check.mjs "$RUNNER_TEMP/claude/node_modules/.bin/claude"
