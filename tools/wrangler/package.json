@@ -1,0 +1,6 @@
+{
+  "name": "vyre-deploy-tools",
+  "private": true,
+  "description": "wrangler, pinned and installed from this lockfile by .github/workflows/relay-deploy.yml (npm ci --ignore-scripts), so a deploy never resolves its dependencies fresh while the Cloudflare token is in the environment.",
+  "dependencies": { "wrangler": "4.145.0" }
+}
