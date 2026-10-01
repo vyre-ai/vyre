@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- ci: the sessions-sdk driver job gives each test file ten minutes (--test-timeout=600000, was 120000): the timeout counts a whole file as one test, and core/sessions/sessions.test.js passed every test in a hosted run and still hit 120 s as a file. The job's own limit (30 minutes) stands.
+
 - Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line. Your own global git hooks still run in a session. To leave the `Vyre-Session` line out of commits, set `github.session_trailer` to false in Vyre's config. On git 2.31 and later no git config is written into the repo for this: the session's identity and hooks are its environment.
 - Push: the settings.loosened notice cannot be switched off: push.settings refuses kinds.notice and a stored false is ignored. With no push device, the Deck's settings.changed row is the only trace of a loosening.
 
