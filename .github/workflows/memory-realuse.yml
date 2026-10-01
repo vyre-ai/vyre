@@ -1,8 +1,8 @@
 # The real-use memory test (scripts/eval-realuse.mjs): the same questions asked of no memory, a simulated Claude auto memory, Vyre
 # Memory and the full context, over a scrubbed corpus of Vyre's own sessions, through OpenRouter on one cheap model. Manual only, in the
 # protected environment `eval` (a required reviewer approves each dispatch), on the test box's own runner so the corpus never leaves the test box:
-# it is read from REALUSE_DIR (owned by the runner's user, mode 700), nothing of it is uploaded (the artifact is the results table and a
-# list of session ids, dates and sizes), and the job removes the corpus, the questions, the replies and the ledger when a run ends.
+# it is read from REALUSE_DIR (owned by the runner's user, mode 700), nothing of it is uploaded (the artifact is the results table, the question
+# list and a list of session ids, dates and sizes), and the job removes the corpus, the questions, the replies and the ledger when a run ends.
 # The test's hard cap is $5 (REALUSE_CAP_USD, a ledger in the folder and the key's own usage before and after; the key is never printed).
 # `step: gen` writes the questions and keeps the folder so they can be read on the test box before `step: run`; the run uses the cap left after gen.
 name: memory-realuse
@@ -55,20 +55,28 @@ jobs:
           REALUSE_CAP_USD: ${{ inputs.cap_usd }}
         run: node scripts/eval-realuse.mjs "$REALUSE_DIR" --run
         continue-on-error: true
-      - name: The results table and the session list, and nothing else
-        if: inputs.step != 'gen'
+      - name: The results table, the session list and the question list, and nothing else
+        if: always()
         run: |
           mkdir -p out
-          node scripts/eval-realuse.mjs "$REALUSE_DIR" --report > out/table.txt || echo "no results (the run stopped before it finished)" > out/table.txt
-          node -e 'const c=require(process.env.REALUSE_DIR+"/corpus.json");console.log(c.sessions.map(s=>s.id.slice(0,14)+"  "+new Date(s.start).toISOString().slice(0,10)+"  "+s.turns.reduce((n,t)=>n+t.text.length,0)+" chars").join("\n"))' > out/sessions.txt
-          { echo '### memory-realuse'; echo '```'; cat out/table.txt; echo '```'; echo "Sessions used: $(wc -l < out/sessions.txt)"; } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$REALUSE_DIR/questions.json" ]; then
+            node -e 'const q=require(process.env.REALUSE_DIR+"/questions.json");console.log(q.map((x,i)=>(i+1)+". "+x.q+"  ->  "+x.expect.join(" | ")).join("\n"))' > out/questions.txt
+          fi
+          if [ "${{ inputs.step }}" != "gen" ]; then
+            node scripts/eval-realuse.mjs "$REALUSE_DIR" --report > out/table.txt || echo "no results (the run stopped before it finished)" > out/table.txt
+            node -e 'const c=require(process.env.REALUSE_DIR+"/corpus.json");console.log(c.sessions.map(s=>s.id.slice(0,14)+"  "+new Date(s.start).toISOString().slice(0,10)+"  "+s.turns.reduce((n,t)=>n+t.text.length,0)+" chars").join("\n"))' > out/sessions.txt
+            { echo '### memory-realuse'; echo '```'; cat out/table.txt; echo '```'; echo "Sessions used: $(wc -l < out/sessions.txt). These are mostly session briefs of 3k to 12k characters, so the test measures recall of facts across sessions, not detail deep inside one long session."; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            { echo '### memory-realuse (questions only)'; echo "Questions written: $(wc -l < out/questions.txt)"; } >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: inputs.step != 'gen'
+        if: always()
         with:
-          name: realuse-table
+          name: realuse-output
           path: |
             out/table.txt
             out/sessions.txt
+            out/questions.txt
           if-no-files-found: warn
       - name: Wipe the corpus, the questions, the replies and the ledger
         if: always() && inputs.step != 'gen'
