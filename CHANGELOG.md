@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A test through the real watchers module and the real registry (`core/watchers/reach.test.js`): an
+  agent with a grant to one project lists, reads cards, logs and items of, and pauses only that
+  project's watchers (`not_found` for another's); an agent with no grant sees none; a person and an
+  agent granted everything see all. `core/watchers/scope.js` records the open question for plain
+  model sessions (they see every project's watchers today).
+
 - watchers.list, card, logs, test, pause and items now show an agent only the projects it is granted
   (reviewer-2): each declares `projectArg`, and the tool filters by the registry's `meta.reach` (a
   person, a module and a hook see all; an agent with no known grant sees none). `watchers.pause`

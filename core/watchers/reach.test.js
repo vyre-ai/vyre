@@ -150,3 +150,46 @@ export default { async start(ctx) {
   assert.equal(await call("watchers.preset", { kind: "calendar", project: "harlow-legal" }, model), "not_asked", "another kind");
   assert.equal(await call("watchers.preset", { kind: "mail", project: "harlow-legal" }, model), "ran");
 });
+
+test("through the real module and the real registry: an agent with a grant sees only its project's watchers, by name and in lists", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  // The real watchers code and manifest, loaded by the real registry (nothing runs until a watcher does).
+  const real = new URL("./index.js", import.meta.url).href;
+  writeModule(root, "watchers", { ...manifest, requires: [], needs: {}, teaches: {} }, `export { default } from ${JSON.stringify(real)};`);
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }, { name: "projects.list", reach: "modules" }] } },
+    `export default { async start(ctx) {
+      ctx.tool("projects.reach", { input: { type: "object" }, run: async i => /juno/.test(String(i.caller)) ? { all: true } : /kit/.test(String(i.caller)) ? { all: false, projects: [{ slug: "harlow-legal", name: "Harlow Legal" }] } : { all: false, projects: [] } });
+      ctx.tool("projects.list", { input: { type: "object" }, run: async () => ({ projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/h", workspaces: ["/work/h"] }, { slug: "northwind", name: "Northwind", home: "/work/n", workspaces: ["/work/n"] }] }) });
+      return {}; } };`);
+  const wdir = path.join(home, "watchers");
+  const mk = (name, project) => {
+    fs.mkdirSync(path.join(wdir, name), { recursive: true });
+    fs.writeFileSync(path.join(wdir, name, "watcher.json"), JSON.stringify({ name, project, schedule: "*/15 * * * *" }));
+    fs.writeFileSync(path.join(wdir, name, "watch.js"), "export default async function watch() {}");
+  };
+  mk("mail-harlow-legal", "harlow-legal"); mk("feed-northwind", "northwind");
+  const db = open(path.join(home, "vyre.db")); t.after(() => db.close());
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, paths: { watchers: wdir, modules: root } });
+  await reg.start(discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
+  t.after(() => reg.stop && reg.stop());
+  assert.equal(reg.modules.get("watchers").state, "running", reg.modules.get("watchers").error);
+
+  const names = r => (r.data?.watchers || []).map(w => w.name).sort();
+  const kit = "mcp:agent:kit", juno = "mcp:agent:juno", nobody = "mcp:agent:ghost";
+  assert.deepEqual(names(await reg.call("watchers.list", {}, kit)), ["mail-harlow-legal"], "kit is granted harlow-legal only");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, juno)), ["feed-northwind", "mail-harlow-legal"], "juno is granted everything");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, nobody)), [], "an agent whose grant is empty sees none");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, "cli")), ["feed-northwind", "mail-harlow-legal"], "the person sees all");
+
+  const code = async (tool, name, caller) => { const r = await reg.call(tool, { name }, caller); return r.error ? r.error.code : "ok"; };
+  for (const tool of ["watchers.card", "watchers.logs", "watchers.items"]) {
+    assert.equal(await code(tool, "feed-northwind", kit), "not_found", `${tool}: another project's watcher`);
+    assert.equal(await code(tool, "mail-harlow-legal", kit), "ok", `${tool}: its own project's watcher`);
+    assert.equal(await code(tool, "feed-northwind", juno), "ok", tool);
+    assert.equal(await code(tool, "feed-northwind", "cli"), "ok", tool);
+  }
+  assert.equal(await code("watchers.pause", "feed-northwind", kit), "not_found", "an agent cannot stop another project's watcher");
+  const card = await reg.call("watchers.card", { name: "mail-harlow-legal" }, kit);
+  assert.equal(card.data.project, "harlow-legal");
+});
