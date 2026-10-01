@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
+import { PERSON_ONLY, machineSelf, terminalAsks, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
@@ -979,7 +979,8 @@ export class Registry {
           internal: Boolean(def.internal) || reach === "modules",
           callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), addedModules: Boolean(def.addedModules) || Boolean(e && e.addedModules) });
+          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), addedModules: Boolean(def.addedModules) || Boolean(e && e.addedModules),
+          terminalAsk: typeof def.terminalAsk === "function" ? def.terminalAsk : null });
       },
     };
   }
@@ -1171,9 +1172,9 @@ export class Registry {
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
+    } else if (presence && callerKind(caller) !== "module" && (presence.required(tool, def, input) || (meta.terminalAsk === true && terminalAsks(tool, def, input)))) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
-      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods, ...(meta.terminalAsk === true ? { terminal: true } : {}) } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
     }

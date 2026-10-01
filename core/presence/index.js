@@ -214,6 +214,33 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 
 /**
+ * Tier 1 of reviewer-2's list (reviews/platform.md, 2 Oct 2026): tools that let an agent widen its own power or reach, so a
+ * call from a terminal (socket label cli or local) needs a proof the person's hand makes, tied to that one call. Deck,
+ * Capsule, mobile and tailnet callers are not asked: they hold a person session already. No standing window follows:
+ * none of these is in SESSIONABLE. A tool may also ask for some inputs only (`terminalAsk(input)` on its definition).
+ */
+export const TERMINAL_ASKS = new Set([
+  "hands.grant.add", "hands.grant.remove", "hands.pause", "hands.resume",
+  "mcp.add", "mcp.update", "mcp.remove", "mcp.restart", "connectors.connect", "connectors.disconnect",
+  "agents.create", "agents.update", "agents.delete", "agents.resume",
+  "sessions.limits.set", "sessions.mode.set", "sessions.models.set", "sessions.prompt.set", "sessions.prompt.revert", "sessions.usage.resume",
+  "spend.raise",
+  "vault.vaults.create", "vault.device.join", "vault.device.revoke", "vault.ssh.generate", "vault.relay", "vault.connections.revoke",
+  "gate.said.add", "gate.said.revoke", "gate.settle", "gate.reject", "gate.revise",
+  "team.charter.set", "team.default.set", "team.add",
+  "update.apply", "link.pair", "link.signin", "link.signout", "link.unpair", "presence.person.revoke",
+  "names.claim", "names.release", "github.connect", "github.remove", "google.add", "google.connect", "google.remove",
+  "computers.member.add", "computers.member.rotate", "computers.member.remove", "computers.member.dispose", "computers.takeover", "computers.giveback",
+  "glass.take", "glass.release", "term.attach", "term.open", "threads.shell",
+]);
+
+/** Does this call, from a terminal, need the person's proof? @param {string} tool @param {any} def @param {any} [input] */
+export function terminalAsks(tool, def, input) {
+  if (TERMINAL_ASKS.has(tool)) return true;
+  try { return Boolean(def && typeof def.terminalAsk === "function" && input !== undefined && def.terminalAsk(input)); } catch { return false; }
+}
+
+/**
  * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
  * a device paired over the relay (`device:<id>`), and the Capsule. The CLI rides its own window
  * instead, bound to the login terminal vyred saw (`terminal`, see Presence.verify): the CLI is a
