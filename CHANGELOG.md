@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### settings: Standing permissions
+
+- New Settings section "Standing permissions" (`deck/views/settings-permissions.js`) over `gate.said.list`, `gate.said.add` and `gate.said.revoke`. It lists what Vyre may send, post or pay without asking, one sentence each with who, where, to whom and the payment cap; things you asked to go out that have not gone yet sit under their own line. "Take back" is one tap and needs no confirmation, since taking permission away needs no proof. "Add a permission" asks for exact recipients, and a payment one needs a most-per-payment amount. A complaint in the form leaves what you typed in place.
+
 #### honesty pass: stub onboarding steps removed, and a guard for settings with no reader
 
 - The old onboarding (`deck/onboard/onboard.js`) no longer has the screens that did nothing: Your secrets, Agent computers (a choice that saved nowhere) and Vyre Drive (a disabled preview) are gone, and Connect accounts drops its "Coming soon" note and points at Settings, Connections. The ending screen no longer lists or hints at them. Agent computers and Drive live in Settings.
