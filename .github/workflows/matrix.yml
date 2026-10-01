@@ -258,8 +258,63 @@ jobs:
         if: always()
         with: { name: results-data, path: results, retention-days: 14 }
 
+  j1:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j1')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - run: sh scripts/build-site.sh
+      - name: J1, install and onboarding through the setup page
+        run: sh scripts/matrix/j1.sh results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j1, path: results, retention-days: 14 }
+
+  j6:
+    name: j6-${{ matrix.os }}
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j6')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: J6, Vyre for Chrome on a fake GoHighLevel page
+        run: node scripts/matrix/j6.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "results-j6-${{ matrix.os }}", path: results, retention-days: 14 }
+
+  j7:
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j7')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: J7, an agent's computer in Glass (known red until the computers bugs are fixed)
+        run: node scripts/matrix/j7.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j7, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows, mac, upgrade, data]
+    needs: [linux, android, windows, mac, upgrade, data, j1, j6, j7]
     if: always()
     runs-on: ubuntu-24.04
     steps:
