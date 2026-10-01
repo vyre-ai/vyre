@@ -31,7 +31,7 @@ function* files(dir) {
 /** tool -> reach ("anyone" when none declared: the registry default today). */
 function reaches() {
   const out = new Map();
-  for (const top of ["core", "modules", "local"]) {
+  for (const top of ["core", "modules", "local", "apps"]) {
     const dir = path.join(root, top);
     if (!fs.existsSync(dir)) continue;
     for (const f of files(dir)) {
@@ -50,11 +50,11 @@ test("no first-party module calls, as a module, a tool whose reach refuses modul
   const reach = reaches();
   const bad = [];
   const CALL = /\b(?:ctx\.call|call|use)\(\s*["'`]([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)["'`]/g;
-  for (const top of ["core", "modules"]) {
+  for (const top of ["core", "modules", "local", "lib"]) {
     const dir = path.join(root, top);
     if (!fs.existsSync(dir)) continue;
     for (const f of files(dir)) {
-      if (!f.endsWith(".js") || f.endsWith(".test.js") || f.includes(`${path.sep}cli${path.sep}`)) continue;
+      if (!/\.m?js$/.test(f) || f.endsWith(".test.js") || f.includes(`${path.sep}cli${path.sep}`)) continue;
       const mod = path.relative(dir, f).split(path.sep)[0];
       const src = fs.readFileSync(f, "utf8");
       let m;
@@ -68,4 +68,31 @@ test("no first-party module calls, as a module, a tool whose reach refuses modul
     }
   }
   assert.deepEqual(bad, [], "a module calls a tool whose reach refuses a module caller: make the tool reach anyone (and scope it in code), or call an internal tool");
+});
+
+// A call whose tool name is computed (ctx.call(tool, ...)) cannot be checked here, and it runs as a module
+// caller, so its target's reach must allow modules. test/reach-computed-calls.json lists the files that
+// have one, with a count and who reviews them; a new computed call in any other file fails, and a count
+// above the listed one fails. A call whose callee takes the caller's own name goes through the registry
+// under its own reach, so this is a debt list for owners to shrink, not a pass.
+const computed = JSON.parse(fs.readFileSync(path.join(root, "test", "reach-computed-calls.json"), "utf8")).files;
+test("a call with a computed tool name is only in a file on the reviewed list", () => {
+  const COMPUTED = /\b(?:ctx\.call|use)\(\s*([^"'`\s][^,)]*)/g;
+  const counts = {};
+  for (const top of ["core", "modules", "local", "lib"]) {
+    const dir = path.join(root, top);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of files(dir)) {
+      if (!/\.m?js$/.test(f) || f.endsWith(".test.js") || f.includes(`${path.sep}cli${path.sep}`)) continue;
+      const rel = path.relative(root, f).split(path.sep).join("/");
+      let n = 0, m;
+      const src = fs.readFileSync(f, "utf8");
+      while ((m = COMPUTED.exec(src))) if (!/^["'`]/.test(m[1].trim())) n++;
+      if (n) counts[rel] = n;
+    }
+  }
+  const more = Object.entries(counts).filter(([f, n]) => n > ((computed[f] || {}).count || 0)).map(([f, n]) => `${f}: ${n} (listed ${(computed[f] || {}).count || 0})`).sort();
+  assert.deepEqual(more, [], "a module calls a tool by a computed name: use a literal name, or review it and list the file in test/reach-computed-calls.json");
+  const stale = Object.keys(computed).filter(f => (counts[f] || 0) < computed[f].count).sort();
+  assert.deepEqual(stale, [], "lower these counts in test/reach-computed-calls.json");
 });

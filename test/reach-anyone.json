@@ -1,0 +1,541 @@
+{
+ "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
+ "tools": {
+  "agents.ask": {
+   "module": "agents",
+   "reason": "guard(): only the assistant talks to other agents; onboard asks as a module"
+  },
+  "agents.create": {
+   "module": "agents",
+   "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
+  },
+  "agents.history": {
+   "module": "agents",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "agents.list": {
+   "module": "agents",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "agents.resume": {
+   "module": "agents",
+   "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
+  },
+  "agents.rollover": {
+   "module": "agents",
+   "reason": "guard(): only the assistant (and the person); core/assistant calls it as a module"
+  },
+  "agents.stop": {
+   "module": "agents",
+   "reason": "guard(): only the assistant stops agents; the person via the surfaces"
+  },
+  "agents.threads": {
+   "module": "agents",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "agents.update": {
+   "module": "agents",
+   "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
+  },
+  "agents.usage": {
+   "module": "agents",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "artifacts.archive": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.create": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.delete": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.diff": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.export": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.get": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.list": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.move": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.public.status": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.restore": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.search": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.share": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.undelete": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.unshare": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.update": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.versions": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "events.catalog": {
+   "module": "events",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "goals.get": {
+   "module": "goals",
+   "reason": "read-only"
+  },
+  "goals.list": {
+   "module": "goals",
+   "reason": "read-only"
+  },
+  "goals.milestone-done": {
+   "module": "goals",
+   "reason": "callerMayTouch in core/goals: an agent only in its own thread or project"
+  },
+  "goals.set": {
+   "module": "goals",
+   "reason": "an agent's goal is a proposal (state pending) in its own thread or project only; goals.accept is person"
+  },
+  "harness.brief": {
+   "module": "harness",
+   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+  },
+  "harness.enrich": {
+   "module": "harness",
+   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+  },
+  "harness.learn": {
+   "module": "harness",
+   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+  },
+  "harness.rules": {
+   "module": "harness",
+   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+  },
+  "harness.stop": {
+   "module": "harness",
+   "reason": "callers list: only the session's own Stop hook (caller harness) reaches it, and it acts on that hook's own thread only (own-scope check)"
+  },
+  "harness.touched": {
+   "module": "harness",
+   "reason": "read-only"
+  },
+  "hooks.delivery": {
+   "module": "hooks",
+   "reason": "read-only (hooks.delivery bodies: the route's own senders' data, shown as untrusted)"
+  },
+  "hooks.list": {
+   "module": "hooks",
+   "reason": "read-only"
+  },
+  "hooks.status": {
+   "module": "hooks",
+   "reason": "read-only"
+  },
+  "link.call": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.events": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.find": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.health": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.hello": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.macs": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pair.approve": {
+   "module": "link",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "link.pair.poll": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.pair.request": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.peers": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pending": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.reply": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.serve": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.signin": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.status": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.capsule.pin": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.code": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.enroll": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.keys": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.person.sessions": {
+   "module": "presence",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "presence.person.start": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.remove": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.session.close": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.session.open": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.check": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.access.grant": {
+   "module": "projects",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.list": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.migrate": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.revoke": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.archive": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.catalog": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.context": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.create": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.history": {
+   "module": "projects",
+   "reason": "read-only; callers in code: capsule, cli, deck, local, mcp"
+  },
+  "projects.list": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.of": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.rename": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.threads": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "releases.cert": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, deck, local, tailnet"
+  },
+  "releases.sign": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, local, module"
+  },
+  "sessions.accounts.add": {
+   "module": "sessions",
+   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+  },
+  "sessions.accounts.bind": {
+   "module": "sessions",
+   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+  },
+  "sessions.accounts.list": {
+   "module": "sessions",
+   "reason": "read-only (an agent sees accounts without their vault item names)"
+  },
+  "sessions.accounts.remove": {
+   "module": "sessions",
+   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+  },
+  "sessions.accounts.signin": {
+   "module": "sessions",
+   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+  },
+  "sessions.limits.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.mode.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.models": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.models.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.prompt.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.prompt.history": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.prompt.preview": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.routes.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.slots.status": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.status": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.usage.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sync.consent": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete.import": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.scan": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.upload.cancel": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.chunk": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.finish": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.plan": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.start": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "threads.archive": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.asks": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.bind": {
+   "module": "threads",
+   "reason": "callers limited to harness (the SessionStart hook); it binds a session to its own process"
+  },
+  "threads.commands": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.delete": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.effort": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.fork": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.get": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.interrupt": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.items": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.lease": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.list": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.model": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.queue": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.release": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.rewind": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.send": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads; modules call threads.send (keyboard, glass, agents) so it cannot be person or asked"
+  },
+  "threads.send-now": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.start": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.stop": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads; agents.stop stops threads through it as module:agents"
+  },
+  "threads.switch": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.tasks": {
+   "module": "threads",
+   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+  },
+  "threads.thinking": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.unarchive": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.unwatch": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "threads.watch": {
+   "module": "threads",
+   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+  },
+  "undo.list": {
+   "module": "undo",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "undo.run": {
+   "module": "undo",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  }
+ }
+}

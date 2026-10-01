@@ -1,5 +1,5 @@
 {
- "_comment": "Every tool whose manifest entry has no explicit reach (2026-10-01, stage). Each owner shrinks this by writing { name, reach } in module.json and deleting the line here. test/reach-explicit.test.js fails on a tool not listed that has no reach, and on a line that is stale. \"anyone\" is fine when written deliberately.",
+ "_comment": "Every tool whose manifest entry has no explicit reach, by what the booted registry says about it: \"open to any caller\", \"callers admit a model\" (a callers list naming mcp or harness is not a limit), \"limited by callers in code\" (a list with no model) or \"internal or hook in code\". Each owner shrinks this by writing { \"name\", \"reach\" } in module.json and deleting the line. test/reach-explicit.test.js (static) and test/reach-registry.test.js (booted) fail on a missing line, a stale line or a wrong label. \"anyone\" is fine when written deliberately and justified in test/reach-anyone.json.",
  "tools": {
   "about.text": {
    "module": "about",
@@ -494,7 +494,7 @@
   },
   "files.fetch": {
    "module": "files",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "files.mentions.resolve": {
    "module": "files",
@@ -506,7 +506,7 @@
   },
   "files.preview": {
    "module": "files",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "files.receive": {
    "module": "files",
@@ -518,7 +518,7 @@
   },
   "files.search": {
    "module": "files",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "files.send": {
    "module": "files",
@@ -526,7 +526,7 @@
   },
   "files.stat": {
    "module": "files",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "gate.approve": {
    "module": "gate",
@@ -620,15 +620,15 @@
   },
   "github.project.issue.get": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.project.issue.list": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.project.local-init": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.project.of": {
    "module": "github",
@@ -636,15 +636,15 @@
   },
   "github.project.pr.comments": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.project.pr.get": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.project.pr.status": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.remove": {
    "module": "github",
@@ -656,33 +656,33 @@
   },
   "github.session.cleanup": {
    "module": "github",
-   "default": "limited by callers in code",
+   "default": "internal or hook in code",
    "internal": true
   },
   "github.session.history": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.session.pr": {
    "module": "github",
-   "default": "limited by callers in code",
+   "default": "internal or hook in code",
    "internal": true
   },
   "github.session.push": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.session.redo": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.session.undo": {
    "module": "github",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "github.session.worktree": {
    "module": "github",
-   "default": "limited by callers in code",
+   "default": "internal or hook in code",
    "internal": true
   },
   "glass.close": {
@@ -1102,7 +1102,7 @@
   },
   "memory.heard": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.me": {
    "module": "memory",
@@ -1216,19 +1216,19 @@
   },
   "memory.write": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.write.forget": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.write.restore": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.writes": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "names.check": {
    "module": "names",
@@ -1366,47 +1366,47 @@
   },
   "planner.add": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.agenda": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.calendar.create": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.calendar.sync": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.delete": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.dismiss": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.done": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.get": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.list": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.parse": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.ringing": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.settings": {
    "module": "planner",
@@ -1414,15 +1414,15 @@
   },
   "planner.snooze": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.upcoming": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "planner.update": {
    "module": "planner",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "providers.list": {
    "module": "providers",
@@ -1479,11 +1479,11 @@
   },
   "recall.search": {
    "module": "recall",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "recall.sessions": {
    "module": "recall",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "recall.setup": {
    "module": "recall",
@@ -1495,7 +1495,7 @@
   },
   "recall.thread": {
    "module": "recall",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "recall.transcript": {
    "module": "recall",
@@ -1627,11 +1627,11 @@
   },
   "screen.context": {
    "module": "screen",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "screen.shot": {
    "module": "screen",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "settings.changes": {
    "module": "settings",
@@ -1643,7 +1643,7 @@
   },
   "settings.request": {
    "module": "settings",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "settings.reset": {
    "module": "settings",
@@ -1672,20 +1672,20 @@
   },
   "settings.write": {
    "module": "settings",
-   "default": "limited by callers in code",
+   "default": "internal or hook in code",
    "internal": true
   },
   "sideview.close": {
    "module": "sideview",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "sideview.open": {
    "module": "sideview",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "sideview.status": {
    "module": "sideview",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "sight.frame": {
    "module": "sight",
@@ -1751,7 +1751,7 @@
   },
   "team.add": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.ask": {
    "module": "team",
@@ -1763,23 +1763,23 @@
   },
   "team.charter.diff": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.charter.draft": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.charter.get": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.charter.history": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.charter.revert": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.charter.set": {
    "module": "team",
@@ -1799,11 +1799,11 @@
   },
   "team.duties.create": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.duties.delete": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.duties.disable": {
    "module": "team",
@@ -1815,15 +1815,15 @@
   },
   "team.duties.list": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.duties.run-now": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.duties.update": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.fail": {
    "module": "team",
@@ -1851,11 +1851,11 @@
   },
   "team.retire": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.role.fill": {
    "module": "team",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "team.status": {
    "module": "team",
@@ -1883,7 +1883,7 @@
   },
   "tips.list": {
    "module": "tips",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "tips.next": {
    "module": "tips",
@@ -1939,7 +1939,7 @@
   },
   "vault.agent.grant": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.agent.grants": {
    "module": "vault",
@@ -2004,7 +2004,7 @@
   },
   "vault.connections.list": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.connections.register": {
    "module": "vault",
@@ -2012,7 +2012,7 @@
   },
   "vault.connections.revoke": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.connections.sync": {
    "module": "vault",
@@ -2061,7 +2061,7 @@
   },
   "vault.device.sync": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.device.unlock": {
    "module": "vault",
@@ -2117,7 +2117,7 @@
   },
   "vault.generate": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.git": {
    "module": "vault",
@@ -2125,11 +2125,11 @@
   },
   "vault.grant": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.grants.status": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.health": {
    "module": "vault",
@@ -2145,11 +2145,11 @@
   },
   "vault.import": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.import.preview": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.inject": {
    "module": "vault",
@@ -2218,15 +2218,15 @@
   },
   "vault.offboard": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.pass.accept": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.pass.create": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.pass.list": {
    "module": "vault",
@@ -2238,7 +2238,7 @@
   },
   "vault.pending": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.people": {
    "module": "vault",
@@ -2250,7 +2250,7 @@
   },
   "vault.person.add": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.put": {
    "module": "vault",
@@ -2258,7 +2258,7 @@
   },
   "vault.relay": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.release": {
    "module": "vault",
@@ -2275,7 +2275,7 @@
   },
   "vault.request": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.resolve": {
    "module": "vault",
@@ -2303,7 +2303,7 @@
   },
   "vault.rotation": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.said.add": {
    "module": "vault",
@@ -2364,7 +2364,7 @@
   },
   "vault.ssh.generate": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.ssh.keys": {
    "module": "vault",
@@ -2372,7 +2372,7 @@
   },
   "vault.sweep": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.totp": {
    "module": "vault",
@@ -2418,7 +2418,7 @@
   },
   "vault.vaults.sync": {
    "module": "vault",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "vault.verify": {
    "module": "vault",
