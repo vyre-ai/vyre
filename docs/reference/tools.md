@@ -384,12 +384,14 @@ The bytes of an image, a video or a sound, in chunks (offset and length up to 4 
 
 ### `artifacts.media.register`
 
-Keep an image, a video or a sound a provider made, which is a file in the thread's artifacts folder, as an artifact with its provider, model, prompt and session. Called by Vyre's session module when a provider hands over media (a content block, a file, a URL or a tool result is first saved as a file in the folder). A file already kept is not kept twice: its provenance is filled in.
+Keep an image, a video or a sound a provider made, which is a file in the thread's artifacts folder, as an artifact with its provider, model, prompt and session. Called by Vyre's session module when a provider hands over media (a content block, a file, a URL or a tool result is first saved as a file in the folder). A file already kept is not kept twice: its provenance is filled in. Two ways to hand it over: `name`, a file already in the thread's artifacts folder (any size up to 100 MB), or `data_b64` with `name` or `mime`, the bytes themselves (up to 20 MB, as a provider's content block arrives; nothing is written in any agent's folder).
 
 - Input:
-  - `name` string, required
   - `thread` string, required
+  - `data_b64` string
+  - `mime` string
   - `model` string
+  - `name` string
   - `prompt` string
   - `provider` string
   - `source` one of "file", "content-block", "url", "tool-result"

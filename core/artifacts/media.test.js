@@ -284,3 +284,26 @@ test("media: a big file is read without holding the thread, and a deleted item i
   await route({ method: "GET", headers: { "if-none-match": `"${made.media.sha256}"` } }, res, { caller: "deck", url: new URL(`http://x/v1/artifacts/content?id=${made.id}`) });
   assert.equal(res.status, 304);
 });
+
+test("media: bytes handed over directly (a provider's content block) are kept without any file in an agent's folder, and are checked the same", async t => {
+  const { ok, call, asVyre } = await boot(t);
+  const b64 = PNG.toString("base64");
+  // No artifacts folder is registered for t1 at all: nothing here touches an agent's folder.
+  const made = await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64, provider: "codex", prompt: "Revised prompt: a lighthouse at dawn", source: "content-block", title: "Lighthouse" });
+  assert.deepEqual([made.kind, made.format, made.media.provider, made.media.source, made.media.bytes], ["image", "png", "codex", "content-block", PNG.length]);
+  assert.match(made.media.sha256, /^[0-9a-f]{64}$/);
+  const chunk = await asVyre("artifacts.media.read", { id: made.id });
+  assert.ok(Buffer.from(chunk.bytes_b64, "base64").equals(PNG), "the bytes are what was handed over");
+  assert.deepEqual((await ok("artifacts.search", { q: "lighthouse" })).map(x => x.id), [made.id], "the prompt is searchable");
+  // The same bytes again for the thread are the same artifact, with what is now known filled in.
+  const again = await asVyre("artifacts.media.register", { thread: "t1", name: "x.png", data_b64: b64, model: "gpt-image" });
+  assert.equal(again.id, made.id);
+  assert.equal(again.media.model, "gpt-image");
+  assert.equal((await ok("artifacts.list", { kind: "image" })).length, 1);
+  // Checked as a file is: magic bytes, a type it knows, a size, a registrar.
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: Buffer.from("<html><script>").toString("base64") }), /not a png file/);
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", data_b64: b64 }), /say what it is/);
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: "A".repeat(30 * 1024 * 1024) }), /20 MB/);
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: "" }), /empty/);
+  assert.notEqual((await call("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64 }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "a model never registers");
+});
