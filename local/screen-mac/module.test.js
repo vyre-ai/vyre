@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 import { discover, Registry, validate } from "../../core/modules/index.js";
 import { open } from "../../core/store/index.js";
 import { Events } from "../../core/events/index.js";
@@ -82,4 +83,52 @@ test("module: a helper path in config or VYRE_SCREEN_BIN is used, and a missing 
   assert.equal(r.error?.code, process.platform === "darwin" ? "not_built" : "unsupported");
   if (process.platform === "darwin") assert.match(r.error.message, /build\.sh/);
   assert.equal((await reg.call("screen.context", { textMax: "lots" }, "cli")).error?.code, "bad_input");
+});
+
+/** Stand-ins for the hands module's grant table and Chrome's plan check, so the agent guard can be driven both ways. */
+function stubs(t, { granted = /** @type {string[]} */ ([]), planned = /** @type {string[]} */ ([]) } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vc-scr-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const mk = (name, tool, body) => {
+    fs.mkdirSync(path.join(dir, name), { recursive: true });
+    fs.writeFileSync(path.join(dir, name, "module.json"), JSON.stringify({ name, version: "0.0.1", roles: ["local"], does: { tools: [{ name: tool, reach: "modules" }] } }));
+    fs.writeFileSync(path.join(dir, name, "index.js"), `export default { async start(ctx) { ctx.tool(${JSON.stringify(tool)}, { internal: true, callers: ["module"], description: "stand-in", input: { type: "object" }, run: async (input) => (${body}) }); return { async stop() {} }; } };`);
+  };
+  mk("hands", "hands.grant.list", JSON.stringify(granted.map(agent => ({ agent }))));
+  mk("chrome", "chrome.plan.check", `{ planned: ${JSON.stringify(planned)}.includes(String(input.agent)) }`);
+  return dir;
+}
+
+async function guardedRegistry(t, o) {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const mods = stubs(t, o);
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", screen: { helper: makeHelper({ bin: FAKE, platform: "darwin", env: { ...process.env, FAKE_SIGHT: JSON.stringify(scenario(home)) } }) } } });
+  t.after(() => reg.stop());
+  const first = reg.isFirstParty.bind(reg);
+  reg.isFirstParty = dir => dir.startsWith(mods) || first(dir);
+  await reg.start([...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...discover([mods])], { role: "local" });
+  return reg;
+}
+
+test("module: an agent sees the person's screen only with the computer-use grant AND a posted plan; the person's own surfaces and session are not asked", async t => {
+  for (const spelling of ["mcp:agent:kit", "cli agent:kit", "harness"]) {
+    const reg = await guardedRegistry(t, { granted: [], planned: [] });
+    for (const tool of ["screen.context", "screen.shot"]) {
+      const r = await reg.call(tool, {}, spelling);
+      assert.ok(r.error && /denied/.test(r.error.code), `${spelling} ${tool}: ${JSON.stringify(r).slice(0, 120)}`);
+    }
+  }
+  const noPlan = await guardedRegistry(t, { granted: ["kit"], planned: [] });
+  assert.equal((await noPlan.call("screen.context", {}, "mcp:agent:kit")).error?.code, "plan_first");
+  assert.equal((await noPlan.call("screen.shot", {}, "mcp:agent:kit")).error?.code, "plan_first");
+  const ok = await guardedRegistry(t, { granted: ["kit"], planned: ["kit"] });
+  assert.equal((await ok.call("screen.context", {}, "mcp:agent:kit")).data.text, "Northwind Bakery opens at seven");
+  const shot = await ok.call("screen.shot", {}, "mcp:agent:kit");
+  assert.ok(!shot.error || !/^(denied|plan_first)$/.test(shot.error.code), "past the guard (the fake helper takes no real picture): " + JSON.stringify(shot).slice(0, 120));
+  assert.equal((await ok.call("screen.context", {}, "mcp:agent:other")).error?.code, "denied", "another agent has no grant");
+  // The person's own surfaces and their own model session are never asked (Lumen's "ask about my screen").
+  const none = await guardedRegistry(t, { granted: [], planned: [] });
+  for (const person of ["cli", "local", "mcp"]) assert.ok(!(await none.call("screen.context", {}, person)).error, person);
 });

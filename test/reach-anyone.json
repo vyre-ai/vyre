@@ -463,11 +463,11 @@
   },
   "screen.context": {
    "module": "screen",
-   "reason": "read-only, local only: refusePeer refuses a tailnet caller in code, and the floor withholds secure fields and blind places; the person's own local model reading their screen is the feature (the callers list names mcp, which platform does not count as a limit)"
+   "reason": "read-only, but it shows the real screen (mail, banks, passwords): needs the person's computer-use grant AND a posted plan for an agent caller (agentGate: hands.grant.list, then chrome.plan.check; test in local/screen-mac/module.test.js); refused otherwise. The person's own surfaces (cli, local, deck, capsule), their own plain model session and modules are not asked (Lumen's ask about my screen). Local only: refusePeer refuses a tailnet caller; secure fields and blind places stay redacted"
   },
   "screen.shot": {
    "module": "screen",
-   "reason": "read-only, local only: refusePeer refuses a tailnet caller in code, and the floor withholds secure fields and blind places; the person's own local model reading their screen is the feature (the callers list names mcp, which platform does not count as a limit)"
+   "reason": "read-only, but it shows the real screen (mail, banks, passwords): needs the person's computer-use grant AND a posted plan for an agent caller (agentGate: hands.grant.list, then chrome.plan.check; test in local/screen-mac/module.test.js); refused otherwise. The person's own surfaces (cli, local, deck, capsule), their own plain model session and modules are not asked (Lumen's ask about my screen). Local only: refusePeer refuses a tailnet caller; secure fields and blind places stay redacted"
   },
   "sideview.close": {
    "module": "sideview",
