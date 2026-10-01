@@ -3,15 +3,15 @@
  "tools": {
   "artifacts.archive": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
   },
   "artifacts.create": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: target() puts an agent's artifact only in its own project (or its own space); the maker is recorded from the call, never the input; content is secret-scanned only for a share"
   },
   "artifacts.delete": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; a delete keeps 30 days to undo"
   },
   "artifacts.diff": {
    "module": "artifacts",
@@ -19,7 +19,7 @@
   },
   "artifacts.export": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; export only reads: it returns the file to the caller and changes nothing"
   },
   "artifacts.get": {
    "module": "artifacts",
@@ -31,7 +31,7 @@
   },
   "artifacts.move": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; an agent may move only into its own project"
   },
   "artifacts.public.status": {
    "module": "artifacts",
@@ -39,7 +39,7 @@
   },
   "artifacts.restore": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; going back is a new version, nothing is lost"
   },
   "artifacts.search": {
    "module": "artifacts",
@@ -47,19 +47,19 @@
   },
   "artifacts.share": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "held at the Gate: it declares outward post, so an agent's call waits for the person (the in-tool check also refuses an agent without the gate's mark), and the secret scan refuses a share that looks like it holds a key"
   },
   "artifacts.undelete": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
   },
   "artifacts.unshare": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; it only stops a link, so it is never held"
   },
   "artifacts.update": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
   },
   "artifacts.versions": {
    "module": "artifacts",
