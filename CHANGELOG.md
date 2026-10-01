@@ -10,7 +10,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### pairing: say so when the relay did not confirm the code
 
-- `relay.pair.ticket` can return `confirmed: false` (an older relay never acknowledges a registration). The "Add a Windows PC" card and the Wink card then add "The relay did not confirm this code. If the PC does not finish, make a new one." once about 30 seconds pass without a finished pairing. Nothing shows when `confirmed` is true or absent. The ticket works either way.
+- `relay.pair.ticket` can return `confirmed: false` (an older relay never acknowledges a registration). The "Add a Windows PC" card and the Wink card then add "The relay did not confirm this code. If the PC does not finish, make a new one." once about 20 seconds pass without a finished pairing. Nothing shows when `confirmed` is true or absent. The ticket works either way.
 
 #### settings: Standing permissions
 

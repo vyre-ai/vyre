@@ -15,7 +15,7 @@ const LIST = { intents: [
   { id: "gone", kind: "send", to: ["x@y.z"], standing: true, revoked: 5 }] };
 function mount(answers) {
   const calls = [];
-  const attempt = async (tool, input = {}) => { calls.push({ tool, input }); const a = typeof answers[tool] === "function" ? answers[tool](input) : answers[tool]; return a && a.$error ? { error: a.$error } : { data: a ?? {} }; };
+  const attempt = async (tool, input = {}, opts) => { calls.push({ tool, input, opts }); const a = typeof answers[tool] === "function" ? answers[tool](input) : answers[tool]; return a && a.$error ? { error: a.$error } : { data: a ?? {} }; };
   const el = doc.createElement("div");
   return { el, calls, run: () => drawPermissions(el, { alive: () => true, on: () => {} }, { attempt }) };
 }
@@ -55,6 +55,7 @@ test("Add: a permission with no recipient sends nothing; a pay one needs an amou
   $(m.el, "[data-f=amount]").value = "25"; $(m.el, "[data-f=currency]").value = "usd";
   form().dispatchEvent(ev("submit")); await settle();
   assert.deepEqual(m.calls.find(c => c.tool === "gate.said.add")?.input, { kind: "pay", to: ["a@b.co", "c@d.co"], limits: { max_amount: 25, currency: "USD" } });
+  assert.deepEqual(m.calls.find(c => c.tool === "gate.said.add")?.opts, { presence: true }, "a pay permission asks for proof");
 });
 
 test("a failed read says so instead of showing an empty list", async () => {

@@ -154,6 +154,6 @@ export function playDance(ringEl, calm) {
   });
 }
 
-/** relay.pair.ticket says confirmed:false when an older relay never acknowledged the registration: after this long without a pairing, say so. */
-export const UNCONFIRMED_MS = 30000;
+/** relay.pair.ticket says confirmed:false when an older relay never acknowledged the registration: after about 20 seconds without a pairing, say so. */
+export const UNCONFIRMED_MS = 20000;
 export const UNCONFIRMED_LINE = "The relay did not confirm this code. If the PC does not finish, make a new one.";

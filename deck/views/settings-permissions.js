@@ -85,7 +85,8 @@ export async function drawPermissions(el, ctx, deps = {}) {
         input.limits = { max_amount: n, ...(currency.value.trim() ? { currency: currency.value.trim().toUpperCase() } : {}) };
       }
       st.busy = "add"; complain(null); draw();
-      const r = await attempt("gate.said.add", input);
+      // A pay permission, or one with no named agent, opens a path the charter puts proof on: ask for it as a send does.
+      const r = await attempt("gate.said.add", input, kind.value === "pay" || !input.agents ? { presence: true } : { presence: "asked" });
       st.busy = "";
       if (r.error) { complain(String(r.error.message || "That did not go through.")); draw(); return; }
       st.adding = false; await load();
