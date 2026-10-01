@@ -662,9 +662,13 @@ export default {
     ctx.tool("onboard.link", {
       description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
       input: obj({ mint: { type: "boolean" } }),
-      run: async (input, { caller }) => {
+      run: async (input, { caller, socketCapped }) => {
         boxOnly(); // revisit once the Solo Deck loopback design (docs/design/anywhere.md) lands and reuses this link
-        if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
+        // Before anyone owns this box (onboarding not finished, no owner seen) nothing is there for a program to take, and the
+        // installer runs without a terminal (CI, `docker exec`, `ssh host cmd`): the daemon capped it as a program, not a model
+        // session (socketCapped), and the first-run link is still its to make. After the first owner, only a terminal does.
+        const firstRun = caller === "mcp" && socketCapped === true && !ob().finished && !net().ownerSeen;
+        if (!firstRun && !["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).

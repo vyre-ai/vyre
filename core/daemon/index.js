@@ -783,7 +783,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       if (!live) { live = true; res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" }); }
       res.write(JSON.stringify({ draft: d }) + "\n");
     } : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(socket && socketTrust() === "strict" && /^(cli|local)$/.test(caller) ? { terminalAsk: true } : {}), ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(cappedHere ? { socketCapped: true } : {}), ...(socket && socketTrust() === "strict" && /^(cli|local)$/.test(caller) ? { terminalAsk: true } : {}), ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A person's label that was not proven arrived as mcp: say how to be the person, once, in the refusal it earned.
     if (cappedHere && PERSON_LABEL.test(String(socketCaller(req))) && result.error && result.error.code === "denied") {

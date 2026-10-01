@@ -30,10 +30,10 @@ export const MIGRATIONS = [
 /** The push services browsers use. Anything else is refused: vyred must not POST to any URL a client names. */
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
-const KINDS = ["ask", "draft", "watch", "lesson", "planner", "goal", "proactive"];
+const KINDS = ["ask", "draft", "watch", "lesson", "planner", "goal", "proactive", "notice"];
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
 /** Kinds on until switched off. A lesson is not "needs you", so it is off until switched on. */
-const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true, goal: true, proactive: true };
+const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true, goal: true, proactive: true, notice: true };
 /** The kinds nobody asked for in the moment: they share one daily budget (assistant.chattiness, default 3).
  * Not ask (a session is blocked on the person) and not planner (a reminder the person set). */
 const CAPPED = new Set(["draft", "watch", "lesson", "goal", "proactive"]);
@@ -94,6 +94,11 @@ const NOTES = {
   // The title is a fixed sentence the source wrote, never model text; over the daily budget it is dropped.
   "push.proactive": e => ({ kind: "proactive", title: String(e.payload.title || "Something needs a look").slice(0, 120),
     path: String(e.payload.path || "/needs").slice(0, 200), tag: String(e.payload.tag || `proactive-${Date.now()}`).slice(0, 100) }),
+  // An agent loosened a guard because the person asked (core/settings, settings.loosened): a notice, not an ask. It is
+  // not counted in the daily budget and rings through quiet hours; the title is one fixed sentence around the setting's
+  // own label (never model text), and the path opens that change, whose Undo needs no proof.
+  "settings.loosened": e => ({ kind: "notice", title: `${String(e.payload.label || "A setting").slice(0, 80)} changed, as you asked. Undo`,
+    path: `/settings?change=${enc(e.payload.change)}`, tag: `settings-loosened-${e.payload.change}`, loud: true }),
   "goal.done": e => ({ kind: "goal", title: "A goal is done", path: `/goals/${enc(e.payload.goal)}`, tag: `goal-done-${e.payload.goal}` }),
 };
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
@@ -128,7 +133,7 @@ export default {
       get: k => { const r = /** @type {any} */ (db.prepare("SELECT value FROM push_state WHERE key = ?").get(k)); return r ? JSON.parse(String(r.value)) : undefined; },
       set: (k, v) => db.prepare("INSERT INTO push_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, JSON.stringify(v)),
     };
-    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...DEFAULT_KINDS, ...(state.get("kinds") || {}) },
+    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...DEFAULT_KINDS, ...(state.get("kinds") || {}), notice: true },
       planner_label: Boolean(state.get("planner_label")) });
 
     /** The keypair: made once, the private half in the Vault. Held in memory once fetched. */
@@ -315,6 +320,8 @@ export default {
         if (i.kinds) {
           const bad = Object.keys(i.kinds).filter(k => !KINDS.includes(k));
           if (bad.length) throw new Error(`no such kind: ${bad.join(", ")} (kinds: ${KINDS.join(", ")})`);
+          // A notice says a guard was loosened as asked: nobody, the person included, switches it off here.
+          if ("notice" in i.kinds) throw new Error("notice cannot be turned off: it says a guard was loosened as you asked");
           state.set("kinds", { ...(state.get("kinds") || {}), ...Object.fromEntries(Object.entries(i.kinds).map(([k, v]) => [k, Boolean(v)])) });
         }
         if (i.planner_label !== undefined) state.set("planner_label", Boolean(i.planner_label));

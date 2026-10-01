@@ -61,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 32 | 8 | cli |
-| [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 1 | cli, deck |
+| [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
@@ -578,7 +578,7 @@ One way to read and change every setting, at account, project, device or session
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [10](tools.md#settings), 2 of them only for other modules
-- Emits: [1 events](events.md#settings)
+- Emits: [2 events](events.md#settings)
 - Shows on: cli, deck
 
 ## sideview

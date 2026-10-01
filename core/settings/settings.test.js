@@ -548,3 +548,34 @@ test("the recorder's string for a setting ask is the one settings.request asks f
   assert.ok(!ok.error, JSON.stringify(ok.error));
   assert.equal((await req({ key: m.key, value: true, level: "project", project: "northwind" })).error?.code, "denied", "used up");
 });
+
+test("an agent's asked change that loosens a guard posts settings.loosened with the change and the turn that asked; nothing else does", async t => {
+  const { c, d } = await world(t);
+  const keys = (await c("settings.schema")).data.keys;
+  const loose = keys.find((/** @type {any} */ x) => x.key === "vault.lock_on_sleep");
+  const plain = keys.find((/** @type {any} */ x) => x.type === "bool" && x.levels.includes("account") && !x.secret && !x.confirm && x.security !== "loosens" && x.key !== "vault.lock_on_sleep");
+  assert.ok(loose && plain, "a loosening key and a plain one");
+  const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-7", what: "a setting ask", ...i }, "module:sessions");
+  const agent = "mcp:agent:kit", meta = { thread: "t_loose" };
+  const req = (/** @type {any} */ input) => d.registry.call("settings.request", input, agent, meta);
+  const seen = () => d.events.since(0, { type: "settings.loosened" });
+  // The person says "turn it off": the key goes to false (the loosening direction for a lock).
+  const asked = await say({ thread: "t_loose", kind: "setting", to: [settingTo({ key: loose.key, value: false, level: "account" })] });
+  assert.ok(!asked.error, JSON.stringify(asked.error));
+  const r = await req({ key: loose.key, value: false });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  const ev = seen();
+  assert.equal(ev.length, 1);
+  const log = (await c("settings.changes", { key: loose.key })).data;
+  assert.deepEqual([ev[0].payload.key, ev[0].payload.level, ev[0].payload.by, ev[0].payload.said, ev[0].payload.change, ev[0].payload.label], [loose.key, "account", agent, asked.data.id, log[0].id, loose.label]);
+  assert.ok(!("value" in ev[0].payload) && !JSON.stringify(ev[0].payload).includes("false"), "the event never carries a value");
+  // The Undo needs no proof, and a plain asked change posts no notice.
+  assert.ok(!(await c("settings.undo", { change: log[0].id })).error);
+  const plainAsk = await say({ thread: "t_loose", kind: "setting", to: [settingTo({ key: plain.key, value: !(plain.default === true), level: "account" })] });
+  assert.ok(!plainAsk.error);
+  assert.ok(!(await req({ key: plain.key, value: !(plain.default === true) })).error);
+  assert.equal(seen().length, 1, "a plain asked change is not a notice");
+  // The person's own change of the same key is not a notice either.
+  assert.ok(!(await c("settings.set", { key: loose.key, value: false })).error);
+  assert.equal(seen().length, 1, "the person's own change is not a notice");
+});

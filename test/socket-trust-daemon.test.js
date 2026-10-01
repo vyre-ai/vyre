@@ -55,3 +55,25 @@ test("a detached child claiming cli is mcp, and cannot run a person-surface tool
   assert.ok(["denied", "presence_required", "no_such_tool"].includes(del.body.error && del.body.error.code), JSON.stringify(del.body));
   assert.notEqual(del.body.error.code, "no_link", "it must not reach the tool: sync.delete would have answered no_link");
 });
+
+test("the installer without a terminal (CI, docker exec) can mint the first-run onboarding link, and nothing else is loosened", async t => {
+  if (process.platform === "win32" || !fs.existsSync("/usr/bin/setsid") && !fs.existsSync("/bin/setsid")) return t.skip("needs setsid");
+  const was = socketTrust();
+  setSocketTrust("strict");
+  t.after(() => setSocketTrust(was));
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "trust-"));
+  // Nobody owns this box yet: a peer with no terminal, capped as a program, still gets the one-time link.
+  const link = await detachedCall(dir, d.paths.socket, "onboard.link", {}, "cli");
+  assert.equal(link.status, 200, JSON.stringify(link.body));
+  assert.match(String(link.body.data && link.body.data.url), /^http:\/\/127\.0\.0\.1:\d+\//);
+  // The same child is still capped for everything else: it cannot answer or approve as the person.
+  const del = await detachedCall(dir, d.paths.socket, "sync.delete", { machine: "any", confirm: true }, "cli");
+  assert.notEqual(del.status, 200, JSON.stringify(del.body));
+  // A caller that is not a socket peer capped as a program (an in-process mcp call) still may not.
+  const plain = await d.registry.call("onboard.link", {}, "mcp");
+  assert.equal(plain.error && plain.error.code !== undefined, true, JSON.stringify(plain));
+});
