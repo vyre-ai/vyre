@@ -173,6 +173,21 @@ test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let t
   fs.writeFileSync(path.join(th, ".codex", "config.toml"), 'approval_policy = "on-request"\n');
   assert.equal(seedTampered(th, { ".codex/config.toml": 'approval_policy = "on-request"\n' }), false);
   assert.equal(seedTampered(path.join(tam.store, "no-home"), { ".codex/config.toml": "x" }), false);
+  // A config that exists but cannot be read counts: a directory named config.toml, and (when not root) a .codex folder that cannot be searched.
+  const dirCfg = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(dirCfg.cwd, ".codex", "config.toml"), { recursive: true });
+  assert.equal(projectCodexConfig(dirCfg.cwd), true, "a directory named config.toml");
+  if (process.getuid && process.getuid() !== 0) {
+    const locked = world(t, { mcpOwn: true });
+    const cdir = path.join(locked.cwd, ".codex");
+    fs.mkdirSync(cdir, { recursive: true });
+    fs.writeFileSync(path.join(cdir, "config.toml"), "x = 1\n");
+    fs.chmodSync(cdir, 0o000);
+    try { assert.equal(projectCodexConfig(locked.cwd), true, "an unreadable .codex folder (EACCES)"); } finally { fs.chmodSync(cdir, 0o700); }
+    const sl = open(locked, { mcpServers: vyre });
+    assert.match(await sl.say("mcpask"), /Codex settings define their own tool servers/);
+    await sl.proc.stop(500);
+  }
   // A config higher up the tree counts too.
   const up = world(t, { mcpOwn: true });
   fs.mkdirSync(path.join(up.cwd, ".codex"), { recursive: true });

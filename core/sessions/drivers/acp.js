@@ -88,13 +88,16 @@ function descendants(pid) {
 }
 /**
  * Does a .codex/config.toml exist in this folder or any above it? Codex loads those on top of the account's own config, and one can add
- * or replace an MCP server (and change approval and sandbox) in many TOML spellings, so this does not parse: existing is enough.
+ * or replace an MCP server (and change approval and sandbox) in many TOML spellings, so this does not parse: existing is enough, and so
+ * is anything that stops it being checked.
  * @param {string} dir
  */
 export function projectCodexConfig(dir) {
   let d = path.resolve(dir);
   for (let i = 0; i < 40; i++) {
-    try { fs.accessSync(path.join(d, ".codex", "config.toml")); return true; } catch { /* none here */ }
+    // Only "not there" (ENOENT, ENOTDIR) is none: a file that exists but cannot be read (EACCES, a folder owned by another uid, a directory
+    // named config.toml) counts as a config, since what it holds is unknown.
+    try { fs.accessSync(path.join(d, ".codex", "config.toml")); return true; } catch (e) { const c = /** @type {any} */ (e).code; if (c !== "ENOENT" && c !== "ENOTDIR") return true; }
     const up = path.dirname(d);
     if (up === d) break;
     d = up;
