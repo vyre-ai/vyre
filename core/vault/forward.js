@@ -44,6 +44,15 @@ export function startForwarder(ctx, link) {
           if (!m) throw fail("only modules may ask the vault for a value", "denied");
           body = { name: input.name, field: input.field, watcher: input.watcher, module: m[1] };
         }
+        // A module's put and delete name the module the registry vouched for (never one in the input): core records it as the item's
+        // origin, and lets that module delete an item it made, unverified, with no proof (the person's own action in the module is the proof).
+        if (tool === "vault.put" || tool === "vault.delete") {
+          const m = /^module:([a-z][a-z0-9-]*)$/.exec(String(meta.caller || ""));
+          body = { ...input };
+          delete body.asModule;
+          if (typeof body.origin === "string" && body.origin.startsWith("module:")) delete body.origin;
+          if (m) { if (tool === "vault.put") body.origin = `module:${m[1]}`; else body.asModule = m[1]; }
+        }
         const r = await link.call(tool, body, proved ? meta.coreProof : undefined);
         if (r.error) throw fail(r.error.message || "vyre-core refused", r.error.code || "failed");
         return r.data;

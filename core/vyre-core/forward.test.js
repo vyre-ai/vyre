@@ -135,3 +135,35 @@ test("vyre-core forward: after core restarts (its count back at 0), vyred follow
   assert.deepEqual(seen.slice(0, 2), ["a", "b"]);
   assert.deepEqual(calls.slice(0, 3), [0, 9, 0]);
 });
+
+test("vyre-core forward: a first-party module deletes the item it made through core, with no proof, and nothing else", async t => {
+  const { c, link, proof } = await world(t);
+  /** @type {Map<string, any>} */
+  const tools = new Map();
+  startForwarder({ tool: (n, d) => tools.set(n, d), log: () => {} }, link);
+  const run = (tool, input, meta = {}) => tools.get(tool).run(input, meta);
+  const header = (tool, input) => { const p = proof(tool, input); return `device key=${p.key} ts=${p.ts} nonce=${p.nonce} sig=${p.sig}`; };
+
+  // The person's own item (put with a proof, so verified) and two modules' items (put with none, so unverified, origin named by vyred).
+  const mine = { name: "persons-key", kind: "secret", fields: { value: "p-1" } };
+  await run("vault.put", mine, { coreProof: header("vault.put", mine) });
+  await run("vault.put", { name: "gh-token", kind: "secret", fields: { value: "g-1" } }, { caller: "module:ghub" });
+  await run("vault.put", { name: "other-token", kind: "secret", fields: { value: "o-1" }, origin: "module:ghub" }, { caller: "module:other" });
+  assert.equal(c.vault.vault.row("gh-token").origin, "module:ghub");
+  assert.equal(c.vault.vault.row("other-token").origin, "module:other", "a module cannot name another module's origin in the input");
+
+  // Refusals: another module's item, the person's item, a spoofed asModule from a person's surface, an item that is not there.
+  await assert.rejects(run("vault.delete", { name: "other-token" }, { caller: "module:ghub" }), /not made by ghub/);
+  await assert.rejects(run("vault.delete", { name: "persons-key" }, { caller: "module:ghub" }), e => /** @type {any} */ (e).code === "presence_required");
+  await assert.rejects(run("vault.delete", { name: "gh-token", asModule: "ghub" }, { caller: "cli" }), e => /** @type {any} */ (e).code === "presence_required", "asModule from anyone but a module is dropped");
+  await assert.rejects(run("vault.delete", { name: "no-such" }, { caller: "module:ghub" }), /no item named/);
+  for (const n of ["persons-key", "gh-token", "other-token"]) assert.ok(c.vault.exists(n), `${n} survived the refusals`);
+
+  // Positive control: its own item goes. Once the person verifies it, it is theirs and the module can no longer delete it.
+  await run("vault.delete", { name: "gh-token" }, { caller: "module:ghub" });
+  assert.equal(c.vault.exists("gh-token"), false);
+  const v = { name: "other-token" };
+  await run("vault.verify", v, { coreProof: header("vault.verify", v) });
+  await assert.rejects(run("vault.delete", { name: "other-token" }, { caller: "module:other" }), e => /** @type {any} */ (e).code === "presence_required");
+  assert.ok(c.vault.exists("other-token"));
+});
