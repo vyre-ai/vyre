@@ -39,7 +39,7 @@
   },
   "artifacts.restore": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check via reach()/target(): restoring writes a new version of an artifact the caller may reach, never an overwrite"
   },
   "artifacts.search": {
    "module": "artifacts",
@@ -47,15 +47,15 @@
   },
   "artifacts.share": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "outward post: held at the Gate; an agent call that the person did not ask for is refused fail-closed (the PL-M2 stopgap, core/artifacts); own-scope check via reach()/target()"
   },
   "artifacts.undelete": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check via reach()/target(): the caller must reach the artifact it brings back"
   },
   "artifacts.unshare": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check via reach()/target(): takes a public link down, the safe direction"
   },
   "artifacts.update": {
    "module": "artifacts",
@@ -157,10 +157,6 @@
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },
-  "presence.session.close": {
-   "module": "presence",
-   "reason": "read-only, scoped by the module itself"
-  },
   "presence.session.open": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
@@ -183,7 +179,7 @@
   },
   "projects.archive": {
    "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local, module"
+   "reason": "callers list in code (cli, local, capsule, deck, module; no mcp), person-only by the floor; module:agents and presence archive on the person's behalf"
   },
   "projects.catalog": {
    "module": "projects",
@@ -231,7 +227,7 @@
   },
   "sync.delete": {
    "module": "sync",
-   "reason": "callers limited in code to capsule, cli, deck, local"
+   "reason": "callers list in code (cli, local, deck, capsule) and a preview unless confirm: true. Weak on its own: confirm is caller-supplied and cli or local is only as strong as the socket label, so a detached child could claim cli. The socket-trust inversion (a person label only from the owner's login session) closes that; its tests include a detached child claiming cli with confirm:true, which must be refused"
   },
   "sync.delete.import": {
    "module": "sync",
