@@ -54,21 +54,21 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
   assert.equal(checked, PERSON.length);
 });
 
-test("an added module that lists the vault's put, request, totp and relay in needs.tools is still refused them (not_declared)", async t => {
+test("an added module that lists the vault's put, totp and relay in needs.tools is still refused them (not_declared)", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
-  const TOOLS = ["vault.put", "vault.request", "vault.totp", "vault.relay"];
+  const TOOLS = { "vault.put": { name: "bakery-key", value: "x" }, "vault.totp": { name: "bakery-key" }, "vault.relay": { item: "x", request: { url: "https://example.com" } } };
   writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery's orders.", does: { tools: [{ name: "bakery.try", reach: "anyone" }] },
-    needs: { tools: [...TOOLS, "vault.list"] } }, `export default { async start(ctx) {
-    ctx.tool("bakery.try", { input: { type: "object", properties: { tool: { type: "string" } } },
-      run: async ({ tool }) => { const r = await ctx.call(tool, {}); return { code: r.error && r.error.code }; } });
+    needs: { tools: [...Object.keys(TOOLS), "vault.list"] } }, `export default { async start(ctx) {
+    ctx.tool("bakery.try", { input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } } },
+      run: async ({ tool, input }) => { const r = await ctx.call(tool, input || {}); return { code: r.error && r.error.code }; } });
     return { async stop() {} };
   } };`);
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
-  for (const tool of TOOLS) {
-    const r = await d.registry.call("bakery.try", { tool }, "local");
+  for (const [tool, input] of Object.entries(TOOLS)) {
+    const r = await d.registry.call("bakery.try", { tool, input }, "local");
     assert.equal(r.data && r.data.code, "not_declared", `${tool}: ${JSON.stringify(r)}`);
   }
   // Positive control: the same door lets a read-only vault tool through to its own code, so not_declared is the guard and not a missing tool.
