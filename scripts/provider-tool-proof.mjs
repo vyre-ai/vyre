@@ -8,6 +8,11 @@
 //   interrupt  a turn that is streaming stops when Vyre interrupts it, and the session lives on;
 //   resume   after the agent process is stopped and started again, session/load carries the same session on.
 // One line per fact: PASS, FAIL or INFO. Exit 0 always: a measurement, read the lines.
+//
+// With `--real-home <VYRE_HOME>` it instead runs a few turns (three per provider) on the REAL signed-in accounts under
+// <VYRE_HOME>/accounts and the real model, with no stand-in: a plain reply, a command that has to leave the sandbox (a question to Vyre
+// for Codex, the floor-served terminal for Grok) and a Vyre tool through the real MCP bridge. It uses the account's own HOME as Vyre
+// would, so only for a throwaway Vyre on a test box. A provider with no signed-in account says so and is skipped.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -226,8 +231,73 @@ async function prove(which) {
   mock.close(); vyred.close();
 }
 
+/**
+ * The real accounts: a few turns on a signed-in account and the real model, nothing scripted.
+ * @param {string} which @param {string} realHome the Vyre home of a throwaway vyred (its accounts/ folder holds each account's HOME)
+ */
+async function proveReal(which, realHome) {
+  const bin = which === "codex" ? "codex-acp" : "grok";
+  if (!where(bin)) { say("FAIL", `${which}: \`${bin}\` is not installed here`); return; }
+  const token = which === "codex" ? path.join(".codex", "auth.json") : path.join(".grok", "auth.json");
+  const accounts = (fs.existsSync(path.join(realHome, "accounts")) ? fs.readdirSync(path.join(realHome, "accounts")) : []).map(d => path.join(realHome, "accounts", d)).filter(d => fs.existsSync(path.join(d, token)));
+  if (!accounts.length) { say("FAIL", `${which}: no signed-in account under ${path.join(realHome, "accounts")} (no ${token}): sign one in first`); return; }
+  const home = accounts[0];
+  const work = tmp(`proof-real-${which}-work-`);
+  const floor = floorFor(work);
+  const vyred = /** @type {any} */ (await fakeVyred());
+  const mcpServers = [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries({ VYRE_SOCKET: vyred.sock, VYRE_THREAD: "proof-thread", VYRE_AGENT: "juno", VYRE_AGENT_KIND: "assistant" }).map(([name, value]) => ({ name, value })) }];
+  const provider = which === "codex" ? codexProvider({ floor }) : grokProvider({ floor, home });
+  /** @type {any[]} */ const got = [];
+  /** @type {any[]} */ const asked = [];
+  let allow = true;
+  /** @type {any} */ let proc = null;
+  proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: work, env: { PATH: process.env.PATH || "", HOME: home }, mcpServers, onSpawn() {}, onExit() {}, onMessage: m => {
+    got.push(m);
+    if (m.type === "control_request" && m.request && m.request.subtype === "can_use_tool") {
+      asked.push(`${m.request.tool_name} ${scrub(JSON.stringify(m.request.input)).slice(0, 120)}`);
+      proc.write({ type: "control_response", response: { request_id: m.request_id, response: allow ? { behavior: "allow", updatedInput: m.request.input } : { behavior: "deny", message: "denied" } } });
+    }
+  } });
+  const results = () => got.filter(m => m.type === "result").length;
+  const until = async (test, ms) => { const end = Date.now() + ms; while (Date.now() < end) { const f = got.find(test); if (f) return f; await new Promise(r => setTimeout(r, 200)); } return null; };
+  const turn = async (text, ms = 150_000) => {
+    const n = results();
+    const from = got.length;
+    proc.write({ type: "user", message: { role: "user", content: text } });
+    const end = Date.now() + ms;
+    while (results() <= n && Date.now() < end) await new Promise(r => setTimeout(r, 300));
+    const res = got.filter(m => m.type === "result")[n];
+    return { done: Boolean(res), res, said: got.slice(from).filter(m => m.type === "stream_event" && m.event.delta && m.event.delta.text).map(m => m.event.delta.text).join("") };
+  };
+  try {
+    const init = await until(m => m.type === "system" && m.subtype === "init", 120_000);
+    if (!init) { say("FAIL", `${which}: no init on the signed-in account: ${scrub((got.find(m => m.type === "result") || {}).result || "")}`); return; }
+    say("PASS", `${which}: the signed-in account's session started (model ${init.model || "(none said)"}, start mode ${init.mode || "(none)"})`);
+    // 1. a plain turn, and what the meter reports
+    const t1 = await turn("Reply with exactly the words PROOF-OK and nothing else.");
+    say(t1.done && !t1.res.is_error && /PROOF-OK/.test(t1.said + String(t1.res.result)) ? "PASS" : "FAIL", `${which}: a real turn on the real model answered${t1.res && t1.res.is_error ? ` with an error: ${scrub(t1.res.result)}` : ""}`);
+    say("INFO", `${which}: usage the driver reported for the turn ${JSON.stringify(t1.res && t1.res.usage || null)}`);
+    // 2. a command that must leave the sandbox: a file in the account's home, outside the workspace
+    const marker = path.join(home, `proof-real-${crypto.randomBytes(4).toString("hex")}`);
+    const from2 = floorSeen.length;
+    const t2 = await turn(`Use your shell tool to run exactly this command and nothing else: touch ${marker}`);
+    const ran = fs.existsSync(marker);
+    if (which === "codex") say(asked.length ? "PASS" : "INFO", `${which}: a command outside the workspace ${asked.length ? "reached Vyre as a permission question before it ran" : "raised no question"} (${JSON.stringify(asked.slice(0, 2))}); it ${ran ? "ran" : "did not run"}`);
+    else { const j = floorSeen.slice(from2).find(x => x.command && x.command.includes(marker)); say(j ? "PASS" : "INFO", `${which}: the command ${j ? `reached Vyre's terminal and the floor said ${j.decision}` : "did not reach Vyre's terminal"}; it ${ran ? "ran" : "did not run"}`); }
+    try { fs.rmSync(marker, { force: true }); } catch {}
+    say("INFO", `${which}: the model said ${scrub(t2.said).slice(0, 160)}`);
+    // 3. a Vyre tool, through the real MCP bridge
+    asked.length = 0;
+    const t3 = await turn("Call the Vyre tool named waiting_count (waiting.count) and tell me the number it returns.");
+    const c = vyred.calls.at(-1);
+    say(c && c.caller === "mcp:agent:juno" ? "PASS" : "INFO", `${which}: the real model ${c ? `called the Vyre tool and vyred saw ${c.caller} ${c.url}` : "did not call the Vyre tool"}${/\b2\b/.test(t3.said) ? " and read its answer back" : ""}; questions raised ${JSON.stringify(asked.slice(0, 2))}`);
+  } finally { try { await proc.stop(3000); } catch {} vyred.close(); }
+}
+
+const realIdx = process.argv.indexOf("--real-home");
+const realHome = realIdx > 0 ? process.argv[realIdx + 1] : null;
 for (const which of ["codex", "grok"]) {
-  try { await prove(which); } catch (e) { say("FAIL", `${which}: ${scrub(/** @type {Error} */ (e).message)}`); }
+  try { await (realHome ? proveReal(which, realHome) : prove(which)); } catch (e) { say("FAIL", `${which}: ${scrub(/** @type {Error} */ (e).message)}`); }
 }
 console.log(`\n${out.filter(l => l.startsWith("PASS")).length} PASS, ${out.filter(l => l.startsWith("FAIL")).length} FAIL, ${out.filter(l => l.startsWith("INFO")).length} INFO`);
 process.exit(0);
