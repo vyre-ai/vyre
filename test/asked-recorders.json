@@ -1,14 +1,14 @@
 {
  "_comment": "A tool with reach \"asked\" passes for an agent or a module only when the person's own words asked for exactly that act, and the kernel matches them against a said intent a recorder wrote. Today recorders exist only for pull request acts (lib/said/pr.js), teammate acts (lib/said/team.js) and settings (lib/said/setting.js). Any other asked tool refuses every agent forever, so each asked tool is listed here with its recorder; add one with the assistant team (they own lib/said) or pick another reach.",
  "tools": {
-  "github.project.pr.open": "lib/said/pr.js",
   "github.project.pr.merge": "lib/said/pr.js",
+  "github.project.pr.open": "lib/said/pr.js",
   "github.project.pr.review": "lib/said/pr.js",
+  "team.add": "lib/said/team.js",
+  "team.duties.start": "lib/said/team.js",
   "team.retire": "lib/said/team.js",
   "team.role.fill": "lib/said/team.js",
-  "team.duties.start": "lib/said/team.js",
-  "watchers.create": "lib/said/watchers.js",
-  "watchers.preset": "lib/said/watchers.js",
-  "team.add": "lib/said/team.js"
+  "watchers.create": "PENDING: lib/said/watchers.js lands with work/assistant (recorders watchers.create:<project>/<name>@<hash>)",
+  "watchers.preset": "PENDING: lib/said/watchers.js lands with work/assistant (recorders watchers.preset:<project>/<kind>)"
  }
 }

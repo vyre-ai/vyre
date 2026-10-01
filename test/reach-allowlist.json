@@ -5,6 +5,60 @@
    "module": "about",
    "default": "limited by callers in code"
   },
+  "agents.ask": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
+  "agents.create": {
+   "module": "agents",
+   "default": "limited by callers in code"
+  },
+  "agents.delete": {
+   "module": "agents",
+   "default": "limited by callers in code"
+  },
+  "agents.history": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
+  "agents.job": {
+   "module": "agents",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "agents.list": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
+  "agents.resume": {
+   "module": "agents",
+   "default": "limited by callers in code"
+  },
+  "agents.rollover": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
+  "agents.scope": {
+   "module": "agents",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "agents.stop": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
+  "agents.threads": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
+  "agents.update": {
+   "module": "agents",
+   "default": "callers admit a model"
+  },
+  "agents.usage": {
+   "module": "agents",
+   "default": "open to any caller"
+  },
   "appearance.check": {
    "module": "appearance",
    "default": "open to any caller"
@@ -39,6 +93,38 @@
   },
   "apps.targets": {
    "module": "apps",
+   "default": "open to any caller"
+  },
+  "assistant.brief": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.capabilities": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.daily": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.glance": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.log": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.patterns": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.prompt.diff": {
+   "module": "assistant",
+   "default": "open to any caller"
+  },
+  "assistant.welcome": {
+   "module": "assistant",
    "default": "open to any caller"
   },
   "capsule.act": {
@@ -118,6 +204,424 @@
   "context.report": {
    "module": "context",
    "default": "limited by callers in code"
+  },
+  "files.deliver": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.dirs": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.access": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.address": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.audit": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.candidates": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.list": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.local": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.measure": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.mount": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.drive.offer": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.open": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.drive.read": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.search": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.share": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.status": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.unmount": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.drive.unshare": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.drive.url": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.fetch": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "files.mentions.resolve": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.mentions.search": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.preview": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "files.receive": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.recent": {
+   "module": "files",
+   "default": "open to any caller"
+  },
+  "files.search": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "files.send": {
+   "module": "files",
+   "default": "limited by callers in code"
+  },
+  "files.stat": {
+   "module": "files",
+   "default": "callers admit a model"
+  },
+  "gate.approve": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.get": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.held": {
+   "module": "gate",
+   "default": "open to any caller"
+  },
+  "gate.offer": {
+   "module": "gate",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "gate.reject": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.request": {
+   "module": "gate",
+   "default": "open to any caller"
+  },
+  "gate.revise": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.route": {
+   "module": "gate",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "gate.said.add": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.said.list": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.said.revoke": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "gate.senders": {
+   "module": "gate",
+   "default": "open to any caller"
+  },
+  "gate.settle": {
+   "module": "gate",
+   "default": "limited by callers in code"
+  },
+  "github.accounts": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.connect": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.connect.cancel": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.mcp.sync": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.mentions.resolve": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.mentions.search": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.project": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.project.add-repo": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.project.detect": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.project.issue.get": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.project.issue.list": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.project.local-init": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.project.of": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.project.pr.comments": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.project.pr.get": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.project.pr.status": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.remove": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.repos": {
+   "module": "github",
+   "default": "limited by callers in code"
+  },
+  "github.session.cleanup": {
+   "module": "github",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "github.session.history": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.session.pr": {
+   "module": "github",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "github.session.push": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.session.redo": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.session.undo": {
+   "module": "github",
+   "default": "callers admit a model"
+  },
+  "github.session.worktree": {
+   "module": "github",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "goals.accept": {
+   "module": "goals",
+   "default": "limited by callers in code"
+  },
+  "goals.get": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "goals.list": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "goals.milestone-done": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "goals.set": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "google.accounts": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.add": {
+   "module": "google",
+   "default": "limited by callers in code"
+  },
+  "google.calendar.create": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.calendar.list": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.calendar.next": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.calendar.search": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.calendar.today": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.calendar.update": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.connect": {
+   "module": "google",
+   "default": "limited by callers in code"
+  },
+  "google.connect.cancel": {
+   "module": "google",
+   "default": "limited by callers in code"
+  },
+  "google.connect.finish": {
+   "module": "google",
+   "default": "limited by callers in code"
+  },
+  "google.find": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.mail.draft": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.mail.read": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.mail.search": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.mail.send": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.open": {
+   "module": "google",
+   "default": "open to any caller"
+  },
+  "google.release": {
+   "module": "google",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "google.remove": {
+   "module": "google",
+   "default": "limited by callers in code"
+  },
+  "google.test": {
+   "module": "google",
+   "default": "limited by callers in code"
+  },
+  "harness.brief": {
+   "module": "harness",
+   "default": "open to any caller"
+  },
+  "harness.enrich": {
+   "module": "harness",
+   "default": "open to any caller"
+  },
+  "harness.learn": {
+   "module": "harness",
+   "default": "open to any caller"
+  },
+  "harness.rules": {
+   "module": "harness",
+   "default": "open to any caller"
+  },
+  "harness.stop": {
+   "module": "harness",
+   "default": "open to any caller"
+  },
+  "harness.touched": {
+   "module": "harness",
+   "default": "open to any caller"
+  },
+  "hooks.close": {
+   "module": "hooks",
+   "default": "open to any caller"
+  },
+  "hooks.delivery": {
+   "module": "hooks",
+   "default": "open to any caller"
+  },
+  "hooks.enable": {
+   "module": "hooks",
+   "default": "open to any caller"
+  },
+  "hooks.list": {
+   "module": "hooks",
+   "default": "open to any caller"
+  },
+  "hooks.open": {
+   "module": "hooks",
+   "default": "open to any caller"
+  },
+  "hooks.status": {
+   "module": "hooks",
+   "default": "open to any caller"
   },
   "import.cancel": {
    "module": "import",
@@ -204,6 +708,43 @@
   "learn.stats": {
    "module": "learn",
    "default": "open to any caller"
+  },
+  "mail.accounts": {
+   "module": "mail",
+   "default": "open to any caller"
+  },
+  "mail.compose": {
+   "module": "mail",
+   "default": "limited by callers in code"
+  },
+  "mail.find": {
+   "module": "mail",
+   "default": "limited by callers in code"
+  },
+  "mail.map": {
+   "module": "mail",
+   "default": "limited by callers in code"
+  },
+  "mail.read": {
+   "module": "mail",
+   "default": "open to any caller"
+  },
+  "mail.release": {
+   "module": "mail",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "mail.search": {
+   "module": "mail",
+   "default": "open to any caller"
+  },
+  "mail.send": {
+   "module": "mail",
+   "default": "open to any caller"
+  },
+  "mail.test": {
+   "module": "mail",
+   "default": "limited by callers in code"
   },
   "mcp.add": {
    "module": "mcp",
@@ -429,6 +970,92 @@
    "module": "memory",
    "default": "callers admit a model"
   },
+  "names.check": {
+   "module": "names",
+   "default": "open to any caller"
+  },
+  "names.claim": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.claim-code": {
+   "module": "names",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "names.connect": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.domain.check": {
+   "module": "names",
+   "default": "open to any caller"
+  },
+  "names.domain.serve": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.fallback": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.owner": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.recover": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.recover.code": {
+   "module": "names",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "names.release": {
+   "module": "names",
+   "default": "limited by callers in code"
+  },
+  "names.status": {
+   "module": "names",
+   "default": "open to any caller"
+  },
+  "network.funnel.status": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.guests.add": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.guests.check": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.guests.enable": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.guests.list": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.guests.remove": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.tailscale.login": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.tailscale.peers": {
+   "module": "network",
+   "default": "open to any caller"
+  },
+  "network.tailscale.status": {
+   "module": "network",
+   "default": "open to any caller"
+  },
   "onboard.claude": {
    "module": "onboard",
    "default": "open to any caller"
@@ -477,6 +1104,66 @@
    "module": "onboard",
    "default": "open to any caller"
   },
+  "planner.add": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.agenda": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.calendar.create": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.calendar.sync": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.delete": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.dismiss": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.done": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.get": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.list": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.parse": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.ringing": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.settings": {
+   "module": "planner",
+   "default": "limited by callers in code"
+  },
+  "planner.snooze": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.upcoming": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.update": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
   "projects.access.revoke": {
    "module": "projects",
    "default": "limited by callers in code"
@@ -484,6 +1171,10 @@
   "projects.add-workspace": {
    "module": "projects",
    "default": "limited by callers in code"
+  },
+  "providers.list": {
+   "module": "providers",
+   "default": "open to any caller"
   },
   "push.devices": {
    "module": "push",
@@ -564,6 +1255,258 @@
   },
   "recall.watch": {
    "module": "recall",
+   "default": "limited by callers in code"
+  },
+  "relay.device.presence": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.ask-trust": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.devices.bind": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.list": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.devices.node": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.path": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.devices.remove": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.devices.rename": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.devices.tailnet": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.devices.trust": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.disable": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.enable": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.join": {
+   "module": "relay",
+   "default": "limited by callers in code"
+  },
+  "relay.pair.first": {
+   "module": "relay",
+   "default": "limited by callers in code"
+  },
+  "relay.pair.start": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.pair.ticket": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.route.id": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.route.sign": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.setup.begin": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.setup.claim": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.setup.claim-token": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.setup.end": {
+   "module": "relay",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "relay.setup.status": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.status": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.tailnet.status": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.web.pin": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "relay.web.release": {
+   "module": "relay",
+   "default": "open to any caller"
+  },
+  "sessions.accounts.add": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.accounts.bind": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.accounts.list": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.accounts.remove": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.accounts.resolve": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.accounts.signin": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.limits.get": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.limits.set": {
+   "module": "sessions",
+   "default": "limited by callers in code"
+  },
+  "sessions.mode.get": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.mode.resolve": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.mode.set": {
+   "module": "sessions",
+   "default": "limited by callers in code"
+  },
+  "sessions.models": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.models.get": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.models.resolve": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.models.set": {
+   "module": "sessions",
+   "default": "limited by callers in code"
+  },
+  "sessions.prompt.compose": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.prompt.get": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.prompt.history": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.prompt.preview": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.prompt.revert": {
+   "module": "sessions",
+   "default": "limited by callers in code"
+  },
+  "sessions.prompt.set": {
+   "module": "sessions",
+   "default": "limited by callers in code"
+  },
+  "sessions.providers.snapshot": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.routes.get": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.routes.next": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.routes.set": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.setup": {
+   "module": "sessions",
+   "default": "limited by callers in code"
+  },
+  "sessions.slots": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.slots.status": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.status": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.usage.get": {
+   "module": "sessions",
+   "default": "open to any caller"
+  },
+  "sessions.usage.report": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.usage.resume": {
+   "module": "sessions",
    "default": "limited by callers in code"
   },
   "settings.changes": {
@@ -650,6 +1593,340 @@
    "module": "system",
    "default": "open to any caller"
   },
+  "team.add": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.ask": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.cancel": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.charter.diff": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.charter.draft": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.charter.get": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.charter.history": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.charter.revert": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.charter.set": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.default.get": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.default.set": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.done": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.duties.create": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.duties.delete": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.duties.disable": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.duties.enable": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.duties.list": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.duties.run-now": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.duties.update": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.fail": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.list": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.merge": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.notes": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "team.project-append": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.project-has-any": {
+   "module": "team",
+   "default": "limited by callers in code"
+  },
+  "team.retire": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.role.fill": {
+   "module": "team",
+   "default": "callers admit a model"
+  },
+  "team.status": {
+   "module": "team",
+   "default": "open to any caller"
+  },
+  "threads.answer": {
+   "module": "threads",
+   "default": "limited by callers in code"
+  },
+  "threads.archive": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.asks": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.bind": {
+   "module": "threads",
+   "default": "callers admit a model"
+  },
+  "threads.busy": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.claimed": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.commands": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.contend": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.delete": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.edit": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.effort": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.fork": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.get": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.halt": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.history": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.inbox": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.interrupt": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.interrupt-in": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.items": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.kill-task": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.launch": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.lease": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.lineage": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.list": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.live": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.mode": {
+   "module": "threads",
+   "default": "limited by callers in code"
+  },
+  "threads.model": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.notice": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.origin": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.pids": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.post": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.queue": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.quick": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.release": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.remember": {
+   "module": "threads",
+   "default": "limited by callers in code"
+  },
+  "threads.replied": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.rewind": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.send": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.send-now": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.shell": {
+   "module": "threads",
+   "default": "limited by callers in code"
+  },
+  "threads.start": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.stop": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.switch": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.tasks": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.thinking": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.unarchive": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.unqueue": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.unwatch": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
+  "threads.usage": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.vouch": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.watch": {
+   "module": "threads",
+   "default": "open to any caller"
+  },
   "tips.dismiss": {
    "module": "tips",
    "default": "limited by callers in code"
@@ -690,6 +1967,513 @@
    "module": "update",
    "default": "open to any caller"
   },
+  "vault.account.create": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.account.enroll-touchid": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.account.lock": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.account.status": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.account.unlock": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.agent.grant": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.agent.grants": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.agent.revoke": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.api.send": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.approve": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.audit": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.backup": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.breach.check": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.caps": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.clipboard.clear": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.codes": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.codes.import": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connect": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.allowed": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.get": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.grant": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.list": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.connections.register": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.revoke": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.connections.sync": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.unregister": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.connections.update": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.copy": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.credential.tokens": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.delete": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.device.approve": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.device.code": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.device.join": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.device.list": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.device.revoke": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.device.sync": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.device.unlock": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.devices": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.edit": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.emergency.add": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.emergency.deny": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.emergency.list": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.emergency.refresh": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.emergency.remove": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.emergency.request": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.emergency.status": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.env.scan": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.fill.native": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.fingerprint": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.generate": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.git": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.grant": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.grants.status": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.health": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.history": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.identity": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.import": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.import.preview": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.inject": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.item": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.items.names": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.kit": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.list": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.lock": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.match": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.members.accept": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.members.invite": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.members.remove": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.members.role": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.mention.resolve": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.mention.search": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.migrate-key": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.move": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.need": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.offboard": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.pass.accept": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.pass.create": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.pass.list": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.pass.revoke": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.pending": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.people": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.people.verify": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.person.add": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.put": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.relay": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.release": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.remind.run": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.render": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.request": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.resolve": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.restore": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.reveal": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.revert": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.revoke": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.rotate": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.rotation": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.said.add": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.list": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.match": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.record": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.revoke": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.search": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.session.close": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.session.open": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.session.status": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.ssh.add": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.ssh.approvals": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.ssh.approve": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.ssh.forget": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.ssh.generate": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.ssh.keys": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.sweep": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.totp": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.unlock": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.unlock-passphrase": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.update": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.use.check": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.use.note": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.uses": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.vaults.create": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.vaults.list": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
+  "vault.vaults.rotate": {
+   "module": "vault",
+   "default": "limited by callers in code"
+  },
+  "vault.vaults.sync": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.verify": {
+   "module": "vault",
+   "default": "open to any caller"
+  },
   "vitals.advice": {
    "module": "vitals",
    "default": "open to any caller"
@@ -717,6 +2501,39 @@
   "waiting.list": {
    "module": "waiting",
    "default": "limited by callers in code"
+  },
+  "watchers.create": {
+   "module": "watchers",
+   "default": "open to any caller"
+  },
+  "watchers.hook": {
+   "module": "watchers",
+   "default": "internal or hook in code",
+   "hook": true
+  },
+  "watchers.items": {
+   "module": "watchers",
+   "default": "open to any caller"
+  },
+  "watchers.list": {
+   "module": "watchers",
+   "default": "open to any caller"
+  },
+  "watchers.logs": {
+   "module": "watchers",
+   "default": "open to any caller"
+  },
+  "watchers.pause": {
+   "module": "watchers",
+   "default": "open to any caller"
+  },
+  "watchers.resume": {
+   "module": "watchers",
+   "default": "open to any caller"
+  },
+  "watchers.test": {
+   "module": "watchers",
+   "default": "open to any caller"
   }
  }
 }

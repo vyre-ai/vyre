@@ -211,7 +211,7 @@
   },
   "chrome.point": {
    "module": "chrome",
-   "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard); the URL floor applies to the tab and to the frame the point lands in; what is under the point is classified by its text (a Send, Delete, publish or payment holds at the Gate whatever the plan says) and a drawn surface (no text of its own) holds unless the approved plan covers it for this tab and origin (trust.pointBudget, set only by the module); the page must still match the kept screenshot. Tests: local/hands-chrome-mac/ext-point.test.js and the point_rung stage"
   },
   "chrome.recipe": {
    "module": "chrome",
@@ -265,6 +265,10 @@
    "module": "computers",
    "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
   },
+  "computers.egress.status": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
   "computers.get": {
    "module": "computers",
    "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
@@ -272,6 +276,10 @@
   "computers.giveback": {
    "module": "computers",
    "reason": "PERSON_ONLY floor (core/presence) plus the ownSurface check: an agent that is not the assistant is refused; the assistant is an mcp caller and the owner's way to these tools from chat, so reach person would cut it off"
+  },
+  "computers.handback.status": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
   },
   "computers.limits": {
    "module": "computers",
@@ -290,6 +298,10 @@
    "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
   },
   "computers.restart": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.resume": {
    "module": "computers",
    "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
   },
@@ -496,6 +508,10 @@
   "glass.files.upload": {
    "module": "glass",
    "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.targets": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
   },
   "goals.get": {
    "module": "goals",
