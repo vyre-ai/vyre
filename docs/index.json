@@ -1940,7 +1940,7 @@
     {"kind":"env","name":"VYRE_SETUP_CODE_AT","definedIn":"core/relay/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SETUP_INSTALL_URL","definedIn":"scripts/stage-site.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SETUP_RELAY","definedIn":"scripts/stage-site.sh","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_SIGNING_KEY","definedIn":"scripts/build-site.sh","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_SIGNING_KEY","definedIn":"scripts/build-app-out.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SITE","definedIn":"scripts/release-check.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SITE_TEST_CLOCK","definedIn":"local/hands-chrome-mac/extension/shared/sk/site-knowledge.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_SOCKET","definedIn":"core/cli/daemonctl.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"using/sessions.md","line":192,"anchor":"each-sessions-own-line-to-vyre"},{"page":"adr/0030-sessions.md","line":455,"anchor":"migration"}]},
