@@ -17,6 +17,7 @@ import { SCRATCH } from "./scratch.mjs";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
 const COMPOSE = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
+const IMAGE_REF = `ghcr.io/vyre-ai/vyre@sha256:${"a".repeat(64)}`;
 const CHOME = "/home/vyre/.vyre";
 // Vyre's release key, for these tests: a key of their own, given to the wrapper as VYRE_RELEASE_KEY (test only). Every release
 // is signed by it unless a test says sign: false, or another key.
@@ -33,7 +34,11 @@ const sha = (/** @type {Buffer|string} */ b) => crypto.createHash("sha256").upda
 // container runs, ctr/ the container's filesystem, calls one line per invocation.
 const FAKE_DOCKER = `#!/usr/bin/env node
 const fs = require("fs"), path = require("path"), { spawnSync } = require("child_process");
-const F = process.env.FAKE, args = process.argv.slice(2);
+const F = process.env.FAKE;
+let args = process.argv.slice(2);
+fs.appendFileSync(F + "/calls.raw", args.join(" ") + "\\n");
+// A root run names its compose files, project and env file explicitly: the options come before the subcommand, and calls log the rest.
+if (args[0] === "compose") { let i = 1; while (["--project-directory", "--project-name", "--env-file", "-f"].includes(args[i])) i += 2; args = ["compose", ...args.slice(i)]; }
 fs.appendFileSync(F + "/calls", args.join(" ") + "\\n");
 const img = t => path.join(F, "images", t.replace(/[/:]/g, "_"));
 const has = t => fs.existsSync(img(t));
@@ -54,6 +59,12 @@ function vyre(cmd) {
     console.log("{}"); process.exit(0);
   }
   if (c === "up") { console.log("  your address: https://alex.vyre.run"); process.exit(0); }
+  process.exit(0);
+}
+if (args[0] === "run" && args.some(a => /cosign/.test(a))) {
+  // The image signature check (cosign, pinned by digest): the fake says no when told to.
+  fs.appendFileSync(F + "/cosign", args.join(" ") + "\\n");
+  if (fs.existsSync(F + "/cosign-fail")) { console.error("Error: no matching signatures: nil certificate provided"); process.exit(1); }
   process.exit(0);
 }
 if (args[0] === "run") {
@@ -96,7 +107,7 @@ process.exit(0);
 `;
 
 /** Release assets as files in a folder, with SHA256SUMS over them. */
-function release(dir, version, { android = false, corrupt = "", sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
+function release(dir, version, { android = false, corrupt = "", images = false, tagCompose = false, noReleaseJson = false, sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pkg = path.join(dir, ".pkg", "package");
   fs.mkdirSync(path.join(pkg, "box"), { recursive: true });
@@ -104,14 +115,18 @@ function release(dir, version, { android = false, corrupt = "", sign = /** @type
   fs.writeFileSync(path.join(pkg, "marker"), version + "\n");
   assert.equal(spawnSync("tar", ["-czf", path.join(dir, "vyre.tgz"), "-C", path.join(dir, ".pkg"), "package"]).status, 0);
   fs.rmSync(path.join(dir, ".pkg"), { recursive: true });
-  fs.writeFileSync(path.join(dir, "compose.yml"), COMPOSE + `# release ${version}\n`);
+  // A release that pulls: every image pinned by digest, as the release pipeline writes it (tagCompose: left on a moving tag).
+  const pin = IMAGE_REF;
+  const composeText = images && !tagCompose ? COMPOSE.replace(/^( *image: *).*$/gm, `$1${pin}`) : COMPOSE;
+  fs.writeFileSync(path.join(dir, "compose.yml"), composeText + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "compose.build.yml"), `# compose.build.yml ${version}\n`);
   fs.writeFileSync(path.join(dir, "vyre.env.example"), `# vyre.env.example ${version}\n`);
   fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM node:22-bookworm-slim\n");
   fs.writeFileSync(path.join(dir, "dockerignore"), "test\n");
   fs.writeFileSync(path.join(dir, "vyre"), WRAPPER_SRC + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "VERSION"), version + "\n");
-  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"" }, null, 2));
+  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF } } } : {}) }, null, 2));
+  if (noReleaseJson) fs.rmSync(path.join(dir, "release.json"));
   if (android) {
     const apk = Buffer.concat([Buffer.from("PK"), crypto.randomBytes(2048)]);
     fs.writeFileSync(path.join(dir, APK), apk);
@@ -194,7 +209,7 @@ async function box(t, { site = "0.1.5", releases = [], build = true } = {}) {
   });
   const read = (/** @type {string} */ p) => fs.readFileSync(p, "utf8");
   return {
-    DIR, U, FAKE, DL, WRAPPER, hits, run, read, env,
+    DIR, U, FAKE, DL, WRAPPER, hits, run, read, env, build,
     calls: () => fs.existsSync(path.join(FAKE, "calls")) ? read(path.join(FAKE, "calls")).split("\n").filter(Boolean) : [],
     image: (/** @type {string} */ tag) => { try { return read(path.join(FAKE, "images", tag.replace(/[/:]/g, "_"))); } catch { return ""; } },
     db: () => read(path.join(FAKE, `ctr${CHOME}`, "vyre.db")),
@@ -362,13 +377,52 @@ test("box update --rollback --restore-data: off a terminal it needs --yes, then 
 });
 
 test("box update: a pulled image (no compose.build.yml) is tagged vyre:prev and pulled, src untouched", async t => {
-  const b = await box(t, { releases: [{ tag: "v0.2.0" }], build: false });
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
   const r = /** @type {any} */ (await b.run(["update"]));
   assert.equal(r.code, 0, r.out);
   assert.ok(b.calls().includes("compose pull"));
+  assert.match(b.read(path.join(b.FAKE, "cosign")), /verify --certificate-identity-regexp .*release\\\.yml@refs\/tags\/.* --certificate-oidc-issuer https:\/\/token\.actions\.githubusercontent\.com ghcr\.io\/vyre-ai\/vyre@sha256:a{64}/, "the image was checked by cosign before the pull");
   assert.equal(b.image("vyre:prev"), "orig");
   assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
   assert.ok(!b.hits.includes("/dl/v0.2.0/vyre.tgz"));
+});
+
+test("box update (pulled): an image cosign cannot verify, a compose.yml on a moving tag, and a release without release.json are each refused with nothing changed", async t => {
+  const state = b => ({ calls: b.calls().filter(c => /^compose (pull|up|build)/.test(c)), compose: b.read(path.join(b.DIR, "compose.yml")), image: b.image("ghcr.io/vyre-ai/vyre:latest"), db: b.db() });
+  // cosign says no (an unsigned image, or another signer's): refused before the box is touched.
+  let b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  fs.writeFileSync(path.join(b.FAKE, "cosign-fail"), "1");
+  const before = state(b);
+  let r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /cosign could not verify ghcr\.io\/vyre-ai\/vyre@sha256:a{64} against Vyre's release workflow; nothing was changed/);
+  assert.deepEqual(state(b), before, "no pull, no new compose.yml, same image and data");
+  // The release's compose.yml still points at a moving tag: a moved tag could change what runs, so it is refused.
+  b = await box(t, { releases: [{ tag: "v0.2.0", images: true, tagCompose: true }], build: false });
+  r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /not pinned exactly by digest \(.*\); nothing was changed/);
+  assert.ok(!b.calls().includes("compose pull") && !fs.existsSync(path.join(b.FAKE, "cosign")), "nothing was pulled or even checked");
+  // No release.json: the image it pulls cannot be named, so cannot be checked.
+  b = await box(t, { releases: [{ tag: "v0.2.0", images: true, noReleaseJson: true }], build: false });
+  r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /no release\.json, so the image it pulls cannot be verified; nothing was changed/);
+  assert.ok(!b.calls().includes("compose pull"));
+  // A box that builds from source needs none of this: its source is the signed tgz.
+  b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  assert.equal(/** @type {any} */ ((await b.run(["update"]))).code, 0);
+  assert.ok(!fs.existsSync(path.join(b.FAKE, "cosign")));
+});
+
+test("box/vyre and scripts/install-box.sh pin the same cosign, identity and issuer", () => {
+  const pick = (text, name) => new RegExp(`^${name}=\\\$\\{[A-Z_]+:-(.*)\\}$|^${name}=(.*)$`, "m").exec(text);
+  const wrapper = WRAPPER_SRC, installer = fs.readFileSync(path.join(REPO, "scripts/install-box.sh"), "utf8");
+  for (const name of ["COSIGN_IMAGE", "COSIGN_ID", "COSIGN_ISSUER"]) {
+    const a = pick(wrapper, name), c = pick(installer, name);
+    assert.ok(a && c, `${name} is in both`);
+    assert.equal((a[1] ?? a[2]), (c[1] ?? c[2]), `${name} is the same in both`);
+  }
 });
 
 test("box update: a release whose min_from is above the running version names the step", async t => {
@@ -392,7 +446,11 @@ test("box/vyre: shellcheck is clean, when shellcheck is installed", t => {
 
 const status = (/** @type {any} */ b) => JSON.parse(b.read(path.join(b.U, "status", "status.json")));
 /** The unit's folders, made the way `vyre updater install` makes them (here "root" is the test's own account: VYRE_ROOT_UID). */
-const units_dirs = (/** @type {any} */ b) => { for (const [d, m] of [["", 0o755], ["request", 0o700], ["status", 0o755], ["private", 0o700]]) { const f = path.join(b.U, d); fs.mkdirSync(f, { recursive: true }); fs.chmodSync(f, m); } };
+const units_dirs = (/** @type {any} */ b) => { for (const [d, m] of [["", 0o755], ["request", 0o700], ["status", 0o755], ["private", 0o700]]) { const f = path.join(b.U, d); fs.mkdirSync(f, { recursive: true }); fs.chmodSync(f, m); }  // As `vyre updater install` leaves them: how the box is built, and root's own copies of the compose files it runs from.
+  fs.writeFileSync(path.join(b.U, "mode"), b.build ? "build\n" : "pull\n");
+  const run = path.join(b.U, "private", "run"); fs.mkdirSync(run, { recursive: true, mode: 0o700 });
+  for (const f of ["compose.yml", "compose.build.yml"]) if (fs.existsSync(path.join(b.DIR, f))) fs.copyFileSync(path.join(b.DIR, f), path.join(run, f));
+};
 const ask = (/** @type {any} */ b, text = "update\n") => { units_dirs(b); fs.writeFileSync(path.join(b.U, "request", "request"), text); };
 
 test("update-from-request: a signed release is installed, the request is consumed, and the state file says from, to and ok", async t => {
@@ -569,6 +627,111 @@ test("vyre updater remove: units a person cannot write are removed through sudo,
   assert.ok(!fs.existsSync(path.join(b.FAKE, "sudo")), "sudo was not asked to run a wrapper root does not own");
 });
 
+const rawCalls = (/** @type {any} */ b) => (fs.existsSync(path.join(b.FAKE, "calls.raw")) ? fs.readFileSync(path.join(b.FAKE, "calls.raw"), "utf8").split("\n").filter(Boolean) : []);
+
+test("root run (reviewer-2's HIGH): compose runs only from root's own copy with every file named, never from the person's folder or what is in it", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
+  units_dirs(b);
+  const RUNDIR = path.join(b.U, "private", "run");
+  // The person (or a model running as them) edits compose.yml and plants an override and a vyre.env with a hostile line.
+  fs.appendFileSync(path.join(b.DIR, "compose.yml"), "    privileged: true\n");
+  fs.writeFileSync(path.join(b.DIR, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nEVIL=$(touch /tmp/pwned)\nBAD=`id`\nNODE_OPTIONS=--require /work/x.js\nLD_PRELOAD=/work/x.so\nVYRE_SETUP_CODE=abc\n");
+  fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_UPDATE_ROOT=/\nVYRE_COMPUTERS_CAP_ADD=SYS_ADMIN\nVYRE_IMAGE=evil/image:latest\nDOCKER_GID=abc\nVYRE_DRIVE_ACCESS=rw\nVYRE_TS_HOSTNAME=box-1\n");
+  fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
+  const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /an update run by root ignores these settings from .*\.env and vyre\.env .*: .*VYRE_COMPUTERS_CAP_ADD.*/s, "nothing is dropped silently");
+  assert.ok(!/ignores these settings[^\n]*(tskey|keep|SYS_ADMIN=)/.test(r.out), "names only, never values");
+  const composeCalls = rawCalls(b).filter(c => c.startsWith("compose "));
+  assert.ok(composeCalls.length >= 3, composeCalls.join("\n"));
+  for (const c of composeCalls) {
+    assert.ok(c.includes(`--project-directory ${RUNDIR} --project-name vyre --env-file ${RUNDIR}/compose.env -f ${RUNDIR}/compose.yml`), `compose is told its files explicitly: ${c}`);
+    assert.ok(!c.includes(b.DIR + "/compose") && !c.includes(b.DIR + "/.env"), `never the person's folder: ${c}`);
+  }
+  assert.ok(!fs.readFileSync(path.join(RUNDIR, "compose.yml"), "utf8").includes("    privileged: true\n"), "root's copy is the verified release, not the edited file");
+  // The env file root wrote: only what the compose file reads, each in its shape, plus root's own paths.
+  const env = fs.readFileSync(path.join(RUNDIR, "compose.env"), "utf8");
+  assert.match(env, /^VYRE_UPDATE_ROOT=.*\/uroot$/m, "the update root is root's own, not the .env's");
+  assert.match(env, /^VYRE_DRIVE_ACCESS=rw$/m);
+  assert.match(env, /^VYRE_TS_HOSTNAME=box-1$/m);
+  for (const bad of ["SYS_ADMIN", "evil/image", "DOCKER_GID", "VYRE_COMPUTERS", "VYRE_IMAGE", "VYRE_UPDATE_ROOT=/\n"]) assert.ok(!env.includes(bad), `${bad} was not passed on`);
+  const venv = fs.readFileSync(path.join(RUNDIR, "vyre.env"), "utf8");
+  assert.match(venv, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
+  assert.ok(!/EVIL|BAD|\$\(|`/.test(venv), "a line with interpolation is not copied");
+  assert.match(venv, /^VYRE_SETUP_CODE=abc$/m);
+  assert.ok(!/NODE_OPTIONS|LD_PRELOAD/.test(venv), "only the keys the box reads are passed on (an allowlist)");
+});
+
+test("root run: an override file, a COMPOSE_* setting in .env or the environment, and a box with no record of its mode each refuse, with nothing changed", async t => {
+  const refuse = async (/** @type {string} */ why, /** @type {(b: any) => void} */ plant, /** @type {RegExp} */ words, extra = {}) => {
+    const b = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
+    units_dirs(b); plant(b);
+    fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
+    const before = b.read(path.join(b.DIR, "compose.yml"));
+    const r = /** @type {any} */ (await b.run(["update-from-request"], { ...KEY, ...extra }));
+    assert.notEqual(r.code, 0, `${why}: ${r.out}`);
+    assert.match(r.out, words, why);
+    assert.equal(status(b).state, "failed", why);
+    assert.deepEqual(rawCalls(b).filter(c => /^compose (up|pull|build)/.test(c)), [], `${why}: compose never started anything`);
+    assert.equal(b.read(path.join(b.DIR, "compose.yml")), before, `${why}: the stack folder is as it was`);
+    assert.ok(!fs.existsSync(path.join(b.U, "private", "lock")), `${why}: the lock is released`);
+  };
+  await refuse("an override file", b => fs.writeFileSync(path.join(b.DIR, "compose.override.yml"), "services:\n  vyre:\n    privileged: true\n"), /does not read override files/);
+  await refuse("COMPOSE_FILE in .env", b => fs.appendFileSync(path.join(b.DIR, ".env"), "COMPOSE_FILE=evil.yml\n"), /COMPOSE_FILE is set in .*\.env/);
+  await refuse("COMPOSE_PROFILES in .env", b => fs.appendFileSync(path.join(b.DIR, ".env"), "COMPOSE_PROFILES=computers\n"), /COMPOSE_PROFILES is set in/);
+  await refuse("COMPOSE_* in the environment", () => {}, /COMPOSE_ENV_FILE is set in the environment/, { COMPOSE_ENV_FILE: "/tmp/evil.env" });
+  await refuse("no record of the mode", b => fs.rmSync(path.join(b.U, "mode")), /root has no record of how this box is built/);
+  await refuse("a box that builds from a checkout of its own", b => fs.writeFileSync(path.join(b.U, "mode"), "external\n"), /never builds from a folder you can write/);
+});
+
+test("root run: the build mode comes from root's record, so a .env cannot turn a release box into one that builds from a tree the person writes", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey, images: true }], build: false });
+  units_dirs(b);
+  assert.equal(b.read(path.join(b.U, "mode")).trim(), "pull");
+  fs.appendFileSync(path.join(b.DIR, ".env"), `COMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=${b.DIR}/evil-src\n`);
+  fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
+  const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
+  assert.equal(r.code, 0, r.out);
+  const calls = b.calls();
+  assert.ok(calls.includes("compose pull") && !calls.some(c => c.startsWith("compose build")), `it pulled (verified) and never built: ${calls.join("; ")}`);
+  assert.ok(!fs.readFileSync(path.join(b.U, "private", "run", "compose.env"), "utf8").includes("evil-src"));
+  assert.ok(fs.existsSync(path.join(b.FAKE, "cosign")), "and cosign still ran on the pulled image: the .env did not skip it");
+  // And a build box builds from root's own copy of the verified source, not the person's tree.
+  const bb = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
+  units_dirs(bb);
+  fs.writeFileSync(path.join(bb.U, "request", "request"), "update\n");
+  const rr = /** @type {any} */ (await bb.run(["update-from-request"], KEY));
+  assert.equal(rr.code, 0, rr.out);
+  assert.match(fs.readFileSync(path.join(bb.U, "private", "run", "compose.env"), "utf8"), new RegExp(`^VYRE_SOURCE=${path.join(bb.U, "private", "src").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "m"));
+  assert.equal(bb.read(path.join(bb.U, "private", "src", "marker")).trim(), "0.2.0", "root unpacked the verified tgz into its own folder");
+});
+
+test("updater install --dir: a box that is not in /srv/vyre hands root its folder as an argument, and root records it with the mode", async t => {
+  const b = await box(t, { releases: [] });
+  const units = path.join(b.DIR, "units");
+  fs.mkdirSync(units);
+  fs.writeFileSync(path.join(b.FAKE, "bin", "systemctl"), `#!/bin/sh\nexit 0\n`, { mode: 0o755 });
+  const r = /** @type {any} */ (await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()), VYRE_DIR: "/nowhere" }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(b.read(path.join(b.U, "stack")).trim(), b.DIR, "the folder came from the argument, not from the environment");
+  assert.equal(b.read(path.join(b.U, "mode")).trim(), "build");
+  assert.equal(b.read(path.join(b.U, "private", "run", "compose.yml")), b.read(path.join(b.DIR, "compose.yml")));
+  // root recorded the hash of the compose.yml it copied: a later install from a folder whose file differs is refused, and the same file is not.
+  assert.match(b.read(path.join(b.U, "compose.sha256")).trim(), /^[0-9a-f]{64}$/);
+  assert.equal(/** @type {any} */ ((await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }))).code, 0, "the same file again is fine");
+  fs.appendFileSync(path.join(b.DIR, "compose.yml"), "# edited by somebody\n");
+  const swapped = /** @type {any} */ (await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }));
+  assert.notEqual(swapped.code, 0);
+  assert.match(swapped.out, /root recorded another compose\.yml for this box than the one in .*; nothing was changed/);
+  assert.ok(!b.read(path.join(b.U, "private", "run", "compose.yml")).includes("edited by somebody"), "root's copy is untouched");
+  fs.writeFileSync(path.join(b.DIR, "compose.yml"), b.read(path.join(b.U, "private", "run", "compose.yml")));
+  assert.equal(/** @type {any} */ ((await b.run(["updater", "install", "--dir", "relative"], { VYRE_SYSTEMD_DIR: units }))).code, 1);
+  // A checkout of the person's own is recorded as such, and root's automatic path will not build from it.
+  fs.writeFileSync(path.join(b.DIR, ".env"), `COMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=/home/alex/vyre\n`);
+  await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) });
+  assert.equal(b.read(path.join(b.U, "mode")).trim(), "external");
+});
+
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/request:\/run\/vyre-update\n/);
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status:\/run\/vyre-update-state:ro\n/);
@@ -641,24 +804,6 @@ test("update-from-request: at least the minimum gap between updates, and only st
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /not stable or beta; using stable/);
   assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
-});
-
-// One shared test vector for the release signature (also in anywhere's tests): a fixed key (seed 32 bytes of 0x07), a fixed
-// SHA256SUMS, and the signature over "vyre-release-sums\n" + those exact bytes. Ed25519 is deterministic, so it is a constant.
-const VECTOR = {
-  key: "MCowBQYDK2VwAyEA6kpsY+KcUgq+9VB7Ey7F+ZVHdq6+vnuSQh7qaRRG0iw=",
-  sums: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  manifest.json\nbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  vyre.tgz\n",
-  sig: "X+aWDX+6p5YDh32E4tUXAHKEvCwi36rUm4I889QLs2I6b4hlP0J05o8PNtuyZnsCaqMkiv2MWmqJ3fllTLIzDA==",
-};
-
-test("release signature: the box verifies the shared vector, and refuses the same signature over the bare bytes", () => {
-  const js = /-e '(const c=require\("crypto"\)[^']*)'/.exec(WRAPPER_SRC)?.[1];
-  assert.ok(js, "the wrapper's verifier is found");
-  const check = (/** @type {string} */ sums, /** @type {string} */ sig) => spawnSync("node", ["-e", /** @type {string} */ (js), VECTOR.key, sig], { input: sums, encoding: "utf8" }).stdout.trim();
-  assert.equal(check(VECTOR.sums, VECTOR.sig), "signed");
-  assert.equal(check(VECTOR.sums + "x", VECTOR.sig), "bad", "one more byte");
-  const bare = crypto.sign(null, Buffer.from(VECTOR.sums), crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), Buffer.alloc(32, 7)]), format: "der", type: "pkcs8" })).toString("base64");
-  assert.equal(check(VECTOR.sums, bare), "bad", "a signature without the prefix is refused");
 });
 
 test("update-from-request: a link planted in the person's stack folder or in root's floor file is replaced, never written through", async t => {
