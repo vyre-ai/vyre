@@ -504,11 +504,11 @@ test("team.duties: watchers' refusal leaves no row, a bare mcp caller is refused
   const { tool, raw, root, project } = await boot(t);
   const agent = `design-${project.slug}`;
   await tool("team.add", { project: project.slug, role: "design" });
-  // The person's own duty goes to watchers, which here is the 0.1 module that has no duty shape yet: a clean refusal, no row left.
-  const refused = await raw("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "Read the open issues." });
+  // The person's own duty goes to watchers, which rejects a trigger it cannot read (a bad one here, so nothing real is created in the test home): a clean refusal, no row left.
+  const refused = await raw("team.duties.create", { teammate: agent, when: "whenever the mood takes me", instruction: "Read the open issues." });
   assert.ok(refused.error && /watchers/.test(refused.error.message));
   assert.deepEqual((await tool("team.duties.list", { teammate: agent })).duties, []);
-  const bare = await call("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "x" }, { root, caller: "mcp", timeout: 20_000 });
+  const bare = await call("team.duties.create", { teammate: agent, when: "whenever the mood takes me", instruction: "x" }, { root, caller: "mcp", timeout: 20_000 });
   assert.equal(bare.error.code, "denied");
   assert.equal((await raw("team.duties.run-now", { id: "nope" })).error.code, "not_found");
 });
@@ -518,21 +518,21 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   const agent = `design-${project.slug}`;
   await tool("team.add", { project: project.slug, role: "design" });
   const { session } = await realSession(root, tool, launches, project.slug);
-  const d = await tool("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "Read the open issues.", act: true }, "mcp", { session });
+  const d = await tool("team.duties.create", { teammate: agent, when: "whenever the mood takes me", instruction: "Read the open issues.", act: true }, "mcp", { session });
   assert.equal(d.enabled, false);
   assert.equal(d.started, false);
   const on = await call("team.duties.update", { id: d.id, enabled: true }, { root, caller: "mcp", timeout: 20_000, session });
   assert.equal(on.error.code, "denied");
   const edit = await tool("team.duties.update", { id: d.id, instruction: "Read the open issues and goals." }, "mcp", { session });
   assert.equal(edit.enabled, false); // a proposal may still be edited
-  // the person's tap: watchers here is the 0.1 module with no duty shape, so it refuses cleanly and the duty stays off
+  // the person's tap: watchers rejects the unreadable trigger, so it refuses cleanly and the duty stays off
   const tap = await raw("team.duties.update", { id: d.id, enabled: true });
   assert.ok(tap.error && /watchers/.test(tap.error.message));
   assert.equal((await tool("team.duties.list", { teammate: agent })).duties[0].enabled, false);
   // A model starts a duty only with the person's words for exactly its text (the registry asks vault.said.match): none said here.
   const start = await call("team.duties.start", { id: d.id, expect: "Read the open issues and goals." }, { root, caller: "mcp", timeout: 20_000, session });
   assert.equal(start.error.code, "not_asked");
-  // The person's click on a surface is the asking: enable takes it directly (here watchers refuses, but it got that far), a session cannot.
+  // The person's click on a surface is the asking: enable takes it directly (here watchers rejects the trigger, but it got that far), a session cannot.
   const click = await raw("team.duties.enable", { id: d.id });
   assert.ok(click.error && /watchers/.test(click.error.message));
   const viaSession = await call("team.duties.enable", { id: d.id }, { root, caller: "mcp", timeout: 20_000, session });

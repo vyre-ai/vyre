@@ -3138,39 +3138,6 @@
   "waiting.list": {
    "module": "waiting",
    "default": "limited by callers in code"
-  },
-  "watchers.create": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.hook": {
-   "module": "watchers",
-   "default": "open to any caller",
-   "hook": true
-  },
-  "watchers.items": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.list": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.logs": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.pause": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.resume": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.test": {
-   "module": "watchers",
-   "default": "open to any caller"
   }
  }
 }

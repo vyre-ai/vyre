@@ -828,3 +828,5 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 - team.roster {project}: internal read for the recorder in threads: { roles: [{role}], duties: [{id, teammate, title, hash, enabled, started}] } for live teammates.
 
 - Reach written for every team tool (platform's ruling, 2026-10-01): person: charter.set, charter.revert, default.set, duties.enable/disable/delete/run-now; asked: retire, role.fill, duties.start; modules: act.target, roster; anyone (deliberate, checks in code): add, ask, cancel, done, fail, status, list, notes, merge, charter.get/history/diff/draft, duties.create/list/update, default.get, project-has-any, project-append (callers limited in code to person surfaces and modules).
+
+- Merged work/watchers 1dbed8c3: the duty calls are now watchers.duty.create/update/delete/run/resume (watchers.pause unchanged); the real watchers module accepts duties, so the daemon duty tests use an unreadable trigger to get watchers' clean refusal without creating a real watcher.
