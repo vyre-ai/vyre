@@ -50,11 +50,16 @@ try {
   const cliIn = path.join(rel.dir, "standalone", "cli.mjs");
   const inst = spawnSync(process.execPath, [cliIn, "install", "--browsers", "chrome"], { env, encoding: "utf8" });
   const walk = d => fs.existsSync(d) ? fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]) : [];
-  const hosts = () => walk(home).filter(f => /NativeMessagingHosts/.test(f));
+  // On Windows the host is registered in the registry (HKCU), not as a file in the home folder.
+  const regHosts = () => {
+    const q = spawnSync("reg", ["query", "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts"], { encoding: "utf8" });
+    return String(q.stdout || "").split(/\r?\n/).filter(l => /vyre/i.test(l)).map(l => l.trim());
+  };
+  const hosts = () => process.platform === "win32" ? regHosts() : walk(home).filter(f => /NativeMessagingHosts/.test(f));
   const had = hosts();
   const un = spawnSync(process.execPath, [path.join(data, "app", "standalone", "cli.mjs"), "uninstall"], { env, encoding: "utf8" });
   const left = hosts();
-  r.step("6.7-uninstall-leaves-no-native-host", inst.status === 0 && un.status === 0 && had.length > 0 && left.length === 0, { why: inst.status !== 0 ? `install exit ${inst.status}` : un.status !== 0 ? `uninstall exit ${un.status}` : had.length === 0 ? "install registered no native host file here (platform keeps it elsewhere, e.g. the Windows registry)" : left.length ? `left: ${left.map(f => path.relative(home, f)).join(", ")}` : `${had.length} host file(s) were registered and none is left` });
+  r.step("6.7-uninstall-leaves-no-native-host", inst.status === 0 && un.status === 0 && had.length > 0 && left.length === 0, { why: inst.status !== 0 ? `install exit ${inst.status}` : un.status !== 0 ? `uninstall exit ${un.status}` : had.length === 0 ? "install registered no native host file here (platform keeps it elsewhere, e.g. the Windows registry)" : left.length ? `left: ${left.map(f => path.isAbsolute(f) ? path.relative(home, f) : f).join(", ")}` : `${had.length} host file(s) were registered and none is left` });
   fs.rmSync(tmp, { recursive: true, force: true });
 } catch (e) { r.step("6.7-uninstall-leaves-no-native-host", false, { why: String(e.message).slice(0, 220) }); }
 

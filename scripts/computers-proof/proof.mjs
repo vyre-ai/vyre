@@ -262,6 +262,10 @@ try {
   exitCode = 1;
   if (!/^step failed/.test(e.message)) console.log(`FAIL error: ${e.stack || e.message}`);
   console.log("--- last vyred log lines\n" + logs.slice(-15).join("\n"));
+  // What the computer itself says, for a failure seen on a runner that cannot be reached by hand.
+  console.log("--- container log (tail)\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-6000));
+  console.log("--- processes\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | head -30"]).slice(-3000));
+  console.log("--- first bytes of the VNC port\n" + shOk(["exec", CONTAINER, "sh", "-c", "for p in 5900 5901; do echo port $p; (printf '' | timeout 3 nc 127.0.0.1 $p | head -c 24 | od -c | head -3) 2>&1; done"]).slice(-800));
   // For debugging a failure by hand: keep the computer up for PROOF_HOLD seconds.
   if (Number(process.env.PROOF_HOLD) > 0) { console.log(`HOLDING ${process.env.PROOF_HOLD} s`); await sleep(Number(process.env.PROOF_HOLD) * 1000); }
 } finally {
