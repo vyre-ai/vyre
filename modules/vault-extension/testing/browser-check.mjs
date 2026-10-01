@@ -119,7 +119,7 @@ async function main() {
     log(`fill listener at ${srv.url}, page at ${pageUrl}`);
     log("starting Chromium with the extension loaded");
     const profile = fs.mkdtempSync(path.join(tmp, "chrome-"));
-    const child = spawn(CHROME, ["--headless=new", ...CHROME_SAFE, ...(process.env.CHROME_EXTRA_FLAGS ? process.env.CHROME_EXTRA_FLAGS.split(" ").filter(Boolean) : []), "--remote-debugging-port=0", `--user-data-dir=${profile}`, `--load-extension=${distDir}`,
+    const child = spawn(CHROME, [...(process.env.VYRE_HEADED ? [] : ["--headless=new"]), ...CHROME_SAFE, ...(process.env.CHROME_EXTRA_FLAGS ? process.env.CHROME_EXTRA_FLAGS.split(" ").filter(Boolean) : []), "--remote-debugging-port=0", `--user-data-dir=${profile}`, `--load-extension=${distDir}`,
       "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--force-color-profile=srgb",
       "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
     cleanup.push(() => { child.kill(); });
@@ -161,6 +161,39 @@ async function main() {
       // from DevTools inside the service worker. Only the toolbar click and its sender check are skipped; they stay the user's 6.6b.
       log("a popup opened as a tab is refused when it tries to pair, as designed");
       popup.close();
+      await fetch(`${base}/json/close/${popupTarget.id}`).catch(() => {});
+      if (process.env.VYRE_HEADED) {
+        // A headed Chrome (under xvfb) can open the REAL toolbar popup: chrome.action.openPopup() from the worker. That popup has no tab, so
+        // the worker's sender check admits it, and pairing runs through the popup's own button, exactly as a person's click does.
+        const l0 = await (await fetch(`${base}/json/list`)).json();
+        const sw0 = l0.find((/** @type {any} */ t) => t.type === "service_worker" && t.url === `chrome-extension://${extId}/background.js`);
+        const w0 = await attach(sw0.webSocketDebuggerUrl);
+        cleanup.push(() => w0.close());
+        const opened = await w0.run(`try { await chrome.action.openPopup(); return "opened"; } catch (e) { return "openPopup: " + e.message; }`);
+        if (opened !== "opened") throw new Error(String(opened));
+        const real = await until(async () => (await (await fetch(`${base}/json/list`)).json()).find((/** @type {any} */ t) => t.type === "page" && t.url === `chrome-extension://${extId}/popup.html`), 10000);
+        const rp = await attach(real.webSocketDebuggerUrl);
+        cleanup.push(() => rp.close());
+        await until(() => rp.run(`return !!document.getElementById("pair")`));
+        const realPaired = await rp.run(`
+          const set = (id, v) => { const el = document.getElementById(id); el.value = v; };
+          set("url", ${JSON.stringify(srv.url)});
+          set("code", ${JSON.stringify(display)});
+          document.getElementById("pair").click();
+          await new Promise(r => setTimeout(r, 600));
+          return document.getElementById("msg").textContent;
+        `);
+        if (!/^Paired as/.test(String(realPaired))) throw new Error(`the real popup did not pair: ${JSON.stringify(realPaired)}`);
+        log(`real toolbar popup: ${realPaired}`);
+        rp.close();
+        const sw1 = (await (await fetch(`${base}/json/list`)).json()).find((/** @type {any} */ t) => t.type === "service_worker" && t.url === `chrome-extension://${extId}/background.js`);
+        const w1 = await attach(sw1.webSocketDebuggerUrl);
+        cleanup.push(() => w1.close());
+        const unlocked = await w1.run(`const c = await route({ type: "unlock", passphrase: ${JSON.stringify(unlockPass)} }); return c.error ? "unlock: " + JSON.stringify(c.error) : "ok";`);
+        if (unlocked !== "ok") throw new Error(String(unlocked));
+        log("unlocked through the worker after the real popup paired");
+        w1.close();
+      } else {
       const listNow = await (await fetch(`${base}/json/list`)).json();
       const swt = listNow.find((/** @type {any} */ t) => t.type === "service_worker" && t.url === `chrome-extension://${extId}/background.js`);
       if (!swt) throw new Error("no background service worker target");
@@ -178,6 +211,7 @@ async function main() {
       if (!/^Paired as/.test(String(viaWorker))) throw new Error(`pairing through the worker did not confirm: ${viaWorker}`);
       log(`worker: ${viaWorker}, and unlocked`);
       w.close();
+      }
     } else if (!/^Paired as/.test(String(paired))) throw new Error(`pairing did not confirm: ${JSON.stringify(paired)}`);
     else log(`popup: ${paired}`);
     if (popup.errors.length && !/not from the popup/.test(String(paired))) throw new Error(`console errors in the popup: ${popup.errors.join(" | ")}`);

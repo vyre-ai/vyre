@@ -34,6 +34,15 @@ jobs:
         env:
           CHROME_EXTRA_FLAGS: "--no-sandbox"
         run: node modules/vault-extension/testing/browser-check.mjs
+      - name: The extension in a headed browser, paired from the real toolbar popup
+        # A headed Chrome under a virtual display can open the real popup (chrome.action.openPopup), so pairing runs through the popup's own
+        # button. The run then goes on to fill and chip capture as above.
+        env:
+          CHROME_EXTRA_FLAGS: "--no-sandbox"
+          VYRE_HEADED: "1"
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb
+          xvfb-run -a --server-args="-screen 0 1280x900x24" node modules/vault-extension/testing/browser-check.mjs
       - name: The key chip in a real browser, with trusted input
         env:
           CHROME_EXTRA_FLAGS: "--no-sandbox"
