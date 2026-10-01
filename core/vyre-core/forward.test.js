@@ -76,7 +76,7 @@ test("vyre-core forward: the vault module forwards to core, refuses plain values
   const header = (tool, input) => { const p = proof(tool, input); return `device key=${p.key} ts=${p.ts} nonce=${p.nonce} sig=${p.sig}`; };
 
   // Every tool the manifest declares is here, each marked for core.
-  const declared = JSON.parse(fs.readFileSync(new URL("../vault/module.json", import.meta.url), "utf8")).does.tools;
+  const declared = JSON.parse(fs.readFileSync(new URL("../vault/module.json", import.meta.url), "utf8")).does.tools.map(t => (typeof t === "string" ? t : t.name));
   assert.deepEqual([...tools.keys()].sort(), [...declared].sort());
   assert.ok([...tools.values()].every(d => d.core === true));
 
