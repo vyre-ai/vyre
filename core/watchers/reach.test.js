@@ -157,8 +157,9 @@ test("through the real module and the real registry: an agent with a grant sees 
   // The real watchers code and manifest, loaded by the real registry (nothing runs until a watcher does).
   const real = new URL("./index.js", import.meta.url).href;
   writeModule(root, "watchers", { ...manifest, requires: [], needs: {}, teaches: {} }, `export { default } from ${JSON.stringify(real)};`);
-  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }, { name: "projects.list", reach: "modules" }] } },
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }, { name: "projects.list", reach: "modules" }, { name: "projects.of", reach: "modules" }] } },
     `export default { async start(ctx) {
+      ctx.tool("projects.of", { input: { type: "object" }, run: async i => ({ slug: String(i.cwd).startsWith("/work/h") ? "harlow-legal" : String(i.cwd).startsWith("/work/n") ? "northwind" : null }) });
       ctx.tool("projects.reach", { input: { type: "object" }, run: async i => /juno/.test(String(i.caller)) ? { all: true } : /kit/.test(String(i.caller)) ? { all: false, projects: [{ slug: "harlow-legal", name: "Harlow Legal" }] } : { all: false, projects: [] } });
       ctx.tool("projects.list", { input: { type: "object" }, run: async () => ({ projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/h", workspaces: ["/work/h"] }, { slug: "northwind", name: "Northwind", home: "/work/n", workspaces: ["/work/n"] }] }) });
       return {}; } };`);
@@ -170,8 +171,8 @@ test("through the real module and the real registry: an agent with a grant sees 
   };
   mk("mail-harlow-legal", "harlow-legal"); mk("feed-northwind", "northwind");
   const db = open(path.join(home, "vyre.db")); t.after(() => db.close());
-  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, paths: { watchers: wdir, modules: root } });
-  await reg.start(discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, paths: { watchers: wdir, modules: path.join(home, "none") }, firstPartyRoots: [root] });
+  await reg.start(discover([root], { firstPartyRoots: [root] }).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
   t.after(() => reg.stop && reg.stop());
   assert.equal(reg.modules.get("watchers").state, "running", reg.modules.get("watchers").error);
 
@@ -192,4 +193,15 @@ test("through the real module and the real registry: an agent with a grant sees 
   assert.equal(await code("watchers.pause", "feed-northwind", kit), "not_found", "an agent cannot stop another project's watcher");
   const card = await reg.call("watchers.card", { name: "mail-harlow-legal" }, kit);
   assert.equal(card.data.project, "harlow-legal");
+
+  // A plain model session (the person's own Claude Code through MCP): vyred sets meta.peerSession and meta.peerCwd for it;
+  // it sees its folder's project's watchers, and none where the folder is unknown. (A call without those keys is not one.)
+  const plain = async (peerCwd, tool = "watchers.list", input = {}) => reg.call(tool, input, "mcp", { peerSession: "4242:1790000000", peerCwd });
+  assert.deepEqual(names(await plain("/work/h/site")), ["mail-harlow-legal"], "a session in a harlow-legal folder");
+  assert.deepEqual(names(await plain("/work/n")), ["feed-northwind"], "a session in a northwind folder");
+  assert.deepEqual(names(await plain(null)), [], "where the OS will not say who or where, it reads nothing");
+  assert.deepEqual(names(await plain("/elsewhere")), [], "a folder in no project");
+  assert.equal((await plain("/work/h", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
+  assert.equal((await plain("/work/n", "watchers.card", { name: "feed-northwind" })).data.name, "feed-northwind");
+  assert.deepEqual(names(await reg.call("watchers.list", {}, "mcp")), ["feed-northwind", "mail-harlow-legal"], "a build that does not set the peer leaves it as before");
 });

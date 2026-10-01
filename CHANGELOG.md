@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A plain model session (the person's own Claude Code through MCP, no verified thread or agent) now
+  sees only its folder's project's watchers, like sessions narrows its thread reads: vyred sets
+  `meta.peerSession` and `meta.peerCwd` for it (sessions' work), and the watchers tools resolve the
+  folder with `projects.of`; where the OS will not say who or where, or the folder is in no project, it
+  sees none. A person, a module and a hook still see all. Covered through the real module and
+  registry in `core/watchers/reach.test.js`.
+
 - A test through the real watchers module and the real registry (`core/watchers/reach.test.js`): an
   agent with a grant to one project lists, reads cards, logs and items of, and pauses only that
   project's watchers (`not_found` for another's); an agent with no grant sees none; a person and an

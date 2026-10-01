@@ -1,21 +1,35 @@
 // @ts-check
-// scope: which projects' watchers a caller may see. The registry puts meta.reach on a call from an agent to a tool
-// that declares a projectArg, from the projects module's own answer about that agent's grant; a person, a module
-// and a hook have none and see everything. No answer means no projects (the registry fails closed with an empty list).
-
-//
-// Decided, and open for 0.2.5: a plain model session (mcp, mcp:thread: the person's own Claude Code
-// session, not an agent with a stored grant) has no meta.reach and sees every project's watchers, the
-// way it sees every project in projects.list. Sessions narrows a plain thread's reads of transcripts to its
-// folder's project (peerCwd) because a transcript carries what was said in other contexts; a watcher's card
-// and logs carry what the person asked to watch and what was filed, and narrowing here would need the
-// session's folder, which the registry does not pass to a tool today. With Spaces, when a project is shared
-// with people other than its owner, a plain session must be scoped too: revisit then (team/0.2.5/spaces/watchers.md).
+// scope: which projects' watchers a caller may see.
+//   an agent with a stored grant: the registry puts meta.reach on its call to a tool that declares a
+//     projectArg (from the projects module's answer); no answer means no projects (fail closed).
+//   a plain model session (the person's own Claude Code through Vyre's MCP, no verified thread or agent):
+//     vyred reads who and where it is from the socket peer and sets meta.peerSession and meta.peerCwd
+//     (null where the OS will not say). It sees its folder's project's watchers, as sessions narrows its
+//     thread reads, and nothing where the folder is unknown or in no project.
+//   a person, a module and a hook (and a session on a build that does not set the peer): everything.
 
 /**
  * @param {any} meta the call's meta
- * @param {string|null|undefined} project the project a watcher belongs to
+ * @param {(cwd: string) => Promise<string|null>} projectOfCwd the project that owns a folder, or null
+ * @returns {Promise<(project: string|null|undefined) => boolean>}
  */
+export async function scopeFor(meta, projectOfCwd) {
+  const r = meta && meta.reach;
+  if (r) {
+    if (r.all === true) return () => true;
+    const granted = Array.isArray(r.projects) ? r.projects : [];
+    return project => typeof project === "string" && granted.includes(project);
+  }
+  // Set by vyred for a plain model caller only, over anything a client sent (the keys exist, possibly null).
+  if (meta && ("peerSession" in meta || "peerCwd" in meta)) {
+    const cwd = typeof meta.peerCwd === "string" && meta.peerCwd ? meta.peerCwd : null;
+    const mine = cwd ? await projectOfCwd(cwd).catch(() => null) : null;
+    return project => Boolean(mine && project === mine);
+  }
+  return () => true;
+}
+
+/** Kept for callers that only have the agent rule: a person, a module and a hook see all. */
 export function sees(meta, project) {
   const r = meta && meta.reach;
   if (!r) return true;
