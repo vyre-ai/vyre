@@ -1,0 +1,134 @@
+# The memory head-to-head (scripts/eval-h2h.js, team/0.2.5/memory-context.md): the same questions asked
+# of Vyre Memory, an approximation of Claude Code's auto memory, a hand-kept AGENTS.md and the full
+# transcripts, plus a long-session comparison of compaction, compaction with search and Vyre's managed
+# window, all through OpenRouter on one cheap model. Manual only, in the protected environment `eval`
+# (a required reviewer), key OPENROUTER_EVAL_KEY. The round's hard cap is $5: the run refuses to
+# start when the key has already spent $45, stops cleanly before a call that could pass $5 (exit 3),
+# and prints the key's usage before and after (never the key). `node scripts/eval-h2h.js --estimate`
+# prints the cost first, with no key. The same job then runs the real-binary spot checks and spikes
+# (scripts/eval-cli-spot.mjs: real claude and codex on 10 questions each, whether an additionalContext hook keeps
+# Claude Code's cache hit, whether Codex and Grok send usage_update); the whole job stays under $5 (the head-to-head
+# stops at $3.5, every spot step stops the job at $4.6 by reading the key's usage). After a dispatch, download the artifact and commit test/eval/h2h/*
+# before the next one: the replies cache means a rerun pays only for what is missing.
+name: memory-h2h-record
+on:
+  workflow_dispatch:
+    inputs:
+      run_h2h:
+        description: run the head-to-head (cached replies cost nothing; only what is missing is paid for)
+        type: boolean
+        default: true
+      cap_usd:
+        description: the head-to-head's ledger cap in USD (the ledger already holds what earlier dispatches spent)
+        default: "3.5"
+      spot_claude:
+        description: real claude on 10 questions
+        type: boolean
+        default: true
+      spot_codex:
+        description: real codex on 10 questions
+        type: boolean
+        default: true
+      spike_cache:
+        description: additionalContext cache spike
+        type: boolean
+        default: true
+      spike_meter:
+        description: Codex and Grok usage_update and seed spike
+        type: boolean
+        default: true
+      job_stop_usd:
+        description: the most the spot checks and spikes may spend in this dispatch, read from the key
+        default: "4.6"
+permissions:
+  contents: read
+concurrency:
+  group: memory-h2h-record
+  cancel-in-progress: false
+env:
+  VYRE_NO_DIALOGS: "1"
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    environment: eval
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit --no-fund
+      - name: Estimate, with no key
+        run: node scripts/eval-h2h.js --estimate
+      - name: The key's usage at the start of the job
+        env:
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: |
+          node --input-type=module -e 'import { keyUsage } from "./scripts/lib/eval-openrouter.js"; const u = (await keyUsage({ key: process.env.OPENROUTER_EVAL_KEY })).usage; console.log("key usage at job start: $" + u.toFixed(4)); if (process.env.GITHUB_ENV) (await import("node:fs")).appendFileSync(process.env.GITHUB_ENV, "H2H_JOB_START_USAGE=" + u + "\n");' || echo "key usage at job start: unavailable"
+      - name: Real CLIs, their ACP adapter and Grok Build
+        continue-on-error: true
+        run: |
+          npm i -g @anthropic-ai/claude-code @openai/codex
+          npm i -g @agentclientprotocol/codex-acp || npm i -g @zed-industries/codex-acp
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
+      - name: Run the head-to-head
+        if: inputs.run_h2h
+        env:
+          H2H_CAP_USD: ${{ inputs.cap_usd }}
+          VYRE_EVAL_RECORD: "1"
+          VYRE_EVAL_MODEL: anthropic/claude-haiku-4.5
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: |
+          set +e
+          nice -n 10 node scripts/eval-h2h.js --record | tee "$RUNNER_TEMP/summary.txt"
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+      - name: Real claude on 10 questions (auto memory)
+        if: inputs.spot_claude
+        continue-on-error: true
+        env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: node scripts/eval-cli-spot.mjs claude | tee -a "$RUNNER_TEMP/summary.txt"
+      - name: Real codex on 10 questions (AGENTS.md)
+        if: inputs.spot_codex
+        continue-on-error: true
+        env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: node scripts/eval-cli-spot.mjs codex | tee -a "$RUNNER_TEMP/summary.txt"
+      - name: Spike, does additionalContext keep the cache hit
+        if: inputs.spike_cache
+        continue-on-error: true
+        env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: node scripts/eval-cli-spot.mjs cache | tee -a "$RUNNER_TEMP/summary.txt"
+      - name: Spike, do Codex and Grok send usage_update, does a fresh session take a seed
+        if: inputs.spike_meter
+        continue-on-error: true
+        env:
+          H2H_JOB_STOP_USD: ${{ inputs.job_stop_usd }}
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: node scripts/eval-cli-spot.mjs meter | tee -a "$RUNNER_TEMP/summary.txt"
+      - name: Summary
+        run: |
+          { echo '### memory-h2h-record'; echo '```'; cat "$RUNNER_TEMP/summary.txt" 2>/dev/null; echo '```'; echo "Ledger: $(cat test/eval/h2h/spend.json 2>/dev/null || echo missing)"; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: h2h-results
+          path: |
+            test/eval/h2h/results.json
+            test/eval/h2h/replies.json
+            test/eval/h2h/spend.json
+            test/eval/h2h/vyre-asks.json
+            test/eval/h2h/spot.json
+            test/eval/h2h/notes-auto.md
+            test/eval/h2h/notes-agents.md
+          if-no-files-found: warn
+      - name: Fail when the run stopped or failed
+        if: env.code != '' && env.code != '0'
+        run: echo "eval-h2h exited with ${{ env.code }} (3 means a refusal or the spend stop; replies so far are in the artifact)"; exit 1

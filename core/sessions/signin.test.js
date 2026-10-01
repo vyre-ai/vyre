@@ -101,3 +101,21 @@ test("signin: a sign-in nobody finishes ends at its time limit and says onDone f
   assert.deepEqual(done, [false], "ended unfinished");
   assert.equal(s.status(first.flow).step, "failed");
 });
+
+test("signin: a code pasted after the command closed its input is not a crash (EPIPE on its stdin is handled)", async t => {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "login-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  // Prints claude's sign-in address, closes its own stdin, and stays alive: a write to it fails with EPIPE.
+  const script = 'console.log("Open https://claude.ai/oauth/authorize?code=true and paste the code"); require("fs").closeSync(0); setTimeout(() => {}, 1500)';
+  const s = new Signins({ spawn: () => spawn(process.execPath, ["-e", script], { stdio: ["pipe", "pipe", "pipe"] }) });
+  t.after(() => s.stop());
+  const r = await s.start({ provider: "claude", account: { id: "e" } });
+  assert.deepEqual([r.step, r.paste], ["url", true], JSON.stringify(r));
+  let crashed = null;
+  const onCrash = e => { crashed = e; };
+  process.on("uncaughtException", onCrash);
+  t.after(() => process.off("uncaughtException", onCrash));
+  for (let i = 0; i < 3; i++) { s.submit(r.flow, "ABCDEF123456"); await new Promise(res => setTimeout(res, 80)); }
+  await new Promise(res => setTimeout(res, 300));
+  assert.equal(crashed, null, crashed ? String(crashed.code || crashed.message) : "");
+});

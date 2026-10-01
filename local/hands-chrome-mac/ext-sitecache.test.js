@@ -322,3 +322,47 @@ test("end to end: what a device sends after two visits is kept by the store (the
     assert.equal(stored[0].name, "Apply promo", "a fixed-UI label with container, siblings and two visits is kept");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("rungs: a rung that worked is reported as structure only (origin, template, integer), throttled on the device, and the startRung hint comes from the card", async () => {
+  /** @type {any[]} */ const sent = [];
+  let t = 1_000_000;
+  const sc = createSiteCache({ emit: e => sent.push(e), now: () => t, setT: () => 0, clearT: () => {} });
+  sc.setEnabled(true);
+  sc.rung({ tabUrl: "https://app.example.com/clients/jane-doe/notes?x=1#y", rung: 5, lowerFailed: true });
+  sc.rung({ tabUrl: "https://app.example.com/clients/jane-doe/notes", rung: 9 });
+  sc.rung({ tabUrl: "not a url", rung: 2 });
+  await sc.flush();
+  const r = sent.filter(e => e.event === "site.report" && e.template);
+  assert.equal(r.length, 1);
+  assert.deepEqual(Object.keys(r[0]).sort(), ["event", "lowerFailed", "origin", "rung", "template"]);
+  assert.equal(r[0].template, "/clients/{id}/notes", "no name, no query, no fragment");
+  assert.equal(r[0].rung, 5);
+  sent.length = 0;
+  sc.rung({ tabUrl: "https://app.example.com/clients/jane-doe/notes", rung: 2 }); t += 60_000;
+  sc.rung({ tabUrl: "https://app.example.com/clients/jane-doe/notes", rung: 2 });
+  await sc.flush();
+  assert.equal(sent.filter(e => e.template).length, 1, "the same rung is not re-sent inside ten minutes");
+  assert.equal(sc.startRung("https://app.example.com/clients/x/notes"), null);
+  await sc.setCard("https://app.example.com", { startRungs: { "/clients/{id}/notes": 5, "/bad": 9 } }, 3);
+  assert.equal(sc.startRung("https://app.example.com/clients/jane/notes"), 5);
+  assert.equal(sc.startRung("https://app.example.com/bad"), null, "an out-of-range rung is ignored");
+});
+
+test("rungs: the standalone store counts them itself (a first report is n 1, lowerFailed starts at 2), and the card returns startRungs only from n 2", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vc-rung-"));
+  let t = Date.parse("2026-10-01T10:00:00Z");
+  const store = createSiteStore({ dataDir: dir, now: () => t });
+  try {
+    const O = "https://app.example.com";
+    store.report({ origin: O, template: "/board", rung: 5 });
+    assert.equal(/** @type {any} */ (store.record(O)).rungs["/board"].n, 1);
+    assert.deepEqual(/** @type {any} */ (store.get({ origin: O }).data.origin).startRungs || {}, {}, "one report is not enough to start there");
+    t += 31 * 60_000;
+    store.report({ origin: O, template: "/board", rung: 5 });
+    assert.equal(/** @type {any} */ (store.get({ origin: O }).data.origin).startRungs["/board"], 5);
+    store.report({ origin: O, template: "/contacts", rung: 5, lowerFailed: true });
+    assert.equal(/** @type {any} */ (store.record(O)).rungs["/contacts"].n, 2);
+    store.put({ origin: O, target: "origin", patch: { rungs: { "/fake": { r: 5, n: 255, d: 1, at: "2026-01-01T00:00:00Z" } } } });
+    assert.equal(/** @type {any} */ (store.record(O)).rungs["/fake"], undefined, "a patch from Chrome cannot set a rung");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

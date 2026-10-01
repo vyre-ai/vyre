@@ -663,6 +663,21 @@ one_install() {
   exit 0
 }
 
+# early_one_install: the same check before the mailbox opens. A second paste of the same line must
+# post nothing: its lines would restart at position 0 and the page would reject them as out of order.
+early_one_install() {
+  [ "$DRY" = 1 ] && return 0
+  [ "$UNINSTALL" = 1 ] && return 0
+  [ -f "$DIR/compose.yml" ] || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  if docker info >/dev/null 2>&1; then DOCKER_SUDO=""
+  elif command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then DOCKER_SUDO=sudo
+  else return 0
+  fi
+  one_install
+  DOCKER_SUDO=""
+}
+
 # docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
 # specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
 docker_flavor() {
@@ -816,6 +831,7 @@ main() {
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
+  early_one_install
   [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
