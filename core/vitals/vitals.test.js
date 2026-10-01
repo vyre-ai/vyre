@@ -41,8 +41,9 @@ test("vitals: the manifest loads with its five tools and both events, on both ro
 test("vitals: status and watch refuse an agent outright; summary is the one tool an agent may call", async t => {
   const s = await boot(t, { own: flat });
   await s.h.tick();
-  assert.match((await s.agent("kit")("vitals.status", {})).error.message, /is an agent; reading vitals in full is the person's/);
-  assert.match((await s.agent("kit")("vitals.watch", { action: "open" })).error.message, /is an agent; watching vitals is the person's/);
+  // The manifest's reach is person, so the registry turns an agent away before the tool's own check (which stays as the second lock).
+  assert.match((await s.agent("kit")("vitals.status", {})).error.message, /vitals\.status is not available to mcp callers/);
+  assert.match((await s.agent("kit")("vitals.watch", { action: "open" })).error.message, /vitals\.watch is not available to mcp callers/);
   const sum = await s.agent("kit")("vitals.summary", {});
   assert.ok(!sum.error, sum.error && sum.error.message);
   assert.deepEqual(Object.keys(sum.data).sort(), ["battery", "cpu", "device", "disk", "gpu", "netRx", "netTx", "ram", "scope"]);
