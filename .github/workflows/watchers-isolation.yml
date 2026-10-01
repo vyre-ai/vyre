@@ -52,7 +52,7 @@ jobs:
           const steps = wallSteps();
           console.log(JSON.stringify(steps.map(x => x.do + " " + (x.path || (x.argv || []).join(" ")))));
           if (!steps.some(x => x.do === "write")) throw new Error("the installer wrote no profile");
-          await s.apply(steps, { out: console.log });
+          await s.apply(steps, { dryRun: false, out: console.log });
           JS
           sed -i "s#/home/runner/work/vyre/vyre#$GITHUB_WORKSPACE#g" /tmp/wall-install.mjs
           sudo env "PATH=$PATH" node /tmp/wall-install.mjs
@@ -77,7 +77,7 @@ jobs:
           cat > /tmp/wall-uninstall.mjs <<'JS'
           import { wallUninstallSteps } from "WS/lib/sandbox/index.js";
           import * as s from "WS/core/names/system.js";
-          await s.apply(wallUninstallSteps(), { out: console.log });
+          await s.apply(wallUninstallSteps(), { dryRun: false, out: console.log });
           JS
           sed -i "s#WS#$GITHUB_WORKSPACE#g" /tmp/wall-uninstall.mjs
           sudo env "PATH=$PATH" node /tmp/wall-uninstall.mjs

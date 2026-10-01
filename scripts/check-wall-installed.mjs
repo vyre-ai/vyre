@@ -18,7 +18,7 @@ const sh = (cmd, args, o = {}) => execFileSync(cmd, args, { encoding: "utf8", st
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-installed-"));
 const prefix = path.join(tmp, "prefix"), root = path.join(tmp, "vyre-home"), proj = path.join(tmp, "project");
 fs.mkdirSync(root, { recursive: true }); fs.mkdirSync(proj);
-const tarball = path.resolve(sh("npm", ["pack", "--silent", "--pack-destination", tmp]).trim().split("\n").pop());
+const tarball = path.join(tmp, sh("npm", ["pack", "--silent", "--pack-destination", tmp]).trim().split("\n").pop());
 sh("npm", ["install", "-g", "--prefix", prefix, "--no-audit", "--no-fund", "--omit=dev", tarball]);
 const vyre = path.join(prefix, "bin", "vyre");
 assert.ok(fs.existsSync(vyre), "the installed package has no vyre command");
