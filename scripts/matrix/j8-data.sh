@@ -7,7 +7,7 @@
 # fresh box. Data goes in and out through `vyre call`, as the person at the command line.
 set -u
 [ -n "${CI:-}" ] || { echo "j8-data.sh: runs on a CI runner only (CI is unset)" >&2; exit 2; }
-BOX=$(cd "$1" && pwd); OUT=$2; mkdir -p "$OUT"; DIR=/srv/vyre
+BOX=$(cd "$1" && pwd); mkdir -p "$2"; OUT=$(cd "$2" && pwd); DIR=/srv/vyre
 DEV=${J8_DEVICE:-linux}; FAILED=0
 rec() { ok=$2; [ "$ok" = ok ] && ok=true || { ok=false; FAILED=$((FAILED + 1)); }
   printf '{"journey":"J8","device":"%s","step":"%s","ok":%s,"why":"%s"}\n' "$DEV" "$1" "$ok" "$(printf %s "${3:-}" | tr -d '"\\' | tr '\n' ' ' | cut -c1-300)" >>"$OUT/results.jsonl"
@@ -26,7 +26,7 @@ leftovers() { # what a complete uninstall must not leave
     docker network ls -q --filter label=run.vyre=1 | sed 's/^/network /'
     docker image ls -q --filter 'reference=ghcr.io/vyre-ai/*' --filter 'reference=vyre:*' | sed 's/^/image /'
     [ -e /usr/local/bin/vyre ] && echo "wrapper /usr/local/bin/vyre"
-    systemctl list-unit-files 2>/dev/null | grep -q '^vyre-update' && echo "systemd vyre-update unit"; } | sort -u
+    systemctl list-unit-files 2>/dev/null | grep '^vyre-update' | awk '{print "systemd " $1 " " $2}'; } | sort -u
 }
 docker ps -a --format '{{.Names}}' | sort >"$OUT/containers-before.txt"
 
