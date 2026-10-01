@@ -69,7 +69,7 @@ pub fn pin_from_offer(handle: Option<&str>, address: Option<&str>) -> Result<Pin
     let valid = |h: &str| { let b = h.as_bytes(); !b.is_empty() && b.len() <= 32 && b[0].is_ascii_alphanumeric() && b[b.len() - 1].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-') };
     if let Some(h) = handle { if !valid(h) { return Err("bad_handle"); } }
     let addr = match address { Some(a) => Some(Pinned::parse(a).ok_or("bad_address")?), None => None };
-    let on_vyre = |origin: &str| origin.strip_prefix("https://").map_or(false, |h| { let host = h.split(':').next().unwrap_or(""); host == "vyre.run" || host.ends_with(".vyre.run") });
+    let on_vyre = |origin: &str| origin.strip_prefix("https://").map_or(false, |h| { let host = h.split(':').next().unwrap_or("").trim_end_matches('.'); host == "vyre.run" || host.ends_with(".vyre.run") });
     match (handle, addr) {
         (Some(h), Some(a)) if on_vyre(a.origin()) => {
             let want = format!("https://{}.vyre.run", h.to_ascii_lowercase());
@@ -152,6 +152,8 @@ mod tests {
         assert_eq!(ok(Some("alex"), Some("https://alex.vyre.run")), Ok(("https://alex.vyre.run".into(), false)));
         assert_eq!(ok(Some("alex"), Some("https://mallory.vyre.run")), Err("address_disagrees"));
         assert_eq!(ok(Some("alex"), Some("https://vyre.run")), Err("address_disagrees"));
+        // A trailing dot is the same host in DNS: "mallory.vyre.run." is on vyre.run, so it gets the same address check, not the own-domain path.
+        assert_eq!(ok(Some("alex"), Some("https://mallory.vyre.run.")), Err("address_disagrees"));
         // A named box on its own domain: the handle is just its name, the address is its own.
         assert_eq!(ok(Some("alex"), Some("https://box.harlow.example")), Ok(("https://box.harlow.example".into(), true)));
         assert_eq!(ok(None, Some("https://box.harlow.example:8443")), Ok(("https://box.harlow.example:8443".into(), true)));
