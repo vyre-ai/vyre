@@ -145,5 +145,7 @@ test("addRefusal: a model may not set tools, model or helper_model when it adds 
   assert.match(addRefusal({ project: "p", role: "r", tools: ["Bash"] }), /default tools and models/);
   assert.ok(addRefusal({ project: "p", role: "r", model: "opus" }));
   assert.ok(addRefusal({ project: "p", role: "r", helper_model: "haiku" }));
+  assert.match(addRefusal({ project: "p", role: "r", isolation: "none" }), /isolation none/);
+  assert.equal(addRefusal({ project: "p", role: "r", isolation: "folder" }), null);
   assert.equal(addRefusal(null), null);
 });

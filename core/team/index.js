@@ -144,7 +144,8 @@ export const accountChanged = (rec, resolved) => Boolean(rec && rec.account && r
  * @param {any} i the call's input @returns {string|null} why it is refused, or null
  */
 export const addRefusal = i => (i && (i.tools !== undefined || i.model !== undefined || i.helper_model !== undefined)
-  ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model" : null);
+  ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model"
+  : i && i.isolation === "none" ? "a model does not choose isolation none (it runs in the person's own folder); leave isolation out, or use worktree or folder" : null);
 
 export const isAssistant = meta => Boolean(meta && meta.agentKind === "assistant");
 
