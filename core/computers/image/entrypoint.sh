@@ -200,6 +200,7 @@ as_vyre Xvnc "${DISPLAY}" \
   -auth "${VYRE_XAUTH}" \
   +extension SECURITY \
   -SecurityTypes VncAuth \
+  -BlacklistThreshold=1000 \
   -localhost=no \
   -nolisten tcp \
   -AlwaysShared \
