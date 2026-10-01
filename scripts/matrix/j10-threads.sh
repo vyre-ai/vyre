@@ -48,9 +48,9 @@ if [ -n "$ID" ]; then
   # "anyone" and the in-code guard decides: a plain agent is refused each of these with these words (sessions, 1 Oct).
   agent_call() { # agent_call STEP "tool json" "message fragment"
     n=$(printf '%s' "$1" | tr . -)
-    call threads.send "{\"thread\":\"$ID\",\"text\":\"vyre $2\"}" >/dev/null
+    call threads.send "{\"thread\":\"$ID\",\"text\":\"vyre $2\",\"surface\":\"deck\"}" >"$OUT/send-$n.json"
     for i in $(seq 1 10); do sleep 3; call threads.get "{\"thread\":\"$ID\"}" >"$OUT/get-$n.json"; grep -q "$3" "$OUT/get-$n.json" && break; done
-    grep -q "$3" "$OUT/get-$n.json" && rec "$1" ok "refused: $3" || rec "$1" false "expected a refusal saying '$3'; thread says: $(grep -o '"text":"[^"]*vyre[^"]*"\|only the[^"]*\|"error"[^}]*' "$OUT/get-$n.json" | tail -3 | tr '\n' ' ')"; }
+    grep -q "$3" "$OUT/get-$n.json" && rec "$1" ok "refused: $3" || rec "$1" false "expected a refusal saying '$3'; send said: $(head -c 200 "$OUT/send-$n.json" | tr '\n' ' ')"; }
   agent_call 10.3a-agent-start-refused "threads.start {\"cwd\":\"/work\",\"prompt\":\"child\"}" "only the assistant can start sessions"
   agent_call 10.3b-agent-delete-other-refused "threads.delete {\"thread\":\"$ID2\"}" "only the assistant can delete sessions"
   agent_call 10.3c-agent-stop-own-refused "threads.stop {\"thread\":\"$ID\"}" "only the assistant can stop sessions"
@@ -67,7 +67,7 @@ if [ -n "$ID" ]; then
   if [ -z "$IDA" ]; then rec 10.7-assistant-thread-starts false "$(printf %s "$SA" | head -c 300)"; else
     rec 10.7-assistant-thread-starts ok "$IDA"
     count() { call threads.list '{}' | grep -o '"id": *"[0-9a-f-]\{36\}"' | sort -u | wc -l | tr -d ' '; }
-    asst_call() { n=$(printf '%s' "$1" | tr . -); call threads.send "{\"thread\":\"$IDA\",\"text\":\"vyre $2\"}" >/dev/null; sleep 12; call threads.get "{\"thread\":\"$IDA\"}" >"$OUT/get-$n.json"; }
+    asst_call() { n=$(printf '%s' "$1" | tr . -); call threads.send "{\"thread\":\"$IDA\",\"text\":\"vyre $2\",\"surface\":\"deck\"}" >"$OUT/send-$n.json"; sleep 12; call threads.get "{\"thread\":\"$IDA\"}" >"$OUT/get-$n.json"; }
     before=$(count)
     asst_call 10.7a "threads.start {\"cwd\":\"/work\",\"prompt\":\"child by the assistant\"}"
     after=$(count)
