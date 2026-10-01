@@ -5,6 +5,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line. Your own global git hooks still run in a session. To leave the `Vyre-Session` line out of commits, set `github.session_trailer` to false in Vyre's config. On git 2.31 and later no git config is written into the repo for this: the session's identity and hooks are its environment.
+- Push: the settings.loosened notice cannot be switched off: push.settings refuses kinds.notice and a stored false is ignored. With no push device, the Deck's settings.changed row is the only trace of a loosening.
+
+- settings.loosened: when an agent changes a guard because the person asked (settings.request, a loosening key or a change that needed a confirm, a reset of a loosening key included), settings emits `settings.loosened { change, key, label, level, project|device|session?, by, said }` with no value. core/push turns it into a loud `notice` push (not in the daily budget, rings through quiet hours, on by default) with the fixed sentence "<label> changed, as you asked. Undo" and the path /settings?change=<id>; the change's Undo (settings.undo) needs no proof.
 
 - Disconnecting GitHub now deletes its token from the vault, and says so plainly when it cannot, instead of quietly leaving a live token behind. The account stays listed after a failure so you can retry.
 

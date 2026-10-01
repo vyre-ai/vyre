@@ -133,7 +133,7 @@ export default {
       get: k => { const r = /** @type {any} */ (db.prepare("SELECT value FROM push_state WHERE key = ?").get(k)); return r ? JSON.parse(String(r.value)) : undefined; },
       set: (k, v) => db.prepare("INSERT INTO push_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, JSON.stringify(v)),
     };
-    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...DEFAULT_KINDS, ...(state.get("kinds") || {}) },
+    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...DEFAULT_KINDS, ...(state.get("kinds") || {}), notice: true },
       planner_label: Boolean(state.get("planner_label")) });
 
     /** The keypair: made once, the private half in the Vault. Held in memory once fetched. */
@@ -320,6 +320,8 @@ export default {
         if (i.kinds) {
           const bad = Object.keys(i.kinds).filter(k => !KINDS.includes(k));
           if (bad.length) throw new Error(`no such kind: ${bad.join(", ")} (kinds: ${KINDS.join(", ")})`);
+          // A notice says a guard was loosened as asked: nobody, the person included, switches it off here.
+          if ("notice" in i.kinds) throw new Error("notice cannot be turned off: it says a guard was loosened as you asked");
           state.set("kinds", { ...(state.get("kinds") || {}), ...Object.fromEntries(Object.entries(i.kinds).map(([k, v]) => [k, Boolean(v)])) });
         }
         if (i.planner_label !== undefined) state.set("planner_label", Boolean(i.planner_label));

@@ -515,4 +515,10 @@ test("push: settings.loosened is a loud notice with one fixed sentence, not coun
   for (let i = 2; i <= 4; i++) d.events.emit("settings", "settings.loosened", { change: `chg_${i}`, key: "vault.lock_on_sleep", label: "Lock when the Mac sleeps", level: "account", by: "mcp:agent:kit", said: "s" }, {});
   await until(() => got().length >= 4, "the notices after the budget");
   assert.deepEqual(capped.filter(tag => String(tag).startsWith("settings-loosened")), [], "a notice is never capped");
+  // Nothing switches the notice off: an agent cannot touch push.settings, and the person's own try is refused.
+  const agent = await call("push.settings", { kinds: { notice: false } }, { root, caller: "mcp:agent:kit" });
+  assert.ok(agent.error, "an agent may not change notification preferences");
+  const own = await deck("push.settings", { kinds: { notice: false } });
+  assert.ok(own.error && /cannot be turned off/.test(own.error.message), JSON.stringify(own));
+  assert.equal((await deck("push.settings")).data.kinds.notice, true);
 });
