@@ -167,3 +167,16 @@ test("one chip says it all: who, model and effort; choosing an effort asks threa
   assert.deepEqual(calls.filter(x => x.tool === "threads.effort").at(-1)?.input, { thread: th });
   c.stop();
 });
+
+test("typing @claude with two Claude accounts shows which account this turn runs on", async () => {
+  rows = [{ id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }, { id: "c2", label: "Work", signed_in: true }], models: [] }];
+  const c = mount("claude");
+  await settle();
+  type(c, "@claude summarise this");
+  assert.match(text($(c.el, ".composer-runs-on")), /This turn runs on Claude \(Personal\)/);
+  type(c, "@Claude-Work summarise this");
+  assert.match(text($(c.el, ".composer-runs-on")), /Claude \(Work\)/);
+  type(c, "summarise this");
+  assert.equal($(c.el, ".composer-runs-on"), null);
+  c.stop();
+});

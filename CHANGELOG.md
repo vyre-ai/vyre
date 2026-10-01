@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: "@claude" says which account this turn runs on
+
+- When a draft starts with `@claude`, `@codex` or `@grok`, a line under the box says "This turn runs on Claude (Personal)": the account's label when the provider has several, so a bare provider name never surprises (the box picks the provider's default account; `@Claude-Work` names one). One account says just the provider. (reviewer-2's LOW on 6e91b09f7.)
+
 #### chat: one picker for who answers, the model and the effort
 
 - The composer has one chip, "Codex · GPT-5 high", instead of an answer chip plus a model chip (the standalone model chip is gone; `/model` opens this menu). Its menu lists each signed-in account (`providers.list`) with its models under it and the current one marked "now", then an "Effort" group (Default, Low, Medium, High, Extra high, Max) for the answering account when its provider has it. A model of the answering account asks `threads.model`; a model of another provider or account asks `threads.switch` with it; an effort asks `threads.effort` (Default asks for none). The session core keeps `effort` from the thread record and `effort.switched`. A box without `providers.list` keeps the model menu it had, behind the same chip. Codex and Grok list models only once sessions' init has reported them.

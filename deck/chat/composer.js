@@ -56,7 +56,7 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
-import { answerRows, chipWord, accountAtStart, accountToken, isModel, EFFORTS, chipLine } from "./core/answer-with.js";
+import { answerRows, chipWord, accountAtStart, accountToken, isModel, EFFORTS, chipLine, runsOn } from "./core/answer-with.js";
 import { providerMark, providerName } from "../js/provider-mark.js";
 import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { tagPicker } from "./tag-picker.js";
@@ -278,7 +278,7 @@ export function mountComposer(opts) {
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
     const vts = tagUI.chips();
-    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking, s.provider, s.effort ?? null, answers.map(a => [a.provider, a.account, a.now]),
+    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking, s.provider, s.effort ?? null, machine ? null : runsOn(ta.value, answers, providerName), answers.map(a => [a.provider, a.account, a.now]),
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
     chipSig = sig;
@@ -301,6 +301,8 @@ export function mountComposer(opts) {
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
       tagUI.chipsEl(),
+      // "@codex ...": this one turn runs on that account, and says which when the provider has more than one.
+      (() => { const on = machine ? null : runsOn(ta.value, answers, providerName); return on ? h("span", { class: "composer-kind composer-runs-on", role: "status" }, "This turn runs on " + on) : null; })(),
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },

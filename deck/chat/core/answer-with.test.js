@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { answerRows, chipWord, accountAtStart, accountToken, isModel, chipLine } from "./answer-with.js";
+import { answerRows, chipWord, accountAtStart, accountToken, isModel, chipLine, runsOn } from "./answer-with.js";
 
 const LIST = [
   { id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }, { id: "c2", label: "Work", signed_in: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "x", label: "Extra" }] },
@@ -63,4 +63,13 @@ test("the chip line: who, then model and effort together", () => {
   assert.equal(chipLine("Grok", "", null), "Grok");
   assert.equal(answerRows(LIST, {})[0].effort, true);
   assert.equal(answerRows(LIST, {})[2].effort, false);
+});
+
+test("a bare @claude with two accounts says which one will run (the default); a named one says its own; one account says just the provider", () => {
+  const rows = answerRows(LIST, { provider: "codex" });
+  assert.equal(runsOn("@claude hello", rows, NAME), "Claude (Personal)");
+  assert.equal(runsOn("@claude-work hello", rows, NAME), "Claude (Work)");
+  assert.equal(runsOn("@codex hello", rows, NAME), "Codex");
+  assert.equal(runsOn("hello @codex", rows, NAME), null);
+  assert.equal(runsOn("@design hi", rows, NAME), null);
 });

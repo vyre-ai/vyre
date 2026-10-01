@@ -4,7 +4,7 @@
 // each with its plan and models in a line, and the current one marked.
 
 /** @typedef {{ id: string, label: string }} ModelChoice */
-/** @typedef {{ provider: string, account: string|null, label: string, sub: string, now: boolean, models: ModelChoice[], effort: boolean }} AnswerRow */
+/** @typedef {{ provider: string, account: string|null, label: string, sub: string, now: boolean, models: ModelChoice[], effort: boolean, isDefault: boolean }} AnswerRow */
 
 /**
  * @param {any} rows providers.list's answer: [{ id, label, accounts: [{ id, label, signed_in, default, plan? }], models: [{ id, label }] }]
@@ -26,7 +26,7 @@ export function answerRows(rows, current = {}) {
       const label = String(a.label || r.label || provider);
       const plan = typeof a.plan === "string" && a.plan ? a.plan : "";
       const mine = current.provider === provider && (current.account ? current.account === a.id : accounts.length ? a.default === true || accounts[0] === a : true);
-      out.push({ provider, account: a.id ? String(a.id) : null, label, sub: [plan, ...models].filter(Boolean).join(", "), now: !!mine, models: choices, effort: r.capabilities?.effort === true || (r.capabilities?.effort == null && provider === "claude") });
+      out.push({ provider, account: a.id ? String(a.id) : null, label, sub: [plan, ...models].filter(Boolean).join(", "), now: !!mine, models: choices, isDefault: a.default === true, effort: r.capabilities?.effort === true || (r.capabilities?.effort == null && provider === "claude") });
     }
   }
   // Only one row is "now": the first that matches.
@@ -77,4 +77,19 @@ export const EFFORTS = Object.freeze([
 export function chipLine(who, model, effort) {
   const e = effort ? (EFFORTS.find(x => x.id === effort)?.label || effort).toLowerCase() : "";
   return [who, [model, e].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+}
+
+/**
+ * Which account an "@codex" draft will run on, in words, so a bare provider name with two accounts never surprises: the box picks the provider's
+ * default account, and this says which. Null when the draft asks for no account.
+ * @param {string} text @param {AnswerRow[]} rows @param {(p: string) => string} nameOf
+ */
+export function runsOn(text, rows, nameOf) {
+  const hit = accountAtStart(text, rows, nameOf);
+  if (!hit) return null;
+  const [provider, account] = hit.mention.id.split(":");
+  const mine = rows.filter(r => r.provider === provider);
+  const row = account ? mine.find(r => r.account === account) : mine.find(r => r.isDefault) || mine[0];
+  const name = nameOf(provider);
+  return mine.length > 1 && row ? `${name} (${row.label})` : name;
 }
