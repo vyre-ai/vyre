@@ -13,11 +13,14 @@ trap cleanup EXIT
 sudo ip addr add $V4/32 dev lo; sudo ip -6 addr add $V6/128 dev lo nodad
 sudo ip addr add $DNS/32 dev lo 2>/dev/null
 # a server on both addresses that says which one the client used
-python3 - "$V4" "$V6" >"$tmp/srv.log" 2>&1 <<'PY' &
+python3 - "$V4" "$V6" "$tmp/hits" >"$tmp/srv.log" 2>&1 <<'PY' &
 import http.server, socket, sys, threading
+HITS = sys.argv[3]
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(s):
-        s.send_response(200); s.end_headers(); s.wfile.write(("via " + s.server.family_name + " from " + s.client_address[0] + "\n").encode())
+        line = "via " + s.server.family_name + " from " + s.client_address[0] + " ua " + (s.headers.get("User-Agent") or "-")[:40]
+        open(HITS, "a").write(line + "\n")
+        s.send_response(200); s.send_header("content-type", "text/html"); s.end_headers(); s.wfile.write(("<html><body>via " + s.server.family_name + " from " + s.client_address[0] + "</body></html>\n").encode())
     def log_message(s, *a): pass
 def serve(addr, fam, name):
     class S(http.server.HTTPServer): address_family = fam
@@ -43,6 +46,11 @@ run "getent ahosts"   getent ahosts $NAME
 run "curl"            curl -s --max-time 15 http://$NAME:8080/
 run "python urllib"   python3 -c "import urllib.request;print(urllib.request.urlopen('http://$NAME:8080/',timeout=15).read().decode())"
 run "node fetch"      node -e "fetch('http://$NAME:8080/').then(r=>r.text()).then(console.log).catch(e=>console.log('FAILED',e.cause&&e.cause.code||e.message))"
-for b in google-chrome chromium chromium-browser; do command -v $b >/dev/null && { run "$b (headless)" timeout 40 $b --headless=new --no-sandbox --disable-gpu --user-data-dir="$tmp/chrome" --dump-dom http://$NAME:8080/; break; }; done
-command -v firefox >/dev/null && run "firefox (headless)" timeout 60 firefox --headless --screenshot "$tmp/ff.png" http://$NAME:8080/ || true
-echo "-- forwarder log"; grep -iE "rebind|config|reply $NAME" "$tmp/fw.log" | sed 's/^[A-Za-z]* *[0-9]* [0-9:]* //' | head
+browser() { # a browser's answer is what the server saw: which family connected, and from which client
+  local label=$1; shift; : >"$tmp/hits"; local t0=$(date +%s.%N)
+  "$@" >/dev/null 2>&1; sleep 1
+  printf '%-22s %-6.2fs  %s\n' "$label" "$(echo "$(date +%s.%N) - $t0" | bc)" "$(sort -u "$tmp/hits" | tr '\n' ';' | cut -c1-140)${tmp:+}"; [ -s "$tmp/hits" ] || echo "   (the server saw no request)"
+}
+for b in google-chrome chromium chromium-browser; do command -v $b >/dev/null && { browser "$b (headless)" timeout 40 $b --headless=new --no-sandbox --disable-gpu --user-data-dir="$tmp/chrome" --dump-dom http://$NAME:8080/; break; }; done
+command -v firefox >/dev/null && browser "firefox (headless)" timeout 60 firefox --headless --screenshot "$tmp/ff.png" http://$NAME:8080/ || true
+echo "-- forwarder log"; sudo grep -iE "rebind|config|reply $NAME" "$tmp/fw.log" | sed 's/^[A-Za-z]* *[0-9]* [0-9:]* //' | head
