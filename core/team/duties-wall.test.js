@@ -49,20 +49,31 @@ test("a person turns on a teammate's duty: the real watcher runs once and files 
   }
   const made = await ok(person("team.duties.create", { teammate: added.agent, when: "daily 07:00", instruction: "Note which sessions finished.", act: false, title: "finished sessions" }));
   assert.equal(made.started, true, "a person's own create starts it");
-  const items = async () => (await ok(person("watchers.items", { name: made.watcher }))) || [];
-  // The first run is part of creating it; give the child a moment all the same, and say what happened if nothing was filed.
-  let first = await items();
-  for (let i = 0; i < 20 && !first.length; i++) { await new Promise(r => setTimeout(r, 500)); first = await items(); }
-  if (!first.length) {
-    const logs = await person("watchers.logs", { name: made.watcher });
-    const list = await person("watchers.list", {});
-    assert.fail(`the first run filed no item. logs: ${JSON.stringify(logs.data || logs.error).slice(0, 1500)} list: ${JSON.stringify(list.data || list.error).slice(0, 800)}`);
-  }
+  const items = async (name = made.watcher) => (await ok(person("watchers.items", { name }))) || [];
+  // The first run is part of creating it; poll up to 10 seconds, and say what happened if nothing was filed.
+  const firstItems = async (watcher, label) => {
+    let got = await items(watcher);
+    for (let i = 0; i < 20 && !got.length; i++) { await new Promise(r => setTimeout(r, 500)); got = await items(watcher); }
+    if (!got.length) {
+      const logs = await person("watchers.logs", { name: watcher });
+      const list = await person("watchers.list", {});
+      assert.fail(`${label}: the first run filed no item. logs: ${JSON.stringify(logs.data || logs.error).slice(0, 1500)} list: ${JSON.stringify(list.data || list.error).slice(0, 800)}`);
+    }
+    return got;
+  };
+  const first = await firstItems(made.watcher, "daily duty");
   assert.equal(first[0].about, added.agent);
   assert.equal(first[0].title, "Note which sessions finished.");
   assert.equal(first[0].why, "its schedule");
   assert.equal(first[0].act, false);
   assert.match(first[0].id, new RegExp(`^${made.watcher}:\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$`));
+
+  // The same with an hourly trigger (the case that failed once before the poll existed): a second duty, same real wall.
+  const hourly = await ok(person("team.duties.create", { teammate: added.agent, when: "hourly", instruction: "Note anything stale.", act: false, title: "stale things" }));
+  const hourlyItems = await firstItems(hourly.watcher, "hourly duty");
+  assert.equal(hourlyItems[0].title, "Note anything stale.");
+  assert.equal(hourlyItems[0].about, added.agent);
+  await ok(person("team.duties.delete", { id: hourly.id }));
 
   // A model cannot reach watchers' own doors either: duty.create is hidden from it, create is asked.
   assert.equal((await as("mcp")("watchers.duty.create", { name: "duty-x-1", project: project.slug, owner: { kind: "teammate", teammate: added.agent }, when: "daily 07:00", instruction: "x" })).error.code, "no_such_tool");
