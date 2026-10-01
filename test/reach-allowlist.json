@@ -41,38 +41,6 @@
    "module": "apps",
    "default": "open to any caller"
   },
-  "assistant.brief": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.capabilities": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.daily": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.glance": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.log": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.patterns": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.prompt.diff": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
-  "assistant.welcome": {
-   "module": "assistant",
-   "default": "open to any caller"
-  },
   "capsule.act": {
    "module": "capsule",
    "default": "limited by callers in code"
@@ -1007,66 +975,6 @@
    "module": "onboard",
    "default": "open to any caller"
   },
-  "planner.add": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.agenda": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.calendar.create": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.calendar.sync": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.delete": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.dismiss": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.done": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.get": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.list": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.parse": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.ringing": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.settings": {
-   "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "planner.snooze": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.upcoming": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
-  "planner.update": {
-   "module": "planner",
-   "default": "callers admit a model"
-  },
   "projects.access.revoke": {
    "module": "projects",
    "default": "limited by callers in code"
@@ -1491,39 +1399,6 @@
   "waiting.list": {
    "module": "waiting",
    "default": "limited by callers in code"
-  },
-  "watchers.create": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.hook": {
-   "module": "watchers",
-   "default": "internal or hook in code",
-   "hook": true
-  },
-  "watchers.items": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.list": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.logs": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.pause": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.resume": {
-   "module": "watchers",
-   "default": "open to any caller"
-  },
-  "watchers.test": {
-   "module": "watchers",
-   "default": "open to any caller"
   }
  }
 }

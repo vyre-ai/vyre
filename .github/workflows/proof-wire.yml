@@ -25,6 +25,11 @@ jobs:
         run: |
           npm i -g @openai/codex @anthropic-ai/claude-code
           npm i -g @agentclientprotocol/codex-acp || npm i -g @zed-industries/codex-acp
+          # npm sometimes skips the adapter's nested codex platform binary (an optional dependency): put it in if it is missing.
+          A="$(npm root -g)/@agentclientprotocol/codex-acp"
+          V=$(node -p "require('$A/node_modules/@openai/codex/package.json').version" 2>/dev/null || true)
+          if [ -n "$V" ] && [ ! -d "$A/node_modules/@openai/codex-linux-x64" ]; then (cd "$A" && npm i --no-save --no-package-lock "@openai/codex-linux-x64@npm:@openai/codex@$V-linux-x64"); fi
+          ls "$A/node_modules/@openai" || true
       - name: Grok Build
         continue-on-error: true
         run: |
@@ -32,3 +37,5 @@ jobs:
           echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
       - name: What each CLI proves
         run: node scripts/provider-wire-proof.mjs
+      - name: A tool call, an ask, the floor, an interrupt and a resume on the real CLIs
+        run: node scripts/provider-tool-proof.mjs

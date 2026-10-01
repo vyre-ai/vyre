@@ -93,7 +93,10 @@ async function prompt(id, blocks) {
     say("switched");
   } else if (t === "mode") say("mode: " + mode);
   else say("echo: " + t);
-  out({ id, result: { stopReason: "end_turn" } });
+  // FAKE_ACP_USAGE=acp: the standard ACP usage on the response (Codex); =grok: the same names in _meta (Grok Build), no usage_update either way.
+  const used = process.env.FAKE_ACP_USAGE === "acp" ? { usage: { totalTokens: 120, inputTokens: 100, cachedReadTokens: 30, outputTokens: 20, thoughtTokens: 5 } }
+    : process.env.FAKE_ACP_USAGE === "grok" ? { _meta: { modelId: "grok-x", totalTokens: 120, inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, reasoningTokens: 5, usage: { inputTokens: 100, outputTokens: 20, cachedReadTokens: 30, cacheCreationTokens: 0, reasoningTokens: 5, costUsdTicks: 113859200 } } } : {};
+  out({ id, result: { stopReason: "end_turn", ...used } });
 }
 
 readline.createInterface({ input: process.stdin }).on("line", async line => {

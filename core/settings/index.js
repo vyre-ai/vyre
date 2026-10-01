@@ -476,6 +476,11 @@ export default {
       const r = mirror(d, lv, target, value);
       const id = logChange(d, lv, target, before.value, value, caller, asked ? intent : null);
       ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, change: id, by: asked ? caller : "person", ...said(d, value) });
+      // An agent changed a guard because the person asked: asking is approving, so there is no confirm, but the person is
+      // always told, loudly, with an Undo that needs no proof (settings.undo). The event never carries a value.
+      if (asked && (needsConfirm(d, value, before.value) || (value === undefined && d.security === "loosens"))) {
+        ctx.events.emit("settings.loosened", { change: id, key: d.key, label: String(d.label || d.key).slice(0, 80), level: lv, ...tag, by: caller, said: intent });
+      }
       ctx.log(`${d.key} ${raw === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${caller} (${whereTo})`);
       return effective(d, at);
     };

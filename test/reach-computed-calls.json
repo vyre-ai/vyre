@@ -14,7 +14,7 @@
   "core/assistant/index.js": {
    "count": 5,
    "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "note": "reviewed by the assistant: every computed call runs as module:assistant and names a read tool of another owner (agents.list, waiting.count and waiting.list, memory.facts and memory.digest, context.now, modules.capabilities, mcp.servers, link.macs, push.devices, team.list, providers.list, threads.list, sessions.prompt.history, undo.list, onboard.status), plus agents.rollover (the one write, whose own code admits module:assistant). Each is dropped when it refuses, so a callee that closes to modules degrades the answer and never errors it."
   },
   "core/gate/index.js": {
    "count": 2,
