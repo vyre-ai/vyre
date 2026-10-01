@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
+
 - eval: the relevant-p95 measurement (scripts/eval-memory.js) takes the best p95 of five warm rounds, and up to fifteen when the best is still within half of the bar, so a loaded CI runner's spikes (Node 24 under load) can no longer fail a 5 ms bound the code meets by 35 times (p95 is 0.13 ms), while a real regression slows every round and still fails. The bar is unchanged.
 #### A test never boots a vyred on the person's Mac
 
