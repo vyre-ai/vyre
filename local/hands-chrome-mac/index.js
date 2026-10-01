@@ -123,7 +123,7 @@ export default {
     const urls = new Map();
 
     /** Learning what each site looks like is ON by default and switched off by the memory.site.learn setting or config learn: false (learn-switch.js). */
-    const learning = createLearnSwitch({ cfg, call: (tool, input) => ctx.call(tool, input) });
+    const learning = createLearnSwitch({ cfg, call: input => ctx.call("settings.get", input) });
     const refreshLearn = () => learning.refresh();
     const learnOn = () => learning.on();
     /** How long a "visit" is, for the two-visit evidence: 30 minutes unless the person's config says otherwise (a test knob; a shorter window only makes "seen twice" come sooner). */

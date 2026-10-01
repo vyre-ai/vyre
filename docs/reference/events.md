@@ -622,6 +622,7 @@ Listens for: `link.unpaired`
 | Event | Fields |
 | --- | --- |
 | `watcher.created` | `name`, `project`, `schedule` |
+| `watcher.deleted` | `name` |
 | `watcher.failed` | `error`, `failures`, `name`, `paused` |
 | `watcher.fired` | `items`, `name`, `seen`, `trigger` |
 | `watcher.paused` | `name`, `why` |

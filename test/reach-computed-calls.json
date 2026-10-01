@@ -146,11 +146,6 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
-  "local/hands-chrome-mac/index.js": {
-   "count": 1,
-   "owner": "capsule-sight",
-   "note": "learn-switch.js's call wrapper: the only tool it passes is settings.get {key: memory.site.learn}, a read of one setting; the callee's reach admits modules"
-  },
   "local/screen-mac/index.js": {
    "count": 1,
    "owner": "module's own team",

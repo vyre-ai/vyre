@@ -165,6 +165,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_NODE` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_UID_MIN` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
