@@ -79,7 +79,8 @@ test("signing: removeIdentity deletes the certificate and its trust by sha1, tak
   const r = removeIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
   assert.deepEqual(r, { pending: null, command: null });
   assert.ok(!fs.existsSync(dir));
-  assert.ok(f.calls.some(c => c.args[0] === "delete-certificate" && c.args.join(" ") === `delete-certificate -Z ${SHA1} -t /tmp/System.keychain`), "the certificate itself, with its trust");
+  assert.ok(f.calls.some(c => c.args[0] === "delete-certificate" && c.args.join(" ") === `delete-certificate -Z ${SHA1} /tmp/System.keychain`), "the certificate itself, by sha1");
+  assert.ok(f.calls.some(c => c.args[0] === "remove-trusted-cert"), "and its trust settings, best effort");
   assert.ok(!list.includes(kc), "the keychain is off root's search list");
   assert.ok(!fs.existsSync(path.join(path.dirname(dir), ".signing-cert-retry")), "no retry record when it worked");
 });
@@ -95,7 +96,7 @@ test("signing: when macOS will not delete the certificate, the sha1 is written o
   ensureIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
   const r = removeIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
   assert.equal(r.pending, SHA1);
-  assert.equal(r.command, `sudo /usr/bin/security delete-certificate -Z ${SHA1} -t /tmp/System.keychain`);
+  assert.equal(r.command, `sudo /usr/bin/security delete-certificate -Z ${SHA1} /tmp/System.keychain`);
   assert.ok(!fs.existsSync(dir), "the key folder is gone regardless");
   const rec = path.join(path.dirname(dir), ".signing-cert-retry");
   assert.deepEqual(JSON.parse(fs.readFileSync(rec, "utf8")), { sha1: SHA1 });

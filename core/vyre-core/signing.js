@@ -112,17 +112,23 @@ export function signApp({ app, dir, run }) {
 const pendingFile = (dir) => path.join(path.dirname(path.resolve(dir)), ".signing-cert-retry");
 
 /** The exact command that removes the certificate by hand. @param {string} sha1 @param {string} systemKeychain */
-export const removeCommand = (sha1, systemKeychain = SYSTEM_KEYCHAIN) => `sudo /usr/bin/security delete-certificate -Z ${sha1} -t ${systemKeychain}`;
+export const removeCommand = (sha1, systemKeychain = SYSTEM_KEYCHAIN) => `sudo /usr/bin/security delete-certificate -Z ${sha1} ${systemKeychain}`;
 
 /**
- * Delete the certificate and its trust settings from the system keychain. `delete-certificate -t` does
- * both (remove-trusted-cert alone leaves the certificate in the keychain). macOS may not answer, so it
- * gets 20 s. @returns {boolean} whether it is gone
+ * Delete the certificate from the system keychain, then, best effort, its trust settings. On a runner the
+ * trust-settings write (`remove-trusted-cert`, or `delete-certificate -t`) does not answer, while deleting
+ * the certificate does; trust settings for a certificate that is gone, with its key gone, are inert. Each
+ * step gets 20 s. @param {string} sha1 @param {string} systemKeychain @param {Run} run @param {string} [pem]
+ * @returns {boolean} whether the certificate is gone
  */
-function dropCertificate(sha1, systemKeychain, run) {
-  try { run(SECURITY, ["delete-certificate", "-Z", sha1, "-t", systemKeychain], { timeout: 20_000 }); return true; } catch { /* maybe never there, maybe stuck: look */ }
-  try { run(SECURITY, ["find-certificate", "-Z", "-a", "-c", IDENTITY, systemKeychain], { timeout: 20_000 }); } catch { return true; } // no certificate by that name: nothing left
-  return false;
+function dropCertificate(sha1, systemKeychain, run, pem) {
+  let gone = false;
+  try { run(SECURITY, ["delete-certificate", "-Z", sha1, systemKeychain], { timeout: 20_000 }); gone = true; } catch { /* maybe never there, maybe stuck: look */ }
+  if (!gone) {
+    try { run(SECURITY, ["find-certificate", "-Z", "-a", "-c", IDENTITY, systemKeychain], { timeout: 20_000 }); } catch { gone = true; } // no certificate by that name
+  }
+  if (gone && pem && fs.existsSync(pem)) { try { run(SECURITY, ["remove-trusted-cert", "-d", pem], { timeout: 10_000 }); } catch { /* inert without the certificate */ } }
+  return gone;
 }
 
 /** Finish a certificate removal an earlier uninstall could not. @param {{ dir: string, run: Run, systemKeychain?: string }} o @returns {string | null} the sha1 still pending */
@@ -151,7 +157,7 @@ export function removeIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
   if (sha1) {
     fs.mkdirSync(path.dirname(path.resolve(dir)), { recursive: true });
     fs.writeFileSync(pendingFile(dir), JSON.stringify({ sha1 }) + "\n", { mode: 0o600 });
-    if (dropCertificate(sha1, systemKeychain, run)) { fs.rmSync(pendingFile(dir), { force: true }); pending = null; } else pending = sha1;
+    if (dropCertificate(sha1, systemKeychain, run, path.join(dir, "cert.pem"))) { fs.rmSync(pendingFile(dir), { force: true }); pending = null; } else pending = sha1;
   }
   if (keychain) {
     // Root's own search list only; a failure here must not stop the removal.
