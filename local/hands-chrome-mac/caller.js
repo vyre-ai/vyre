@@ -4,12 +4,16 @@
 // daemon. caller.test.js compares the two so they cannot drift.
 
 /** @param {any} caller */
+const SURFACES = ["cli", "local", "deck", "capsule", "mobile"];
+
 export const callerKind = caller => {
   const c = String(caller);
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  if (c.startsWith("module:")) return "module";
+  const base = c.replace(/[\s:](agent|thread):.*$/si, "");
+  return base !== c && SURFACES.includes(base) ? "mcp" : base;
 };
 
-export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i;
 
 /** @param {any} caller */
 export const agentClaim = caller => {

@@ -667,3 +667,33 @@ function environ(pid) {
 function runTmux(socket, args) {
   return execFileSync(process.env.VYRE_TMUX_BIN || "tmux", ["-S", socket, ...args], { encoding: "utf8", timeout: 2000 });
 }
+
+/**
+ * The process group a process is in and the foreground process group of its controlling terminal, or null.
+ * The person's own `vyre` in their shell is in the foreground group of its login terminal; a setsid child
+ * has no controlling terminal, and a nohup or background child has the terminal but is not in its foreground
+ * group (tpgid). Read from /proc on Linux and ps elsewhere.
+ * @param {number} pid @returns {{ pgid: number, tpgid: number } | null}
+ */
+export function foreground(pid) {
+  try {
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      return { pgid: Number(f[2]), tpgid: Number(f[5]) };
+    }
+    const out = execFileSync("ps", ["-o", "pgid=,tpgid=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim().split(/\s+/).map(Number);
+    return out.length === 2 && out.every(Number.isFinite) ? { pgid: out[0], tpgid: out[1] } : null;
+  } catch { return null; }
+}
+
+let socketTrustMode = "strict";
+/**
+ * "strict" (the default): a person's label on the socket (cli, local, deck, capsule, mobile) is kept only for a
+ * peer that proves it is the person (the pinned Capsule, a terminal login in the foreground, or a server the
+ * person already proved); anything else is capped at mcp. "label" trusts the label as it always did: for tests
+ * that host vyred in their own process and have no terminal. Set by code, never by the environment.
+ * @param {"strict"|"label"} mode
+ */
+export function setSocketTrust(mode) { socketTrustMode = mode === "label" ? "label" : "strict"; }
+export const socketTrust = () => socketTrustMode;
