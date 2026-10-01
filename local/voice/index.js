@@ -56,7 +56,7 @@ export default {
     // never uses either, whatever surface it is wrapped in (the lead, 28 Sep). core/projects's
     // own isAgent() convention, since callers: LOCAL matches by the bare kind and would let it
     // through otherwise.
-    const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+    const isAgent = caller => /(?:^|[\s:])(?:agent|thread):/i.test(String(caller || ""));
     const refuseAgent = meta => {
       if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw new VoiceError("denied", "an agent cannot use the person's mic or speech key");
     };

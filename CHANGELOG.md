@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(voice): voice.listen, the direct stream connect and voice.status refuse any thread claim ("cli:thread:x", any case) as they do an agent's: a model's claim is never the person at the mic.
+
 - feat(sessions): a Grok account has a privacy choice Vyre records and shows plainly (sessions.accounts.set {account, privacy}, person only; accounts.list and providers.list carry privacy and a label: privacy on, xAI does not keep the account's sessions and Grok cannot make video; off, xAI keeps them and may train on them, and Grok can make video). New accounts default to on. The setting itself is held by xAI for the account and changed in Grok's own /privacy settings. Generated media: Grok's video and image files (rawOutput with a path in the account's images, videos, media or audio folder) are saved like Codex's image block; a picture a tool only read back (read_file) is never saved as media. A real Grok video capture is a fixture (core/sessions/testing/real/media/grok-video).
 
 - feat(sessions): providers.list shows the models a Codex or Grok account can use and each account's plan, learned from the init message of a session (sessions.providers.learn, internal; the ACP driver adds `models` and `plan` to its init). A later report with no models keeps the last list.

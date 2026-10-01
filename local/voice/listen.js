@@ -42,7 +42,8 @@ const kindOf = callerKind;
 /** The mic is the person's, physically: "cli agent:kit" is a model running under a CLI wrapper,
  *  not the person, whatever kindOf() would otherwise call it (reviewer, 28 Sep). Checked at both
  *  gates: voice.listen (index.js, the ticket-minting tool call) and here, for a direct connect. */
-export const isAgentCaller = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+// A model's claim of an agent or a thread ("cli agent:kit", "cli:thread:x", any case) is never the person at the mic.
+export const isAgentCaller = caller => /(?:^|[\s:])(?:agent|thread):/i.test(String(caller || ""));
 const token = () => crypto.randomBytes(24).toString("base64url");
 
 /**

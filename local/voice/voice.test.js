@@ -192,7 +192,7 @@ test("voice: push-to-talk through a real vyred, every failure visible, and the k
   });
 
   await t.test("the stream is refused to anyone but this Mac's own callers", async () => {
-    for (const caller of ["tailnet:juno", "mcp", "module:notes", "", "cli agent:kit", "local agent:kit", "deck agent:kit"]) {
+    for (const caller of ["tailnet:juno", "mcp", "module:notes", "", "cli agent:kit", "local agent:kit", "deck agent:kit", "cli:thread:x", "LOCAL:Thread:x"]) {
       const s = await listen(root, caller);
       assert.equal(s.refused, 403, caller);
       assert.equal(JSON.parse(String(s.body)).error.code, "denied");
@@ -227,9 +227,11 @@ test("voice: push-to-talk through a real vyred, every failure visible, and the k
     assert.equal(again.status, 403);
     // An agent never gets a ticket to hand out in the first place.
     assert.equal((await as("cli agent:kit")("voice.listen", {})).error.code, "denied");
+    assert.equal((await as("cli:thread:x")("voice.listen", {})).error.code, "denied", "a thread claim is never the person at the mic");
     assert.equal((await d.registry.call("voice.listen", {}, "deck", { peer: { node: "juno" } })).error.code, "denied");
     // voice.status refuses an agent caller the same way (the lead, 28 Sep).
     assert.equal((await as("local agent:kit")("voice.status", {})).error.code, "denied");
+    assert.equal((await as("local:thread:x")("voice.status", {})).error.code, "denied");
   });
 
   await t.test("voice.speak: off by default, then audio from the fake, once, to a local caller", async () => {
