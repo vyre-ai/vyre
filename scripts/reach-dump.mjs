@@ -18,10 +18,13 @@ for (const role of ["box", "local"]) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role, transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: [] } }));
   const d = await start({ root, log: () => {} });
   for (const [tool, def] of d.registry.tools) {
-    const now = { tool, module: def.module, callers: Array.isArray(def.callers) ? def.callers : null, internal: Boolean(def.internal), hook: Boolean(def.hook), reach: def.reach };
+    const pres = d.registry.deps && d.registry.deps.presence;
+    let proof = null;
+    try { proof = pres ? Boolean(pres.required(tool, def, undefined)) : null; } catch { proof = null; }
+    const now = { tool, module: def.module, callers: Array.isArray(def.callers) ? def.callers : null, internal: Boolean(def.internal), hook: Boolean(def.hook), reach: def.reach, proof };
     const was = out[tool];
     // A tool counts as limited only when every role that has it limits it.
-    out[tool] = was ? { ...now, callers: was.callers && now.callers ? now.callers : null, internal: was.internal && now.internal, hook: was.hook && now.hook } : now;
+    out[tool] = was ? { ...now, callers: was.callers && now.callers ? now.callers : null, internal: was.internal && now.internal, hook: was.hook && now.hook, proof: was.proof && now.proof } : now;
   }
   await d.stop();
 }

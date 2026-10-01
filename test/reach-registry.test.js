@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { HUMAN_ONLY } from "../core/presence/index.js";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const allow = JSON.parse(fs.readFileSync(path.join(root, "test", "reach-allowlist.json"), "utf8")).tools;
@@ -32,10 +33,33 @@ for (const top of ["core", "local", "modules", "apps"]) {
   }
 }
 
-test("every tool is declared by a reach or an explicit callers list, or is on the allowlist", () => {
+/** One boot for both tests. */
+let dumped = null;
+function dump() {
+  if (dumped) return dumped;
   const r = spawnSync(process.execPath, [path.join(root, "scripts", "reach-dump.mjs")], { encoding: "utf8", timeout: 240_000, maxBuffer: 64 << 20, env: { PATH: process.env.PATH, VYRE_NO_DIALOGS: "1" } });
   assert.equal(r.status, 0, `reach-dump failed: ${String(r.stderr).slice(-400)}`);
-  const tools = JSON.parse(r.stdout);
+  dumped = JSON.parse(r.stdout);
+  return dumped;
+}
+
+test("every HUMAN_ONLY tool still requires a presence proof, whatever reach it declares", () => {
+  // The lead's ruling: a mutating tool may be reach "anyone" because the proof is the stronger gate (and
+  // module callers need it). Declaring a reach must never quietly drop the proof, so the booted registry's
+  // own presence floor is asked about every tool on the list.
+  const tools = new Map(dump().map(t => [t.tool, t]));
+  const missing = [], noproof = [];
+  for (const name of HUMAN_ONLY) {
+    const t = tools.get(name);
+    if (!t) { missing.push(name); continue; }
+    if (t.proof !== true) noproof.push(`${t.module}: ${name} (reach ${t.reach})`);
+  }
+  assert.deepEqual(noproof.sort(), [], "a HUMAN_ONLY tool no longer requires a proof");
+  assert.ok(missing.length <= 3, `HUMAN_ONLY names no module registers: ${missing.join(", ")}`);
+});
+
+test("every tool is declared by a reach or an explicit callers list, or is on the allowlist", () => {
+  const tools = dump();
   assert.ok(tools.length > 500, `the registry booted with ${tools.length} tools`);
   const open = [], dropped = [], stale = [];
   for (const t of tools) {
