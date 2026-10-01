@@ -424,17 +424,20 @@ test("update-from-request: only the word update starts anything; a link or anoth
   assert.ok(!fs.existsSync(path.join(b.U, "status", "status.json")));
 });
 
-test("redteam U-fifo: a request that is a named pipe or a folder is dropped without blocking and nothing runs", async t => {
+test("redteam U-fifo: a request that is a named pipe or a folder is dropped without blocking and nothing runs", { timeout: 30_000 }, async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
   units_dirs(b);
   const req = path.join(b.U, "request", "request");
   // A named pipe would hang a plain `head` forever: it is not a regular file, so it is never opened.
   const mk = spawnSync("mkfifo", [req]);
+  // On CI a missing mkfifo is a failure, never a silent skip of the pipe half.
+  if (process.env.CI) assert.equal(mk.status, 0, "mkfifo is needed for the named-pipe attack");
   if (mk.status === 0) {
     const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
     assert.equal(r.code, 0);
     assert.ok(!fs.existsSync(req), "the pipe is removed");
   }
+  // The folder half is a regression case, not proof: it is refused with or without the regular-file guard.
   fs.mkdirSync(req);
   fs.writeFileSync(path.join(req, "update"), "update\n");
   const r2 = /** @type {any} */ (await b.run(["update-from-request"], KEY));
