@@ -33,6 +33,21 @@ test("a throwaway run seals the loader and the build, and every folder verifies"
   await assert.rejects(verify(r.folders[1], other));
 });
 
+test("an export built with a base URL (apps/app: /app) seals: index.html names /app/_expo/..., the files are keyed _expo/...", async () => {
+  const d = tmp();
+  fs.mkdirSync(path.join(d, "_expo", "static", "js", "web"), { recursive: true });
+  fs.mkdirSync(path.join(d, "assets"), { recursive: true });
+  fs.writeFileSync(path.join(d, "index.html"), '<!DOCTYPE html><html><head><link rel="icon" href="/app/favicon.ico" /></head><body><div id="root"></div><script src="/app/_expo/static/js/web/entry-e5632a79.js" defer></script></body></html>');
+  fs.writeFileSync(path.join(d, "favicon.ico"), "ico");
+  fs.writeFileSync(path.join(d, "_expo", "static", "js", "web", "entry-e5632a79.js"), "console.log('app');");
+  fs.writeFileSync(path.join(d, "assets", "font.woff2"), "font");
+  const out = path.join(tmp(), "app-out");
+  const r = await buildAppOut({ dist: d, release: "0.2.0", out, throwaway: true });
+  const m = JSON.parse(fs.readFileSync(path.join(out, "v", r.line.sha, "release-manifest.json"), "utf8"));
+  assert.deepEqual(m.entry, ["_expo/static/js/web/entry-e5632a79.js"], "the entry is the build's own file, without the base");
+  assert.ok(m.files["assets/font.woff2"] && m.files["favicon.ico"], "everything is listed");
+});
+
 test("a changed file after sealing fails verification", async () => {
   const dist = fakeDist(), out = path.join(tmp(), "app-out");
   const r = await buildAppOut({ dist, release: "0.2.0", out, throwaway: true });
