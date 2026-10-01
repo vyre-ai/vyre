@@ -101,9 +101,14 @@ jobs:
           $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
           "sock=$sockPath" >> $env:GITHUB_OUTPUT
           $found = $false
-          for ($i = 0; $i -lt 300; $i++) {
-            if (Test-Path $sockPath) { $found = $true; break }
-            Start-Sleep -Milliseconds 200
+          # Detect the pipe by really connecting to it: Test-Path against \\.\pipe\ was flaky on loaded runners
+          # (vyred was up and listening, the listing just did not show the name).
+          $pipeName = $sockPath -replace '^\\\\\.\\pipe\\', ''
+          for ($i = 0; $i -lt 400; $i++) {
+            try {
+              $c = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
+              $c.Connect(300); $c.Dispose(); $found = $true; break
+            } catch { Start-Sleep -Milliseconds 150 }
           }
           if (-not $found) {
             Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
