@@ -166,6 +166,9 @@ export function register(ctx, { denied }) {
         if (!own || own.family !== id) throw denied("write the origin's record with its family first");
         key = familyKey(id);
       }
+      // A value the bridge already redacted ("[redacted:key:40]") means the observation held a secret: refuse it whole, as the browser's own
+      // check does, rather than store a selector that is only the marker.
+      if (/\[redacted:/.test(JSON.stringify(i.patch || {}))) { event(key, "refused", "redacted", null); return { accepted: false, refused: [{ path: "", why: "secret shape" }] }; }
       // Notes are the person's own words: only a person's surface may write one, never Chrome's bridge.
       const clean = sanitize({ ...(i.patch && typeof i.patch === "object" ? i.patch : {}), key }, { now: now(), notes: isPerson(caller), known: knownIds(load(key)) });
       if (!clean.ok) { event(key, "refused", clean.refused.map(r => r.path).slice(0, 5).join(",").slice(0, 120), null); return { accepted: false, refused: clean.refused }; }

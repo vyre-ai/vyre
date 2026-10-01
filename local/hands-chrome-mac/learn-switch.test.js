@@ -33,11 +33,15 @@ test("the setting is re-read after 10 seconds and a change is seen", async () =>
   assert.equal(s.on(), false);
 });
 
-test("config learn wins and the setting is never read: false turns it off, a function is called", async () => {
-  let calls = 0;
-  const off = sw({ learn: false }, async () => { calls++; return { data: { value: true } }; });
-  await off.s.refresh(); assert.equal(off.s.on(), false); assert.equal(calls, 0);
+test("config can only turn learning off: learn: false is off, and learn: true never overrides an off setting", async () => {
+  const off = sw({ learn: false }, async () => ({ data: { value: true } }));
+  await off.s.refresh(); assert.equal(off.s.on(), false, "config false wins over an on setting");
+  const forced = sw({ learn: true }, async () => ({ data: { value: false } }));
+  await forced.s.refresh(); assert.equal(forced.s.on(), false, "config true does not override an off setting");
+  const both = sw({ learn: true }, async () => ({ data: { value: true } }));
+  await both.s.refresh(); assert.equal(both.s.on(), true);
   let on = true;
-  const fn = sw({ learn: () => on }, async () => ({}));
-  assert.equal(fn.s.on(), true); on = false; assert.equal(fn.s.on(), false);
+  const fn = sw({ learn: () => on }, async () => ({ error: { code: "no_such_tool" } }));
+  await fn.s.refresh(); assert.equal(fn.s.on(), true, "standalone: no settings tool, the config default stands");
+  on = false; assert.equal(fn.s.on(), false);
 });
