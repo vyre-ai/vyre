@@ -76,9 +76,9 @@ final class Health: ObservableObject {
     }
 
     var summary: String {
-        if !vyredUp { return "vyred is not running" }
+        if !vyredUp { return "Vyre is not running" }
         if let l = link { return "Box \(l.path)" }
-        return "vyred is running"
+        return "Vyre is running"
     }
 }
 
@@ -180,7 +180,7 @@ struct MenuBarPopover: View {
             }
             .padding(.horizontal, 14).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
-                status(health.vyredUp ? "vyred is running" : "vyred is not running", ok: health.vyredUp,
+                status(health.vyredUp ? "Vyre is running" : "Vyre is not running", ok: health.vyredUp,
                        sub: health.vyredUp ? nil : "Start Vyre below, or press Return in the Capsule")
                 if let l = health.link {
                     status("Box \(l.path)", ok: l.dot == .direct, sub: l.handshake)
