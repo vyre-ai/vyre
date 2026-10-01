@@ -18,7 +18,7 @@ export default async function watch({ hook, emit, log }) {
   log("fired on", why);
   // A push names a batch of messages by id: one item per id, so each is filed once. Nothing else
   // from the push is kept here (no sender, no subject): the content is read later, on purpose.
-  const ids = hook && Array.isArray(hook.ids) ? hook.ids.map(String).slice(0, 100) : [];
+  const ids = hook && Array.isArray(hook.ids) ? hook.ids.map(String).slice(0, 25) : [];
   const one = hook && (hook.id || hook.thread || hook.session || hook.item);
   const keys = ids.length ? ids : [one ? String(one) : new Date().toISOString().slice(0, 16)];
   for (const key of keys) emit({ id: spec.name + ":" + key.slice(0, 120), title, about: spec.owner.teammate, why, act: spec.act === true, at: Date.now() });

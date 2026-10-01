@@ -272,8 +272,8 @@ export class Runtime {
     if (typeof o.credential !== "string" || !o.credential) throw new Error("a mail preset needs credential: the name of the Google api-credential in the vault");
     const p = mailPreset({ project: String(o.project || ""), credential: o.credential, connection: o.connection, instruction: o.instruction, dailyUsd: o.dailyUsd });
     if (!(await this.project(o.project))) throw new Error(`no project "${o.project}"; vyre projects lists them`);
-    if (this.row(p.name)?.enabled) throw new Error(`${p.name} already exists; use watchers.card to see it`);
     const dir = path.join(this.d.dir, p.name);
+    if (this.row(p.name)?.enabled || fs.existsSync(dir)) throw new Error(`${p.name} already exists; watchers.card shows it`);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "watcher.json"), JSON.stringify(p.json, null, 2));
     fs.writeFileSync(path.join(dir, "watch.js"), p.code);

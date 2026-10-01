@@ -96,8 +96,9 @@ export default {
     ctx.tool("watchers.preset", {
       description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional). Files short quoted notes for the important mail a Gmail push announces; sends nothing. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
       input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" } } },
-      run: async (i, { caller } = {}) => {
-        if (!isPerson(caller) && !String(caller || "").startsWith("module:")) throw Object.assign(new Error("a preset watcher is set up by the person or a Vyre module"), { code: "denied" });
+      run: async (i, meta = {}) => {
+        // The person, or their assistant on their word (verified agent kind, never the caller string).
+        if (!isPerson(meta.caller) && /** @type {any} */ (meta).agentKind !== "assistant") throw Object.assign(new Error("a preset watcher is set up by the person or their assistant"), { code: "denied" });
         return rt.createPreset(i);
       },
     });

@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Mail preset hardening (reviewer-2): a Message-ID the sender chose is searched in Gmail only when
+  it is a plain id (never OR, from:, quotes), and the message found must carry exactly that id;
+  `gmailId` from the push is used when present. A duty files at most 25 items per push.
+  `watchers.preset` is the person's or their assistant's, and refuses a name that already exists.
+
 - `watchers.resume {name, hash?}` takes the card's hash and refuses with "changed after its card
   was shown" when the code moved; with no hash it still resumes unchanged code (a code change
   since it was turned on is refused either way).
