@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### release: the real app-out path is proven with a test key and a stable version
+
+- `test/build-app-out.test.js` runs `scripts/build-app-out.mjs` the way the release does (a signing key from the environment, not `--throwaway`) with a generated test key made the pinned one through a `pinned` seam, release `0.2.0`: the loader and the build seal, both folders verify, both manifests say 0.2.0. A key that is not the pinned one is refused, and so is a prerelease (`0.2.0-rc.1`): the hosted app's manifest, rollback floor and releases.json take plain `x.y.z`, and a prerelease is never served, so the release workflow skips this step for one.
+
 - Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line. Your own global git hooks still run in a session. To leave the `Vyre-Session` line out of commits, set `github.session_trailer` to false in Vyre's config. On git 2.31 and later no git config is written into the repo for this: the session's identity and hooks are its environment.
 - Push: the settings.loosened notice cannot be switched off: push.settings refuses kinds.notice and a stored false is ignored. With no push device, the Deck's settings.changed row is the only trace of a loosening.
 

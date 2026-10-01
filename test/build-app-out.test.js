@@ -63,6 +63,26 @@ test("a PEM key from the environment signs, and a key that is not the pinned rel
   await assert.rejects(buildAppOut({ dist: fakeDist(), release: "0.2.0", out: path.join(tmp(), "o"), pem, throwaway: true }), /two ways/);
 });
 
+test("the REAL path (no --throwaway) with a test key and a stable version: 0.2.0 seals end to end, both folders verify, a key that is not the pinned one is refused, and a prerelease is refused", async () => {
+  const k = crypto.generateKeyPairSync("ed25519");
+  const pem = k.privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+  const spki = k.publicKey.export({ format: "der", type: "spki" }).toString("base64");
+  const out = path.join(tmp(), "app-out");
+  const r = await buildAppOut({ dist: fakeDist(), release: "0.2.0", out, pem, pinned: spki });
+  assert.equal(r.throwaway, false);
+  assert.equal(r.line.release, "0.2.0");
+  const pub = new Uint8Array(Buffer.from(r.pub, "base64url"));
+  for (const f of r.folders) await verify(f, pub);
+  const root = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
+  const build = JSON.parse(fs.readFileSync(path.join(out, "v", r.line.sha, "release-manifest.json"), "utf8"));
+  assert.deepEqual([root.release, build.release], ["0.2.0", "0.2.0"], "the loader and the build both carry the stable version");
+  // The pinned key of this repo is not a test key: a real run with one is refused, never signed.
+  await assert.rejects(buildAppOut({ dist: fakeDist(), release: "0.2.0", out: path.join(tmp(), "o2"), pem }), /not the pinned release key/);
+  const other = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).toString("base64");
+  await assert.rejects(buildAppOut({ dist: fakeDist(), release: "0.2.0", out: path.join(tmp(), "o3"), pem, pinned: other }), /not the pinned release key/);
+  await assert.rejects(buildAppOut({ dist: fakeDist(), release: "0.2.0-rc.1", out: path.join(tmp(), "o4"), pem, pinned: spki }), /plain x\.y\.z/);
+});
+
 test("it refuses a missing build and a bad release", async () => {
   await assert.rejects(buildAppOut({ dist: tmp(), release: "0.2.0", out: path.join(tmp(), "o"), throwaway: true }), /no index.html/);
   await assert.rejects(buildAppOut({ dist: fakeDist(), release: "latest", out: path.join(tmp(), "o"), throwaway: true }), /x\.y\.z/);
