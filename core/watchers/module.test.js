@@ -2,10 +2,15 @@
 // The watchers module inside a real vyred: the real vault with a grant per watcher, real projects
 // and Memory, a watcher that reads a local feed, and the webhook route.
 
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
+const test = (name, fn) => nodeTest(name, { skip: offMac }, fn);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
+import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+import { skipOffRunner } from "../../lib/sandbox/test-host.js";
+const offMac = skipOffRunner();
+testHooks.wall = OPEN_WALL;   // these tests are not about the wall; wall.test.js and isolation.test.js are
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
@@ -33,6 +38,8 @@ async function boot(t) {
   t.after(() => server.close());
   const port = /** @type {any} */ (server.address()).port;
 
+  testHooks.net = { lookup: async () => ["127.0.0.1"], allowAddress: ip => ip === "127.0.0.1", allowPort: () => true, plainAuth: true };
+  t.after(() => { testHooks.net = {}; });
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const made = await call("projects.create", { name: "Harlow Legal", home }, { root });
@@ -51,9 +58,9 @@ function writeWatcher(p, name, spec, code) {
 
 test("watchers module: dry run, create, filing into the project, and the items in memory.facts for its folders", async t => {
   const { root, p, home, port } = await boot(t);
-  writeWatcher(p, "harlow-sqlite", { schedule: "*/15 * * * *", needs: ["feed-key"], emits: "post.seen" }, `
-    export default async function watch({ vault, emit }) {
-      const res = await fetch("http://127.0.0.1:${port}/", { headers: { authorization: "Bearer " + await vault.fetch("feed-key") } });
+  writeWatcher(p, "harlow-sqlite", { schedule: "*/15 * * * *", net: { "feed.test": { vault: "feed-key" } }, emits: "post.seen" }, `
+    export default async function watch({ emit }) {
+      const res = await fetch("http://feed.test:${port}/");
       if (!res.ok) throw new Error("feed answered " + res.status);
       for (const s of await res.json()) if (/sqlite/i.test(s.title)) emit({ id: s.id, title: s.title, url: s.url });
     }`);
@@ -69,7 +76,7 @@ test("watchers module: dry run, create, filing into the project, and the items i
   const g = await call("vault.grant", { name: "feed-key", module: "watchers", watcher: "harlow-sqlite" }, { root });
   assert.ok(!g.error, JSON.stringify(g.error));
   // A grant to one watcher is not a grant to another that lists the same item.
-  writeWatcher(p, "harlow-other", { schedule: "@hourly", needs: ["feed-key"] }, `export default async function watch({ vault }) { await vault.fetch("feed-key"); }`);
+  writeWatcher(p, "harlow-other", { schedule: "@hourly", net: { "feed.test": { vault: "feed-key" } } }, `export default async function watch() { await fetch("http://feed.test:${port}/"); }`);
   assert.match((await call("watchers.test", { name: "harlow-other" }, { root })).data.error, /not granted to watchers\/harlow-other/);
 
   const dry = (await call("watchers.test", { name: "harlow-sqlite" }, { root })).data;
@@ -126,7 +133,7 @@ test("watchers module: without a vault, a watcher that needs one fails its run a
   fs.writeFileSync(p.config, JSON.stringify({ ...CONFIG(root), modules: { disable: ["vault"] } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  writeWatcher(p, "harlow-inbox", { schedule: "@hourly", needs: ["billing-inbox"] }, `export default async function watch({ vault }) { await vault.fetch("billing-inbox"); }`);
+  writeWatcher(p, "harlow-inbox", { schedule: "@hourly", net: { "inbox.example.com": { vault: "billing-inbox" } } }, `export default async function watch() { await fetch("https://inbox.example.com/"); }`);
   const r = (await call("watchers.test", { name: "harlow-inbox" }, { root })).data;
   assert.equal(r.ok, false);
   assert.match(r.error, /the vault is not running on this machine/);
