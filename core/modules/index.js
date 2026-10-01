@@ -395,6 +395,27 @@ export const callerKind = caller => {
 /** An agent or thread claim anywhere in a label, in any shape and case. */
 export const CLAIM = /(?:^|[\s:])(?:agent|thread):/i;
 
+/** The labels a model's own session arrives with, which tools already read by their exact shape. */
+const MODEL_LABEL = /^(?:mcp|harness|tailnet):(?:agent|thread):[A-Za-z0-9_.-]+$/;
+
+/**
+ * A caller that carries an agent or thread claim, on any label that is not already a model session's own
+ * ("cli:agent:kit", "capsule thread:t1", "CLI:AGENT:x"), is rewritten to the canonical session shape
+ * ("mcp:agent:kit", "mcp:thread:t1") before a tool sees it, so every tool that reads the shape
+ * `mcp:agent:<name>` (the agents guard, vault, mail, planner) refuses it the same way it refuses the real
+ * thing. An empty or odd name becomes "unnamed", never empty: an empty name would read as no agent. A
+ * module's label and a caller with no claim come back unchanged (reviewer-2, 2 Oct 2026).
+ * @param {any} caller
+ */
+export const canonicalCaller = caller => {
+  const c = String(caller);
+  if (typeof caller !== "string" || c.startsWith("module:") || !CLAIM.test(c) || MODEL_LABEL.test(c)) return caller;
+  const a = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i.exec(c);
+  if (a) return `mcp:agent:${a[1] || "unnamed"}`;
+  const th = /(?:^|[\s:])thread:([A-Za-z0-9_.-]*)/i.exec(c);
+  return `mcp:thread:${(th && th[1]) || "unnamed"}`;
+};
+
 /**
  * The agent name a caller claims, in any transport shape: "mcp:agent:kit", "harness:agent:kit",
  * "cli:agent:kit", "module:agent:kit", or just "agent:kit". Null when the caller makes no such
@@ -1013,6 +1034,7 @@ export class Registry {
    *   input filter. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
+    caller = canonicalCaller(caller);
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // Default-deny for an added module (ADR 0047, reviews/platform.md H4): it reaches only a tool

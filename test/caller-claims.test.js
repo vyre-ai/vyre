@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { discover, validate, Registry, callerKind, callerAllowed, agentClaim, ownerDevice, ownerOverTailnet } from "../core/modules/index.js";
+import { discover, validate, Registry, callerKind, callerAllowed, agentClaim, ownerDevice, ownerOverTailnet, canonicalCaller } from "../core/modules/index.js";
 import { isPerson } from "../lib/caller.js";
 import { open } from "../core/store/index.js";
 import { Events } from "../core/events/index.js";
@@ -85,4 +85,43 @@ test("a person tool and an explicit callers list refuse every claim shape, and k
   // An agent's own session is still what an agents tool is for, on every spelling that reads as one.
   for (const l of ["mcp:agent:kit", "mcp:thread:t1", "cli:agent:kit", "capsule:thread:t1"]) assert.equal((await reg.call("bakery.agents", {}, l)).data?.ran, "agents", l);
   assert.ok((await reg.call("bakery.agents", {}, "cli")).error, "a person's surface is not an agent session");
+});
+
+test("canonicalCaller rewrites a claim on any other label to the model session's own shape", () => {
+  for (const l of SHAPES.filter(l => /agent:/i.test(l) && !/thread:/i.test(l))) assert.match(canonicalCaller(l), /^mcp:agent:[A-Za-z0-9_-]+$/, JSON.stringify(l));
+  for (const l of SHAPES.filter(l => /thread:/i.test(l) && !/agent:/i.test(l))) assert.match(canonicalCaller(l), /^mcp:thread:[A-Za-z0-9_.-]+$/, JSON.stringify(l));
+  assert.equal(canonicalCaller("cli:agent:kit"), "mcp:agent:kit");
+  assert.equal(canonicalCaller("capsule thread:t1"), "mcp:thread:t1");
+  assert.equal(canonicalCaller("CLI:AGENT:Kit"), "mcp:agent:Kit");
+  assert.equal(canonicalCaller("cli:agent:"), "mcp:agent:unnamed", "an empty name never reads as no agent");
+  assert.equal(canonicalCaller("cli agent:???"), "mcp:agent:unnamed");
+  assert.equal(canonicalCaller("cli:agent:a:thread:b"), "mcp:agent:a");
+  assert.equal(canonicalCaller("tailnet:alex@example.com agent:kit"), "mcp:agent:kit");
+  assert.equal(canonicalCaller("device:abcdefghijklmnop agent:kit"), "mcp:agent:kit");
+  // Real callers and a model session's own shapes come back untouched.
+  for (const l of ["cli", "local", "deck", "capsule", "mobile", "mcp", "harness", "mcp:agent:kit", "mcp:thread:t1", "harness:agent:kit", "tailnet:agent:kit", "tailnet:alex@example.com", "module:gate", "module:agent:kit", "link:box", "anonymous", ""]) assert.equal(canonicalCaller(l), l, JSON.stringify(l));
+  assert.equal(canonicalCaller(undefined), undefined);
+});
+
+test("a tool sees the canonical caller, so a guard on mcp:agent:<name> refuses cli:agent:kit", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "bakery", { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "bakery.who", summary: "w", reach: "anyone" }] } },
+    `export default { async start(ctx) {
+      ctx.tool("bakery.who", { input: { type: "object" }, run: async (i, meta) => ({ caller: meta.caller }) });
+      return {};
+    } };`);
+  const db = open(path.join(home, "vyre.db"));
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+  const found = discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] }));
+  await reg.start(found, { role: "local" });
+  t.after(() => db.close());
+  const seen = async c => (await reg.call("bakery.who", {}, c)).data?.caller;
+  assert.equal(await seen("cli:agent:kit"), "mcp:agent:kit");
+  assert.equal(await seen("capsule:thread:t9"), "mcp:thread:t9");
+  assert.equal(await seen("cli"), "cli");
+  assert.equal(await seen("mcp:agent:kit"), "mcp:agent:kit");
+  // The shape every guard in the tree reads.
+  const guard = c => /^mcp:agent:(.+)$/.exec(String(c || ""));
+  for (const c of ["cli:agent:kit", "deck agent:kit", "local:agent:", "CAPSULE:AGENT:x"]) assert.ok(guard(await seen(c)), c);
 });

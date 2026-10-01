@@ -338,7 +338,7 @@ test("peer: a person's label from under a claude is the session's own, for every
     assert.match(mine.body.error.message, /inside a Claude session/);
     // The person at a terminal, the Deck and the Capsule on the socket keep their label.
     const outside = await client(dir, socket, "probe.who", {}, { headers });
-    assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
+    assert.equal(outside.body.data.caller, /thread:/.test(label) ? "mcp:thread:t1" : label, JSON.stringify(outside)); // a claim is rewritten to the session shape (canonicalCaller)
     // A thread claim on a surface label is the session's own (callerKind): it is never the person's surface.
     assert.equal((await client(dir, socket, "probe.mine", {}, { headers })).status, /thread:/.test(label) ? 403 : 200, label);
   }

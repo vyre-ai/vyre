@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- security: Registry.call rewrites a claim-carrying caller on any other label ("cli:agent:kit", "capsule thread:t1", "CLI:AGENT:x") to the model session's own shape (`mcp:agent:<name>`, `mcp:thread:<id>`, an empty name becomes "unnamed") before a tool sees it, so every guard written for `mcp:agent:<name>` (agents, vault, mail, planner) refuses it. test/caller-label-regex.test.js stops new caller-label regexes outside core/modules and lib/caller.js (41 files on a shrinking allowlist); the agents assistant-only guard is tested against every spelling.
+
 - security: a caller that carries an agent or thread claim is that agent, whatever transport label it rides on. `callerKind` read "cli:agent:kit" as "cli", so reach `person` and every explicit callers list such as ["cli", "local"] admitted it. A claim on a surface label now reads as the model session ("mcp"); `ownerOverTailnet` refuses a claim anywhere in a login; claims are matched in any case; the daemon's forbidden-label check is case-insensitive; the switchboard, network, mcp hub and voice label checks match thread claims and any case. test/caller-claims.test.js tries every label shape against a person tool and an explicit-callers tool.
 
 - eval: the relevant-p95 measurement (scripts/eval-memory.js) takes the best p95 of five warm rounds, and up to fifteen when the best is still within half of the bar, so a loaded CI runner's spikes (Node 24 under load) can no longer fail a 5 ms bound the code meets by 35 times (p95 is 0.13 ms), while a real regression slows every round and still fails. The bar is unchanged.
