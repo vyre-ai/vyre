@@ -290,7 +290,8 @@ try {
     const listen = tcp.map(l => l.trim().split(/\s+/)).filter(f => f[3] === "0A").map(f => { const [ip, port] = f[1].split(":"); return { loopback: /^(0100007F|00000000000000000000000001000000)$/.test(ip), port: parseInt(port, 16), inode: f[9] }; });
     for (const x of listen.filter(x => !x.loopback && x.port !== 5900 && x.port !== 7000)) {
       // Who owns a listener nobody expected: the process whose descriptors hold its socket.
-      const who = shOk(["exec", "-u", "0", CONTAINER, "sh", "-c", `for p in /proc/[0-9]*; do if ls -l $p/fd 2>/dev/null | grep -q "socket:.${x.inode}."; then echo "$(cat $p/comm) pid $(basename $p) $(tr '\\0' ' ' < $p/cmdline | cut -c1-160)"; fi; done; true`]);
+      // Root without capabilities cannot read other uids' descriptors, so ask as each uid the computer runs.
+      const who = ["1000:1000", "1001:1001", "1002:1002", "0"].map(u => shOk(["exec", "-u", u, CONTAINER, "sh", "-c", `for p in /proc/[0-9]*; do if ls -l $p/fd 2>/dev/null | grep -q "socket:.${x.inode}."; then echo "uid ${u} $(cat $p/comm) pid $(basename $p) $(tr '\\0' ' ' < $p/cmdline | cut -c1-160)"; fi; done; true`])).filter(Boolean).join(" | ");
       console.log(`unexpected listener :${x.port} is held by: ${who || "(not found)"}`);
     }
     const open = [...new Set(listen.filter(x => !x.loopback).map(x => x.port))].sort((a, b) => a - b);
