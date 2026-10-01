@@ -141,6 +141,8 @@ export class Pool {
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
     /** Agents whose computer died on its own since it last started: Glass tells a viewer so instead of starting it. @type {Set<string>} */
     this.died = new Set();
+    /** When the sweep last looked at every running computer (its backstop runs once a minute). */
+    this.lastVerify = -Infinity;
     this.probe = deps.probe !== undefined ? deps.probe : deps.driver && deps.driver.name === "docker" ? tcpProbe : null;
     this.opts = {
       screens: Math.max(1, Number(c.screens || 2)),
@@ -672,27 +674,49 @@ export class Pool {
    * @param {string} agent
    */
   async verifyAlive(agent) {
-    const d = this.driver;
-    const r = this.row(agent);
-    if (!d || !r || r.state !== "running" || !r.container) return false;
-    const st = await d.inspect(r.container).catch(() => null);
-    if (!st || st.state === "running" || st.state === "paused") return false;
-    if (this.row(agent).state !== "running") return false;
-    this.leftTailnet(agent);
-    this.release(agent, "stopped");
-    this.set(agent, st.state === "missing" ? { state: "none", container: null } : { state: "stopped" });
-    this.hosts.delete(agent);
-    this.died.add(agent);
-    this.emit("computer.stopped", { agent, died: true });
-    this.log(`${agent}'s computer died (${st.state}${st.exitCode != null ? `, exit code ${st.exitCode}` : ""})`);
-    return true;
+    // Behind whatever is already happening to this computer (a stop of ours makes the same container exit, and must not read as a death).
+    return this.serial(agent, async () => {
+      const d = this.driver;
+      const r = this.row(agent);
+      if (!d || !r || r.state !== "running" || !r.container) return false;
+      const st = await d.inspect(r.container).catch(() => null);
+      if (!st || st.state === "running" || st.state === "paused") return false;
+      this.leftTailnet(agent);
+      this.release(agent, "stopped");
+      this.set(agent, st.state === "missing" ? { state: "none", container: null } : { state: "stopped" });
+      this.hosts.delete(agent);
+      this.died.add(agent);
+      this.emit("computer.stopped", { agent, died: true });
+      this.log(`${agent}'s computer died (${st.state}${st.exitCode != null ? `, exit code ${st.exitCode}` : ""})`);
+      return true;
+    });
+  }
+
+  /**
+   * Hear about a computer's death from the container runtime instead of polling for it: the driver's event stream
+   * (die, oom, kill, stop) names the container, and that computer is checked at once. After a reconnect every running
+   * computer is checked once, since an event can be lost while the stream is down. Returns a stop function; a driver with
+   * no event stream (the fake, or a runtime without one) leaves the sweep's backstop as the only signal.
+   */
+  watchDeaths() {
+    const d = /** @type {any} */ (this.driver);
+    if (!d || typeof d.watchEvents !== "function") return () => {};
+    const all = () => { for (const r of this.rows()) if (r.state === "running") this.verifyAlive(r.agent).catch(() => {}); };
+    const w = d.watchEvents(e => {
+      const r = this.rows().find(x => x.container && (x.container === e.id || String(x.container).startsWith(e.id) || e.id.startsWith(String(x.container))));
+      if (r && r.state === "running") this.verifyAlive(r.agent).catch(() => {});
+    }, { onGap: all, log: m => this.log(m) });
+    return () => w.stop();
   }
 
   /** Release idle checkouts and freeze computers idle past freezeMs. index.js calls it on a timer, tests by hand. */
   async sweep() {
-    // A computer that died under its checkout is noticed here (the sweep runs every few seconds while anything is in use)
-    // and, sooner, when a Glass stream to it drops. One local inspect per running computer.
-    for (const r of this.rows()) if (r.state === "running") await this.verifyAlive(r.agent).catch(() => {});
+    // The backstop for a death the runtime's event stream did not report (no stream, or an event lost): one local inspect
+    // per running computer, at most once a minute (SPEC principle 8), however often the sweep itself runs.
+    if (this.now() - this.lastVerify >= 60_000) {
+      this.lastVerify = this.now();
+      for (const r of this.rows()) if (r.state === "running") await this.verifyAlive(r.agent).catch(() => {});
+    }
     const now = this.now();
     for (const co of [...this.checkouts.values()]) {
       if (co.viewers === 0 && !this.heldBy(co.agent) && now - co.touched >= this.opts.idleMs) this.release(co.agent, "idle");

@@ -4,11 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- Computers: a computer that dies under its checkout (killed, out of memory, crashed) is marked stopped
-  at the next sweep, or at once when a Glass stream to it drops: its checkout is released, computer.stopped
-  is emitted, and Glass closes the stream with "This computer stopped. Start it again?" (4001 with the
-  reason, so the Deck shows it and stops retrying). `computers.watch` refuses a ticket for a computer that
-  died, with the same words, until it is started again (`pool.verifyAlive`, `pool.died`).
+- Computers: a computer that dies (killed, out of memory, crashed) is marked stopped as soon as the container
+  runtime says so. The docker driver watches the Engine's die/oom/kill/stop events through a new `GET /events`
+  route on the restricted proxy (type, events and labels forced to this box's computers; only since= is the
+  caller's), reconnects with since= and checks every running computer once after a gap. The sweep only
+  backstops it, once a minute (SPEC principle 8). The checkout is released, computer.stopped is emitted, Glass
+  closes the stream with "This computer stopped. Start it again?" (4001 with the reason, so the Deck shows it
+  and stops retrying), and `computers.watch` refuses a ticket for a computer that died, with the same words,
+  until it is started again (`pool.verifyAlive`, `pool.watchDeaths`, `pool.died`).
 - Computers: the pool's readiness check dials computerd's port, not the screen's. Every unauthenticated
   connection to Xvnc counts toward its host blacklist, and enough of them made Glass's first connection
   fail with "does not speak RFB 3.8"; the image also raises Xvnc's BlacklistThreshold to 50 (found by

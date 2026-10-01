@@ -93,6 +93,23 @@ export class FakeDriver {
     this.calls.push({ op: "unpause", id });
   }
 
+  /** Event watchers, as the docker driver's watchEvents. @type {Set<(e: any) => void>} */
+  get watchers() { return this._watchers || (this._watchers = new Set()); }
+
+  watchEvents(onEvent) {
+    this.watchers.add(onEvent);
+    return { stop: () => { this.watchers.delete(onEvent); } };
+  }
+
+  /** A computer dies on its own: its container exits and the runtime says so. */
+  die(agent, exitCode = 137) {
+    for (const c of this.containers.values()) {
+      if (c.agent !== agent) continue;
+      c.state = "exited"; c.exitCode = exitCode;
+      for (const w of this.watchers) w({ id: c.id, agent, action: "die", exitCode, at: Date.now() / 1000 });
+    }
+  }
+
   async stop(id) {
     const c = this.must(id);
     c.state = "exited";

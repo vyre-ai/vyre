@@ -118,6 +118,8 @@ export default {
           sweeping = false;
         }
         schedule();
+    // The runtime tells us when a computer dies (docker events through the proxy); the sweep is only the backstop.
+    const stopDeaths = pool.watchDeaths();
       }, busy() ? sweepMs : idleSweepMs);
       timer.unref();
     };
@@ -449,6 +451,7 @@ export default {
     return {
       pool, keyboard, shield, fills, driver, sweep,
       async stop() {
+        stopDeaths();
         if (timer) clearTimeout(timer);
         keyboard.stop();
         shield.stop();

@@ -74,6 +74,56 @@ export class DockerDriver {
     });
   }
 
+  /**
+   * Watch the Engine's die/oom/kill/stop events for this box's computers (through the proxy's /events). Calls
+   * onEvent({ id, agent, action, exitCode, at }) for each; reconnects with a growing pause and asks for what it missed
+   * with since=; calls onGap() after a reconnect so the caller can look at every computer once (an event can be lost
+   * while the stream is down). Returns { stop() }.
+   * @param {(e: { id: string, agent: string, action: string, exitCode: number|null, at: number }) => void} onEvent
+   * @param {{ onGap?: () => void, log?: (m: string) => void }} [o]
+   */
+  watchEvents(onEvent, o = {}) {
+    let stopped = false, req = null, last = 0, delay = 1000, timer = null, first = true;
+    const open = () => {
+      if (stopped) return;
+      const path = `${API}/events${last ? `?since=${last}` : ""}`;
+      req = http.request({ ...this.target, method: "GET", path, headers: { host: "docker", authorization: `Bearer ${this.bearer}` } }, res => {
+        if (res.statusCode !== 200) { res.resume(); retry(`status ${res.statusCode}`); return; }
+        delay = 1000;
+        if (!first && o.onGap) o.onGap();
+        first = false;
+        let buf = "";
+        res.setEncoding("utf8");
+        res.on("data", d => {
+          buf += d;
+          let i;
+          while ((i = buf.indexOf("\n")) >= 0) {
+            const line = buf.slice(0, i); buf = buf.slice(i + 1);
+            if (!line.trim()) continue;
+            let e; try { e = JSON.parse(line); } catch { continue; }
+            const a = (e && e.Actor && e.Actor.Attributes) || {};
+            if (e.time) last = Math.max(last, Number(e.time));
+            if (!e.Actor || !e.Actor.ID || e.Type !== "container") continue;
+            try { onEvent({ id: String(e.Actor.ID), agent: String(a[this.computerLabel] || ""), action: String(e.Action || e.status || ""), exitCode: a.exitCode != null ? Number(a.exitCode) : null, at: Number(e.time || 0) }); } catch { /* a listener's error is its own */ }
+          }
+        });
+        res.on("end", () => retry("the stream ended"));
+        res.on("error", e => retry(e.message));
+      });
+      req.on("error", e => retry(e.message));
+      req.end();
+    };
+    const retry = why => {
+      if (stopped) return;
+      if (o.log) o.log(`docker events: ${why}; trying again in ${Math.round(delay / 1000)} s`);
+      timer = setTimeout(open, delay);
+      if (timer.unref) timer.unref();
+      delay = Math.min(delay * 2, 30_000);
+    };
+    open();
+    return { stop() { stopped = true; if (timer) clearTimeout(timer); if (req) req.destroy(); } };
+  }
+
   /** A request that must succeed (2xx, or one of `ok`). */
   async must(method, path, body, ok = []) {
     const r = await this.request(method, path, body);

@@ -358,6 +358,43 @@ test("pool: a computer that dies under its checkout is marked stopped at the nex
   assert.equal(pool.died.has("kit"), false);
 });
 
+test("pool: the runtime's event stream reports a death at once, without a sweep", async t => {
+  const { pool, driver, types } = setup(t);
+  t.after(pool.watchDeaths());
+  await pool.checkout("kit");
+  await pool.checkout("pax");
+  driver.die("kit");
+  for (let i = 0; i < 20 && pool.view("kit").state === "running"; i++) await new Promise(r => setImmediate(r));
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.ok(types().includes("computer.stopped"));
+  assert.equal(pool.view("pax").state, "running", "only the computer that died");
+});
+
+test("pool: a computer's own stop is not read as a death", async t => {
+  const { pool, driver, events } = setup(t);
+  t.after(pool.watchDeaths());
+  await pool.checkout("kit");
+  await pool.stop("kit");
+  for (const w of driver.watchers) w({ id: [...driver.containers.values()][0].id, agent: "kit", action: "die", exitCode: 0, at: 1 });
+  await new Promise(r => setImmediate(r));
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.equal(pool.died.has("kit"), false);
+  assert.equal(events.filter(e => e.type === "computer.stopped").length, 1, "one stopped event, from stop() itself");
+});
+
+test("pool: the sweep's own look at running computers is a backstop, at most once a minute", async t => {
+  const { pool, driver, clock } = setup(t);
+  await pool.checkout("kit");
+  await pool.sweep();
+  [...driver.containers.values()][0].state = "exited"; // a death the stream never reported
+  clock.t += 5_000;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "running", "not looked at again within a minute");
+  clock.t += 60_000;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "stopped");
+});
+
 test("pool: verifyAlive leaves a running computer alone, and a missing container goes back to none", async t => {
   const { pool, driver } = setup(t);
   await pool.checkout("kit");
