@@ -24,7 +24,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 26 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 35 | 15 | none |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 36 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
@@ -60,7 +60,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 27 | 13 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 32 | 8 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 37 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
@@ -71,7 +71,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 28 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 51 | 35 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 52 | 35 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
@@ -169,8 +169,8 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [35](tools.md#chrome), 1 of them only for other modules
-- Emits: [15 events](events.md#chrome)
+- Tools: [36](tools.md#chrome), 2 of them only for other modules
+- Emits: [16 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -179,7 +179,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [5](tools.md#chrome), 1 of them only for other modules
+- Tools: [5](tools.md#chrome), 2 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -565,7 +565,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [32](tools.md#sessions), 8 of them only for other modules
+- Tools: [37](tools.md#sessions), 10 of them only for other modules
 - Emits: [8 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -688,7 +688,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [51](tools.md#threads), 18 of them only for other modules
+- Tools: [52](tools.md#threads), 19 of them only for other modules
 - Emits: [35 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`

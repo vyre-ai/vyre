@@ -111,10 +111,6 @@
    "default": "internal or hook in code",
    "internal": true
   },
-  "connectors.scope": {
-   "module": "connectors",
-   "default": "limited by callers in code"
-  },
   "context.now": {
    "module": "context",
    "default": "limited by callers in code"
