@@ -1,0 +1,55 @@
+# J6 (Vyre for Chrome on a fake GoHighLevel page) and J7 (an agent's own computer in Glass), agent halves, on
+# runners (e2e2 item 5). Push to work/e2e2-j6j7 or dispatch it.
+name: matrix-j6j7
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/e2e2-j6j7"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-j6j7-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  j6:
+    name: j6-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: J6, Vyre for Chrome on a fake GoHighLevel page
+        run: node scripts/matrix/j6.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-j6-${{ matrix.os }}
+          path: results
+          retention-days: 14
+  j7:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: J7, an agent's computer in Glass (builds the image, takes over, kills it mid-task)
+        run: node scripts/matrix/j7.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-j7
+          path: results
+          retention-days: 14

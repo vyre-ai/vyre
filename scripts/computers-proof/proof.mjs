@@ -244,6 +244,20 @@ try {
   const bc = spawnSync("node", ["scripts/computers-proof/browser-checks.mjs", ep.data.url, ep.data.token, CONTAINER], { cwd: here, env, encoding: "utf8", timeout: 240_000 });
   console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
   check(bc.status === 0, "3 browser-checks (file://, chrome://, download folder)", { exit: bc.status });
+
+  // ---- 4f. the computer dies mid-task (PROOF_KILL=1, the matrix's J7 step 7.3) ----------------
+  // Kill the container the way a crash would. The pool's monitor must notice, say stopped, and Glass must answer
+  // with a named refusal, not hang; nothing may be left running.
+  if (process.env.PROOF_KILL === "1") {
+    sh(["kill", CONTAINER]);
+    let st = null;
+    for (let i = 0; i < 120; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
+    check(st === "stopped" || st === "none", "4f a killed computer is reported stopped, not running", { state: st });
+    const w = await person("computers.watch", { agent: AGENT, surface: "deck:laptop" });
+    check(Boolean(w.error) && /\S/.test(String(w.error.message)), "4f Glass refuses a stopped computer with a plain message", w.error ? { code: w.error.code, message: String(w.error.message).slice(0, 160) } : "it handed out a ticket");
+    const up = shOk(["ps", "--filter", `name=${CONTAINER}`, "--format", "{{.Status}}"]);
+    check(!/^Up/.test(up), "4f no running container is left", up || "(none)");
+  }
 } catch (e) {
   exitCode = 1;
   if (!/^step failed/.test(e.message)) console.log(`FAIL error: ${e.stack || e.message}`);
