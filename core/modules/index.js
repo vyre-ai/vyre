@@ -382,9 +382,18 @@ const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet"]);
 
 export const callerKind = caller => {
   const c = String(caller);
-  // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  if (c.startsWith("module:")) return "module";
+  const base = c.replace(/[\s:](agent|thread):.*$/si, "");
+  // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp". A claim
+  // carried on a person's surface label ("cli:agent:kit", "capsule thread:x") is the agent's own, never
+  // the surface: it reads as the model session it is, so no callers list, reach or kind check that
+  // trusts "cli" or "capsule" ever admits it (reviewer-2, 2 Oct 2026). Other labels keep their kind
+  // ("tailnet:agent:x" stays "tailnet", which no list admits).
+  return base !== c && SURFACE_LABELS.includes(base) ? "mcp" : base;
 };
+
+/** An agent or thread claim anywhere in a label, in any shape and case. */
+export const CLAIM = /(?:^|[\s:])(?:agent|thread):/i;
 
 /**
  * The agent name a caller claims, in any transport shape: "mcp:agent:kit", "harness:agent:kit",
@@ -402,7 +411,7 @@ export const callerKind = caller => {
  * 2026-09-28: the daemon's own socket vouch fails such a claim today, but an in-process caller
  * does not go through that layer, so this helper has to fail closed on its own).
  */
-export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i;
 export const agentClaim = caller => {
   const m = AGENT_CLAIM.exec(String(caller ?? ""));
   return m ? m[1] || "(unnamed)" : null;
@@ -426,7 +435,7 @@ export const callerAllowed = (callers, caller) => !callers || (callers.includes(
  * verified owner `tailnet:<login>` (core/names/service.js); a guest is `tailnet-guest:` and an
  * agent's node `tailnet:agent:`. The owner's Deck and phone always arrive this way on a box.
  */
-export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller));
+export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller)) && !CLAIM.test(String(caller).slice("tailnet:".length));
 
 /**
  * The owner on one of their own devices, however it reached the box: over the tailnet

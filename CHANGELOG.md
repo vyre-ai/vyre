@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- security: a caller that carries an agent or thread claim is that agent, whatever transport label it rides on. `callerKind` read "cli:agent:kit" as "cli", so reach `person` and every explicit callers list such as ["cli", "local"] admitted it. A claim on a surface label now reads as the model session ("mcp"); `ownerOverTailnet` refuses a claim anywhere in a login; claims are matched in any case; the daemon's forbidden-label check is case-insensitive. test/caller-claims.test.js tries every label shape against a person tool and an explicit-callers tool.
+
 - eval: the relevant-p95 measurement (scripts/eval-memory.js) takes the best p95 of five warm rounds, and up to fifteen when the best is still within half of the bar, so a loaded CI runner's spikes (Node 24 under load) can no longer fail a 5 ms bound the code meets by 35 times (p95 is 0.13 ms), while a real regression slows every round and still fails. The bar is unchanged.
 #### A test never boots a vyred on the person's Mac
 
