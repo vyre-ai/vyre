@@ -946,8 +946,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-plan-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
 .cv-plan-step { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; }
 .cv-plan-mark { flex: none; width: 14px; height: 14px; margin-top: 2px; border: 1px solid var(--rule); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
-.cv-plan-step[data-status="running"] .cv-plan-mark { border-color: var(--signal); background: var(--signal); }
-.cv-plan-step[data-status="done"] .cv-plan-mark { border-color: transparent; color: var(--signal); }
+.cv-plan-step[data-status="running"] .cv-plan-mark { border-color: var(--text); background: var(--text); }
+.cv-plan-step[data-status="done"] .cv-plan-mark { border-color: transparent; color: var(--text-2); }
 .cv-plan-step[data-status="done"] .cv-plan-text { color: var(--label); text-decoration: line-through; }
 
 /* Which AI wrote a run (provider-badge.md): the badge at the avatar's lower right with a ring in the ground colour, "Provider, model" beside the name. */

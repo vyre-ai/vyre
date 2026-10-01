@@ -66,7 +66,7 @@ export function accountAtStart(text, rows, nameOf) {
   return prov ? { mention: { kind: "account", id: prov.provider, name: nameOf(prov.provider) }, token: m[1] } : null;
 }
 
-/** Whether a model the session reports is this choice: the same id, or the alias inside a longer id ("claude-opus-4-5" is "opus"). @param {string|null|undefined} current @param {string} id */
+/** Whether a model the session reports is this choice: the same id, or a short alias found inside a longer id (a full model id contains its alias). @param {string|null|undefined} current @param {string} id */
 export const isModel = (current, id) => !!current && (current === id || current.toLowerCase().includes(id.toLowerCase()));
 
 /** The levels threads.effort takes, with the words a person reads; null is the model's own default. */

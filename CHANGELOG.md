@@ -294,6 +294,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   dropped; the credential never reaches the watcher's code.
 
 - settings.loosened: when an agent changes a guard because the person asked (settings.request, a loosening key or a change that needed a confirm, a reset of a loosening key included), settings emits `settings.loosened { change, key, label, level, project|device|session?, by, said }` with no value. core/push turns it into a loud `notice` push (not in the daily budget, rings through quiet hours, on by default) with the fixed sentence "<label> changed, as you asked. Undo" and the path /settings?change=<id>; the change's Undo (settings.undo) needs no proof.
+#### fix: three reds in rc-0.2's node run
+
+- The plan checklist's CSS used the raw `--signal` colour; it now uses `--text` and `--text-2` (the tokens test). `deck/chat/core/answer-with.js` had a model alias spelled in a comment, which the cohesion drift scan counts as a copy of the model list; reworded. The service worker's install list (`deck/sw.js`) now keeps `/chat/gate-lines.js`, `/js/provider-mark.js`, `/js/provider-art.js`, `/chat/undo-sheet.js` and `/chat/core/answer-with.js`, which the shell imports, so the phone shell works offline.
+
 #### test: the chat contract knows thread.plan
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
 
