@@ -249,14 +249,22 @@ try {
   // Kill the container the way a crash would. The pool's monitor must notice, say stopped, and Glass must answer
   // with a named refusal, not hang; nothing may be left running.
   if (process.env.PROOF_KILL === "1") {
+    // Findings here are recorded and the run goes on, so one stale answer does not hide the next check.
+    const note = (ok, name, evidence) => { results.push({ ok, name }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`); if (!ok) failed = true; };
     sh(["kill", CONTAINER]);
     let st = null;
-    for (let i = 0; i < 120; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
-    check(st === "stopped" || st === "none", "4f a killed computer is reported stopped, not running", { state: st });
+    for (let i = 0; i < 90; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
+    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 90 s, not running", { state: st });
     const w = await person("computers.watch", { agent: AGENT, surface: "deck:laptop" });
-    check(Boolean(w.error) && /\S/.test(String(w.error.message)), "4f Glass refuses a stopped computer with a plain message", w.error ? { code: w.error.code, message: String(w.error.message).slice(0, 160) } : "it handed out a ticket");
+    let said = w.error ? String(w.error.message) : "";
+    if (!w.error) {
+      // A ticket was handed out: what does the stream do? It must end, with a reason a person can read.
+      try { const ws = await wsConnect(socketPath, w.data.path); viewers.push(ws); const rfb = new RfbClient(ws); await rfb.handshake(); said = "the stream opened on a dead computer"; }
+      catch (e) { said = "ticket given, then the stream ended: " + String(e.message).slice(0, 120); }
+    }
+    note(Boolean(w.error) && /\S/.test(said), "4f Glass refuses a killed computer with a plain message (no ticket for a dead computer)", said || "no message");
     const up = shOk(["ps", "--filter", `name=${CONTAINER}`, "--format", "{{.Status}}"]);
-    check(!/^Up/.test(up), "4f no running container is left", up || "(none)");
+    note(!/^Up/.test(up), "4f no running container is left", up || "(none)");
   }
 } catch (e) {
   exitCode = 1;
