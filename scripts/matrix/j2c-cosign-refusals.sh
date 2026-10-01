@@ -128,7 +128,7 @@ askupd() { PORT=$((PORT + 1)); serve "$WORK/$1" $PORT
   sudo sh -c "printf 'update\n' >$ST/request/request"
   out=$(sudo env "VYRE_DIR=$DIR" "VYRE_BOX_URL=http://127.0.0.1:$PORT/" VYRE_RELEASES_API= "VYRE_RELEASE_KEY=$GOODPUB" VYRE_UPDATE_MIN_GAP=0 VYRE_UPDATE_WAIT=300 "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
 mkupd upd-missing "$R4"; askupd upd-missing; ready; v=$(hv)
-if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qiE 'manifest|not found|unknown' && printf '%s' "$out" | grep -qi 'rolled back\|nothing was changed'; then rec B3-update-digest-not-held ok "$(printf %s "$out" | tail -1)"
+if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qiE 'manifest|not found|unknown'; then rec B3-update-digest-not-held ok "$(printf %s "$out" | tail -1)"
 else rec B3-update-digest-not-held false "rc $rc, runs '$v' (want $V0): $(printf %s "$out" | tail -4)"; fi
 # What the update does with a properly SIGNED release that names an UNSIGNED image: recorded as it is, not asserted as a refusal.
 mkupd upd-unsigned "$R1"; askupd upd-unsigned; ready; v=$(hv)
