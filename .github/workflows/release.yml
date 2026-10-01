@@ -283,14 +283,19 @@ jobs:
         with:
           name: prepared
           path: dist
-      - name: Pin the images by digest in the released compose.yml
+      - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
           [ -n "$BOX" ] && [ -n "$COMPUTER" ] || { echo "no image digests"; exit 1; }
-          sed -i "s|\${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}|\${VYRE_IMAGE:-$BOX}|g; s|\${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}|\${VYRE_COMPUTERS_IMAGE:-$COMPUTER}|g" dist/compose.yml
-          grep -q "$BOX" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
+          # Every `image: ${VAR:-default}` line becomes `image: <ref>` (the box line takes the box digest, a third-party image its own pinned default),
+          # and the default of VYRE_COMPUTERS_IMAGE takes the computers digest. The script fails the build on a line it cannot make literal: a variable a
+          # .env could replace would let a box pull what no one signed (box/vyre and install-box.sh refuse such a compose.yml).
+          node scripts/pin-release-compose.mjs dist/compose.yml "$BOX" "$COMPUTER"
+          grep -q "image: $BOX\$" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
           grep -q "$COMPUTER" dist/compose.yml || { echo "compose.yml did not take the computer digest"; exit 1; }
-      - name: release.json and SHA256SUMS
+      - name: release.json, SHA256SUMS, and on a publish the Ed25519 signature every updater reads
+        env:
+          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
         run: |
           node -e '
             const fs = require("fs"), [version, channel, commit, min_from, box, computer] = process.argv.slice(1);
@@ -299,8 +304,23 @@ jobs:
             fs.writeFileSync("dist/release.json", JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
               notes: fs.readFileSync("dist/notes.md", "utf8"), ...(images ? { images } : {}) }, null, 2) + "\n");' \
             "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM" "$BOX" "$COMPUTER"
-          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          if [ "$PUBLISH" = true ]; then
+            # SHA256SUMS.sig: base64 Ed25519 over "vyre-release-sums\n" + the exact SHA256SUMS bytes, by the key pinned in the wrapper, the Mac installer and
+            # vyre-core. The key is the release environment's secret and never leaves this step. This also writes manifest.json and the final SHA256SUMS,
+            # and refuses to write a signature the pinned key does not verify.
+            [ -n "$VYRE_SIGNING_KEY" ] || { echo "no VYRE_RELEASE_SIGNING_KEY in the release environment"; exit 1; }
+            node scripts/sign-manifest.mjs dist "$VERSION" "$CHANNEL"
+          else
+            (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          fi
           cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Gate before anything is signed further or published, the release must be what the updater needs
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            node scripts/check-release-dist.mjs dist --pulled --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+          else
+            node scripts/check-release-dist.mjs dist
+          fi
       - name: Sign SHA256SUMS (minisign, the release key)
         if: env.PUBLISH == 'true'
         env:

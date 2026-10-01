@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- release.yml makes what the updater reads (launch, on top of work/integrator's pipeline): the images are pinned into the released compose.yml by `scripts/pin-release-compose.mjs` (literal `image: <ref>@sha256:` lines, no `${VYRE_IMAGE:-...}`); on a publish SHA256SUMS is signed with the Ed25519 key every updater verifies (`scripts/sign-manifest.mjs`, the release environment's VYRE_RELEASE_SIGNING_KEY, which also writes manifest.json and refuses a signature the pinned key does not verify), before minisign and the cosign blob; and `scripts/check-release-dist.mjs dist --pulled --pubkey <pinned key>` gates the release (a dry run is checked without --pulled). The cosign identity is unchanged. `scripts/check-release-key.mjs` also checks that box/vyre pins the same key as release.js and the Mac installer. test/release-workflow.test.js keeps the order.
 #### release: v2 pipeline (0.2 PLAN R1, R5, R7)
 
 - release.yml builds the box and computer images natively for linux/amd64 and linux/arm64 and
