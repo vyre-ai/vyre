@@ -1102,12 +1102,16 @@ test("drive generated: a real Generated folder is shown together with the media,
   const a = path.join(work, "a"), plain = path.join(work, "plain");
   fs.mkdirSync(path.join(a, "Generated"), { recursive: true }); fs.mkdirSync(plain, { recursive: true });
   fs.writeFileSync(path.join(a, "Generated", "mine.png"), "real");
+  fs.mkdirSync(path.join(a, "Generated", "sub")); fs.writeFileSync(path.join(a, "Generated", "sub", "inner.txt"), "in"); fs.writeFileSync(path.join(a, "Generated", "notes.txt"), "plain");
   const media = [{ id: "art-eeeeeeee5", kind: "image", format: "png", mime: "image/png", bytes: 2, title: "mine", created_at: "2026-10-01T10:00:00Z", project: "a", bytes_b64: Buffer.from("ai").toString("base64") }];
   const { reg } = await registry(t, { role: "box", media, projects: [{ slug: "a", name: "A", home: a, workspaces: [] }], cfg: { files: { roots: [work], drive: { shares: { projects: null, work } } } } });
   const top = await ok(reg, "files.drive.list", { share: "work", path: "a" });
   assert.deepEqual(top.entries.filter(e => e.name === "Generated").map(e => e.virtual === true), [false], "the real folder is the one listed, not a second");
   const g = await ok(reg, "files.drive.list", { share: "work", path: "a/Generated" });
-  assert.deepEqual(g.entries.map(e => [e.name, e.virtual === true]).sort(), [["mine (art-ee).png", true], ["mine.png", false]]);
+  assert.deepEqual(g.entries.map(e => [e.name, e.virtual === true]).sort(), [["mine (art-ee).png", true], ["mine.png", false], ["notes.txt", false], ["sub", false]]);
+  // The project's own real files inside Generated are read and listed as ordinary files.
+  assert.equal(Buffer.from((await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/notes.txt" })).base64, "base64").toString(), "plain");
+  assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "a/Generated/sub" })).entries.map(e => e.name), ["inner.txt"]);
   assert.deepEqual((await ok(reg, "files.drive.list", { share: "work", path: "plain" })).entries, []);
   await no(reg, "files.drive.list", { share: "work", path: "plain/Generated" }, "cli", "not_available");
 });

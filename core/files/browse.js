@@ -119,7 +119,10 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     if (!fs.statSync(parent.safe.real).isDirectory()) return null;
     const slug = await projectAt(parent.safe.real);
     if (!slug) return null;
-    return { slug, parent, name: segs.length - i === 2 ? segs[i + 1] : null, rel: segs.slice(0, i + 1).join("/") };
+    const name = segs.length - i === 2 ? segs[i + 1] : null;
+    // A name inside Generated that is not a media item is an ordinary path (the project's own real Generated folder).
+    if (name && !(await mediaOf(slug, meta)).some(m => m.name === name)) return null;
+    return { slug, parent, name, rel: segs.slice(0, i + 1).join("/") };
   }
 
   const describe = (rs, p) => {
