@@ -229,3 +229,10 @@ Branch: work/anywhere · Worktree: ../vyre-anywhere · Owner session: anywhere
   vault/watch, sessions/config, modules/federate, cli/commands/*) are untouched and still work,
   since `config.role` itself never changed.
 - Verified green on testbox (see Done).
+
+## PAUSED 1 Oct (usage limit). Resume from here
+- Branch work/vyre-core == work/anywhere-server, pushed at 852f1c310 (stage 39f0db744 merged). Landing branch for the cleared 6de509a4 plus test fixes: work/vyre-core-land 0559d16c (integrator has it); store fix alone: work/store-busy-fix 7d005241f.
+- In flight: macOS proof and node on 852f1c310 (the proof's last failure was root's keychain list after uninstall; fix is in 852f1c310). node(24) also fails on stage itself in core/connectors/module.test.js:193, not ours.
+- Not unlocked yet: send the integrator a landing sha once the proof is green; send reviewer-2 cdb06626/FileVault wording together with the later signing, uninstall, own-origin vault delete and typed-code commits (all after their last clearance a13d9e9a/e8235bd7).
+- Open items: (b) Vyre.app in vyre.tgz needs a real capsule-mac build on a tag and capsule-pro's Swift enrol path (fd 3 and typed code); Capsule data uninstall (--uninstall-key in the Capsule); dedupe release.js with launch's lib/release-sig.js once on stage; reboot/sleep/Colima VM lane (M9).
+- Rules: never run test/install-mac-server.test.js on the Mac (runners only); never git stash.
