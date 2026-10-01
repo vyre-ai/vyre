@@ -9,6 +9,7 @@
   "team.duties.start": "lib/said/team.js",
   "artifacts.public.set": "PENDING: artifacts moved it to reach person; delete this line when its branch lands",
   "watchers.create": "lib/said/watchers.js",
-  "watchers.preset": "lib/said/watchers.js"
+  "watchers.preset": "lib/said/watchers.js",
+  "team.add": "lib/said/team.js"
  }
 }
