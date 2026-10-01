@@ -16,7 +16,7 @@
 # the release workflow) cannot be met locally, since no local run can hold that identity: it needs a real signed release.
 set -u
 BOX=$(cd "$1" && pwd); OUT=$2; mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
-[ -n "${CI:-}" ] || { echo "j2c-cosign-refusals.sh: runs on a CI runner only (CI is unset)" >&2; exit 2; }
+[ "${GITHUB_ACTIONS:-}" = true ] || { echo "j2c-cosign-refusals.sh: runs on a GitHub Actions runner only (it edits /etc/hosts and docker certs under sudo; GITHUB_ACTIONS is not true)" >&2; exit 2; }
 FAILED=0; DIR=/srv/vyre; WORK=$(mktemp -d); PORT=18190; HERE=$(cd "$(dirname "$0")/../.." && pwd)
 rec() { # rec STEP ok|false [why]
   ok=$2; [ "$ok" = ok ] && ok=true || { ok=false; FAILED=$((FAILED + 1)); }
@@ -99,8 +99,8 @@ refused 9-key-signature "$R3" 'no matching signatures|certificate|expected ident
 refused 10-digest-not-held "$R4" 'MANIFEST_UNKNOWN|not found|no such|unknown|no signatures'
 
 refused 12-moving-tag "$R1" 'not pinned by digest' unpinned 'Nothing was installed'
-# ---- part B: `vyre update` on an installed, filled box. It does not run cosign: its trust is the signed SHA256SUMS (which lists
-# release.json and compose.yml, the digests) and a digest-pinned pull. So what it can refuse is a digest the registry does not hold.
+# ---- part B: `vyre update` on an installed, filled box (launch's verify_release_images). A release signed with the Ed25519 key (the test
+# seam VYRE_RELEASE_KEY) that names an image the cosign check cannot accept must be refused before anything changes.
 # the baseline: a real install with data
 serve "$BOX" 18180
 V0=$(tr -d ' \r\n' <"$BOX/VERSION")
@@ -121,7 +121,7 @@ sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemc
 node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
 GOODPUB=$(cat "$WORK/good.pub")
 mkupd() { # mkupd NAME REF: a newer release, signed by the throwaway key, naming REF for the box image
-  mkrel "$1" "$2" unpinned; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"
+  mkrel "$1" "$2"; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"
   sed -i 's/"version":"[^"]*"/"version":"9.9.9-e2e.1"/' "$d/release.json"
   fl=$(awk '{print $2}' "$d/SHA256SUMS" | sort -u)
   (cd "$d" && for f in $fl; do sha256sum "$f"; done >SHA256SUMS)
@@ -129,16 +129,24 @@ mkupd() { # mkupd NAME REF: a newer release, signed by the throwaway key, naming
 }
 askupd() { PORT=$((PORT + 1)); serve "$WORK/$1" $PORT
   sudo sh -c "printf 'update\n' >$ST/request/request"
-  out=$(sudo env "VYRE_DIR=$DIR" "VYRE_BOX_URL=http://127.0.0.1:$PORT/" VYRE_RELEASES_API= "VYRE_RELEASE_KEY=$GOODPUB" VYRE_UPDATE_MIN_GAP=0 VYRE_UPDATE_WAIT=300 "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
-mkupd upd-missing "$R4"; askupd upd-missing; ready; v=$(hv)
-if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qiE 'manifest|not found|unknown'; then rec B3-update-digest-not-held ok "$(printf %s "$out" | tail -1)"
-else rec B3-update-digest-not-held false "rc $rc, runs '$v' (want $V0): $(printf %s "$out" | tail -4)"; fi
-# What the update does with a properly SIGNED release that names an UNSIGNED image: recorded as it is, not asserted as a refusal.
-mkupd upd-unsigned "$R1"; askupd upd-unsigned; ready; v=$(hv)
-if [ $rc -eq 0 ] && [ "$v" = 9.9.9-e2e.1 ]; then rec B4-update-unsigned-image-FINDING ok "ACCEPTED: update installs a digest the signed release names without a cosign check"
-elif [ $rc -ne 0 ] && ! printf '%s' "$out" | grep -qi cosign && docker image inspect "$R1" >/dev/null 2>&1; then rec B4-update-unsigned-image-FINDING ok "ACCEPTED past the registry: the unsigned digest was pulled and started, no signature check ran; rolled back only because the test image is not a Vyre box"
-elif [ $rc -ne 0 ] && printf '%s' "$out" | grep -qi cosign; then rec B4-update-unsigned-image-FINDING ok "refused by a signature check"
-else printf '%s\n' "$out" >"$OUT/b4.log"; rec B4-update-unsigned-image-FINDING false "unexpected: rc $rc, runs '$v': $(printf %s "$out" | tail -4)"; fi
+  out=$(sudo env "VYRE_DIR=$DIR" "VYRE_BOX_URL=http://127.0.0.1:$PORT/" VYRE_RELEASES_API= "VYRE_RELEASE_KEY=$GOODPUB" VYRE_UPDATE_MIN_GAP=0 VYRE_UPDATE_WAIT=300 VYRE_COSIGN_IMAGE=vyre-cosign-test:1 "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
+# updrefused STEP NAME REF WANT_REGEX: a signed release whose image the cosign check cannot accept is refused with nothing changed
+updrefused() {
+  mkupd "$2" "$3"; askupd "$2"; ready; v=$(hv); pulled=no; docker image inspect "$3" >/dev/null 2>&1 && pulled=yes
+  if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && [ $pulled = no ] && printf '%s' "$out" | grep -qi 'cosign could not verify.*nothing was changed' && printf '%s' "$out" | grep -qiE "$4"; then rec "$1" ok "$(printf %s "$out" | tail -1)"
+  else printf '%s\n' "$out" >"$OUT/$1.log"; rec "$1" false "rc $rc, runs '$v' (want $V0), pulled $pulled: $(printf %s "$out" | tail -4)"; fi
+}
+updrefused B3-update-unsigned-digest upd-unsigned "$R1" 'no signatures'
+updrefused B4-update-wrong-identity upd-wrongid "$R2" 'identit'
+updrefused B5-update-key-signature upd-key "$R3" 'no matching signatures|certificate'
+updrefused B6-update-digest-not-held upd-missing "$R4" 'no signatures|manifest|not found'
+# A release that is not pinned by digest at all (tailscale left on its tag) is refused before cosign runs.
+mkupd upd-tag "$R1"; sed -i "s|tailscale/tailscale@sha256:a*|tailscale/tailscale:stable|" "$WORK/upd-tag/compose.yml"
+(cd "$WORK/upd-tag" && fl=$(awk '{print $2}' SHA256SUMS | sort -u) && for f in $fl; do sha256sum "$f"; done >SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
+node -e 'const c=require("crypto"),fs=require("fs");const d=process.argv[1];const sums=fs.readFileSync(d+"/SHA256SUMS");fs.writeFileSync(d+"/SHA256SUMS.sig",c.sign(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),sums]),c.createPrivateKey(fs.readFileSync(process.argv[2]))).toString("base64")+"\n");' "$WORK/upd-tag" "$WORK/good.pem"
+askupd upd-tag; ready; v=$(hv)
+if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qi 'not pinned exactly by digest'; then rec B7-update-moving-tag ok "$(printf %s "$out" | tail -1)"
+else printf '%s\n' "$out" >"$OUT/B7.log"; rec B7-update-moving-tag false "rc $rc, runs '$v': $(printf %s "$out" | tail -3)"; fi
 rec 11-positive-control ok "NOT RUN: an image signed by Vyre's release workflow cannot be made locally; it needs a real signed release"
 
 while read -r p; do kill "$p" 2>/dev/null; done <"$OUT/pids"
