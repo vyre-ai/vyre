@@ -21,7 +21,7 @@ jobs:
       - name: Reach suite and the touched module suites
         run: |
           set +e; rc=0
-          for f in test/reach-*.test.js core/vault/reach.test.js core/vault/surfaces.test.js core/vyre-core/forward.test.js core/gate/module.test.js core/google/module.test.js core/mail/module.test.js core/mcp/module.test.js core/connectors/module.test.js core/vault/agent-grants.test.js core/modules/modules.test.js core/vault/vault.test.js core/vault/connections.test.js core/vault/api-request.test.js test/redteam/vault.test.js test/redteam/presence.test.js; do
+          for f in test/reach-*.test.js core/vault/reach.test.js core/vault/surfaces.test.js core/vyre-core/forward.test.js core/gate/module.test.js core/google/module.test.js core/mail/module.test.js core/mcp/module.test.js core/connectors/module.test.js core/vault/agent-grants.test.js core/vault/tools/cli.test.js core/vault/kit.test.js core/vault/module.test.js core/vault/needs.test.js test/redteam/vault.test.js core/modules/modules.test.js core/vault/connections.test.js core/vault/api-request.test.js; do
             VYRE_NO_DIALOGS=1 timeout 600 node --test "$f" >out.log 2>&1 || { echo "FAIL $f"; grep -E -B1 -A22 "^not ok|^    not ok|failureType" out.log | head -90; grep -nE "Error|# fail|not ok" out.log | head -15; tail -25 out.log; rc=1; }
           done
           exit $rc

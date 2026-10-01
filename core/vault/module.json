@@ -57,7 +57,7 @@
       { "name": "vault.account.unlock", "reach": "anyone" },
       { "name": "vault.account.lock", "reach": "person" },
       { "name": "vault.people", "reach": "anyone" },
-      { "name": "vault.person.add", "reach": "person" },
+      { "name": "vault.person.add", "reach": "anyone" },
       { "name": "vault.people.verify", "reach": "anyone" },
       { "name": "vault.fingerprint", "reach": "anyone" },
       { "name": "vault.kit", "reach": "anyone" },

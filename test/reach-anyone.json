@@ -697,6 +697,10 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
+  "vault.person.add": {
+   "module": "vault",
+   "reason": "presence proof: adding a person's card needs a person's touch; the assistant's kit flow adds a pasted card and waits for it (kit.test.js); callers list in code"
+  },
   "vault.put": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local, module): no model caller; presence proof required"
