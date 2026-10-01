@@ -17,6 +17,7 @@ import { SCRATCH } from "./scratch.mjs";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
 const COMPOSE = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
+const IMAGE_REF = `ghcr.io/vyre-ai/vyre@sha256:${"a".repeat(64)}`;
 const CHOME = "/home/vyre/.vyre";
 // Vyre's release key, for these tests: a key of their own, given to the wrapper as VYRE_RELEASE_KEY (test only). Every release
 // is signed by it unless a test says sign: false, or another key.
@@ -54,6 +55,12 @@ function vyre(cmd) {
     console.log("{}"); process.exit(0);
   }
   if (c === "up") { console.log("  your address: https://alex.vyre.run"); process.exit(0); }
+  process.exit(0);
+}
+if (args[0] === "run" && args.some(a => /cosign/.test(a))) {
+  // The image signature check (cosign, pinned by digest): the fake says no when told to.
+  fs.appendFileSync(F + "/cosign", args.join(" ") + "\\n");
+  if (fs.existsSync(F + "/cosign-fail")) { console.error("Error: no matching signatures: nil certificate provided"); process.exit(1); }
   process.exit(0);
 }
 if (args[0] === "run") {
@@ -96,7 +103,7 @@ process.exit(0);
 `;
 
 /** Release assets as files in a folder, with SHA256SUMS over them. */
-function release(dir, version, { android = false, corrupt = "", sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
+function release(dir, version, { android = false, corrupt = "", images = false, tagCompose = false, noReleaseJson = false, sign = /** @type {any} */ (RELEASE.privateKey) } = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const pkg = path.join(dir, ".pkg", "package");
   fs.mkdirSync(path.join(pkg, "box"), { recursive: true });
@@ -104,14 +111,18 @@ function release(dir, version, { android = false, corrupt = "", sign = /** @type
   fs.writeFileSync(path.join(pkg, "marker"), version + "\n");
   assert.equal(spawnSync("tar", ["-czf", path.join(dir, "vyre.tgz"), "-C", path.join(dir, ".pkg"), "package"]).status, 0);
   fs.rmSync(path.join(dir, ".pkg"), { recursive: true });
-  fs.writeFileSync(path.join(dir, "compose.yml"), COMPOSE + `# release ${version}\n`);
+  // A release that pulls: every image pinned by digest, as the release pipeline writes it (tagCompose: left on a moving tag).
+  const pin = IMAGE_REF;
+  const composeText = images && !tagCompose ? COMPOSE.replace(/^( *image: *).*$/gm, `$1${pin}`) : COMPOSE;
+  fs.writeFileSync(path.join(dir, "compose.yml"), composeText + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "compose.build.yml"), `# compose.build.yml ${version}\n`);
   fs.writeFileSync(path.join(dir, "vyre.env.example"), `# vyre.env.example ${version}\n`);
   fs.writeFileSync(path.join(dir, "Dockerfile"), "FROM node:22-bookworm-slim\n");
   fs.writeFileSync(path.join(dir, "dockerignore"), "test\n");
   fs.writeFileSync(path.join(dir, "vyre"), WRAPPER_SRC + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "VERSION"), version + "\n");
-  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"" }, null, 2));
+  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF } } } : {}) }, null, 2));
+  if (noReleaseJson) fs.rmSync(path.join(dir, "release.json"));
   if (android) {
     const apk = Buffer.concat([Buffer.from("PK"), crypto.randomBytes(2048)]);
     fs.writeFileSync(path.join(dir, APK), apk);
@@ -362,13 +373,52 @@ test("box update --rollback --restore-data: off a terminal it needs --yes, then 
 });
 
 test("box update: a pulled image (no compose.build.yml) is tagged vyre:prev and pulled, src untouched", async t => {
-  const b = await box(t, { releases: [{ tag: "v0.2.0" }], build: false });
+  const b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
   const r = /** @type {any} */ (await b.run(["update"]));
   assert.equal(r.code, 0, r.out);
   assert.ok(b.calls().includes("compose pull"));
+  assert.match(b.read(path.join(b.FAKE, "cosign")), /verify --certificate-identity-regexp .*release\\\.yml@refs\/tags\/.* --certificate-oidc-issuer https:\/\/token\.actions\.githubusercontent\.com ghcr\.io\/vyre-ai\/vyre@sha256:a{64}/, "the image was checked by cosign before the pull");
   assert.equal(b.image("vyre:prev"), "orig");
   assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
   assert.ok(!b.hits.includes("/dl/v0.2.0/vyre.tgz"));
+});
+
+test("box update (pulled): an image cosign cannot verify, a compose.yml on a moving tag, and a release without release.json are each refused with nothing changed", async t => {
+  const state = b => ({ calls: b.calls().filter(c => /^compose (pull|up|build)/.test(c)), compose: b.read(path.join(b.DIR, "compose.yml")), image: b.image("ghcr.io/vyre-ai/vyre:latest"), db: b.db() });
+  // cosign says no (an unsigned image, or another signer's): refused before the box is touched.
+  let b = await box(t, { releases: [{ tag: "v0.2.0", images: true }], build: false });
+  fs.writeFileSync(path.join(b.FAKE, "cosign-fail"), "1");
+  const before = state(b);
+  let r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /cosign could not verify ghcr\.io\/vyre-ai\/vyre@sha256:a{64} against Vyre's release workflow; nothing was changed/);
+  assert.deepEqual(state(b), before, "no pull, no new compose.yml, same image and data");
+  // The release's compose.yml still points at a moving tag: a moved tag could change what runs, so it is refused.
+  b = await box(t, { releases: [{ tag: "v0.2.0", images: true, tagCompose: true }], build: false });
+  r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /not pinned by digest \(.*\); nothing was changed/);
+  assert.ok(!b.calls().includes("compose pull") && !fs.existsSync(path.join(b.FAKE, "cosign")), "nothing was pulled or even checked");
+  // No release.json: the image it pulls cannot be named, so cannot be checked.
+  b = await box(t, { releases: [{ tag: "v0.2.0", images: true, noReleaseJson: true }], build: false });
+  r = /** @type {any} */ (await b.run(["update"]));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /no release\.json, so the image it pulls cannot be verified; nothing was changed/);
+  assert.ok(!b.calls().includes("compose pull"));
+  // A box that builds from source needs none of this: its source is the signed tgz.
+  b = await box(t, { releases: [{ tag: "v0.2.0" }] });
+  assert.equal(/** @type {any} */ ((await b.run(["update"]))).code, 0);
+  assert.ok(!fs.existsSync(path.join(b.FAKE, "cosign")));
+});
+
+test("box/vyre and scripts/install-box.sh pin the same cosign, identity and issuer", () => {
+  const pick = (text, name) => new RegExp(`^${name}=\\\$\\{[A-Z_]+:-(.*)\\}$|^${name}=(.*)$`, "m").exec(text);
+  const wrapper = WRAPPER_SRC, installer = fs.readFileSync(path.join(REPO, "scripts/install-box.sh"), "utf8");
+  for (const name of ["COSIGN_IMAGE", "COSIGN_ID", "COSIGN_ISSUER"]) {
+    const a = pick(wrapper, name), c = pick(installer, name);
+    assert.ok(a && c, `${name} is in both`);
+    assert.equal((a[1] ?? a[2]), (c[1] ?? c[2]), `${name} is the same in both`);
+  }
 });
 
 test("box update: a release whose min_from is above the running version names the step", async t => {
