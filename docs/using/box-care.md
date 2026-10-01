@@ -422,3 +422,9 @@ A Linux box installed from npm with systemd units is upgraded with
   who can reach the box.
 - [Troubleshooting](../get-started/troubleshooting.md), when something does not start.
 - [CLI reference](../reference/cli.md#vyre-box), every `vyre box` form.
+
+## What root runs, and what it reads
+
+Updates that run as root (the automatic path from Settings and `sudo vyre update`) never read a file you or an agent on your account can write as configuration. Root starts compose from its own copies of the released compose.yml, in a folder only root can write, with a root-written env file and every file, project and folder named explicitly. It refuses an override file or a COMPOSE_* setting, takes how the box is built (pulled, built from the released source, or from your own checkout) from a record it made when the updater was installed, and checks every ghcr.io/vyre-ai image of a release with cosign before pulling. `sudo vyre up` and the other root commands use the same copies once the updater is installed. A host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
+
+One thing no script can fix: if your account may run `sudo` without a password, anything running as you can already become root, and none of this protects you from it. Keep `sudo` asking for a password on a box where agents run as your account.

@@ -46,7 +46,7 @@ function harness(t, { text, env = {}, root = false, body, envFile = "" }) {
   fs.writeFileSync(path.join(DIR, "compose.yml"), "services: {}\n");
   fs.writeFileSync(path.join(DIR, ".env"), envFile);
   const calls = path.join(base, "calls");
-  fs.writeFileSync(path.join(BIN, "docker"), `#!/bin/sh\necho "docker $*" >>"${calls}"\n# an image that says yes to everything\ncase "$*" in *node*) echo signed ;; esac\nexit 0\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(BIN, "docker"), `#!/bin/sh\necho "docker $*" >>"${calls}"\n# an image that says yes to everything, except a ref named in FAILREF\ncase "$*" in *node*) echo signed ;; esac\n[ -z "\${FAILREF:-}" ] || case "$*" in *"\${FAILREF}"*) echo "Error: no signatures found" >&2; exit 1 ;; esac\nexit 0\n`, { mode: 0o755 });
   if (root) fs.writeFileSync(path.join(BIN, "id"), `#!/bin/sh\ncase "$1" in -u) echo 0 ;; -un) echo root ;; *) /usr/bin/id "$@" ;; esac\n`, { mode: 0o755 });
   // The constant /var/lib/vyre-update is a test folder only for this run, so the stack file a root run reads can be shown.
   // (The release wrapper fixes PATH to the system folders; the harness points that one line at its own fake binaries.)
@@ -217,10 +217,26 @@ test("hostile environment, root run: PATH is fixed and DOCKER_*, COMPOSE_*, BASH
 
 test("root run: no function a root run executes calls `docker compose` directly, so every compose call goes through the one that names root's files", () => {
   const body = name => { const a = SOURCE.indexOf(`\n${name}() {`); assert.ok(a >= 0, name); const b = SOURCE.indexOf("\n}\n", a); return SOURCE.slice(a, b); };
-  for (const fn of ["update", "update_from_request", "publish_release", "roll_back", "backup_db", "restore_db", "android", "ready", "save_box", "put_box", "sync_run", "prepare_run", "verify_release_images", "unpack_src", "image"]) {
+  for (const fn of ["update", "update_from_request", "publish_release", "roll_back", "backup_db", "restore_db", "android", "ready", "save_box", "put_box", "sync_run", "prepare_run", "verify_release_images", "unpack_src", "image", "cli", "print_link"]) {
     assert.ok(!/docker compose/.test(body(fn).replace(/#.*$/gm, "")), `${fn} calls docker compose directly`);
   }
   // The one function that does, names every file explicitly in a root run.
   const c = body("compose");
   assert.ok(/--project-directory "\$RUN" --project-name vyre --env-file "\$RUN\/compose\.env" -f "\$RUN\/compose\.yml"/.test(c));
+});
+
+test("cosign runs on EVERY ghcr.io/vyre-ai image line of the released compose.yml, not only the two release.json names; a third-party digest is left to the signed release", t => {
+  const box = `ghcr.io/vyre-ai/vyre@sha256:${"a".repeat(64)}`, extra = `ghcr.io/vyre-ai/vyre-sidecar@sha256:${"e".repeat(64)}`, ts = `tailscale/tailscale@sha256:${"c".repeat(64)}`;
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-rel-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ images: { box: { ref: box } } }));
+  fs.writeFileSync(path.join(dir, "compose.yml"), `services:\n  vyre:\n    image: ${box}\n  side:\n    image: ${extra}\n  ts:\n    image: ${ts}\n`);
+  const ok = harness(t, { text: BUILT, body: `tmp="${dir}"; verify_release_images` });
+  assert.equal(ok.run().status, 0);
+  const verified = ok.calls().filter(c => / verify /.test(c)).map(c => c.split(" ").pop());
+  assert.deepEqual(verified.sort(), [box, extra].sort(), "both vyre-ai images were checked, the tailscale one was not");
+  // The one release.json does not name is unsigned: the update is refused with nothing changed.
+  const bad = harness(t, { text: BUILT, env: { FAILREF: "vyre-sidecar" }, body: `tmp="${dir}"; verify_release_images` }).run();
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /cosign could not verify ghcr\.io\/vyre-ai\/vyre-sidecar@sha256:e{64} against Vyre's release workflow; nothing was changed/);
 });

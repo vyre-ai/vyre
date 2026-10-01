@@ -635,7 +635,7 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   const RUNDIR = path.join(b.U, "private", "run");
   // The person (or a model running as them) edits compose.yml and plants an override and a vyre.env with a hostile line.
   fs.appendFileSync(path.join(b.DIR, "compose.yml"), "    privileged: true\n");
-  fs.writeFileSync(path.join(b.DIR, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nEVIL=$(touch /tmp/pwned)\nBAD=`id`\n");
+  fs.writeFileSync(path.join(b.DIR, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nEVIL=$(touch /tmp/pwned)\nBAD=`id`\nNODE_OPTIONS=--require /work/x.js\nLD_PRELOAD=/work/x.so\nVYRE_SETUP_CODE=abc\n");
   fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_UPDATE_ROOT=/\nVYRE_COMPUTERS_CAP_ADD=SYS_ADMIN\nVYRE_IMAGE=evil/image:latest\nDOCKER_GID=abc\nVYRE_DRIVE_ACCESS=rw\nVYRE_TS_HOSTNAME=box-1\n");
   fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
   const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
@@ -656,6 +656,8 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   const venv = fs.readFileSync(path.join(RUNDIR, "vyre.env"), "utf8");
   assert.match(venv, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
   assert.ok(!/EVIL|BAD|\$\(|`/.test(venv), "a line with interpolation is not copied");
+  assert.match(venv, /^VYRE_SETUP_CODE=abc$/m);
+  assert.ok(!/NODE_OPTIONS|LD_PRELOAD/.test(venv), "only the keys the box reads are passed on (an allowlist)");
 });
 
 test("root run: an override file, a COMPOSE_* setting in .env or the environment, and a box with no record of its mode each refuse, with nothing changed", async t => {
@@ -691,6 +693,7 @@ test("root run: the build mode comes from root's record, so a .env cannot turn a
   const calls = b.calls();
   assert.ok(calls.includes("compose pull") && !calls.some(c => c.startsWith("compose build")), `it pulled (verified) and never built: ${calls.join("; ")}`);
   assert.ok(!fs.readFileSync(path.join(b.U, "private", "run", "compose.env"), "utf8").includes("evil-src"));
+  assert.ok(fs.existsSync(path.join(b.FAKE, "cosign")), "and cosign still ran on the pulled image: the .env did not skip it");
   // And a build box builds from root's own copy of the verified source, not the person's tree.
   const bb = await box(t, { releases: [{ tag: "v0.2.0", sign: RELEASE.privateKey }] });
   units_dirs(bb);
@@ -711,6 +714,15 @@ test("updater install --dir: a box that is not in /srv/vyre hands root its folde
   assert.equal(b.read(path.join(b.U, "stack")).trim(), b.DIR, "the folder came from the argument, not from the environment");
   assert.equal(b.read(path.join(b.U, "mode")).trim(), "build");
   assert.equal(b.read(path.join(b.U, "private", "run", "compose.yml")), b.read(path.join(b.DIR, "compose.yml")));
+  // root recorded the hash of the compose.yml it copied: a later install from a folder whose file differs is refused, and the same file is not.
+  assert.match(b.read(path.join(b.U, "compose.sha256")).trim(), /^[0-9a-f]{64}$/);
+  assert.equal(/** @type {any} */ ((await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }))).code, 0, "the same file again is fine");
+  fs.appendFileSync(path.join(b.DIR, "compose.yml"), "# edited by somebody\n");
+  const swapped = /** @type {any} */ (await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }));
+  assert.notEqual(swapped.code, 0);
+  assert.match(swapped.out, /root recorded another compose\.yml for this box than the one in .*; nothing was changed/);
+  assert.ok(!b.read(path.join(b.U, "private", "run", "compose.yml")).includes("edited by somebody"), "root's copy is untouched");
+  fs.writeFileSync(path.join(b.DIR, "compose.yml"), b.read(path.join(b.U, "private", "run", "compose.yml")));
   assert.equal(/** @type {any} */ ((await b.run(["updater", "install", "--dir", "relative"], { VYRE_SYSTEMD_DIR: units }))).code, 1);
   // A checkout of the person's own is recorded as such, and root's automatic path will not build from it.
   fs.writeFileSync(path.join(b.DIR, ".env"), `COMPOSE_FILE=compose.yml:compose.build.yml\nVYRE_SOURCE=/home/alex/vyre\n`);

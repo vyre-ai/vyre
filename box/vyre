@@ -316,15 +316,17 @@ cli() {
   tty=-T
   if [ -t 0 ] && [ -t 1 ]; then tty=""; fi
   # The container's account is not the person's, so the ssh line needs the host's.
-  exec docker compose exec $tty \
+  # Through compose(): a root run (sudo) uses root's own copies, never the stack folder's files.
+  compose exec $tty \
     -e SSH_CONNECTION="${SSH_CONNECTION:-}" -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre "$@"
+  exit $?
 }
 
 # print_link: run the CLI's `vyre up`, and reduce what it prints to VYRE_LINK and VYRE_SSH.
 # The link is the onboarding URL, or the box's address once onboarding is done.
 print_link() {
   esc=$(printf '\033')
-  out=$(docker compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
+  out=$(compose exec -T -e SSH_CONNECTION="${SSH_CONNECTION:-}" \
     -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre up 2>&1 | sed "s/${esc}\[[0-9;]*m//g")
   link=$(printf '%s\n' "$out" | sed -n 's|^ *\(https\{0,1\}://[^ ]*/onboard?t=[^ ]*\).*|\1|p' | head -n 1)
   [ -n "$link" ] || link=$(printf '%s\n' "$out" | sed -n 's|^ *your address: *\(https://[^ ]*\).*|\1|p' | head -n 1)
@@ -412,12 +414,16 @@ put_box() {
 
 # sync_run FROM: root's own copies of the compose files, from a release folder that was just verified (compose.yml, compose.build.yml) or
 # from what save_box kept (run-compose.yml, run-compose.build.yml). These, not the stack folder's files, are what a root run starts.
+# sha256_of FILE: the file's sha256 (GNU or BSD tool).
+sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 sync_run() {
   mkdir -p "$RUN" && chmod 700 "$RUN" || die "could not make root's compose folder $RUN"
   for f in compose.yml compose.build.yml; do
     src="$1/run-$f"; [ -f "$src" ] || src="$1/$f"
     if [ -f "$src" ] && [ ! -L "$src" ]; then put_file "$src" "$RUN/$f" 0644; fi
   done
+  # What root has verified: the next `updater install` from a folder whose compose.yml differs is refused (see updater install).
+  if [ "$ROOT_RUN" = 1 ] && [ -f "$RUN/compose.yml" ]; then printf '%s\n' "$(sha256_of "$RUN/compose.yml")" >"$UPD_ROOT/compose.sha256" || true; fi
 }
 
 # prepare_run: before a root run touches compose. Refuses what a person (or a model running as one) could have planted to change how compose
@@ -451,7 +457,7 @@ prepare_run() {
       sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
     fi; } >"$ce"
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
-  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^[A-Za-z_][A-Za-z0-9_]*=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
   else : >"$RUN/vyre.env.new"; fi
   chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
 }
@@ -565,8 +571,11 @@ verify_release_images() {
     printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' || die "release.json names an image that is not a ghcr.io/vyre-ai digest; nothing was changed"
     printf '%s\n' "$imgs" | awk -v r="$ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "the release's compose.yml does not pin $ref as an image line, which release.json names; nothing was changed"
   done
+  # Every ghcr.io/vyre-ai image line of the released compose.yml is checked, not only the two release.json names (a third-party image such as
+  # tailscale rests on the signed digest of the release that pins it).
+  all_refs=$(printf '%s\n' "$imgs" | sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/[^[:space:]]*\)$/\1/p' | sort -u)
   stage verifying-images
-  for ref in $box_ref $computer_ref; do
+  for ref in $all_refs; do
     if ! docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$tmp/cosign.err"; then
       sed 's/^/  /' "$tmp/cosign.err" >&2
       die "cosign could not verify $ref against Vyre's release workflow; nothing was changed"
@@ -796,6 +805,14 @@ updater() {
         fi
       done
       updater_dirs
+      # The compose.yml this root call is copying: the first install records its hash; a later install from a folder whose file differs is refused,
+      # so choosing --dir cannot make root copy and run a compose file nobody verified (a root update refreshes the record from its verified release).
+      [ -f "$DIR/compose.yml" ] && [ ! -L "$DIR/compose.yml" ] || die "$DIR/compose.yml is not a regular file"
+      want=$(sha256_of "$DIR/compose.yml")
+      have=$(readf "$UPD_ROOT/compose.sha256")
+      if [ -n "$have" ] && [ "$have" != "$want" ]; then
+        die "root recorded another compose.yml for this box than the one in $DIR; nothing was changed. If you changed it on purpose: sudo vyre updater remove, then install again"
+      fi
       # Where this install's stack folder is, written by root, so a later root run (the path unit, the sudo of a hand-run update) never takes
       # the stack folder from an environment or a file the person can write.
       printf '%s\n' "$DIR" >"$UPD_ROOT/stack.new" && chmod 644 "$UPD_ROOT/stack.new" && rename_over "$UPD_ROOT/stack.new" "$UPD_ROOT/stack" || echo "vyre: could not record the stack folder for root" >&2
@@ -809,6 +826,7 @@ updater() {
       printf '%s\n' "$m" >"$UPD_ROOT/mode.new" && chmod 644 "$UPD_ROOT/mode.new" && rename_over "$UPD_ROOT/mode.new" "$UPD_ROOT/mode" || echo "vyre: could not record the build mode for root" >&2
       # And root's own copies of the compose files it will run from (the installer has just laid these down; later ones come from verified releases).
       mkdir -p "$RUN" && chmod 700 "$RUN" && sync_run "$DIR" || echo "vyre: could not copy the compose files for root" >&2
+      printf '%s\n' "$want" >"$UPD_ROOT/compose.sha256.new" && chmod 644 "$UPD_ROOT/compose.sha256.new" && rename_over "$UPD_ROOT/compose.sha256.new" "$UPD_ROOT/compose.sha256" || true
       svc="$units/$un.service"
       { printf '[Unit]\nDescription=Vyre update, asked for by vyred\n\n[Service]\nType=oneshot\nEnvironment=VYRE_DIR=%s\nExecStart=%s update-from-request\nTimeoutStartSec=3600\n' "$DIR" "$WRAPPER"; } >"$svc.new" && mv "$svc.new" "$svc"
       { printf '[Unit]\nDescription=Vyre update requests\n\n[Path]\nPathExists=%s/request\nUnit=%s.service\n\n[Install]\nWantedBy=multi-user.target\n' "$UPD_REQ" "$un"; } >"$units/$un.path.new" && mv "$units/$un.path.new" "$units/$un.path"
@@ -829,7 +847,7 @@ updater() {
         echo "vyre: the update units $un.path and $un.service are still on this server; remove them with: sudo $WRAPPER updater remove" >&2
         return 1
       fi
-      rm -f "$UPD_STATE/ready" "$UPD_ROOT/stack" "$UPD_ROOT/mode"
+      rm -f "$UPD_STATE/ready" "$UPD_ROOT/stack" "$UPD_ROOT/mode" "$UPD_ROOT/compose.sha256"
       systemctl disable --now "$un.path" >/dev/null 2>&1 || true
       rm -f "$units/$un.path" "$units/$un.service"
       systemctl daemon-reload 2>/dev/null || true
@@ -987,6 +1005,11 @@ expire_code() {
 BUILD=0
 if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then BUILD=1; fi
 
+# Any other root verb that starts compose (sudo vyre up, logs, the CLI, uninstall) also runs from root's own copies once the updater has recorded
+# them; a host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
+if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
+  case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
+fi
 case "${1:-}" in up|update) expire_code ;; esac
 case "${1:-}" in
   up)
