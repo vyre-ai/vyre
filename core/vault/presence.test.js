@@ -140,6 +140,23 @@ test("presence: unlocking the vault with its password asks once; Touch ID, or no
   assert.equal(needs(undefined), true, "a listing of tools counts as asking");
 });
 
+test("account tools: ten wrong guesses fired at once are tried one after another, so only five are evaluated before the lock (reviewer-2)", async t => {
+  const { run } = await recorded(t);
+  const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
+  await run("vault.account.create", { password: pw });
+  await run("vault.account.lock", {}, "mcp");
+  t.mock.timers.enable({ apis: ["Date"], now: 1_800_000_000_000 });
+  const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => run("vault.account.unlock", { password: `fixture-wrong-${i}` })));
+  assert.ok(results.every(r => r.status === "rejected"), "every guess was refused");
+  const msgs = results.map(r => String(/** @type {any} */ (r).reason && /** @type {any} */ (r).reason.message));
+  assert.equal(msgs.filter(m => /does not open/.test(m)).length, 5, "five guesses were tested against the key: " + msgs.join(" | "));
+  assert.equal(msgs.filter(m => /too many wrong passwords/.test(m)).length, 5, "the other five met the lock without being tested");
+  await assert.rejects(run("vault.account.unlock", { password: pw }), /too many wrong passwords/, "locked now, even for the right password");
+  // Positive control: the lock is a wait, not a lockout; the right password works once it is over.
+  t.mock.timers.tick(31_000);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true);
+});
+
 test("account tools: five wrong passwords in a row slow every try, a right one resets, and a refused try is not tested (reviewer-2)", async t => {
   const { run } = await recorded(t);
   const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
