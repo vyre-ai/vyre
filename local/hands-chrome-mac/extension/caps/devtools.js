@@ -440,7 +440,7 @@ const ops = {
     /** @type {any} */ let r;
     /** @type {any[]} */ let blocked = [];
     /** @type {any[]} */ let outside = [];
-    try { r = await runIn(ctx, tab, frame, args.expression, { returnByValue: true, awaitPromise: true, generatePreview: true, timeout: 5000, userGesture: false, replMode: true }); }
+    try { r = await runIn(ctx, tab, frame, withTag(args.expression, egress), { returnByValue: true, awaitPromise: true, generatePreview: true, timeout: 5000, userGesture: false, replMode: true }); }
     finally {
       if (guarded) { const c = await runIn(ctx, tab, frame, guardCollect, { returnByValue: true }).catch(() => null); const bv = c && c.result && c.result.value; blocked = Array.isArray(bv) ? bv : []; }
       if (egress) outside = await egress.stop().catch(() => []);
@@ -488,6 +488,9 @@ function mapName(u) {
   const p = u.split(/[?#]/)[0];
   return redact.text(p.slice(p.lastIndexOf("/") + 1));
 }
+
+/** The script with the guard's sourceURL, so a request it starts later names it in its initiator stack. @param {string} expr @param {any} egress */
+const withTag = (expr, egress) => (egress && egress.tag ? `${expr}\n//# sourceURL=${egress.tag}` : expr);
 
 export default {
   name: "dev",

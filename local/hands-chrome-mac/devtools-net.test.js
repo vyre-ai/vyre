@@ -5,7 +5,7 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import net, { egressGuard, clearDenied, siteOf } from "./extension/caps/net.js";
-import { makeCtx, request } from "./devtools-kit.js";
+import { navigateAway, makeCtx, request } from "./devtools-kit.js";
 import { T } from "./test-support/trust.js";
 
 const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4In0.c2lnbmF0dXJlMTIzNDU";
@@ -388,7 +388,8 @@ test("egress guard: children start PAUSED while it is up; Fetch goes on BEFORE a
   assert.ok(k.sent.some(s => s.method === "Runtime.terminateExecution"), "the script is stopped");
   const out = await eg.stop();
   assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.stopped && /could not be guarded/.test(o.origin)), "the result says it was stopped");
-  assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the guard goes, which is what releases the waiting child");
+  await navigateAway(k, 1);
+  assert.equal(pauses[pauses.length - 1], false, "pausing is off again when the sticky guard ends, which is what releases the waiting child");
 });
 
 test("egress guard: an unguardable child that cannot be emptied stays paused and is never handed to the fallback resume; the no-Fetch tolerance is for worker types only", async () => {
@@ -694,23 +695,64 @@ test("egress guard: the service worker state comes from an ISOLATED world when t
   await fb.stop();
 });
 
-test("egress guard: a worker the script made keeps the guard (Fetch included) up for a grace after the script returns, so its first request is still judged", async () => {
+test("egress guard, clock-free: a worker the script made is closed when the call returns; a frame it made stays judged (allowed set frozen) however late it fetches; a Blob worker that attaches late is judged", async () => {
   const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
   await net.ops["net.start"]({ tab: 1 }, k.ctx);
   const eg = await egressGuard(k.ctx, 1);
-  k.push(1, "Target.attachedToTarget", { sessionId: "S-LATE", waitingForDebugger: true, targetInfo: { targetId: "L", type: "worker", url: "blob:https://a.example/w" } });
+  // the script makes a worker and a frame (they attach while the guard is live) and returns at once
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-W", waitingForDebugger: true, targetInfo: { targetId: "W", type: "worker", url: "blob:https://app.example/w" } });
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-F", waitingForDebugger: true, targetInfo: { targetId: "F", type: "iframe", url: "https://frame.example/" } });
   await new Promise(r => setTimeout(r, 10));
-  const stopping = eg.stop(); // the script has returned; the worker has not sent anything yet
-  await new Promise(r => setTimeout(r, 300));
-  k.push(1, "Fetch.requestPaused", { requestId: "late-evil", resourceType: "Fetch", request: { url: "https://attacker.example/c", method: "GET", headers: {} } }, "S-LATE");
-  await new Promise(r => setTimeout(r, 20));
-  assert.ok(k.calls("Fetch.failRequest").some(c => c.params.requestId === "late-evil"), "still judged and failed during the grace");
-  const out = await stopping;
-  assert.ok(out.some((/** @type {any} */ o) => /attacker/.test(String(o.origin))), "and reported");
-  // no child made during the script: no grace
-  const k2 = makeCtx({ active: 1 });
-  await net.ops["net.start"]({ tab: 1 }, k2.ctx);
-  const eg2 = await egressGuard(k2.ctx, 1);
-  const t0 = Date.now(); await eg2.stop();
-  assert.ok(Date.now() - t0 < 600, "a script that made no child pays no grace");
+  await eg.stop();
+  assert.ok(k.sent.some(s => s.session === "S-W" && s.method === "Runtime.evaluate" && s.params.expression === "self.close()"), "the script-made worker is closed: it cannot outlive the call");
+  assert.ok(!k.sent.some(s => s.session === "S-F" && s.method === "Runtime.evaluate" && /close|replace/.test(String(s.params.expression))), "a frame is not closed");
+  assert.ok(!k.calls("Fetch.disable").length, "Fetch stays on after the call: the frame is still judged");
+  // far later (no clock anywhere in the guard) the frame fetches a fresh origin, and its own
+  k.push(1, "Fetch.requestPaused", { requestId: "late-evil", resourceType: "Fetch", request: { url: "https://attacker.example/c", method: "GET", headers: {} } }, "S-F");
+  k.push(1, "Fetch.requestPaused", { requestId: "late-own", resourceType: "Fetch", request: { url: "https://app.example/api/x", method: "GET", headers: {} } }, "S-F");
+  // a request of another session that no script of the call started is not judged
+  k.push(1, "Fetch.requestPaused", { requestId: "page-new", resourceType: "Fetch", request: { url: "https://new-site.example/x", method: "GET", headers: {} } });
+  await new Promise(r => setTimeout(r, 150));
+  assert.ok(k.calls("Fetch.failRequest").some(c => c.params.requestId === "late-evil"), "the script-made frame's request to a fresh origin is failed");
+  assert.ok(k.calls("Fetch.continueRequest").some(c => c.params.requestId === "late-own"), "its allowed origin goes through");
+  assert.ok(k.calls("Fetch.continueRequest").some(c => c.params.requestId === "page-new") && !k.calls("Fetch.failRequest").some(c => c.params.requestId === "page-new"), "the page's own new request is not the script's");
+  // a Blob worker that attaches AFTER the call returned (a slow runner) is paused at birth, enabled and judged
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-LATE", waitingForDebugger: true, targetInfo: { targetId: "L", type: "worker", url: "blob:https://app.example/late" } });
+  await new Promise(r => setTimeout(r, 30));
+  k.push(1, "Fetch.requestPaused", { requestId: "late2", resourceType: "Fetch", request: { url: "https://attacker.example/d", method: "GET", headers: {} } }, "S-LATE");
+  await new Promise(r => setTimeout(r, 50));
+  assert.ok(k.calls("Fetch.failRequest").some(c => c.params.requestId === "late2"), "the late-attached worker is judged");
+  // the page navigates: the sticky guard ends and Fetch goes off
+  await navigateAway(k, 1);
+  assert.ok(k.calls("Fetch.disable").length >= 1);
+});
+
+test("egress guard, clock-free: a request whose initiator stack names the call's script is judged after return (a timer, a promise chain) until navigation", async () => {
+  const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  const tag = /** @type {any} */ (eg).tag;
+  assert.match(tag, /^vyre-eval-/);
+  await eg.stop();
+  const send = (/** @type {string} */ id, /** @type {string} */ url, /** @type {any} */ initiator) => {
+    k.push(1, "Network.requestWillBeSent", { requestId: id, type: "Fetch", documentURL: "https://app.example/w", initiator, request: { url, method: "GET", headers: {} } });
+    k.push(1, "Fetch.requestPaused", { requestId: "p-" + id, networkId: id, resourceType: "Fetch", request: { url, method: "GET", headers: {} } });
+  };
+  send("t1", "https://attacker.example/timer", { type: "script", stack: { callFrames: [{ functionName: "", url: tag, lineNumber: 0, columnNumber: 0 }] } });
+  send("t2", "https://attacker.example/promise", { type: "script", stack: { callFrames: [{ url: "https://app.example/app.js" }], parent: { callFrames: [{ url: tag }] } } });
+  send("t3", "https://other.example/app", { type: "script", stack: { callFrames: [{ url: "https://app.example/app.js" }] } });
+  send("t4", "https://app.example/api/own", { type: "script", stack: { callFrames: [{ url: tag }] } });
+  await new Promise(r => setTimeout(r, 80));
+  const failed = k.calls("Fetch.failRequest").map(c => c.params.requestId);
+  assert.ok(failed.includes("p-t1") && failed.includes("p-t2"), "the call's leftovers to a fresh origin are failed, through async parents too: " + failed.join());
+  assert.ok(!failed.includes("p-t3"), "the page's own script is not judged");
+  assert.ok(!failed.includes("p-t4") && k.calls("Fetch.continueRequest").some(c => c.params.requestId === "p-t4"), "an allowed origin goes through");
+  await navigateAway(k, 1);
+  send("t5", "https://attacker.example/after-nav", { type: "script", stack: { callFrames: [{ url: tag }] } });
+  await new Promise(r => setTimeout(r, 30));
+  assert.ok(!k.calls("Fetch.failRequest").some(c => c.params.requestId === "p-t5"), "after the page navigates the old scripts are gone");
 });
