@@ -17,9 +17,9 @@ const DAY = 86_400_000;
 /**
  * A store seeded with sessions (one user turn each, then an assistant line), a fake runner that
  * answers from `answers` (text -> facts) and a clock.
- * @param {any} t @param {{ turns: string[], config?: any, threads?: any[], usd?: number, answers?: Record<string, any[]>, runner?: any }} o
+ * @param {any} t @param {{ turns: string[], config?: any, threads?: any[], usd?: number, answers?: Record<string, any[]>, runner?: any, capped?: () => boolean }} o
  */
-async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers = {}, runner } = /** @type {any} */ ({})) {
+async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers = {}, runner, capped } = /** @type {any} */ ({})) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
   seedRecall(db, turns.map((x, i) => ({ id: `s-${i}`, cwd: "/home/alex/work", start: T0 + i * DAY, turns: [{ role: "user", text: x }, { role: "assistant", text: "Done." }] })));
@@ -34,14 +34,15 @@ async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers
     const reads = blocks.map((b, i) => ({ t: i, facts: Object.entries(answers).filter(([k]) => b.includes(k)).flatMap(([, f]) => f) })).filter(x => x.facts.length);
     return { text: JSON.stringify({ reads }), usd, tokens_in: 1000, tokens_out: 50 };
   };
-  const call = async tool => (tool === "threads.list" ? { data: threads } : { error: { code: "no_such_tool" } });
+  const recorded = [];
+  const call = async (tool, input) => { if (tool === "spend.record") recorded.push(input); return tool === "threads.list" ? { data: threads } : { error: { code: "no_such_tool" } }; };
   // One reading per batch unless a test says otherwise: the counts below are per reading.
   const cfg = { ...config, memory: { ...(config.memory || {}), model: { passes: 1, ...(config.memory?.model || {}) } } };
-  const reader = createReader({ db, personal, now: () => clock.t, call, config: cfg, runner: runner === undefined ? fake : runner });
+  const reader = createReader({ db, personal, now: () => clock.t, call, config: cfg, runner: runner === undefined ? fake : runner, ...(capped ? { capped } : {}) });
   t.after(() => reader.stop());
   await personal.pass({});
   personal.derive();
-  return { db, personal, reader, sent, clock, fact: (subj, rel) => personal.lookup({ subj, rel }).filter(f => f.current).map(f => f.object) };
+  return { db, personal, reader, sent, recorded, clock, fact: (subj, rel) => personal.lookup({ subj, rel }).filter(f => f.current).map(f => f.object) };
 }
 
 test("reader: which turns are sent", () => {
@@ -262,4 +263,42 @@ test("reader: the person's plan share sets the daily cap; an explicit figure in 
   assert.equal(await cap({ memory: { model: { share: "small" } } }), 0.1);
   assert.equal(await cap({ memory: { model: { share: "large" } } }), 1);
   assert.equal(await cap({ memory: { model: { share: "large", dailyUsd: 0.3 } } }), 0.3);
+});
+
+test("reader: its dollars go to the one ledger, and it waits while the provider's cap is reached", async t => {
+  let capped = false;
+  const w = await world(t, { turns: ["my wife dani just got off nights, shes a nurse"], usd: 0.003, capped: () => capped,
+    answers: { "shes a nurse": [{ subj: "kin:spouse", rel: "role", obj: "lit:nurse", q: "shes a nurse", conf: 0.9 }] } });
+  capped = true;
+  const held = await w.reader.drain();
+  assert.equal(held.runs, 0, "no model run at the cap");
+  assert.equal(w.sent.length, 0);
+  capped = false;
+  const r = await w.reader.drain();
+  assert.equal(r.runs, 1);
+  assert.ok(w.recorded.length >= 1);
+  assert.deepEqual([w.recorded[0].provider, w.recorded[0].purpose, w.recorded[0].usd], ["claude", "memory.read", 0.003]);
+});
+
+test("reader: a model binary that exits before reading its prompt fails that read cleanly, and never crashes the process (EPIPE)", async t => {
+  const dir = tempHome(t), bin = path.join(dir, "dead-claude");
+  // Says why it cannot run and exits at once, without touching its stdin: the prompt write meets a closed pipe.
+  fs.writeFileSync(bin, `#!/usr/bin/env node\nprocess.stderr.write("not logged in: run claude login\\n"); process.exit(1);\n`, { mode: 0o755 });
+  let crashed = null;
+  const onCrash = e => { crashed = e; };
+  process.on("uncaughtException", onCrash);
+  t.after(() => process.off("uncaughtException", onCrash));
+  const big = "x".repeat(4 * 1024 * 1024);
+  const run = claudeOnce({ bin, cwd: dir, env: { ...process.env } });
+  for (let i = 0; i < 3; i++) {
+    await assert.rejects(run({ system: "s", prompt: big, model: "haiku", maxUsd: 0.01 }), e => /not logged in/.test(e.message), "the binary's own words are the failure");
+  }
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(crashed, null, crashed ? String(crashed.code || crashed.message) : "");
+  // A binary that says nothing still fails the read, naming the closed input.
+  const mute = path.join(dir, "mute-claude");
+  fs.writeFileSync(mute, `#!/usr/bin/env node\nprocess.exit(2);\n`, { mode: 0o755 });
+  await assert.rejects(claudeOnce({ bin: mute, cwd: dir, env: { ...process.env } })({ system: "s", prompt: big, model: "haiku", maxUsd: 0.01 }), e => /exit 2/.test(e.message));
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(crashed, null);
 });

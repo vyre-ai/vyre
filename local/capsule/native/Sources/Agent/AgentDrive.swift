@@ -49,17 +49,27 @@ enum Drive {
         let m = a.model
         if VJ.truthy(c["show"]) {
             let t0 = DispatchTime.now()
-            a.panel.showForDrive()
-            DispatchQueue.main.async { timings.append(["kind": "open", "ms": ms(t0)]); say(["shown": true]) }
+            let phases = a.panel.showForDrive()
+            DispatchQueue.main.async { timings.append(["kind": "open", "ms": ms(t0), "phases": phases]); say(["shown": true]) }
             return
         }
         if VJ.truthy(c["hide"]) { a.panel.hide(); say(["hidden": true]); return }
         if let t = c["text"] as? String {
             let t0 = DispatchTime.now()
             m.text = t
-            // The quick rows are drawn in this frame; the rest land after. Report both.
+            let setMs = ms(t0)
+            let tok = m.token
+            // No forced layout: the view updates as it does for a person typing, on the run loop.
+            let idx = timings.count
+            timings.append(["kind": "results", "ms": -1.0, "set": setMs, "text": t, "token": tok, "t0": t0.uptimeNanoseconds])
+            // "First rows": the local rows are in this turn's publish; this is when the turn has finished and
+            // the run loop is about to sleep, after the view has been updated and committed.
+            let obs = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, 3_000_000) { _, _ in
+                MainActor.assumeIsolated { if idx < timings.count { timings[idx]["first"] = ms(t0) } }
+            }
+            CFRunLoopAddObserver(CFRunLoopGetMain(), obs, .commonModes)
             DispatchQueue.main.async {
-                timings.append(["kind": "results", "ms": ms(t0), "n": m.flat.count])
+                if idx < timings.count { timings[idx]["ms"] = ms(t0); timings[idx]["n"] = m.flat.count }
                 say(["text": t, "rows": m.flat.count])
             }
             return
@@ -70,7 +80,27 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
-        if VJ.truthy(c["timings"]) { say(["timings": timings]); return }
+        if VJ.truthy(c["views"]) {
+            // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
+            let tools = ["mentions.search", "capsule.commands", "capsule.view", "capsule.act"]
+            say(["tools": Dictionary(uniqueKeysWithValues: tools.map { ($0, a.vyred.has($0)) }), "up": a.vyred.isUp,
+                 "commands": a.viewCommands.commands.map { "\($0.module)/\($0.id)" }, "nextMeeting": m.nextMeeting ?? NSNull(),
+                 "hash": m.hashToken != nil]); return
+        }
+        if VJ.truthy(c["timings"]) {
+            // "All rows": when the last publish of this keystroke's rows landed (Spotlight and the like append).
+            let out: [[String: Any]] = timings.map { e in
+                var e = e
+                if let tok = e["token"] as? Int, let t0 = e["t0"] as? UInt64 {
+                    let last = m.publishLog.filter { $0.token == tok }.map(\.at).max()
+                    if let last, last >= t0 { e["all"] = Double(last - t0) / 1e6 }
+                }
+                e["t0"] = nil
+                return e
+            }
+            let from = (c["since"] as? Int) ?? 0
+            say(["timings": Array(out.dropFirst(max(0, from))), "count": out.count]); return
+        }
         if VJ.truthy(c["memory"]) { say(["memory": memory()]); return }
         say(["error": "unknown command"])
     }
@@ -118,13 +148,20 @@ enum Drive {
 
 extension PanelController {
     /// Shown for a script: in front and drawn, but it does not take key focus from anyone.
-    func showForDrive() {
-        model.willShow(front: nil)
-        extensions?.willShow(front: nil)
+    /// Says how long each part took, in milliseconds, for the speed check.
+    @discardableResult
+    func showForDrive() -> [String: Double] {
+        func ms(_ t: DispatchTime) -> Double { Double(DispatchTime.now().uptimeNanoseconds - t.uptimeNanoseconds) / 1e6 }
+        var out: [String: Double] = [:]
+        var t = DispatchTime.now()
+        model.willShow(front: nil); out["model"] = ms(t); t = .now()
+        extensions?.willShow(front: nil); out["extensions"] = ms(t); t = .now()
         let f = Self.screenUnderMouse().frame
         top = f.maxY - (f.height * Theme.topFraction).rounded()
         let h = height()
         panel.setFrame(NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h), display: false)
-        panel.orderFrontRegardless()
+        out["frame"] = ms(t); t = .now()
+        panel.orderFrontRegardless(); out["orderFront"] = ms(t)
+        return out
     }
 }

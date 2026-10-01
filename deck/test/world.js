@@ -21,6 +21,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { setPeerHosting } from "../../core/daemon/peer.js";
+
+// This world hosts vyred in its own process and drives it from that process and its children:
+// the one seam the caller check keeps for a test (core/daemon/peer.js).
+setPeerHosting(true);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BIN = path.join(REPO, "bin", "vyre");
@@ -59,7 +64,7 @@ export function buildHome(root, extra = {}, alex = path.join(root, "alex")) {
   }, null, 2));
   // VYRE_NO_DIALOGS: nothing this world runs may raise a prompt on the Mac it runs on.
   // VYRE_TAILSCALE_BIN: a sample tailnet (fake-tailscale.js), never the real Tailscale of this machine.
-  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
+  const env = { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_DECK_FIXTURES: "1", VYRE_NO_DIALOGS: "1", VYRE_HARNESS_DIR: path.join(root, "no-harness"),
     VYRE_TAILSCALE_BIN: path.join(REPO, "deck", "test", "fake-tailscale.js"),
     // A send from the Deck resumes a session headless: with the Switchboard's fake claude, which
     // streams an echo back (or asks permission for "write <file>"), never the real one.
@@ -156,6 +161,20 @@ export async function makeAgents(root) {
 }
 
 /**
+ * One site Vyre for Chrome learned, for the Sites tab (the sample is deck/test/site-sample.js). The store's test clock (honoured only
+ * under the test flag and only in a temp home) puts the misses on earlier days; the clock file is removed after, so what the
+ * screenshot shows is on real time.
+ * @param {string} root @param {string} clockFile
+ */
+export async function makeSites(root, clockFile) {
+  const { call } = await import("../../core/daemon/client.js");
+  const { seedSites } = await import("./site-sample.js");
+  const cli = (/** @type {string} */ tool, /** @type {any} */ input) => call(tool, input, { root, caller: "cli" }).then(r => { if (r.error) console.error(`world: ${tool}: ${r.error.message}`); return r.data; });
+  await seedSites({ cli, at: ms => fs.writeFileSync(clockFile, new Date(ms).toISOString()), now: Date.now() });
+  try { fs.rmSync(clockFile, { force: true }); } catch {}
+}
+
+/**
  * The two items held at the Gate, as gate.request inputs. request() only holds; nothing is sent.
  * @param {string[]} threads the corpus thread ids, in order
  */
@@ -189,12 +208,17 @@ async function main() {
   const { socketPath } = await import("../../core/config/index.js");
   const sock = socketPath(root);
   await seedVault(w);
+  // The Sites tab's sample: the store's test clock (temp home, test flag) lets the seed put misses on earlier days; makeSites removes it.
+  const clockFile = path.join(root, "site-clock");
+  env.VYRE_CHROME_TEST = "1"; env.VYRE_SITE_TEST_CLOCK = clockFile;
+  fs.writeFileSync(clockFile, new Date().toISOString());
   const daemon = await startVyred(root, env);
 
   // Let the first Recall pass land so the catalogue and search see the corpus.
   await new Promise(r => setTimeout(r, 1500));
   await makeProjects(w);
   await makeAgents(root);
+  await makeSites(root, clockFile);
 
   const server = http.createServer((req, res) => {
     const up = http.request({ socketPath: sock, path: req.url, method: req.method, headers: req.headers }, r => {

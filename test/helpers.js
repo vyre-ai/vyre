@@ -7,6 +7,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SCRATCH, HOMES } from "./scratch.mjs";
+import { setPeerHosting } from "../core/daemon/peer.js";
+
+// A test starts vyred in its own process and runs the person's client as that process or its child.
+// vyred counts a caller as the person on positive proof only, and a descendant of vyred is a model's
+// in production (core/daemon/peer.js insideClaude); this lets the tests' own clients through. The
+// forger tests unset it, so they prove the production rule.
+process.env.VYRE_TEST_HOSTED = "1"; // for a vyred a test starts as a child (see peerHosting)
+setPeerHosting(true);
 
 // No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
 // the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
@@ -51,9 +59,34 @@ export function tempHome(t, { stop } = {}) {
     // any daemon this home started, unless it is this process (an in-process start()).
     if (stop) await Promise.resolve(stop()).catch(e => console.error(`test helpers: tempHome's stop() failed (${dir}): ${e.message}`));
     await stopDaemon(dir);
-    fs.rmSync(dir, { recursive: true, force: true });
+    // Retried: on a busy hosted runner a late write from a just-stopped child (a fake binary's log) can land while the
+    // folder is being removed, which is ENOTEMPTY (files.drive.search, stage run 36772688407); a second pass removes it.
+    removeHome(dir);
   });
   return dir;
+}
+
+/**
+ * Remove a temp home, retrying; if it still will not go, say what is left in it (names only, never contents), so a
+ * recurring ENOTEMPTY names the late writer and the cause can be fixed instead of retried forever.
+ * @param {string} dir
+ */
+export function removeHome(dir) {
+  try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+  catch (e) {
+    const left = [];
+    const walk = (d, depth = 0) => {
+      let names = [];
+      try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      for (const n of names) {
+        if (left.length >= 40) return;
+        left.push(path.relative(dir, path.join(d, n.name)) + (n.isDirectory() ? "/" : ""));
+        if (n.isDirectory() && depth < 3) walk(path.join(d, n.name), depth + 1);
+      }
+    };
+    walk(dir);
+    throw Object.assign(new Error(`${/** @type {Error} */ (e).message}; left in ${path.basename(dir)}: ${left.join(", ") || "(nothing now)"}`), { code: /** @type {any} */ (e).code });
+  }
 }
 
 /**

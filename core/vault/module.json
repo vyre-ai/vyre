@@ -116,9 +116,26 @@
       "vault.connections.sync",
       "vault.connections.register",
       "vault.connections.unregister",
-      "vault.connections.allowed"
+      "vault.connections.allowed",
+      "vault.said.record",
+      "vault.said.match",
+      "vault.said.add",
+      "vault.items.names",
+      "vault.env.scan",
+      "vault.mention.search",
+      "vault.mention.resolve",
+      "vault.use.check",
+      "vault.use.note",
+      "vault.said.list",
+      "vault.said.revoke",
+      "vault.request",
+      "vault.api.send",
+      "vault.credential.tokens"
     ]
   },
+  "mentions": [
+    { "kind": "vault", "label": "Vault", "icon": "key", "search": "vault.mention.search", "resolve": "vault.mention.resolve" }
+  ],
   "watches": {
     "emits": [
       "vault.item-added",
@@ -162,7 +179,8 @@
       "vault.connected",
       "vault.connection-added",
       "vault.connection-removed",
-      "vault.connection-changed"
+      "vault.connection-changed",
+      "vault.used"
     ]
   },
   "shows": {

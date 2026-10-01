@@ -48,7 +48,7 @@ export function keyPair(priv) {
 }
 
 /** X25519. An all-zero result (a low-order public key) is refused, as the spec allows. */
-function dh(priv, pub) {
+export function dh(priv, pub) {
   if (pub.length !== DHLEN) throw new Error("an X25519 public key is 32 bytes");
   let out;
   // OpenSSL refuses an all-zero result itself; either way it is the same refusal.
@@ -158,13 +158,17 @@ class SymmetricState {
  */
 export class Handshake {
   /**
-   * @param {{ initiator: boolean, s: { priv: Buffer, pub: Buffer }, rs?: Buffer, prologue?: Buffer,
-   *   e?: { priv: Buffer, pub: Buffer } }} o `rs` is required of the initiator; `e` only for test vectors
+   * @param {{ initiator: boolean, s: { pub: Buffer, priv?: Buffer, dh?: (remotePub: Buffer) => Buffer | Promise<Buffer> }, rs?: Buffer, prologue?: Buffer,
+   *   e?: { priv: Buffer, pub: Buffer } }} o `rs` is required of the initiator; `e` only for test vectors. A static key is
+   *   its private bytes, or a `dh` that answers for them (vyre-core holds the bytes, so its `dh` is async): then read
+   *   with readMessageAsync, and the initiator's first write needs the private bytes.
    */
   constructor(o) {
     if (o.initiator && !o.rs) throw new Error("the initiator needs the responder's static key");
     this.initiator = o.initiator;
     this.s = o.s;
+    /** The static key's Diffie-Hellman: from its bytes, or the holder's own answer (possibly a promise). @type {(p: Buffer) => Buffer | Promise<Buffer>} */
+    this.sdh = o.s.dh ? o.s.dh : p => dh(/** @type {Buffer} */ (o.s.priv), p);
     this.e = o.e || null;
     /** @type {Buffer|null} the peer's static key: known up front to the initiator, learned by the responder */
     this.rs = o.rs ? Buffer.from(o.rs) : null;
@@ -188,7 +192,7 @@ export class Handshake {
       ss.mixHash(this.e.pub);
       ss.mixKey(dh(this.e.priv, /** @type {Buffer} */ (this.rs)));
       const s = ss.encryptAndHash(this.s.pub);
-      ss.mixKey(dh(this.s.priv, /** @type {Buffer} */ (this.rs)));
+      ss.mixKey(this.sdhSync(/** @type {Buffer} */ (this.rs)));
       const out = Buffer.concat([this.e.pub, s, ss.encryptAndHash(payload)]);
       this.step = 1;
       return out;
@@ -205,16 +209,23 @@ export class Handshake {
     throw new Error("handshake out of order");
   }
 
-  /** @param {Buffer} message @returns {Buffer} the payload */
-  readMessage(message) {
+  /** The static key's DH where an answer cannot wait. @param {Buffer} pub */
+  sdhSync(pub) {
+    const r = this.sdh(pub);
+    if (r instanceof Promise) { r.catch(() => {}); throw new Error("this static key answers asynchronously; use readMessageAsync"); }
+    return r;
+  }
+
+  /** One read, written once: each static-key DH is yielded to the driver, which answers it now or later. @param {Buffer} message */
+  *reading(message) {
     const ss = this.ss;
     if (!this.initiator && this.step === 0) {
       if (message.length < DHLEN + DHLEN + TAGLEN + TAGLEN) throw new Error("handshake message too short");
       this.re = Buffer.from(message.subarray(0, DHLEN));
       ss.mixHash(this.re);
-      ss.mixKey(dh(this.s.priv, this.re));
+      ss.mixKey(yield this.re);
       this.rs = ss.decryptAndHash(message.subarray(DHLEN, DHLEN + DHLEN + TAGLEN));
-      ss.mixKey(dh(this.s.priv, this.rs));
+      ss.mixKey(yield this.rs);
       const payload = ss.decryptAndHash(message.subarray(DHLEN + DHLEN + TAGLEN));
       this.step = 1;
       return payload;
@@ -224,12 +235,28 @@ export class Handshake {
       this.re = Buffer.from(message.subarray(0, DHLEN));
       ss.mixHash(this.re);
       ss.mixKey(dh(/** @type {any} */ (this.e).priv, this.re));
-      ss.mixKey(dh(this.s.priv, this.re));
+      ss.mixKey(yield this.re);
       const payload = ss.decryptAndHash(message.subarray(DHLEN));
       this.finish();
       return payload;
     }
     throw new Error("handshake out of order");
+  }
+
+  /** @param {Buffer} message @returns {Buffer} the payload */
+  readMessage(message) {
+    const g = this.reading(message);
+    let r = g.next();
+    while (!r.done) r = g.next(this.sdhSync(r.value));
+    return r.value;
+  }
+
+  /** As readMessage, for a static key whose DH is answered by its holder. @param {Buffer} message @returns {Promise<Buffer>} the payload */
+  async readMessageAsync(message) {
+    const g = this.reading(message);
+    let r = g.next();
+    while (!r.done) r = g.next(await this.sdh(r.value));
+    return r.value;
   }
 
   finish() {

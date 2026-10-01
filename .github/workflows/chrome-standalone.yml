@@ -1,0 +1,158 @@
+# The standalone vyre-chrome package (Claude Code, no Vyre server) against a REAL Chrome.
+# On each of macOS, Windows and Linux it builds the release folder, installs the connector with
+# its own `install` command, starts `cli.mjs mcp` and drives it over stdio like Claude Code, with
+# Chrome for Testing and the real extension and native host in a temp profile. Nothing touches a
+# person's machine, no secrets, no external sites. The `package` job uploads the release tarball
+# and its sha256 as an artifact; the lead attaches it to a GitHub release once it is cleared.
+name: chrome-standalone
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/capsule-sight]
+    paths:
+      - local/hands-chrome-mac/**
+      - .github/workflows/chrome-standalone.yml
+permissions:
+  contents: read
+concurrency:
+  group: chrome-standalone-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  real:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Standalone package against real Chrome
+        timeout-minutes: 9
+        run: node local/hands-chrome-mac/standalone/harness/real.mjs --iters 30 --out "results/standalone-${{ runner.os }}.json"
+      - name: Results
+        if: always()
+        run: |
+          ls -la results || true
+          for f in results/*.json; do echo "== $f"; head -c 8000 "$f"; echo; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-standalone-${{ runner.os }}
+          path: results/*.json
+          if-no-files-found: warn
+  order:
+    # The fresh-install ORDER on a real Chrome (real-use finding 2): does an extension connect when the connector is registered after
+    # Chrome started, or a server starts late, and does Chrome need a restart? Reports; only the tidy and late-server orders must connect.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 14
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fresh-install order
+        timeout-minutes: 11
+        run: node local/hands-chrome-mac/standalone/harness/order.mjs --out "results/order-${{ runner.os }}.json"
+      - name: Results
+        if: always()
+        run: for f in results/*.json; do echo "== $f"; cat "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-order-${{ runner.os }}
+          path: results/*.json
+          if-no-files-found: warn
+  frames:
+    # Can the extension see INSIDE cross-origin iframes (the GoHighLevel workflow builder is one)? Three sites, three processes, on a real Chrome.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Frames on a real Chrome
+        timeout-minutes: 6
+        run: node local/hands-chrome-mac/standalone/harness/frames.mjs --out "results/frames-${{ runner.os }}.json"
+      - name: Results
+        if: always()
+        run: for f in results/*.json; do echo "== $f"; cat "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-frames-${{ runner.os }}
+          path: results/*.json
+          if-no-files-found: warn
+  frames-suite:
+    # The whole workflow on the app the way GoHighLevel renders it: the Workflows UI in a cross-origin iframe (blank until the shell hands it a token,
+    # its own API, a nested editor, a late frame, a frame that navigates, a sandboxed one). Every stage goes through the MCP tools on a real Chrome.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 26
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fixture tests (no Chrome)
+        timeout-minutes: 3
+        run: node --test local/hands-chrome-mac/bench-frames-fixture.test.js
+      - name: Frames suite on a real Chrome
+        timeout-minutes: 12
+        run: node local/hands-chrome-mac/standalone/harness/frames-suite.mjs --out "results/frames-suite-${{ runner.os }}.json"
+      - name: Frames suite, DNR layer alone (Fetch off, test profile only)
+        timeout-minutes: 12
+        env:
+          VYRE_CHROME_TEST_NOFETCH: "1"
+        run: node local/hands-chrome-mac/standalone/harness/frames-suite.mjs --out "results/frames-suite-nofetch-${{ runner.os }}.json"
+      - name: Results
+        if: always()
+        run: for f in results/*.json; do echo "== $f"; cat "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-frames-suite-${{ runner.os }}
+          path: results/*.json
+          if-no-files-found: warn
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node local/hands-chrome-mac/standalone/build-release.mjs --out dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vyre-chrome-release
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256

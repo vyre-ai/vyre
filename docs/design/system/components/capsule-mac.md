@@ -1,23 +1,23 @@
 ---
-title: Capsule on the Mac
+title: Lumen on the Mac
 summary: The native Swift panel that opens with Control twice over any app, answers the Needs rows, streams the assistant's reply and queues offline.
 audience: builders
 owner: app-design
 status: draft
 ---
 
-# Capsule on the Mac
+# Lumen on the Mac
 
 A floating panel, 680 wide, that opens over whatever you are doing when you press Control twice.
 It asks the assistant or a targeted agent, answers the same Needs rows as the app with keys,
 streams the reply, and keeps working offline. Native Swift; every colour and size comes from
-`Tokens.generated.swift`, never a hand-typed value. Drawn on "The Mac Capsule and the CLI".
+`Tokens.generated.swift`, never a hand-typed value. Drawn on "The Mac Lumen and the CLI".
 
 | Surface | Implementing file | Status |
 |---|---|---|
 | Deck | not used | not used |
 | App | not used | not used |
-| Capsule | `UI/CapsuleView.swift`, `UI/AgentDeskView.swift`, `UI/PresenceView.swift`, `UI/Theme.swift`, `Host/Panel.swift`, `Host/Hotkeys.swift`, `Host/MenuBarItem.swift` under `local/capsule/native/Sources/` (work/capsule-pro) | partial |
+| Lumen | `UI/CapsuleView.swift`, `UI/AgentDeskView.swift`, `UI/PresenceView.swift`, `UI/Theme.swift`, `Host/Panel.swift`, `Host/Hotkeys.swift`, `Host/MenuBarItem.swift` under `local/capsule/native/Sources/` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -86,13 +86,13 @@ only.
 
 ## Accessibility
 
-- The panel is an accessibility group named "Vyre Capsule"; the input has the placeholder as its
+- The panel is an accessibility group named "Vyre Lumen"; the input has the placeholder as its
   label. Each waiting row reads "Push q3-report, ask from kit, Harlow Legal, 9 minutes".
 - Every action has its key in its accessibility hint. VoiceOver focus lands on the input on open.
 
 ## Gaps
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] `Theme.swift` maps tokens to old names and hand-types sizes (query 22, title 14, label
   10.5 mono, rows 40); only colours, status and `Radius.card` come from tokens.
 - [ ] Placeholder reads "Search, calculate, ask, or @ a session".
@@ -101,6 +101,6 @@ Capsule (work/capsule-pro)
 - [ ] Offline banner reads "OFFLINE" in caps, not "Works offline · 1 queued".
 - [ ] Always dark; no `Tokens.paper`.
 - [ ] Presence reads "Touch ID to approve exactly this." with no 30 min covered line.
-- [ ] `AgentButton` primary is bone on graphite, radius 6, not lime `primaryBg`.
+- [ ] `AgentButton` primary is `primaryBg` (bone) with `primaryInk`, radius 6.
 - [ ] Radius is `Tokens.Radius.card` (12), not `sheet`.
 - [ ] `Tokens.generated.swift` has no shadow tokens, so `--float` cannot come from it yet.

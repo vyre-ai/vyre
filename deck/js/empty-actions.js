@@ -21,7 +21,40 @@ export async function createProject(input) {
   const r = await attempt("projects.create", input);
   if (r.error) return { error: r.error.missing ? `The ${r.error.module} module is not running, so a project cannot be made here.` : String(r.error.message) };
   window.dispatchEvent(new Event("deck:pins"));
-  return { slug: r.data?.slug || r.data?.project?.slug || null, name: r.data?.name || r.data?.project?.name || input.name };
+  const offer = r.data?.offer;
+  return { slug: r.data?.slug || r.data?.project?.slug || null, name: r.data?.name || r.data?.project?.name || input.name,
+    /** projects.create's one question about version history, for a folder that already exists and is not a repo. */
+    offer: offer && offer.kind === "history" && offer.tool === "projects.history" ? { question: String(offer.question || "Keep version history for this folder?"), project: String(offer.input?.project || r.data?.slug || "") } : null };
+}
+
+/**
+ * The version-history question, once, in plain words (charter: projects work with or without
+ * GitHub). Keep makes the folder a local repo so each session gets its own copy, branch and Undo;
+ * No thanks is remembered and it is never asked again. Either way `done` runs, so the person is
+ * never stopped here: a failed answer says so in a line and carries on.
+ * @param {{ question: string, project: string }} offer @param {() => void} done
+ */
+export function historyOffer(offer, done) {
+  const status = h("span", { class: "small muted", role: "status" });
+  const btns = /** @type {HTMLButtonElement[]} */ ([]);
+  const answer = async (/** @type {boolean} */ keep) => {
+    for (const b of btns) b.disabled = true;
+    put(status, keep ? "Keeping history…" : "");
+    const r = await attempt("projects.history", { project: offer.project, keep });
+    if (r.error) { put(status, "History could not be turned on. You can carry on without it."); setTimeout(done, 1500); return; }
+    done();
+  };
+  const keep = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm btn-primary", "data-act": "keep", onclick: () => answer(true) }, "Keep history"));
+  const no = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm btn-ghost", "data-act": "no", onclick: () => answer(false) }, "No thanks"));
+  btns.push(keep, no);
+  return h("div", { class: "ea-form ea-history", role: "group", "aria-label": "Version history" },
+    h("span", { class: "small" }, offer.question, " ", h("span", { class: "muted" }, "Each session then gets its own copy and can be undone. Nothing goes online.")), keep, no, status);
+}
+
+/** After a project is made: the history question when it has one, then `next`. @param {HTMLElement} slot @param {{ offer?: any }} made @param {() => void} next */
+export function offerThen(slot, made, next) {
+  if (!made.offer) { next(); return; }
+  put(slot, historyOffer(made.offer, next));
 }
 
 /**
@@ -33,7 +66,7 @@ export async function startThread(p, prompt) {
   const input = { project: p.slug, cwd: p.home };
   if (prompt) input.prompt = prompt;
   const r = await attempt("threads.start", input);
-  if (r.error) return { error: r.error.missing ? "The switchboard module is not running, so a thread cannot start here." : String(r.error.message) };
+  if (r.error) return { error: r.error.missing ? "Sessions are not available on this box, so a thread cannot start here." : String(r.error.message) };
   const id = r.data?.id || r.data?.thread?.id || r.data?.thread;
   return { id: typeof id === "string" ? id : null };
 }
@@ -57,7 +90,7 @@ function inline(label, primary, drawForm) {
  */
 export function createProjectInline(o = {}) {
   return inline("Create project", o.primary !== false, (box, closed) => {
-    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input ea-in", "aria-label": "Project name", autocomplete: "off", placeholder: "Harlow Legal" }));
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input ea-in", "aria-label": "Project name", autocomplete: "off", placeholder: "Your project's name" }));
     const status = h("span", { class: "small muted", role: "status" });
     const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm btn-primary" }, "Create"));
     put(box, h("form", { class: "ea-form", onsubmit: async (/** @type {Event} */ e) => {
@@ -69,8 +102,11 @@ export function createProjectInline(o = {}) {
       const r = await createProject({ name: name.value.trim() });
       ok.disabled = false;
       if (r.error) { put(status, r.error); return; }
-      if (o.onCreated) { o.onCreated(r.slug || "", r.name); return; }
-      if (r.slug) go(`/projects/${enc(r.slug)}`); else put(status, "Made. It shows under Projects.");
+      const next = () => {
+        if (o.onCreated) { o.onCreated(r.slug || "", r.name); return; }
+        if (r.slug) go(`/projects/${enc(r.slug)}`); else put(status, "Made. It shows under Projects.");
+      };
+      offerThen(status, r, next);
     } }, name, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => closed(true) }, "Cancel"), status));
     name.focus();
   });

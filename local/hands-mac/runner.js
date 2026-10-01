@@ -92,6 +92,7 @@ export function makeRunner({ bin = DEFAULT_BIN, timeoutMs = 20000, responsible =
       }
       ok(body);
     });
+    child.stdin.on("error", () => {}); // a helper that exits early is answered by its exit code above
     child.stdin.end(JSON.stringify(request));
   });
 }

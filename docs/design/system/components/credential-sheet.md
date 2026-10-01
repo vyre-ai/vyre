@@ -1,6 +1,6 @@
 ---
 title: Credential sheet
-summary: The one sheet every surface shows when a module answers needs_credential. What it asks (a key, a file or a sign-in), why in one line, a secret field that never echoes, where it is kept, the grant in the same step and one Touch ID, with an inline variant in the Capsule and a bottom sheet on the phone.
+summary: The one sheet every surface shows when a module answers needs_credential. What it asks (a key, a file or a sign-in), why in one line, a secret field that never echoes, where it is kept, the grant in the same step and one Touch ID, with an inline variant in Lumen and a bottom sheet on the phone.
 audience: builders
 owner: app-design
 status: draft
@@ -22,7 +22,7 @@ adds no new part. Not drawn on a board yet (see Gaps).
 |---|---|---|
 | Deck | a sheet in `deck/js/sheet.js` (proposed `deck/js/connect-sheet.js`, work/pwa) | not built |
 | App | a sheet on the chat-core error path (work/mobile) | not built |
-| Capsule | the inline row in `local/capsule/native/Sources/UI/CapsuleView.swift` (work/capsule-pro) | not built |
+| Lumen | the inline row in `local/capsule/native/Sources/UI/CapsuleView.swift` (work/capsule-pro) | not built |
 | CLI | the hidden prompt of `vyre vault connect <module>` (work/vault) | not built <!-- terms: ignore --> |
 
 ## Anatomy
@@ -55,7 +55,7 @@ A sheet: a centred card 540 wide on the desktop, a bottom sheet under 720.
 6. **Kept.** One line, 12/16 `--label`, with a 12 vault icon: "Kept in your vault on the box." and,
    under it, the grant in the same words the person will see later: "Voice can use it. Nothing
    else can."
-7. **Actions.** One primary, lime, once: **Connect** (a key or a file) or **Sign in with Google**
+7. **Actions.** One primary, bone, once: **Connect** (a key or a file) or **Sign in with Google**
    (oauth), with the Touch ID glyph (Face ID on the phone) beside its label. It is disabled until
    the fields have values. No Cancel: the close button is the way out.
 
@@ -65,19 +65,19 @@ A sheet: a centred card 540 wide on the desktop, a bottom sheet under 720.
 |---|---|---|
 | Sheet, desktop | Deck and PWA on a laptop | centred card 540, top 56, `--panel`, `--popover` shadow, scrim |
 | Sheet, phone | PWA and app | bottom sheet, fit content; fields 44; Connect 54 full width; the keyboard pushes the actions up |
-| Inline, Capsule | the Capsule's body | one row, then the field in place (below) |
+| Inline, Lumen | Lumen's body | one row, then the field in place (below) |
 | Prompt, CLI | `vyre vault connect voice` | the why line, a hidden prompt, "Kept in your vault on the box." (vault's) <!-- terms: ignore --> |
 
-**Inline in the Capsule.** A result row at 44 at the top of the body, in place of what could not
+**Inline in Lumen.** A result row at 44 at the top of the body, in place of what could not
 run: the key icon in a 20 tile, title "Connect Deepgram to talk" 13/18 `--text`, meta 12/16
 `--label` "Voice needs a speech key · Kept in your vault on the box". ⏎ turns the row into the
 secret field (a native secure field, 32 tall, mono 13, full width minus 32) with "⏎ Connect with
 Touch ID · Esc Cancel" in the footer. A group shows its providers as three rows first ("Deepgram",
 "OpenAI", "ElevenLabs"); ⏎ on one opens its field. A sign-in (`oauth`) row opens the browser on ⏎
 and reads "Finish signing in to Google in your browser" until `vault.connected` arrives. The <!-- terms: ignore -->
-Capsule never opens a separate window for this.
+Lumen never opens a separate window for this.
 
-Where it opens from: any tool call that answers `needs_credential`, anywhere: the Capsule when you
+Where it opens from: any tool call that answers `needs_credential`, anywhere: Lumen when you
 talk with no speech key, chat when an agent's send has no mail login, an account row's Sign in
 (account-row.md), onboarding's Claude step, Settings, Vault, Connections.
 
@@ -99,13 +99,13 @@ Nothing typed is kept by the surface after the sheet closes, in any state.
 
 ## Keyboard and touch
 
-⏎ in the last field connects; Tab moves between fields; Esc closes (the Capsule: collapses the row,
+⏎ in the last field connects; Tab moves between fields; Esc closes (Lumen: collapses the row,
 then clears). ⌘V pastes into the secret field. The segmented choice takes ← and →. On the phone
 the fields are 44, Paste is 44, and Connect is 54.
 
 ## Motion
 
-As sheet.md: in over `--motion-sheet`, out over `--motion-panel`. The Capsule's row opens its field
+As sheet.md: in over `--motion-sheet`, out over `--motion-panel`. Lumen's row opens its field
 in place with no animation. Reduced motion: opacity only.
 
 ## Copy
@@ -117,7 +117,7 @@ in place with no animation. Reduced motion: opacity only.
 - States: "Connecting", "Waiting for Google", "Finish in your browser", "Deepgram connected · Voice
   can use it", "Deepgram didn't accept this key.", "Touch ID didn't confirm. Nothing was saved.",
   "Connecting needs the box."
-- Capsule: "Connect Deepgram to talk", "Voice needs a speech key".
+- Lumen: "Connect Deepgram to talk", "Voice needs a speech key".
 - Never "API key required", "Error", "Authenticate", "Credentials", "Paste your secret", or a
   module or tool id.
 
@@ -142,7 +142,7 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Nothing built: the bottom sheet with Paste and Face ID on Connect.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Nothing built: the inline row and secure field; "Voice needs a speech key" copies a
       terminal command today (capsule.md), replace it with "Connect Deepgram to talk".
 
@@ -153,4 +153,4 @@ vault
 - [ ] `vault.need` returns `purpose` in plain words and the provider's key page for Open. <!-- terms: ignore -->
 
 System (app-design)
-- [ ] The CredentialSheet board on the canvas: key, file, sign-in, the Capsule row.
+- [ ] The CredentialSheet board on the canvas: key, file, sign-in, Lumen row.

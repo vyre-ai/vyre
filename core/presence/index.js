@@ -10,11 +10,13 @@
 // injectable, so tests never open a dialog or write to a real terminal.
 
 import crypto from "node:crypto";
+import { normalizePublicKey, checkRsa } from "./keys.js";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
 import { isServer } from "../config/index.js";
+import { within } from "../../lib/within.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -190,7 +192,7 @@ export function personOnly(name, def) {
   return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
 }
 
-export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
+export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session"];
 
 /**
  * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
@@ -205,9 +207,11 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 /**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
  * that declaration they ask every time. gate.approve asks only for what goes out as the user:
- * sending, posting, paying or deleting outside (the no-nag rule).
+ * sending, posting, paying or deleting outside (the no-nag rule). vault.account.unlock asks only
+ * when no vault password comes with it (Touch ID): the password is the proof, so a Mac with no
+ * Touch ID reader is asked once, not for the Mac login and then the vault password.
  */
-export const NARROWABLE = new Set(["gate.approve"]);
+export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 
 /**
  * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
@@ -325,12 +329,49 @@ export const MIGRATIONS = [`
   CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
     WHEN NEW.kind IN ('capsule', 'device') AND (NEW.alg IS NULL OR NEW.alg <> -7)
     BEGIN SELECT RAISE(ABORT, 'a capsule or device key must store alg -7'); END;
+`, `
+  -- The first owner passkey's one-time grant (relay.setup.claim): stored hashed, five minutes, one
+  -- use, bound to the node that asked for it and to the address the claim was made at (the
+  -- passkey's rp_id).
+  CREATE TABLE presence_grants (
+    hash TEXT PRIMARY KEY,
+    expires INTEGER NOT NULL,
+    used INTEGER,
+    peer TEXT,
+    host TEXT
+  );
+`, `
+  -- A device key may also be RS256 (alg -257, RSA 2048+, Windows Hello). The Capsule's key stays
+  -- ES256 only. Index.js checks the alg against the key's type at enroll and again at every proof.
+  DROP TRIGGER presence_keys_signer_alg;
+  DROP TRIGGER presence_keys_signer_alg_update;
+  CREATE TRIGGER presence_keys_signer_alg BEFORE INSERT ON presence_keys
+    WHEN (NEW.kind = 'capsule' AND (NEW.alg IS NULL OR NEW.alg <> -7)) OR (NEW.kind = 'device' AND (NEW.alg IS NULL OR NEW.alg NOT IN (-7, -257)))
+    BEGIN SELECT RAISE(ABORT, 'a capsule key must store alg -7 and a device key alg -7 or -257'); END;
+  CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
+    WHEN (NEW.kind = 'capsule' AND (NEW.alg IS NULL OR NEW.alg <> -7)) OR (NEW.kind = 'device' AND (NEW.alg IS NULL OR NEW.alg NOT IN (-7, -257)))
+    BEGIN SELECT RAISE(ABORT, 'a capsule key must store alg -7 and a device key alg -7 or -257'); END;
+`, `
+  -- A person session made with a presence key remembers which one, so removing that key can end the
+  -- sessions it opened. presence_removed keeps what was removed for 30 days: a session's id with
+  -- the hash of its secret (so only a holder of the credential this box issued can be told "this
+  -- device was removed"; anyone else gets today's answer) and the removed key's id.
+  ALTER TABLE presence_people ADD COLUMN key_id TEXT;
+  CREATE TABLE presence_removed (
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('session', 'key')),
+    hash TEXT,
+    key_id TEXT,
+    removed INTEGER NOT NULL,
+    PRIMARY KEY (id, kind)
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
 const CAPSULE_SKEW = 60_000;
 const COOL_DOWN = 30_000;
 const CODE_TTL = 10 * 60_000;
+const GRANT_TTL = 5 * 60_000;
 // A session lasts 30 minutes from the proof, used or not (the no-nag rule: one proof covers
 // about 30 minutes on that device). There is no shorter idle cutoff inside that.
 const SESSION_MAX = 30 * 60_000;
@@ -401,7 +442,14 @@ export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from
 const ES256 = pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }];
 const SIGNERS = {
   capsule: { label: "Capsule", check: ES256, stale: "that Capsule key is an old kind Vyre no longer accepts; re-enroll the Capsule's key" },
-  device: { label: "device", check: ES256, stale: "that phone's key is not a P-256 key Vyre accepts; pair the phone again" },
+  // The algorithm comes from the alg stored at enroll time, never from the caller: ES256 for a
+  // P-256 key, RS256 (RSASSA-PKCS1-v1_5, SHA-256) for an RSA key, and the key must be that type.
+  device: { label: "device", stale: "that phone's key is not a kind Vyre accepts (P-256, or RSA 2048 bits or more); pair the phone again", check: (pub, alg) => {
+    const key = spki(pub);
+    if (alg === -7 && key.asymmetricKeyType === "ec") return ["sha256", { key, dsaEncoding: /** @type {const} */ ("der") }];
+    if (alg === -257 && key.asymmetricKeyType === "rsa") { checkRsa(key); return ["sha256", { key, padding: crypto.constants.RSA_PKCS1_PADDING }]; }
+    throw new Error("the stored alg does not match the stored key");
+  } },
 };
 
 /** EC P-256 and nothing else: what a Secure Enclave or StrongBox holds. @param {crypto.KeyObject} key */
@@ -567,8 +615,7 @@ export class Presence {
       // The helper is built on first use, which can take a while. A refusal should not wait on
       // that: until it answers, Touch ID is not offered, and the build carries on behind.
       const t = await this.touchid();
-      const within = new Promise(r => setTimeout(r, 3000, false).unref());
-      try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
+      try { if (t && await within(t.available(), 3000, false)) out.push("touchid"); } catch {}
     }
     if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
     const link = this.coreLink;
@@ -744,7 +791,9 @@ export class Presence {
       // The stored key itself must be P-256 too, so the check never rests on the alg column alone.
       let stored = null;
       try { stored = spki(row.public_key); } catch { /* unreadable: refused below */ }
-      if (Number(row.alg) !== -7 || !stored || !isP256(stored)) return refuse(stale);
+      // A device key is P-256 or RSA with a matching alg; a stored alg that disagrees with its key is left to check(), which refuses it.
+      const keyOk = method === "device" ? [-7, -257].includes(Number(row.alg)) && Boolean(stored) && (isP256(stored) || stored.asymmetricKeyType === "rsa") : Number(row.alg) === -7 && Boolean(stored) && isP256(stored);
+      if (!keyOk) return refuse(stale);
       if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse(`the ${label} signature is too old or from the future`);
       if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse(`the ${label} nonce is missing or malformed`);
       // One set for both kinds: a nonce is spent whichever key signed with it.
@@ -752,7 +801,7 @@ export class Presence {
       let good = false;
       try {
         const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`);
-        const [alg, pub] = check(row.public_key);
+        const [alg, pub] = check(row.public_key, row.alg === null ? null : Number(row.alg));
         good = crypto.verify(alg, msg, pub, Buffer.from(String(sig || ""), "base64url"));
       } catch {}
       if (!good) return refuse(`the ${label} signature does not check out`);
@@ -815,6 +864,25 @@ export class Presence {
       return proved();
     }
 
+    if (method === "grant") {
+      // The first owner passkey's grant (relay.setup.claim checked a signed claim token to mint it):
+      // presence.enroll only, once, within five minutes, from the browser it was made for, and on the
+      // box from the owner's own device over the tailnet as a code is.
+      if (tool !== "presence.enroll") return refuse("a grant only enrolls the first passkey");
+      if (isServer(this.role)) {
+        const owner = String((this.network() || {}).owner || "").toLowerCase();
+        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+      }
+      const h = sha(String(proof.grant || "")).toString("hex");
+      const row = /** @type {any} */ (this.db.prepare("SELECT peer, host FROM presence_grants WHERE hash = ? AND used IS NULL AND expires > ?").get(h, this.now()));
+      if (!row || (row.peer && row.peer !== peerId(peer))) return refuse("that grant is wrong, used, expired or made for another device");
+      // It enrols a passkey for the address the claim was made at, and nothing else.
+      if (!input || input.kind !== "passkey" || !row.host || String(input.rp_id || "").toLowerCase() !== row.host) return refuse("a grant enrolls a passkey for the address it was claimed at");
+      const r = this.db.prepare("UPDATE presence_grants SET used = ? WHERE hash = ? AND used IS NULL AND expires > ?").run(this.now(), h, this.now());
+      if (Number(r.changes) !== 1) return refuse("that grant is wrong, used or expired");
+      return proved();
+    }
+
     return refuse(`unknown presence method ${method}`);
   }
 
@@ -865,6 +933,15 @@ export class Presence {
     return Number(r.changes) === 1;
   }
 
+  /** The one-time grant for the first owner passkey: 32 random bytes, stored hashed, five minutes, bound to `peer` when known and to the address `host` it was claimed at. @param {any} [peer] @param {string} [host] */
+  mintGrant(peer = null, host = "") {
+    const now = this.now();
+    const grant = b64url(32);
+    this.db.prepare("DELETE FROM presence_grants WHERE expires < ?").run(now - 24 * 3600_000);
+    this.db.prepare("INSERT INTO presence_grants (hash, expires, used, peer, host) VALUES (?,?,NULL,?,?)").run(sha(grant).toString("hex"), now + GRANT_TTL, peerId(peer), String(host || "").toLowerCase() || null);
+    return { grant, expires: now + GRANT_TTL };
+  }
+
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
   keys() {
     return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
@@ -893,14 +970,18 @@ export class Presence {
   }
 
   /**
-   * Enroll a Capsule key or a phone's device key (both P-256), or a passkey. Public keys only, as base64url SPKI DER.
+   * Enroll a Capsule key (P-256 in the Secure Enclave), a device key (P-256 with alg -7, or RSA-2048+ with alg -257) or a passkey. Public keys
+   * only: base64url SPKI DER, or a JWK, or a Windows BCRYPT RSA blob (keys.js), stored as SPKI.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
   enroll({ kind, name, public_key, alg, rp_id, credential_id, device = null, origin = null }) {
     if (this.coreLink) throw coreOwned("presence keys are enrolled");
     if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
-    try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
+    try { public_key = normalizePublicKey(public_key); key = spki(public_key); } catch (e) {
+      const m = /** @type {Error} */ (e).message;
+      throw new Error(/private key material|JWK|BCRYPT|blob|JSON/.test(m) ? m : "public_key must be a base64url SPKI DER public key");
+    }
     let id;
     if (kind === "capsule") {
       // The Capsule's Secure Enclave key: ES256 on P-256, nothing else (ADR 0040).
@@ -909,9 +990,15 @@ export class Presence {
       alg = -7; rp_id = undefined;
       id = fingerprint(public_key);
     } else if (kind === "device") {
-      // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0018).
-      if (!isP256(key)) throw new Error("a device key must be an EC P-256 key");
-      if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256)");
+      // What a device's hardware can hold: ES256 on P-256 (ADR 0018), or RS256 on RSA of 2048 bits
+      // or more (Windows Hello). The alg is bound to the key's type here and again at every verify.
+      if (alg === -257) {
+        if (key.asymmetricKeyType !== "rsa") throw new Error("alg -257 (RS256) needs an RSA key");
+        try { checkRsa(key); } catch (e) { throw new Error(/** @type {Error} */ (e).message); }
+      } else {
+        if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key, or RSA with alg -257");
+        if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256) or -257 (RS256)");
+      }
       rp_id = undefined;
       id = fingerprint(public_key);
     } else {
@@ -920,6 +1007,7 @@ export class Presence {
       const want = ALGS[String(alg)];
       if (!want) throw new Error("alg must be -7 (ES256), -8 (EdDSA) or -257 (RS256)");
       if (key.asymmetricKeyType !== want) throw new Error(`alg ${alg} needs a ${want} key, not ${key.asymmetricKeyType}`);
+      if (want === "rsa") checkRsa(key);
       id = String(credential_id);
     }
     if (this.db.prepare("SELECT 1 FROM presence_keys WHERE id = ?").get(id)) throw new Error("that key is already enrolled");
@@ -935,7 +1023,20 @@ export class Presence {
   remove(id) {
     if (this.coreLink) throw coreOwned("presence keys are removed");
     this.db.prepare("DELETE FROM presence_key_devices WHERE key = ?").run(String(id));
-    return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+    const removed = Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+    if (removed) {
+      // The sessions this key opened end with it. Each is remembered for 30 days (its id and the
+      // hash of its secret) so the device that held it can be told once, plainly, that it was
+      // removed (person.js check); the key's own id is kept too.
+      const now = this.now();
+      this.db.prepare("DELETE FROM presence_removed WHERE removed <= ?").run(now - 30 * 86_400_000);
+      for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id, hash FROM presence_people WHERE key_id = ?").all(String(id)))) {
+        this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
+      }
+      this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
+    }
+    return removed;
   }
 
   /** Never a code, key, signature or input: tool, method and caller only. */

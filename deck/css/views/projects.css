@@ -33,6 +33,12 @@
 .pj { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .pj-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 0 20px 0 24px; border-bottom: 1px solid var(--rule); }
 .pj-id { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.pj-name-row { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.pj-edit { flex: none; color: var(--label); }
+.pj-edit:hover { color: var(--text-2); }
+.pj-rename-form { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.pj-rename { min-width: 220px; }
+.pj-archive { flex: none; color: var(--label); }
 .pj-name { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
 .pj-org { padding: 3px 7px; border: 1px solid var(--rule-strong); border-radius: var(--radius-chip, 4px); white-space: nowrap; }
 .pj-people { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
@@ -169,6 +175,8 @@
 
 /* Phone: the list, then the thread full-width with a back link. */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .pj-edit, .pj-archive { min-width: 44px; min-height: 44px; }
+  .pj-rename { min-height: 44px; font-size: 17px; }
   .pj-phone { display: inline-flex; }
   .pl { padding: 16px 16px 24px; }
   .pl-head { flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px; }

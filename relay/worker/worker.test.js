@@ -284,6 +284,23 @@ for (const hibernateEveryEvent of [false, true]) {
     assert.equal(live(rt, b.route), 1);
   });
 
+  test(`the box's 4401 'device removed' reaches the device as it is said, and nothing else the box writes does${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const b = await box(rt);
+    const ready = await b.s.json();
+    for (const [code, reason, want] of [[CLOSE.refused, "device removed", { code: CLOSE.refused, reason: "device removed" }],
+      [CLOSE.refused, "not a paired device", { code: CLOSE.boxGone, reason: "box closed the connection" }]]) {
+      const dev = sock(rt, `/v1/device?route=${b.route}`);
+      await dev.open();
+      const { c } = await b.s.json();
+      const data = sock(rt, `/v1/box?route=${b.route}&c=${c}&t=${ready.ticket}`);
+      await data.open();
+      await rt.settle();
+      data.ws.close(code, reason);
+      assert.deepEqual(await dev.closed(), want);
+    }
+  });
+
   test(`a box that reconnects is told which connections are still waiting${mode}`, async t => {
     const rt = world(t, { hibernateEveryEvent });
     const b = await box(rt);
@@ -524,4 +541,108 @@ test("worker: an unresolved ticket sets an alarm at its own exp, which cleans it
   assert.equal(await obj.ctx.storage.getAlarm(), exp);
   await obj.run(inst => inst.alarm());
   assert.equal(obj.ctx.storage.map.size, 0, "the alarm cleans up an unresolved ticket");
+});
+
+// First writer wins, and the setup mailbox (tailnet plan 3.6, 3.6b), on the Worker: the same
+// contract as relay/node/server.test.js, with the object thrown away after every event too.
+const H = BASE.replace(/^ws/, "http");
+const resolveLoc = (rt, loc) => worker.fetch(new Request(`${H}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
+for (const hibernateEveryEvent of [false, true]) {
+  const mode = hibernateEveryEvent ? " (hibernating after every event)" : "";
+  test(`worker: a setup offer is first-writer-wins: 409 for another record, 200 for the identical one, contested for resolve${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const a = await box(rt), b = await box(rt);
+    await a.s.json(); await b.s.json();
+    const secret = Buffer.alloc(16, 5);
+    const exp = Date.now() + 3_600_000;
+    const rec1 = wire.ticketSeal(secret, JSON.stringify({ v: 1, name: "first" })), rec2 = wire.ticketSeal(secret, JSON.stringify({ v: 1, name: "second" }));
+    const loc = "l".repeat(43), mac = "m".repeat(43);
+    a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+    assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 });
+    a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+    assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 }, "a reconnect re-sending is not a clash");
+    const first = await resolveLoc(rt, loc);
+    assert.equal(first.status, 200);
+    assert.equal(/** @type {any} */ (await first.json()).record, rec1);
+    assert.equal((await resolveLoc(rt, loc)).status, 200, "a setup offer is not single-use");
+    assert.equal(rt.object(loc, "TICKETS").ctx.storage.alarmAt !== null && rt.object(loc, "TICKETS").ctx.storage.alarmAt > Date.now() + 3_000_000, true, "its alarm sweeps at its own hour, not five minutes");
+    b.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec2, mac, exp }));
+    assert.deepEqual(await b.s.json(), { t: "registered", loc, status: 409 });
+    const after = await resolveLoc(rt, loc);
+    assert.equal(after.status, 409);
+    assert.deepEqual(await after.json(), { error: "contested" });
+  });
+
+  test(`worker: Wink tickets are first-writer-wins too, and stay single-use${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const b = await box(rt);
+    await b.s.json();
+    const exp = Date.now() + 60_000;
+    const one = wire.ticketSeal(Buffer.alloc(8, 1), "{}"), two = wire.ticketSeal(Buffer.alloc(8, 2), "{}");
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: one, mac: "m".repeat(43), exp }));
+    assert.equal((await b.s.json()).status, 200);
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: two, mac: "m".repeat(43), exp }));
+    assert.equal((await b.s.json()).status, 409);
+    assert.equal((await resolveLoc(rt, "t".repeat(43))).status, 409);
+    b.s.ws.send(JSON.stringify({ t: "ticket", loc: "u".repeat(43), record: one, mac: "m".repeat(43), exp }));
+    assert.equal((await b.s.json()).status, 200);
+    assert.equal((await resolveLoc(rt, "u".repeat(43))).status, 200);
+    assert.equal((await resolveLoc(rt, "u".repeat(43))).status, 404);
+  });
+
+  test(`worker: the setup mailbox takes lines, only the page's key reads them, and a long poll waits${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent, env: { SETUP_POLL_MS: "20" } });
+    const { createSetupKey, mailboxReader } = await import("../client/setup.js");
+    const key = await createSetupKey();
+    const secret = randomBytes(16);
+    const loc = wire.setupDerive("loc", secret).toString("base64url");
+    const fp = wire.setupFingerprint(Buffer.from(key.spki)).toString("base64url");
+    const wtok = wire.setupDerive("mbxw", secret).toString("base64url");
+    const post = (line, extra = {}) => worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9" }, body: JSON.stringify({ loc, fp, wtok, ...(line === undefined ? {} : { line }), ...extra }) }), rt.env);
+    const fetchThrough = (url, init) => worker.fetch(new Request(url, init), rt.env);
+    const reader = await mailboxReader({ relay: BASE, secret, key, fetch: fetchThrough });
+    assert.deepEqual(await reader.next(0), [], "nothing yet: no mailbox");
+    assert.equal((await post(wire.mbxSeal(secret, 0, "Found your server"))).status, 200);
+    const waiting = reader.next(5);
+    assert.deepEqual(await waiting, ["Found your server"]);
+    const late = reader.next(5);
+    setTimeout(() => post(wire.mbxSeal(secret, 1, "Installing")), 60);
+    assert.deepEqual(await late, ["Installing"], "the long poll returned when the line landed");
+    assert.deepEqual(await reader.next(0), []);
+    const stranger = await createSetupKey();
+    await assert.rejects((await mailboxReader({ relay: BASE, secret, key: stranger, fetch: fetchThrough })).next(0), { code: "unauthorized" });
+    await assert.rejects((await mailboxReader({ relay: BASE, secret, key, fetch: fetchThrough, now: () => Date.now() - 600_000 })).next(0), { code: "unauthorized" }, "a stale signature");
+    // Contested: a second writer's token
+    assert.equal((await post(wire.mbxSeal(secret, 0, "theirs"), { wtok: wire.setupDerive("mbxw", randomBytes(16)).toString("base64url") })).status, 409);
+    assert.equal((await post(wire.mbxSeal(secret, 2, "mine"))).status, 409, "contested for the first writer too");
+    await assert.rejects(reader.next(0), { code: "contested" });
+    assert.equal((await resolveLoc(rt, loc)).status, 409, "and resolve says so");
+  });
+}
+
+test("worker: the setup mailbox holds 64 KB, limits per address and globally, and answers any origin", async t => {
+  let allow = true, globalAllow = true;
+  const limiter = fn => ({ limit: async () => ({ success: fn() }) });
+  const rt = world(t, { env: { SETUP_LIMITER: limiter(() => allow), SETUP_LIMITER_GLOBAL: limiter(() => globalAllow), SETUP_POLL_MS: "20" } });
+  const loc = "z".repeat(43);
+  const post = (line, extra = {}) => worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", headers: { origin: "https://vyre.run" }, body: JSON.stringify({ loc, fp: "f".repeat(22), wtok: "w".repeat(43), ...(line ? { line } : {}), ...extra }) }), rt.env);
+  const first = await post();
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("access-control-allow-origin"), "*");
+  const line = "A".repeat(1400);
+  let last = 200, n = 0;
+  while (last === 200 && n < 80) { last = (await post(line)).status; n++; }
+  assert.equal(last, 413);
+  assert.ok(n <= 47 && n >= 45, `64 KB of 1400-character lines, got ${n}`);
+  assert.equal((await post("short")).status, 400);
+  assert.equal((await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", body: "x".repeat(9000) }), rt.env)).status, 413);
+  allow = false;
+  assert.equal((await post()).status, 429, "per-address limiter");
+  allow = true; globalAllow = false;
+  assert.equal((await post()).status, 429, "global limiter");
+  const pre = await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "OPTIONS", headers: { origin: "https://vyre.run" } }), rt.env);
+  assert.equal(pre.status, 204);
+  assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-key/);
+  const badLoc = await worker.fetch(new Request(`${H}/v1/setup/mbx?loc=short`), rt.env);
+  assert.equal(badLoc.status, 400);
 });

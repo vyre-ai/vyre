@@ -7,7 +7,7 @@
 // A repeat with the same input gets that answer back without the tool running again; a repeat
 // with other input is refused, since it is a client bug that would otherwise pass silently.
 // Only the tool's own answers are kept: a success, or a refusal carrying a code. A tool that
-// crashed ("failed") may be retried.
+// crashed ("failed") may be retried, and so may one the person had not yet asked for ("not_asked").
 
 import crypto from "node:crypto";
 import { migrate } from "../store/index.js";
@@ -60,7 +60,8 @@ export class Idempotency {
       return { ...JSON.parse(String(row.result)), replayed: true };
     }
     const p = fn().then(r => {
-      if (!(r.error && r.error.code === "failed")) this.put.run(caller, tool, key, h, JSON.stringify(r), this.now());
+      // A refusal that depends on something that can change (the person's words, for an asked tool) is not kept either: the retry asks again.
+      if (!(r.error && (r.error.code === "failed" || r.error.code === "not_asked"))) this.put.run(caller, tool, key, h, JSON.stringify(r), this.now());
       return r;
     }).finally(() => { this.running.delete(slot); this.prune(); });
     this.running.set(slot, { h, p });

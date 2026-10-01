@@ -16,7 +16,7 @@ real terminal: xterm, full colour folded onto the tokens, a key bar on the phone
 |---|---|---|
 | Deck | `deck/chat/term.js`, `deck/chat/term.css`, `deck/chat/lib/term-link.js` (work/chat) | partial |
 | App | none | not built |
-| Capsule | not used | not used |
+| Lumen | not used | not used |
 
 ## Anatomy
 
@@ -36,7 +36,7 @@ real terminal: xterm, full colour folded onto the tokens, a key bar on the phone
 5. Safe area under the key bar in `--panel`.
 
 **Colour mapping.** Prompt user and host in `--label`, path in `--text-2`, `$` and success marks
-in `--focus`, output in `--text`. ANSI colours fold onto these roles and lime; no other hue, and
+in `--focus`, output in `--text`. ANSI colours fold onto these roles and bone; no other hue, and
 never the beacon colour.
 
 ## Variants
@@ -107,5 +107,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Not built.
 
-Capsule (work/capsule-pro)
-- [ ] Not used: the Capsule opens the terminal in the Deck.
+Lumen (work/capsule-pro)
+- [ ] Not used: Lumen opens the terminal in the Deck.

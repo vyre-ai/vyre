@@ -1,0 +1,34 @@
+# What the real Codex, Grok and Claude CLIs prove with no account and no key (scripts/provider-wire-proof.mjs):
+# each login reaches its provider's own address and code, and each agent answers Vyre's ACP driver up to
+# a first prompt. Never the person's Mac. Runs on work/ci-proof-* pushes and by hand.
+name: proof-wire
+on:
+  push:
+    branches: ["work/ci-proof-*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Codex, its ACP adapter and Claude Code
+        continue-on-error: true
+        run: |
+          npm i -g @openai/codex @anthropic-ai/claude-code
+          npm i -g @agentclientprotocol/codex-acp || npm i -g @zed-industries/codex-acp
+      - name: Grok Build
+        continue-on-error: true
+        run: |
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
+      - name: What each CLI proves
+        run: node scripts/provider-wire-proof.mjs

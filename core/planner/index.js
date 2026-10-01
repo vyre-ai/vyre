@@ -108,7 +108,9 @@ export default {
         }
         const r = item.thread
           ? await ctx.call("threads.post", { thread: item.thread, text, kind: "scheduled", from: "planner" })
-          : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true, ...(agent ? { agent } : {}) });
+          : agent
+            ? await ctx.call("agents.job", { agent, prompt: text, ...(item.project ? { project: item.project } : {}) })
+            : await ctx.call("threads.launch", { project: item.project || undefined, prompt: text, purpose: "job", once: true });
         if (r.error) { ok = false; note = r.error.message; }
       } catch (e) { ok = false; note = /** @type {Error} */ (e).message; }
       const last_result = (ok ? "ok" : `error: ${note}`).slice(0, 300);

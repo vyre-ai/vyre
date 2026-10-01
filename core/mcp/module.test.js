@@ -111,7 +111,7 @@ test("mcp: stdio, http and sse servers, with credentials that reach only their o
 test("mcp: an agent's outward call is held, edited by the person, and reaches the server as approved; a rejected one never does", async t => {
   const v = await vyred(t);
   const log = path.join(v.root, "chat.log");
-  assert.equal((await v.cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal((await v.cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   const juno = v.agent("juno", "t-1");
 
   const held = await juno("mcp.call", { server: "chat", tool: "send_message", arguments: { to: "dana@harlowlegal.com", text: "The form is on staging." } });
@@ -296,7 +296,7 @@ test("mcp: several instances of one server, each with its own credential", async
 test("mcp: hold and on_behalf are for modules only", async t => {
   const v = await vyred(t);
   const log = path.join(v.root, "chat.log");
-  assert.equal((await v.cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal((await v.cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   const mod = (tool, input = {}) => v.d.registry.call(tool, input, "module:mail", {});
   const gateGet = async id => (await v.cli("gate.get", { id })).data;
   const behalf = { thread: "t-9", agent: "kit" };
@@ -385,7 +385,7 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   t.after(() => d.stop());
   const log = path.join(root, "chat.log");
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
-  assert.equal((await cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal((await cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
   const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
@@ -396,4 +396,23 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   const it = (await cli("gate.get", { id: plain.data.held })).data;
   assert.ok(!it.thread && !it.agent);
   assert.deepEqual(calls(log), []);
+});
+
+test("an added module cannot put a command or a vault environment in the hub, but may add an http server; a person may add either", async t => {
+  const v = await vyred(t);
+  const http = await startFakeMcpHttp(t);
+  const added = (tool, input) => v.d.registry.call(tool, input, "module:some-added-module", {});
+  // stdio, an env from the vault, and env auth are refused
+  assert.equal((await added("mcp.add", { name: "proc", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"] })).error?.code, "denied");
+  assert.equal((await added("mcp.add", { name: "envy", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { TOKEN: "github-alex" } })).error?.code, "denied");
+  assert.equal((await added("mcp.add", { name: "envy2", transport: "http", url: http.url, env: { TOKEN: "github-alex" } })).error?.code, "denied");
+  // an http server is fine
+  const ok = await added("mcp.add", { name: "webby", transport: "http", url: http.url });
+  assert.ok(ok.data, JSON.stringify(ok));
+  // and update cannot turn things into a process either
+  assert.equal((await added("mcp.update", { name: "webby", command: process.execPath })).error?.code, "denied");
+  // a person adds a stdio server with an env
+  await v.secret("gh-token", "sample-token-value-12345");
+  const mine = await v.cli("mcp.add", { name: "mine", transport: "stdio", command: process.execPath, args: [FAKE, "--stdio"], env: { GH_TOKEN: "gh-token" } });
+  assert.ok(mine.data, JSON.stringify(mine));
 });

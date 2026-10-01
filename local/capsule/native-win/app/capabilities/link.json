@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "link",
+  "description": "The hidden bundled page that holds the box channel. The main panel has no capability.",
+  "windows": [
+    "link"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-get-link",
+    "allow-device-key-pub",
+    "allow-device-key-dh",
+    "allow-mount-drive",
+    "allow-unmount-drive",
+    "allow-notify"
+  ]
+}

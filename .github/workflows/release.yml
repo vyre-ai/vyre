@@ -25,7 +25,17 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  # The Windows installer is built inside this run, so the release can never race it or ship
+  # without it: `release` needs this job, and fails if the installer is not in the artifact.
+  windows:
+    uses: ./.github/workflows/capsule-win.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+
   release:
+    needs: windows
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -155,6 +165,19 @@ jobs:
           # scripts/setup-hashes.mjs lands with the launch team's branch; until it is on this branch there is no setup.json.
           if [ -f scripts/setup-hashes.mjs ]; then node scripts/setup-hashes.mjs dist; [ -f dist/setup.json ] || { echo "setup-hashes made no dist/setup.json"; exit 1; }
           else echo "no scripts/setup-hashes.mjs on this branch yet: no setup.json" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+      - name: The Windows installer built by the windows job (required, never optional)
+        uses: actions/download-artifact@v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/windows
+      - name: Add the Windows installer to dist
+        run: |
+          exe="Vyre_${VERSION}_x64-setup.exe"
+          [ -f "$RUNNER_TEMP/windows/$exe" ] || { echo "the Windows build is not $exe; refusing to release without it"; ls "$RUNNER_TEMP/windows"; exit 1; }
+          # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes.
+          cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
+          cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
+          echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: release.json and SHA256SUMS
         run: |
           node -e '

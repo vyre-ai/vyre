@@ -45,7 +45,7 @@ const WORDS = {
   held: "Someone else has the keyboard right now.",
   shield_unavailable: "Signing in privately is not available on this box yet: the agent's computer cannot hide the page from the agent.",
   no_screen: "This computer has no screen to show.",
-  offline: "vyred did not answer. The box may be asleep or out of reach.",
+  offline: "The box did not answer. It may be asleep or out of reach.",
 };
 
 /** @param {any} err an ApiError or anything thrown */
@@ -82,19 +82,19 @@ export function clock(ms) {
   return hh ? `${hh}:${String(mm).padStart(2, "0")}:${ss}` : `${mm}:${ss}`;
 }
 
-/** "phone", "laptop" or "Capsule" for a surface claim like "phone:ab12". */
+/** "phone", "laptop" or "Lumen" for a surface claim like "phone:ab12". */
 export function surfaceKind(surface) {
   const k = String(surface || "").split(":")[0];
-  return k === "phone" ? "a phone" : k === "capsule" ? "the Capsule" : k === "deck" ? "a laptop" : k ? k : "another screen";
+  return k === "phone" ? "a phone" : k === "capsule" ? "Lumen" : k === "deck" ? "a laptop" : k ? k : "another screen";
 }
 
 /**
- * "Your phone", "Your laptop" or "Your Capsule": only the owner can take over or watch, so another
+ * "Your phone", "Your laptop" or "Your Lumen": only the owner can take over or watch, so another
  * screen holding the keyboard is always one of theirs.
  */
 export function yourDevice(surface) {
   const k = String(surface || "").split(":")[0];
-  return k === "phone" ? "Your phone" : k === "capsule" ? "Your Capsule" : k === "deck" || k === "glass" ? "Your laptop" : "Your other screen";
+  return k === "phone" ? "Your phone" : k === "capsule" ? "Your Lumen" : k === "deck" || k === "glass" ? "Your laptop" : "Your other screen";
 }
 
 const store = (() => { try { return window.localStorage; } catch { return null; } })();

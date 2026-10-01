@@ -179,3 +179,122 @@ test("/v1/pair alone answers any origin, without credentials: the preflight, and
   const other = await fetch(`${http}/v1/device`, { method: "OPTIONS", headers: { origin: "https://phone.vyre.run" } });
   assert.equal(other.headers.get("access-control-allow-origin"), null, "no preflight answer anywhere else");
 });
+
+// First writer wins (tailnet plan 3.6, N2): a locator taken with one record is not overwritten by
+// another; the second writer hears 409 and the locator is contested for everyone. The identical
+// record and mac again (a reconnect) is 200.
+test("a setup offer's locator is first-writer-wins: 409 for another record, 200 for the identical one, contested for resolve", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await box(base), b = await box(base);
+  await a.s.json(); await b.s.json();
+  const secret = Buffer.alloc(16, 5);
+  const exp = Date.now() + 3_600_000;
+  const rec1 = ticketSeal(secret, JSON.stringify({ v: 1, name: "first" })), rec2 = ticketSeal(secret, JSON.stringify({ v: 1, name: "second" }));
+  const loc = "l".repeat(43), mac = "m".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+  assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 });
+  a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+  assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 200 }, "the identical record and mac is a reconnect, not a clash");
+  const resolve = () => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  const first = await resolve();
+  assert.equal(first.status, 200);
+  assert.equal((await first.json()).record, rec1);
+  assert.equal((await resolve()).status, 200, "a setup offer is not single-use: the page may reload");
+  b.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec2, mac, exp }));
+  assert.deepEqual(await b.s.json(), { t: "registered", loc, status: 409 });
+  const after = await resolve();
+  assert.equal(after.status, 409);
+  assert.deepEqual(await after.json(), { error: "contested" });
+  a.s.ws.send(JSON.stringify({ t: "setup", loc, record: rec1, mac, exp }));
+  assert.deepEqual(await a.s.json(), { t: "registered", loc, status: 409 }, "the first writer is told too once it is contested");
+});
+
+test("a setup offer is read as often as the page needs; a Wink ticket resolves once", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const b = await box(base);
+  await b.s.json();
+  const sealed = ticketSeal(Buffer.alloc(16, 1), "{}");
+  const far = Date.now() + 24 * 3_600_000;
+  b.s.ws.send(JSON.stringify({ t: "setup", loc: "s".repeat(43), record: sealed, mac: "m".repeat(43), exp: far }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "w".repeat(43), record: sealed, mac: "m".repeat(43), exp: far }));
+  await b.s.json(); await b.s.json();
+  const res = loc => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  assert.equal((await res("s".repeat(43))).status, 200);
+  assert.equal((await res("w".repeat(43))).status, 200);
+  assert.equal((await res("w".repeat(43))).status, 404, "the Wink ticket is single-use as before");
+});
+
+test("Wink tickets are first-writer-wins too: a second, different register is refused and contests the locator", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const b = await box(base);
+  await b.s.json();
+  const exp = Date.now() + 60_000;
+  const one = ticketSeal(Buffer.alloc(8, 1), "{}"), two = ticketSeal(Buffer.alloc(8, 2), "{}");
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: one, mac: "m".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 200);
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "t".repeat(43), record: two, mac: "m".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 409);
+  const res = await fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc: "t".repeat(43) }) });
+  assert.equal(res.status, 409);
+});
+
+test("the setup mailbox: per-address creation limit, a size cap and a global cap", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const post = (n, extra = {}) => fetch(`${http}/v1/setup/mbx`, { method: "POST", body: JSON.stringify({ loc: `${String(n).padStart(3, "0")}`.padEnd(43, "q"), fp: "f".repeat(22), wtok: "w".repeat(43), ...extra }) });
+  for (let i = 0; i < 10; i++) assert.equal((await post(i)).status, 200, `mailbox ${i}`);
+  assert.equal((await post(10)).status, 429, "the eleventh new mailbox from one address in an hour");
+  assert.equal((await post(0)).status, 200, "an existing one still takes lines");
+  // 64 KB total, per mailbox
+  const line = "A".repeat(1400);
+  let last = 200;
+  for (let i = 0; i < 60 && last === 200; i++) last = (await post(0, { line })).status;
+  assert.equal(last, 413, "a mailbox holds 64 KB and no more");
+  assert.equal((await post(0, { line: "short" })).status, 400, "a line that is not a sealed line");
+  const bad = await fetch(`${http}/v1/setup/mbx`, { method: "POST", body: "nope" });
+  assert.equal(bad.status, 400);
+  const pre = await fetch(`${http}/v1/setup/mbx`, { method: "OPTIONS", headers: { origin: "https://vyre.run" } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-sig/);
+});
+
+test("the setup mailbox has a global cap on live mailboxes, whoever asks", async t => {
+  const relay = createRelay({ setup: { maxBoxes: 3, createPerIp: 100 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const post = n => fetch(`${base.replace(/^ws/, "http")}/v1/setup/mbx`, { method: "POST", body: JSON.stringify({ loc: String(n).padEnd(43, "q"), fp: "f".repeat(22), wtok: "w".repeat(43) }) });
+  for (let i = 0; i < 3; i++) assert.equal((await post(i)).status, 200);
+  assert.equal((await post(3)).status, 429);
+  assert.equal((await post(1)).status, 200, "the ones already there keep working");
+});
+
+test("a box that closes a data socket with 4401 'device removed' tells the device exactly that; any other close is the generic 4410", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  const ready = await b.s.json();
+  for (const [code, reason, want] of [[CLOSE.refused, "device removed", { code: CLOSE.refused, reason: "device removed" }],
+    [CLOSE.refused, "not a paired device", { code: CLOSE.boxGone, reason: "box closed the connection" }],
+    [3456, "device removed", { code: CLOSE.boxGone, reason: "box closed the connection" }]]) {
+    const dev = sock(`${base}/v1/device?route=${b.route}`);
+    await dev.open();
+    const { c } = await b.s.json();
+    const data = sock(`${base}/v1/box?route=${b.route}&c=${c}&t=${ready.ticket}`);
+    await data.open();
+    data.ws.close(code, reason);
+    assert.deepEqual(await dev.closed(), want, `${code} ${reason}`);
+  }
+});

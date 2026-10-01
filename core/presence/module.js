@@ -28,7 +28,7 @@ export default {
     });
 
     ctx.tool("presence.enroll", {
-      description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.",
+      description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
         device: str },
@@ -100,6 +100,18 @@ export default {
       run: async () => presence.mintCode(),
     });
 
+    // The relay module's claim (relay.setup.claim) makes this after checking a signed claim token.
+    // Nothing else may: a grant enrols a passkey with no other proof.
+    ctx.tool("presence.grant.mint", {
+      internal: true,
+      description: "The one-time, five-minute grant that lets one browser enroll the first owner passkey. Only the relay module's checked claim makes it.",
+      input: obj({ peer: { type: ["object", "null"] }, host: str }, ["host"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:relay") throw new Error("only a checked claim makes a grant");
+        return presence.mintGrant(input.peer || null, String(input.host || ""));
+      },
+    });
+
     ctx.tool("presence.session.open", {
       description: "After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.",
       presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },
@@ -161,11 +173,11 @@ export default {
           } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey"), { code: "denied" });
           const k = input.key;
           if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
-          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y } });
+          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null });
           ctx.events.emit("presence.signed-in", { id: s.id, node: label });
           return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
         }
-        const s = people.start({ node, kind: "cookie", label });
+        const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };
       },

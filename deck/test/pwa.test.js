@@ -105,7 +105,7 @@ test("pwa shell: three pages, Now Chats Agents, in pager order, and nothing else
   assert.match(phoneCss(), /\.pager \{[^}]*scroll-snap-type: x mandatory/);
 });
 
-test("pwa shell: the header is 48 tall with the labels in Page type, and the Capsule floats 56 tall", () => {
+test("pwa shell: the header is 48 tall with the labels in Page type, and Lumen floats 56 tall", () => {
   const css = phoneCss();
   assert.match(css, /\.ph-head \{[^}]*height: 48px/);
   assert.match(css, /\.ph-tab \{[^}]*font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0\.015em/);
@@ -115,13 +115,13 @@ test("pwa shell: the header is 48 tall with the labels in Page type, and the Cap
   assert.match(css, /\.cap-mic \{ width: 40px; height: 40px/);
   assert.match(read("css/deck.css"), /--cap-h: 56px/);
   assert.match(read("css/deck.css"), /--cap-clear: calc\(var\(--cap-h\) \+ 16px \+ var\(--cap-bottom\)\)/);
-  assert.match(css, /\.pager \.page \{ padding-bottom: var\(--cap-clear\); \}/, "a page's last row clears the Capsule");
-  assert.match(css, /#deck:not\(\[data-at="page"\]\) \.capsule \{ display: none; \}/, "pushed screens hide the Capsule");
+  assert.match(css, /\.pager \.page \{ padding-bottom: var\(--cap-clear\); \}/, "a page's last row clears Lumen");
+  assert.match(css, /#deck:not\(\[data-at="page"\]\) \.capsule \{ display: none; \}/, "pushed screens hide Lumen");
   // No colour of alarm anywhere in the shell.
   assert.doesNotMatch(css, /coral|\bred\b/i);
 });
 
-test("pwa shell: the Capsule's markup, placeholder and mic", async () => {
+test("pwa shell: Lumen's markup, placeholder and mic", async () => {
   const { install, text, $ } = await import("./fake-dom.js");
   install();
   // icons.js parses its drawings with DOMParser, which the fake DOM does not have.
@@ -268,7 +268,7 @@ test("pwa ios: one fixed shell at 100dvh, no page rubber band, no 100vh without 
   assert.match(read("chat/chat.css"), /\.thread-view \{ overscroll-behavior: contain;/);
 });
 
-test("pwa ios: safe areas on the shell (sideways too), the Capsule and sheets; viewport-fit=cover", () => {
+test("pwa ios: safe areas on the shell (sideways too), Lumen and sheets; viewport-fit=cover", () => {
   assert.match(read("index.html"), /name="viewport" content="[^"]*viewport-fit=cover/);
   const deck = read("css/deck.css");
   // Outside the phone block, so an installed iPad keeps clear too; a sideways phone is in the phone block.
@@ -455,7 +455,7 @@ test("pwa sideways: the JS asks the phone question only through dom.js isPhone /
         if (rel === path.join("js", "dom.js")) continue;
         assert.doesNotMatch(src, /["'`]\(max-width: (719|760)px\)/, `${rel} spells the phone query itself`);
         if (/\b(isPhone|PHONE_QUERY)\b/.test(src)) {
-          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|\.\.\/js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
+          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|(\.\.\/)+js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
           users++;
         }
       }

@@ -14,6 +14,7 @@
 class Node {
   constructor() { /** @type {any} */ this.parentNode = null; /** @type {any[]} */ this.childNodes = []; }
   get isConnected() { let n = this; while (n.parentNode) n = n.parentNode; return n === globalThis.document?.documentElement; }
+  replaceWith(/** @type {any} */ n) { const p = this.parentNode; if (!p) return; p.childNodes.splice(p.childNodes.indexOf(this), 1, n); if (n.parentNode && n.parentNode !== p) n.remove(); n.parentNode = p; this.parentNode = null; }
   remove() { if (this.parentNode) { const p = this.parentNode; p.childNodes.splice(p.childNodes.indexOf(this), 1); this.parentNode = null; } }
 }
 

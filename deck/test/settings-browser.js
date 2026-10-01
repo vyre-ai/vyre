@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openTab } from "./cdp.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // deck/js/api.js's fixture fallback answers relay.pair.ticket's $seq from
@@ -53,7 +54,7 @@ try {
   });
   const bin = process.env.CHROME || path.join(os.homedir(), "vyre-ci/pwa-chrome/chrome-headless-shell/linux-154.0.8037.57/chrome-headless-shell-linux64/chrome-headless-shell");
   const cdpPort = 9431 + Math.floor(Math.random() * 400);
-  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", `--user-data-dir=${scratch}`,
+  const chrome = spawn("nice", ["-n", "15", bin, `--remote-debugging-port=${cdpPort}`, "--remote-debugging-address=127.0.0.1", ...CHROME_SAFE, `--user-data-dir=${scratch}`,
     "--no-sandbox", "--no-first-run", "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
   started.push(chrome);
   const CDP = `http://127.0.0.1:${cdpPort}`;
@@ -83,44 +84,29 @@ try {
   const row = (/** @type {string} */ key) => `[data-key="${key}"]`;
   await tab.run(`await waitFor(${JSON.stringify(row("sessions.mode"))}, 15000); return true;`);
 
-  // 1. A wider mode asks first; Cancel changes nothing.
+  // 1. A wider mode saves at once: no confirm line, no proof (the change is logged and undoable).
   const pick = (/** @type {string} */ key, /** @type {string} */ v) => tab.run(`const s = document.querySelector(${JSON.stringify(row(key) + " select")});
-    if (!s) return "no select"; s.value = ${JSON.stringify(v)}; s.dispatchEvent(new Event("change", { bubbles: true })); await wait(800);
-    const ask = document.querySelector(${JSON.stringify(row(key) + " .sk-ask")}); return ask && !ask.hidden ? ask.textContent : "no ask";`);
-  let t = await pick("sessions.mode", "bypassPermissions");
-  say("a wider mode asks before it lands", /Claude|ask/i.test(String(t)) && t !== "no ask", String(t).slice(0, 160));
-  await shot("mode-ask", row("sessions.mode"));
-  const before = (await tool("settings.get", { key: "sessions.mode" })).data?.value;
-  say("nothing is saved while it asks", before !== "bypassPermissions", `value ${before}`);
-  await tab.run(`document.querySelector(${JSON.stringify(row("sessions.mode") + " .sk-no")})?.click(); await wait(600); return true;`);
-  const shown = await tab.run(`return document.querySelector(${JSON.stringify(row("sessions.mode") + " select")}).value;`);
-  say("Cancel puts the old value back and saves nothing", shown !== "bypassPermissions" && (await tool("settings.get", { key: "sessions.mode" })).data?.value === before, `shown ${shown}`);
-
-  // 2. Confirm lands it, and the row says Saved.
-  await pick("sessions.mode", "bypassPermissions");
-  await tab.run(`document.querySelector(${JSON.stringify(row("sessions.mode") + " .sk-yes")})?.click(); await wait(1200); return true;`);
+    if (!s) return "no select"; s.value = ${JSON.stringify(v)}; s.dispatchEvent(new Event("change", { bubbles: true })); await wait(1200);
+    return document.querySelector(${JSON.stringify(row(key) + " .sk-ask")}) ? "an ask" : "no ask";`);
+  const t = await pick("sessions.mode", "bypassPermissions");
   const after = (await tool("settings.get", { key: "sessions.mode" })).data?.value;
   const slot = await tab.run(`return document.querySelector(${JSON.stringify(row("sessions.mode") + " .sk-slot")})?.textContent || "";`);
-  say("Confirm saves it", after === "bypassPermissions", `value ${after}, row says "${slot}"`);
+  say("a wider mode saves at once, with no confirm line", t === "no ask" && after === "bypassPermissions", `value ${after}, row says "${slot}"`);
   await shot("mode-saved", row("sessions.mode"));
 
-  // 3. A key that loosens security needs a proof; with no dialogs here, it is not saved.
+  // 2. A security key saves the same way, with no passkey prompt.
   const lockKey = "vault.lock_idle";
   const hasLock = await tab.run(`return !!document.querySelector(${JSON.stringify(row(lockKey))});`);
-  if (!hasLock) say("a loosening key asks for a proof", false, `no ${lockKey} row`);
+  if (!hasLock) say("a security key saves at once", false, `no ${lockKey} row`);
   else {
-    const kind = await tab.run(`const r = document.querySelector(${JSON.stringify(row(lockKey))}); const s = r.querySelector("select"), i = r.querySelector("input");
+    await tab.run(`const r = document.querySelector(${JSON.stringify(row(lockKey))}); const s = r.querySelector("select"), i = r.querySelector("input");
       if (s) { const o = [...s.options].map(o => o.value).find(v => v && v !== s.value && /h|never/.test(v)); s.value = o || s.value; s.dispatchEvent(new Event("change", { bubbles: true })); return "select " + s.value; }
       if (i) { i.focus(); i.value = "8h"; i.dispatchEvent(new Event("input", { bubbles: true })); i.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); return "input"; }
       return "none";`);
-    await sleep(900);
-    const ask = await tab.run(`const a = document.querySelector(${JSON.stringify(row(lockKey) + " .sk-ask")}); return a && !a.hidden ? a.textContent : "no ask";`);
-    say("a loosening key asks before it lands", ask !== "no ask", `${kind}: ${String(ask).slice(0, 160)}`);
-    await shot("lock-ask", row(lockKey));
-    await tab.run(`document.querySelector(${JSON.stringify(row(lockKey) + " .sk-yes")})?.click(); await wait(2500); return true;`);
+    await sleep(1500);
     const lock = (await tool("settings.get", { key: lockKey })).data;
-    const note = await tab.run(`const r = document.querySelector(${JSON.stringify(row(lockKey))}); return (r.querySelector(".sk-err")?.textContent || r.querySelector(".sk-slot")?.textContent || "").trim();`);
-    say("with no proof it is not saved, and the row says why in plain words", (lock?.source !== "account" || lock?.value !== "8h") && /Add one in Settings/.test(note) && !/presence\./.test(note), `value ${lock?.value} (${lock?.source}); row: "${note}"`);
+    const ask = await tab.run(`return document.querySelector(${JSON.stringify(row(lockKey) + " .sk-ask")}) ? "an ask" : "no ask";`);
+    say("a security key saves at once, with no prompt", ask === "no ask" && lock?.source === "account", `value ${lock?.value} (${lock?.source})`);
     await shot("lock-after", row(lockKey));
   }
   // 4. Wink (Settings > Devices, deck/js/wink-card.js, shared with onboarding): the explicit-tap

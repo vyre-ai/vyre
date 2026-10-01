@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { neutralize, rotationContext } from "./index.js";
+import { neutralize, rotationContext, isAssistant } from "./index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { execFileSync } from "node:child_process";
@@ -47,8 +47,11 @@ async function boot(t) {
   // projectsDir must live under root: its default (~/Vyre/projects) is the user's real home,
   // never a temp one (RULES: temp homes only).
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects") }));
-  const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
+  const logs = [];
+  const d = await start({ root, presence: present, log: m => logs.push(String(m)) });
+  let stopped = false;
+  const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
+  t.after(stop);
   const tool = async (name, input, caller = "cli", extra = {}) => {
     const r = await call(name, input, { root, caller, timeout: 20_000, ...extra });
     if (r.error) throw Object.assign(new Error(r.error.message || r.error.code), { code: r.error.code });
@@ -57,7 +60,7 @@ async function boot(t) {
   const project = await tool("projects.create", { name: "Harlow Legal" });
   const raw = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
-  return { root, d, tool, raw, project, launches };
+  return { root, d, stop, logs, tool, raw, project, launches };
 }
 
 const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -103,11 +106,17 @@ test("team.add makes a teammate; team.list shows it asleep with an empty queue",
   assert.equal(row.state, "asleep");
 });
 
-test("team.add is a person's own act: a bare mcp caller is refused", async t => {
-  const { root, project } = await boot(t);
+test("team.add: a bare mcp caller with no session is refused; a session in the project may add, another project's may not", async t => {
+  const { tool, root, project, launches } = await boot(t);
   const r = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
   assert.ok(r.error);
   assert.equal(r.error.code, "denied");
+  const other = await tool("projects.create", { name: "Northwind Bakery" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const ok = await tool("team.add", { project: project.slug, role: "design" }, "mcp", { session });
+  assert.equal(ok.role, "design");
+  const no = await call("team.add", { project: other.slug, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.equal(no.error.code, "denied");
 });
 
 test("a request runs, the teammate closes it with team.done, and the result comes back", async t => {
@@ -360,6 +369,203 @@ test("summon: that same session can team.ask, and the result posts back into its
   assert.equal(status.reply_to, session.id); // the request is bound to this session's own thread
 });
 
+// --- team.retire (the Deck's handoff card Undo, and the assistant's own tool) ---------------------
+
+test("team.retire undo: a teammate just made goes away completely and its role is free again", async t => {
+  const { tool, project } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  const r = await tool("team.retire", { project: project.slug, role: "design", undo: true });
+  assert.equal(r.undone, true);
+  assert.equal(r.retired, false);
+  assert.deepEqual(await tool("team.list", { project: project.slug }), []);
+  const again = await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  assert.equal(again.revived, undefined);
+});
+
+test("team.retire undo is refused once the teammate has done work; a plain retire hides it and team.add brings it back", async t => {
+  const { tool, raw, project } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
+    text: 'vyre team.done {"result":"done it","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  await until(async () => { const [x] = await tool("team.list", { project: project.slug }); return x.state === "idle"; }, "idle");
+  const no = await raw("team.retire", { teammate: `design-${project.slug}`, undo: true });
+  assert.equal(no.error.code, "denied");
+  const r = await tool("team.retire", { teammate: `design-${project.slug}`, reason: "not needed" });
+  assert.equal(r.retired, true);
+  assert.deepEqual(await tool("team.list", { project: project.slug }), []);
+  const gone = await raw("team.ask", { to: "design", project: project.slug, text: "hi" });
+  assert.ok(gone.error);
+  const back = await tool("team.add", { project: project.slug, role: "design" });
+  assert.equal(back.revived, true);
+  assert.equal(back.brief, "visual design");
+  assert.equal((await tool("team.status", { request: ask.request })).state, "done");
+});
+
+test("team.retire: a bare mcp caller with no session is refused; a session in the project may, on the person's request", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design" });
+  const bare = await call("team.retire", { teammate: `design-${project.slug}` }, { root, caller: "mcp", timeout: 20_000 });
+  assert.equal(bare.error.code, "denied");
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const r = await tool("team.retire", { teammate: `design-${project.slug}` }, "mcp", { session });
+  assert.equal(r.retired, true);
+  assert.equal((await raw("team.retire", { teammate: `design-${project.slug}` })).error.code, "not_found");
+});
+
+// --- role charters (plan section 9.1) -------------------------------------------------------------
+
+test("charters: set makes versions, an identical text is no change, revert is a new version, history keeps all", async t => {
+  const { tool, raw, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter, null);
+  const v1 = await tool("team.charter.set", { teammate: agent, text: "You review copy for the Harlow Legal site." });
+  assert.equal(v1.version, 1);
+  assert.equal((await tool("team.charter.set", { teammate: agent, text: "You review copy for the Harlow Legal site." })).unchanged, true);
+  const v2 = await tool("team.charter.set", { project: project.slug, role: "design", text: "You review copy and layout." });
+  assert.equal(v2.version, 2);
+  const v3 = await tool("team.charter.revert", { teammate: agent, version: 1 });
+  assert.equal(v3.version, 3);
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter.text, "You review copy for the Harlow Legal site.");
+  assert.equal((await tool("team.charter.history", { teammate: agent })).versions.length, 3);
+  const dv = await tool("team.charter.diff", { teammate: agent, version: 2 });
+  assert.equal(dv.before.text, "You review copy for the Harlow Legal site.");
+  assert.equal(dv.text, "You review copy and layout.");
+  assert.equal((await tool("team.charter.diff", { teammate: agent, version: 1 })).before, null);
+  assert.equal((await raw("team.charter.set", { teammate: agent, text: "  " })).error.code, "bad_input");
+  assert.equal((await raw("team.charter.set", { teammate: agent, text: "x".repeat(8001) })).error.code, "bad_input");
+  assert.equal((await raw("team.charter.revert", { teammate: agent, version: 9 })).error.code, "not_found");
+});
+
+test("charters: draft saves a version composed from the project's own context, and a bare mcp caller is refused", async t => {
+  const { tool, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design and UI copy" });
+  const d = await tool("team.charter.draft", { teammate: agent, from: "Alex wants it to watch the pricing page" });
+  assert.equal(d.version, 1);
+  assert.ok(d.text.includes("design"));
+  assert.ok(String(d.by).endsWith("(draft)"));
+  const bare = await call("team.charter.set", { teammate: agent, text: "x" }, { root, caller: "mcp", timeout: 20_000 });
+  assert.equal(bare.error.code, "denied");
+});
+
+// --- role filler (plan section 14): a role filled by one of the person's agents ---------------------
+
+test("team.role.fill: an agent fills a role, its character and the charter ride the first prompt, a change starts a fresh thread, default goes back", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("agents.create", { name: "kit", projects: [], instructions: "Kit is dry and exact." });
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  assert.deepEqual((await tool("team.list", { project: project.slug }))[0].filler, { kind: "default" });
+  assert.equal((await raw("team.role.fill", { teammate: agent, agent: "nobody" })).error.code, "not_found");
+  assert.equal((await raw("team.role.fill", { teammate: agent, agent: "kit" }, "mcp")).error.code, "denied"); // a bare mcp caller
+  const r = await tool("team.role.fill", { teammate: agent, agent: "kit" }); // the person gives kit the project as they fill it
+  assert.equal(r.filler, "kit");
+  assert.equal((await tool("team.role.fill", { teammate: agent, agent: "kit" })).unchanged, true);
+  assert.deepEqual((await tool("team.list", { project: project.slug }))[0].filler, { kind: "agent", agent: "kit" });
+  await tool("team.charter.set", { teammate: agent, text: "You review the pricing page." });
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
+    text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  const first = launches().find(l => l.argv.includes("--append-system-prompt"));
+  const append = first.argv[first.argv.indexOf("--append-system-prompt") + 1];
+  assert.ok(append.includes("Kit is dry and exact.") && append.includes("You review the pricing page."));
+  assert.ok(append.indexOf("Kit is dry") < append.indexOf("You review the pricing"), "character first, then the role's charter");
+  await until(async () => (await tool("team.list", { project: project.slug }))[0].state === "idle", "idle");
+  const back = await tool("team.role.fill", { teammate: agent });
+  assert.equal(back.filler, null);
+  const n = launches().filter(l => l.argv.includes("--append-system-prompt")).length;
+  await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(launches().filter(l => l.argv.includes("--append-system-prompt")).length, n + 1, "the new filler started a fresh thread");
+});
+
+// --- standing duties (plan section 9.2) -----------------------------------------------------------
+
+test("team.duties: watchers' refusal leaves no row, a bare mcp caller is refused, an unknown duty is not_found", async t => {
+  const { tool, raw, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  // The person's own duty goes to watchers, which here is the 0.1 module that has no duty shape yet: a clean refusal, no row left.
+  const refused = await raw("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "Read the open issues." });
+  assert.ok(refused.error && /watchers/.test(refused.error.message));
+  assert.deepEqual((await tool("team.duties.list", { teammate: agent })).duties, []);
+  const bare = await call("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "x" }, { root, caller: "mcp", timeout: 20_000 });
+  assert.equal(bare.error.code, "denied");
+  assert.equal((await raw("team.duties.run-now", { id: "nope" })).error.code, "not_found");
+});
+
+test("team.duties: a session's duty is stored as a proposal (off, no watcher); only the person turns it on (reviewer-2 MEDIUM on e9756785)", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const d = await tool("team.duties.create", { teammate: agent, when: "daily 07:00", instruction: "Read the open issues.", act: true }, "mcp", { session });
+  assert.equal(d.enabled, false);
+  assert.equal(d.started, false);
+  const on = await call("team.duties.update", { id: d.id, enabled: true }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.equal(on.error.code, "denied");
+  const edit = await tool("team.duties.update", { id: d.id, instruction: "Read the open issues and goals." }, "mcp", { session });
+  assert.equal(edit.enabled, false); // a proposal may still be edited
+  // the person's tap: watchers here is the 0.1 module with no duty shape, so it refuses cleanly and the duty stays off
+  const tap = await raw("team.duties.update", { id: d.id, enabled: true });
+  assert.ok(tap.error && /watchers/.test(tap.error.message));
+  assert.equal((await tool("team.duties.list", { teammate: agent })).duties[0].enabled, false);
+  // The person's click on a surface is the asking: enable takes it directly (here watchers refuses, but it got that far), a session cannot.
+  const click = await raw("team.duties.enable", { id: d.id });
+  assert.ok(click.error && /watchers/.test(click.error.message));
+  const viaSession = await call("team.duties.enable", { id: d.id }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.ok(viaSession.error && !/watchers/.test(viaSession.error.message));
+  // No module may start a worker, and a thread or agent claim on a person surface is no person either.
+  for (const caller of ["module:mail", "cli:agent:kit", "cli:thread:x"]) {
+    const r = await raw("team.duties.enable", { id: d.id }, caller);
+    assert.ok(r.error && !/watchers/.test(r.error.message), `enable by ${caller}`);
+  }
+});
+
+test("person-only writes: a session or an agent is refused projects.rename, projects.archive and team.charter.set; the person is not", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const calls = [["projects.rename", { project: project.slug, name: "Harlow Legal Two" }], ["projects.archive", { project: project.slug }],
+    ["team.charter.set", { teammate: agent, text: "You review everything." }]];
+  for (const [name, input] of calls) {
+    const viaSession = await call(name, input, { root, caller: "mcp", timeout: 20_000, session });
+    assert.ok(viaSession.error, `${name} by a session`);
+    const viaAgent = await call(name, input, { root, caller: "mcp:agent:kit", timeout: 20_000 });
+    assert.ok(viaAgent.error, `${name} by an agent`);
+  }
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter, null);
+  assert.equal((await tool("projects.list", {})).projects.some(p => p.slug === project.slug), true); // not archived
+  assert.equal((await tool("team.charter.set", { teammate: agent, text: "You review everything." })).version, 1);
+  assert.ok(!(await raw("projects.rename", { project: project.slug, name: "Harlow Legal Two" })).error);
+});
+
+test("a vyre restart while a request is running fails it with a reason, frees the teammate, and runs the next queued one", async t => {
+  const { tool, stop, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  await stop();
+  // What a restart leaves behind: one request "running" for a teammate marked working, and one queued behind it.
+  const db = openStore(paths(root).db);
+  const now = Date.now();
+  const ins = (id, state) => db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, via, text, refs, priority, state, attempt, created_at, started_at)
+    VALUES (?,?,?,'person','cli','[]',?,'[]','normal',?,1,?,?)`).run(id, agent, project.slug, 'vyre team.done {"result":"second ok","notes":"unchanged","reason":"test"}', state, now, state === "running" ? now : null);
+  ins("r_stuck001", "running");
+  ins("r_next0002", "queued");
+  db.prepare("UPDATE team_teammates SET current_request = 'r_stuck001', state = 'working' WHERE agent = ?").run(agent);
+  db.close();
+  const d2 = await start({ root, presence: present, log: () => {} });
+  t.after(() => d2.stop());
+  const st = id => call("team.status", { request: id }, { root, caller: "cli", timeout: 20_000 }).then(r => r.data);
+  const stuck = await until(async () => { const r = await st("r_stuck001"); return r && r.state !== "running" ? r : null; }, "the stuck request to close");
+  assert.equal(stuck.state, "failed");
+  assert.match(stuck.result, /vyre restarted/);
+  const next = await until(async () => { const r = await st("r_next0002"); return r && r.state === "done" ? r : null; }, "the queued request to run");
+  assert.match(next.result, /second ok/);
+});
+
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
 
 test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {
@@ -422,7 +628,9 @@ test("compaction: a teammate's own SessionStart (source compact) gets its notes 
 // --- step 4, slice A (2026-09-28): worktree lifecycle, the integrator, merge-before-dispatch ----
 
 test("isolation: worktree falls back to sharing the folder when the project's home is not a git repo, saying so", async t => {
-  const { tool, project } = await boot(t); // boot(), not bootGit(): a plain folder, no `git init`
+  const { tool, project } = await boot(t);
+  // projects.create now keeps a quiet local history in a new folder (acf46930); this test is about a folder that is not a repo.
+  fs.rmSync(path.join(project.home, ".git"), { recursive: true, force: true });
   const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
   assert.equal(tm.isolation, "folder"); // never git init'd on the person's behalf: shares the folder instead
   assert.match(tm.notice, /isn't a git repo/);
@@ -573,6 +781,26 @@ test("a worktree teammate's request that finishes with new commits queues a merg
     return row && /^merge team\/design /.test(row.text) ? row : null;
   }, "a merge request queued to the integrator");
   assert.match(merge.text, new RegExp(`from request ${ask.request}`));
+});
+
+test("stopping the daemon right after a worktree teammate's merge was queued leaves no job running against a closed store", async t => {
+  const { tool, stop, logs, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const dir = worktreePath(repo, "design");
+  fs.writeFileSync(path.join(dir, "form.md"), "a calmer form\n");
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-q", "-m", "calmer form"]);
+  const rejections = [];
+  const onRej = e => rejections.push(String(e && e.message || e));
+  process.on("unhandledRejection", onRej);
+  t.after(() => process.off("unhandledRejection", onRej));
+  // No wait: the merge request is queued and the integrator's dispatch starts as the ask closes.
+  await tool("team.ask", { to: "design", project: project.slug, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  await new Promise(r => setTimeout(r, 400));
+  await stop();
+  await new Promise(r => setTimeout(r, 600)); // anything left running would hit the closed store by now
+  assert.deepEqual(rejections.filter(m => /not open/.test(m)), []);
+  assert.deepEqual(logs.filter(m => /not open/.test(m)), []);
 });
 
 // --- slice A review (e2e and reviewer, 8eb1a785): nothing the repo says to run ------------------
@@ -801,4 +1029,33 @@ test("reviewer LOW: team.default.get, team.project-has-any and team.project-appe
     assert.ok(r.error, `${name} should refuse a bare mcp caller`);
     assert.equal(r.error.code, "denied");
   }
+});
+
+test("team.project-append: caps at 8 teammates with an \"and N more\", and the whole line stays under 600 characters (reviewer LOW on e868f5e2)", async t => {
+  const { tool, project } = await boot(t);
+  for (let i = 0; i < 10; i++) await tool("team.add", { project: project.slug, role: `role${i}`, brief: "a fairly long brief that describes this role's work in some detail so it would otherwise bloat the append" });
+  const { text } = await tool("team.project-append", { project: project.slug });
+  assert.ok(text.length <= 600, `${text.length} characters`);
+  assert.match(text, /and 2 more/);
+  assert.equal((text.match(/role\d \(/g) || []).length, 8);
+});
+
+test("team.project-append: no em dash, ever (style's own rule, and this text rides every session's prompt)", async t => {
+  const { tool, project } = await boot(t);
+  assert.ok(!(await tool("team.project-append", { project: project.slug })).text.includes("—"));
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  assert.ok(!(await tool("team.project-append", { project: project.slug })).text.includes("—"));
+});
+
+test("isAssistant reads only vyred's verified agentKind, and team.list all:true shows every project to a person", async t => {
+  assert.equal(isAssistant({ agentKind: "assistant" }), true);
+  assert.equal(isAssistant({ agentKind: "teammate" }), false);
+  assert.equal(isAssistant({ caller: "mcp:agent:assistant" }), false);
+  const { tool, project, launches, root } = await boot(t);
+  const other = await tool("projects.create", { name: "Northwind Bakery" });
+  await tool("team.add", { project: project.slug, role: "design" });
+  await tool("team.add", { project: other.slug, role: "ops" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  assert.equal((await tool("team.list", { all: true })).length, 2);
+  assert.equal((await tool("team.list", {}, "cli", { session })).length, 1);
 });

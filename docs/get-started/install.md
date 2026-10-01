@@ -360,9 +360,9 @@ Once you approve it, `vyre link` says `linked to` and names your box.
 > The Mac and the server are on different Tailscale accounts. Sign the Mac in to Tailscale as the
 > account the box names, then run `vyre up`.
 
-## 14. Open the Capsule
+## 14. Open Lumen
 
-The Capsule is the command bar on your Mac: press Control twice, anywhere. Build and open it:
+Lumen is the command bar on your Mac: press Control twice, anywhere. Build and open it:
 
 ```sh
 vyre capsule install
@@ -379,7 +379,7 @@ vyre capsule
 The app is built here with Apple's Command Line Tools, so nothing is downloaded and Gatekeeper
 has nothing to quarantine. If they are missing, `vyre capsule install` says to run
 `xcode-select --install`. The first time, it offers to make a local signing identity so macOS
-keeps the Capsule's permissions across updates.
+keeps Lumen's permissions across updates.
 
 > [!SNAG] "The Capsule is built with Apple's Command Line Tools, which are not installed"
 > Run `xcode-select --install`, then `vyre capsule install` again.

@@ -1,0 +1,18 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Vyre for Chrome</title>
+<style>
+  body { font: 13px/1.45 system-ui, sans-serif; margin: 0; padding: 14px; width: 330px; color: #1c1a17; background: #f4f1ea; }
+  h1 { font-size: 14px; margin: 0 0 8px; }
+  .row { display: flex; gap: 8px; align-items: flex-start; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; flex: none; background: #999; }
+  .ok { background: #2f8f4e; } .bad { background: #c0392b; } .wait { background: #c98a1a; }
+  code { background: #e9e4d8; padding: 1px 4px; border-radius: 4px; }
+  small { color: #6a655b; display: block; margin-top: 8px; }
+  @media (prefers-color-scheme: dark) { body { color: #ece8df; background: #1b1916; } code { background: #2a2722; } small { color: #a39d90; } }
+</style>
+<h1>Vyre for Chrome</h1>
+<div class="row"><span id="dot" class="dot"></span><div><div id="headline">Checking...</div><div id="fix"></div></div></div>
+<div id="stopped" hidden style="margin-top:10px"><div id="stoppedText"></div><button id="cont" type="button" style="margin-top:6px">Continue</button></div>
+<small id="detail"></small>
+<script type="module" src="popup.js"></script>

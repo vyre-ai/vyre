@@ -5,24 +5,26 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { SURFACE_LABELS } from "../core/modules/index.js";
-import { ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
+import { above } from "../core/daemon/index.js";
+import { setPeerHosting, peerHosting, ancestry, insideClaude, controllingTty, exePath, processUid, loginOf, tmuxClients,
   verifiedCapsule, parseCodesign, signatureOf } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
   400: { ppid: 1, args: "node --test" }, 500: { ppid: 400, args: "node vyred" },
-  200: { ppid: 1, args: "/bin/zsh -l" }, 210: { ppid: 200, args: "vyre threads answer" },
+  200: { ppid: 1, pgid: 200, args: "/bin/zsh -l" }, 210: { ppid: 200, args: "vyre threads answer" },
   300: { ppid: 200, args: "node /usr/local/bin/claude" }, 310: { ppid: 300, args: "/bin/bash -c vyre call threads.answer" }, 311: { ppid: 310, args: "vyre call threads.answer" },
   600: { ppid: 500, args: "/opt/claude-code/cli.js --session-id x" }, 610: { ppid: 600, args: "curl --unix-socket" },
   700: { ppid: 400, args: "/Users/alex/.local/bin/claude" },
   // On the box: the person over ssh, in tmux; a claude someone runs in a tmux pane; tmux a model opened.
-  800: { ppid: 1, args: "sshd: alex [priv]" }, 801: { ppid: 800, args: "-bash" }, 802: { ppid: 801, args: "vyre vault reveal northwind-mail" },
-  900: { ppid: 1, args: "tmux new -s work" }, 901: { ppid: 900, args: "-bash" }, 902: { ppid: 901, args: "vyre gate approve g1" },
+  800: { ppid: 1, pgid: 800, args: "sshd: alex [priv]" }, 801: { ppid: 800, args: "-bash" }, 802: { ppid: 801, args: "vyre vault reveal northwind-mail" },
+  900: { ppid: 1, pgid: 900, args: "tmux new -s work" }, 901: { ppid: 900, args: "-bash" }, 902: { ppid: 901, args: "vyre gate approve g1" },
   910: { ppid: 900, args: "-bash" }, 911: { ppid: 910, args: "claude" }, 912: { ppid: 911, args: "/bin/sh -c vyre gate approve g1" },
   920: { ppid: 310, args: "tmux new -d" }, 921: { ppid: 920, args: "vyre gate approve g1" },
   // An orphan a thread left behind (nohup .. &, then its shell exited): parent init, group the thread's.
@@ -42,15 +44,26 @@ test("peer: the ancestry walks up to init, and says when it could not", () => {
 });
 
 test("peer: under a claude, or under a thread vyred runs, is inside; a terminal, ssh, tmux and vyred's own parents are not", () => {
-  const o = { look, self: 500, threads: [600] };
+  // Production rules: a test hosting vyred in its own process is a seam (VYRE_TEST_HOSTED), off here.
+  const hostedWas = peerHosting();
+  setPeerHosting(false);
+  try { productionRules(); } finally { setPeerHosting(hostedWas); }
+});
+
+/** The person is the one who is proven: a login leader the kernel names, or a server they proved once. */
+/** The kernel-verified leader a chain may top out at on this platform (login is forgeable on macOS). */
+const LEADER = process.platform === "darwin" ? "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" : "/usr/bin/login";
+const exeOf = pid => ({ 200: LEADER, 800: "/usr/sbin/sshd", 900: "/usr/bin/tmux" }[pid] || null);
+function productionRules() {
+  const o = { look, self: 500, threads: [600], exe: exeOf, started: () => "t1", uid: () => 501 };
   assert.deepEqual(insideClaude(311, o), { inside: true, by: 300 }, "a model's Bash under a terminal claude");
   assert.deepEqual(insideClaude(610, o), { inside: true, by: 600 }, "a headless thread's child, whatever its command line says");
-  assert.deepEqual(insideClaude(210, o), { inside: false }, "the person's own terminal");
-  assert.deepEqual(insideClaude(802, o), { inside: false }, "the person over ssh");
-  assert.deepEqual(insideClaude(902, o), { inside: false }, "the person's shell in tmux");
+  assert.deepEqual(insideClaude(210, o), { inside: false }, "the person's own terminal: a login the kernel names");
+  assert.deepEqual(insideClaude(802, o), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 800, started: "t1" } }, "the person over ssh: a server they prove once");
+  assert.deepEqual(insideClaude(902, o), { inside: false, unknown: true, server: { exe: "/usr/bin/tmux", pid: 900, started: "t1" } }, "the person's shell in tmux: the same");
   assert.deepEqual(insideClaude(912, o), { inside: true, by: 911 }, "claude in a tmux pane");
   assert.deepEqual(insideClaude(940, o), { inside: true, by: 600 }, "an orphan in a thread's process group");
-  assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true }, "an orphan of a shell that is gone: refused as unknown");
+  assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true, unreadable: true }, "an orphan of a shell that is gone: refused as unknown");
   // Leads its own group under launchd, same shape a `setsid`'d escape has (see the dedicated
   // test below): unknown by ancestry alone, no `started` in this fixture to name it a server with.
   // The Capsule is this shape too, and must prove itself another way, not by ancestry (the setsid
@@ -59,14 +72,14 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   // 960 can coincide with a REAL process on a shared box, and a real `started()` for it would
   // make this flaky. Every case below that is not testing the server-naming path itself overrides
   // `started: () => null`, same as tests elsewhere in this file override `look` or `exe`.
-  const noServer = { started: () => null };
-  assert.deepEqual(insideClaude(960, { ...o, ...noServer }), { inside: false, unknown: true }, "its own group under launchd, unlisted binary, no start time to name a server: flat unknown");
+  const noServer = { started: () => null, exe: () => null };
+  assert.deepEqual(insideClaude(960, { ...o, ...noServer }), { inside: false, unknown: true, unreadable: true }, "its own group under launchd, unlisted binary, no start time to name a server: flat unknown");
   // The exact-path allowlist (never a basename: the reviewer's own reproduction, 28 Sep, copied
   // `script` to a file named `login` and it passed the old basename check). login is the one
   // thing left on it -- sshd came off by the lead's decision (a model can get itself an sshd
   // leader too, over `ssh -o BatchMode=yes localhost` with its own appended key).
-  assert.deepEqual(insideClaude(960, { ...o, ...noServer, exe: () => "/usr/bin/login" }), { inside: false }, "the kernel says its binary is the real, root-owned /usr/bin/login");
-  assert.deepEqual(insideClaude(960, { ...o, ...noServer, exe: () => "/tmp/login" }), { inside: false, unknown: true }, "a copy at an unlisted path named login: not on the allowlist at all");
+  assert.deepEqual(insideClaude(960, { ...o, ...noServer, exe: () => LEADER }), { inside: false }, "the kernel says its binary is the real, root-owned /usr/bin/login");
+  assert.deepEqual(insideClaude(960, { ...o, ...noServer, exe: () => "/tmp/login" }), { inside: false, unknown: true, unreadable: true }, "a copy at an unlisted path named login: not on the allowlist at all");
   // Everything else with a start time is named as a server rather than flatly refused (the lead's
   // decision, 28 Sep: nobody with a real, unlisted terminal gets locked out) -- sshd included.
   assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/sbin/sshd", started: () => "t1" }),
@@ -74,12 +87,137 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   assert.deepEqual(insideClaude(960, { ...o, exe: () => "/usr/bin/script", started: () => "t1" }),
     { inside: false, unknown: true, server: { exe: "/usr/bin/script", pid: 960, started: "t1" } }, "a fresh tty from `script` proves nothing: still judged on the binary, named as a server too");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
-  assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
-  assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
+  assert.deepEqual(insideClaude(500, o), { inside: true, by: 500 }, "vyred itself, or anything under it that is not the person's own hosting: a model's");
+  assert.deepEqual(insideClaude(410, { ...o, look: pid => (pid === 410 ? { ppid: 500, args: "node mcp-hub-child.js" } : look(pid)) }), { inside: true, by: 500 }, "a descendant of vyred that is not in the thread list (an MCP child, a worker)");
+  assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true, unreadable: true }, "an unreadable chain is unknown and unreadable, and vyred takes it as a model's");
   // A claude above vyred (vyred and the caller both started from one session) is not the caller's.
   tree[400].ppid = 700;
   try { assert.deepEqual(insideClaude(210, { ...o, self: 500 }), { inside: false }); }
   finally { tree[400].ppid = 1; }
+}
+
+test("peer: positive proof of the person: readable links up to a trusted login, vyred's own terminal shared, and every other shape is a model's", () => {
+  const hostedWas = peerHosting();
+  setPeerHosting(false);
+  try {
+    const me = process.getuid();
+    const rows = {
+      10: { ppid: 1, pgid: 10, uid: 0, start: 100, args: "/usr/bin/login -pf alex" },
+      20: { ppid: 10, pgid: 20, uid: me, start: 101, args: "-zsh" },
+      30: { ppid: 20, pgid: 20, uid: me, start: 110, args: "node /opt/vyre/core/daemon/main.js" },
+      40: { ppid: 20, pgid: 40, uid: me, start: 120, args: "vyre call notes.list" },
+      50: { ppid: 30, pgid: 30, uid: me, start: 121, args: "node mcp-hub-child.js" },
+      60: { ppid: 20, pgid: 60, uid: me, start: 50, args: "vyre call notes.list" },
+      70: { ppid: 71, pgid: 70, uid: me, start: 130, args: "vyre call notes.list" }, 71: { ppid: 20, pgid: 71, uid: me + 1, start: 125, args: "sh -c x" },
+      80: { ppid: 20, pgid: 80, uid: me, start: 122, args: "node /tmp/x/codex --resume" }, 81: { ppid: 80, pgid: 80, uid: me, start: 123, args: "vyre call notes.list" },
+      90: { ppid: 1, pgid: 90, uid: me, start: 130, args: "node /tmp/evil.js" }, 91: { ppid: 90, pgid: 90, uid: me, start: 131, args: "vyre call notes.list" },
+      // vyred started by launchd: no terminal above it, so nothing is shared with a caller.
+      200: { ppid: 1, pgid: 200, uid: me, start: 100, args: "node /opt/vyre/core/daemon/main.js" }, 210: { ppid: 200, pgid: 200, uid: me, start: 101, args: "vyre call notes.list" },
+    };
+    const o = { look: pid => rows[pid] || null, threads: [], self: 30, exe: pid => (pid === 10 ? LEADER : pid === 90 ? "/tmp/node" : null), started: () => null, uid: () => me };
+    assert.deepEqual(insideClaude(40, o), { inside: false }, "a terminal-launched person: readable links up to a trusted login, sharing vyred's own terminal");
+    assert.deepEqual(insideClaude(50, o), { inside: true, by: 30 }, "a descendant of vyred that is not a thread: an MCP child or worker");
+    assert.equal(insideClaude(60, o).unreadable, true, "a child that started before its parent: a reused pid");
+    assert.equal(insideClaude(70, o).unreadable, true, "a link owned by another uid in the middle");
+    assert.deepEqual(insideClaude(81, o), { inside: true, by: 80 }, "an agent host by name (codex), whatever the directory");
+    assert.equal(insideClaude(91, o).unreadable, true, "a daemonized model: ppid 1, its own group, an untrusted exe, no server to name");
+    assert.equal(insideClaude(210, { ...o, self: 200 }).inside, true, "a launchd-started vyred shares nothing: its own child is a model's");
+    // Parentheses inside a real command line are not an exited process.
+    rows[40].args = "node app.js (x)";
+    assert.deepEqual(insideClaude(40, o), { inside: false });
+  } finally { setPeerHosting(hostedWas); }
+});
+
+test("peer: every real person surface still reads as the person (or as a server they prove once)", async () => {
+  const hostedWas = peerHosting();
+  setPeerHosting(false);
+  try {
+    const me = process.getuid();
+    const row = (ppid, args, extra = {}) => ({ ppid, pgid: ppid, uid: me, start: 100, args, ...extra });
+    // Terminal.app: launchd -> Terminal (a GUI app) -> login (root) -> -zsh -> vyre. Terminal is on the
+    // kernel-verified list; `login` in the middle is root's, which is fine anywhere.
+    const terminal = {
+      10: { ppid: 1, pgid: 10, uid: me, start: 100, args: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+      11: { ppid: 10, pgid: 10, uid: 0, start: 101, args: "login -pf alex" }, 12: { ppid: 11, pgid: 12, uid: me, start: 102, args: "-zsh" }, 13: { ppid: 12, pgid: 13, uid: me, start: 103, args: "vyre call notes.list" },
+      // vyred started by launchd; the person's CLI is not its child.
+      200: { ppid: 1, pgid: 200, uid: me, start: 50, args: "node /opt/vyre/core/daemon/main.js" },
+    };
+    const trusted = { look: pid => terminal[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" : null), started: () => "t", uid: () => me };
+    if (process.platform === "darwin") assert.deepEqual(insideClaude(13, trusted), { inside: false }, "vyre typed in Terminal.app");
+    // On Linux a root login anchors a chain; on macOS it never does (F3), only the Terminal binary at the top.
+    const iterm = { ...trusted, exe: pid => (pid === 10 ? "/Applications/iTerm.app/Contents/MacOS/iTerm2" : pid === 11 ? "/usr/bin/login" : null) };
+    if (process.platform === "darwin") {
+      assert.deepEqual(insideClaude(13, iterm), { inside: false, unknown: true, server: { exe: "/Applications/iTerm.app/Contents/MacOS/iTerm2", pid: 10, started: "t" } }, "iTerm on macOS: a named server, its login proves nothing");
+      // F3: a same-uid process runs `login -pfl $USER cmd` with no password. sh -> login (root) -> a detached helper at ppid 1.
+      const forge = {
+        900: { ppid: 1, pgid: 900, uid: me, start: 100, args: "perl -e exec-login" },
+        901: { ppid: 900, pgid: 900, uid: 0, start: 101, args: "/usr/bin/login -pfl alex /bin/sh -c vyre" }, 902: { ppid: 901, pgid: 900, uid: me, start: 102, args: "/bin/sh -c vyre call notes.list" },
+      };
+      const forged = insideClaude(902, { look: pid => forge[pid] || null, threads: [], self: 200, exe: pid => (pid === 901 ? "/usr/bin/login" : pid === 900 ? "/usr/bin/perl" : null), started: () => "t", uid: () => me });
+      assert.notDeepEqual(forged, { inside: false }, "a model's own login link is not the person: " + JSON.stringify(forged));
+      // And as a top: login as a session leader at ppid 1.
+      const top = { 910: { ppid: 1, pgid: 910, uid: 0, start: 100, args: "/usr/bin/login -pfl alex /bin/sh" }, 911: { ppid: 910, pgid: 910, uid: me, start: 101, args: "vyre call notes.list" } };
+      assert.notDeepEqual(insideClaude(911, { look: pid => top[pid] || null, threads: [], self: 200, exe: () => "/usr/bin/login", started: () => "t", uid: () => 0 }), { inside: false }, "login as a top is not an anchor on macOS");
+    } else if (fs.existsSync("/usr/bin/login")) {
+      assert.deepEqual(insideClaude(13, iterm), { inside: false }, "vyre in a terminal with a root login in its chain (Linux)");
+    }
+    // Ghostty, VS Code, Warp and any app that starts the shell itself, with no login: a server the person proves once, never a model.
+    const direct = { ...terminal, 11: undefined, 12: { ppid: 10, pgid: 12, uid: me, start: 102, args: "-zsh" } };
+    const vscode = { look: pid => direct[pid] || null, threads: [], self: 200, exe: pid => (pid === 10 ? "/Applications/Visual Studio Code.app/Contents/MacOS/Electron" : null), started: () => "t", uid: () => me };
+    assert.deepEqual(insideClaude(13, vscode), { inside: false, unknown: true, server: { exe: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", pid: 10, started: "t" } }, "an app that starts the shell itself: named as a server");
+    // A Mac server (vyred under launchd), the person over ssh: sshd's listener (root, launchd's child) -> sshd [priv] (root) -> sshd (person) -> -zsh -> vyre.
+    const ssh = {
+      300: { ppid: 1, pgid: 300, uid: 0, start: 10, args: "/usr/sbin/sshd -D" }, 301: { ppid: 300, pgid: 301, uid: 0, start: 100, args: "sshd: alex [priv]" },
+      302: { ppid: 301, pgid: 301, uid: me, start: 101, args: "sshd: alex@ttys001" }, 303: { ppid: 302, pgid: 303, uid: me, start: 102, args: "-zsh" }, 304: { ppid: 303, pgid: 304, uid: me, start: 103, args: "vyre call notes.list" },
+    };
+    const sshd = { look: pid => ssh[pid] || null, threads: [], self: 200, exe: () => "/usr/sbin/sshd", started: () => "t", uid: () => 0 };
+    assert.deepEqual(insideClaude(304, sshd), { inside: false, unknown: true, server: { exe: "/usr/sbin/sshd", pid: 300, started: "t" } }, "the CLI over ssh to a Mac server: a server the person proves once");
+    // Capsule.app: it connects itself and proves itself by the pinned cdhash, checked before the walk's own answer.
+    const capsule = { 20: row(1, "/Applications/Vyre.app/Contents/MacOS/Vyre"), 200: terminal[200] };
+    const registry = { call: async () => ({ data: { pids: [] } }), deps: { presence: { capsulePin: () => ({ cdhash: "a".repeat(40) }) } } };
+    const seam = { started: () => "t1", cdhash: () => "a".repeat(40) };
+    const via = (caller, over = {}) => above({}, registry, caller, { peerPid: async () => 20, alive: () => true, delayMs: 1, capsuleSeam: seam,
+      processTable: () => pid => capsule[pid] || null, insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: () => "/Applications/Vyre.app/Contents/MacOS/Vyre", started: () => null, uid: () => me, self: 200 }), ...over });
+    assert.deepEqual(await via("capsule"), { inside: false }, "Capsule.app itself, pinned build");
+    assert.equal((await via("capsule", { capsuleSeam: { ...seam, cdhash: () => "b".repeat(40) } })).inside, true, "a different binary claiming the capsule label is a model's");
+    assert.equal((await via("cli")).inside, true, "the Capsule's own ambiguous shape under any other label proves nothing");
+    // A `vyre` the Capsule spawns by argv: the Capsule is the top of its chain, proved by the same pin, no prompt.
+    capsule[30] = row(20, "vyre call notes.list", { pgid: 30 });
+    capsule[20] = { ...capsule[20], pgid: 20 };
+    const child = (pin) => above({}, registry, "cli", { peerPid: async () => 30, alive: () => true, delayMs: 1, capsuleSeam: { started: () => "t1", cdhash: () => pin },
+      processTable: () => pid => capsule[pid] || null, insideClaude: (pid, o) => insideClaude(pid, { ...o, exe: p => (p === 20 ? "/Applications/Vyre.app/Contents/MacOS/Vyre" : null), started: () => "t1", uid: () => me, self: 200 }) });
+    assert.deepEqual(await child("a".repeat(40)), { inside: false }, "a vyre the pinned Capsule spawned");
+    const other = await child("c".repeat(40));
+    assert.deepEqual([other.inside, other.unknown, Boolean(other.server)], [false, true, true], "another build at the top stays a named server");
+  } finally { setPeerHosting(hostedWas); }
+});
+
+test("peer: hosting is off unless a test turns it on; the env fallback needs node's test runner", () => {
+  const was = { set: peerHosting(), env: process.env.VYRE_TEST_HOSTED, ctx: process.env.NODE_TEST_CONTEXT };
+  try {
+    setPeerHosting(null);
+    process.env.VYRE_TEST_HOSTED = "1";
+    delete process.env.NODE_TEST_CONTEXT;
+    assert.equal(peerHosting(), false, "the env alone, outside a test runner (a shell a model wrote an rc file for)");
+    delete process.env.VYRE_TEST_HOSTED;
+    process.env.NODE_TEST_CONTEXT = "child-v8";
+    assert.equal(peerHosting(), false, "the runner alone");
+    // The env fallback for a vyred a test starts as a child: only over a temp home, never ~/.vyre.
+    process.env.VYRE_TEST_HOSTED = "1";
+    const homeWas = process.env.VYRE_HOME;
+    try {
+      process.env.VYRE_HOME = path.join(os.homedir(), ".vyre");
+      assert.equal(peerHosting(), false, "the person's own home");
+      process.env.VYRE_HOME = path.join(os.tmpdir(), "vyre-temp-home");
+      assert.equal(peerHosting(), true, "a temp home under the test runner");
+    } finally { if (homeWas === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = homeWas; }
+    setPeerHosting(true);
+    assert.equal(peerHosting(), true, "a test turning it on in its own process");
+  } finally {
+    if (was.env === undefined) delete process.env.VYRE_TEST_HOSTED; else process.env.VYRE_TEST_HOSTED = was.env;
+    if (was.ctx === undefined) delete process.env.NODE_TEST_CONTEXT; else process.env.NODE_TEST_CONTEXT = was.ctx;
+    setPeerHosting(was.set);
+  }
 });
 
 /** A client run as `node <client.mjs>`, optionally under a fake `claude`. It prints the tool's answer. */
@@ -350,9 +488,14 @@ test("peer: setsid, nohup, a double fork, and a fresh tty from script/pty/tmux a
     const curl = ["curl", "-s", "-o", out, "--unix-socket", socket, "-X", "POST", url,
       "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", "-d", JSON.stringify({ name: "kit" })];
     await wrap(curl);
-    for (let n = 0; n < 50 && !fs.existsSync(out); n++) await new Promise(r => setTimeout(r, 100));
-    assert.ok(fs.existsSync(out), "the detached call never answered");
-    return JSON.parse(fs.readFileSync(out, "utf8"));
+    // The answer is the file's content, not the file: curl creates the output file before it writes the
+    // body, and a read in between saw an empty file (on a loaded runner, "Unexpected end of JSON input").
+    let body;
+    for (let n = 0; n < 100 && body === undefined; n++) {
+      try { body = JSON.parse(fs.readFileSync(out, "utf8")); } catch { await new Promise(r => setTimeout(r, 100)); }
+    }
+    assert.ok(body !== undefined, "the detached call never answered");
+    return body;
   }
 
   // `setsid -f`: one fork, `setsid()` in the child. No process above to blame, and no tty. Its own
@@ -568,10 +711,10 @@ test("peer: a leader whose exe cannot be read is a server keyed uid0 only when r
   const common = { look: lk, exe: () => null, started: () => "Mon Sep 28 08:00:00 2026", self: 999999 };
   assert.deepEqual(insideClaude(32, { ...common, uid: () => 0 }),
     { inside: false, unknown: true, server: { exe: "uid0", pid: 30, started: "Mon Sep 28 08:00:00 2026" } });
-  assert.deepEqual(insideClaude(32, { ...common, uid: () => 1000 }), { inside: false, unknown: true });
-  assert.deepEqual(insideClaude(32, { ...common, uid: () => null }), { inside: false, unknown: true });
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => 1000 }), { inside: false, unknown: true, unreadable: true });
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => null }), { inside: false, unknown: true, unreadable: true });
   // No readable start time, no key: refused flat rather than trusting a pid that could be reused.
-  assert.deepEqual(insideClaude(32, { ...common, uid: () => 0, started: () => null }), { inside: false, unknown: true });
+  assert.deepEqual(insideClaude(32, { ...common, uid: () => 0, started: () => null }), { inside: false, unknown: true, unreadable: true });
   // A readable exe keeps its own path as the key, whatever its uid.
   assert.equal(insideClaude(32, { ...common, exe: () => "/usr/bin/tmux", uid: () => 0 }).server?.exe, "/usr/bin/tmux");
 });

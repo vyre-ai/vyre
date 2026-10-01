@@ -57,7 +57,7 @@ const LEGACY_EVENTS = new Set(["ask.cancelled"]);
 // thread.shell, thread.remembered) and db44749b (thread.thinking); remove when on main.
 const AHEAD_TOOLS = new Set(["threads.model", "threads.commands",
   "threads.shell", "threads.remember", "threads.thinking", "threads.tasks", "threads.kill-task"]);
-const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"]);
+const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered", "thread.artifact", "teammate.charter-changed", "vault.used", "spend.capped"]);
 
 test("the sessions layer is on this tree (merge pre/3a first)", () => {
   assert.ok(serverTools.has("threads.send"), "core registers threads.send");

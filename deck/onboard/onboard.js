@@ -16,7 +16,7 @@ import { buildWinkCard } from "../js/wink-card.js";
 // Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
 // order now matches it exactly, with two client screens standing in for the doc's single step 2
 // ("Pair this device with the server" is tailscale then name here) and the doc's step 10
-// ("A tour of the Capsule") as its own final, non-skippable screen split out of the old
+// ("A tour of Lumen") as its own final, non-skippable screen split out of the old
 // "devices" step, which keeps Mac- and phone-pairing but is a normal, skippable middle step now.
 // Steps beyond the original six are client-side stubs for now: stepState() defaults an unknown
 // id to "todo" and mark_() only tries the server for a real onboard.<id> tool, so a step with no
@@ -33,7 +33,7 @@ const STEPS = [
   { id: "computers", title: "Agent computers" },   // 7
   { id: "drive", title: "Vyre Drive" },            // 8
   { id: "devices", title: "Your devices" },        // 9
-  { id: "capsule", title: "The Capsule" },         // 10
+  { id: "capsule", title: "Lumen" },         // 10
 ];
 
 // The session vyred gave for `vyre up`'s one-time link: the server redeems ?t= itself and
@@ -320,9 +320,9 @@ const SCREENS = {
       h("p", { class: "lead" }, "Let's start with names: yours, and your assistant's. Only your own devices will be able to reach what you set up here."));
     const status = h("div", { class: "check-line", "aria-live": "polite" });
     const nameIn = h("input", { class: "input", id: "name", value: state.name, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
-      "aria-describedby": "name-status", placeholder: "alex" });
+      "aria-describedby": "name-status", placeholder: "Your name" });
     status.id = "name-status";
-    const asst = h("input", { class: "input", id: "assistant", value: state.assistant, autocomplete: "off", placeholder: "juno" });
+    const asst = h("input", { class: "input", id: "assistant", value: state.assistant, autocomplete: "off", placeholder: "Your assistant's name" });
     let ok = false, seq = 0;
     const check = async () => {
       const v = /** @type {HTMLInputElement} */ (nameIn).value.trim().toLowerCase();
@@ -420,7 +420,7 @@ const SCREENS = {
     // only path that actually works, so it's shown plainly, not hidden behind a toggle with
     // nothing on the other side of it.
     let via = !relay.allowed ? "tailscale" : state.deviceVia;
-    const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "kit", autocomplete: "off",
+    const nodeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "server-node", placeholder: "The server's name", autocomplete: "off",
       value: state.serverNode, oninput: () => { state.serverNode = nodeIn.value; } }));
     const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "pair-code", placeholder: "Paste the code your server showed", autocomplete: "off" }));
 
@@ -816,7 +816,7 @@ const SCREENS = {
       h("p", { class: "small muted" }, "Point a domain you already own at this server instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the server's own configuration, then come back and reserve again.")));
   },
 
-  // Import your sessions: discover, choose, watch Vyre IQ learn (docs/design/import.md,
+  // Import your sessions: discover, choose, watch Vyre Memory learn (docs/design/import.md,
   // memory-iq; docs/design/onboarding-v2.md step 4). Three phases in one step: discover (scan,
   // nothing leaves the device), choose (a plan, "keep in sync" unticked, a Fast/Gentle reading
   // pace with neither preselected), watch (live progress in three plain-language stages, and a
@@ -935,7 +935,7 @@ const SCREENS = {
         const r = await attempt("import.status");
         if (r.error) return;
         const st = r.data;
-        // Vyre IQ's own stages, in plain language (memory-iq): upload gets it to the server
+        // Vyre Memory's own stages, in plain language (memory-iq): upload gets it to the server
         // (skipped when local-only); search makes it findable; meaning makes it understood
         // (personal facts keep reading in the background for days, so they never gate this
         // checkmark); graph keeps growing after, with no total to reach.
@@ -962,7 +962,7 @@ const SCREENS = {
     // not answer from the sessions just read, which is the whole point of this box (memory-iq).
     // No stream: true here, a plain request/reply is enough for onboarding.
     const drawAsk = (/** @type {HTMLElement} */ ask) => {
-      const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre IQ" }));
+      const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre Memory" }));
       const out = h("div", { class: "small muted", style: { marginTop: "8px" } });
       const go = async () => {
         const q = qIn.value.trim();
@@ -971,7 +971,7 @@ const SCREENS = {
         const r = await attempt("memory.ask", { question: q });
         if (r.error) { put(out, String(r.error.message)); return; }
         const d = r.data;
-        if (d.limited) { put(out, d.message || "Vyre IQ has reached today's limit. Try again tomorrow."); return; }
+        if (d.limited) { put(out, d.message || "Vyre Memory has reached today's limit. Try again tomorrow."); return; }
         if (d.abstained) {
           put(out, "Not sure yet.", d.known ? h("span", null, " ", d.known) : null);
           return;
@@ -1144,7 +1144,7 @@ const SCREENS = {
   // and files.receive as a UI toggle are not built (M/M/S): no onboard.* tool for any of them
   // exists yet in core/onboard/loopback.js's allowlist, so this stays inert preview, not a working
   // form, exactly like the rest of this step group degrades. The "watch it appear on your other
-  // device" celebration needs the phone app and a Capsule drop target (drive-onboarding.md item
+  // device" celebration needs the phone app and a Lumen drop target (drive-onboarding.md item
   // 7), neither of which exist, so it's named here as the payoff to look forward to, once devices
   // (this onboarding's own next step) are paired, not staged as a live demo.
   drive(col, s) {
@@ -1156,19 +1156,19 @@ const SCREENS = {
       h("span", { class: "t" }, h("b", null, name), h("span", null, path)));
     col.append(h("div", { class: "ob-panel" },
       h("p", { class: "lbl" }, "What to sync"),
-      h("div", { class: "choice" }, folder("Desktop", "~/Desktop", true), folder("Documents", "~/Documents", true), folder("Harlow Legal (project)", "~/Work/harlow-legal", true)),
+      h("div", { class: "choice" }, folder("Desktop", "~/Desktop", true), folder("Documents", "~/Documents", true)),
       h("p", { class: "small muted" }, "node_modules, .git and build folders are left out automatically."),
       h("p", { class: "lbl", style: { marginTop: "14px" } }, "How"),
       h("div", { class: "choice" },
         h("label", { class: "on" }, icon("check", 14), h("span", { class: "t" }, h("b", null, "Files on demand"), h("span", null, "The default: mounted in Finder, fetched only when you open something. Nothing downloads up front."))),
         h("label", null, h("input", { type: "checkbox", disabled: true }), h("span", { class: "t" }, h("b", null, "Server only"), h("span", null, "Don't mount this share on this device.")))),
       h("p", { class: "lbl", style: { marginTop: "14px" } }, "Per-folder access"),
-      h("p", { class: "small muted" }, "Agents get none of this by default; Capsule, chat and per-project access are each their own grant, the same shape as the vault's."),
+      h("p", { class: "small muted" }, "Agents get none of this by default; Lumen, chat and per-project access are each their own grant, the same shape as the vault's."),
       h("p", { class: "lbl", style: { marginTop: "14px" } }, "Receiving files"),
       h("div", { class: "choice" }, h("label", null, h("input", { type: "checkbox", disabled: true }), h("span", { class: "t" }, h("b", null, "Let the server send files here"), h("span", null, "Off by default, per device."))))));
     col.append(h("div", { class: "need" },
       h("div", { class: "lbl" }, "Coming soon"),
-      "This is the plan, not a working form yet: the picker, per-folder access and the receive switch all need work that hasn't landed. Once your devices are paired, drop a file in and watch it show up wherever you look next: that moment needs this step's pieces plus your phone and Capsule, so it isn't real yet either. Skip for now, and share a folder from the CLI or the Deck in the meantime."));
+      "This is the plan, not a working form yet: the picker, per-folder access and the receive switch all need work that hasn't landed. Once your devices are paired, drop a file in and watch it show up wherever you look next: that moment needs this step's pieces plus your phone and Lumen, so it isn't real yet either. Skip for now, and share a folder from the CLI or the Deck in the meantime."));
     s.foot({ label: "Continue", run: s.next });
   },
 
@@ -1196,7 +1196,7 @@ const SCREENS = {
     let macName = d.mac?.connected ? (d.mac.name || "your Mac") : null;
     const drawMac = () => put(macState, macName
       ? [h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Mac paired: ", h("b", null, macName))),
-        h("p", { class: "small muted" }, "Press ⌥Space to open the Capsule.")]
+        h("p", { class: "small muted" }, "Press ⌥Space to open Lumen.")]
       : h("div", { class: "dev-wait" }, h("span", { class: "busy", "aria-hidden": "true" }), "Waiting for your Mac"));
     const paired = (/** @type {string} */ name) => {
       if (macName) return;
@@ -1301,18 +1301,18 @@ const SCREENS = {
       toMac = false;
       later(() => { macCard.scrollIntoView({ block: "start" }); macCard.focus({ preventScroll: true }); }, 0);
     }
-    // No longer the mandatory final step (the Capsule tour is, now): normal Continue and Skip.
+    // No longer the mandatory final step (Lumen tour is, now): normal Continue and Skip.
     s.foot({ label: "Continue", run: s.next });
   },
 
-  // The Capsule tour (docs/design/onboarding-v2.md step 10), split out of "devices" so the
+  // Lumen tour (docs/design/onboarding-v2.md step 10), split out of "devices" so the
   // mandatory, non-skippable final screen is this one, not Mac/phone pairing. capsule-pro owns
   // the real, signed-in tour; this reuses the landing page's copy and hotkey
   // (site/index.html, docs/work/launch-surfaces.md) as a starting shape.
   capsule(col, s) {
     col.append(
-      h("h1", { class: "h1" }, "A tour of the Capsule."),
-      h("p", { class: "lead" }, "Press ⌥Space over any app, a call or a doc, on your Mac, and the Capsule opens. Say what you need. It's gone when you're done."));
+      h("h1", { class: "h1" }, "A tour of Lumen."),
+      h("p", { class: "lead" }, "Press ⌥Space over any app, a call or a doc, on your Mac, and Lumen opens. Say what you need. It's gone when you're done."));
     col.append(h("div", { class: "ob-panel" },
       h("p", { class: "small muted" }, "Try it now if your Mac is already paired: press ⌥Space anywhere. Not paired yet? Pair it from the devices step, or open the Deck and pair it any time.")));
     s.foot({ label: "Open Vyre", run: s.next }, { skip: false });
@@ -1346,7 +1346,7 @@ function showEnding(d) {
   const mac = !!state.status?.detail?.devices?.mac?.connected;
   const rows = [
     { id: "mac", label: "Your Mac", done: mac,
-      note: mac ? "Press ⌥Space on your Mac to open the Capsule." : "Pair it any time: run vyre up on the Mac." },
+      note: mac ? "Press ⌥Space on your Mac to open Lumen." : "Pair it any time: run vyre up on the Mac." },
     { id: "phone", label: "Your phone", done: stepState("devices") !== "todo",
       note: `Open ${home.replace(/^https?:\/\//, "")}/now on your phone, then Add to Home Screen.` },
     { id: "history", label: "Your history", done: stepState("history") !== "todo",

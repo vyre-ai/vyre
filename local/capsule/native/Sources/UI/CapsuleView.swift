@@ -20,6 +20,9 @@ struct CapsuleView: View {
     /// Drawn off screen for a picture: a solid ground, since a window's material needs a window.
     var snapshot = false
     @FocusState private var boxFocused: Bool
+    @Environment(\.colorScheme) private var scheme
+    /// Reduce Transparency and Increase Contrast, live.
+    @ObservedObject private var display = DisplayPrefs.shared
 
     var body: some View {
         let open = CapsuleLayout.isOpen(model)
@@ -33,6 +36,9 @@ struct CapsuleView: View {
                         PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
                     } else if let c = model.credentialAsk {
                         CredentialView(ask: c) { Task { await model.saveCredential() } }
+                    } else if let vs = model.viewSession, vs.showsLevelView {
+                        // A module command's detail, form or preview takes the area (ViewLevelView.swift).
+                        ViewLevelView(session: vs) { Task { await model.viewSubmit() } }
                     } else if let run = model.commandRun, !(model.current?.kind == "cli" && model.current?.id != "cli:" + run.title) {
                         // What a command said, until a different command is typed (CommandRun.swift).
                         CommandRunView(run: run, scroller: model.answerScroll, cap: CapsuleLayout.answerCap(model, alone: true))
@@ -78,13 +84,13 @@ struct CapsuleView: View {
             }
         }
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
-        .background { if snapshot { Theme.carbon } else { Backdrop() } }
+        .background { if snapshot { Theme.carbon } else { Backdrop(reduced: display.reduceTransparency) } }
         .clipShape(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(Theme.ruleStrong.opacity(0.9), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).strokeBorder(DeepGlass.border(dark: scheme == .dark), lineWidth: DeepGlass.borderWidth))
         .overlay(alignment: .top) {
             // A hairline of light along the top edge, as on the Mac's own panels.
             RoundedRectangle(cornerRadius: Theme.radius, style: .continuous)
-                .strokeBorder(LinearGradient(colors: [Theme.bone.opacity(0.10), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
+                .strokeBorder(LinearGradient(colors: [DeepGlass.topEdge(dark: scheme == .dark), .clear], startPoint: .top, endPoint: .center), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .onChange(of: focus.count) { boxFocused = true }
@@ -95,7 +101,20 @@ struct CapsuleView: View {
 
     private var bar: some View {
         HStack(spacing: 12) {
-            MarkView(size: 20)
+            SummonMark(size: 20, replay: focus.count)
+            if let vs = model.viewSession {
+                HStack(spacing: 5) {
+                    Image(systemName: vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2")
+                        .font(Theme.subtitle)
+                    Text(vs.command.title).font(Theme.type(Tokens.TypeScale.base, .medium)).lineLimit(1)
+                }
+                .foregroundColor(Theme.bone)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Capsule().fill(Theme.raised))
+                .overlay(Capsule().strokeBorder(Theme.signal.opacity(0.55), lineWidth: 1))
+                .frame(maxWidth: 240, alignment: .leading)
+                .fixedSize()
+            }
             if let c = model.target {
                 HStack(spacing: 5) {
                     // An extension's target shows the icon it gave (an app's own); the outer chip
@@ -119,6 +138,21 @@ struct CapsuleView: View {
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)
                 .focused($boxFocused)
+            ForEach(model.pickedTags, id: \.key) { h in
+                HStack(spacing: 5) {
+                    Image(systemName: TagResults.symbol(kind: h.kind, icon: h.icon)).imageScale(.small)
+                    Text("#\(h.name)").lineLimit(1).truncationMode(.middle)
+                    Button { model.removeTag(h) } label: { Image(systemName: "xmark").imageScale(.small) }
+                        .buttonStyle(.plain).help("Take this tag off")
+                }
+                .font(Theme.type(Tokens.TypeScale.meta, .medium))
+                .foregroundColor(Theme.bone)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: Tokens.Radius.chip + 2, style: .continuous).fill(Theme.raised))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip + 2, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
+                .frame(maxWidth: 200)
+                .fixedSize(horizontal: false, vertical: true)
+            }
             ForEach(model.attachments, id: \.id) { a in
                 HStack(spacing: 5) {
                     Image(systemName: "rectangle.dashed.and.paperclip").imageScale(.small)
@@ -194,7 +228,7 @@ struct CapsuleView: View {
                 if let depth = CapsuleLayout.answerDepth(model) {
                     if working { Pulse() }
                     AvatarView(model.replyAvatar, size: 18)
-                    Text("Vyre IQ").font(Theme.label).foregroundColor(Theme.ash)
+                    Text("Vyre Memory").font(Theme.label).foregroundColor(Theme.ash)
                     Text(depth).font(Theme.subtitle).foregroundColor(Theme.ash)
                 } else {
                     if working { Pulse() }
@@ -215,16 +249,40 @@ struct CapsuleView: View {
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
+            // Vyre IQ's draft (C13, the draft lines of memory.ask): dimmed, with "Checking", until the answer replaces it.
+            if model.pending, model.replyText.isEmpty, let draft = model.iqDraft {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Checking").font(Theme.subtitle).foregroundColor(DeepGlass.ink)
+                    Text(draft)
+                        .font(Theme.reply).italic().foregroundColor(DeepGlass.ink)
+                        .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .opacity(DeepGlass.draftOpacity)
+                .accessibilityLabel("Checking: \(draft)")
+            }
             if !model.replyText.isEmpty {
                 Text(markdown(model.shownReplyText))
-                    .font(Theme.reply).foregroundColor(Theme.bone)
+                    .font(Theme.reply).foregroundColor(DeepGlass.ink)
                     .lineSpacing(Theme.lineGap(Tokens.TypeScale.read))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty {
-                MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName)
+            if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty || m.corrected {
+                MemorySources(memory: m, expanded: $model.memoryExpanded, who: model.identities, assistant: model.assistantName, openSource: { model.openSource($0) })
+            }
+            // Vyre IQ corrections (95b2b891): a quiet "Wrong?" line, its panel, or the last fix's Undo.
+            if model.reply?.finished == true, let id = model.iqAnswerId {
+                if let fixed = model.iqFixed {
+                    IQFixedLine(fix: fixed) { model.undoIQFix() }
+                } else if let c = model.iqCorrecting, c.answerId == id {
+                    IQCorrectPanel(state: c, onWrong: { model.correctIQ(action: "wrong") }, onForget: { model.correctIQ(action: "forget") },
+                                   onReplace: { model.correctIQ(action: "replace", object: $0) }, onCancel: { model.cancelIQCorrect() })
+                } else {
+                    IQWrongLine { model.openIQCorrect() }
+                }
             }
             if let r = model.reply, r.finished, let e = r.error, r.queued?.withdrawn != true {
                 Label(e == "stopped" ? "Stopped." : "Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone)
@@ -244,6 +302,8 @@ struct CapsuleView: View {
     }
 
     private var replyState: String {
+        // Vyre IQ streaming (memory.thinking): the stage in words while memory.ask is out.
+        if model.pending, let stage = model.iqStage { return stage }
         if model.pending { return "starting" }
         guard let r = model.reply else { return "" }
         if let q = r.queued, !q.delivered, !r.finished { return "queued" }
@@ -334,7 +394,7 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = Tokens.Control.sm
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.presenceAsk != nil || m.credentialAsk != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
+        m.presenceAsk != nil || m.credentialAsk != nil || m.viewSession != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The open panel's height (560): the bar, the body and the footer.
@@ -378,7 +438,7 @@ enum CapsuleLayout {
 
     /// The field's placeholder: a chip's "Message", the follow-up box, else the Capsule's own.
     @MainActor static func placeholder(_ m: CapsuleModel) -> String {
-        m.target != nil ? "Message" : m.followUp ? "Ask a follow-up" : "Ask Vyre, find, or run"
+        m.viewSession.map { $0.command.argPlaceholder ?? "Search \($0.command.title.lowercased())" } ?? (m.target != nil ? "Message" : m.followUp ? "Ask a follow-up" : "Ask Vyre, find, or run")
     }
 
     /// A group's heading, as written (sentence case): "Send to" over @ names, else its section.
@@ -388,7 +448,7 @@ enum CapsuleLayout {
 
     /// The answer card's title: "Vyre IQ", or the @ target's (or queued session's) name.
     @MainActor static func answerTitle(_ m: CapsuleModel) -> String {
-        answerDepth(m) != nil ? "Vyre IQ" : m.replyWho
+        answerDepth(m) != nil ? "Vyre Memory" : m.replyWho
     }
 
     /// "quick" or "deeper" beside "Vyre IQ" (deeper on the model ⌘⏎ switches to); nil with an @
@@ -682,31 +742,45 @@ struct MemoryLine: View {
     }
 }
 
-/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where.
+/// Under an answer that used memory: "from 2 of your sessions", which unfolds into where. A Vyre
+/// IQ answer (memory.iq) instead keeps the confidence line and shows up to three source chips,
+/// ⌘1..⌘3, each opening that turn in Vyre (capsule.md); "you corrected this" and no chips when
+/// via was "corrected" (its "fix:<n>" source is provenance, never a chip).
 struct MemorySources: View {
     let memory: MemoryAnswer
     @Binding var expanded: Bool
     var who = Identities()
     /// The assistant's name, for its mark when there is no fingerprint.
     var assistant: String? = nil
+    var openSource: (Int) -> Void = { _ in }
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
-            HStack(spacing: 6) {
-                let n = memory.conversationCount
-                // Vyre IQ's chip wears the assistant's mark: the answer is its own reading.
-                if memory.iq { AvatarView(who.assistant(assistant), size: 14) }
-                Text(memory.iq ? IQAnswer.chip(memory) : n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
-                Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
+        if memory.iq {
+            VStack(alignment: .leading, spacing: 6) {
+                // Vyre IQ's line wears the assistant's mark: the answer is its own reading.
+                HStack(spacing: 6) {
+                    AvatarView(who.assistant(assistant), size: 14)
+                    Text(IQAnswer.chip(memory))
+                }
+                .font(Theme.title).foregroundColor(Theme.stone)
+                if memory.corrected { IQCorrectedLine() } else if !memory.sources.isEmpty { IQSourceChips(memory: memory, open: openSource) }
             }
-            .font(Theme.title).foregroundColor(Theme.stone)
-            .padding(.horizontal, 10).frame(height: 28)
-            .fixedSize()
-            .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
-            .contentShape(Capsule())
-            .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
-            .accessibilityAddTraits(.isButton)
-            if expanded { SourceList(memory: memory, who: who) }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
+                HStack(spacing: 6) {
+                    let n = memory.conversationCount
+                    Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
+                }
+                .font(Theme.title).foregroundColor(Theme.stone)
+                .padding(.horizontal, 10).frame(height: 28)
+                .fixedSize()
+                .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                .contentShape(Capsule())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
+                .accessibilityAddTraits(.isButton)
+                if expanded { SourceList(memory: memory, who: who) }
+            }
         }
     }
 }
@@ -831,6 +905,10 @@ struct Row: View, Equatable {
                 .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
                 .overlay(Image(systemName: name).font(Theme.type(top ? Tokens.TypeScale.read : Tokens.TypeScale.base, .medium)).foregroundColor(Theme.tint(tint)))
                 .padding(1)
+        } else if IconCache.isSlow(item.icon) {
+            // A file's or an app's own icon is made off the main thread; the row draws without it
+            // and it appears when ready, so no keystroke waits on the system for a picture.
+            AsyncIcon(icons: icons, spec: item.icon, points: iconSize, scale: scale)
         } else if let img = icons.image(item.icon, points: iconSize, scale: scale) {
             Image(nsImage: img).resizable().interpolation(.high)
         } else {
@@ -881,21 +959,27 @@ struct MarkView: View {
     }
 }
 
-/// The panel's ground: the system's HUD material under a carbon wash, so it reads as Vyre and still
-/// lets the desktop through a little, like Spotlight.
-struct Backdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let v = NSVisualEffectView()
-        v.material = .hudWindow
-        v.blendingMode = .behindWindow
-        v.state = .active
-        v.appearance = NSAppearance(named: .darkAqua)
-        let wash = NSView()
-        wash.wantsLayer = true
-        wash.layer?.backgroundColor = NSColor(srgbRed: 0x16 / 255, green: 0x15 / 255, blue: 0x13 / 255, alpha: 0.86).cgColor
-        wash.autoresizingMask = [.width, .height]
-        v.addSubview(wash)
-        return v
+
+/// A file's or app's icon: what is cached now, else nothing until the picture is made off the main thread.
+struct AsyncIcon: View {
+    let icons: IconCache
+    let spec: IconSpec
+    let points: CGFloat
+    let scale: CGFloat
+    @State private var made: NSImage?
+
+    var body: some View {
+        Group {
+            if let img = made ?? icons.cachedNow(spec, points: points, scale: scale) {
+                Image(nsImage: img).resizable().interpolation(.high)
+            } else {
+                Color.clear
+            }
+        }
+        .task(id: spec) {
+            if icons.cachedNow(spec, points: points, scale: scale) == nil {
+                made = icons.imageAsync(spec, points: points, scale: scale) { img in made = img }
+            }
+        }
     }
-    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
 }

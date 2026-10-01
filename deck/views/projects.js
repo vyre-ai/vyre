@@ -25,12 +25,13 @@ import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 import { elsewhere } from "../js/need-rows.js";
-import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline } from "../js/empty-actions.js";
+import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline, offerThen } from "../js/empty-actions.js";
+import { renameProject, archiveProject } from "../js/project-actions.js";
 import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
 
 const enc = encodeURIComponent;
-const TABS = [["threads", "Threads"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
+const TABS = [["threads", "Threads"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
 
 /** @param {any} ctx */
 export default async function projects(ctx) {
@@ -61,10 +62,14 @@ async function list(ctx) {
   const form = h("div", { class: "pl-form", hidden: true });
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", onclick: () => toggle(true) }, icon("plus", 14), "New project");
   const ghBtn = h("button", { type: "button", class: "btn", onclick: () => fromGithub() }, icon("branch", 14), "From a GitHub repo");
+  let showArchived = false;
+  const arcBtn = h("button", { type: "button", class: "btn btn-ghost", "aria-pressed": "false", "data-act": "archived", onclick: () => {
+    showArchived = !showArchived; arcBtn.setAttribute("aria-pressed", String(showArchived)); put(arcBtn, showArchived ? "Hide archived" : "Archived"); draw();
+  } }, "Archived");
   put(ctx.root, h("div", { class: "pl" },
     h("div", { class: "pl-head" },
       h("div", { class: "pl-title" }, h("h1", { class: "h2" }, "Projects"), count_),
-      h("div", { class: "pl-head-actions" }, ghBtn, newBtn)),
+      h("div", { class: "pl-head-actions" }, arcBtn, ghBtn, newBtn)),
     form, rows));
 
   /** "New project" > "From a GitHub repo": pick, then github.project makes the project (clones
@@ -88,9 +93,9 @@ async function list(ctx) {
   };
 
   const drawForm = () => {
-    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-name", required: true, autocomplete: "off", placeholder: "Harlow Legal" }));
+    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-name", required: true, autocomplete: "off", placeholder: "Your project's name" }));
     const home = /** @type {HTMLInputElement} */ (h("input", { class: "input mono-in", id: "np-home", autocomplete: "off", placeholder: "Leave empty for a new folder" }));
-    const people = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-people", autocomplete: "off", placeholder: "Dana Reyes <dana@harlowlegal.com>, Theo Grant" }));
+    const people = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "np-people", autocomplete: "off", placeholder: "Names or email addresses, separated by commas" }));
     const status = h("div", { class: "small muted", role: "status" });
     const submit = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Create project"));
     const el = h("form", { class: "pl-form-in", onsubmit: async (/** @type {Event} */ e) => {
@@ -106,8 +111,7 @@ async function list(ctx) {
       submit.disabled = false;
       if (r.error) { put(status, r.error); return; }
       const slug = r.slug;
-      if (slug) go(`/projects/${enc(slug)}`);
-      else { toggle(false); draw(); }
+      offerThen(status, r, () => { if (slug) go(`/projects/${enc(slug)}`); else { toggle(false); draw(); } });
     } },
       h("div", { class: "pl-fields" },
         h("label", { class: "pl-field" }, h("span", { class: "lbl" }, "Name"), name),
@@ -119,7 +123,7 @@ async function list(ctx) {
   };
 
   const draw = async () => {
-    const r = await attempt("projects.list");
+    const r = await attempt("projects.list", showArchived ? { archived: true } : {});
     if (!ctx.alive()) return;
     if (r.error) { put(count_, ""); put(rows, empty("Projects are not available.", r.error)); return; }
     const all = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0));
@@ -153,10 +157,12 @@ function projectRow(p, pinned, redraw) {
     pin,
     projectAvatar(p.slug, { size: 32, cls: "pl-av" }),
     h("div", { class: "pl-main" },
-      h("div", { class: "pl-name" }, link(`/projects/${enc(p.slug)}`, { class: "link quiet pl-open" }, p.name), p.org ? h("span", { class: "tag" }, p.org) : null),
+      h("div", { class: "pl-name" }, link(`/projects/${enc(p.slug)}`, { class: "link quiet pl-open" }, p.name), p.archived_at ? h("span", { class: "tag" }, "Archived") : null, p.org ? h("span", { class: "tag" }, p.org) : null),
       h("div", { class: "small muted ellipsis" }, ppl.length ? ppl.join(", ") : h("span", { class: "faint" }, "No people yet"))),
     h("div", { class: "code pl-count" }, plural(p.threads || 0, "thread")),
     h("div", { class: "code faint pl-last" }, p.last ? when(p.last) : "never"),
+    p.archived_at ? h("button", { type: "button", class: "btn btn-sm", "data-act": "restore", "aria-label": `Restore ${p.name}`,
+      onclick: async () => { if (await archiveProject(p, false)) redraw(); } }, "Restore") : null,
     h("span", { class: "pl-chev", "aria-hidden": "true" }, icon("right")));
 }
 
@@ -202,15 +208,20 @@ async function board(ctx) {
   const tabHref = t => (chosen ? hrefFor(chosen) : `/projects/${enc(slug)}`) + (t === "threads" ? "" : `?tab=${t}`);
 
   const ppl = peopleText(p.people);
+  const nameEl = h("h1", { class: "pj-name" }, p.name);
+  const renameBtn = h("button", { type: "button", class: "ibtn pj-edit", "aria-label": `Rename ${p.name}`, title: "Rename", "data-act": "rename",
+    onclick: () => renameProject(p, nameHead, name => { p.name = name; put(nameEl, name); renameBtn.setAttribute("aria-label", `Rename ${name}`); }) }, icon("edit", 14));
+  const nameHead = h("span", { class: "pj-name-row" }, nameEl, renameBtn);
   const header = h("div", { class: "pj-head" },
     h("div", { class: "pj-id" },
       link("/projects", { class: "pj-back pj-phone", "aria-label": "All projects" }, icon("right", 14), "Projects"),
-      h("h1", { class: "pj-name" }, p.name),
+      nameHead,
       p.org ? h("span", { class: "lbl pj-org" }, p.org) : null,
       ppl.length ? h("span", { class: "pj-people small muted" }, ppl.join(", ")) : null),
     h("nav", { class: "pj-tabs", "aria-label": "Project" }, TABS.map(([k, label]) => link(tabHref(k), { "aria-current": k === tab ? "page" : false }, label))),
     h("div", { class: "pj-grow" }),
     agents.length ? h("span", { class: "pj-agents small faint" }, agents.map(a => h("span", { class: "initial sm", "aria-hidden": "true" }, initial(a))), agents.join(", ")) : null,
+    h("button", { type: "button", class: "btn btn-ghost btn-sm pj-archive", "data-act": "archive", title: "Take it out of the list. Nothing is deleted.", onclick: () => archiveProject(p) }, "Archive"),
     newThreadButton(ctx, p, sw.error));
 
   const root = h("div", { class: "pj" + (chosen ? " has-thread" : "") + " tab-" + tab });
@@ -219,12 +230,13 @@ async function board(ctx) {
   if (tab === "brief") { put(root, header, briefTab(ctx, p, cx, sw.error)); return; }
   if (tab === "files") { put(root, header, filesTab(ctx, p, items)); return; }
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
+  if (tab === "team") { const box = h("div", { class: "pj-page" }); put(root, header, box); const m = await import("./project-team.js"); if (ctx.alive()) await m.drawTeam(box, ctx, p); return; }
 
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
     h("div", { class: "lbl pj-threads-l" }, "Threads"),
     items.length ? items.map(it => threadItem(it, it.id === selected, hrefFor(it.id), needs.current()))
-      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. The switchboard module is not running, so one cannot start here.")
+      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. Sessions are not available on this box, so one cannot start here.")
       : h("div", { class: "empty pj-none" }, "No threads yet.", startThreadInline(p)),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
   drawList();
@@ -308,7 +320,7 @@ function newThreadButton(ctx, p, swErr) {
       h("div", { class: "code faint ellipsis" }, "In ", base(p.home)),
       ta,
       h("div", { class: "nt-actions" }, go_, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => toggle(false) }, "Cancel")),
-      swErr?.missing ? h("div", { class: "small faint" }, "The switchboard module is not running, so this will not start yet.") : null,
+      swErr?.missing ? h("div", { class: "small faint" }, "Sessions are not available on this box, so this will not start yet.") : null,
       status);
     ta.focus();
   };
@@ -472,7 +484,8 @@ async function loose(ctx) {
       const r = await createProject({ name: name.value.trim(), from_thread: id });
       ok.disabled = false;
       if (r.error || !r.slug) { put(status, r.error || "The project was not made."); return; }
-      go(`/projects/${enc(r.slug)}/${enc(id)}`);
+      const slug = r.slug;
+      offerThen(status, r, () => go(`/projects/${enc(slug)}/${enc(id)}`));
     } }, name, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
     name.focus();
   };
@@ -777,7 +790,7 @@ function heldBlock(a, threadId) {
       settle(el, opt.label);
     } catch (e) {
       const err = /** @type {any} */ (e);
-      put(status, err.missing ? "The switchboard module is not running, so this cannot be answered here yet." : String(err.message));
+      put(status, err.missing ? "Sessions are not available on this box, so this cannot be answered here yet." : String(err.message));
       // The box cannot forward answers to this Mac (needs.js): the line says where, no buttons.
       if (err.elsewhere) put(buttons);
       else for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
@@ -849,7 +862,7 @@ function drawComposer(ctx, box, o) {
   const note = h("div", { class: "small faint th-note", role: "status" });
   const take = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: async () => {
     const r = await attempt("threads.lease", { thread: o.id, surface: "deck" });
-    if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
+    if (r.error) { put(note, r.error.missing ? "Sessions are not available on this box." : String(r.error.message)); return; }
     holder = r.data?.holder || r.data?.surface || "deck";
     draw();
     if (holder === "deck") input.focus();
@@ -861,7 +874,7 @@ function drawComposer(ctx, box, o) {
     send.disabled = input.disabled;
     input.placeholder = o.swMissing ? "Replies are off here" : other ? `${holder} is typing` : o.agent ? `Reply to ${o.agent}` : o.recorded ? "Reply to carry this thread on" : "Reply";
     take.hidden = !other || o.swMissing;
-    put(note, o.swMissing ? "The switchboard module is not running, so this thread cannot take a reply from the Deck."
+    put(note, o.swMissing ? "Sessions are not available on this box, so this thread cannot take a reply from the Deck."
       : other ? `The ${holder} has the keyboard. You can read along, or take it.` : "");
   };
   const form = h("form", { class: "th-box", onsubmit: async (/** @type {Event} */ e) => {
@@ -871,13 +884,13 @@ function drawComposer(ctx, box, o) {
     send.disabled = true;
     if (holder !== "deck") {
       const l = await attempt("threads.lease", { thread: o.id, surface: "deck" });
-      if (l.error) { put(note, l.error.missing ? "The switchboard module is not running." : String(l.error.message)); send.disabled = false; return; }
+      if (l.error) { put(note, l.error.missing ? "Sessions are not available on this box." : String(l.error.message)); send.disabled = false; return; }
       holder = l.data?.holder || l.data?.surface || "deck";
       if (holder !== "deck") { draw(); return; }
     }
     const r = await queued("threads.send", { thread: o.id, text });
     send.disabled = false;
-    if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
+    if (r.error) { put(note, r.error.missing ? "Sessions are not available on this box." : String(r.error.message)); return; }
     // threads.send answers {sent:false,...} rather than an error when the lease was taken back
     // between the check above and this call.
     if (r.data && r.data.sent === false) { holder = r.data.holder || null; draw(); return; }

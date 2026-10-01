@@ -26,7 +26,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
-import { createHealth, unknown } from "./health.js";
+import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { checkAnswer, Nonces, NONCES_FILE } from "./assert.js";
@@ -70,6 +70,7 @@ export function macSide(ctx, seam = {}) {
   const connect = (address, pin) => connector({ address, verify, pinned: () => pin, insecure: Boolean(seam.insecure), ...(seam.ttl !== undefined ? { ttl: seam.ttl } : {}) });
   let conn = saved ? connect(saved.box.address, saved.box.stableId) : null;
   const health = seam.health || createHealth();
+  const reachSince = sinceTracker();
   /** The Secure Enclave (se/): a test passes a software stand-in, which asks nobody. */
   const se = seam.secureEnclave || enclave;
   /** Only on a Mac, or with a stand-in: elsewhere there is no enclave to ask. */
@@ -534,12 +535,12 @@ export function macSide(ctx, seam = {}) {
   });
 
   ctx.tool("link.health", {
-    description: "How this Mac reaches its box right now: direct or relayed, latency, last handshake. Checked at most once a minute.",
+    description: "How this Mac reaches its box right now: reach (direct over the tailnet, or none), why, fix, since and the tailnet path and latency; the older path, latencyMs and lastHandshake stay. Checked at most once a minute.",
     input: { type: "object", properties: {} },
     run: async () => {
-      if (!saved || saved.revoked) return unknown(saved ? "the box no longer knows this Mac; pair again" : "this Mac is not paired with a box", Date.now());
-      if (!saved.box.stableId) return unknown("the box's node is not known; pair again", Date.now());
-      return health.check({ stableId: saved.box.stableId });
+      if (!saved || saved.revoked) return shaped(unknown(saved ? "the box no longer knows this Mac; pair again" : "this Mac is not paired with a box", Date.now()), reachSince, "box");
+      if (!saved.box.stableId) return shaped(unknown("the box's node is not known; pair again", Date.now()), reachSince, "box");
+      return shaped(await health.check({ stableId: saved.box.stableId }), reachSince, "box");
     },
   });
 

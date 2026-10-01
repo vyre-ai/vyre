@@ -5,12 +5,13 @@
 #
 #   1. the suite (npm test) and scripts/perf-check (idle budgets, SPEC section 2 principle 8;
 #      about a minute), unless --skip-tests or --skip-perf
-#   2. npm pack, and the tarball holds what it should and nothing it should not
-#   3. a global install of that tarball into a temp prefix, never the real one
-#   4. vyre up, status, modules, call and down, in a temp HOME and VYRE_HOME
-#   5. the Harness from the installed folder: its MCP server lists tools over stdio, and with
+#   2. docs-check --release: the docs tree is clean and no screenshot is older than the code it shows
+#   3. npm pack, and the tarball holds what it should and nothing it should not
+#   4. a global install of that tarball into a temp prefix, never the real one
+#   5. vyre up, status, modules, call and down, in a temp HOME and VYRE_HOME
+#   6. the Harness from the installed folder: its MCP server lists tools over stdio, and with
 #      --claude a real `claude -p --plugin-dir` session calls one (uses your Claude sign-in)
-#   6. site/box (from scripts/build-site.sh): every file there matches SHA256SUMS, and vyre.tgz
+#   7. site/box (from scripts/build-site.sh): every file there matches SHA256SUMS, and vyre.tgz
 #      is this version; with --live, https://vyre.run/box serves exactly those bytes
 #
 # Nothing outside the temp folders is written, except the one throwaway session transcript
@@ -27,7 +28,7 @@ for a in "$@"; do
     --skip-perf) PERF=0 ;;
     --claude) CLAUDE=1 ;;
     --live) LIVE=1 ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "release-check: unknown option $a" >&2; exit 1 ;;
   esac
 done
@@ -59,6 +60,11 @@ if [ "$TESTS" = 1 ]; then
   (cd "$repo" && sh -c "$cmd" >"$work/test.log" 2>&1) || { grep -B2 -A12 -E '^✖|failing tests' "$work/test.log" | tail -n 60; fail "the suite (log above)"; }
   ok "$(grep -E '^[^ ]+ (tests|pass|fail) ' "$work/test.log" | tr '\n' ' ')"
 fi
+
+step "docs"
+# Stale screenshots only warn while people work; they block a release (docs-check --release).
+(cd "$repo" && node scripts/docs-check --release >"$work/docs.log" 2>&1) || { tail -n 30 "$work/docs.log"; fail "docs-check --release (log above; run npm run docs:shots for stale screenshots)"; }
+ok "docs are clean, screenshots are fresh"
 
 if [ "$PERF" = 1 ]; then
   step "perf"

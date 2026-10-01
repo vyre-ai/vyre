@@ -9,15 +9,23 @@
 const PRIMARY = "/calendar/v3/calendars/primary/events";
 const DAY = 86_400_000;
 
+import { meetingLink } from "../../lib/connectors/calendar.js";
+
 /** @typedef {import("./api.js").Account} Account */
 
 /** An event the way a model wants it: who, when, where, and a link. */
 export function shapeEvent(acct, e) {
+  const video = (e.conferenceData?.entryPoints || []).find(p => p.entryPointType === "video")?.uri;
+  const https = u => (typeof u === "string" && /^https:\/\//.test(u) ? u : "");
+  const join = https(e.hangoutLink) || https(video) || meetingLink(e.location);
   const where = e.location || e.hangoutLink || (e.conferenceData?.entryPoints || []).find(p => p.entryPointType === "video")?.uri || "";
   return {
     id: String(e.id), account: acct.name, title: String(e.summary || "(no title)"),
     start: e.start?.dateTime || e.start?.date || "", end: e.end?.dateTime || e.end?.date || "",
     ...(where ? { where: String(where) } : {}),
+    // The meeting's own link: the one Google made or a conference add-on named, else a location only on a known meeting host.
+    ...(join ? { join } : {}),
+    ...((e.attendees || []).some(a => a && a.self && a.responseStatus === "declined") ? { declined: true } : {}),
     attendees: (e.attendees || []).filter(a => a && a.email && !a.resource).map(a => String(a.email)),
     url: String(e.htmlLink || eventUrl(acct, e.id)),
   };

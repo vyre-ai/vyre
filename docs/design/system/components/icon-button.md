@@ -17,7 +17,7 @@ phone and desktop"), the composer bar ("Session · the composer, like Claude Cod
 |---|---|---|
 | Deck | `deck/css/deck.css` `.ibtn` (main) | built |
 | App | none (work/mobile) | not built |
-| Capsule | inline SwiftUI buttons with SF Symbols in `local/capsule/native/Sources/Extensions/sight/SessionPanel.swift`, `UI/CapsuleView.swift` (work/capsule-pro) | partial |
+| Lumen | inline SwiftUI buttons with SF Symbols in `local/capsule/native/Sources/Extensions/sight/SessionPanel.swift`, `UI/CapsuleView.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -32,7 +32,7 @@ phone and desktop"), the composer bar ("Session · the composer, like Claude Cod
 |---|---|---|
 | Plain | As above | Headers, rows, composer bar, stepper ends |
 | Toggle | `aria-pressed="true"`: fill `--hover`, ink `--text` | Pin, mute, show thinking |
-| Filled round | 44 circle, fill `--hover`, ink `--text` | Phone "New agent", the Capsule's mic (40) |
+| Filled round | 44 circle, fill `--hover`, ink `--text` | Phone "New agent", Lumen's mic (40) |
 | Send | Plain, fill `--hover`, ink `--text` when there is text; the primary colours only when it is the surface's one primary | Composer |
 
 Only one icon button on a surface may take the primary colours, and only when no other primary
@@ -86,5 +86,5 @@ teammate". Never an icon button for a destructive action; use the hold button.
   filled round variant, no busy.
 - [ ] App: no icon button; screens use `Pressable` with text. Build `IconButton` with 44 default
   and the icon component.
-- [ ] Capsule: close and mic buttons are SF Symbols at 11 to 13 pt with no hover fill or focus
+- [ ] Lumen: close and mic buttons are SF Symbols at 11 to 13 pt with no hover fill or focus
   ring; draw the set's icons in a 28 square with `Tokens` colours.
