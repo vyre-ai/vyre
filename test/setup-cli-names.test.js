@@ -66,9 +66,10 @@ test("vyre setup --name --yes names a real box through the directory: the recove
   assert.ok(code, `the recovery code is printed: ${first.out}`);
   assert.match(first.out, /Store it somewhere safe now/);
   assert.match(first.out, new RegExp(`https://${name}\\.vyre\\.run`));
-  // The box really holds it: its own status says so, and the code is in no status.
+  // The box really holds it: named, waiting for a tailnet to publish the address; and the code is in no status.
   const st = JSON.parse((await vyre(a, ["name", "--json"])).stdout);
-  assert.equal(st.address, `https://${name}.vyre.run`);
+  assert.equal(st.phase, "named");
+  assert.match(String(st.why), /connect Tailscale/);
   assert.ok(!JSON.stringify(st).includes(code[1]), "the code is not in the status");
 
   // Another box asks for the same name: taken, exit 1, plain words, no recovery code.
