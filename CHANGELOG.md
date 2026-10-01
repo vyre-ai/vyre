@@ -5,14 +5,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
-  it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<name>@<hash>`
-  for "turn on the mail watcher", from the card the person was shown (the hash that card carried);
-  `lib/said/watcher-presets.js` records `watchers.preset:<project>/<kind>` for "watch my inbox"
-  (mail, calendar, repo, slack, feed). One target, `watchers.act.target` (reach modules), serves both
-  asked tools: for create it answers the key only when the call carries the hash of the code now in
-  the folder, so a made-up hash, no hash, or code edited after the yes is refused. `watchers.list`
+  it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<project>/
+  <name>@<hash>` for "turn on the mail watcher" and `watchers.preset:<project>/<kind>` for "watch my
+  inbox". `watchers.create.target` and `watchers.preset.target` (reach modules) answer those keys for
+  the asked gate; create answers one only when the call carries the hash of the code now in the
+  folder, so a made-up hash, no hash, or code edited after the yes is refused. `watchers.shown
+  {thread}` (reach modules, for sessions) answers the cards a thread was shown with the hash each
+  carried WHEN IT WAS SHOWN, from a record `watchers.card` and `watchers.preset` write for the calling
+  thread, never recomputed from the folder, so card A shown then an edit still reads A. `watchers.list`
   rows carry `hash` and `title`. After a refusal in words (no wall) the wall is found again on the next
-  run instead of trusting one that stopped answering.
+  run.
 - Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
   is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
   watcher on only when the person's own words asked for it, after the card; `watchers.resume`,

@@ -8,7 +8,9 @@
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
 import { findWall } from "./spawner-wall.js";
-import { actTarget } from "./targets.js";
+import { createTarget, presetTarget } from "./targets.js";
+import { ShownLog } from "./shown.js";
+import { PRESET_KINDS } from "./presets.js";
 import * as folderMod from "./folder.js";
 import { isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
@@ -66,6 +68,9 @@ export default {
       listen: (type, fn) => ctx.events.on(type, fn),
     });
     rt.subscribe();
+    const shown = new ShownLog();
+    /** A card served to a thread is remembered as shown, with the hash it carried. */
+    const remember = (meta, card) => { const thread = meta && /** @type {any} */ (meta).thread; if (thread && card && card.hash) shown.record(thread, { name: card.name, hash: card.hash, title: card.lines && card.lines.do || null, state: card.state, project: card.project }); };
 
     ctx.tool("watchers.list", {
       description: "Every watcher: drafts Claude wrote, and those turned on, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. dir is the folder watchers are written in.",
@@ -106,18 +111,25 @@ export default {
     ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
     ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
     // What an asked call acts on, for the registry's gate (reach asked, target): the keys lib/said/watchers.js records.
-    ctx.tool("watchers.act.target", { description: "For the gate: the key an asked watchers call acts on. watchers.create: <name>@<hash> of the code the card showed (no hash, no key); watchers.preset: <project>/<kind>.", input: { type: "object" },
-      run: async call => actTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
+    ctx.tool("watchers.create.target", { description: "For the gate: the key watchers.create acts on, watchers.create:<project>/<name>@<hash> of the code now in the folder; no hash or a different hash answers nothing.", input: { type: "object" },
+      run: async call => createTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
+    ctx.tool("watchers.preset.target", { description: "For the gate: the key watchers.preset acts on, watchers.preset:<project>/<kind>.", input: { type: "object" }, run: async call => presetTarget(call) });
+    // The cards a thread was shown, with the hash each carried when shown (never recomputed), for the assistant's recorder.
+    ctx.tool("watchers.shown", { description: "The watcher cards shown in a thread, with the hash each card carried when it was shown: { project, kinds, watchers: [{ name, hash, title, state, project, at }] }. Answered from a record made when watchers.card or watchers.preset served the card, never from the folder now. The sessions module's call.", input: { type: "object", required: ["thread"], properties: { thread: str } },
+      run: async ({ thread }) => {
+        const watchers = shown.list(thread);
+        return { project: watchers.length ? watchers[watchers.length - 1].project : null, kinds: PRESET_KINDS, watchers };
+      } });
     ctx.tool("watchers.card", {
       description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
       input: named,
-      run: async ({ name }) => rt.card(name),
+      run: async ({ name }, meta = {}) => { const c = rt.card(name); remember(meta, c); return c; },
     });
     ctx.tool("watchers.preset", {
       description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind \"repo\": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind \"slack\": project, credential, channel (the channel id), match, when (default every 15 minutes). kind \"feed\": project, url, match, when (default hourly). None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
       input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str } },
       // Reach "asked": for a model it runs only on the person's own words; it writes a draft and never turns it on.
-      run: async i => rt.createPreset(i),
+      run: async (i, meta = {}) => { const c = await rt.createPreset(i); remember(meta, c); return c; },
     });
     ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed.", input: named, run: async ({ name }) => rt.pause(name) });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { owned(name, caller); return rt.resume(name, { hash: hash || null }); } });
