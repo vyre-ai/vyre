@@ -1832,10 +1832,11 @@ Registry only: the destination an asked call must be said for, used as the whole
 
 ### `github.connect`
 
-Start "Sign in with GitHub": runs GitHub's own CLI (gh auth login) on this machine and returns { id, user_code, verification_uri, expires_in, interval }: show the code and open verification_uri. Vyre waits on its own until the person finishes or it expires; nothing else to call. Needs gh installed here (error code gh_missing otherwise; a pasted fine-grained token works without it). Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.
+Connect a GitHub account. With token, a pasted personal access token (a fine-grained one can reach fewer repos than the sign-in): checked with GitHub before anything is saved, answers { connected, id, name, login, repos } (repos is how many repos the token reaches, when GitHub says), needs no gh. The token is a secret: paste it in a Deck or CLI field, never in a chat message. Without it, start "Sign in with GitHub": runs GitHub's own CLI (gh auth login) on this machine and returns { id, user_code, verification_uri, expires_in, interval }: show the code and open verification_uri. Vyre waits on its own until the person finishes or it expires; nothing else to call. Needs gh installed here (error code gh_missing otherwise; a pasted fine-grained token works without it). Asks for the "repo" scope (full read/write on every repo the account can reach): GitHub's device flow has no narrower option; a later release moves to a GitHub App with per-repo access.
 
 - Input:
   - `name` string, required
+  - `token` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `github.connect.cancel`
