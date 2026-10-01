@@ -83,3 +83,10 @@ test("release dist: a second VYRE_COMPUTERS_IMAGE default that is not the signed
   const problems = check(d, { pulled: true });
   assert.ok(problems.some(p => /every default of VYRE_COMPUTERS_IMAGE/.test(p)), problems.join("\n"));
 });
+
+test("release dist: with --installer the Windows installer must be in the release under both names", t => {
+  const d = dist(t);
+  assert.ok(check(d, { installer: true }).some(p => /Vyre_0\.2\.0_x64-setup\.exe is not in the release/.test(p)));
+  assert.ok(check(d, { installer: true }).some(p => /VyreSetup\.exe is not in the release/.test(p)));
+  assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
+});

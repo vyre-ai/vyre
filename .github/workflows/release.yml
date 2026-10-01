@@ -230,6 +230,17 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           retention-days: 7
 
+  # The Windows installer, built inside this run by the reusable capsule-win workflow (its own pinned toolchain, --locked, NSIS, unsigned for 0.2),
+  # so a release can never race it or ship without it: `release` needs this job and fails if the installer is not in the artifact. It holds no key;
+  # the installer is listed in SHA256SUMS and the signed manifest like every other file.
+  windows:
+    needs: prepare
+    uses: ./.github/workflows/capsule-win.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
   app-web:
@@ -329,9 +340,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests, app-web]
+    needs: [prepare, images, manifests, app-web, windows]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The minisign key lives only in this environment's secrets; its reviewers (the lead and the
@@ -357,6 +368,19 @@ jobs:
         with:
           name: prepared
           path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/windows
+      - name: Add the Windows installer to dist (required, never optional)
+        run: |
+          exe="Vyre_${VERSION}_x64-setup.exe"
+          [ -f "$RUNNER_TEMP/windows/$exe" ] || { echo "the Windows build is not $exe; refusing to release without it"; ls "$RUNNER_TEMP/windows"; exit 1; }
+          # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes. Both are in dist before
+          # SHA256SUMS is made, so both are in the signed list.
+          cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
+          cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
+          echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -385,9 +409,9 @@ jobs:
       - name: Gate before anything is signed further or published, the release must be what the updater needs
         run: |
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --installer --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist
+            node scripts/check-release-dist.mjs dist --installer
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

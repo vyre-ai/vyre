@@ -15,7 +15,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), minisign = at("minisign -S -s"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < minisign && minisign < blob && blob < publish, "order: pin, Ed25519 sign, gate, minisign, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -51,4 +51,13 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
   for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
+});
+
+test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
+  assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/capsule-win\.yml/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows\]/);
+  assert.match(yml, /needs\.windows\.result == 'success'/);
+  const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
+  assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
+  assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
 });
