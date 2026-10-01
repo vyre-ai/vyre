@@ -826,3 +826,5 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   no words can name a duty that does not exist yet. A model cannot edit a running duty (person surface only).
 - Keys agreed with assistant (lib/said/team.js, work/assistant 56230e73): retire and role.fill as before, `team.duties.start:` replaces their create/update keys.
 - team.roster {project}: internal read for the recorder in threads: { roles: [{role}], duties: [{id, teammate, title, hash, enabled, started}] } for live teammates.
+
+- Reach written for every team tool (platform's ruling, 2026-10-01): person: charter.set, charter.revert, default.set, duties.enable/disable/delete/run-now; asked: retire, role.fill, duties.start; modules: act.target, roster; anyone (deliberate, checks in code): add, ask, cancel, done, fail, status, list, notes, merge, charter.get/history/diff/draft, duties.create/list/update, default.get, project-has-any, project-append (callers limited in code to person surfaces and modules).
