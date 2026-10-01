@@ -191,7 +191,9 @@ fi
 # readiness probes of 5900 are such connections from vyred's address. On a slower host the probes alone reach 5
 # and Glass then gets Xvnc's "RFB 003.003" refusal ("Too many security failures") instead of a handshake, so Glass
 # fails with "does not speak RFB 3.8" (seen on a GitHub runner, J7). Only vyred can reach 5900 (the network is
-# internal), so a threshold well above the probes loses nothing.
+# internal), so a threshold well above the probes loses nothing. (That is NOT true today: all computers share
+# one Docker network with inter-container traffic on, so one computer can dial another's 5900 and 7000. The
+# VNC password and computerd's token are the only walls; the J7 matrix step 7.4 proves the reach.)
 as_vyre sh -c 'test -r "$0"' "${BOOT_FILE}" || { log "no ${BOOT_FILE}: vyred seeds it before start"; exit 1; }
 as_vyre sh -c 'umask 077; sed -n "s/^VNC_PASSWORD=//p" "$0" | tr -d "\n" | vncpasswd -f > "$HOME/.vnc/passwd"' "${BOOT_FILE}"
 # A fresh trusted cookie every start, known only to vyre's processes.
