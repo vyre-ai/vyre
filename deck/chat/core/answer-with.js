@@ -4,7 +4,7 @@
 // each with its plan and models in a line, and the current one marked.
 
 /** @typedef {{ id: string, label: string }} ModelChoice */
-/** @typedef {{ provider: string, account: string|null, label: string, sub: string, now: boolean, models: ModelChoice[] }} AnswerRow */
+/** @typedef {{ provider: string, account: string|null, label: string, sub: string, now: boolean, models: ModelChoice[], effort: boolean }} AnswerRow */
 
 /**
  * @param {any} rows providers.list's answer: [{ id, label, accounts: [{ id, label, signed_in, default, plan? }], models: [{ id, label }] }]
@@ -26,7 +26,7 @@ export function answerRows(rows, current = {}) {
       const label = String(a.label || r.label || provider);
       const plan = typeof a.plan === "string" && a.plan ? a.plan : "";
       const mine = current.provider === provider && (current.account ? current.account === a.id : accounts.length ? a.default === true || accounts[0] === a : true);
-      out.push({ provider, account: a.id ? String(a.id) : null, label, sub: [plan, ...models].filter(Boolean).join(", "), now: !!mine, models: choices });
+      out.push({ provider, account: a.id ? String(a.id) : null, label, sub: [plan, ...models].filter(Boolean).join(", "), now: !!mine, models: choices, effort: r.capabilities?.effort === true || (r.capabilities?.effort == null && provider === "claude") });
     }
   }
   // Only one row is "now": the first that matches.
@@ -68,3 +68,13 @@ export function accountAtStart(text, rows, nameOf) {
 
 /** Whether a model the session reports is this choice: the same id, or the alias inside a longer id ("claude-opus-4-5" is "opus"). @param {string|null|undefined} current @param {string} id */
 export const isModel = (current, id) => !!current && (current === id || current.toLowerCase().includes(id.toLowerCase()));
+
+/** The levels threads.effort takes, with the words a person reads; null is the model's own default. */
+export const EFFORTS = Object.freeze([
+  { id: null, label: "Default" }, { id: "low", label: "Low" }, { id: "medium", label: "Medium" }, { id: "high", label: "High" }, { id: "xhigh", label: "Extra high" }, { id: "max", label: "Max" },
+]);
+/** The chip's whole line: who answers, its model, and the effort when one is set: "Codex · GPT-5 high". @param {string} who @param {string} model @param {string|null|undefined} effort */
+export function chipLine(who, model, effort) {
+  const e = effort ? (EFFORTS.find(x => x.id === effort)?.label || effort).toLowerCase() : "";
+  return [who, [model, e].filter(Boolean).join(" ")].filter(Boolean).join(" · ");
+}

@@ -109,7 +109,7 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ uuid: string, seq: number|null, from: number|null, at: number }} Rewind
  *   A rewind: the message's line (seq) and time (from) once known, and when it happened (at).
  * @typedef {{
- *   thread: string, provider: string|null, model: string|null, auth: string|null, state: SessionState, turn: number|null,
+ *   thread: string, provider: string|null, model: string|null, effort?: string|null, auth: string|null, state: SessionState, turn: number|null,
  *   items: Item[], byKey: Map<string, Item>, queued: Queued[], asks: Map<string, Ask>,
  *   usage: any, limit: any, stopped: string|null,
  *   mode: string|null, modes: string[]|null, thinking: boolean|null,
@@ -1098,6 +1098,9 @@ export function applyEvent(s, e) {
     // falls through
     case "model.switched": case "thread.model":
       if (p.model != null && p.model !== "") { s.model = String(p.model); out.add("@session"); }
+      break;
+    case "effort.switched":
+      s.effort = typeof p.effort === "string" && p.effort ? p.effort : null; out.add("@session");
       break;
     case "thinking.switched":
       if (typeof p.on === "boolean") { s.thinking = p.on; out.add("@session"); }

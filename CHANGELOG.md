@@ -4,9 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### chat: choose the model in "Answer with"
+#### chat: one picker for who answers, the model and the effort
 
-- Each account in the "Answer with" menu now lists its models under it (`providers.list`'s `models`, current one marked "now"). A model of the answering account asks `threads.model`; a model of another provider or account asks `threads.switch` with the model. The chip is a menu whenever there is anything to choose, even with one account. Codex and Grok list models only once sessions' init has reported them.
+- The composer has one chip, "Codex · GPT-5 high", instead of an answer chip plus a model chip (the standalone model chip is gone; `/model` opens this menu). Its menu lists each signed-in account (`providers.list`) with its models under it and the current one marked "now", then an "Effort" group (Default, Low, Medium, High, Extra high, Max) for the answering account when its provider has it. A model of the answering account asks `threads.model`; a model of another provider or account asks `threads.switch` with it; an effort asks `threads.effort` (Default asks for none). The session core keeps `effort` from the thread record and `effort.switched`. A box without `providers.list` keeps the model menu it had, behind the same chip. Codex and Grok list models only once sessions' init has reported them.
 
 #### chat: "@codex" asks one account for one turn
 

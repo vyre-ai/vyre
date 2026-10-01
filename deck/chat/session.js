@@ -306,7 +306,7 @@ export function mountSession(container, opts) {
       const rec = record.current || {};
       const st = rec.canonical_status || rec.state;
       if (st) S.state = st;
-      for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose"])) if (rec[k]) S[k] = String(rec[k]);
+      for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose", "effort"])) if (rec[k]) S[k] = String(rec[k]);
       if (typeof rec.mode === "string") S.mode = rec.mode;
       if (Array.isArray(rec.modes)) S.modes = rec.modes.map(String);
       if (typeof rec.thinking === "boolean") S.thinking = rec.thinking;

@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { answerRows, chipWord, accountAtStart, accountToken, isModel } from "./answer-with.js";
+import { answerRows, chipWord, accountAtStart, accountToken, isModel, chipLine } from "./answer-with.js";
 
 const LIST = [
   { id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }, { id: "c2", label: "Work", signed_in: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "x", label: "Extra" }] },
@@ -54,4 +54,13 @@ test("each account row carries its models for the menu, and the session's model 
   assert.equal(isModel("opus", "opus"), true);
   assert.equal(isModel("claude-sonnet-4-5", "opus"), false);
   assert.equal(isModel(null, "opus"), false);
+});
+
+test("the chip line: who, then model and effort together", () => {
+  assert.equal(chipLine("Codex", "GPT-5", "high"), "Codex · GPT-5 high");
+  assert.equal(chipLine("Claude", "Opus", null), "Claude · Opus");
+  assert.equal(chipLine("Claude", "", "xhigh"), "Claude · extra high");
+  assert.equal(chipLine("Grok", "", null), "Grok");
+  assert.equal(answerRows(LIST, {})[0].effort, true);
+  assert.equal(answerRows(LIST, {})[2].effort, false);
 });

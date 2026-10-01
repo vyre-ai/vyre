@@ -49,7 +49,7 @@ test("with two accounts the chip is a menu: it lists them, and choosing another 
   assert.ok($(chip, ".pmark"), "wearing the provider's badge");
   click(chip); await settle();
   const items = $$(c.el, "[role=option]");
-  assert.deepEqual(items.map(i => text(i).replace(/\s+/g, " ")).map(t => /Personal/.test(t) ? "Personal" : /OpenAI/.test(t) ? "OpenAI" : t), ["Personal", "Opus", "OpenAI"]);
+  assert.deepEqual(items.map(i => text(i).replace(/\s+/g, " ")).map(t => /^Personal/.test(t) ? "Personal" : /^OpenAI/.test(t) ? "OpenAI" : t.replace(/now$/, "")), ["Personal", "Opus", "OpenAI", "Effort: Default", "Effort: Low", "Effort: Medium", "Effort: High", "Effort: Extra high", "Effort: Max"]);
   assert.match(text(items[2]), /ChatGPT Plus/);
   click(items[2]); await settle();
   assert.deepEqual(calls.find(x => x.tool === "threads.switch")?.input.provider, "codex");
@@ -59,12 +59,12 @@ test("with two accounts the chip is a menu: it lists them, and choosing another 
 
 test("with one account the chip names who answers and does nothing; choosing the account already answering sends nothing", async () => {
   calls.length = 0;
-  rows = [{ ...rows[0], models: [] }];
-  const c = mount("claude");
+  rows = [{ id: "codex", label: "Codex", accounts: [{ id: "x1", label: "OpenAI", signed_in: true, default: true }], models: [], capabilities: { effort: false } }];
+  const c = mount("codex");
   await settle();
   const chip = $(c.el, ".composer-answer");
   assert.ok(chip.disabled === true || chip.getAttribute("disabled") !== null, "nothing to choose");
-  assert.equal($$(chip, "svg").length, 1, "the mark only, no chevron");
+  assert.equal($$(chip, "svg").length, $$($(chip, ".pmark"), "svg").length, "the mark only, no chevron");
   click(chip); await settle();
   assert.equal($$(c.el, "[role=option]").length, 0);
   assert.equal(calls.filter(x => x.tool === "threads.switch").length, 0);
@@ -146,5 +146,24 @@ test("each account lists its models: a model of the answering account asks threa
   click(items[4]); await settle();
   const sw = calls.find(x => x.tool === "threads.switch")?.input;
   assert.deepEqual([sw.provider, sw.account, sw.model], ["codex", "x1", "gpt-5"]);
+  c.stop();
+});
+
+test("one chip says it all: who, model and effort; choosing an effort asks threads.effort, Default asks for none", async () => {
+  rows = [{ id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }], models: [{ id: "opus", label: "Opus" }] }];
+  calls.length = 0;
+  const th = thread();
+  const s = createSession(th); s.provider = "claude"; s.model = "claude-opus-4-5"; /** @type {any} */ (s).effort = "high";
+  const c = mountComposer({ thread: th, session: s, agents: [], threads: [], holder: null, surface: "chat" });
+  await settle();
+  assert.match(text($(c.el, ".composer-answer")), /Claude · Opus high/);
+  assert.equal($(c.el, ".composer-model"), null, "no separate model chip");
+  click($(c.el, ".composer-answer")); await settle();
+  const low = $$(c.el, "[role=option]").find(i => /Effort: Low/.test(text(i)));
+  click(low); await settle();
+  assert.deepEqual(calls.find(x => x.tool === "threads.effort")?.input, { thread: th, effort: "low" });
+  click($(c.el, ".composer-answer")); await settle();
+  click($$(c.el, "[role=option]").find(i => /Effort: Default/.test(text(i)))); await settle();
+  assert.deepEqual(calls.filter(x => x.tool === "threads.effort").at(-1)?.input, { thread: th });
   c.stop();
 });
