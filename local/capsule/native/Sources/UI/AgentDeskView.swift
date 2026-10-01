@@ -148,6 +148,7 @@ struct AgentButton: ButtonStyle {
     static func compactHeight(_ m: CapsuleModel) -> CGFloat {
         (m.offline ? OfflineBanner.height : 0)
             + (nextMeetingShown(m) ? CapsuleLayout.lineHeight : 0)
+            + (m.loosenedShown ? CapsuleLayout.lineHeight : 0)
             + (hintShown(m) ? Theme.headerHeight + CGFloat(min(m.desk.waiting.count, compactRows)) * Theme.rowHeight : 0)
     }
 
@@ -173,6 +174,16 @@ struct AgentButton: ButtonStyle {
     /// Under the bar in the compact panel: offline, the next meeting, then what waits (compactHeight).
     @ViewBuilder static func compact(_ m: CapsuleModel) -> some View {
         if m.offline { OfflineBanner(model: m) }
+        if m.loosenedShown, let n = m.loosened {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.uturn.backward.circle").font(Theme.subtitle).foregroundColor(Theme.ash)
+                Text(n.words).font(Theme.subtitle).foregroundColor(Theme.stone).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 0)
+                Button { Task { await m.undoLoosened() } } label: { KeyHint(title: "Undo", keys: ["\u{23CE}"]) }.buttonStyle(.plain)
+            }
+            .padding(.horizontal, Theme.inset).frame(height: CapsuleLayout.lineHeight)
+            .accessibilityLabel("\(n.words) Undo")
+        }
         if nextMeetingShown(m), let line = m.nextMeeting {
             HStack(spacing: 8) {
                 Image(systemName: "calendar").font(Theme.subtitle).foregroundColor(Theme.ash)

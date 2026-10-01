@@ -1,7 +1,7 @@
 // oversight: the floating panel that shows what an agent is doing on the Mac or in Chrome, and lets
 // the person change course (capsule-02.html section 11, capsule-sight's hands.* contract).
 //
-// It opens when a run's plan arrives (hands.plan) and closes when the run ends or stops; with no
+// It opens when a run's plan arrives (chrome.plan) and closes when the run ends or stops; with no
 // plan event nothing shows and the Capsule's own "Doing" pill is all there is. It asks for nothing
 // and shows no dialog: pause, stop, retexting a step and steering are the person's own calls.
 // Drag it anywhere; it remembers where. It follows events only while a run is active, and Chrome's
@@ -22,6 +22,7 @@ final class OversightExtension: CapsuleExtension {
     let model: OversightModel
     private var window: SessionWindow?
     private var sub: VyredSubscription?
+    private var chromeSub: VyredSubscription?
     private var remembered: NSPoint?
     private var shownSize: CGSize = .zero
     /// For tests: the display's visible frame. Nil means the main screen's.
@@ -36,6 +37,10 @@ final class OversightExtension: CapsuleExtension {
         // One subscription for the life of the Capsule: the event stream is already open for the
         // agent rows, and an event that is not a run's costs one string compare.
         sub = host.vyred.on("hands.*") { [weak self] e in
+            self?.model.apply(e)
+            self?.sync()
+        }
+        chromeSub = host.vyred.on("chrome.*") { [weak self] e in
             self?.model.apply(e)
             self?.sync()
         }

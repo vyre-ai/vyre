@@ -50,6 +50,8 @@ final class ViewSession: ObservableObject {
     var onChange: () -> Void = {}
     /// A `needs` that names a credential: the model shows "Add your ..." and, once it is saved, asks again.
     var onNeed: (CredentialNeed) -> Void = { _ in }
+    /// The vault is locked: the model offers "Unlock the vault on this Mac" and, once it is unlocked, runs `retry`.
+    var onLocked: (@escaping @MainActor () async -> ActionOutcome?) -> Void = { _ in }
     /// A `push`: go to another command of the same module.
     var onPush: (String) -> Void = { _ in }
     /// An `ask` effect: put these words in the box and leave the command.
@@ -118,6 +120,7 @@ final class ViewSession: ObservableObject {
             await MainActor.run {
                 guard g == self.generation else { return }
                 self.loading = false; self.slowTimer?.cancel()
+                if r.errorCode == "locked" { self.problem = r.error ?? "The vault is locked."; self.onLocked { self.reload(); return nil }; self.onChange(); return }
                 if let why = r.error { self.problem = why; self.onChange(); return }
                 self.apply(ViewFrame.parse(r.data), words: words, cache: true)
             }
@@ -136,7 +139,8 @@ final class ViewSession: ObservableObject {
             if d.from != nil { addedModule = true }
             stack.append(.detail(d, row: ViewRow(id: "", title: d.title, subtitle: nil, icon: nil, accessory: nil, group: nil, actions: d.actions)))
         case .form(let form): open(form)
-        case .error(_, let m), .held(let m): problem = m
+        case .error(let code, let m): problem = m; if code == "locked" { onLocked { [weak self] in self?.reload(); return nil } }
+        case .held(let m): problem = m
         case .needs(_, let m, let need): problem = m; askCredential(need)
         }
         onChange()
@@ -243,6 +247,10 @@ final class ViewSession: ObservableObject {
         var input: [String: Any] = ["module": command.module, "command": command.id, "q": q]
         for (k, v) in extra { input[k] = v }
         let r = await vyred.call("capsule.act", input, presence: false)
+        if r.errorCode == "locked" {
+            onLocked { [weak self] in await self?.call(extra, pending: pending, replacing: replacing) }
+            return .failed(r.error ?? "The vault is locked.")
+        }
         if let why = r.error { return .failed(why) }
         switch ViewActResult.parse(r.data) {
         case .done(let said, let effect):
@@ -262,7 +270,8 @@ final class ViewSession: ObservableObject {
             return .said(m)
         case .needs(_, let m, let need):
             problem = m; askCredential(need); onChange(); return .failed(m)
-        case .error(_, let m):
+        case .error(let code, let m):
+            if code == "locked" { onLocked { [weak self] in await self?.call(extra, pending: pending, replacing: replacing) } }
             return .failed(m)
         }
     }

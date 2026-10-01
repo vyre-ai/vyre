@@ -18,13 +18,27 @@
 import AppKit
 import Foundation
 
+/// When drive mode may start: the drive variable, the test marker, and a VYRE_HOME under the OS temp
+/// folder, so a person's own home (or a stray process with only the variable) can never be driven.
+enum DriveGuard {
+    static func allowed(_ env: [String: String], temp: String = NSTemporaryDirectory()) -> Bool {
+        guard env["VYRE_CAPSULE_DRIVE"] == "1", env["VYRE_CAPSULE_TEST"] == "1",
+              let home = env["VYRE_HOME"], !home.isEmpty else { return false }
+        func real(_ p: String) -> String { URL(fileURLWithPath: p).resolvingSymlinksInPath().standardizedFileURL.path }
+        let h = real(home), t = real(temp).hasSuffix("/") ? real(temp) : real(temp) + "/"
+        return h.hasPrefix(t) && h.count > t.count
+    }
+}
+
 @MainActor
 enum Drive {
     static var app: CapsuleApp?
     static var timings: [[String: Any]] = []
 
     static func start(_ a: CapsuleApp) {
-        guard ProcessInfo.processInfo.environment["VYRE_CAPSULE_DRIVE"] == "1" else { return }
+        // Drive mode hands a process the panel's rows and keys, so it needs both: the drive variable and the
+        // test marker (which also turns off every dialog and notification). A release run by a person has neither.
+        guard DriveGuard.allowed(ProcessInfo.processInfo.environment) else { return }
         app = a
         let input = FileHandle.standardInput
         Thread.detachNewThread {
@@ -80,6 +94,7 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {
             // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
             let tools = ["mentions.search", "capsule.commands", "capsule.view", "capsule.act"]

@@ -21,6 +21,7 @@ extension CapsuleModel {
             self.enterView(c2)
         }
         s.onAsk = { [weak self] words in self?.prefill(words) }
+        s.onLocked = { [weak self] retry in self?.offerVaultUnlock(retry: retry) }
         s.onNeed = { [weak self, weak s] need in self?.askCredential(need) { s?.reload() } }
         viewSession = s
         line = nil
@@ -131,4 +132,100 @@ extension CapsuleModel {
             self.nextMeeting = [row.title, row.subtitle, row.accessory].compactMap { $0 }.joined(separator: " \u{00B7} ")
         }
     }
+}
+
+extension CapsuleModel {
+    /// The vault said "locked". Show one row, "Unlock the vault on this Mac"; Return asks for the person's
+    /// proof through vault.account.unlock (Touch ID, or the vault password where this Mac has no reader),
+    /// then repeats what failed. It never unlocks ahead of time, and a live presence session covers the
+    /// proof, so a person already proven at the Mac is not asked twice.
+    func offerVaultUnlock(retry: @escaping @MainActor () async -> ActionOutcome?) {
+        let touch = biometricsAvailable()
+        let row = ResultItem(id: "vault-unlock", kind: "unlock", title: "Unlock the vault on this Mac",
+                             subtitle: touch ? "Touch ID, then it carries on" : "Your vault password, then it carries on",
+                             icon: .symbol("lock.open"), section: .top, score: 1,
+                             actions: [ResultAction(id: "unlock", title: "Unlock", symbol: touch ? "touchid" : "key") { [weak self] _, _ in
+                                 guard let self else { return .failed("Not now.") }
+                                 if !touch {
+                                     await MainActor.run { self.vaultPassword = VaultPasswordAsk(retry: retry) }
+                                     return .said("")
+                                 }
+                                 if let why = await self.unlocker(nil) { return .failed(why) }
+                                 await MainActor.run { self.groups = []; self.line = nil }
+                                 if let out = await retry() { return out }
+                                 return .said("Unlocked.")
+                             }])
+        groups = [Group(section: .top, items: [row])]
+        selected = 0
+        line = nil
+    }
+
+    /// Send the password typed in the card, then clear it. The field is emptied before the call returns, whatever happened.
+    func submitVaultPassword() async {
+        guard let ask = vaultPassword, !ask.password.isEmpty, !ask.busy else { return }
+        let pw = ask.password
+        ask.password = ""
+        ask.busy = true; ask.error = nil
+        let why = await unlocker(pw)
+        ask.busy = false
+        if let why { ask.error = why; return }
+        vaultPassword = nil
+        groups = []; line = nil
+        if let out = await ask.retry() { handle(out) } else { flash("Unlocked") }
+    }
+
+    func cancelVaultPassword() { vaultPassword?.password = ""; vaultPassword = nil }
+}
+
+/// The vault password, typed in the panel on a Mac with no Touch ID reader. Lives only in the field and the one call.
+@MainActor final class VaultPasswordAsk: ObservableObject, Identifiable {
+    @Published var password = ""
+    @Published var busy = false
+    @Published var error: String?
+    let retry: @MainActor () async -> ActionOutcome?
+    init(retry: @escaping @MainActor () async -> ActionOutcome?) { self.retry = retry }
+}
+
+/// vault.account.unlock as the person: Touch ID (with their presence proof), or the vault password where there is
+/// no reader (the password is the proof). Nil on success, else the words.
+@MainActor
+func unlockVaultAccount(_ vyred: VyredClient, password: String?) async -> String? {
+    // Touch ID is the person's presence proof. The vault password is its own proof: no separate proof is
+    // sent with it, so the person is asked once, not twice (vault, work/vault-next b7d53689).
+    var input: [String: Any] = ["method": "touchid"]
+    if let password { input = ["password": password] }
+    let r = await vyred.call("vault.account.unlock", input, presence: password == nil, summary: "Unlock your vault on this Mac")
+    if let why = Bridge.explain(r) { return why }
+    return nil
+}
+
+/// A setting an agent changed because the person asked ("Auto-approve edits changed, as you asked."), with Undo.
+struct LoosenedNotice: Equatable {
+    var change: String
+    var label: String
+    var at: Date
+    var words: String { "\(label) changed, as you asked." }
+}
+
+extension CapsuleModel {
+    /// settings.loosened { change, key, label, ... }: show the fixed words and Undo until it is undone, dismissed or old.
+    func noticeLoosened(_ payload: [String: Any]) {
+        guard let change = VJ.nonEmpty(payload["change"]) else { return }
+        let label = VJ.nonEmpty(payload["label"]) ?? VJ.nonEmpty(payload["key"]) ?? "A setting"
+        let n = LoosenedNotice(change: change, label: label, at: Date())
+        loosened = n
+        if !isShown() { Notifier.shared.post(title: "Lumen", body: n.words) }
+        objectWillChange.send()
+    }
+
+    /// Undo needs no proof: settings.undo {change}.
+    func undoLoosened() async {
+        guard let n = loosened else { return }
+        let r = await vyred.call("settings.undo", ["change": n.change], presence: false)
+        if let why = Bridge.explain(r) { line = why; return }
+        loosened = nil
+        flash("\(n.label) is back as it was")
+    }
+
+    var loosenedShown: Bool { text.isEmpty && loosened.map { Date().timeIntervalSince($0.at) < 600 } == true }
 }

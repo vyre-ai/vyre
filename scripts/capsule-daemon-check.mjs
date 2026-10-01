@@ -13,6 +13,9 @@ import path from "node:path";
 import readline from "node:readline";
 import { spawn } from "node:child_process";
 
+// It starts a real daemon and the real built app: only on a CI runner (or with VYRE_ALLOW_LOCAL_RUN=1 in a throwaway
+// account), never by accident on a person's own Mac.
+if (process.env.CI !== "true" && process.env.VYRE_ALLOW_LOCAL_RUN !== "1") { console.error("capsule-daemon-check runs on CI only (set VYRE_ALLOW_LOCAL_RUN=1 to run it in a throwaway account)"); process.exit(2); }
 const app = path.resolve(process.argv[2] || "local/capsule/native/.build/Vyre.app");
 const bin = path.join(app, "Contents", "MacOS", "Vyre");
 if (!fs.existsSync(bin)) { console.error(`no app at ${app}`); process.exit(1); }

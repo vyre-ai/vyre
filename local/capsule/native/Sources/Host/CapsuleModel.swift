@@ -8,6 +8,7 @@
 // lean, in the Capsule's scratch folder), and the reply streams under the bar.
 
 import AppKit
+import LocalAuthentication
 import Foundation
 import SwiftUI
 
@@ -110,6 +111,13 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// A setting an agent changed because the person asked, until undone or old (ViewMode.swift).
+    @Published var loosened: LoosenedNotice?
+    /// How the vault is unlocked (a test gives its own): nil on success, else the words.
+    lazy var unlocker: (String?) async -> String? = { [unowned self] pw in await unlockVaultAccount(self.vyred, password: pw) }
+    /// Whether this Mac has Touch ID to use (a test gives its own).
+    var biometricsAvailable: () -> Bool = { LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) }
+    @Published var vaultPassword: VaultPasswordAsk?
     /// The searches of slow providers in flight for the words now in the box (cancelled by the next key).
     var searchTasks: [Task<Void, Never>] = []
     /// Text put in the box other than a key at a time (a paste, a drop, dictation, undo): tags typed inside

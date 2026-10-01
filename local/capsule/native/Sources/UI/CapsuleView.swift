@@ -36,6 +36,8 @@ struct CapsuleView: View {
                         PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
                     } else if let c = model.credentialAsk {
                         CredentialView(ask: c) { Task { await model.saveCredential() } }
+                    } else if let v = model.vaultPassword {
+                        VaultPasswordView(ask: v) { Task { await model.submitVaultPassword() } }
                     } else if let vs = model.viewSession, vs.showsLevelView {
                         // A module command's detail, form or preview takes the area (ViewLevelView.swift).
                         ViewLevelView(session: vs) { Task { await model.viewSubmit() } }
@@ -394,7 +396,7 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = Tokens.Control.sm
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.presenceAsk != nil || m.credentialAsk != nil || m.viewSession != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
+        m.presenceAsk != nil || m.credentialAsk != nil || m.vaultPassword != nil || m.viewSession != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The open panel's height (560): the bar, the body and the footer.
