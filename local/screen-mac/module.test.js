@@ -50,7 +50,7 @@ test("module: starts in the Registry, registers both tools, and answers redacted
   assert.equal(reg.status().find(m => m.name === "screen")?.state, "running");
   assert.deepEqual(reg.listTools("mcp").map(x => x.name).sort(), ["screen.context", "screen.shot"]);
 
-  const r = await reg.call("screen.context", {}, "mcp");
+  const r = await reg.call("screen.context", {}, "cli");
   assert.equal(r.data.text, "Northwind Bakery opens at seven");
   assert.equal(r.data.secure, true);
   assert.equal(JSON.stringify(r).includes(SECRET), false);
@@ -130,5 +130,20 @@ test("module: an agent sees the person's screen only with the computer-use grant
   assert.equal((await ok.call("screen.context", {}, "mcp:agent:other")).error?.code, "denied", "another agent has no grant");
   // The person's own surfaces and their own model session are never asked (Lumen's "ask about my screen").
   const none = await guardedRegistry(t, { granted: [], planned: [] });
-  for (const person of ["cli", "local", "mcp"]) assert.ok(!(await none.call("screen.context", {}, person)).error, person);
+  for (const person of ["cli", "local"]) assert.ok(!(await none.call("screen.context", {}, person)).error, person);
+});
+
+test("module: a plain model session (mcp, no agent claim) needs the one-time grant, not a plan; with it the screen is hands-free", async t => {
+  const ungranted = await guardedRegistry(t, { granted: [], planned: [] });
+  for (const tool of ["screen.context", "screen.shot"]) {
+    const r = await ungranted.call(tool, {}, "mcp");
+    assert.equal(r.error?.code, "denied", `${tool}: ${JSON.stringify(r).slice(0, 120)}`);
+    assert.match(r.error.message, /hands\.grant\.add/);
+  }
+  const granted = await guardedRegistry(t, { granted: ["mcp"], planned: [] });
+  assert.equal((await granted.call("screen.context", {}, "mcp")).data.text, "Northwind Bakery opens at seven", "granted: no plan needed, no prompt");
+  const shot = await granted.call("screen.shot", {}, "mcp");
+  assert.ok(!shot.error || !/^(denied|plan_first)$/.test(shot.error.code));
+  // an agent still needs its own grant and a plan, whatever the plain session was granted
+  assert.equal((await granted.call("screen.context", {}, "mcp:agent:kit")).error?.code, "denied");
 });
