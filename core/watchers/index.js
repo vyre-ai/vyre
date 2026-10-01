@@ -73,7 +73,8 @@ export default {
     // (fail closed: no answer means no projects). A person, a teammate's module and a hook have no meta.reach and see all.
     const projectOf = name => { const f = folderMod.read(ctx.paths.watchers, name); return f.spec ? f.spec.project : (rt.row(name) || {}).project || null; };
     const projectOfCwd = cwd => ctx.call("projects.of", { cwd }).then(r => (r.data && r.data.slug) || null);
-    const mustSee = async (meta, name) => { const can = await scopeFor(meta, projectOfCwd); if (!can(projectOf(name))) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" }); };
+    const projectOfThread = thread => ctx.call("threads.get", { thread, limit: 1 }).then(r => (r.data && r.data.thread && r.data.thread.project) || null);
+    const mustSee = async (meta, name) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); if (!can(projectOf(name))) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" }); };
     const shown = new ShownLog();
     /** A card served to a thread is remembered as shown, with the hash it carried. */
     const remember = (meta, card) => { const thread = meta && /** @type {any} */ (meta).thread; if (thread && card && card.hash) shown.record(thread, { name: card.name, hash: card.hash, title: card.lines && card.lines.do || null, state: card.state, project: card.project }); };
@@ -81,7 +82,7 @@ export default {
     ctx.tool("watchers.list", {
       description: "Every watcher: drafts Claude wrote, and those turned on, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. dir is the folder watchers are written in.",
       input: { type: "object", properties: { project: str } },
-      run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd); const l = rt.list(); return { ...l, watchers: l.watchers.filter(w => can(w.project) && (!i.project || w.project === i.project)) }; },
+      run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(); return { ...l, watchers: l.watchers.filter(w => can(w.project) && (!i.project || w.project === i.project)) }; },
     });
     ctx.tool("watchers.test", {
       description: "Dry-run a watcher folder once, from since (default null), filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create. For a watcher that runs on an event, event is a real event's payload to run it on (for hook.received, { route, id } from hooks.list); it must match the watcher's where.",
@@ -152,7 +153,7 @@ export default {
       input: { type: "object", properties: { name: str, project: str, limit: { type: "integer" } } },
       run: async ({ name, project, limit = 50 }, meta = {}) => {
         if (name) await mustSee(meta, name);
-        const can = await scopeFor(meta, projectOfCwd);
+        const can = await scopeFor(meta, projectOfCwd, projectOfThread);
         return rt.items({ name, project, limit: Math.min(500, Math.max(1, limit)) }).filter(it => can(it.project));
       },
     });

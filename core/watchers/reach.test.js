@@ -163,6 +163,11 @@ test("through the real module and the real registry: an agent with a grant sees 
       ctx.tool("projects.reach", { input: { type: "object" }, run: async i => /juno/.test(String(i.caller)) ? { all: true } : /kit/.test(String(i.caller)) ? { all: false, projects: [{ slug: "harlow-legal", name: "Harlow Legal" }] } : { all: false, projects: [] } });
       ctx.tool("projects.list", { input: { type: "object" }, run: async () => ({ projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/h", workspaces: ["/work/h"] }, { slug: "northwind", name: "Northwind", home: "/work/n", workspaces: ["/work/n"] }] }) });
       return {}; } };`);
+  writeModule(root, "threads", { name: "threads", version: "0.1.0", does: { tools: [{ name: "threads.get", reach: "modules" }] } },
+    `export default { async start(ctx) { ctx.tool("threads.get", { input: { type: "object" }, run: async i => {
+      if (i.thread === "t-harlow") return { thread: { id: i.thread, project: "harlow-legal" } };
+      if (i.thread === "t-none") return { thread: { id: i.thread, project: null } };
+      throw new Error("no such thread"); } }); return {}; } };`);
   const wdir = path.join(home, "watchers");
   const mk = (name, project) => {
     fs.mkdirSync(path.join(wdir, name), { recursive: true });
@@ -204,4 +209,12 @@ test("through the real module and the real registry: an agent with a grant sees 
   assert.equal((await plain("/work/h", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
   assert.equal((await plain("/work/n", "watchers.card", { name: "feed-northwind" })).data.name, "feed-northwind");
   assert.deepEqual(names(await reg.call("watchers.list", {}, "mcp")), ["feed-northwind", "mail-harlow-legal"], "a build that does not set the peer leaves it as before");
+
+  // A verified Vyre thread session (meta.thread, no peer keys, no stored-grant agent): its own thread's project, and nothing otherwise.
+  const thread = async (id, tool = "watchers.list", input = {}) => reg.call(tool, input, "mcp:thread:" + id, { thread: id });
+  assert.deepEqual(names(await thread("t-harlow")), ["mail-harlow-legal"], "a chat in a harlow-legal project");
+  assert.deepEqual(names(await thread("t-none")), [], "a thread with no project");
+  assert.deepEqual(names(await thread("t-gone")), [], "a thread that cannot be looked up");
+  assert.equal((await thread("t-harlow", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
+  assert.equal((await thread("t-harlow", "watchers.card", { name: "mail-harlow-legal" })).data.name, "mail-harlow-legal");
 });

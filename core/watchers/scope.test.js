@@ -22,3 +22,14 @@ test("a plain model session sees its folder's project; where the folder is unkno
   assert.equal((await scopeFor({ peerSession: null, peerCwd: null }, of))("harlow-legal"), false, "the OS would not say who");
   assert.equal((await scopeFor({ peerCwd: "/work/h" }, async () => { throw new Error("projects is down"); }))("harlow-legal"), false, "fail closed");
 });
+
+test("a verified thread session sees its own thread's project; nothing if the thread has none or the lookup fails", async () => {
+  const ofThread = async t => (t === "t-harlow" ? "harlow-legal" : t === "t-none" ? null : (() => { throw new Error("no such thread"); })());
+  const at = t => scopeFor({ thread: t }, of, ofThread);
+  assert.equal((await at("t-harlow"))("harlow-legal"), true);
+  assert.equal((await at("t-harlow"))("northwind"), false);
+  assert.equal((await at("t-none"))("harlow-legal"), false, "a thread with no project");
+  assert.equal((await at("t-gone"))("harlow-legal"), false, "the lookup fails");
+  // An agent's grant outranks the thread it is calling from.
+  assert.equal((await scopeFor({ thread: "t-harlow", reach: { all: true } }, of, ofThread))("northwind"), true);
+});

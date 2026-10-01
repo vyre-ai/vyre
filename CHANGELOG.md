@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A verified Vyre thread session (a chat session: `meta.thread`, no peer keys, no stored grant) sees
+  only its own thread's project's watchers, through `threads.get`, as sessions' `sessionMay` does;
+  none if the thread has no project or the lookup fails. Tested through the real module and registry.
+
 - A plain model session (the person's own Claude Code through MCP, no verified thread or agent) now
   sees only its folder's project's watchers, like sessions narrows its thread reads: vyred sets
   `meta.peerSession` and `meta.peerCwd` for it (sessions' work), and the watchers tools resolve the
