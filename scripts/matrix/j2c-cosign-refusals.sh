@@ -111,6 +111,8 @@ SUMS0=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
 ST=/var/lib/vyre-update
 # The box was built from vyre.tgz (a real pulled install needs a real Vyre image). Make it a pulled box, as one would be: the
 # build line comes out of its .env, so `vyre update` pulls the release's digest instead of building. Disclosed in the header.
+# The image the box runs is also put in the local registry as ghcr.io/vyre-ai/vyre:latest, which is what a pulled box would be running.
+docker tag vyre:local ghcr.io/vyre-ai/vyre:latest && docker push -q ghcr.io/vyre-ai/vyre:latest >/dev/null
 sed -i '/^COMPOSE_FILE=.*compose.build.yml/d' "$DIR/.env"
 sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
 node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
