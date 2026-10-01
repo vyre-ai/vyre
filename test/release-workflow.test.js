@@ -37,3 +37,8 @@ test("release.yml: the step that holds the signing key runs only checked-in scri
   assert.match(step, /node scripts\/write-release-json\.mjs/);
   assert.match(step, /node scripts\/sign-manifest\.mjs/);
 });
+
+test("release.yml: every action is pinned by commit sha (the release job holds the signing key)", () => {
+  const loose = [...yml.matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
+  assert.deepEqual(loose.map(m => `${m[1]}@${m[2]}`), []);
+});

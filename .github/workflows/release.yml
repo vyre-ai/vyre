@@ -51,11 +51,11 @@ jobs:
       min_from: ${{ steps.v.outputs.min_from }}
       publish: ${{ steps.v.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.ref }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
       - name: The tag's commit is on main or the 0.2 stage line (a publishing run signs; a commit off both never does)
@@ -96,7 +96,7 @@ jobs:
             cp "site/box/$f" dist/
           done
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: prepared
           path: dist/
@@ -120,15 +120,15 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.ref }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: prepared
           path: dist
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         if: needs.prepare.outputs.publish == 'true'
         with:
           registry: ${{ env.REGISTRY }}
@@ -142,7 +142,7 @@ jobs:
           echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
       - name: Box image
         id: box
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ${{ env.SRC }}
           file: ${{ env.SRC }}/box/Dockerfile
@@ -156,7 +156,7 @@ jobs:
           cache-to: type=gha,scope=release-box-${{ matrix.arch }},mode=max
       - name: Computer image
         id: computer
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: core/computers/image
           file: core/computers/image/Dockerfile
@@ -183,7 +183,7 @@ jobs:
           echo "${{ steps.box.outputs.digest }}" > "$RUNNER_TEMP/digests/box-${{ matrix.arch }}"
           echo "${{ steps.computer.outputs.digest }}" > "$RUNNER_TEMP/digests/computer-${{ matrix.arch }}"
           echo "linux/${{ matrix.arch }}: box ${{ steps.box.outputs.digest }}, computer ${{ steps.computer.outputs.digest }}" | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: digests-${{ matrix.arch }}
           path: ${{ runner.temp }}/digests/*
@@ -196,10 +196,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -209,7 +209,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npx expo export -p web --output-dir dist
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: app-web
           path: apps/app/dist
@@ -230,19 +230,19 @@ jobs:
       box: ${{ steps.join.outputs.box }}
       computer: ${{ steps.join.outputs.computer }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: digests-*
           merge-multiple: true
           path: digests
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - uses: sigstore/cosign-installer@v3
-      - uses: anchore/sbom-action/download-syft@v0
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
       - name: Join, tag and read the list digests
         id: join
         env:
@@ -275,12 +275,12 @@ jobs:
         env:
           BOX: ${{ steps.join.outputs.box }}
           COMPUTER: ${{ steps.join.outputs.computer }}
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-name: ${{ env.BOX_IMAGE }}
           subject-digest: ${{ steps.bare.outputs.box }}
           push-to-registry: true
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-name: ${{ env.COMPUTER_IMAGE }}
           subject-digest: ${{ steps.bare.outputs.computer }}
@@ -308,10 +308,10 @@ jobs:
       BOX: ${{ needs.manifests.outputs.box }}
       COMPUTER: ${{ needs.manifests.outputs.computer }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.ref }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: prepared
           path: dist
@@ -347,7 +347,7 @@ jobs:
           else
             node scripts/check-release-dist.mjs dist
           fi
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: app-web
           path: apps/app/dist
@@ -360,7 +360,7 @@ jobs:
           else
             node scripts/build-app-out.mjs --dist apps/app/dist --release "$VERSION" --out app-out --throwaway
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.PUBLISH == 'true' && 'app-out' || 'app-out-dryrun' }}
           path: app-out
@@ -377,12 +377,12 @@ jobs:
           printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$RUNNER_TEMP/minisign.key" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig -t "vyre $VERSION"
           rm -f "$RUNNER_TEMP/minisign.key"
           minisign -V -p release/minisign.pub -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
         if: env.PUBLISH == 'true'
       - name: Sign SHA256SUMS (cosign, keyless)
         if: env.PUBLISH == 'true'
         run: cosign sign-blob --yes --bundle dist/SHA256SUMS.cosign.bundle dist/SHA256SUMS
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         if: env.PUBLISH == 'true'
         with:
           subject-path: "dist/*"
@@ -396,7 +396,7 @@ jobs:
           assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
           # shellcheck disable=SC2086
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $latest $assets
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: env.PUBLISH != 'true'
         with:
           name: release-dry-run-${{ env.TAG }}
