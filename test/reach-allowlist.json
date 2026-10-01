@@ -462,14 +462,6 @@
    "default": "open to any caller",
    "internal": true
   },
-  "context.now": {
-   "module": "context",
-   "default": "limited by callers in code"
-  },
-  "context.report": {
-   "module": "context",
-   "default": "limited by callers in code"
-  },
   "events.catalog": {
    "module": "events",
    "default": "open to any caller"
@@ -1804,38 +1796,6 @@
   "providers.list": {
    "module": "providers",
    "default": "open to any caller"
-  },
-  "push.devices": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.key": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.receipt": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.seen": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.settings": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.subscribe": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.test": {
-   "module": "push",
-   "default": "limited by callers in code"
-  },
-  "push.unsubscribe": {
-   "module": "push",
-   "default": "limited by callers in code"
   },
   "recall.eval": {
    "module": "recall",
@@ -3241,14 +3201,6 @@
   },
   "voice.status": {
    "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "waiting.count": {
-   "module": "waiting",
-   "default": "limited by callers in code"
-  },
-  "waiting.list": {
-   "module": "waiting",
    "default": "limited by callers in code"
   },
   "watchers.create": {
