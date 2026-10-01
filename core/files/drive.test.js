@@ -1003,7 +1003,10 @@ test("drive mentions: search finds files by name; resolve, for the chat only, le
   // Before the tag the agent has no way in.
   await no(reg, "files.drive.read", { share: "work", path: "a/docs/report.md" }, "mcp:agent:kit", "not_available", { thread: "t1" });
   // Only the sessions module (or the assistant) resolves a tag.
-  await no(reg, "files.mentions.resolve", { id: "work:a/docs/report.md", thread: "t1" }, "deck", "denied");
+  {
+    const r = await reg.call("files.mentions.resolve", { id: "work:a/docs/report.md", thread: "t1" }, "deck");
+    assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), "a person's surface cannot resolve a tag: " + JSON.stringify(r.error));
+  }
   await no(reg, "files.mentions.resolve", { id: "work:a/docs/nope.md", thread: "t1" }, "module:sessions", "not_found");
   await no(reg, "files.mentions.resolve", { id: "work:a/docs", thread: "t1" }, "module:sessions", "not_found");
   const r = await ok(reg, "files.mentions.resolve", { id: "work:a/docs/report.md", thread: "t1", said: "s1" }, "module:sessions");
