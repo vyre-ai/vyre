@@ -156,7 +156,7 @@ export default {
       body.on("error", () => res.destroy());
       res.on("close", () => body.destroy());
       body.pipe(res);
-    });
+    }, { readOnly: true });
 
     return {
       async stop() { listen.stop(); for (const t of [...tickets.keys()]) drop(t); },
