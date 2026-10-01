@@ -418,7 +418,7 @@ using the computers.
 
 ## Remove it
 
-If you claimed a `vyre.run` name, run `vyre name release` on the box first to free it.
+If you claimed a `vyre.run` name, run `vyre name release` on the box first to give it up. A name that was pointed at a server stays reserved afterwards, so nobody, you included, can claim it again.
 
 ::: tabs
 ::: tab On this Mac

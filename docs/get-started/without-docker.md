@@ -128,7 +128,7 @@ upgrade changed the units, `vyre up` prints the line to rewrite them:
 ### Remove
 
 ```
-vyre name release        # only if you claimed a vyre.run name
+vyre name release        # only if you claimed a vyre.run name; it cannot be claimed again
 sudo vyre uninstall --system
 sudo npm rm -g vyre
 ```

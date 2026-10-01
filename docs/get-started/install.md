@@ -154,6 +154,8 @@ ever reinstall, it takes this address back. If you close the page before pressin
 it**, it is gone. Copying it puts it on your clipboard, where a clipboard history tool may keep
 it, so clear that afterwards or write it down.
 
+If you ever give the name up with `vyre name release`, it stays reserved: a name that was pointed at a server cannot be claimed again, by you or anyone else.
+
 Below that is **Use a domain of your own too**, which you can skip. To use a domain you own as
 well, type it (for example `harlowlegal.com`) and the page shows one DNS record to add, a CNAME,
 then looks it up when you press **Check**. DNS can take a few minutes to show it. The address
