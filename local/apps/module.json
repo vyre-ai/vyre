@@ -4,7 +4,7 @@
   "description": "Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather, Slack and WhatsApp. Actions that send as the person go through apps.send, with a proof per call (WhatsApp, through the hands), or are held at the Gate for the person to approve (Slack).",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": [{ "name": "apps.list", "reach": "anyone" }, { "name": "apps.targets", "reach": "anyone" }, { "name": "apps.act", "reach": "asked" }, { "name": "apps.send", "reach": "person" }, { "name": "apps.route", "reach": "anyone" }, { "name": "apps.setup", "reach": "person" }] },
+  "does": { "tools": [{ "name": "apps.list", "reach": "anyone" }, { "name": "apps.targets", "reach": "anyone" }, { "name": "apps.act", "reach": "asked" }, { "name": "apps.send", "reach": "anyone" }, { "name": "apps.route", "reach": "anyone" }, { "name": "apps.setup", "reach": "person" }] },
   "watches": { "emits": ["apps.acted", "apps.sent"] },
   "shows": {},
   "needs": {},

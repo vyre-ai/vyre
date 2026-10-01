@@ -35,11 +35,13 @@ const APPLY = ["live", "session", "restart"];
  * setting carries the person's authority, so its store may not reach past the module (ADR 0033).
  * A tool store names only the module's own tools (called as the settings module, never the
  * person), a config.json path starts with "<module>.", and Claude Code's files are refused.
- * @param {string} module @param {any} list @param {{ firstParty?: boolean, tools?: string[] }} [opts]
+ * @param {string} module @param {any} list @param {{ firstParty?: boolean, tools?: any[] }} [opts]
  */
 export function validateDecls(module, list, { firstParty = false, tools = [] } = {}) {
   if (list === undefined) return [];
   if (!Array.isArray(list)) return ["settings must be a list"];
+  // A manifest's tools are names or { name, reach, ... } entries; only the names matter here.
+  tools = tools.map(t => (t && typeof t === "object" ? /** @type {any} */ (t).name : t));
   const out = [], seen = new Set();
   for (const d of list) {
     const k = d && d.key;
