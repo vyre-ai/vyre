@@ -39,7 +39,7 @@
   },
   "artifacts.restore": {
    "module": "artifacts",
-   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; going back is a new version, nothing is lost"
+   "reason": "own-scope check: reach() runs on the artifact's own project for the caller; restore only writes a NEW version from an old one in that same artifact, so nothing is lost and nothing leaves the project; the version is marked untrusted when an agent makes it"
   },
   "artifacts.search": {
    "module": "artifacts",
@@ -47,15 +47,15 @@
   },
   "artifacts.share": {
    "module": "artifacts",
-   "reason": "held at the Gate: it declares outward post, so an agent's call waits for the person (the in-tool check also refuses an agent without the gate's mark), and the secret scan refuses a share that looks like it holds a key"
+   "reason": "the Gate's outward post hold (module.json declares outward post, so an agent's or a module's call is held for the person), plus the fail-closed stopgap in the tool: artifacts.share refuses anyone but the person unless the Gate's own mark (meta.gate) is on the call; a share also refuses when public links are off or the content looks like it holds a secret"
   },
   "artifacts.undelete": {
    "module": "artifacts",
-   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
+   "reason": "own-scope check: reach(id, meta, {deleted: true}) runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made); undelete only brings back what the same scope deleted, within the 30 day window"
   },
   "artifacts.unshare": {
    "module": "artifacts",
-   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; it only stops a link, so it is never held"
+   "reason": "own-scope check: reach() runs on the artifact's own project for the caller; it only stops a link (never publishes anything), so it is never held, and anyone who can reach the artifact can withdraw it"
   },
   "artifacts.update": {
    "module": "artifacts",
