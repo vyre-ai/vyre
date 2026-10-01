@@ -9,7 +9,7 @@ import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
-import { backup, restore, INCLUDE, checkEntries } from "../names/backup.js";
+import { backup, restore, INCLUDE, DATA_PARTS, checkEntries } from "../names/backup.js";
 import { uninstallPlan } from "../names/system.js";
 
 const PASSPHRASE = "correct horse battery staple";
@@ -53,6 +53,10 @@ test("AR8: artifacts, versions, tags and files survive backup and restore, and t
   await old.asVyre("artifacts.mention.resolve", { id: dash.id, thread: "t1" });
   assert.equal((await old.call("artifacts.get", { id: dash.id }, "mcp:agent:juno", { thread: "t1" })).error, undefined);
   // The share server's state file belongs to a running process, not to the person.
+  fs.mkdirSync(path.join(a, "data", "other-module"), { recursive: true });
+  fs.writeFileSync(path.join(a, "data", "other-module", "x.txt"), "not carried");
+  fs.mkdirSync(path.join(b, "data", "other-module"), { recursive: true });
+  fs.writeFileSync(path.join(b, "data", "other-module", "kept.txt"), "left alone on restore");
   const pub = path.join(a, "data", "artifacts", "public");
   fs.mkdirSync(pub, { recursive: true });
   fs.writeFileSync(path.join(pub, ".server.json"), JSON.stringify({ pid: 4242, uid: 1, port: 7311 }));
@@ -70,6 +74,8 @@ test("AR8: artifacts, versions, tags and files survive backup and restore, and t
 
   assert.ok(fs.existsSync(path.join(b, "data", "artifacts", "store", "harlow-legal", report.id, ".git")), "its own git history came back");
   assert.ok(!fs.existsSync(path.join(b, "data", "artifacts", "public", ".server.json")), "the share server's pid and port stay behind");
+  assert.ok(!fs.existsSync(path.join(b, "data", "other-module", "x.txt")), "a module's data not named in the backup is not carried");
+  assert.equal(fs.readFileSync(path.join(b, "data", "other-module", "kept.txt"), "utf8"), "left alone on restore", "and a restore leaves it alone");
 
   const nu = await bootOn(b);
   t.after(() => nu.close());
@@ -93,6 +99,8 @@ test("AR8: artifacts, versions, tags and files survive backup and restore, and t
 
 test("AR8: a backup entry under data is accepted, and an artifact's store sits inside what an uninstall with data removes", async t => {
   assert.doesNotThrow(() => checkEntries("data/\ndata/artifacts/store/p/a_1/.git/HEAD\n"));
+  assert.throws(() => checkEntries("data/\ndata/another-module/x\n"), /unsafe/, "only the named parts of data are carried");
+  assert.deepEqual(DATA_PARTS, ["artifacts"]);
   assert.throws(() => checkEntries("../data/x\n"), /unsafe/);
   const a = tempHome(t);
   const m = await bootOn(a);

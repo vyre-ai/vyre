@@ -650,8 +650,9 @@ export default [
         return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
       }
       finally { passphrase = ""; }
-      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects });
+      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects, publicLinks: "as they were when the backup was made" });
       out("  restored · vyre up to start");
+      if (r.restored && r.restored.includes("data")) out(dim("  artifacts are back with their versions; public links return as they were when the backup was made, so a link that was on then is on again"));
       return 0;
     },
   },
