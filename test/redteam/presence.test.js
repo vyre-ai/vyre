@@ -45,7 +45,16 @@ test("redteam P-M7: an RSA device key that is too small, has a weak exponent or 
   assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: spki(rsa().publicKey), alg: -7 }), /P-256/, "an RSA key claiming ES256");
   assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: spki(p256().publicKey), alg: -257 }), /RSA/, "an EC key claiming RS256");
   assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: spki(rsa().publicKey) }), /alg/, "no alg at all");
-  assert.equal(p.keys().length, 0, "nothing was enrolled");
+  // A 16384-bit modulus is over the 8192 ceiling. Its public key is made from a random odd 16384-bit modulus (a public key needs no primes),
+  // so the test does not spend minutes generating one.
+  const big = crypto.randomBytes(2048); big[0] |= 0x80; big[big.length - 1] |= 1;
+  const bigKey = crypto.createPublicKey({ key: { kty: "RSA", n: big.toString("base64url"), e: "AQAB" }, format: "jwk" });
+  assert.equal(/** @type {any} */ (bigKey.asymmetricKeyDetails).modulusLength, 16384, "the test key really is 16384 bits");
+  assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: spki(bigKey), alg: -257 }), /at most 8192/, "16384-bit RSA");
+  assert.equal(p.keys().length, 0, "nothing was enrolled by any attack above");
+  // Control: a valid RSA-2048 key with exponent 65537 and RS256 enrolls, so the refusals above are about the key and not the call.
+  assert.ok(p.enroll({ kind: "device", name: "ok", public_key: spki(rsa().publicKey), alg: -257 }).id, "a valid RSA-2048 key enrolls");
+  assert.equal(p.keys().length, 1);
 });
 
 test("redteam P-M7b: an alg changed under an enrolled key never verifies, in either direction", async t => {
@@ -53,6 +62,13 @@ test("redteam P-M7b: an alg changed under an enrolled key never verifies, in eit
   const ec = p256(), rk = rsa();
   const e = p.enroll({ kind: "device", name: "phone", public_key: spki(ec.publicKey), alg: -7 });
   const r = p.enroll({ kind: "device", name: "laptop", public_key: spki(rk.publicKey), alg: -257 });
+  // Controls: an honest ES256 and an honest RS256 proof each verify before any flip, so a wrong signer would not hide behind the refusals.
+  for (const [id, pair] of [[e.id, ec], [r.id, rk]]) {
+    const honest = await p.verify({ ...APPROVE, caller: WHO, proof: signer("device", id, pair)(APPROVE, now()) });
+    assert.equal(honest.ok, true, `${id}: an honest proof verifies (control)`);
+  }
+  // Regression only: with the alg flipped the key and algorithm are of different types, which crypto.verify refuses by itself. The
+  // binding of alg to key type is proven at enrollment (P-M7); this keeps the end-to-end behaviour from changing.
   db.prepare("UPDATE presence_keys SET alg = -257 WHERE id = ?").run(e.id);
   db.prepare("UPDATE presence_keys SET alg = -7 WHERE id = ?").run(r.id);
   for (const [id, pair] of [[e.id, ec], [r.id, rk]]) {
@@ -68,7 +84,19 @@ test("redteam P-M7c: a JWK with private members, or a blob that carries primes, 
   const { d: _d, p: _p, q: _q, dp: _dp, dq: _dq, qi: _qi, ...pub } = jwk;
   assert.ok(p.enroll({ kind: "device", name: "ok", public_key: JSON.stringify(pub), alg: -257 }).id, "its public half enrolls (control)");
   assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: JSON.stringify({ ...pub, d: "AQAB" }), alg: -257 }), /private/i, "a public JWK plus one private member");
-  assert.equal(p.keys().length, 1);
+  // A BCRYPT blob in the public-key slot that carries primes (RSA1 magic, prime sizes not zero) is refused, and a true private blob (RSA2).
+  const fresh = rsa().publicKey.export({ format: "jwk" });
+  const n = Buffer.from(/** @type {string} */ (fresh.n), "base64url"), e = Buffer.from(/** @type {string} */ (fresh.e), "base64url");
+  const header = (magic, p1, p2) => { const h = Buffer.alloc(24); h.writeUInt32LE(magic, 0); h.writeUInt32LE(n.length * 8, 4); h.writeUInt32LE(e.length, 8); h.writeUInt32LE(n.length, 12); h.writeUInt32LE(p1, 16); h.writeUInt32LE(p2, 20); return h; };
+  const primes = crypto.randomBytes(128);
+  const withPrimes = Buffer.concat([header(0x31415352, 128, 128), e, n, primes, primes]);
+  assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: withPrimes.toString("base64url"), alg: -257 }), /private key material/i, "an RSA1 blob that carries primes");
+  const privateBlob = Buffer.concat([header(0x32415352, 128, 128), e, n, primes, primes]);
+  assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: privateBlob.toString("base64url"), alg: -257 }), /./, "an RSA2 private blob");
+  // Control: the same key as a well-formed public RSA1 blob (primes zero) enrolls.
+  const publicBlob = Buffer.concat([header(0x31415352, 0, 0), e, n]);
+  assert.ok(p.enroll({ kind: "device", name: "blob", public_key: publicBlob.toString("base64url"), alg: -257 }).id, "a well-formed public blob enrolls (control)");
+  assert.equal(p.keys().length, 2);
 });
 
 test("redteam P-CAP: a Capsule key is P-256 ES256 and nothing else, even written straight into the database", t => {
@@ -80,6 +108,8 @@ test("redteam P-CAP: a Capsule key is P-256 ES256 and nothing else, even written
   assert.throws(() => ins("raw-1", -8), /alg -7/);
   assert.throws(() => ins("raw-2", -257), /alg -7/);
   assert.throws(() => ins("raw-3", null), /alg -7/);
+  // Control: a valid P-256 Capsule key enrolls with ES256, so the refusals above are about the key.
+  assert.ok(p.enroll({ kind: "capsule", name: "c", public_key: spki(p256().publicKey), alg: -7 }).id, "a valid P-256 Capsule key enrolls");
 });
 
 test("redteam P-PROOF: a signed proof cannot be replayed, used late, used for another call, or presented by another key", async t => {
