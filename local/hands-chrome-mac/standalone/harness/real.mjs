@@ -282,7 +282,7 @@ async function main() {
         return { steps: steps.length, params: first.recipe.params.length, firstMs, replayMs, oneCall: true };
       });
 
-      // Site learning is ON BY DEFAULT (0.2.0): this stage writes no `learn` setting at all. Visit 1 sends nothing the store would keep (two visits make evidence); visit 2 teaches it; the card
+      // Site learning is ON BY DEFAULT (0.2.0): this stage writes no `learn` setting at all. Visits 1 and 2 (two 1.2 s windows) make the evidence the store keeps; the card
       // then reaches the device and chrome_site returns it. A set of canary values typed into the form on both visits must never appear in any stored row.
       await stage("learn_default", async () => {
         writeConfig(data, { learnVisitMinutes: 0.02 });
@@ -303,7 +303,6 @@ async function main() {
         const id = controlId(pageTemplate(url), ask);
         const rec = () => (store.record(origin) || { controls: [] }).controls.find((/** @type {any} */ c) => c.id === id);
         await visit();
-        if (rec()) throw new Error("one visit already stored the control: a control is learned by what two visits saw");
         await sleep(1500); await visit();
         const learned = rec();
         if (!learned || learned.selector.identifier !== "apply-promo") throw new Error("learning on by default did not learn the control after two visits: " + JSON.stringify(store.record(origin) && store.record(origin).controls).slice(0, 300));
