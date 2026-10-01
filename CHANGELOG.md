@@ -5,6 +5,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
+#### app.vyre.run: Add to Home Screen installs the app, not a bookmark
+
+- The hosted app's loader page had no web app manifest, icons or iOS tags (`/manifest.json` answered with a redirect to `/`), so Add to Home Screen made a bookmark. The loader now ships `manifest.webmanifest` (standalone, start `/`, the Deck's colours), the Deck's 192, 512 and maskable PNG icons and the apple-touch-icon, all inside the signed loader manifest, and `index.html` links them with the apple-mobile-web-app tags. `release.js loader` copies the icons as bytes; the loader's service worker types them. Test in `relay/app/app.test.js`. Nothing deployed.
 
 #### release: the real app-out path is proven with a test key and a stable version
 

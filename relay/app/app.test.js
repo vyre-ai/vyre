@@ -85,6 +85,17 @@ test("release: the loader is sealed, pinned by SRI in its page, and sw.js carrie
   assert.ok(fs.readFileSync(path.join(out, "sw.js"), "utf8").includes(`"${pub}"`));
   assert.ok(fs.readFileSync(path.join(out, "loader.js"), "utf8").includes(`"${pub}"`));
   assert.ok(fs.existsSync(path.join(out, "client/client.js")));
+  // "Add to Home Screen" installs the app, not a bookmark, only with a web app manifest, its icons and the iOS tags.
+  assert.match(html, /<link rel="manifest" href="\/manifest.webmanifest">/);
+  assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes">/);
+  assert.match(html, /<link rel="apple-touch-icon" href="\/apple-touch-icon.png">/);
+  const wm = JSON.parse(fs.readFileSync(path.join(out, "manifest.webmanifest"), "utf8"));
+  assert.deepEqual([wm.display, wm.start_url, wm.scope], ["standalone", "/", "/"]);
+  for (const i of wm.icons) assert.ok(fs.existsSync(path.join(out, i.src.slice(1))), `${i.src} is served`);
+  assert.ok(fs.existsSync(path.join(out, "apple-touch-icon.png")));
+  const signedList = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8")).files;
+  for (const f of ["manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"]) assert.ok(f in signedList, `${f} is in the signed loader`);
+  assert.equal(Buffer.compare(fs.readFileSync(path.join(out, "icon-192.png")), fs.readFileSync(path.join(import.meta.dirname, "..", "..", "deck", "icon-192.png"))), 0, "icons are copied as bytes, not text");
   assert.match(fs.readFileSync(path.join(out, "manifest.js"), "utf8"), /"\.\/client\/bytes\.js"/);
 });
 
