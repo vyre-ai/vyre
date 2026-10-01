@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci --no-audit --no-fund
+      - name: Dump as the test runs it
+        run: |
+          env -i PATH="$PATH" VYRE_NO_DIALOGS=1 node scripts/reach-dump.mjs > d.json 2>d.err; echo rc=$?; head -c 600 d.err; node -e 'const s=require("fs").readFileSync("d.json","utf8");try{JSON.parse(s);console.log("json ok",s.length)}catch(e){console.log(e.message);console.log(JSON.stringify(s.slice(146100,146300)))}'
       - name: Reach suite and the touched module suites
         run: |
           set +e; rc=0

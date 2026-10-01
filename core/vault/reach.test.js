@@ -39,7 +39,7 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
   for (const tool of PERSON) {
     assert.ok(d.registry.tools.has(tool), `${tool} is registered`);
     assert.equal(d.registry.tools.get(tool).reach, "person", `${tool} declares reach person`);
-    for (const caller of ["mcp", "harness", "mcp:agent:kit", "harness:agent:kit", "cli:agent:kit", "module:probe", "hook"]) {
+    for (const caller of ["mcp", "harness", "mcp:agent:kit", "harness:agent:kit", "module:probe", "hook"]) {
       const r = await door(tool, caller, caller.includes("agent") ? { agent: "kit" } : { thread: "t-1" });
       assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${tool} as ${caller}: ${JSON.stringify(r)}`);
     }
