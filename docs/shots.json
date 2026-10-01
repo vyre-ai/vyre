@@ -163,28 +163,28 @@
     }
   },
   "docs/using/shots/deck-memory-sites.dark.png": {
-    "sha256": "dae55acdee03042045a29c040588f07bd911566b27ede43e510be4153f96e267",
+    "sha256": "9ad8bffab6b1cf8f64b3354ff517484530506c962bdafaccd9ef236a6c66609b",
     "shows": {
       "deck/css/deck.css": "86e0894074bd4245f3e8237cc667938f20c530a241402df9547773e5277f23fa",
-      "deck/css/views/memory-sites.css": "e4d6f7f3f344c5d9f460315a946503afc0c65b915d03e1f490db6ac76c98356a",
+      "deck/css/views/memory-sites.css": "01b321d7e3d24747c87321e1adbb7059f2ecd4a5f68bb73e4ee535edb6cbf937",
       "deck/css/views/memory.css": "0da67f28a0eb77e5338fb9269d7039a01df20108f4aced1c159fd59083157e10",
       "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
       "deck/js/app.js": "69bf044b2f0967c30e4849c5387e325be3b4ca9bb92447eb91a054d0ba6964bd",
       "deck/test/site-sample.js": "615ac5dd6c4106cee1365182f2c1692d79be600ab1bafe85a3acde2844115eb7",
-      "deck/views/memory-sites.js": "71600d39534e7acf6ba268b55f0d75794de43807f195c5841bb5f405ebeb27bc",
+      "deck/views/memory-sites.js": "eca8992ca9c5aca578787f1377ffa511397d557f71718f295188eef9ebf03b4f",
       "deck/views/memory.js": "68af4081476e38139d0cb4ca440a263bfd72ab289dbc02a4025c201c8e0e6846"
     }
   },
   "docs/using/shots/deck-memory-sites.png": {
-    "sha256": "dae55acdee03042045a29c040588f07bd911566b27ede43e510be4153f96e267",
+    "sha256": "9ad8bffab6b1cf8f64b3354ff517484530506c962bdafaccd9ef236a6c66609b",
     "shows": {
       "deck/css/deck.css": "86e0894074bd4245f3e8237cc667938f20c530a241402df9547773e5277f23fa",
-      "deck/css/views/memory-sites.css": "e4d6f7f3f344c5d9f460315a946503afc0c65b915d03e1f490db6ac76c98356a",
+      "deck/css/views/memory-sites.css": "01b321d7e3d24747c87321e1adbb7059f2ecd4a5f68bb73e4ee535edb6cbf937",
       "deck/css/views/memory.css": "0da67f28a0eb77e5338fb9269d7039a01df20108f4aced1c159fd59083157e10",
       "deck/index.html": "c5b9e161029a6cd6675f52fa8e4c93ca9cc91e72632b59e1e07e2adbbbffb872",
       "deck/js/app.js": "69bf044b2f0967c30e4849c5387e325be3b4ca9bb92447eb91a054d0ba6964bd",
       "deck/test/site-sample.js": "615ac5dd6c4106cee1365182f2c1692d79be600ab1bafe85a3acde2844115eb7",
-      "deck/views/memory-sites.js": "71600d39534e7acf6ba268b55f0d75794de43807f195c5841bb5f405ebeb27bc",
+      "deck/views/memory-sites.js": "eca8992ca9c5aca578787f1377ffa511397d557f71718f295188eef9ebf03b4f",
       "deck/views/memory.js": "68af4081476e38139d0cb4ca440a263bfd72ab289dbc02a4025c201c8e0e6846"
     }
   },
