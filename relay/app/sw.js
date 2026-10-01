@@ -9,6 +9,11 @@
 // /v/<sha>/ folders are content-addressed and checked by the loader under SRI, so they are cached
 // as fetched. The honest limit: the browser refetches this script at least daily, so an origin
 // that turns hostile can replace the worker itself.
+//
+// The built app also asks for its own files at run time (/app/assets/...: fonts, images). The
+// loader tells this worker which build it opened; the worker checks that build's signed manifest
+// itself (it does not trust the page's word), then answers /app/<path> from /v/<sha>/<path> only
+// when the bytes match the hash the manifest lists. Anything else under /app/ is a 404.
 
 /* global self, caches, clients */
 const RELEASE_PUB = "{{RELEASE_PUB}}";
@@ -59,10 +64,40 @@ async function activateLoader() {
   for (const name of await caches.keys()) if (name.startsWith(LOADER) && name !== LOADER + n.release) await caches.delete(name);
 }
 
+/** Check a hosted build's signed manifest and remember its files. Resolves with the sha, or throws. */
+async function adoptBuild(sha, want) {
+  if (!/^[a-f0-9]{40}$/.test(sha) || !/^[a-f0-9]{64}$/.test(want) || want.slice(0, 40) !== sha) throw new Error("not a build folder");
+  const get = async p => { const r = await fetch(`/v/${sha}/${p}`); if (!r.ok) throw new Error(`${p} answered ${r.status}`); return new Uint8Array(await r.arrayBuffer()); };
+  const [bytes, sig] = await Promise.all([get("release-manifest.json"), get("release-manifest.sig")]);
+  if (hexOf(await crypto.subtle.digest("SHA-256", bytes)) !== want) throw new Error("the manifest is not the one the loader named");
+  const key = await crypto.subtle.importKey("raw", b64u(RELEASE_PUB), { name: "Ed25519" }, false, ["verify"]);
+  if (!(await crypto.subtle.verify({ name: "Ed25519" }, key, b64u(new TextDecoder().decode(sig)), bytes))) throw new Error("the build's signature does not verify");
+  const m = JSON.parse(new TextDecoder().decode(bytes));
+  await (await caches.open(META)).put("/__build", new Response(JSON.stringify({ sha, files: m.files || {} })));
+}
+
+/** Answer /app/<path> from the adopted build, hash-checked, or with a 404. */
+async function appFile(rel) {
+  const none = () => new Response("not found", { status: 404 });
+  const r = await (await caches.open(META)).match("/__build");
+  if (!r || rel.includes("..") || rel.includes("\\")) return none();
+  const b = await r.json();
+  const want = Object.prototype.hasOwnProperty.call(b.files, rel) ? b.files[rel] : null;
+  if (!want) return none();
+  const path = `/v/${b.sha}/${rel}`;
+  const folders = await caches.open(FOLDERS);
+  let res = await folders.match(path);
+  if (!res) { res = await fetch(path); if (!res.ok) return none(); await folders.put(path, res.clone()); }
+  const body = new Uint8Array(await res.arrayBuffer());
+  if ((await sri(body)) !== want) { await folders.delete(path); return none(); }
+  return new Response(body, { headers: { "content-type": res.headers.get("content-type") || typeFor(rel), "cache-control": "no-store" } });
+}
+
 /** @param {Request} req @returns {Promise<Response>} */
 async function respond(req) {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return fetch(req);
+  if (url.pathname.startsWith("/app/")) return appFile(decodeURIComponent(url.pathname.slice(5)));
   if (url.pathname.startsWith("/v/")) {
     const folders = await caches.open(FOLDERS);
     const hit = await folders.match(url.pathname);
@@ -87,6 +122,7 @@ if (typeof self !== "undefined" && self.addEventListener) {
   self.addEventListener("activate", e => e.waitUntil(activateLoader().then(() => clients.claim())));
   self.addEventListener("fetch", e => e.respondWith(respond(e.request)));
   self.addEventListener("message", e => {
+    if (e.data && e.data.type === "vyre-build") e.waitUntil(adoptBuild(String(e.data.sha), String(e.data.manifest)).catch(err => tell({ type: "vyre-build", refused: true, why: String(err.message || err) })));
     if (e.data && e.data.type === "vyre-release?") e.waitUntil(active().then(a => e.source && e.source.postMessage({ type: "vyre-release", ...(a || {}) })));
   });
 }

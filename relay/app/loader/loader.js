@@ -90,6 +90,9 @@ async function main() {
   /** @type {any} */ (globalThis).vyre = { conn, box, release: { ...want } };
   const shell = document.getElementById("vyre-loader");
   if (shell) shell.hidden = true;
+  // Tell the worker which build this is, so it can answer the app's own /app/<path> requests
+  // from that build, hash-checked, after it re-verifies the signed manifest itself.
+  if ("serviceWorker" in navigator) navigator.serviceWorker.ready.then(r => r.active && r.active.postMessage({ type: "vyre-build", sha: want.sha, manifest: want.manifest })).catch(() => {});
   inject(base, manifest);
 }
 
