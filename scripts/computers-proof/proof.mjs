@@ -256,7 +256,7 @@ try {
     let st = null;
     for (let i = 0; i < 30; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
     const tKill = Math.round((Date.now() - t0k) / 100) / 10;
-    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 30 s from the runtime's event stream (the sweep is off in this proof)", { state: st, seconds: tKill }));
+    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 30 s from the runtime's event stream (the sweep is off in this proof)", { state: st, seconds: tKill });
     const w = await person("computers.watch", { agent: AGENT, surface: "deck:laptop" });
     let said = w.error ? String(w.error.message) : "";
     if (!w.error) {
