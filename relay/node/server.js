@@ -89,6 +89,9 @@ class Peer {
 /**
  * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, log?: (event: string, x?: any) => void }} [o]
  */
+/** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
+export const FEATURES = ["registered"];
+
 export function createRelay(o = {}) {
   const limits = { ...LIMITS, ...(o.limits || {}) };
   const log = o.log || (() => {});
@@ -309,7 +312,7 @@ export function createRelay(o = {}) {
       if (r.control) r.control.close(CLOSE.replaced, "replaced by a newer box connection");
       r.control = peer;
       r.ticket = crypto.randomBytes(18).toString("base64url");
-      peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c) });
+      peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: FEATURES }) });
       log("box.connected", { route });
       // The only thing a control socket sends after auth: registering a pairing ticket's locator
       // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
@@ -326,7 +329,9 @@ export function createRelay(o = {}) {
         const exp = Math.min(Number(t.exp) || 0, Date.now() + (setup ? SETUP_TTL : TICKET_TTL));
         if (exp <= Date.now()) return;
         // The box hears the outcome: 200, or 409 when another server registered this locator first.
-        peer.json({ t: "registered", loc, status: registerLoc(loc, { record, mac, exp, ...(setup ? { setup: true } : {}) }) });
+        const status = registerLoc(loc, { record, mac, exp, ...(setup ? { setup: true } : {}) });
+        // `legacyNoAck` (tests only) behaves as the relay deployed before 30 Sep did: it stores the ticket and says nothing back.
+        if (!o.legacyNoAck && !o.dropAck) peer.json({ t: "registered", loc, status });
       };
     };
     peer.onclose = () => {

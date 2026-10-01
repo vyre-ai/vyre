@@ -43,6 +43,7 @@ test("a box that signs its route is served, and device frames reach it both ways
   const b = await box(base);
   const ready = await b.s.json();
   assert.equal(ready.t, "ready");
+  assert.deepEqual(ready.features, ["registered"], "the relay says it answers registrations, so a box can tell silence from an older relay");
 
   const dev = sock(`${base}/v1/device?route=${b.route}`);
   await dev.open();
