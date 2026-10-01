@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Boots a registry (box and local) in a throwaway home and prints every tool's reach and callers as
-// JSON: { tool, module, callers, internal, hook, reach }, a tool counting as limited only when every role that has it limits it. Used by test/reach-registry.test.js, which runs
+// JSON: { tool, module, reach, roles: { box?, local? } } where each role has { callers, internal, hook, proof }. Used by test/reach-registry.test.js, which runs
 // it in a child process with HOME and the XDG folders inside a temp dir. Never run against a real home.
 import fs from "node:fs";
 import os from "node:os";
@@ -18,10 +18,12 @@ for (const role of ["box", "local"]) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role, transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: [] } }));
   const d = await start({ root, log: () => {} });
   for (const [tool, def] of d.registry.tools) {
-    const now = { tool, module: def.module, callers: Array.isArray(def.callers) ? def.callers : null, internal: Boolean(def.internal), hook: Boolean(def.hook), reach: def.reach };
-    const was = out[tool];
-    // A tool counts as limited only when every role that has it limits it.
-    out[tool] = was ? { ...now, callers: was.callers && now.callers ? now.callers : null, internal: was.internal && now.internal, hook: was.hook && now.hook } : now;
+    const pres = d.registry.deps && d.registry.deps.presence;
+    let proof = null;
+    try { proof = pres ? Boolean(pres.required(tool, def, undefined)) : null; } catch { proof = null; }
+    const now = { callers: Array.isArray(def.callers) ? def.callers : null, internal: Boolean(def.internal), hook: Boolean(def.hook), proof };
+    out[tool] = out[tool] || { tool, module: def.module, reach: def.reach, roles: {} };
+    out[tool].roles[role] = now;
   }
   await d.stop();
 }
