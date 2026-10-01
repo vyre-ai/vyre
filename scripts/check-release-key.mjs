@@ -19,6 +19,10 @@ export function keyProblems(root) {
   const out = [];
   const rel = /export const RELEASE_KEY = "([^"]+)"/.exec(fs.readFileSync(path.join(root, "core", "vyre-core", "release.js"), "utf8"))?.[1];
   const scr = /^RELEASE_KEY=(.*)$/m.exec(fs.readFileSync(path.join(root, "scripts", "install-mac-server.sh"), "utf8"))?.[1];
+  // The box wrapper pins the same key (the updater on every Linux box), as a default in its seams block.
+  const box = /^RELEASE_KEY=\$\{VYRE_RELEASE_KEY:-([^}]+)\}$/m.exec(fs.readFileSync(path.join(root, "box", "vyre"), "utf8"))?.[1];
+  if (!box) out.push("box/vyre has no pinned RELEASE_KEY");
+  else if (rel && box !== rel) out.push("RELEASE_KEY in box/vyre differs from core/vyre-core/release.js");
   if (!rel) out.push("core/vyre-core/release.js has no RELEASE_KEY");
   else if (rel === PLACEHOLDER) out.push("RELEASE_KEY in core/vyre-core/release.js is still the placeholder: a release signed by nobody's real key would install on Macs");
   if (!scr) out.push("scripts/install-mac-server.sh has no RELEASE_KEY line");

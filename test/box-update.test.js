@@ -18,6 +18,7 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
 const COMPOSE = fs.readFileSync(path.join(REPO, "box/compose.yml"), "utf8");
 const IMAGE_REF = `ghcr.io/vyre-ai/vyre@sha256:${"a".repeat(64)}`;
+const COMPUTER_REF = `ghcr.io/vyre-ai/vyre-computer@sha256:${"b".repeat(64)}`;
 const CHOME = "/home/vyre/.vyre";
 // Vyre's release key, for these tests: a key of their own, given to the wrapper as VYRE_RELEASE_KEY (test only). Every release
 // is signed by it unless a test says sign: false, or another key.
@@ -117,7 +118,7 @@ function release(dir, version, { android = false, corrupt = "", images = false, 
   fs.rmSync(path.join(dir, ".pkg"), { recursive: true });
   // A release that pulls: every image pinned by digest, as the release pipeline writes it (tagCompose: left on a moving tag).
   const pin = IMAGE_REF;
-  const composeText = images && !tagCompose ? COMPOSE.replace(/^( *image: *).*$/gm, `$1${pin}`) : COMPOSE;
+  const composeText = images && !tagCompose ? COMPOSE.replace(/^( *image: *).*$/gm, `$1${pin}`).replace("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER_REF}}`) : COMPOSE;
   fs.writeFileSync(path.join(dir, "compose.yml"), composeText + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "compose.build.yml"), `# compose.build.yml ${version}\n`);
   fs.writeFileSync(path.join(dir, "vyre.env.example"), `# vyre.env.example ${version}\n`);
@@ -125,7 +126,7 @@ function release(dir, version, { android = false, corrupt = "", images = false, 
   fs.writeFileSync(path.join(dir, "dockerignore"), "test\n");
   fs.writeFileSync(path.join(dir, "vyre"), WRAPPER_SRC + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "VERSION"), version + "\n");
-  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF } } } : {}) }, null, 2));
+  fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ version, channel: "stable", commit: "abc1234", date: "2026-09-27T00:00:00Z", min_from: "0.1.0", notes: "Northwind Bakery's \"fix\"", ...(images ? { images: { box: { ref: IMAGE_REF }, computer: { ref: COMPUTER_REF } } } : {}) }, null, 2));
   if (noReleaseJson) fs.rmSync(path.join(dir, "release.json"));
   if (android) {
     const apk = Buffer.concat([Buffer.from("PK"), crypto.randomBytes(2048)]);
@@ -395,7 +396,7 @@ test("box update (pulled): an image cosign cannot verify, a compose.yml on a mov
   const before = state(b);
   let r = /** @type {any} */ (await b.run(["update"]));
   assert.notEqual(r.code, 0, r.out);
-  assert.match(r.out, /cosign could not verify ghcr\.io\/vyre-ai\/vyre@sha256:a{64} against Vyre's release workflow; nothing was changed/);
+  assert.match(r.out, /cosign could not verify ghcr\.io\/vyre-ai\/vyre(-computer)?@sha256:[ab]{64} against Vyre's release workflow; nothing was changed/);
   assert.deepEqual(state(b), before, "no pull, no new compose.yml, same image and data");
   // The release's compose.yml still points at a moving tag: a moved tag could change what runs, so it is refused.
   b = await box(t, { releases: [{ tag: "v0.2.0", images: true, tagCompose: true }], build: false });
