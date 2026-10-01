@@ -27,7 +27,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Chrome for Testing
         run: |
-          npx --yes @puppeteer/browsers@3.2.3 install chrome@130 --path "$RUNNER_TEMP/cft" | tee "$RUNNER_TEMP/cft.out"
+          npx --yes @puppeteer/browsers@3.2.3 install chrome@130.0.6723.116 --path "$RUNNER_TEMP/cft" | tee "$RUNNER_TEMP/cft.out"
           echo "CHROME=$(awk '{print $2}' "$RUNNER_TEMP/cft.out" | tail -1)" >> "$GITHUB_ENV"
       - name: The extension in a real browser
         # A hosted runner cannot give Chrome its user-namespace sandbox; the page served is our own fixture.
