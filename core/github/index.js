@@ -15,7 +15,7 @@ import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne, commitIdentity } from "./accounts.js";
 import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
-import { safeSegment, cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
+import { safeSegment, cloneRepo, worktreeAdd, sessionEnv, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -480,16 +480,35 @@ export default {
       return commitIdentity(a);
     }
 
+    /** The Vyre-Session trailer is on unless the person sets github.session_trailer to false in Vyre's config. */
+    const trailerOn = () => {
+      const c = ctx.config || {};
+      return !(c.github && c.github.session_trailer === false) && c.githubSessionTrailer !== false;
+    };
+
+    ctx.tool("github.session.env", {
+      internal: true,
+      description: "Sessions only: the environment a session's process must carry so its commits are made as the connected account (GIT_AUTHOR_*, GIT_COMMITTER_*) and run its hooks (GIT_CONFIG_COUNT, KEY, VALUE for core.hooksPath), with no repo config written. Answers { env } (empty on a git older than 2.31, where the worktree's own config carries it, or when the project has no repo). Safe to call on every launch and resume.",
+      input: obj({ project: str, session: str }, ["project", "session"]),
+      callers: ["module"],
+      run: async ({ project, session }, meta = {}) => {
+        checkModuleCaller("github.session.env", meta, SESSION_ONLY);
+        const repo = await repoOf(project);
+        if (!repo) return { env: {} };
+        return { env: await sessionEnv({ repoDir: repo.home, session, identity: await identityFor(project), trailer: trailerOn() }) };
+      },
+    });
+
     ctx.tool("github.session.worktree", {
       internal: true,
-      description: "Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet.",
+      description: "Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet. Answers { path, branch, env? }: env, when present, is what the session's process must carry (see github.session.env).",
       input: obj({ project: str, session: str }, ["project", "session"]),
       callers: ["module"],
       run: async ({ project, session }, meta = {}) => {
         checkModuleCaller("github.session.worktree", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) return null;
-        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, identity: await identityFor(project), trailer: !(ctx.config && ctx.config.githubSessionTrailer === false) });
+        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, identity: await identityFor(project), trailer: trailerOn() });
       },
     });
 

@@ -174,36 +174,38 @@ function effectiveHooksDir(repoDir, commonDir) {
   return path.isAbsolute(v) ? v : path.resolve(repoDir, v.replace(/^~(?=\/|$)/, process.env.HOME || "~"));
 }
 
-/**
- * What a session's commits say about who made them (PLAN M3, reviewer N4): the connected account's
- * own name and email when one is known, and (unless turned off) a `Vyre-Session: <id>` trailer on
- * every commit, so the person can audit which session wrote what.
- *
- * It writes to the repo's own config: `extensions.worktreeConfig = true` (so each worktree can carry
- * its own user.name, user.email and core.hooksPath; an older libgit2 or JGit may refuse a repo with
- * that extension), and a per-worktree config file inside the repo's git folder. Nothing in the
- * person's own config, global or local, is changed. The per-worktree hooks folder holds a small
- * wrapper for every hook the person's effective hooks folder has (global ones included), each
- * running the original by its absolute path so hooks that find their siblings from $0 keep working,
- * plus the trailer's prepare-commit-msg, which then runs the original prepare-commit-msg too.
- * Idempotent.
- * @param {{ repoDir: string, dest: string, id: string, identity?: { name: string, email: string } | null, trailer?: boolean }} p
- */
-async function stampWorktree({ repoDir, dest, id, identity, trailer = true }) {
-  const common = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
-  if (!common.ok) return;
-  const commonDir = common.stdout.trim();
-  await gitAsync(repoDir, ["config", "extensions.worktreeConfig", "true"]);
-  if (identity && identity.name && identity.email) {
-    const clean = v => String(v).replace(/[\r\n<>]/g, " ").trim().slice(0, 200);
-    await gitAsync(dest, ["config", "--worktree", "user.name", clean(identity.name)]);
-    await gitAsync(dest, ["config", "--worktree", "user.email", clean(identity.email)]);
+let gitVersion = null;
+/** Test seam: pretend git is this version ([major, minor]); null reads the real one again. @param {number[] | null} v */
+export function _setGitVersion(v) { gitVersion = v; }
+/** git's own version as [major, minor], read once (it only reports itself). */
+function gitAtLeast(major, minor) {
+  if (!gitVersion) {
+    const r = spawnSync("git", ["--version"], { encoding: "utf8", timeout: 5000 });
+    const m = /(\d+)\.(\d+)/.exec(String(r.stdout || ""));
+    gitVersion = m ? [Number(m[1]), Number(m[2])] : [0, 0];
   }
+  return gitVersion[0] > major || (gitVersion[0] === major && gitVersion[1] >= minor);
+}
+
+const quoted = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
+const cleanIdent = v => String(v).replace(/[\r\n<>]/g, " ").trim().slice(0, 200);
+
+/**
+ * The hooks folder a session's git runs: a wrapper for every hook in the person's effective hooks
+ * folder (global and system config included), each running the original by its absolute path so a
+ * hook that finds its siblings from $0 keeps working, plus, unless turned off, a prepare-commit-msg
+ * that appends `Vyre-Session: <id>` and then runs the original prepare-commit-msg. Lives inside the
+ * repo's git folder; rebuilt each time. Returns its path, or null when the repo has no git folder.
+ * @param {{ repoDir: string, id: string, trailer: boolean }} p
+ */
+async function buildSessionHooks({ repoDir, id, trailer }) {
+  const common = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common.ok) return null;
+  const commonDir = common.stdout.trim();
   const own = effectiveHooksDir(repoDir, commonDir);
   const hooksDir = path.join(commonDir, "vyre-hooks", id);
   fs.rmSync(hooksDir, { recursive: true, force: true });
   fs.mkdirSync(hooksDir, { recursive: true });
-  const quoted = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
   try {
     for (const name of fs.readdirSync(own)) {
       if (name.endsWith(".sample") || (trailer && name === "prepare-commit-msg")) continue;
@@ -222,7 +224,58 @@ exit 0
 `;
     fs.writeFileSync(path.join(hooksDir, "prepare-commit-msg"), hook, { mode: 0o755 });
   }
+  return hooksDir;
+}
+
+/**
+ * What a session's commits say about who made them (PLAN M3, reviewer N4): the connected account's
+ * own name and email when one is known, and (unless turned off) a `Vyre-Session: <id>` trailer on
+ * every commit, so the person can audit which session wrote what.
+ *
+ * On git 2.31 and later this is the session's ENVIRONMENT and no repo config is written:
+ * GIT_AUTHOR_* and GIT_COMMITTER_* for the identity, and GIT_CONFIG_COUNT/KEY/VALUE for the session's
+ * core.hooksPath. The caller (sessions) puts these in the session process's environment, on every
+ * launch and resume (`sessionEnv`). On an older git the same two things are written as per-worktree
+ * config instead (`extensions.worktreeConfig = true` in the repo's config, which an older libgit2 or
+ * JGit may refuse, and a config file in the git folder) and no env is returned. Nothing in the
+ * person's own config is changed either way. Idempotent.
+ * @param {{ repoDir: string, dest: string, id: string, identity?: { name: string, email: string } | null, trailer?: boolean }} p
+ * @returns {Promise<Record<string, string>>} the environment to give the session ({} on the config path)
+ */
+async function stampWorktree({ repoDir, dest, id, identity, trailer = true }) {
+  const hooksDir = await buildSessionHooks({ repoDir, id, trailer });
+  if (!hooksDir) return {};
+  const who = identity && identity.name && identity.email ? { name: cleanIdent(identity.name), email: cleanIdent(identity.email) } : null;
+  if (gitAtLeast(2, 31)) return sessionEnvFor(hooksDir, who);
+  await gitAsync(repoDir, ["config", "extensions.worktreeConfig", "true"]);
+  if (who) {
+    await gitAsync(dest, ["config", "--worktree", "user.name", who.name]);
+    await gitAsync(dest, ["config", "--worktree", "user.email", who.email]);
+  }
   await gitAsync(dest, ["config", "--worktree", "core.hooksPath", hooksDir]);
+  return {};
+}
+
+/** The environment that gives a session its identity and hooks path, with no config written. */
+function sessionEnvFor(hooksDir, who) {
+  return {
+    ...(who ? { GIT_AUTHOR_NAME: who.name, GIT_AUTHOR_EMAIL: who.email, GIT_COMMITTER_NAME: who.name, GIT_COMMITTER_EMAIL: who.email } : {}),
+    GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.hooksPath", GIT_CONFIG_VALUE_0: hooksDir,
+  };
+}
+
+/**
+ * The environment a session's process must carry (see stampWorktree). Rebuilds the session's hooks
+ * folder, so it is safe to call on every launch and resume. Empty on a git older than 2.31, where
+ * the worktree's own config carries the same.
+ * @param {{ repoDir: string, session: string, identity?: { name: string, email: string } | null, trailer?: boolean }} p
+ */
+export async function sessionEnv({ repoDir, session, identity = null, trailer = true }) {
+  const id = safeSegment(session, "session id");
+  if (!gitAtLeast(2, 31)) return {};
+  const hooksDir = await buildSessionHooks({ repoDir, id, trailer });
+  if (!hooksDir) return {};
+  return sessionEnvFor(hooksDir, identity && identity.name && identity.email ? { name: cleanIdent(identity.name), email: cleanIdent(identity.email) } : null);
 }
 
 /** Remove a session's hooks folder once its worktree is gone. */
@@ -245,14 +298,14 @@ export async function worktreeAdd({ repoDir, session, defaultBranch, identity = 
   // Unarchive: the session's worktree was removed but its branch (and any commits on it) stays, so
   // an existing branch is checked out as it is, never reset to the default branch. A worktree that
   // is still there is returned as it is.
-  if (fs.existsSync(dest)) { await stampWorktree({ repoDir, dest, id, identity, trailer }); return { path: dest, branch }; }
+  if (fs.existsSync(dest)) { const env = await stampWorktree({ repoDir, dest, id, identity, trailer }); return { path: dest, branch, ...(Object.keys(env).length ? { env } : {}) }; }
   const have = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
   const r = await gitAsync(repoDir, have.ok
     ? ["worktree", "add", dest, branch]
     : ["worktree", "add", dest, "-b", branch, defaultBranch]);
   if (!r.ok) throw fail(`git worktree add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "worktree_failed");
-  await stampWorktree({ repoDir, dest, id, identity, trailer });
-  return { path: dest, branch };
+  const env = await stampWorktree({ repoDir, dest, id, identity, trailer });
+  return { path: dest, branch, ...(Object.keys(env).length ? { env } : {}) };
 }
 
 /**

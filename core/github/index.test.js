@@ -866,32 +866,39 @@ test("commitIdentity: the account's public email, else its id+login noreply addr
   assert.equal(commitIdentity(null), null);
 });
 
-test("github.session.worktree: a session in a project a connected account made commits as that account, with a Vyre-Session trailer; an account that predates ids is filled in once from GitHub", async t => {
+test("github.session.worktree and github.session.env: a session in a project a connected account made commits as that account, with a Vyre-Session trailer, through the session's environment; an account that predates ids is filled in once from GitHub", async t => {
   const home = makeRepo(t);
   const w = await world(t, { projectsRows: [{ slug: "p", name: "p", home }] });
   seedAccount(w.db, { name: "home", login: "alex" }); // no id kept yet
   projectStore(w.db).put({ project: "p", account: "home", full_name: "alex/p", default_branch: "main", home }, Date.now());
   let asked = 0;
   withFetch(t, async url => { asked++; assert.equal(String(url), "https://api.github.com/user"); return { ok: true, status: 200, json: async () => ({ login: "alex", id: 77, name: "Alex Rivera", email: null }) }; });
-  const wt = (await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "p", session: "id1" })).data;
+  const sess = w.as("module:sessions", { firstParty: true });
+  const git = (dir, args, env = {}) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, ...env } });
+  const wt = (await sess("github.session.worktree", { project: "p", session: "id1" })).data;
+  assert.equal(wt.env.GIT_AUTHOR_EMAIL, "77+alex@users.noreply.github.com");
   fs.writeFileSync(path.join(wt.path, "n.md"), "x\n");
-  plainGit(wt.path, ["add", "n.md"]);
-  plainGit(wt.path, ["commit", "-q", "-m", "work"]);
-  assert.equal(plainGit(wt.path, ["log", "-1", "--format=%an|%ae"]).trim(), "Alex Rivera|77+alex@users.noreply.github.com");
-  assert.match(plainGit(wt.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: id1$/m);
-  assert.equal(plainGit(home, ["config", "--local", "--get", "user.email"]).trim(), "a@example.com", "the project's own identity is untouched");
-  // the id is kept: a second session does not ask GitHub again
-  await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "p", session: "id2" });
+  git(wt.path, ["add", "n.md"], wt.env);
+  git(wt.path, ["commit", "-q", "-m", "work"], wt.env);
+  assert.equal(git(wt.path, ["log", "-1", "--format=%an|%ae"]).trim(), "Alex Rivera|77+alex@users.noreply.github.com");
+  assert.match(git(wt.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: id1$/m);
+  assert.equal(git(home, ["config", "--local", "--get", "user.email"]).trim(), "a@example.com", "the project's own identity is untouched");
+  // a resume gets the same environment from github.session.env, and the id is kept: GitHub is not asked again
+  const env = (await sess("github.session.env", { project: "p", session: "id1" })).data.env;
+  assert.deepEqual(env, wt.env);
   assert.equal(asked, 1);
+  assert.deepEqual((await sess("github.session.env", { project: "nope", session: "id1" })).data, { env: {} });
+  assert.equal((await w.as("module:evil", { firstParty: true })("github.session.env", { project: "p", session: "id1" })).error.code, "denied");
+  assert.equal((await w.as("deck")("github.session.env", { project: "p", session: "id1" })).error.code, "denied");
   // a project with no GitHub account: git's own author, the trailer all the same
   const plain = makeRepo(t);
   const w2 = await world(t, { projectsRows: [{ slug: "q", name: "q", home: plain }] });
   const wt2 = (await w2.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "q", session: "id3" })).data;
   fs.writeFileSync(path.join(wt2.path, "n.md"), "x\n");
-  plainGit(wt2.path, ["add", "n.md"]);
-  plainGit(wt2.path, ["commit", "-q", "-m", "work"]);
-  assert.equal(plainGit(wt2.path, ["log", "-1", "--format=%ae"]).trim(), "a@example.com");
-  assert.match(plainGit(wt2.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: id3$/m);
+  git(wt2.path, ["add", "n.md"], wt2.env);
+  git(wt2.path, ["commit", "-q", "-m", "work"], wt2.env);
+  assert.equal(git(wt2.path, ["log", "-1", "--format=%ae"]).trim(), "a@example.com");
+  assert.match(git(wt2.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: id3$/m);
 });
 
 test("github.mcp.sync / github.remove: each connected account gets GitHub's hosted MCP row (bound item, no file writes), a second account a distinct name, sync is idempotent, and removing the account removes its row", async t => {

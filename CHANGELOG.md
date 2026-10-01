@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line. Your own global git hooks still run in a session. To leave the `Vyre-Session` line out of commits, set `githubSessionTrailer` to false in Vyre's config.
+- Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line. Your own global git hooks still run in a session. To leave the `Vyre-Session` line out of commits, set `github.session_trailer` to false in Vyre's config. On git 2.31 and later no git config is written into the repo for this: the session's identity and hooks are its environment.
 
 - Disconnecting GitHub now deletes its token from the vault, and says so plainly when it cannot, instead of quietly leaving a live token behind. The account stays listed after a failure so you can retry.
 

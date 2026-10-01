@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":335,"tool":829,"event":335,"config":240,"env":182,"screen":19,"concept":43},
+  "counts": {"command":335,"tool":830,"event":335,"config":240,"env":182,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -370,6 +370,7 @@
     {"kind":"event","name":"github.removed","definedIn":"core/github/index.js","page":"reference/events.md#github","module":"github","mentions":[{"page":"adr/0041-github-everywhere.md","line":368,"anchor":"6-manifest-tools-and-callers-011"}]},
     {"kind":"tool","name":"github.repos","definedIn":"core/github/index.js","page":"reference/tools.md#githubrepos","module":"github","mentions":[{"page":"adr/0041-github-everywhere.md","line":88,"anchor":"3-repos-githubrepos"},{"page":"adr/0041-github-everywhere.md","line":90,"anchor":"3-repos-githubrepos"},{"page":"adr/0041-github-everywhere.md","line":122,"anchor":"4-a-project-from-a-repo"},{"page":"adr/0041-github-everywhere.md","line":366,"anchor":"6-manifest-tools-and-callers-011"},{"page":"adr/0041-github-everywhere.md","line":376,"anchor":"6-manifest-tools-and-callers-011"},{"page":"adr/0041-github-everywhere.md","line":397,"anchor":"6-manifest-tools-and-callers-011"}]},
     {"kind":"tool","name":"github.session.cleanup","definedIn":"core/github/git.js","page":"reference/tools.md#githubsessioncleanup","module":"github","mentions":[{"page":"adr/0041-github-everywhere.md","line":312,"anchor":"5-a-worktree-and-branch-per-session"},{"page":"adr/0041-github-everywhere.md","line":325,"anchor":"5-a-worktree-and-branch-per-session"},{"page":"adr/0041-github-everywhere.md","line":368,"anchor":"6-manifest-tools-and-callers-011"}]},
+    {"kind":"tool","name":"github.session.env","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionenv","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.history","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionhistory","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.pr","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionpr","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.push","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionpush","module":"github","mentions":[]},

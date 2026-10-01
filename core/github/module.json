@@ -18,6 +18,7 @@
       {"name": "github.session.worktree", "reach": "modules"},
       {"name": "github.session.cleanup", "reach": "modules"},
       {"name": "github.session.pr", "reach": "modules"},
+      {"name": "github.session.env", "reach": "modules"},
       {"name": "github.session.push", "reach": "anyone"},
       {"name": "github.session.history", "reach": "anyone"},
       {"name": "github.session.undo", "reach": "anyone"},
