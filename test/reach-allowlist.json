@@ -3167,6 +3167,26 @@
    "module": "vault",
    "default": "open to any caller"
   },
+  "vitals.advice": {
+   "module": "vitals",
+   "default": "open to any caller"
+  },
+  "vitals.explain": {
+   "module": "vitals",
+   "default": "open to any caller"
+  },
+  "vitals.status": {
+   "module": "vitals",
+   "default": "open to any caller"
+  },
+  "vitals.summary": {
+   "module": "vitals",
+   "default": "open to any caller"
+  },
+  "vitals.watch": {
+   "module": "vitals",
+   "default": "open to any caller"
+  },
   "voice.listen": {
    "module": "voice",
    "default": "limited by callers in code"
