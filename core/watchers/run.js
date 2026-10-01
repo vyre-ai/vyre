@@ -5,16 +5,15 @@
 // access to its own folder and the runner and nothing else: no writes, no child processes, no
 // workers. It can reach the network; watching the network is the point.
 //
-// Credentials never reach the child. The parent attaches the vault item a watcher named under `net`
-// to requests for that host only, and scrubs it (and its base64, hex and URL forms) from the
-// response, the log lines and the error before any is kept. An item that carries one fails the run:
-// an item is filed into a project and taught to Memory, and a credential must never end up in either.
+// Vault values reach the child one at a time, only for names in the watcher's own `needs`, and
+// every value released during a run is scrubbed from its log lines and its error before either
+// is kept. An item that carries a released value fails the run: an item is filed into a project
+// and taught to Memory, and a credential must never end up in either.
 
-import { spawn } from "node:child_process";
+import { fork } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { mediatedFetch, sandboxIdentity, getWall } from "../../lib/sandbox/index.js";
 
 const RUNNER = fileURLToPath(new URL("./runner.js", import.meta.url));
 // The permission model is `--permission` from Node 22.13 and 23.5, and `--experimental-permission`
@@ -23,7 +22,7 @@ const [major, minor] = process.versions.node.split(".").map(Number);
 const FLAG = major > 23 || (major === 23 && minor >= 5) || (major === 22 && minor >= 13) ? "--permission" : "--experimental-permission";
 export const SANDBOXED = major >= 22;
 
-export const LIMITS = { channelBytes: 64_000_000, channelLine: 1_000_000, asks: 20, askChars: 8000, askReply: 4000, items: 1000, itemBytes: 4000, logLines: 200, lineChars: 500 };
+export const LIMITS = { items: 1000, itemBytes: 4000, logLines: 200, lineChars: 500 };
 
 /**
  * @typedef {{ items: any[], logs: string[], cursor: any, error: string|null, ms: number, sandboxed: boolean }} Result
@@ -32,40 +31,17 @@ export const LIMITS = { channelBytes: 64_000_000, channelLine: 1_000_000, asks: 
 /**
  * Run a watcher once.
  * @param {{ dir: string, needs: string[], since: any, hook?: any, timeoutMs: number,
- *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal,
- *   hosts?: string[]|null, netAuth?: (url: URL) => Promise<{ host: string, header: string, value: string }|undefined>,
- *   askFn?: ((prompt: string) => Promise<string>)|null, viaRequest?: ((url: URL, init: any) => Promise<any>)|null, netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
+ *   fetch: (name: string, field?: string) => Promise<string>, signal?: AbortSignal }} opts
  * @returns {Promise<Result>}
  */
-export async function runOnce(opts) {
-  // Fail closed: no wall that keeps a child off the network means no watcher runs, said in words.
-  const found = opts.wall === undefined ? await (opts.findWall ? opts.findWall() : getWall()) : { wall: opts.wall, why: opts.wall ? opts.wall.why : "no wall" };
-  if (!found.wall) {
-    return { items: [], logs: [], cursor: null, ms: 0, sandboxed: false, isolated: false, wall: null, unisolated: true,
-      error: `watchers cannot run on this machine: it has no way to keep a watcher off the network (${found.why}). Nothing was run.` };
-  }
-  return runIn(found.wall, opts);
-}
-
-async function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, viaRequest = null, netOptions = {}, identity = sandboxIdentity() }) {
+export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal }) {
   const started = Date.now();
   const real = fs.realpathSync(dir);
   const runner = fs.realpathSync(RUNNER);
-  // A launched child (the box spawner) cannot read the person's folders: it is handed the watcher's
-  // files over its channel and writes them into its own private TMPDIR, the only place it may write.
-  const handed = Boolean(wall.launch && wall.materialize);
-  const execArgv = !SANDBOXED ? [] : handed
-    ? [FLAG, `--allow-fs-read=${wall.workGlob}`, `--allow-fs-write=${wall.workGlob}`, `--allow-fs-read=${runner}`]
-    : [FLAG, `--allow-fs-read=${real}`, `--allow-fs-read=${runner}`];
-  const files = handed ? readFolder(real) : null;
-  const nodeBin = fs.realpathSync(process.execPath);
-  /** @type {any} */
-  const launched = wall.launch ? await wall.launch([process.execPath, ...execArgv, runner], { ro: [path.dirname(runner)] }).catch(e => e) : null;
-  if (launched instanceof Error) return { items: [], logs: [], cursor: null, ms: Date.now() - started, sandboxed: false, isolated: false, wall: wall.kind, unisolated: true,
-    error: `watchers cannot run on this machine: ${launched.message}. Nothing was run.` };
+  const execArgv = SANDBOXED ? [FLAG,`--allow-fs-read=${real}`, `--allow-fs-read=${runner}`] : [];
   /** @type {string[]} */ const released = [];
   const items = [], logs = [];
-  let asks = 0, dropped = 0, cursor = null, error = /** @type {string|null} */ (null), finished = false;
+  let dropped = 0, cursor = null, error = /** @type {string|null} */ (null), finished = false;
 
   const scrub = s => { let out = String(s); for (const v of released) if (v) out = out.split(v).join("[vault value]"); return out; };
   const logLine = line => {
@@ -74,35 +50,10 @@ async function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, s
   };
 
   return new Promise(resolve => {
-    // The child talks to its parent in lines of JSON on stdin and stdout, so any launcher that gives
-    // a child pipes can start it, inside the wall.
-    const w = launched ? null : /** @type {NonNullable<typeof wall.wrap>} */ (wall.wrap)([process.execPath, ...execArgv, runner], { ro: [real, runner, nodeBin, path.dirname(nodeBin)], cwd: real });
-    const child = launched || spawn(/** @type {any} */ (w).cmd, /** @type {any} */ (w).args, { env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["pipe", "pipe", "pipe"] });
-    const send = obj => { if (child.stdin && child.stdin.writable) child.stdin.write(JSON.stringify(obj) + "\n"); };
-    child.stdin?.on("error", () => {});
-    // The channel carries messages and nothing else: a line over 1 MB, a total over 64 MB, or a line
-    // that is not a message fails the run. The child's console and log() go to stderr, not here.
-    let line = "", total = 0;
-    child.stdout?.on("data", c => {
-      total += c.length; line += c;
-      if (total > LIMITS.channelBytes) { fail("sent more than the channel allows"); child.kill("SIGKILL"); return; }
-      for (let i = line.indexOf("\n"); i >= 0; i = line.indexOf("\n")) {
-        const one = line.slice(0, i); line = line.slice(i + 1);
-        let m; try { m = JSON.parse(one); } catch { fail("wrote something to its channel that is not a message"); child.kill("SIGKILL"); return; }
-        if (!m || typeof m !== "object" || Array.isArray(m)) { fail("wrote something to its channel that is not a message"); child.kill("SIGKILL"); return; }
-        child.emit("message", m);
-      }
-      if (line.length > LIMITS.channelLine) { fail("sent a message over the 1 MB line limit"); child.kill("SIGKILL"); }
-    });
+    const child = fork(runner, [], { execArgv, env: {}, cwd: real, stdio: ["ignore", "pipe", "pipe", "ipc"], serialization: "json" });
     let stderr = "";
-    let errLine = "", errTotal = 0;
-    child.stderr?.on("data", c => {
-      stderr = (stderr + c).slice(-4000);
-      errTotal += c.length; errLine += c;
-      for (let i = errLine.indexOf("\n"); i >= 0; i = errLine.indexOf("\n")) { const one = errLine.slice(0, i); errLine = errLine.slice(i + 1); if (one) logLine(one); }
-      if (errLine.length > 100_000) errLine = "";
-      if (errTotal > 4_000_000) { fail("wrote too much to its log"); child.kill("SIGKILL"); }
-    });
+    child.stdout?.on("data", c => String(c).split("\n").filter(Boolean).forEach(logLine));
+    child.stderr?.on("data", c => { stderr = (stderr + c).slice(-4000); });
     const fail = msg => { if (!error) error = scrub(msg); };
     const timer = setTimeout(() => { fail(`took longer than ${Math.round(timeoutMs / 1000)}s and was stopped`); child.kill("SIGKILL"); }, timeoutMs);
     const abort = () => { fail("stopped because vyred is stopping"); child.kill("SIGKILL"); };
@@ -110,39 +61,18 @@ async function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, s
 
     child.on("message", async (/** @type {any} */ m) => {
       if (!m || typeof m !== "object") return;
-      if (m.t === "emit") {
+      if (m.t === "log") logLine(m.line);
+      else if (m.t === "emit") {
         if (items.length >= LIMITS.items) { fail(`emitted more than ${LIMITS.items} items in one run; fetch only what is new since \`since\``); child.kill("SIGKILL"); return; }
         items.push(m.item);
       } else if (m.t === "vault") {
-        // A raw credential never enters the child: it could send it to any host or use it to write.
-        send({ t: "vault", id: m.id, error: "a watcher does not handle credentials; declare the host under net in watcher.json with its vault item, and Vyre attaches it to that host's requests" });
-      } else if (m.t === "ask") {
-        const reply = body => send({ t: "ask", id: m.id, ...body });
+        const name = String(m.name);
+        if (!needs.includes(name)) { child.connected && child.send({ t: "vault", id: m.id, error: `this watcher does not list "${name}" under needs in watcher.json` }); return; }
         try {
-          if (!askFn) throw new Error("this watcher did not declare ask in watcher.json, like { \"ask\": { \"dailyUsd\": 0.25 } }");
-          if (++asks > LIMITS.asks) throw new Error(`ask is limited to ${LIMITS.asks} calls in one run`);
-          const prompt = String(m.prompt || "");
-          if (prompt.length > LIMITS.askChars) throw new Error(`ask takes at most ${LIMITS.askChars} characters; send the part that matters`);
-          if (released.some(v => v && prompt.includes(v))) throw new Error("the prompt carries a value from the vault");
-          reply({ text: scrub(String(await askFn(prompt))).slice(0, LIMITS.askReply) });
-        } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
-      } else if (m.t === "fetch") {
-        // The child has no network of its own; this is its only way out (lib/sandbox/fetch.js).
-        const reply = body => send({ t: "fetch", id: m.id, ...body });
-        try {
-          const url = new URL(String(m.url));
-          if (!hosts || !hosts.length) throw new Error("this watcher declares no hosts; list each host it reads under net in watcher.json, like { \"api.example.com\": {} }");
-          if (!hosts.includes(url.hostname)) throw new Error(`${url.hostname} is not one of this watcher's declared hosts`);
-          // An api-credential host: the vault makes the call itself (a read, scoped to this watcher's grant).
-          const viaVault = viaRequest ? await viaRequest(url, m.init || {}) : undefined;
-          if (viaVault) { viaVault.body = scrub(String(viaVault.body ?? "")); for (const k of Object.keys(viaVault.headers || {})) viaVault.headers[k] = scrub(viaVault.headers[k]); reply({ result: viaVault }); return; }
-          const auth = netAuth ? await netAuth(url) : undefined;
-          if (auth) released.push(...forms(auth.value), ...forms(auth.value.replace(/^\S+ /, "")));
-          const r = await mediatedFetch(url.href, m.init || {}, { ...netOptions, allowHost: u => hosts.includes(u.hostname), ...(auth ? { auth } : {}) });
-          r.body = scrub(r.body);
-          for (const k of Object.keys(r.headers)) r.headers[k] = scrub(r.headers[k]);
-          reply({ result: r });
-        } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
+          const value = String(await fetch(name, m.field));
+          released.push(value);
+          child.connected && child.send({ t: "vault", id: m.id, value });
+        } catch (e) { child.connected && child.send({ t: "vault", id: m.id, error: /** @type {Error} */ (e).message }); }
       } else if (m.t === "done") { finished = true; cursor = m.cursor; }
       else if (m.t === "error") { finished = true; fail(m.message); }
     });
@@ -155,30 +85,10 @@ async function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, s
       if (!error && released.some(v => v && items.some(i => JSON.stringify(i).includes(v)))) {
         fail("an item carried a value from the vault; emit links and ids, never credentials");
       }
-      resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED, isolated: true, wall: wall.kind });
+      resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED });
     });
-    send({ t: "run", ...(files ? { files } : { entry: pathToFileURL(path.join(real, "watch.js")).href }), since: since ?? null, hook });
+    child.send({ t: "run", entry: pathToFileURL(path.join(real, "watch.js")).href, since: since ?? null, hook });
   });
-}
-
-/** The files of a watcher folder, to hand to a launched child: flat, text, small. */
-function readFolder(dir) {
-  const out = {}; let total = 0, n = 0;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!e.isFile() || ++n > 64) continue;
-    const text = fs.readFileSync(path.join(dir, e.name), "utf8");
-    total += text.length;
-    if (total > 1_000_000) throw new Error("the watcher folder is over 1 MB");
-    out[e.name] = text;
-  }
-  return out;
-}
-
-/** A value and the encodings that would still identify it in a log or an item. */
-function forms(v) {
-  const raw = String(v);
-  if (raw.length < 6) return [raw];
-  return [...new Set([raw, Buffer.from(raw).toString("base64"), Buffer.from(raw).toString("base64url"), Buffer.from(raw).toString("hex"), encodeURIComponent(raw), JSON.stringify(raw).slice(1, -1)])];
 }
 
 function lastLines(s) {

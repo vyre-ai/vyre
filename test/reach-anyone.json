@@ -536,30 +536,6 @@
   "undo.run": {
    "module": "undo",
    "reason": "own-action check in the tool: the person, or whoever did the action (sameActor); the inverse runs as module:undo, never as the person, and only a declared inverse that is not outward or person-only is replayed"
-  },
-  "watchers.card": {
-   "module": "watchers",
-   "reason": "read-only: the card is worked out from the folder, no network, no model"
-  },
-  "watchers.items": {
-   "module": "watchers",
-   "reason": "read-only: items watchers have filed, scoped by project"
-  },
-  "watchers.list": {
-   "module": "watchers",
-   "reason": "read-only"
-  },
-  "watchers.logs": {
-   "module": "watchers",
-   "reason": "read-only: a watcher's recent runs"
-  },
-  "watchers.pause": {
-   "module": "watchers",
-   "reason": "guard: stops a watcher only; it never starts anything (an agent cannot undo a person's pause: watchers.resume is the person's)"
-  },
-  "watchers.test": {
-   "module": "watchers",
-   "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
   }
  }
 }

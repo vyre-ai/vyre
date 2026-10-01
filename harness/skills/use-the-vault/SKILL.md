@@ -29,8 +29,8 @@ modules and watchers get an item by name when their manifest declares it, and pe
   Vyre reads the file itself, so the values never pass through you. Then tell the user to
   delete the file.
 - **Use an item in code:** a Vyre module declares it under `needs.vault` in `module.json` and
-  calls `ctx.vault.fetch("<name>")`. A watcher names the host and the item under `net` in
-  `watcher.json`; Vyre attaches the credential to that host's requests and the code never holds it. Scripts outside Vyre run through `vyre vault run <name> -- <command>`,
+  calls `ctx.vault.fetch("<name>")`. A watcher lists it under `needs` and calls
+  `vault.fetch("<name>")`. Scripts outside Vyre run through `vyre vault run <name> -- <command>`,
   which injects the value into that one process's environment and hides it in the output.
 - **Give a module access:** `vault_grant`. From you it waits as pending; tell the user to run
   `vyre vault approve <id>`. The same goes for passes you create.
