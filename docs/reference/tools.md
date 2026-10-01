@@ -4225,14 +4225,14 @@ Store Claude Code's sign-in in the Vault: a subscription setup token or an API k
   - `kind` "subscription" or "api-key"
   - `mode` one of "detect", "setup-token", "api-key"
   - `token` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.finish`
 
 Finish the onboarding.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.history`
 
@@ -4240,7 +4240,7 @@ Find and index this machine's Claude Code sessions, in the background.
 
 - Input:
   - `action` "status" or "start"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.join`
 
@@ -4279,14 +4279,14 @@ Checks <name>.vyre.run and saves it; reserve serves this machine at its address 
   - `action` one of "check", "reserve", "claim", "status", "ts.net"
   - `confirm` boolean
   - `name` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.passkey`
 
 A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.skip`
 
@@ -4294,14 +4294,14 @@ Skip a step for now; it can be finished later from Settings.
 
 - Input:
   - `step` one of "you", "claude", "tailscale", "name", "history", "devices", required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.status`
 
 Where the onboarding stands: every step's state and what it needs.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `onboard`
 
 ### `onboard.tailscale`
 
@@ -4309,7 +4309,7 @@ Tailscale on this machine; connect starts `tailscale up` and returns its sign-in
 
 - Input:
   - `action` one of "status", "detect", "poll", "connect", "lock", "policy"
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ### `onboard.you`
 
@@ -4318,7 +4318,7 @@ Step 1: your name as you like it shown, and your assistant's name. A name that i
 - Input:
   - `name` string, required
   - `assistant` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `onboard`
 
 ## planner
 
