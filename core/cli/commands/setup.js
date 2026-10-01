@@ -24,7 +24,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export default [
   {
-    name: "setup", order: 29, usage: "vyre setup --name <n> [--yes] [--json]", summary: "name this box, with no browser: <n>.vyre.run",
+    name: "setup", order: 29, usage: "vyre setup --name <n> [--yes] [--json]", summary: "name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs)",
     async run(args) {
       /** @type {string|null} */ let name = null;
       let yes = false;

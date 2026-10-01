@@ -950,8 +950,9 @@ test("machine: the start screen offers a Linux server or a Mac, the choice reach
   assert.equal(flow.state.machine, "mac");
   draw();
   assert.match(root.textContent, /Run this on the Mac/);
-  assert.match(root.textContent, /FileVault on, after a power cut/);
-  assert.match(root.textContent, /anyone who takes the Mac can read/);
+  assert.match(root.textContent, /with FileVault on, the Mac waits for someone to unlock it at the screen, and Vyre is off until then/);
+  assert.match(root.textContent, /anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password/);
+  assert.match(root.textContent, /"Start up automatically after a power failure" is on in System Settings, under Energy, and it starts off on a Mac mini/);
   assert.ok(flow.state.installLine.startsWith("curl -fsSL "), "the same one line: the script on the Mac picks the Mac install");
   await flow.begin();
   assert.equal(flow.state.machine, "mac", "Start again keeps the choice");
