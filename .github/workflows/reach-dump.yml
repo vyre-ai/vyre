@@ -19,6 +19,6 @@ jobs:
         run: |
           set +e; rc=0
           for f in test/reach-*.test.js core/vault/reach.test.js core/vault/surfaces.test.js core/vyre-core/forward.test.js core/gate/module.test.js core/google/module.test.js core/mail/module.test.js core/mcp/module.test.js core/connectors/module.test.js core/vault/agent-grants.test.js test/redteam/vault.test.js test/redteam/presence.test.js; do
-            VYRE_NO_DIALOGS=1 timeout 600 node --test "$f" >out.log 2>&1 || { echo "FAIL $f"; grep -E "^✖|not ok|AssertionError" out.log | head -8; rc=1; }
+            VYRE_NO_DIALOGS=1 timeout 600 node --test "$f" >out.log 2>&1 || { echo "FAIL $f"; grep -E -B1 -A22 "^not ok|^    not ok|failureType" out.log | head -90; rc=1; }
           done
           exit $rc
