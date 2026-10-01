@@ -41,7 +41,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-claude-home-"));
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-claude-work-"));
 let failed = "";
 try {
-  const env = { ...process.env, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`, ANTHROPIC_API_KEY: "sk-ant-mock", DISABLE_AUTOUPDATER: "1", DISABLE_TELEMETRY: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" };
+  const env = { PATH: process.env.PATH, HOME: home, USERPROFILE: home, CLAUDE_CONFIG_DIR: path.join(home, ".claude"), ANTHROPIC_BASE_URL: `http://127.0.0.1:${port}`, ANTHROPIC_API_KEY: "sk-ant-mock", DISABLE_AUTOUPDATER: "1", DISABLE_TELEMETRY: "1", CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" };
   const r = await new Promise(res => {
     const out = [];
     const c = spawn(bin, ["-p", "ping", "--model", "mock"], { cwd: work, env, stdio: ["ignore", "pipe", "pipe"] });

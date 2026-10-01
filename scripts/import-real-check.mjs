@@ -41,7 +41,7 @@ let failed = "";
 try {
   const v = spawnSync(bin, ["--version"], { encoding: "utf8" });
   console.log("codex:", (v.stdout || v.stderr).trim());
-  const env = { ...process.env, CODEX_HOME: home, HOME: work, MOCK_KEY: "x" };
+  const env = { PATH: process.env.PATH, CODEX_HOME: home, HOME: work, MOCK_KEY: "x" };
   // Async, so this process's mock server can answer while codex runs.
   const r = await new Promise(res => {
     const out = [];

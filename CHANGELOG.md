@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- import-real: the two CLIs are pinned, checkout keeps no credentials, and each child gets only PATH, its throwaway HOME and the mock variables (reviewer-2's LOWs).
 - import-real: `scripts/import-real-check.mjs` and a `import-real` workflow run the real Codex CLI once in a throwaway CODEX_HOME against a local mock of its Responses API, then list, place and convert the rollout file it wrote with the import's own reader and Claude Code the same way against a mock Messages API (`scripts/import-real-claude-check.mjs`), the import's scan reading the transcript it wrote (ubuntu and macOS runners; no account, no key, never a person's ~/.codex).
 - install-box.sh: a second paste of the same install line on a running install exits before the progress mailbox opens, so it posts nothing and the setup page's reader stays in order (drive's J1). The setup page names a browser with no X25519 (Chrome before 133) at the start: "This browser is too old for the setup", with the versions that work, instead of "could not connect to your server".
 - The public site no longer says "vyred" (site/start and site/llms.txt: "Vyre" instead), and `test/site-words.test.js` keeps the internal words (vyred, switchboard, no such tool, as Claude Code does) out of the site's copy, with the same list as native-core's Deck test.
