@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // check-release-dist: what a release folder must be, for the updater that will read it. The release job runs this on dist/ before it signs
 // or publishes anything; the rehearsal runs it on a dry run's artifact.
-//   node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--pubkey <spki-base64>]
+//   node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--installer] [--pubkey <spki-base64>]
+//   --installer the Windows installer (Vyre_<version>_x64-setup.exe and VyreSetup.exe) must be in the release
 //   --pulled   the release carries images: release.json names them by digest and compose.yml pins them (required for a release that boxes pull)
 //   --pubkey   SHA256SUMS.sig must be a valid Ed25519 signature by this key over "vyre-release-sums\n" + SHA256SUMS (the format every updater reads)
 // Exit 0 when everything holds; otherwise every problem is printed, one per line, and the exit is 1.
@@ -15,7 +16,7 @@ const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0
 const REQUIRED = ["install-box.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
 
 /** @param {string} dir @param {{ pulled?: boolean, pubkey?: string }} [o] @returns {string[]} the problems */
-export function check(dir, { pulled = false, pubkey = "" } = {}) {
+export function check(dir, { pulled = false, pubkey = "", installer = false } = {}) {
   const problems = [];
   const read = f => { try { return fs.readFileSync(path.join(dir, f)); } catch { return null; } };
   for (const f of REQUIRED) if (read(f) === null) problems.push(`missing ${f}`);
@@ -36,6 +37,12 @@ export function check(dir, { pulled = false, pubkey = "" } = {}) {
   }
   for (const f of listed.keys()) if (!files.includes(f)) problems.push(`SHA256SUMS lists ${f}, which is not in the release`);
 
+  // The Windows installer, both names (the updater looks for the versioned one, install-windows.ps1 fetches VyreSetup.exe), listed in SHA256SUMS.
+  if (installer) {
+    const v = read("VERSION").toString("utf8").trim();
+    for (const f of [`Vyre_${v}_x64-setup.exe`, "VyreSetup.exe"]) if (!listed.has(f)) problems.push(`the Windows installer ${f} is not in the release`);
+  }
+
   // release.json and VERSION agree; the images are named by digest.
   let rj = null;
   try { rj = JSON.parse(read("release.json").toString("utf8")); } catch { problems.push("release.json is not JSON"); }
@@ -54,8 +61,9 @@ export function check(dir, { pulled = false, pubkey = "" } = {}) {
     const imageLines = compose.split("\n").filter(l => /^[ \t]*image:/.test(l));
     for (const l of imageLines) if (!EXACT_IMAGE.test(l)) problems.push(`compose.yml has an image line that is not pinned exactly by digest: ${l.trim()}`);
     if (box && !imageLines.some(l => l.replace(/^[ \t]*image:[ \t]*/, "") === box)) problems.push(`compose.yml has no image line that is exactly ${box}`);
-    const cl = compose.split("\n").filter(l => !/^[ \t]*#/.test(l) && l.includes("VYRE_COMPUTERS_IMAGE"));
-    if (computer && !cl.some(l => l.includes(computer))) problems.push(`compose.yml does not carry ${computer} as the default of VYRE_COMPUTERS_IMAGE`);
+    // Every VYRE_COMPUTERS_IMAGE default in the file (there may be several services that read it) is the signed computers ref, and there is at least one.
+    const defaults = [...compose.replace(/^[ \t]*#.*$/gm, "").matchAll(/VYRE_COMPUTERS_IMAGE:-([^}\s]*)\}/g)].map(m => m[1]);
+    if (computer && (defaults.length === 0 || defaults.some(d => d !== computer))) problems.push(`every default of VYRE_COMPUTERS_IMAGE in compose.yml must be ${computer} (found: ${defaults.join(", ") || "none"})`);
     if (/:latest\b/.test(compose.replace(/^[ \t]*#.*$/gm, ""))) problems.push("compose.yml still names a :latest tag");
   }
 
@@ -84,7 +92,7 @@ if (process.argv[1] && process.argv[1].endsWith("check-release-dist.mjs")) {
   const dir = args.find(a => !a.startsWith("--") && args[args.indexOf(a) - 1] !== "--pubkey");
   if (!dir) { console.error("usage: node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--pubkey <spki-base64>]"); process.exit(2); }
   const pubkey = args.includes("--pubkey") ? args[args.indexOf("--pubkey") + 1] : "";
-  const problems = check(dir, { pulled: args.includes("--pulled"), pubkey });
+  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), pubkey });
   for (const p of problems) console.error(`release-dist: ${p}`);
   if (problems.length) process.exit(1);
   console.log(`release-dist: ${dir} is what the updater needs`);

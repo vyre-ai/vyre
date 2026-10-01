@@ -6,7 +6,7 @@ name: release-dist
 on:
   workflow_dispatch:
   push:
-    paths: ["scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]
+    paths: ["apps/app/package.json", "apps/app/package-lock.json", "scripts/build-app-out.mjs", "relay/app/**", "test/build-app-out.test.js", "scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]
 permissions:
   contents: read
 jobs:
@@ -38,3 +38,23 @@ jobs:
           if node scripts/check-release-dist.mjs dist --pulled 2>"$RUNNER_TEMP/pulled.err"; then echo "a release with no images passed --pulled"; exit 1; fi
           cat "$RUNNER_TEMP/pulled.err"
           grep -q "names no ghcr.io/vyre-ai digest for the box image" "$RUNNER_TEMP/pulled.err"
+      - name: The hosted phone app's sealing and signing (fixture, throwaway key)
+        run: node --test test/build-app-out.test.js
+
+  app-web:
+    # The same build the release's app-web job does, with its install scripts off: proves expo can export without them.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app with no install scripts
+        working-directory: apps/app
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+          test -f dist/index.html

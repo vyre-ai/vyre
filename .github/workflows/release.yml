@@ -1,15 +1,27 @@
-# A Vyre release (ADR 0033, section 4). A tag vX.Y.Z publishes a GitHub Release on the stable
-# channel; vX.Y.Z-beta.N and vX.Y.Z-rc.N publish a prerelease on beta. The assets are what
-# scripts/build-site.sh makes for the box (install-box.sh, compose.yml, compose.build.yml,
-# vyre.env.example, vyre, Dockerfile, dockerignore, vyre.tgz, VERSION), the unsigned Android APK
-# (as android-<version>-<sha7>.apk) and android.json from app.yml's run on the same commit when there is one, and release.json
-# { version, channel, commit, date, min_from, notes }. SHA256SUMS covers them all, and each gets
-# a build provenance attestation (keyless: the workflow's OIDC identity, no key and no secret).
-# notes is this version's CHANGELOG section ("## X.Y.Z" or "## X.Y.Z-beta.N"; an rc without its own
-# section takes "## X.Y.Z"), also the release
-# body. Nothing is published until the repo variable VYRE_RELEASES is "go". min_from is "0.1.0" unless release/min_from says otherwise. The tag must match
-# package.json's version. Clients read the Releases API: stable is the newest non-prerelease,
-# beta the newest of any. Run by hand with a tag to build and check everything without publishing.
+# A Vyre release (ADR 0033 section 4; 0.2 PLAN R1, R5, R7). A tag vX.Y.Z publishes a GitHub Release on the
+# stable channel; vX.Y.Z-beta.N and vX.Y.Z-rc.N publish a prerelease on beta. Clients read the Releases API:
+# stable is the newest non-prerelease, beta the newest of any.
+#
+# What a release carries:
+# - Images, multi-arch (linux/amd64 and linux/arm64, each built natively), pushed to ghcr by digest:
+#   ghcr.io/vyre-ai/vyre (the box) and ghcr.io/vyre-ai/vyre-computer (agents' computers). The per-arch
+#   digests are joined into one list, tagged vX.Y.Z (and latest on stable), signed keyless with cosign
+#   (this workflow's OIDC identity), with an SPDX SBOM and a build provenance attestation.
+# - The box files build-site.sh makes (install-box.sh, compose.yml, compose.build.yml, vyre.env.example,
+#   vyre, Dockerfile, dockerignore, vyre.tgz, VERSION). vyre.tgz, compose.build.yml and the Dockerfile stay,
+#   so a 0.1.1 box's own box/vyre, which only knows how to build, can still update (R4). The released
+#   compose.yml pins both images by digest.
+# - release.json: { version, channel, commit, date, min_from, notes, images: { box, computer: { ref,
+#   platforms } } }. Only additive fields, so an older reader still parses it.
+# - SHA256SUMS over every file; SHA256SUMS.minisig (minisign, the release key, from the protected "release"
+#   environment only); SHA256SUMS.cosign.bundle (cosign sign-blob, keyless); a provenance attestation.
+#
+# notes is release/notes/<version>.md: short, plain, read by the lead before the tag (a missing file fails a
+# publish). The long engineering notes stay in CHANGELOG.md. min_from is release/min_from.
+#
+# Nothing is published unless the push is a tag and the repo variable VYRE_RELEASES is "go". Otherwise it is
+# a dry run: everything is built and checked, no image leaves the runner, and the files are uploaded as a
+# workflow artifact. Run it by hand on a branch with a tag name to rehearse a release.
 name: release
 on:
   push:
@@ -24,42 +36,39 @@ permissions:
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+env:
+  REGISTRY: ghcr.io
+  BOX_IMAGE: ghcr.io/${{ github.repository_owner }}/vyre
+  COMPUTER_IMAGE: ghcr.io/${{ github.repository_owner }}/vyre-computer
 jobs:
-  # The Windows installer is built inside this run, so the release can never race it or ship
-  # without it: `release` needs this job, and fails if the installer is not in the artifact.
-  windows:
-    uses: ./.github/workflows/capsule-win.yml
-    permissions:
-      contents: read
-    with:
-      tag: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-
-  release:
-    needs: windows
+  prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
-      actions: read        # app.yml's Android artifact
-    env:
-      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-      # DRY RUN until the lead says go: publishing also needs the repo variable VYRE_RELEASES=go
-      # (unset today). Until then every run, a tag push included, uploads its assets as a workflow
-      # artifact and publishes nothing.
-      PUBLISH: ${{ github.event_name == 'push' && vars.VYRE_RELEASES == 'go' }}
-      # A dry run may carry the placeholder release key; a publishing run may not (scripts/check-release-key.mjs).
-      VYRE_ALLOW_PLACEHOLDER_KEY: ${{ (github.event_name == 'push' && vars.VYRE_RELEASES == 'go') && 'no' || '1' }}
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+      channel: ${{ steps.v.outputs.channel }}
+      min_from: ${{ steps.v.outputs.min_from }}
+      publish: ${{ steps.v.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # A tag push builds the tag; a dry run builds the branch it was dispatched on, so a release
-          # candidate is checked before anything is tagged.
           ref: ${{ github.ref }}
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: Version, channel and notes
+      - name: The tag's commit is on main or the 0.2 stage line (a publishing run signs; a commit off both never does)
+        if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+        run: |
+          git fetch --no-tags origin main work/stage-0.2
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2 \
+            || { echo "the tag's commit is on neither main nor work/stage-0.2; refusing to build and sign a release from it"; exit 1; }
+      - name: Version, channel, notes
+        id: v
+        env:
+          TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          PUBLISH: ${{ github.event_name == 'push' && vars.VYRE_RELEASES == 'go' }}
         run: |
           case "$TAG" in
             v*-beta.*|v*-rc.*) channel=beta ;;
@@ -69,190 +78,393 @@ jobs:
           version=${TAG#v}
           pkg=$(node -p 'require("./package.json").version')
           [ "$pkg" = "$version" ] || { echo "the tag says $version but package.json says $pkg: bump it first"; exit 1; }
-          mkdir -p dist
-          # This version's CHANGELOG section: from its "## <version>" heading to the next "## ". A
-          # release candidate (X.Y.Z-rc.N) without its own section takes the X.Y.Z one it previews.
-          node -e '
-            const [v] = process.argv.slice(1), lines = require("fs").readFileSync("CHANGELOG.md", "utf8").split("\n");
-            const find = want => lines.findIndex(l => l.startsWith("## ") && l.replace(/^##\s+v?/, "").split(/\s/)[0] === want);
-            let at = find(v);
-            if (at < 0 && /-rc\.\d+$/.test(v)) at = find(v.replace(/-rc\.\d+$/, ""));
-            if (at < 0) { console.error(`CHANGELOG.md has no "## ${v}" section`); process.exit(1); }
-            let end = lines.findIndex((l, i) => i > at && l.startsWith("## "));
-            if (end < 0) end = lines.length;
-            process.stdout.write(lines.slice(at + 1, end).join("\n").trim() + "\n");' "$version" > dist/notes.md
+          notes=release/notes/$version.md
+          [ -f "$notes" ] || notes=release/notes/${version%-*}.md
+          if [ ! -f "$notes" ]; then
+            [ "$PUBLISH" = true ] && { echo "no release/notes/$version.md: the lead reads the notes before a tag"; exit 1; }
+            echo "Dry run: no release notes file yet (release/notes/$version.md)." > "$RUNNER_TEMP/notes.md"; notes=$RUNNER_TEMP/notes.md
+          fi
+          mkdir -p dist && cp "$notes" dist/notes.md
           min_from=$( [ -f release/min_from ] && tr -d ' \n' < release/min_from || echo 0.1.0 )
-          echo "VERSION=$version" >> "$GITHUB_ENV"; echo "CHANNEL=$channel" >> "$GITHUB_ENV"; echo "MIN_FROM=$min_from" >> "$GITHUB_ENV"
-          echo "$TAG: version $version, channel $channel, min_from $min_from" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: The tag's commit is on main (a publishing run signs; a commit off main never does)
-        if: env.PUBLISH == 'true'
-        run: |
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
-      - name: What changed in the signing path since the last published release (for the approver)
-        # The approval on the `sign` job happens BEFORE that job starts, so the look has to be here, in
-        # the build job's summary, which is already written while the approval is pending. The base is
-        # the last release the publish job actually made (a tag anyone can push proves nothing).
+          { echo "tag=$TAG"; echo "version=$version"; echo "channel=$channel"; echo "min_from=$min_from"; echo "publish=$PUBLISH"; } >> "$GITHUB_OUTPUT"
+          echo "$TAG: version $version, channel $channel, min_from $min_from, publish $PUBLISH" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: What changed in the signing path since the last published release, for the approver
+        # The approval on the release environment happens BEFORE the release job starts, so the look has to be here, in a job whose summary is already
+        # written while the approval is pending. The base is the last release the publish step actually made (a tag anyone can push proves nothing).
+        # The paths are everything that runs with the signing key or decides what it signs: the workflows, the signing and gate scripts, the wrapper
+        # the release ships, and the phone app's dependency lockfile (its build is signed too).
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
         run: |
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/check-release-key.mjs core/vyre-core/release.js"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             echo "### Signing path: $TAG vs ${prev:-nothing (no published release yet)}"
+            # The phone app's dependencies, as a short list first (its build is signed with the release key): the raw lockfile diff below is long.
+            git show "$base:apps/app/package-lock.json" > "$RUNNER_TEMP/old-lock.json" 2>/dev/null || : > "$RUNNER_TEMP/old-lock.json"
+            node scripts/lock-changes.mjs "$RUNNER_TEMP/old-lock.json" apps/app/package-lock.json > "$RUNNER_TEMP/lock-changes.txt"
+            echo "#### apps/app dependency changes (name@version; a changed integrity under the same version is listed too)"
+            echo '```'
+            head -n 300 "$RUNNER_TEMP/lock-changes.txt"
+            echo '```'
+            if [ "$(wc -l < "$RUNNER_TEMP/lock-changes.txt")" -gt 301 ]; then echo "**The list is cut at 300 lines; read apps/app/package-lock.json's diff.**"; fi
+            # shellcheck disable=SC2086
             if git diff --quiet "$base" HEAD -- $paths; then
               echo "no changes to the signing path"
             else
               echo '```'
+              # shellcheck disable=SC2086
               git diff --stat "$base" HEAD -- $paths
               echo '```'
+              # shellcheck disable=SC2086
               git diff "$base" HEAD -- $paths > "$RUNNER_TEMP/signing.diff" || true
               n=$(wc -l < "$RUNNER_TEMP/signing.diff" | tr -d ' ')
               echo "full diff: $n lines"
               echo '```diff'
-              head -n 400 "$RUNNER_TEMP/signing.diff"
+              head -n 600 "$RUNNER_TEMP/signing.diff"
               echo '```'
-              if [ "$n" -gt 400 ]; then echo "**TRUNCATED: $((n - 400)) more lines. Read the full diff before approving.**"; fi
+              if [ "$n" -gt 600 ]; then echo "**TRUNCATED: $((n - 600)) more lines. Read the full diff before approving.**"; fi
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Box files and vyre.tgz, as build-site.sh makes them (unsigned, this job never sees the signing key)
+      - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh
-          for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
+          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
             [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
             cp "site/box/$f" dist/
           done
-      - name: The Android app from app.yml on this commit, when there is one
-        env:
-          GH_TOKEN: ${{ github.token }}
+          [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: prepared
+          path: dist/
+          retention-days: 7
+
+  # One native build per arch (no QEMU): the box image from the released vyre.tgz, exactly what a box would
+  # build, and the computer image. Pushed by digest only; the tags go on the joined list below.
+  images:
+    needs: prepare
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: prepared
+          path: dist
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        if: needs.prepare.outputs.publish == 'true'
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: The build context a box would unpack
         run: |
-          sha=$(git rev-parse HEAD)
-          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --commit "$sha" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
-          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n "app-android-$sha" -D "$RUNNER_TEMP/android" 2>/dev/null; then
-            # Released as android-<version>-<sha7>.apk (ADR 0033), the name vyre update looks for;
-            # android.json's file follows. Same bytes, so its sha256 still holds.
-            apk="android-$VERSION-$(echo "$sha" | cut -c1-7).apk"
-            cp "$(ls "$RUNNER_TEMP"/android/vyre-*.apk | head -1)" "dist/$apk"
-            node -e 'const fs = require("fs"), [src, dst, file] = process.argv.slice(1); const j = JSON.parse(fs.readFileSync(src, "utf8")); j.file = file; fs.writeFileSync(dst, JSON.stringify(j, null, 2) + "\n")' \
-              "$RUNNER_TEMP/android/android.json" dist/android.json "$apk"
-            echo "Android: from app.yml run $id" | tee -a "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Android: no green app.yml run on $sha, released without the APK" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
-      - name: The Windows installer built by the windows job (required, never optional)
-        uses: actions/download-artifact@v4
+          mkdir -p "$RUNNER_TEMP/src"
+          tar -xzf dist/vyre.tgz -C "$RUNNER_TEMP/src" --strip-components=1
+          find "$RUNNER_TEMP/src" -exec touch {} +
+          echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
+      - name: Box image
+        id: box
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ env.SRC }}
+          file: ${{ env.SRC }}/box/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: ${{ needs.prepare.outputs.publish == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.BOX_IMAGE) || 'type=docker,name=vyre-box:dry' }}
+          cache-from: type=gha,scope=release-box-${{ matrix.arch }}
+          cache-to: type=gha,scope=release-box-${{ matrix.arch }},mode=max
+      - name: Computer image
+        id: computer
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: core/computers/image
+          file: core/computers/image/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          outputs: ${{ needs.prepare.outputs.publish == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.COMPUTER_IMAGE) || 'type=docker,name=vyre-computer:dry' }}
+          cache-from: type=gha,scope=release-computer-${{ matrix.arch }}
+          cache-to: type=gha,scope=release-computer-${{ matrix.arch }},mode=max
+      - name: A dry run boots the box image it built
+        if: needs.prepare.outputs.publish != 'true'
+        run: |
+          docker run -d --name box vyre-box:dry
+          for i in $(seq 1 90); do
+            docker exec box node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.request("GET", "/v1/health", undefined, { timeout: 3000 }); process.exit(r.error ? 1 : 0); }).catch(() => process.exit(1))' && { echo "linux/${{ matrix.arch }}: healthy" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; }
+            sleep 1
+          done
+          docker logs box | tail -30; exit 1
+      - name: Digests
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          echo "${{ steps.box.outputs.digest }}" > "$RUNNER_TEMP/digests/box-${{ matrix.arch }}"
+          echo "${{ steps.computer.outputs.digest }}" > "$RUNNER_TEMP/digests/computer-${{ matrix.arch }}"
+          echo "linux/${{ matrix.arch }}: box ${{ steps.box.outputs.digest }}, computer ${{ steps.computer.outputs.digest }}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          retention-days: 7
+
+  # The Windows installer, built inside this run by the reusable capsule-win workflow (its own pinned toolchain, --locked, NSIS, unsigned for 0.2),
+  # so a release can never race it or ship without it: `release` needs this job and fails if the installer is not in the artifact. It holds no key;
+  # the installer is listed in SHA256SUMS and the signed manifest like every other file.
+  windows:
+    needs: prepare
+    uses: ./.github/workflows/capsule-win.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ needs.prepare.outputs.tag }}
+
+  # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
+  # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
+  app-web:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app
+        working-directory: apps/app
+        run: |
+          # No dependency install scripts run here: the key signs whatever this job builds, so nothing a package's postinstall does may touch it.
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: app-web
+          path: apps/app/dist
+          retention-days: 7
+
+  # Join the per-arch digests into one list per image, tag it, sign it, attach the SBOM and provenance.
+  manifests:
+    needs: [prepare, images]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      box: ${{ steps.join.outputs.box }}
+      computer: ${{ steps.join.outputs.computer }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: digests-*
+          merge-multiple: true
+          path: digests
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+      - name: Join, tag and read the list digests
+        id: join
+        env:
+          TAG: ${{ needs.prepare.outputs.tag }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+        run: |
+          for name in box computer; do
+            case $name in box) img=$BOX_IMAGE ;; computer) img=$COMPUTER_IMAGE ;; esac
+            tags="-t $img:$TAG"; [ "$CHANNEL" = stable ] && tags="$tags -t $img:latest"
+            # shellcheck disable=SC2086
+            docker buildx imagetools create $tags "$img@$(cat digests/$name-amd64)" "$img@$(cat digests/$name-arm64)"
+            digest=$(docker buildx imagetools inspect "$img:$TAG" --format '{{json .Manifest}}' | jq -r .digest)
+            echo "$name=$img@$digest" >> "$GITHUB_OUTPUT"
+            echo "$name: $img@$digest (linux/amd64, linux/arm64)" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Sign, SBOM, attest
+        env:
+          BOX: ${{ steps.join.outputs.box }}
+          COMPUTER: ${{ steps.join.outputs.computer }}
+        run: |
+          for ref in "$BOX" "$COMPUTER"; do
+            cosign sign --yes "$ref"
+            syft "$ref" -o spdx-json > sbom.json
+            cosign attest --yes --type spdxjson --predicate sbom.json "$ref"
+          done
+      - name: Bare digests for the provenance attestations
+        id: bare
+        run: |
+          echo "box=${BOX#*@}" >> "$GITHUB_OUTPUT"; echo "computer=${COMPUTER#*@}" >> "$GITHUB_OUTPUT"
+        env:
+          BOX: ${{ steps.join.outputs.box }}
+          COMPUTER: ${{ steps.join.outputs.computer }}
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ env.BOX_IMAGE }}
+          subject-digest: ${{ steps.bare.outputs.box }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-name: ${{ env.COMPUTER_IMAGE }}
+          subject-digest: ${{ steps.bare.outputs.computer }}
+          push-to-registry: true
+
+  release:
+    needs: [prepare, images, manifests, app-web, windows]
+    # manifests is skipped on a dry run; the release job still runs to build and upload the files.
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The minisign key lives only in this environment's secrets; its reviewers (the lead and the
+    # integrator) approve every publish. A dry run needs no environment and gets no key.
+    environment: ${{ needs.prepare.outputs.publish == 'true' && 'release' || '' }}
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      TAG: ${{ needs.prepare.outputs.tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      MIN_FROM: ${{ needs.prepare.outputs.min_from }}
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+      BOX: ${{ needs.manifests.outputs.box }}
+      COMPUTER: ${{ needs.manifests.outputs.computer }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: prepared
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: app-windows-${{ github.sha }}
           path: ${{ runner.temp }}/windows
-      - name: Add the Windows installer to dist
+      - name: Add the Windows installer to dist (required, never optional)
         run: |
           exe="Vyre_${VERSION}_x64-setup.exe"
           [ -f "$RUNNER_TEMP/windows/$exe" ] || { echo "the Windows build is not $exe; refusing to release without it"; ls "$RUNNER_TEMP/windows"; exit 1; }
-          # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes.
+          # The updater looks for Vyre_<version>_x64-setup.exe; install-windows.ps1 fetches VyreSetup.exe. Same bytes. Both are in dist before
+          # SHA256SUMS is made, so both are in the signed list.
           cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
           cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
           echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: release.json and SHA256SUMS
+      - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
+        if: env.PUBLISH == 'true'
         run: |
-          node -e '
-            const fs = require("fs"), [version, channel, commit, min_from] = process.argv.slice(1);
-            fs.writeFileSync("dist/release.json", JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
-              notes: fs.readFileSync("dist/notes.md", "utf8") }, null, 2) + "\n");' "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM"
-          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
-          { echo "### SHA256SUMS in this build lists $(wc -l < dist/SHA256SUMS | tr -d ' ') files (the sign step adds manifest.json and signs it)"; cat dist/SHA256SUMS; } | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+          [ -n "$BOX" ] && [ -n "$COMPUTER" ] || { echo "no image digests"; exit 1; }
+          # Every `image: ${VAR:-default}` line becomes `image: <ref>` (the box line takes the box digest, a third-party image its own pinned default),
+          # and the default of VYRE_COMPUTERS_IMAGE takes the computers digest. The script fails the build on a line it cannot make literal: a variable a
+          # .env could replace would let a box pull what no one signed (box/vyre and install-box.sh refuse such a compose.yml).
+          node scripts/pin-release-compose.mjs dist/compose.yml "$BOX" "$COMPUTER"
+          grep -q "image: $BOX\$" dist/compose.yml || { echo "compose.yml did not take the box digest"; exit 1; }
+          grep -q "$COMPUTER" dist/compose.yml || { echo "compose.yml did not take the computer digest"; exit 1; }
+      - name: release.json, SHA256SUMS, and on a publish the Ed25519 signature every updater reads
+        env:
+          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
+        run: |
+          node scripts/write-release-json.mjs dist "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM" "$BOX" "$COMPUTER"
+          if [ "$PUBLISH" = true ]; then
+            # SHA256SUMS.sig: base64 Ed25519 over "vyre-release-sums\n" + the exact SHA256SUMS bytes, by the key pinned in the wrapper, the Mac installer and
+            # vyre-core. The key is the release environment's secret and never leaves this step. This also writes manifest.json and the final SHA256SUMS,
+            # and refuses to write a signature the pinned key does not verify.
+            [ -n "$VYRE_SIGNING_KEY" ] || { echo "no VYRE_RELEASE_SIGNING_KEY in the release environment"; exit 1; }
+            node scripts/sign-manifest.mjs dist "$VERSION" "$CHANNEL"
+          else
+            (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          fi
+          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Gate before anything is signed further or published, the release must be what the updater needs
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            node scripts/check-release-dist.mjs dist --pulled --installer --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+          else
+            node scripts/check-release-dist.mjs dist --installer
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: dist-${{ env.TAG }}
-          path: dist/
-          retention-days: 1
-      - uses: actions/upload-artifact@v4
+          name: app-web
+          path: apps/app/dist
+      - name: Seal and sign the hosted phone app (scripts/build-app-out.mjs)
+        env:
+          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            node scripts/build-app-out.mjs --dist apps/app/dist --release "$VERSION" --out app-out
+          else
+            node scripts/build-app-out.mjs --dist apps/app/dist --release "$VERSION" --out app-out --throwaway
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ env.PUBLISH == 'true' && 'app-out' || 'app-out-dryrun' }}
+          path: app-out
+          retention-days: 7
+      - name: Sign SHA256SUMS (minisign, the release key)
+        if: env.PUBLISH == 'true'
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          [ -n "$MINISIGN_SECRET_KEY" ] || { echo "no MINISIGN_SECRET_KEY in the release environment"; exit 1; }
+          sudo apt-get install -y -qq minisign >/dev/null
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign.key"
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$RUNNER_TEMP/minisign.key" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig -t "vyre $VERSION"
+          rm -f "$RUNNER_TEMP/minisign.key"
+          minisign -V -p release/minisign.pub -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+        if: env.PUBLISH == 'true'
+      - name: Sign SHA256SUMS (cosign, keyless)
+        if: env.PUBLISH == 'true'
+        run: cosign sign-blob --yes --bundle dist/SHA256SUMS.cosign.bundle dist/SHA256SUMS
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        if: env.PUBLISH == 'true'
+        with:
+          subject-path: "dist/*"
+      - name: Publish
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
+          latest=""; [ "$CHANNEL" = stable ] && latest="--latest"
+          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $latest $assets
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: env.PUBLISH != 'true'
         with:
           name: release-dry-run-${{ env.TAG }}
           path: dist/
           retention-days: 7
-
-  # The ONLY job that sees the release signing key: the GitHub Environment `release` holds it, needs
-  # the user's approval, and takes deployments only from main or v* tags. It gets the built files as
-  # an artifact, signs the tarball's manifest, and hands back manifest.json, SHA256SUMS and SHA256SUMS.sig.
-  sign:
-    needs: release
-    if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: release
-    permissions:
-      contents: read
-    env:
-      TAG: ${{ github.ref_name }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.ref }}
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: The tag's commit is on main
-        run: |
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor HEAD FETCH_HEAD || { echo "the tag's commit is not on main; refusing to sign a release from it"; exit 1; }
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist-${{ env.TAG }}
-          path: dist
-      - name: Sign SHA256SUMS (the one signature the Mac installer and the Linux updater both verify)
-        env:
-          VYRE_SIGNING_KEY: ${{ secrets.VYRE_RELEASE_SIGNING_KEY }}
-        run: |
-          version=$(cat dist/VERSION)
-          channel=$(node -p 'require("./dist/release.json").channel')
-          node scripts/sign-manifest.mjs dist "$version" "$channel"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: manifest-${{ env.TAG }}
-          path: |
-            dist/manifest.json
-            dist/SHA256SUMS
-            dist/SHA256SUMS.sig
-          retention-days: 1
-
-  publish:
-    needs: [release, sign]
-    if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write      # the release
-      id-token: write      # the attestation's keyless identity
-      attestations: write
-    env:
-      TAG: ${{ github.ref_name }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist-${{ env.TAG }}
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: manifest-${{ env.TAG }}
-          path: dist
-      - name: The signed files are all there
-        run: |
-          for f in manifest.json SHA256SUMS SHA256SUMS.sig; do [ -f "dist/$f" ] || { echo "no signed $f to publish"; exit 1; }; done
-          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/attest-build-provenance@v2
-        with:
-          subject-path: "dist/*"
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          CHANNEL=$(node -p 'require("./dist/release.json").channel')
-          VERSION=$(cat dist/VERSION)
-          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
-          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
-          # shellcheck disable=SC2086
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $assets

@@ -47,15 +47,29 @@ export function entriesOf(html, files) {
   return out;
 }
 
-/** @param {string} file */
+/**
+ * The raw 32-byte Ed25519 seed of a key given as a file of those bytes, or as a PKCS8 PEM (the release
+ * environment's secret, which a workflow passes in an environment variable and never writes to disk).
+ * @param {string} fileOrPem @returns {Buffer}
+ */
+export function rawKey(fileOrPem) {
+  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(fileOrPem)) {
+    const k = crypto.createPrivateKey(fileOrPem);
+    if (k.asymmetricKeyType !== "ed25519") throw new Error("the key is not an Ed25519 key");
+    return Buffer.from(k.export({ format: "der", type: "pkcs8" }).subarray(-32));
+  }
+  const raw = fs.readFileSync(fileOrPem);
+  if (raw.length !== 32) throw new Error(`${fileOrPem} is not a raw 32-byte Ed25519 key`);
+  return raw;
+}
+
+/** @param {string} file a path, or a PKCS8 PEM */
 export function loadKey(file) {
-  const raw = fs.readFileSync(file);
-  if (raw.length !== 32) throw new Error(`${file} is not a raw 32-byte Ed25519 key`);
-  return crypto.webcrypto.subtle.importKey("pkcs8", Buffer.concat([PKCS8, raw]), { name: "Ed25519" }, false, ["sign"]);
+  return crypto.webcrypto.subtle.importKey("pkcs8", Buffer.concat([PKCS8, rawKey(file)]), { name: "Ed25519" }, false, ["sign"]);
 }
 
 /** @param {string} file @returns {Uint8Array} */
-export const publicOf = file => new Uint8Array(crypto.createPublicKey(crypto.createPrivateKey({ key: Buffer.concat([PKCS8, fs.readFileSync(file)]), format: "der", type: "pkcs8" }))
+export const publicOf = file => new Uint8Array(crypto.createPublicKey(crypto.createPrivateKey({ key: Buffer.concat([PKCS8, rawKey(file)]), format: "der", type: "pkcs8" }))
   .export({ format: "der", type: "spki" }).subarray(-32));
 
 /** @param {string} file */

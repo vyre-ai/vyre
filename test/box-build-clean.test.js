@@ -240,3 +240,19 @@ test("cosign runs on EVERY ghcr.io/vyre-ai image line of the released compose.ym
   assert.notEqual(bad.status, 0);
   assert.match(bad.stderr, /cosign could not verify ghcr\.io\/vyre-ai\/vyre-sidecar@sha256:e{64} against Vyre's release workflow; nothing was changed/);
 });
+
+test("computers image: every VYRE_COMPUTERS_IMAGE default in the released compose.yml must be the signed computers ref", t => {
+  const box = `ghcr.io/vyre-ai/vyre@sha256:${"a".repeat(64)}`, comp = `ghcr.io/vyre-ai/vyre-computer@sha256:${"b".repeat(64)}`, evil = `ghcr.io/vyre-ai/vyre-computer@sha256:${"d".repeat(64)}`;
+  const verify = lines => {
+    const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-rel-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.writeFileSync(path.join(dir, "release.json"), JSON.stringify({ images: { box: { ref: box }, computer: { ref: comp } } }));
+    fs.writeFileSync(path.join(dir, "compose.yml"), `services:\n  vyre:\n    image: ${box}\n    environment:\n${lines.map(d => `      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${d}}\n`).join("")}`);
+    return harness(t, { text: BUILT, body: `tmp="${dir}"; verify_release_images` }).run();
+  };
+  assert.equal(verify([comp, comp]).status, 0, "several services reading it, all the signed ref");
+  const bad = verify([comp, evil]);
+  assert.notEqual(bad.status, 0);
+  assert.match(bad.stderr, /every default of VYRE_COMPUTERS_IMAGE in the release's compose\.yml must be/);
+  assert.notEqual(verify([]).status, 0, "no default at all is refused too");
+});

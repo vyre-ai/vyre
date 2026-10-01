@@ -725,7 +725,8 @@ read_release() {
     printf '%s\n' "$imgs" | awk -v r="$BOX_REF" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "compose.yml does not pin $BOX_REF, which release.json names"
   fi
   if [ -n "$COMPUTER_REF" ]; then
-    grep -v '^[[:space:]]*#' "$TMP/compose.yml" | grep 'VYRE_COMPUTERS_IMAGE' | grep -qF "$COMPUTER_REF" || die "compose.yml does not carry $COMPUTER_REF as the computers image, which release.json names"
+    cdef=$(grep -v '^[[:space:]]*#' "$TMP/compose.yml" | sed -n 's/.*VYRE_COMPUTERS_IMAGE:-\([^}[:space:]]*\)}.*/\1/p')
+    [ -n "$cdef" ] && [ -z "$(printf '%s\n' "$cdef" | grep -vxF "$COMPUTER_REF")" ] || die "every default of VYRE_COMPUTERS_IMAGE in compose.yml must be $COMPUTER_REF, which release.json names"
   fi
 }
 
