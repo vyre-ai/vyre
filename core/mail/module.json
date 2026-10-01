@@ -11,15 +11,15 @@
   ],
   "does": {
     "tools": [
-      "mail.accounts",
-      "mail.map",
-      "mail.test",
-      "mail.send",
-      "mail.search",
-      "mail.read",
-      "mail.find",
-      "mail.compose",
-      "mail.release"
+      { "name": "mail.accounts", "reach": "anyone" },
+      { "name": "mail.map", "reach": "anyone" },
+      { "name": "mail.test", "reach": "anyone" },
+      { "name": "mail.send", "reach": "anyone" },
+      { "name": "mail.search", "reach": "anyone" },
+      { "name": "mail.read", "reach": "anyone" },
+      { "name": "mail.find", "reach": "anyone" },
+      { "name": "mail.compose", "reach": "anyone" },
+      { "name": "mail.release", "reach": "modules" }
     ]
   },
   "watches": {

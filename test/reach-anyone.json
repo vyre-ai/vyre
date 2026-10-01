@@ -73,6 +73,118 @@
    "module": "events",
    "reason": "read-only, scoped by the module itself"
   },
+  "gate.approve": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller; presence proof required"
+  },
+  "gate.get": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller"
+  },
+  "gate.held": {
+   "module": "gate",
+   "reason": "read-only: the held queue; owner scope of the caller's thread"
+  },
+  "gate.reject": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller"
+  },
+  "gate.request": {
+   "module": "gate",
+   "reason": "held at the Gate: it only files a request the person approves; an asked confirmation is valid only from a person's surface and a mismatch always holds"
+  },
+  "gate.revise": {
+   "module": "gate",
+   "reason": "callers list in code (cli, local, module, tailnet): no model caller"
+  },
+  "gate.said.list": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "gate.said.revoke": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "gate.senders": {
+   "module": "gate",
+   "reason": "read-only: the sender catalog, never a credential"
+  },
+  "gate.settle": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.accounts": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.add": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.calendar.create": {
+   "module": "google",
+   "reason": "an invite with attendees is held at the Gate; a solo event is written only on a connected account (forWrite) and tells nobody"
+  },
+  "google.calendar.list": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.next": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.search": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.today": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.update": {
+   "module": "google",
+   "reason": "an invite with attendees is held at the Gate; a change with no attendees is written only on a connected account (forWrite) and tells nobody"
+  },
+  "google.connect": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.connect.cancel": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.connect.finish": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.find": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.mail.draft": {
+   "module": "google",
+   "reason": "a draft goes nowhere: the person sends it, or it is held at the Gate with google.mail.send; connected account only (forWrite)"
+  },
+  "google.mail.read": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.mail.search": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.mail.send": {
+   "module": "google",
+   "reason": "held at the Gate: always held until the person approves the final content; nothing sends from here"
+  },
+  "google.remove": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.test": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
   "link.call": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
@@ -132,6 +244,38 @@
   "link.status": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
+  },
+  "mail.accounts": {
+   "module": "mail",
+   "reason": "read-only: names and states, never a value"
+  },
+  "mail.compose": {
+   "module": "mail",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "mail.find": {
+   "module": "mail",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "mail.map": {
+   "module": "mail",
+   "reason": "callers list in code (cli, deck, local, module): no model caller"
+  },
+  "mail.read": {
+   "module": "mail",
+   "reason": "read-only: names and states, never a value"
+  },
+  "mail.search": {
+   "module": "mail",
+   "reason": "read-only: names and states, never a value"
+  },
+  "mail.send": {
+   "module": "mail",
+   "reason": "held at the Gate: always held until the person approves; the account must be allowed to send (capabilities check)"
+  },
+  "mail.test": {
+   "module": "mail",
+   "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
   "presence.capsule.pin": {
    "module": "presence",
@@ -217,6 +361,10 @@
    "module": "projects",
    "reason": "read-only, scoped by the module itself"
   },
+  "providers.list": {
+   "module": "providers",
+   "reason": "read-only: names and states, never a value"
+  },
   "releases.cert": {
    "module": "releases",
    "reason": "callers limited in code to cli, deck, local, tailnet"
@@ -268,6 +416,354 @@
   "undo.run": {
    "module": "undo",
    "reason": "own-action check in the tool: the person, or whoever did the action (sameActor); the inverse runs as module:undo, never as the person, and only a declared inverse that is not outward or person-only is replayed"
+  },
+  "vault.account.create": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.account.enroll-touchid": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.account.status": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.account.unlock": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.agent.grant": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
+  },
+  "vault.agent.grants": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.audit": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.backup": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.breach.check": {
+   "module": "vault",
+   "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.caps": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.clipboard.clear": {
+   "module": "vault",
+   "reason": "guard in code: it clears only a clipboard that still holds the value vyred copied (hash compared first); no secret read or written"
+  },
+  "vault.codes": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.codes.import": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.connections.list": {
+   "module": "vault",
+   "reason": "read-only and own-scope: the caller's surface sees only its own connections; callers list in code"
+  },
+  "vault.connections.revoke": {
+   "module": "vault",
+   "reason": "own-scope check: only the caller's own surface use is taken away; taking access away is always allowed"
+  },
+  "vault.copy": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
+  },
+  "vault.delete": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and module): a person's surface needs a presence proof; a first-party module may delete only an item whose origin is that module (set by vyred at put, a refusal otherwise), and an added module is refused (not_declared)"
+  },
+  "vault.device.approve": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.device.code": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.device.join": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller"
+  },
+  "vault.device.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.device.unlock": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.devices": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.edit": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.emergency.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.env.scan": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.fill.native": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.fingerprint": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.generate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mcp): a named password is stored and never returned; it adds an item and reads none"
+  },
+  "vault.git": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.grant": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
+  },
+  "vault.grants.status": {
+   "module": "vault",
+   "reason": "read-only: tailnet policy status per pass holder, never a value"
+  },
+  "vault.health": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.history": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.identity": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.import": {
+   "module": "vault",
+   "reason": "presence proof and a preview token binding the import to one exact file; vyred reads the file, values never pass through Claude (callers list in code)"
+  },
+  "vault.import.preview": {
+   "module": "vault",
+   "reason": "presence proof and a preview-only token: it reads names and counts and writes nothing (callers list in code)"
+  },
+  "vault.inject": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.item": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.items.names": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
+  },
+  "vault.kit": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.match": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.members.accept": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.members.invite": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.members.remove": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.members.role": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.mention.search": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
+  },
+  "vault.migrate-key": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.move": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.need": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.pass.accept": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it waits for a person to approve"
+  },
+  "vault.pass.create": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it waits for a person to approve"
+  },
+  "vault.pass.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.pending": {
+   "module": "vault",
+   "reason": "read-only: lists what waits for a person, never a value"
+  },
+  "vault.people": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.people.verify": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.person.add": {
+   "module": "vault",
+   "reason": "presence proof: adding a person's card needs a person's touch; the assistant's kit flow adds a pasted card and waits for it (kit.test.js); callers list in code"
+  },
+  "vault.put": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller; presence proof required"
+  },
+  "vault.relay": {
+   "module": "vault",
+   "reason": "owner check: the owner's Vyre checks the pass before adding any value; callers list in code"
+  },
+  "vault.remind.run": {
+   "module": "vault",
+   "reason": "callers list in code (cli, deck, local): no model caller"
+  },
+  "vault.render": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.request": {
+   "module": "vault",
+   "reason": "scope check and the Gate: the key is never shown, a read runs, a send, payment or deletion runs only when asked for exactly or is held at the Gate"
+  },
+  "vault.resolve": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.restore": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.reveal": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
+  },
+  "vault.revoke": {
+   "module": "vault",
+   "reason": "callerKind check inside: a named agent or a module can only withdraw its own pending request; only the person's surfaces and an unnamed session revoke freely (G-MV4)"
+  },
+  "vault.rotation": {
+   "module": "vault",
+   "reason": "read-only: how an item is rotated, names only"
+  },
+  "vault.search": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.session.close": {
+   "module": "vault",
+   "reason": "taking access away is always allowed: it closes a fill session and grants nothing (surfaces.test.js pins it offered to Claude); the session id is the guard"
+  },
+  "vault.session.open": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
+  },
+  "vault.session.status": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
+  },
+  "vault.ssh.add": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.ssh.approvals": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller"
+  },
+  "vault.ssh.approve": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.ssh.generate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mcp): the private key is never returned and using it needs a person's approval (vault.ssh.approve)"
+  },
+  "vault.ssh.keys": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.sweep": {
+   "module": "vault",
+   "reason": "read-only: places and item names, never a value; presence proof (callers list in code)"
+  },
+  "vault.totp": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller; presence proof required"
+  },
+  "vault.unlock": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.unlock-passphrase": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.update": {
+   "module": "vault",
+   "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.uses": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.vaults.create": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller"
+  },
+  "vault.vaults.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.vaults.rotate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.verify": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces, tailnet, module; no model) and the presence proof carried to core"
   }
  }
 }

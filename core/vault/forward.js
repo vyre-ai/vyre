@@ -29,7 +29,7 @@ const fail = (message, code) => Object.assign(new Error(message), { code });
  * @param {{ call(tool: string, input: any, header?: string): Promise<{ data?: any, error?: any }>, events?: (after: number, wait?: number) => Promise<{ events: any[], last: number }> }} link core's link
  */
 export function startForwarder(ctx, link) {
-  const declared = /** @type {string[]} */ (JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).does.tools);
+  const declared = /** @type {string[]} */ (JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).does.tools.map((/** @type {any} */ t) => (typeof t === "string" ? t : t.name)));
   const obj = { type: "object" };
 
   for (const [tool, proved] of Object.entries(FORWARD)) {

@@ -81,7 +81,7 @@ test("surfaces: only people reach reveal, copy, fill and sessions; Claude and mo
   }
   assert.ok(offered.includes("vault.session.close"), "closing a session takes access away, so anyone may");
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO, "core", "vault", "module.json"), "utf8"));
-  for (const tool of [...PERSON_ONLY, "vault.session.close"]) assert.ok(manifest.does.tools.includes(tool), tool);
+  for (const tool of [...PERSON_ONLY, "vault.session.close"]) assert.ok(manifest.does.tools.map(t => (typeof t === "string" ? t : t.name)).includes(tool), tool);
   // An object in the order the Capsule lists them; "#..." names a second action on one tool.
   assert.deepEqual(Object.keys(manifest.shows.capsule), ["results:vault.search", "action:vault.fill.native", "action:vault.copy",
     "action:vault.copy#username", "action:vault.copy#totp", "action:vault.totp", "action:vault.lock"]);

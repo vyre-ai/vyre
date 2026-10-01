@@ -253,6 +253,18 @@ export default {
       description: "Add a standing permission yourself, from Settings: what may go out without asking each time. `kind` send, post or pay; `to` the exact addresses, handles or channels; `agents` to limit it to named agents (none means any of yours); a pay one needs `limits {max_amount, currency}`. Only you, on your own surface, add one; needs no proof, since you asked.",
       input: obj({ kind: { type: "string", enum: ["send", "post", "pay", "act_out"] }, channel: str, to: { type: "array", items: str }, what: str, agents: { type: "array", items: str }, limits: obj({ max_amount: { type: "number" }, currency: str }) }, ["kind", "to"]),
       callers: ["cli", "local", "deck", "capsule"],
+      // A rare, power-granting act: paying, or a blanket allow that names no agent, needs a person's proof (the Deck's presence session
+      // covers it). A narrow send or post for named agents stays one tap. The summary names the kind, the recipients and the cap, so
+      // the proof binds exactly this permission. Taking one away (gate.said.revoke) never needs proof.
+      presence: {
+        when: (/** @type {any} */ i) => Boolean(i) && (i.kind === "pay" || !(Array.isArray(i.agents) && i.agents.length)),
+        summary: (/** @type {any} */ i) => {
+          const to = Array.isArray(i && i.to) && i.to.length ? i.to.join(", ") : "no one named";
+          const who = Array.isArray(i && i.agents) && i.agents.length ? `only ${i.agents.join(", ")}` : "any agent";
+          const cap = i && i.limits && typeof i.limits === "object" ? Object.entries(i.limits).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(", ") : "";
+          return `Allow a standing permission to ${i && i.kind} to ${to} for ${who}${cap ? ` (${cap})` : ""}`;
+        },
+      },
       run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.add", { ...input, surface: String(caller) }); },
     });
 
