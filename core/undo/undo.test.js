@@ -147,7 +147,7 @@ test("an agent undoes only its own rows; the person any; a module its own", asyn
   assert.equal((await w.call("undo.run", { id: junos }, "mcp:agent:kit")).error?.code, "denied");
   assert.equal((await w.call("undo.run", { id: kits }, "cli:agent:juno")).error?.code, "denied", "an agent naming a person's surface is still that agent");
   assert.equal((await w.call("undo.run", { id: kits }, "mcp")).error?.code, "denied", "a plain model session is not the person");
-  assert.equal((await w.call("undo.run", { id: watchers }, "module:mail")).error?.code, "denied");
+  assert.ok(["denied", "not_declared"].includes((await w.call("undo.run", { id: watchers }, "module:mail")).error?.code), "an added module is refused (not_declared) or by the tool (denied)");
   assert.equal(g.removed.length, 0);
   assert.equal((await w.call("undo.run", { id: kits }, "harness:agent:kit")).data.state, "undone", "the same agent over another transport");
   assert.equal((await w.call("undo.run", { id: junos }, "mcp:agent:juno")).data.state, "undone", "the assistant, its own last action");
