@@ -151,273 +151,8 @@
    "module": "capsule",
    "default": "limited by callers in code"
   },
-  "chrome.act": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.api": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.approve": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.batch": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.click": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.console": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.eval": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.fill": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.frames": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.ghl": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.inspect": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.install": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.interject": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.login": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.net": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.open": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.pause": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.plan": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.plan.edit": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.recipe": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.release": {
-   "module": "chrome",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "chrome.resume": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.screenshot": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.site": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.snapshot": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.sources": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.state": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.status": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.stop": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.summary": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.tabs": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.type": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
-  "chrome.voice": {
-   "module": "chrome",
-   "default": "limited by callers in code"
-  },
-  "chrome.wait": {
-   "module": "chrome",
-   "default": "open to any caller"
-  },
   "commands.list": {
    "module": "commands",
-   "default": "open to any caller"
-  },
-  "computers.checkout": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.egress.set": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.egress.status": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.endpoint": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.fill.begin": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.fill.end": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.get": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.giveback": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.handback.set": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.handback.status": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.helper": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.limits": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.list": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.may-act": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.member.add": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.member.dispose": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.member.remove": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.member.rotate": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.node.agent": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.pause": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.release": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.restart": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.resume": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.shield": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.stats": {
-   "module": "computers",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "computers.stop": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.tailnet.set": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.tailnet.status": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.takeover": {
-   "module": "computers",
-   "default": "open to any caller"
-  },
-  "computers.watch": {
-   "module": "computers",
    "default": "open to any caller"
   },
   "connectors.calendar.today": {
@@ -461,10 +196,6 @@
    "module": "connectors",
    "default": "internal or hook in code",
    "internal": true
-  },
-  "connectors.scope": {
-   "module": "connectors",
-   "default": "limited by callers in code"
   },
   "context.now": {
    "module": "context",
@@ -743,58 +474,6 @@
    "default": "internal or hook in code",
    "internal": true
   },
-  "glass.close": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.download": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.list": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.mkdir": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.move": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.preview": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.stat": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.trash": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.files.upload": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.open": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.release": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.take": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
-  "glass.targets": {
-   "module": "glass",
-   "default": "open to any caller"
-  },
   "goals.accept": {
    "module": "goals",
    "default": "limited by callers in code"
@@ -895,71 +574,6 @@
   "google.test": {
    "module": "google",
    "default": "limited by callers in code"
-  },
-  "hands-desktop.act": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.apps": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.screenshot": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.tree": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands.act": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.commit": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.find": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.grant.add": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.grant.list": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.grant.remove": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.indicator": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.observe": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.pause": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.release": {
-   "module": "hands",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "hands.resume": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.stop": {
-   "module": "hands",
-   "default": "open to any caller"
   },
   "harness.brief": {
    "module": "harness",
@@ -1759,14 +1373,6 @@
    "module": "relay",
    "default": "open to any caller"
   },
-  "screen.context": {
-   "module": "screen",
-   "default": "callers admit a model"
-  },
-  "screen.shot": {
-   "module": "screen",
-   "default": "callers admit a model"
-  },
   "sessions.accounts.add": {
    "module": "sessions",
    "default": "open to any caller"
@@ -1945,38 +1551,6 @@
    "default": "internal or hook in code",
    "internal": true
   },
-  "sideview.close": {
-   "module": "sideview",
-   "default": "callers admit a model"
-  },
-  "sideview.open": {
-   "module": "sideview",
-   "default": "callers admit a model"
-  },
-  "sideview.status": {
-   "module": "sideview",
-   "default": "callers admit a model"
-  },
-  "sight.frame": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.now": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.steps": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.targets": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.watch": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
   "spend.check": {
    "module": "spend",
    "default": "open to any caller"
@@ -2130,22 +1704,6 @@
   "team.status": {
    "module": "team",
    "default": "open to any caller"
-  },
-  "term.attach": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.close": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.list": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.open": {
-   "module": "term",
-   "default": "limited by callers in code"
   },
   "threads.answer": {
    "module": "threads",
@@ -2935,22 +2493,6 @@
   "vitals.watch": {
    "module": "vitals",
    "default": "open to any caller"
-  },
-  "voice.listen": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.settings": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.speak": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.status": {
-   "module": "voice",
-   "default": "limited by callers in code"
   },
   "waiting.count": {
    "module": "waiting",

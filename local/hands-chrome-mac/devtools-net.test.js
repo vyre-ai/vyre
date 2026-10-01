@@ -693,3 +693,24 @@ test("egress guard: the service worker state comes from an ISOLATED world when t
   const fb = await egressGuard((await mk(1, undefined)).k.ctx, 1);
   await fb.stop();
 });
+
+test("egress guard: a worker the script made keeps the guard (Fetch included) up for a grace after the script returns, so its first request is still judged", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-LATE", waitingForDebugger: true, targetInfo: { targetId: "L", type: "worker", url: "blob:https://a.example/w" } });
+  await new Promise(r => setTimeout(r, 10));
+  const stopping = eg.stop(); // the script has returned; the worker has not sent anything yet
+  await new Promise(r => setTimeout(r, 300));
+  k.push(1, "Fetch.requestPaused", { requestId: "late-evil", resourceType: "Fetch", request: { url: "https://attacker.example/c", method: "GET", headers: {} } }, "S-LATE");
+  await new Promise(r => setTimeout(r, 20));
+  assert.ok(k.calls("Fetch.failRequest").some(c => c.params.requestId === "late-evil"), "still judged and failed during the grace");
+  const out = await stopping;
+  assert.ok(out.some((/** @type {any} */ o) => /attacker/.test(String(o.origin))), "and reported");
+  // no child made during the script: no grace
+  const k2 = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k2.ctx);
+  const eg2 = await egressGuard(k2.ctx, 1);
+  const t0 = Date.now(); await eg2.stop();
+  assert.ok(Date.now() - t0 < 600, "a script that made no child pays no grace");
+});

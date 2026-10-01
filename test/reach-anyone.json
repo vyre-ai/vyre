@@ -65,13 +65,241 @@
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
+  "chrome.act": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.api": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.approve": {
+   "module": "chrome",
+   "reason": "posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
+  },
+  "chrome.batch": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.click": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.console": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.eval": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.fill": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.frames": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.ghl": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.inspect": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.login": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.net": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.open": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.plan": {
+   "module": "chrome",
+   "reason": "posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
+  },
   "chrome.point": {
    "module": "chrome",
-   "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard); the URL floor applies to the tab and to the frame the point lands in; what is under the point is classified by its text (a Send, Delete, publish or payment holds at the Gate whatever the plan says) and a drawn surface (no text of its own) holds unless the approved plan covers it for this tab and origin (trust.pointBudget, set only by the module); the page must still match the kept screenshot. Tests: local/hands-chrome-mac/ext-point.test.js and the point_rung stage"
+  },
+  "chrome.recipe": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.screenshot": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.site": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.snapshot": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.sources": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.state": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.status": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.stop": {
+   "module": "chrome",
+   "reason": "a model may stop itself: it only halts (oversight.stop), never changes a page; chrome.resume is callers: PEOPLE, so a stop is undone only by the person"
+  },
+  "chrome.summary": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.tabs": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.type": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.wait": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "computers.checkout": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.egress.status": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
+  "computers.get": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
+  "computers.giveback": {
+   "module": "computers",
+   "reason": "PERSON_ONLY floor (core/presence) plus the ownSurface check: an agent that is not the assistant is refused; the assistant is an mcp caller and the owner's way to these tools from chat, so reach person would cut it off"
+  },
+  "computers.handback.status": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
+  "computers.limits": {
+   "module": "computers",
+   "reason": "callers check in code: an agent that is not the assistant is refused (the user sets limits); the assistant and the person may set them"
+  },
+  "computers.list": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
+  "computers.pause": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.release": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.restart": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.resume": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.stop": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.takeover": {
+   "module": "computers",
+   "reason": "PERSON_ONLY floor (core/presence) plus the ownSurface check: an agent that is not the assistant is refused; the assistant is an mcp caller and the owner's way to these tools from chat, so reach person would cut it off"
+  },
+  "computers.watch": {
+   "module": "computers",
+   "reason": "ownSurface check in code: an agent that is not the assistant is refused, and the one-use ticket is for a person's screen"
   },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
+  },
+  "glass.files.download": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.list": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.preview": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.stat": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.targets": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "hands-desktop.act": {
+   "module": "hands-desktop",
+   "reason": "scoped to the agent's own computer (resolveAgent); computers.may-act refuses while paused or taken over; a consequential control is held (consequence.js)"
+  },
+  "hands-desktop.apps": {
+   "module": "hands-desktop",
+   "reason": "read-only; resolveAgent scopes an agent to its own computer, and computers.may-act refuses reads while shielded"
+  },
+  "hands-desktop.screenshot": {
+   "module": "hands-desktop",
+   "reason": "read-only; resolveAgent scopes an agent to its own computer, and computers.may-act refuses reads while shielded"
+  },
+  "hands-desktop.tree": {
+   "module": "hands-desktop",
+   "reason": "read-only; resolveAgent scopes an agent to its own computer, and computers.may-act refuses reads while shielded"
+  },
+  "hands.act": {
+   "module": "hands",
+   "reason": "an agent needs the person's grant (gated); a consequential control is held at the Gate (consequence.js), and a stop or pause refuses the act"
+  },
+  "hands.commit": {
+   "module": "hands",
+   "reason": "an agent needs the person's grant (gated); a consequential control is held at the Gate (consequence.js), and a stop or pause refuses the act"
+  },
+  "hands.find": {
+   "module": "hands",
+   "reason": "read-only; gated by the grant (agents need hands.grant.add by the person) and the hands floor"
+  },
+  "hands.grant.list": {
+   "module": "hands",
+   "reason": "callers list in code: cli, local, deck, capsule and module only; read-only"
+  },
+  "hands.indicator": {
+   "module": "hands",
+   "reason": "callers list in code: cli, local, deck, capsule and module only; read-only"
+  },
+  "hands.observe": {
+   "module": "hands",
+   "reason": "read-only; gated by the grant (agents need hands.grant.add by the person) and the hands floor"
+  },
+  "hands.stop": {
+   "module": "hands",
+   "reason": "a model may stop itself: it only halts (hands.halt), never acts; hands.resume is callers: PEOPLE"
   },
   "link.call": {
    "module": "link",
@@ -224,6 +452,46 @@
   "releases.sign": {
    "module": "releases",
    "reason": "callers limited in code to cli, local, module"
+  },
+  "screen.context": {
+   "module": "screen",
+   "reason": "shows the real screen (mail, banks, passwords), so a model needs the person's computer-use grant: an agent caller needs its own grant AND a posted plan (agentGate: hands.grant.list, then chrome.plan.check), a plain model session (mcp) needs the one-time grant hands.grant.add { agent: \"mcp\" } and then no prompts; refused otherwise. The person's own surfaces (cli, local, deck, capsule) and modules are not asked (Lumen's ask about my screen). Local only: refusePeer refuses a tailnet caller; secure fields and blind places stay redacted. Tests: local/screen-mac/module.test.js"
+  },
+  "screen.shot": {
+   "module": "screen",
+   "reason": "shows the real screen (mail, banks, passwords), so a model needs the person's computer-use grant: an agent caller needs its own grant AND a posted plan (agentGate: hands.grant.list, then chrome.plan.check), a plain model session (mcp) needs the one-time grant hands.grant.add { agent: \"mcp\" } and then no prompts; refused otherwise. The person's own surfaces (cli, local, deck, capsule) and modules are not asked (Lumen's ask about my screen). Local only: refusePeer refuses a tailnet caller; secure fields and blind places stay redacted. Tests: local/screen-mac/module.test.js"
+  },
+  "sideview.close": {
+   "module": "sideview",
+   "reason": "window tiling on this Mac only, never content: tailnet callers are refused in code (local callers only); no titles are logged or emitted; status is read-only"
+  },
+  "sideview.open": {
+   "module": "sideview",
+   "reason": "window tiling on this Mac only, never content: tailnet callers are refused in code (local callers only); no titles are logged or emitted; status is read-only"
+  },
+  "sideview.status": {
+   "module": "sideview",
+   "reason": "window tiling on this Mac only, never content: tailnet callers are refused in code (local callers only); no titles are logged or emitted; status is read-only"
+  },
+  "sight.frame": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.now": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.steps": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.targets": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.watch": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
   },
   "sync.consent": {
    "module": "sync",
