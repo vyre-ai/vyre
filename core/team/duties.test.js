@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { open as openStore } from "../store/index.js";
-import { duties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION } from "./duties.js";
-import { dutyNewsBlock } from "./index.js";
+import { duties, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
+import { dutyNewsBlock, addRefusal, addIsolation } from "./index.js";
 
 const tm = { agent: "reviewer-harlow-legal", project: "harlow-legal", role: "reviewer" };
 
@@ -15,6 +15,7 @@ function setup(t, { failOn, items = [] } = {}) {
   t.after(() => db.close());
   db.exec(DUTIES_MIGRATION);
   db.exec(DUTIES_SEEN_MIGRATION);
+  db.exec(DUTIES_TITLE_MIGRATION);
   const calls = [], events = [];
   const call = async (tool, input) => {
     calls.push([tool, input]);
@@ -112,4 +113,47 @@ test("accountChanged: a swapped account rotates the thread; no record, no accoun
   assert.equal(accountChanged({ provider: "claude", account: "a1" }, null), false);
   assert.equal(accountChanged({ provider: "claude", account: "a1" }, {}), false);
   assert.equal(accountChanged(null, { id: "a2" }), false);
+});
+
+test("expect: turning a duty on with the text the person was shown starts it; an edited one does not", async t => {
+  const { api, calls } = setup(t);
+  const d = await api.create(tm, { when: "daily 07:00", instruction: "Read the open issues.", by: "reviewer-harlow-legal", propose: true });
+  await api.update(d.id, { instruction: "Read the open issues and email the client." });
+  await assert.rejects(api.update(d.id, { enabled: true, expect: "Read the open issues." }), /changed since you saw it/);
+  assert.equal(calls.length, 0);
+  const on = await api.update(d.id, { enabled: true, expect: "Read the open issues and email the client." });
+  assert.equal(on.started, true);
+});
+
+test("hash and title: rows carry a fingerprint of what will run and a label to name it by; an edit changes the hash, a pause does not", async t => {
+  const { api } = setup(t);
+  const d = await api.create(tm, { when: "daily 07:00", instruction: "Read the open issues.", title: "  inbox duty ", by: "cli" });
+  assert.equal(d.title, "inbox duty");
+  assert.equal(d.hash, dutyHash({ trigger: "daily 07:00", instruction: "Read the open issues.", act: false }));
+  assert.match(d.hash, /^[0-9a-f]{12}$/);
+  const plain = await api.create(tm, { when: "thread.finished", instruction: "x".repeat(100), by: "cli" });
+  assert.equal(plain.title.length, 60); // no label: the instruction, cut
+  const paused = await api.update(d.id, { enabled: false });
+  assert.equal(paused.hash, d.hash);
+  const edited = await api.update(d.id, { instruction: "Read the open issues and goals." });
+  assert.notEqual(edited.hash, d.hash);
+  assert.notEqual(dutyHash({ trigger: "a", instruction: "b", act: true }), dutyHash({ trigger: "a", instruction: "b", act: false }));
+});
+
+test("addRefusal: a model may not set tools, model or helper_model when it adds a teammate; brief, instructions and isolation pass", () => {
+  assert.equal(addRefusal({ project: "p", role: "r", brief: "b", instructions: "i", isolation: "worktree" }), null);
+  assert.match(addRefusal({ project: "p", role: "r", tools: ["Bash"] }), /default tools and models/);
+  assert.ok(addRefusal({ project: "p", role: "r", model: "opus" }));
+  assert.ok(addRefusal({ project: "p", role: "r", helper_model: "haiku" }));
+  assert.match(addRefusal({ project: "p", role: "r", isolation: "none" }), /isolation none/);
+  assert.equal(addRefusal({ project: "p", role: "r", isolation: "folder" }), null);
+  assert.equal(addRefusal(null), null);
+});
+
+test("addIsolation: the person's surface defaults to folder, a model to worktree, and an explicit choice stands", () => {
+  assert.equal(addIsolation({}, true), "folder");
+  assert.equal(addIsolation({}, false), "worktree");
+  assert.equal(addIsolation({ isolation: "folder" }, false), "folder");
+  assert.equal(addIsolation({ isolation: "none" }, true), "none"); // only the person's surface may say none; addRefusal stops a model
+  assert.equal(addIsolation(null, false), "worktree");
 });

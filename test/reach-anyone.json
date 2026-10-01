@@ -1101,6 +1101,78 @@
    "module": "sync",
    "reason": "callers limited in code to tailnet"
   },
+  "team.ask": {
+   "module": "team",
+   "reason": "project check in code: only the person or a session in that project may ask; the request carries its asker and queues serially; a teammate's outward act still holds at the Gate"
+  },
+  "team.cancel": {
+   "module": "team",
+   "reason": "owner check in code: only the requester or the person, and only a queued request; stopping a running one is the person's"
+  },
+  "team.charter.diff": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the teammate's project, or the teammate itself"
+  },
+  "team.charter.draft": {
+   "module": "team",
+   "reason": "project check in code (person, assistant or a session in the project, never a teammate); saved as a new version the person can read and revert"
+  },
+  "team.charter.get": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the teammate's project, or the teammate itself"
+  },
+  "team.charter.history": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the teammate's project, or the teammate itself"
+  },
+  "team.default.get": {
+   "module": "team",
+   "reason": "read-only; callers limited in code to the person's surfaces and modules, never mcp"
+  },
+  "team.done": {
+   "module": "team",
+   "reason": "owner check in code: only the teammate whose request it is, and only while it is running"
+  },
+  "team.duties.create": {
+   "module": "team",
+   "reason": "scope check in code; a model's duty is only a proposal (off, no watcher) until the person turns it on, and a teammate may only propose for itself"
+  },
+  "team.duties.list": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the project, or the teammate itself"
+  },
+  "team.duties.update": {
+   "module": "team",
+   "reason": "owner check in code: a model may only pause or edit a proposal; turning one on or editing a running duty is refused, that is the person's tap"
+  },
+  "team.fail": {
+   "module": "team",
+   "reason": "owner check in code: only the teammate whose request it is, and only while it is running"
+  },
+  "team.list": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the caller's own project, and every project only for the person or the assistant"
+  },
+  "team.merge": {
+   "module": "team",
+   "reason": "owner check in code: only the project's integrator, and only with an attested passing exit code; main moves by compare-and-swap and the result says an agent vouched for it"
+  },
+  "team.notes": {
+   "module": "team",
+   "reason": "owner check in code: the teammate itself or the person writes its notes; a session in the project reads them"
+  },
+  "team.project-append": {
+   "module": "team",
+   "reason": "read-only; callers limited in code to the person's surfaces and modules, never mcp"
+  },
+  "team.project-has-any": {
+   "module": "team",
+   "reason": "read-only; callers limited in code to the person's surfaces and modules, never mcp"
+  },
+  "team.status": {
+   "module": "team",
+   "reason": "read-only; owner check in code: the requester, the teammate or the person"
+  },
   "threads.archive": {
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"

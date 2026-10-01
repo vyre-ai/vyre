@@ -17,13 +17,25 @@ export const DUTIES_MIGRATION = `CREATE TABLE team_duties (
 /** The newest item filed by a duty's watcher that has already gone into one of its teammate's requests. */
 export const DUTIES_SEEN_MIGRATION = `ALTER TABLE team_duties ADD COLUMN seen_at INTEGER NOT NULL DEFAULT 0`;
 
+/** A short label a person names a duty by ("the inbox duty"); a longer one is cut. */
+export const TITLE_MAX = 60;
+export const DUTIES_TITLE_MIGRATION = `ALTER TABLE team_duties ADD COLUMN title TEXT`;
+
+/**
+ * A short fingerprint of what a duty will run: its trigger, instruction and whether it acts, as stored. The approval for a
+ * model's start binds to it (the key team.duties.start:<teammate>/<id>@<hash>), so a yes for the text the person saw cannot be spent on
+ * an edited one. One function here, and rows from team.duties.list carry the result, so nothing else recomputes it.
+ */
+export const dutyHash = d => crypto.createHash("sha256").update(JSON.stringify([String(d.trigger || "").trim(), String(d.instruction || "").trim(), d.act ? 1 : 0])).digest("hex").slice(0, 12);
+
 export const TRIGGER_MAX = 200;
 export const INSTRUCTION_MAX = 2000;
 
 const bad = (message, code = "bad_input") => Object.assign(new Error(message), { code });
-const row = r => r && ({ id: String(r.id), teammate: String(r.teammate), project: String(r.project), role: String(r.role),
+const row = r => { if (!r) return r; const d = { id: String(r.id), teammate: String(r.teammate), project: String(r.project), role: String(r.role),
   watcher: String(r.watcher), trigger: String(r.trigger), instruction: String(r.instruction), act: Boolean(r.act),
-  enabled: Boolean(r.enabled), started: Boolean(r.started), created_by: String(r.created_by), at: Number(r.at) });
+  enabled: Boolean(r.enabled), started: Boolean(r.started), created_by: String(r.created_by), at: Number(r.at) };
+  return { ...d, title: r.title ? String(r.title) : d.instruction.length > TITLE_MAX ? d.instruction.slice(0, TITLE_MAX) : d.instruction, hash: dutyHash(d) }; };
 
 /** @param {{ db: any, call: (tool: string, input: any) => Promise<any>, emit: (event: string, payload: any) => void }} deps */
 export function duties({ db, call, emit }) {
@@ -50,12 +62,12 @@ export function duties({ db, call, emit }) {
 
   return {
     /** propose: a teammate's own suggestion, kept off with no watcher until it is turned on. */
-    async create(tm, { when, instruction, act, by, propose }) {
+    async create(tm, { when, instruction, act, by, propose, title }) {
       const d = { id: crypto.randomBytes(4).toString("hex"), teammate: tm.agent, project: tm.project, role: tm.role, trigger: clean(when, TRIGGER_MAX, "a trigger (an event, or a schedule like daily 07:00)"),
         instruction: clean(instruction, INSTRUCTION_MAX, "an instruction: what to do when it fires"), act: Boolean(act), enabled: !propose, started: false, created_by: by, at: Date.now() };
       d.watcher = `duty-${tm.role}-${d.id}`;
-      db.prepare(`INSERT INTO team_duties (id, teammate, project, role, watcher, trigger, instruction, act, enabled, started, created_by, at) VALUES (?,?,?,?,?,?,?,?,?,0,?,?)`)
-        .run(d.id, d.teammate, d.project, d.role, d.watcher, d.trigger, d.instruction, d.act ? 1 : 0, d.enabled ? 1 : 0, d.created_by, d.at);
+      db.prepare(`INSERT INTO team_duties (id, teammate, project, role, watcher, trigger, instruction, act, enabled, started, created_by, at, title) VALUES (?,?,?,?,?,?,?,?,?,0,?,?,?)`)
+        .run(d.id, d.teammate, d.project, d.role, d.watcher, d.trigger, d.instruction, d.act ? 1 : 0, d.enabled ? 1 : 0, d.created_by, d.at, title ? String(title).trim().slice(0, TITLE_MAX) || null : null);
       if (d.enabled) {
         try { await start(d); } catch (e) { db.prepare("DELETE FROM team_duties WHERE id = ?").run(d.id); throw e; }
       }
@@ -66,6 +78,9 @@ export function duties({ db, call, emit }) {
     get: must,
     async update(id, patch) {
       let d = must(id);
+      // Turning a duty on shows the text that will run: if the person saw an older one (expect), nothing starts.
+      if (patch.enabled === true && patch.expect !== undefined && String(patch.expect).trim() !== d.instruction)
+        throw bad("this duty changed since you saw it; read it again before turning it on", "conflict");
       const next = { trigger: patch.when === undefined ? d.trigger : clean(patch.when, TRIGGER_MAX, "a trigger"),
         instruction: patch.instruction === undefined ? d.instruction : clean(patch.instruction, INSTRUCTION_MAX, "an instruction"),
         act: patch.act === undefined ? d.act : Boolean(patch.act), enabled: patch.enabled === undefined ? d.enabled : Boolean(patch.enabled) };

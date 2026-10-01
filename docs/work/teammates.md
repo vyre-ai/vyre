@@ -805,3 +805,32 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   (the person bound another account to the teammate) the next request starts a fresh thread, and the role's notes, charter and recent results carry over
   (accountChanged, unit-tested). A teammate's identity is the role, not the provider's thread. Two teammates in one project on two providers stay independent
   because the resolve is per agent. Not covered live (needs two real accounts): runner e2e.
+
+## P17 swap, one mechanism (2026-10-01, reviewer-2 on 366bf9b0)
+
+- team.retire and team.role.fill are now `reach: "asked"` with `target: "team.act.target"`, exactly like github's PR tools: the registry asks
+  vault.said.match for any model, agent or module caller, and a person's surface is untouched. team.act.target answers the key
+  (`team.retire:<project>/<role>`, `team.role.fill:<project>/<role>/<agent|default>`); my own askedFor copy is gone.
+- Duties: a model's duty (assistant, session or teammate) is ALWAYS a proposal, and turning on or editing a running duty is the person's own
+  surface only (team.duties.enable on the card, with `expect`). A said-match cannot work here: nothing the person says can name a duty id that does not exist yet,
+  and binding content is impossible because the model writes the text afterwards. This closes reviewer-2's MEDIUM (the yes bound to an id, not the content).
+- Open, not mine: nothing records the person's act_out statement for the two team keys. switchboard.hearActs records only GitHub PR intents (lib/said/pr.js).
+  Until a recorder for "retire the design teammate" and "have kit be the reviewer" exists (assistant's lib/said plus sessions' hook), a model's retire or fill is refused,
+  which is safe but dead. Asked of assistant and sessions.
+
+## Duty start binds to the text (2026-10-01, team-lead, reviewer-2's MEDIUM)
+
+- A model starts a duty with `team.duties.start {id, expect}` (reach asked, target team.act.target): key `team.duties.start:<teammate>/<id>@<hash>`, hash = first 12 hex of sha256 of
+  JSON [trigger, instruction, act] as stored (`dutyHash`, carried on every team.duties.list row as `hash`, with `title`: the label given at create, else the instruction cut to 60). `expect`
+  must equal the stored instruction. A yes recorded for the text the person saw cannot start an edited duty. Create has no key: a model's duty is always a proposal, because
+  no words can name a duty that does not exist yet. A model cannot edit a running duty (person surface only).
+- Keys agreed with assistant (lib/said/team.js, work/assistant 56230e73): retire and role.fill as before, `team.duties.start:` replaces their create/update keys.
+- team.roster {project}: internal read for the recorder in threads: { roles: [{role}], duties: [{id, teammate, title, hash, enabled, started}] } for live teammates.
+
+- Reach written for every team tool (platform's ruling, 2026-10-01): person: charter.set, charter.revert, default.set, duties.enable/disable/delete/run-now; asked: retire, role.fill, duties.start; modules: act.target, roster; anyone (deliberate, checks in code): add, ask, cancel, done, fail, status, list, notes, merge, charter.get/history/diff/draft, duties.create/list/update, default.get, project-has-any, project-append (callers limited in code to person surfaces and modules).
+
+- Merged work/watchers 1dbed8c3: the duty calls are now watchers.duty.create/update/delete/run/resume (watchers.pause unchanged); the real watchers module accepts duties, so the daemon duty tests use an unreadable trigger to get watchers' clean refusal without creating a real watcher.
+
+- team.add is person-only (reach person; ADR 0031 section 4 and the daemon's PERSON_ONLY floor: a session's own socket refuses it, threadsock.js). The session path I built earlier could never be reached by a real session (my test called it through the client's session headers). A model asks the person; making it asked (key team.add:<project>/<role>, off PERSON_ONLY, recorder in lib/said/team.js) is the follow-up if wanted.
+
+- team.add is reach asked again (lead's call): target team.act.target answers team.add:<project>/<role> (the teammate does not exist yet), recorder lib/said/team.js (assistant), still on PERSON_ONLY until platform takes it off, so a session's own socket refuses it until then.

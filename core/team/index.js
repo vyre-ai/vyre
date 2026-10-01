@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { boundedWait } from "./bounded.js";
-import { duties as makeDuties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION } from "./duties.js";
+import { duties as makeDuties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
@@ -91,6 +91,7 @@ export const MIGRATIONS = [
   // Standing duties (plan section 9.2): identity only; watchers runs them.
   DUTIES_MIGRATION,
   DUTIES_SEEN_MIGRATION,
+  DUTIES_TITLE_MIGRATION,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
@@ -136,6 +137,22 @@ export const INTEGRATOR_ROLE = "integrator";
  * no id, is not a change.
  */
 export const accountChanged = (rec, resolved) => Boolean(rec && rec.account && resolved && resolved.id && String(resolved.id) !== String(rec.account));
+
+/**
+ * What a model may not choose when it adds a teammate: the approval key binds the project and the role, nothing else, so the tools it
+ * may use and the models it runs on stay the defaults. Brief, instructions and isolation may come from the call. The person sets the rest.
+ * @param {any} i the call's input @returns {string|null} why it is refused, or null
+ */
+export const addRefusal = i => (i && (i.tools !== undefined || i.model !== undefined || i.helper_model !== undefined)
+  ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model"
+  : i && i.isolation === "none" ? "a model does not choose isolation none (it runs in the person's own folder); leave isolation out, or use worktree or folder" : null);
+
+/**
+ * The isolation a new teammate starts with: the call's own, else folder for the person's surface and worktree for a model (its own branch,
+ * an integrator brought along, nothing written in the person's folder; a project that is not a git repo falls back to folder with a notice).
+ * @param {any} i @param {boolean} person
+ */
+export const addIsolation = (i, person) => (i && i.isolation) || (person ? "folder" : "worktree");
 
 export const isAssistant = meta => Boolean(meta && meta.agentKind === "assistant");
 
@@ -785,14 +802,15 @@ export default {
       input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string" },
         brief: { type: "string" }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
-      // The person's act, and their agent's on their behalf (charter: agents can do everything the
-      // person can): a session in that project. Never a teammate, never a bare mcp call with no session.
-      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (vault.said.match).
+      // The person's act, and their agent's only on their own words: reach asked (the registry asks vault.said.match for team.add:<project>/<role>,
+      // team.act.target), so a model, the assistant included, adds a teammate once when the person said to. A person's surface (the Deck's @role, the CLI)
+      // is never asked. Never a teammate. The project check below stays as the second guard.
       callers: ["cli", "local", "deck", "capsule", "mcp"],
       run: async (i, meta = {}) => {
         if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
         if (!isPerson(meta.caller) && !isAssistant(meta) && !(SLUG.test(String(i.project || "")) && await inProject(meta, i.project)))
           throw Object.assign(new Error("team.add is for a person, or a session in that project"), { code: "denied" });
+        if (!isPerson(meta.caller) && addRefusal(i)) throw Object.assign(new Error(addRefusal(i)), { code: "denied" });
         if (!SLUG.test(String(i.project || ""))) throw new Error("project must be a project slug");
         if (!NAME.test(i.role)) throw new Error("a role is lowercase letters, digits and dashes");
         if (i.role === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate`), { code: "denied" });
@@ -809,7 +827,7 @@ export default {
           return { ...byAgent(agent), revived: true };
         }
         if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
-        let isolation = i.isolation || "folder";
+        let isolation = addIsolation(i, isPerson(meta.caller));
         let notice;
         if (isolation === "worktree") {
           const home = await projectHome(i.project);
@@ -828,9 +846,13 @@ export default {
             if (!w.ok) throw new Error(`could not make ${i.role}'s worktree: ${w.stderr || "unknown git error"}`);
             if (!byRole(i.project, INTEGRATOR_ROLE)) {
               const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
-              if (iw.ok) insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
-                brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
-                main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
+              if (iw.ok) {
+                insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
+                  brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
+                  main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
+                // One add made two teammates: say so, so the person sees the integrator it brought along.
+                notice = `${i.role} works in its own worktree, so an "${INTEGRATOR_ROLE}" teammate was added too: it merges finished work into ${base} once the tests pass`;
+              }
               else ctx.log?.(`team: ${i.project}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
             }
           }
@@ -1018,20 +1040,17 @@ export default {
       }
       return { tm: await charterTarget(ref, meta, { write }), propose: false };
     };
-    /**
-     * Whether the person's own words, in this thread, asked for this duty to run. TODO(P17): answer with vault.said.match (act_out,
-     * lineage-aware). Until it lands nobody but the person's own surface can start an unattended worker, so a session's or the
-     * assistant's duty is stored as a proposal (off, no watcher) and the person turns it on.
-     */
-    const personAsked = (meta) => isPerson(meta.caller);
     const dutyRef = { ...charterRef };
     ctx.tool("team.duties.create", {
       description: "Give a teammate a standing duty: something it does by itself when a trigger fires (an event like thread.finished or goal.stale, a schedule like daily 07:00, or a connection's push), described in plain words. act: true lets it call tools and ask a model (every outward call still holds at the Gate); false only files what it notices into the teammate's notes and the waiting list. A person starts it at once; anything an assistant, a session or a teammate makes waits off in the list (no watcher) until the person turns it on.",
-      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" } } },
+      input: { type: "object", required: ["when", "instruction"], properties: { ...dutyRef, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, title: { type: "string", description: "A short label the person names it by, like \"inbox duty\"; shown on the card." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         const { tm, propose } = await dutyTarget(i, meta, { write: true });
-        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, propose: propose || !personAsked(meta), by: meta.agent || String(meta.caller || "vyre") });
+        // A person's surface starts it at once. A model's duty, the assistant's and a session's included, is always a proposal (off, no watcher):
+        // the person turns it on with one tap (team.duties.enable), because nothing they said can name a duty that does not exist yet.
+        const start = !propose && isPerson(meta.caller);
+        return dutyApi.create(tm, { when: i.when, instruction: i.instruction, act: i.act, title: i.title, propose: !start, by: meta.agent || String(meta.caller || "vyre") });
       },
     });
     ctx.tool("team.duties.list", {
@@ -1042,30 +1061,30 @@ export default {
     });
     ctx.tool("team.duties.update", {
       description: "Change a duty: when, instruction, act, or enabled (true turns a proposed duty on; false pauses it). Turning on, or changing a running duty, is the person's; the assistant or a session may pause it or edit a proposal; never a teammate.",
-      input: { type: "object", required: ["id"], properties: { id: { type: "string" }, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, enabled: { type: "boolean" } } },
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" }, when: { type: "string" }, instruction: { type: "string" }, act: { type: "boolean" }, enabled: { type: "boolean" }, expect: { type: "string", description: "With enabled true: the instruction you were shown; nothing starts if it has changed since." } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => {
         await dutyTarget(i, meta, { write: true, id: i.id });
         const { id, ...patch } = i;
-        // Turning on, or changing what a running duty does, is starting code the person has not seen: theirs until vault.said.match.
+        // Turning on, or changing what a running duty does, starts code the person has not seen: the person's own surface only (a tap on the card).
         const cur = dutyApi.get(id);
         const widens = patch.enabled === true || (cur.started && (patch.when !== undefined || patch.instruction !== undefined || patch.act !== undefined));
-        if (widens && !personAsked(meta)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's"), { code: "denied" });
+        if (widens && !isPerson(meta.caller)) throw Object.assign(new Error("turning a duty on, or changing one that is running, is the person's own tap (team.duties.enable on the card)"), { code: "denied" });
         return dutyApi.update(id, patch);
       },
     });
     // A click on a person surface (Deck, CLI, Lumen, verified over the tailnet) IS the person asking: the one-tap enable a duty
     // card shows. Starting an unattended worker is the person's alone, so enable takes the person's own surfaces only: no module
     // (a third-party one could otherwise start a worker) and no thread or agent claim riding on one of them. A model asks through
-    // team.duties.update, which keeps the gate (personAsked, gate.said.match with P17).
+    // team.duties.update, which keeps the same refusal.
     ctx.tool("team.duties.enable", {
       description: "Turn a duty on: the person's own tap. A proposed duty starts its watcher now; a paused one resumes. Person surfaces only (Deck, CLI, Lumen): no module, agent or session; those ask through team.duties.update, which keeps the gate.",
-      input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+      input: { type: "object", required: ["id"], properties: { id: { type: "string" }, expect: { type: "string", description: "The instruction the person was shown; nothing starts if it has changed since." } } },
       callers: ["cli", "local", "deck", "capsule"],
       run: async (i, meta = {}) => {
         if (!isPerson(meta.caller)) throw Object.assign(new Error("turning a duty on is the person's own tap"), { code: "denied" });
         await dutyTarget(i, meta, { write: true, id: i.id });
-        return dutyApi.update(i.id, { enabled: true });
+        return dutyApi.update(i.id, { enabled: true, ...(i.expect !== undefined ? { expect: i.expect } : {}) });
       },
     });
     // Pausing is safe for anyone who may edit the duty (a person's surface or a module acting for them): it only stops work.
@@ -1074,6 +1093,14 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled: false }); },
+    });
+    // A model starts a duty only when the person's own words asked for exactly this text: the registry asks vault.said.match for the key
+    // team.duties.start:<teammate>/<id>@<hash of trigger, instruction and act> (team.act.target), and `expect` must equal the stored instruction.
+    ctx.tool("team.duties.start", {
+      description: "Turn a proposed duty on for the person, when their own words asked for exactly this duty: give expect, the instruction you were shown. Anything changed since, or nothing said, refuses. A person's surface taps team.duties.enable instead.",
+      input: { type: "object", required: ["id", "expect"], properties: { id: { type: "string" }, expect: { type: "string" } } },
+      callers: CHARTER_CALLERS,
+      run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.update(i.id, { enabled: true, expect: i.expect }); },
     });
     ctx.tool("team.duties.delete", {
       description: "Remove a duty and its watcher. A person, the assistant, or a session in the project; never a teammate.",
@@ -1086,6 +1113,53 @@ export default {
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       callers: CHARTER_CALLERS,
       run: async (i, meta = {}) => { await dutyTarget(i, meta, { write: true, id: i.id }); return dutyApi.runNow(i.id); },
+    });
+
+    /**
+     * Registry only: what one call of an asked tool acts on, used as the whole `to` of the said-match (the way github.act.target
+     * answers for a pull request). team.retire: team.retire:<project>/<role>. team.role.fill:
+     * team.role.fill:<project>/<role>/<agent, or default>. The person's words name the role and the agent, never an id that does not exist yet.
+     */
+    ctx.tool("team.act.target", {
+      internal: true,
+      description: "Registry only: the destination an asked team call must be said for. Answers { to: [key] }.",
+      input: { type: "object", required: ["tool", "input"], properties: { tool: { type: "string" }, input: { type: "object" } } },
+      callers: ["module"],
+      run: async ({ tool, input }) => {
+        const i = input || {};
+        if (tool === "team.add") {
+          // The teammate does not exist yet: the words name the project and the role.
+          if (!SLUG.test(String(i.project || "")) || !NAME.test(String(i.role || ""))) return { to: [] }; // an empty answer is "not asked"
+          return { to: [`team.add:${i.project}/${i.role}`] };
+        }
+        if (tool === "team.duties.start") {
+          const d = dutyApi.get(String(i.id || ""));
+          if (!d) throw Object.assign(new Error("no such duty"), { code: "not_found" });
+          return { to: [`team.duties.start:${d.teammate}/${d.id}@${d.hash}`] };
+        }
+        const tm = i.teammate ? byAgent(String(i.teammate)) : i.project && i.role ? byRole(String(i.project), String(i.role)) : null;
+        if (!tm || tm.retired_at) throw Object.assign(new Error("no such teammate"), { code: "not_found" });
+        if (tool === "team.retire") return { to: [`team.retire:${tm.project}/${tm.role}`] };
+        if (tool === "team.role.fill") return { to: [`team.role.fill:${tm.project}/${tm.role}/${i.agent ? String(i.agent) : "default"}`] };
+        throw Object.assign(new Error(`${tool} is not an asked team tool`), { code: "bad_input" });
+      },
+    });
+
+    /**
+     * What the recorder of the person's words needs to know about a project's team: its live roles and its duties that could be
+     * started (hash and title as team.duties.list carries them). Internal; the turn-ingress recorder in threads asks it, fail-soft.
+     */
+    ctx.tool("team.roster", {
+      internal: true,
+      description: "Registry only: a project's live teammates' roles and their duties (id, teammate, title, hash, enabled, started), for recording what the person asked for. Answers { roles, duties }.",
+      input: { type: "object", required: ["project"], properties: { project: { type: "string" } } },
+      callers: ["module"],
+      run: async ({ project }) => {
+        if (!SLUG.test(String(project || ""))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
+        const live = serving(String(project));
+        const duties = live.flatMap(tm => dutyApi.list(tm.agent)).map(d => ({ id: d.id, teammate: d.teammate, title: d.title, hash: d.hash, enabled: d.enabled, started: d.started }));
+        return { roles: live.map(tm => ({ role: tm.role })), duties };
+      },
     });
 
     ctx.tool("team.list", {
