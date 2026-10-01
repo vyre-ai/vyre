@@ -36,6 +36,8 @@ test("reach holds against the real registry: asked for a model, person for delet
     for (const name of ${JSON.stringify(names)}) ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
     return { async stop() {} };
   } };`);
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }] } },
+    `export default { async start(ctx) { ctx.tool("projects.reach", { input: { type: "object" }, run: async () => ({ all: true }) }); return {}; } };`);
   writeModule(root, "team", { name: "team", version: "0.1.0", does: { tools: [{ name: "team.x", reach: "anyone" }] } }, `export default { async start(ctx) { ctx.tool("team.x", { run: async () => ({}) }); return {}; } };`);
   const db = open(path.join(home, "vyre.db")); t.after(() => db.close());
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
@@ -97,6 +99,8 @@ export default { async start(ctx) {
   ctx.tool("watchers.preset.target", { input: { type: "object" }, run: async call => presetTarget(call) });
   return { async stop() {} };
 } };`);
+  writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }] } },
+    `export default { async start(ctx) { ctx.tool("projects.reach", { input: { type: "object" }, run: async () => ({ all: true }) }); return {}; } };`);
   // A stand-in for vault.said.match: it holds what the person's own words recorded and uses each one up.
   writeModule(root, "vault", { name: "vault", version: "0.1.0", does: { tools: [{ name: "vault.said.match", reach: "modules" }] } },
     `export default { async start(ctx) { ctx.tool("vault.said.match", { input: { type: "object" }, run: async i => {
