@@ -132,6 +132,11 @@ on real hardware and a real display. What a runner cannot show and a person must
 it with no visible lag, (2) typing a word draws rows as fast as you type, (3) holding a key does not
 stutter, (4) nothing flickers between keystrokes, (5) hiding and reopening is instant.
 
+## Notes parked (0.2.x)
+- Speed, key to first rows: median 21 ms, 95th 52.5 ms on the CI runner (release build, 246 keys, no profiler; the main thread is idle in a profile). Idea not chased: icon-ready callbacks from an earlier key landing in the next key's turn and re-drawing rows. Measure on a real Mac first.
+- threads.start and agents.ask carry `mentions` and `pasted` (sessions' work/sessions-start-mentions a257dd5a must land for them to count).
+- Text expansion, script commands, AI presets, browser tabs and bookmarks, Focus and Shortcuts, `@` targets from manifests: 0.2.x per the lead.
+
 ## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
 Computer-use oversight panel (capsule-02.html section 11), built against my proposed hands.* contract
 (CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
