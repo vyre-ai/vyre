@@ -9,7 +9,7 @@ LABEL run.vyre="1" \
       org.opencontainers.image.source="https://github.com/vyre-ai/vyre"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini \
+ && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini iptables \
  && rm -rf /var/lib/apt/lists/*
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
@@ -61,7 +61,7 @@ RUN groupadd -g 1002 vyre-work \
  && groupadd -g 1001 vyre-agent \
  && useradd -u 1001 -g 1001 -G vyre-work -m -d /home/vyre-agent -s /bin/sh vyre-agent \
  && usermod -aG vyre-work vyre \
- && chown 1000:1002 /work && chmod 2775 /work \
+ && chown 1000:1002 /work && chmod 2770 /work \
  && chmod 700 /home/vyre \
  && chown 1001:1002 /home/vyre-agent && chmod 2750 /home/vyre-agent \
  && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
@@ -104,4 +104,5 @@ WORKDIR /home/vyre
 # docker run), the spawner runs the loop itself. A vyred restart keeps every terminal (ADR 0029,
 # R4); a deploy recreates the container, and its terminals end; the Deck says so (term.closed).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "/opt/vyre/core/spawner/main.js"]
+# core/spawner/wall-entry.sh installs and probes the watcher wall as root, drops NET_ADMIN, and execs the spawner.
+CMD ["/bin/sh", "/opt/vyre/core/spawner/wall-entry.sh"]
