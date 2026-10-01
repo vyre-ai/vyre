@@ -84,3 +84,44 @@ test("a switch refused while a turn runs says so in words and changes nothing", 
   assert.match(text(c.el), /A turn is running\. Stop it or wait for it to end, then choose again\./);
   c.stop();
 });
+
+function type(c, value) {
+  c.input.value = value; c.input.setSelectionRange(value.length, value.length);
+  c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("input"), { inputType: "insertText" }));
+}
+const enter = c => c.input.dispatchEvent(Object.assign(new /** @type {any} */ (globalThis).Event("keydown"), { key: "Enter", target: c.input }));
+
+test("@codex at the start sends threads.send with an account mention (one turn, the session stays), never as a teammate; an unknown @word is still a teammate", async () => {
+  rows = [
+    { id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }], models: [] },
+    { id: "codex", label: "Codex", accounts: [{ id: "x1", label: "OpenAI", signed_in: true }], models: [] }];
+  calls.length = 0;
+  const c = mount("claude");
+  await settle();
+  type(c, "@codex make an image of a red door");
+  enter(c); await settle();
+  const sent = calls.find(x => x.tool === "threads.send");
+  assert.ok(sent, "sent through threads.send");
+  assert.deepEqual(sent.input.mentions, [{ kind: "account", id: "codex", name: "Codex" }]);
+  assert.match(sent.input.text, /^@codex make an image/);
+  assert.equal(calls.filter(x => x.tool === "team.ask").length, 0);
+  assert.equal(calls.filter(x => x.tool === "threads.switch").length, 0, "the session is not switched");
+  calls.length = 0;
+  type(c, "@zzz hello");
+  enter(c); await settle();
+  assert.equal(calls.filter(x => x.tool === "threads.send").length, 0, "not an account, so not sent as a message");
+  c.stop();
+});
+
+test("the @ menu offers the accounts only at the very start of the draft, and picking one writes its word", async () => {
+  calls.length = 0;
+  const c = mount("claude");
+  await settle();
+  type(c, "@co");
+  await new Promise(r => setTimeout(r, 300));
+  const items = $$(c.el, "[role=option]");
+  assert.ok(items.some(i => /Codex/.test(text(i)) && /Accounts/.test(text(i))), "Codex is offered as an account");
+  click(items.find(i => /Accounts/.test(text(i))));
+  assert.equal(c.value().trim(), "@Codex");
+  c.stop();
+});

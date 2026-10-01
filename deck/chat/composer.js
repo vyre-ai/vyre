@@ -56,7 +56,7 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
-import { answerRows, chipWord } from "./core/answer-with.js";
+import { answerRows, chipWord, accountAtStart, accountToken } from "./core/answer-with.js";
 import { providerMark, providerName } from "../js/provider-mark.js";
 import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { tagPicker } from "./tag-picker.js";
@@ -732,18 +732,32 @@ export function mountComposer(opts) {
       const now = findMention(ta.value, caret());
       if (!now) return;
       const named = s.error ? [] : suggestRows(s.data, 5).filter(x => x.kind === "mention");
+      // Accounts that can answer one turn: only while the word is the very first of the draft ("@codex ..."), as send reads it.
+      const q = now.query.toLowerCase();
+      const accts = now.start === 0 ? answers.filter(a => accountToken(a, answers, providerName).toLowerCase().startsWith(q)).slice(0, 5) : [];
       const list = rankFiles(found, now.query, cwd, scorePath, compareScores);
       menu.setKind("mention");
       menu.open([
+        ...accts.map(a => ({ key: "a:" + a.provider + ":" + (a.account || ""), value: { account: a }, render: () => [providerMark(a.provider, 18), h("span", { class: "cv-menu-name" }, accountToken(a, answers, providerName)),
+          a.sub ? h("span", { class: "cv-menu-desc" }, a.sub) : null, h("span", { class: "cv-menu-badge" }, "Accounts")] })),
         ...named.map(x => ({ key: "s:" + x.source + ":" + x.id, value: { suggestion: x }, render: () => [h("span", { class: "cv-menu-name" }, x.label),
           x.detail ? h("span", { class: "cv-menu-desc" }, x.detail) : null, h("span", { class: "cv-menu-badge" }, x.sub || x.kind)] })),
         ...list.map(f => {
           const cut = f.rel.lastIndexOf("/");
           return { key: f.path, value: f, render: () => [h("span", { class: "cv-menu-dir" }, cut >= 0 ? f.rel.slice(0, cut + 1) : ""), h("span", { class: "cv-menu-name" }, cut >= 0 ? f.rel.slice(cut + 1) : f.rel)] };
-        })], row => (row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
-      named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
+        })], row => (row.value.account ? pickAccount(row.value.account) : row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
+      accts.length || named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
     }, 120);
     fileTimer.unref?.();
+  }
+  /** An account chosen from the @ menu: "@Codex " in place of what was typed; send reads it as the account for one turn. */
+  function pickAccount(/** @type {import("./core/answer-with.js").AnswerRow} */ a) {
+    const range = findMention(ta.value, caret());
+    menu.close();
+    if (!range) return;
+    const r = applyMention(ta.value, range, accountToken(a, answers, providerName));
+    setValue(r.text, r.caret, true);
+    ta.focus();
   }
   /** A word completed from suggest (Tab on a word, or an @ name): put it in and say it was picked. */
   function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
@@ -847,6 +861,8 @@ export function mountComposer(opts) {
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
     if (a.kind === "memory") { saveMemory(draftBody(ta.value)); return; }
+    // "@codex ...": this turn runs on that account (threads.send's account mention); the session stays where it is. Not a teammate.
+    if (a.kind === "teammate" && !machine && accountAtStart(ta.value, answers, providerName)) { sendMessage(ta.value.trim(), a.mode); return; }
     if (a.kind === "teammate" && !machine) { askTeammate(teammateRole(ta.value), draftBody(ta.value), ta.value); return; }
     if (a.kind === "command" && !machine) {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
@@ -880,6 +896,8 @@ export function mountComposer(opts) {
     sending = true;
     // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
     const mentions = tagUI.take();
+    const acct = machine ? null : accountAtStart(text, answers, providerName);
+    if (acct) mentions.push(acct.mention);
     const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
     sentMeta.set(text, { pasted, mentions });
     if (sentMeta.size > 50) sentMeta.delete(/** @type {string} */ (sentMeta.keys().next().value));

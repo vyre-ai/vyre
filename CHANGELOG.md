@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: "@codex" asks one account for one turn
+
+- Typing `@codex`, `@grok` or `@claude` (or `@Provider-label` when a provider has several accounts) at the very start of a message runs that turn on that account while the session stays where it is. Send passes it as `threads.send`'s account mention (`{ kind: "account", id: "codex" | "codex:<account>" }`), not as a teammate; a word that is no account is still a teammate as before. The `@` menu lists the accounts that can answer, under "Accounts", only at the start of a draft. A refusal (out of usage, busy, open elsewhere) says what the box said and puts the words back. "Use in..." on a media card fills the composer with `@<Provider> #<item>` and this does the rest.
+
 #### chat: "Answer with" chip in the composer
 
 - A chip at the left of the composer's bar shows who answers: the provider's badge and its name (or the account's label when that provider has several). With more than one signed-in account it has a chevron and opens a menu, "Answer with", of the accounts that can answer (`providers.list`: signed in, Claude counts with none), each with its plan and up to three models and the current one marked "now". Choosing another asks the box to continue the same thread on it (`threads.switch`): same session, memory and files, no new session, the avatar unchanged. A refusal while a turn runs says "A turn is running. Stop it or wait for it to end, then choose again." With one account the chip says who answers and does nothing. The switch line in the thread is the box's. Models for Codex and Grok and an account's plan appear when sessions' init carries them.

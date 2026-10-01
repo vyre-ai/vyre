@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { answerRows, chipWord } from "./answer-with.js";
+import { answerRows, chipWord, accountAtStart, accountToken } from "./answer-with.js";
 
 const LIST = [
   { id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }, { id: "c2", label: "Work", signed_in: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "x", label: "Extra" }] },
@@ -29,4 +29,19 @@ test("the chip names the account only when the provider has several; otherwise t
   const rows = answerRows(LIST, { provider: "claude", account: "c2" });
   assert.equal(chipWord(rows, "claude", "Claude"), "Work");
   assert.equal(chipWord(answerRows(LIST, { provider: "codex" }), "codex", "Codex"), "Codex");
+});
+
+const NAME = p => ({ claude: "Claude", codex: "Codex", grok: "Grok" })[p] || p;
+test("@codex at the very start asks that provider for one turn; a provider with several accounts is addressed by Provider-label", () => {
+  const rows = answerRows(LIST, { provider: "claude" });
+  assert.deepEqual(accountAtStart("@codex make an image", rows, NAME), { mention: { kind: "account", id: "codex", name: "Codex" }, token: "codex" });
+  assert.deepEqual(accountAtStart("@Codex", rows, NAME)?.mention.id, "codex");
+  assert.equal(accountToken(rows[1], rows, NAME), "Claude-Work");
+  assert.deepEqual(accountAtStart("@claude-work hello", rows, NAME)?.mention, { kind: "account", id: "claude:c2", name: "Claude-Work" });
+  assert.equal(accountAtStart("@claude hello", rows, NAME)?.mention.id, "claude", "the bare provider is the provider's own pick");
+});
+
+test("anything else is not an account: a teammate role, a mid-sentence @, an email, an unsigned provider", () => {
+  const rows = answerRows(LIST, {});
+  for (const t of ["@design fix it", "ask @codex", "me@codex.com", "@grok hi", "@", "codex"]) assert.equal(accountAtStart(t, rows, NAME), null, t);
 });

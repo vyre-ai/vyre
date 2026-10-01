@@ -39,3 +39,27 @@ export function chipWord(rows, provider, name) {
   const now = mine.find(r => r.now);
   return mine.length > 1 && now ? now.label : name;
 }
+
+/** The word a row is addressed by after "@": the provider's name, plus the account's label when that provider has several. @param {AnswerRow} row @param {AnswerRow[]} rows @param {(p: string) => string} nameOf */
+export function accountToken(row, rows, nameOf) {
+  const several = rows.filter(r => r.provider === row.provider).length > 1;
+  const tail = several ? "-" + row.label.replace(/[^\w.]+/g, "-").replace(/^-+|-+$/g, "") : "";
+  return nameOf(row.provider) + tail;
+}
+
+/**
+ * The account a draft asks for this one turn: "@codex ..." or "@Codex-work ...", only at the very start, only when the word is exactly an
+ * account's token (or just a provider's id). Returns the mention the box takes ({ kind: "account", id: "codex" | "codex:<account>" }) and the word.
+ * An unknown word is nothing here: the composer treats it as a teammate as it always has.
+ * @param {string} text @param {AnswerRow[]} rows @param {(p: string) => string} nameOf
+ * @returns {{ mention: { kind: "account", id: string, name: string }, token: string }|null}
+ */
+export function accountAtStart(text, rows, nameOf) {
+  const m = /^@([\w.-]+)(?=\s|$)/.exec(String(text ?? ""));
+  if (!m) return null;
+  const word = m[1].toLowerCase();
+  const exact = rows.find(r => accountToken(r, rows, nameOf).toLowerCase() === word && rows.filter(x => x.provider === r.provider).length > 1);
+  if (exact) return { mention: { kind: "account", id: exact.account ? `${exact.provider}:${exact.account}` : exact.provider, name: accountToken(exact, rows, nameOf) }, token: m[1] };
+  const prov = rows.find(r => r.provider === word || nameOf(r.provider).toLowerCase() === word);
+  return prov ? { mention: { kind: "account", id: prov.provider, name: nameOf(prov.provider) }, token: m[1] } : null;
+}
