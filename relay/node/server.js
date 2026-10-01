@@ -38,6 +38,8 @@ class Peer {
   constructor(socket, maxFrame) {
     this.socket = socket;
     this.closed = false;
+    /** @type {{ code: number, reason: string } | null} */
+    this.said = null;
     /** @type {(data: Buffer, binary: boolean) => void} */
     this.onmessage = () => {};
     /** @type {() => void} */
@@ -49,7 +51,11 @@ class Peer {
       for (const f of frames) {
         if ("control" in f) {
           if (f.control === "ping") this.write(f.payload, 0xa);
-          else if (f.control === "close") this.close(1000, "");
+          else if (f.control === "close") {
+            // What the other side said in its close frame (code, reason), kept for a caller that may pass one on.
+            if (f.payload && f.payload.length >= 2) this.said = { code: f.payload.readUInt16BE(0), reason: f.payload.subarray(2).toString().slice(0, 123) };
+            this.close(1000, "");
+          }
           continue;
         }
         if (f.message.length > maxFrame) { this.close(CLOSE.tooBig, "frame too big"); return; }
@@ -342,7 +348,10 @@ export function createRelay(o = {}) {
     peer.onclose = () => {
       if (r.conns.get(c) !== conn) return;
       r.conns.delete(c);
-      conn.device.close(CLOSE.boxGone, "box closed the connection");
+      // Only "device removed" (4401) is passed on to the device; everything else the box says is not.
+      const said = peer.said;
+      if (said && said.code === CLOSE.refused && said.reason === "device removed") conn.device.close(CLOSE.refused, "device removed");
+      else conn.device.close(CLOSE.boxGone, "box closed the connection");
       tidy(route);
     };
   }
