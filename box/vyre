@@ -755,10 +755,11 @@ update_from_request() {
     UPD_TRACK=1; state failed too-soon "an update ran a moment ago; ask again in a few minutes"
     exit 0
   fi
-  put_text "$now" "$UPD_PRIV/last" 0600
   # From here root starts compose: from its own copies, after refusing anything a person planted (prepare_run).
   if ! perr=$( ( UPD_TRACK=1; prepare_run ) 2>&1 ); then rmdir "$UPD_PRIV/lock" 2>/dev/null || true; echo "$perr" >&2; exit 1; fi
   prepare_run
+  # The minimum gap counts runs that got as far as starting something: a refusal above (an override file, a COMPOSE_* setting) does not use it up.
+  put_text "$now" "$UPD_PRIV/last" 0600
   ch=$(sed -n 's/^VYRE_CHANNEL=//p' "$DIR/.env" 2>/dev/null | tail -n 1 | tr -d ' \r')
   case "$ch" in stable|beta|"") ;; *) echo "vyre: VYRE_CHANNEL in $DIR/.env is \"$ch\", not stable or beta; using stable" >&2; ch=stable ;; esac
   rc=0
