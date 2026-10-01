@@ -12,7 +12,7 @@ const yml = fs.readFileSync(path.join(REPO, ".github/workflows/release.yml"), "u
 
 test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed25519 key, the gate runs before minisign, cosign and publish", () => {
   const at = s => { const i = yml.indexOf(s); assert.ok(i >= 0, `release.yml has no "${s}"`); return i; };
-  const pin = at("scripts/pin-release-compose.mjs"), sign = at("scripts/sign-manifest.mjs"), gate = at("scripts/check-release-dist.mjs"), minisign = at("minisign -S"), blob = at("cosign sign-blob"), publish = at("gh release create");
+  const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), minisign = at("minisign -S -s"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < minisign && minisign < blob && blob < publish, "order: pin, Ed25519 sign, gate, minisign, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
   assert.match(yml, /check-release-dist\.mjs dist --pulled --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
