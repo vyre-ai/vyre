@@ -416,8 +416,14 @@ async function restoreV1({ root, file, passphrase }) {
         for (const part of DATA_PARTS) {
           if (!fs.existsSync(path.join(src, part))) continue;
           fs.mkdirSync(dst, { recursive: true });
-          fs.rmSync(path.join(dst, part), { recursive: true, force: true });
-          fs.renameSync(path.join(src, part), path.join(dst, part));
+          // Swap, don't delete first: the old folder moves aside, the new one goes in, and only then is the
+          // old one removed, so a rename that fails leaves the person's artifacts where they were.
+          const live = path.join(dst, part), aside = path.join(dst, `.${part}.old-${process.pid}`);
+          const had = fs.existsSync(live);
+          if (had) fs.renameSync(live, aside);
+          try { fs.renameSync(path.join(src, part), live); }
+          catch (e) { if (had) fs.renameSync(aside, live); throw e; }
+          if (had) fs.rmSync(aside, { recursive: true, force: true });
         }
         restored.push(name);
         continue;
@@ -567,8 +573,14 @@ async function restoreV2({ root, file, passphrase, force, workTo, skipProjects, 
         for (const part of DATA_PARTS) {
           if (!fs.existsSync(path.join(src, part))) continue;
           fs.mkdirSync(dst, { recursive: true });
-          fs.rmSync(path.join(dst, part), { recursive: true, force: true });
-          fs.renameSync(path.join(src, part), path.join(dst, part));
+          // Swap, don't delete first: the old folder moves aside, the new one goes in, and only then is the
+          // old one removed, so a rename that fails leaves the person's artifacts where they were.
+          const live = path.join(dst, part), aside = path.join(dst, `.${part}.old-${process.pid}`);
+          const had = fs.existsSync(live);
+          if (had) fs.renameSync(live, aside);
+          try { fs.renameSync(path.join(src, part), live); }
+          catch (e) { if (had) fs.renameSync(aside, live); throw e; }
+          if (had) fs.rmSync(aside, { recursive: true, force: true });
         }
         restored.push(name);
         continue;

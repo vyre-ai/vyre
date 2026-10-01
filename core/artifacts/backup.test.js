@@ -115,3 +115,26 @@ test("AR8: a backup entry under data is accepted, and an artifact's store sits i
   const box = fs.readFileSync(path.join(import.meta.dirname, "..", "..", "box", "vyre"), "utf8");
   assert.match(box, /vyre-home\) echo "[^"]*artifacts[^"]*"/, "the uninstall prompt names artifacts among what the volume holds");
 });
+
+test("AR8: a restore that cannot swap in the artifacts leaves the ones already on the box", async t => {
+  const a = tempHome(t), b = tempHome(t, "target");
+  const src = await bootOn(a);
+  const one = await src.ok("artifacts.create", { project: "harlow-legal", kind: "doc", title: "From the backup", content: "# From the backup\n\nx" });
+  await src.close();
+  const file = path.join(a, "box.vyre");
+  await backup({ root: a, file, passphrase: PASSPHRASE, ...FAST });
+  // A box that already has artifacts, and a restore whose final rename is made to fail.
+  const keep = path.join(b, "data", "artifacts", "store", "harlow-legal", "a_existing");
+  fs.mkdirSync(keep, { recursive: true });
+  fs.writeFileSync(path.join(keep, "index.md"), "mine");
+  const real = fs.renameSync;
+  let armed = false;
+  fs.renameSync = (from, to) => { if (armed && String(to).endsWith(path.join("data", "artifacts"))) { armed = false; throw new Error("disk full"); } return real(from, to); };
+  t.after(() => { fs.renameSync = real; });
+  armed = true;
+  await assert.rejects(restore({ root: b, file, passphrase: PASSPHRASE, force: true, alive: dead }), /disk full/);
+  fs.renameSync = real;
+  assert.equal(fs.readFileSync(path.join(keep, "index.md"), "utf8"), "mine", "the artifacts already there are still there");
+  assert.ok(!fs.readdirSync(path.join(b, "data")).some(n => n.includes(".old-")), "nothing left aside");
+  void one;
+});
