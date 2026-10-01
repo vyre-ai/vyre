@@ -4,7 +4,7 @@
   "description": "One way to read and change every setting, at account, project, device or session level, wherever it is kept.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "settings.schema", "reach": "anyone" }, { "name": "settings.get", "reach": "anyone", "projectArg": "project" }, { "name": "settings.set", "reach": "person" }, { "name": "settings.reset", "reach": "person" }, { "name": "settings.resolve", "reach": "modules" }, { "name": "settings.snapshot", "reach": "anyone", "projectArg": "project" }, { "name": "settings.write", "reach": "modules" }, { "name": "settings.request", "reach": "anyone", "projectArg": "project" }, { "name": "settings.undo", "reach": "person" }, { "name": "settings.changes", "reach": "anyone" }] },
+  "does": { "tools": [{ "name": "settings.schema", "reach": "anyone" }, { "name": "settings.get", "reach": "anyone", "projectArg": "project" }, { "name": "settings.set", "reach": "anyone" }, { "name": "settings.reset", "reach": "anyone" }, { "name": "settings.resolve", "reach": "modules" }, { "name": "settings.snapshot", "reach": "anyone", "projectArg": "project" }, { "name": "settings.write", "reach": "modules" }, { "name": "settings.request", "reach": "anyone", "projectArg": "project" }, { "name": "settings.undo", "reach": "anyone" }, { "name": "settings.changes", "reach": "anyone" }] },
   "watches": { "emits": ["settings.changed"] },
   "shows": { "deck": ["settings"], "cli": [] },
   "needs": {},

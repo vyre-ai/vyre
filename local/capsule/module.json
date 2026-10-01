@@ -4,7 +4,7 @@
   "description": "The Mac command bar: press Control twice and talk to the assistant, any agent or any session.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": [{ "name": "capsule.status", "reach": "anyone" }, { "name": "capsule.show", "reach": "asked" }, { "name": "capsule.report", "reach": "person" }, { "name": "capsule.commands", "reach": "person" }, { "name": "capsule.view", "reach": "person" }, { "name": "capsule.act", "reach": "person" }] },
+  "does": { "tools": [{ "name": "capsule.status", "reach": "anyone" }, { "name": "capsule.show", "reach": "anyone" }, { "name": "capsule.report", "reach": "anyone" }, { "name": "capsule.commands", "reach": "person" }, { "name": "capsule.view", "reach": "person" }, { "name": "capsule.act", "reach": "person" }] },
   "watches": { "emits": ["capsule.requested", "capsule.hotkey"] },
   "shows": { "capsule": [], "cli": ["capsule"] },
   "needs": {},
