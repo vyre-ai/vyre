@@ -4,12 +4,13 @@
 // top-level page navigates itself to the collector with its results.
 
 import { spawn } from "node:child_process";
+import { CHROME_SAFE } from "../../../lib/chrome-flags/index.js";
 import { startServer } from "./sandbox-server.mjs";
 import { verify } from "./sandbox-verify.mjs";
 
 const CHROME = process.env.CHROME;
 if (!CHROME) { console.error("set CHROME to a Chrome binary"); process.exit(3); }
-const flags = ["--headless=new", "--disable-gpu", "--no-sandbox", "--mute-audio", "--user-data-dir=" + (process.env.RUNNER_TEMP || "/tmp") + "/sandbox-proof-" + process.pid, ...(process.env.CHROME_EXTRA_FLAGS ? process.env.CHROME_EXTRA_FLAGS.split(/\s+/) : [])];
+const flags = [...CHROME_SAFE, "--headless=new", "--disable-gpu", "--no-sandbox", "--mute-audio", "--user-data-dir=" + (process.env.RUNNER_TEMP || "/tmp") + "/sandbox-proof-" + process.pid, ...(process.env.CHROME_EXTRA_FLAGS ? process.env.CHROME_EXTRA_FLAGS.split(/\s+/) : [])];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const srv = await startServer({ port: 8123 });

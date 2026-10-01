@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
+import { CHROME_SAFE } from "../../../lib/chrome-flags/index.js";
 import { keygen, build, loader } from "../release.js";
 import worker from "../worker.js";
 
@@ -74,7 +75,7 @@ await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
 const port = /** @type {any} */ (server.address()).port;
 
 // /adopt.js is served by the real Worker from the sealed loader tree; /boot.html is the harness page.
-const c = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: "ignore" });
+const c = spawn(CHROME, [...CHROME_SAFE, "--headless=new", "--disable-gpu", "--no-sandbox", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: "ignore" });
 const end = Date.now() + 60000;
 while (!reports.some(r => r.stage === "app") && Date.now() < end) await new Promise(r => setTimeout(r, 300));
 const exited = new Promise(r => c.once("exit", r));
