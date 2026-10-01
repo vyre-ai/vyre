@@ -1465,42 +1465,6 @@
    "module": "mentions",
    "default": "limited by callers in code"
   },
-  "network.funnel.status": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.add": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.check": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.enable": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.list": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.remove": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.tailscale.login": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.tailscale.peers": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.tailscale.status": {
-   "module": "network",
-   "default": "open to any caller"
-  },
   "onboard.claude": {
    "module": "onboard",
    "default": "open to any caller"
