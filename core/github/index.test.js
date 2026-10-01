@@ -17,7 +17,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import github from "./index.js";
-import { store as accountStore, projectStore } from "./accounts.js";
+import { commitIdentity, store as accountStore, projectStore } from "./accounts.js";
 
 const plainGit = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
 
@@ -43,7 +43,7 @@ function makeRepo(t, origin) {
  * and a fake `threads.get` backed by `existingThreads` (a set of ids `checkedThreadId` treats as
  * real chats - everything else answers not-found, the same as a made-up id would for real).
  */
-async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false, interruptIn } = {}) {
+async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false, interruptIn, vaultDelete } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [], mcpRows = [];
@@ -68,6 +68,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
       }
       if (toolName === "mcp.remove") { const i = mcpRows.findIndex(r => r.name === input.name); if (i >= 0) mcpRows.splice(i, 1); return { data: { removed: i >= 0 } }; }
       if (toolName === "vault.list") return { data: { items: [] } };
+      if (toolName === "vault.delete") return vaultDelete ? vaultDelete(input) : { data: { deleted: input.name } };
       if (toolName === "vault.put") return { data: { name: input.name } };
       if (toolName === "mcp.test") return { data: { ok: true } };
       if (toolName === "vault.grant") return { data: { grant: { status: "active" } } };
@@ -834,6 +835,70 @@ test("github.connect with a pasted token: checked with GitHub, saved under the a
   assert.equal(JSON.stringify((await w.as("deck")("github.accounts", {})).data).includes(tok), false);
   assert.equal(w.mcpRows[0].auth.item, "github-work", "the hosted MCP row follows the account");
   assert.equal((await w.as("mcp:agent:kit")("github.connect", { name: "evil", token: tok })).error.code, "denied");
+});
+
+test("github.remove: the token item is deleted from the vault first; a refusal is said plainly and keeps the account; an item already gone is fine", async t => {
+  const w = await world(t);
+  seedAccount(w.db, { name: "home", login: "alex" });
+  const r = await w.as("deck")("github.remove", { name: "home" });
+  assert.deepEqual(r.data, { removed: true });
+  assert.deepEqual(w.calls.filter(c => c.tool === "vault.delete").map(c => c.input), [{ name: "github-home" }]);
+  assert.deepEqual((await w.as("deck")("github.accounts", {})).data, []);
+
+  const refused = await world(t, { vaultDelete: () => ({ error: { code: "denied", message: "vault.delete is not available to module callers" } }) });
+  seedAccount(refused.db, { name: "home", login: "alex" });
+  const f = await refused.as("deck")("github.remove", { name: "home" });
+  assert.equal(f.error.code, "vault_delete_failed");
+  assert.match(f.error.message, /could not delete the saved GitHub token/);
+  assert.match(f.error.message, /github-home/);
+  assert.equal((await refused.as("deck")("github.accounts", {})).data.length, 1, "still connected, so the person can retry");
+  assert.equal(refused.events.some(e => e.type === "github.removed"), false);
+
+  const gone = await world(t, { vaultDelete: i => ({ error: { code: "failed", message: `no item named ${i.name}` } }) });
+  seedAccount(gone.db, { name: "home", login: "alex" });
+  assert.deepEqual((await gone.as("deck")("github.remove", { name: "home" })).data, { removed: true });
+});
+
+test("commitIdentity: the account's public email, else its id+login noreply address, never a guess; no id and no email means none", () => {
+  assert.deepEqual(commitIdentity({ login: "alex", user_id: 4242, display_name: "Alex R", email: null }), { name: "Alex R", email: "4242+alex@users.noreply.github.com" });
+  assert.deepEqual(commitIdentity({ login: "alex", user_id: 4242, display_name: null, email: "alex@example.com" }), { name: "alex", email: "alex@example.com" });
+  assert.equal(commitIdentity({ login: "alex", user_id: null, display_name: "Alex R", email: null }), null);
+  assert.equal(commitIdentity(null), null);
+});
+
+test("github.session.worktree and github.session.env: a session in a project a connected account made commits as that account, with a Vyre-Session trailer, through the session's environment; an account that predates ids is filled in once from GitHub", async t => {
+  const home = makeRepo(t);
+  const w = await world(t, { projectsRows: [{ slug: "p", name: "p", home }] });
+  seedAccount(w.db, { name: "home", login: "alex" }); // no id kept yet
+  projectStore(w.db).put({ project: "p", account: "home", full_name: "alex/p", default_branch: "main", home }, Date.now());
+  let asked = 0;
+  withFetch(t, async url => { asked++; assert.equal(String(url), "https://api.github.com/user"); return { ok: true, status: 200, json: async () => ({ login: "alex", id: 77, name: "Alex Rivera", email: null }) }; });
+  const sess = w.as("module:sessions", { firstParty: true });
+  const git = (dir, args, env = {}) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, ...env } });
+  const wt = (await sess("github.session.worktree", { project: "p", session: "id1" })).data;
+  assert.equal(wt.env.GIT_AUTHOR_EMAIL, "77+alex@users.noreply.github.com");
+  fs.writeFileSync(path.join(wt.path, "n.md"), "x\n");
+  git(wt.path, ["add", "n.md"], wt.env);
+  git(wt.path, ["commit", "-q", "-m", "work"], wt.env);
+  assert.equal(git(wt.path, ["log", "-1", "--format=%an|%ae"]).trim(), "Alex Rivera|77+alex@users.noreply.github.com");
+  assert.match(git(wt.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: id1$/m);
+  assert.equal(git(home, ["config", "--local", "--get", "user.email"]).trim(), "a@example.com", "the project's own identity is untouched");
+  // a resume gets the same environment from github.session.env, and the id is kept: GitHub is not asked again
+  const env = (await sess("github.session.env", { project: "p", session: "id1" })).data.env;
+  assert.deepEqual(env, wt.env);
+  assert.equal(asked, 1);
+  assert.deepEqual((await sess("github.session.env", { project: "nope", session: "id1" })).data, { env: {} });
+  assert.equal((await w.as("module:evil", { firstParty: true })("github.session.env", { project: "p", session: "id1" })).error.code, "denied");
+  assert.equal((await w.as("deck")("github.session.env", { project: "p", session: "id1" })).error.code, "denied");
+  // a project with no GitHub account: git's own author, the trailer all the same
+  const plain = makeRepo(t);
+  const w2 = await world(t, { projectsRows: [{ slug: "q", name: "q", home: plain }] });
+  const wt2 = (await w2.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "q", session: "id3" })).data;
+  fs.writeFileSync(path.join(wt2.path, "n.md"), "x\n");
+  git(wt2.path, ["add", "n.md"], wt2.env);
+  git(wt2.path, ["commit", "-q", "-m", "work"], wt2.env);
+  assert.equal(git(wt2.path, ["log", "-1", "--format=%ae"]).trim(), "a@example.com");
+  assert.match(git(wt2.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: id3$/m);
 });
 
 test("github.mcp.sync / github.remove: each connected account gets GitHub's hosted MCP row (bound item, no file writes), a second account a distinct name, sync is idempotent, and removing the account removes its row", async t => {

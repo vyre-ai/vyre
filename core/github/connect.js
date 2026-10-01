@@ -51,7 +51,7 @@ const URL_RE = /(https:\/\/github\.com\/login\/device\S*)/;
  *   taken: (name: string) => boolean | Promise<boolean>,
  *   blocked?: (item: string) => Promise<string | null>,
  *   save: (item: string, fields: Record<string, string>) => Promise<void>,
- *   add: (account: { name: string, login: string, avatar_url: string | null, item: string }) => Promise<void>,
+ *   add: (account: { name: string, login: string, avatar_url: string | null, item: string, user_id?: number | null, display_name?: string | null, email?: string | null }) => Promise<void>,
  *   emit: (type: string, payload: Record<string, unknown>) => void,
  *   log?: (message: string, fields?: Record<string, unknown>) => void,
  *   fetch?: typeof fetch, gh?: string, tmpRoot?: string, expiresMs?: number, codeWaitMs?: number,
@@ -182,7 +182,10 @@ export function connector(deps) {
     const why = deps.blocked ? await deps.blocked(item) : null;
     if (why) throw fail(why, "exists");
     await deps.save(item, { token });
-    await deps.add({ name: flow.name, login, avatar_url, item });
+    const user_id = Number.isInteger(json.id) && json.id > 0 ? json.id : null;
+    const display_name = typeof json.name === "string" && json.name.trim() ? json.name.trim().slice(0, 100) : null;
+    const email = typeof json.email === "string" && /^[^\s@<>]+@[^\s@<>]+$/.test(json.email) ? json.email : null;
+    await deps.add({ name: flow.name, login, avatar_url, item, user_id, display_name, email });
     /** @type {any} */ (flow).login = login;
     end(flow, "used");
     deps.emit("github.connected", { id: flow.id, name: flow.name, login });

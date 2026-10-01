@@ -113,6 +113,66 @@
    "module": "gate",
    "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
   },
+  "github.accounts": {
+   "module": "github",
+   "reason": "read-only: names, logins and avatars of connected accounts, never a token; callers list is the person's surfaces plus first-party modules (checked in code)"
+  },
+  "github.mentions.resolve": {
+   "module": "github",
+   "reason": "read-only: one repo, PR or issue as context, marked outside text; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+  },
+  "github.mentions.search": {
+   "module": "github",
+   "reason": "read-only: repo, PR and issue names and short hints; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+  },
+  "github.project.issue.get": {
+   "module": "github",
+   "reason": "read-only: one issue with comments marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.issue.list": {
+   "module": "github",
+   "reason": "read-only: a repo's issues, titles marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.local-init": {
+   "module": "github",
+   "reason": "guard: callers list (person, agents, first-party projects/sessions/threads) and a project-grant check (inGrant); only a folder with no history becomes a repo, secret-looking files stay out of the first commit, nothing is overwritten"
+  },
+  "github.project.of": {
+   "module": "github",
+   "reason": "read-only: which account and repo a project came from; callers are the person's surfaces and first-party sessions and threads (checkModuleCaller)"
+  },
+  "github.project.pr.comments": {
+   "module": "github",
+   "reason": "read-only: a PR's comments marked person or outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.pr.get": {
+   "module": "github",
+   "reason": "read-only: one PR shaped for the review card; the project-grant check (inGrant) bounds an agent to its granted projects; text from others is marked outside"
+  },
+  "github.project.pr.status": {
+   "module": "github",
+   "reason": "read-only: checks, reviews and a ready verdict, no text from others; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.repos": {
+   "module": "github",
+   "reason": "read-only: the repos an account can see; callers are the person's surfaces and module:sessions only (checkModuleCaller)"
+  },
+  "github.session.history": {
+   "module": "github",
+   "reason": "read-only: a session's own commits and uncommitted count; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.push": {
+   "module": "github",
+   "reason": "guard: pushes only the session's own vyre/<id> branch, by explicit refspec, never forced, to the project's recorded repo from a throwaway repo that reads none of the project's git config; the outgoing commits are secret-scanned and allow_secret counts only for a person or a call the person's words asked for; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.redo": {
+   "module": "github",
+   "reason": "guard: restores only what github.session.undo saved for that session, refused when the branch moved on; never touches the default branch or a remote; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.undo": {
+   "module": "github",
+   "reason": "guard: acts only on the session's own worktree and branch; nothing is deleted (the tip and unsaved work are kept under a ref and github.session.redo restores them); never touches the default branch or a remote; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
   "google.accounts": {
    "module": "google",
    "reason": "read-only: names and states, never a value"
