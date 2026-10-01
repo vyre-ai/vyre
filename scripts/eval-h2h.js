@@ -18,7 +18,7 @@
 // tail, retrieved turns as a data block). None of these runs the real claude or codex binary: they are the
 // memory each tool would hand the model, so they say nothing about those tools' own prompts or tool use.
 //
-// Spend: the round's hard cap is $5 (CAP_USD). The ledger (test/eval/h2h/spend.json) and the replies cache
+// Spend: the round's hard cap is $5 across everything; this script stops at CAP_USD ($3.5) and the spot checks stop the job at $4.6. The ledger (test/eval/h2h/spend.json) and the replies cache
 // (test/eval/h2h/replies.json) are committed after each dispatch, so a rerun pays only for what is missing.
 
 import fs from "node:fs";
@@ -34,7 +34,8 @@ import * as long from "../test/fixtures/long-session.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DIR = path.join(ROOT, "test/eval/h2h");
-export const CAP_USD = 5;
+/** The round's hard cap is $5 across everything: the head-to-head itself stops at 3.5, the real-CLI spot checks and spikes (eval-cli-spot.mjs) share the rest. */
+export const CAP_USD = 3.5;
 /** The key's own hard limit is $50; a run refuses to start when it has already spent this much. */
 export const START_REFUSE_USD = 45;
 const PER_CLASS = 10;
@@ -97,6 +98,7 @@ export async function experiment(model, o) {
 
   const auto = await H.buildAutoMemory(model, w.world);
   const agents = await H.buildAgentsMd(model, w.world);
+  results.notes = { auto: auto.text, agents: agents.text };
   const arms = [
     ["claude-auto", "MEMORY.md (auto memory)", auto.text],
     ["agents-md", "AGENTS.md", agents.text],
@@ -158,7 +160,11 @@ async function main(argv) {
   let code = 0;
   try {
     const r = await experiment(model, { model: modelId, tmp: DIR });
-    fs.writeFileSync(path.join(DIR, "results.json"), JSON.stringify(r, null, 1) + "\n");
+    const { notes, ...rest } = r;
+    fs.writeFileSync(path.join(DIR, "results.json"), JSON.stringify(rest, null, 1) + "\n");
+    // The notes the native arms were given, so the real-CLI spot checks (scripts/eval-cli-spot.mjs) use the same files.
+    fs.writeFileSync(path.join(DIR, "notes-auto.md"), notes.auto + "\n");
+    fs.writeFileSync(path.join(DIR, "notes-agents.md"), notes.agents + "\n");
     process.stdout.write(table(r) + "\n");
   } catch (e) {
     const err = /** @type {any} */ (e);
