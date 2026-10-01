@@ -348,11 +348,14 @@ How the server and the Mac fit together, and what runs where, is in
 
 ### Backup
 
-From the Mac, `vyre box backup` copies the whole server into one file. On the server itself,
-`vyre backup` writes `vyre-backup-YYYY-MM-DD.tar.gz` holding `config.json`, a consistent copy of
-the store, `vault/`, `watchers/`, `modules/`, `certs/` and `names/`. It leaves out the search
-model and the logs. Both files hold your sealed vault: keep them where only you can read them.
-The steps are in [Box care](../using/box-care.md).
+From the Mac, `vyre box backup` copies the whole server into one file; the box stops while it
+copies and starts again after. On the server itself, `vyre backup` writes
+`vyre-backup-YYYY-MM-DD.vyre`, one file sealed with a passphrase you type (12 characters or more).
+It holds your settings, the store, the sealed vault, watchers, modules, certificates, names and
+the artifacts your agents made, plus your project files and session transcripts unless you leave
+them out with `--skip-projects` or `--skip-transcripts`. It leaves out the search model, the logs
+and your Claude, Codex and Grok sign-ins (you sign in again after a restore). It opens only with
+that passphrase: keep the two apart. The steps are in [Box care](../using/box-care.md).
 
 ## Other ways to install
 

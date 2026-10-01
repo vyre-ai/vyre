@@ -43,7 +43,7 @@ of the one thing the frame cannot stop, described next.
 A page can send the browser to another web address by itself, and it can put anything it contains into
 that address. Every way a script can leave its page by navigation does this: setting the address, a
 meta refresh, and clicking a link, with or without the download attribute. Popups, form posts,
-downloads, storage, cookies and every other request a page could make are blocked. We tested this in
+downloads, storage, cookies and the other requests we tested are blocked. We tested this in
 Chrome, Safari on a Mac and Safari on an iPhone: a page delivered addresses of about 8,000 bytes to a
 server in every one (the test sent 8,000 bytes and the server received addresses of 8,024 to 8,029),
 and the browsers accept far longer ones (Chrome takes about 2 MB), so treat the channel as large. The

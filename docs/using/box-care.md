@@ -129,8 +129,8 @@ release with cosign against the release workflow's identity, and refuses to pull
 check. Then, in order:
 
 1. It backs up the database with `vyre backup`, into `/home/vyre/.vyre/backups/pre-<version>.tar.gz`
-   in the container, with a copy in `/srv/vyre/backups/` that only you can read. It holds the
-   sealed vault, so treat it like the vault.
+   in the container, with a copy in `/srv/vyre/backups/` that only you can read. It is sealed like
+   any `vyre backup` file and holds the sealed vault, so treat it like the vault.
 2. It tags the image that runs now as `vyre:prev`, and keeps the box files as they are in
    `/srv/vyre/box.prev/`.
 3. It refreshes the box files (`compose.yml`, `compose.build.yml`, `vyre.env.example`, `Dockerfile`,
@@ -316,16 +316,22 @@ There are two kinds of backup.
 **Vyre's own data**, taken while Vyre runs, on the box:
 
 ```
-vyre backup                  # vyre-backup-YYYY-MM-DD.tar.gz in /home/vyre, mode 0600
+vyre backup                  # vyre-backup-YYYY-MM-DD.vyre in /home/vyre, asks for a passphrase
 ```
 
-It holds `config.json`, a consistent copy of the store (taken with SQLite's `VACUUM INTO` while
-Vyre writes), `vault/`, `watchers/`, `modules/`, `certs/` and `names/`. It leaves out
-`models/`, `logs/`, the socket and the pid file. The file lands in `/home/vyre`, inside the
-`vyre_vyre-home` volume. Copy it off the box:
+It asks for a passphrase twice (12 characters or more) and seals the file with it: there is no
+unencrypted backup, and the file opens only with that passphrase. It holds `config.json`, a
+consistent copy of the store (taken with SQLite's `VACUUM INTO` while Vyre writes), `vault/`,
+`watchers/`, `modules/`, `certs/`, `names/` and `data/` (your artifacts), plus your project files
+(the box's `/work`) and your session transcripts. Add `--skip-projects` if your projects live in
+git or Drive, and `--skip-transcripts` to leave the transcripts out. It leaves out `models/`,
+`logs/`, the socket and the pid file, and your Claude, Codex and Grok sign-ins: sign in again after
+a restore, or pass `--with-provider-logins` to carry them. An unfinished backup resumes when you run
+the same command again. The file lands in `/home/vyre`, inside the `vyre_vyre-home` volume. Copy
+it off the box:
 
 ```
-cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.tar.gz .
+cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.vyre .
 ```
 
 **Everything**, Claude Code's sign-in and transcripts, your projects in `/work` and the box's
@@ -336,11 +342,12 @@ vyre box backup                         # vyre-box-backup-YYYY-MM-DD.tar.gz here
 vyre box backup ~/Backups/box.tar.gz
 ```
 
-This stops the stack, copies the `vyre-home`, `vyre-work` and `tailscale-state` volumes into one
-file on your Mac (mode 0600), and starts the stack again, even if the copy fails or you press
-Control-C. `--force` replaces an existing file.
+The box is stopped while this runs: it stops the stack, copies the `vyre-home`, `vyre-work` and
+`tailscale-state` volumes into one file on your Mac (mode 0600), and starts the stack again, even
+if the copy fails or you press Control-C. `--force` replaces an existing file.
 
-Both files contain your sealed vault. Keep them somewhere only you can read, or encrypt them
+Both files contain your sealed vault. Keep them somewhere only you can read. The `vyre backup`
+file is already sealed with its passphrase; encrypt the `vyre box backup` file yourself
 (`age -r <key> file`).
 
 ## Restore
@@ -350,13 +357,13 @@ restore runs in a one-off container:
 
 ```
 cd /srv/vyre
-docker compose cp vyre-backup-2026-09-27.tar.gz vyre:/home/vyre/
+docker compose cp vyre-backup-2026-09-27.vyre vyre:/home/vyre/
 docker compose stop vyre
-docker compose run --rm vyre vyre restore /home/vyre/vyre-backup-2026-09-27.tar.gz --force
+docker compose run --rm vyre vyre restore /home/vyre/vyre-backup-2026-09-27.vyre --force
 vyre up
 ```
 
-Without `--force`, restore refuses to replace a store the box already has. It also refuses an
+Restore asks for the backup's passphrase. Without `--force`, it refuses to replace a store the box already has. It also refuses an
 archive with paths outside the known folders, or with links in it.
 
 The backup carries the artifacts your agents made (`data/artifacts`: every version, a dashboard's

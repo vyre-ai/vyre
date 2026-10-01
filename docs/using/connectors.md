@@ -234,13 +234,15 @@ with Developer mode on. Click its toolbar icon to see whether it is connected.
   them. Banks, password managers and sign-in pages are never read or touched, and a page with a
   visible password field never runs a script.
 - **The script guard.** A script Claude runs in a page (`chrome.eval`) may read with your login but
-  not write with it, may not read the page's stored login, and may not send anything to a site the
-  page does not already talk to: the request is held and reported. The browser enforces this for
-  HTTP and HTTPS requests, navigation, WebSockets and beacons, in every frame of the tab.
+  not write with it, and may not read the page's stored login. Vyre blocks what it can see a script
+  send to a site the page does not already use: that request is held and reported, for HTTP and
+  HTTPS requests, navigation, WebSockets and beacons, in every frame of the tab. It closes a worker
+  it made once the call returns.
 - **What is not blocked.** WebRTC connections and DNS hints (`dns-prefetch`, `preconnect`) are
   refused only in their plain forms. A script that builds an iframe, or writes with `innerHTML` or
-  `document.write`, can get around those two. Only the main page and open shadow DOM are
-  reachable, so cross-origin iframes are not.
+  `document.write`, can get around those two. A script that builds code from text, or starts a
+  worker some other way, cannot be held. Only the main page and open shadow DOM are reachable, so
+  cross-origin iframes are not.
 - **Site learning is on by default.** Vyre for Chrome remembers each site's layout, how to find
   its buttons, how to tell the page is ready or that you must sign in, and the flows that worked,
   so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens.

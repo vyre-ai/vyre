@@ -68,11 +68,11 @@ Vyre does not yet carry a long session across a fresh start with its own summary
 
 What to do today: start a new session for a new piece of work, and ask Vyre what it remembers with `vyre memory ask`.
 
-### Putting idle sessions to sleep
+### Putting idle sessions to sleep when the server runs short of memory
 
-Vyre does not stop an idle session's process and wake it when you come back. Each running session holds memory on the server until it ends.
+Today Vyre closes a session nobody is using after `idle_minutes` (10 by default) and brings it back on your next message, and `max_live` (6 on a server) limits how many run at once, closing the one idle longest to make room. See [Sessions](using/sessions.md). What is still to come in 0.2.5 is putting sessions to sleep because the server is short of memory, together with memory rollover. Until then a busy session holds its memory on the server until it ends or goes idle.
 
-What to do today: stop sessions you are done with.
+What to do today: stop sessions you are done with, or lower `idle_minutes` or `max_live` as [Sessions](using/sessions.md) describes.
 
 ## True today, with no date
 

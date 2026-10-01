@@ -144,16 +144,16 @@ works here too.
 The same two commands as on a Docker box, run as the account itself:
 
 ```
-vyre backup                        # vyre-backup-YYYY-MM-DD.tar.gz, in this folder
+vyre backup                        # vyre-backup-YYYY-MM-DD.vyre, in this folder; asks for a passphrase
 vyre down                          # restore needs Vyre stopped
-vyre restore vyre-backup-2026-09-27.tar.gz --force
+vyre restore vyre-backup-2026-09-27.vyre --force
 vyre up
 ```
 
 Under systemd, stop it with `sudo systemctl stop vyre` instead of `vyre down`. The backup
-holds `config.json`, the store (`vyre.db`), the sealed vault, watchers, module data,
-certificates and names: keep it somewhere only
-you can read.
+holds your settings, the store (`vyre.db`), the sealed vault, watchers, module data,
+certificates, names, artifacts, project files and session transcripts, sealed with the
+passphrase you typed. Keep the file somewhere only you can read, and the passphrase apart from it.
 
 ## Where to go next
 
