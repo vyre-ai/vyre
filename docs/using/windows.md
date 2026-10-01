@@ -96,5 +96,6 @@ refuses files over 50 MB by default. Larger files fail to open until you raise t
 restart the WebClient service (this needs an administrator, so Vyre does not do it for you).
 
 Pairing this PC shows a code as 13 words and a QR. "Copy the words" puts the words on the clipboard for a
-Vyre open on the same PC. Clipboard history or cloud clipboard sync on Windows may keep a copy. The code
-stops working after 5 minutes or on first use, so a kept copy is harmless once pairing ends.
+Vyre open on the same PC. The words stay on the clipboard (Vyre does not read it back), and clipboard history or cloud
+clipboard sync on Windows may keep a copy. The code stops working after 5 minutes or on first use, so a
+kept copy is harmless once pairing ends.

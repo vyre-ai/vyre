@@ -51,8 +51,22 @@ import * as open02 from "../test/fixtures/iq02-open.js";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const BAR_FILE = path.join(ROOT, "test/eval/bar.json");
 export const WORLDS = {
+  real: () => worldFromFile(String(process.env.VYRE_EVAL_REAL_WORLD || "")),
   open: () => ({ world: open02, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq02-open.json"), "utf8")), asks: path.join(ROOT, "test/eval/asks/iq02-open.json"), sealed: false }),
 };
+/**
+ * A world from a file of { sessions: [{ id, start, turns }], questions: [{ q, class, expect }] }: the real-use test's scrubbed corpus
+ * (scripts/eval-realuse.mjs). The file is data the caller holds, never part of this repository.
+ * @param {string} file
+ */
+export function worldFromFile(file) {
+  const j = JSON.parse(fs.readFileSync(file, "utf8"));
+  const sessions = j.sessions.map((/** @type {any} */ s) => ({ id: s.id, cwd: "/home/user/vyre", name: undefined, human: true, provider: "claude", start: s.start, turns: s.turns }));
+  const last = Math.max(...sessions.map((/** @type {any} */ s) => s.start)) + 86_400_000;
+  const world = { HOME: "/home/user", ME: { name: "the owner", domains: [], emails: [] }, T0: Math.min(...sessions.map((/** @type {any} */ s) => s.start)), NOW: last,
+    PROJECTS: [], AGENTS: [], SESSIONS: sessions };
+  return { world, gold: { questions: j.questions }, asks: path.join(path.dirname(file), "real-asks.json"), sealed: false };
+}
 export const ANSWERABLE = ["personal", "decision", "history", "who", "where", "time", "cross_provider"];
 export const CLASSES = [...ANSWERABLE, "unanswerable", "leak", "inject"];
 
@@ -160,10 +174,12 @@ export async function runBar(opts = {}) {
   const name = opts.world || "open";
   const w = WORLDS[name];
   if (!w) throw new Error(`no world called ${name} (${Object.keys(WORLDS).join(", ")})`);
-  const { world, gold, asks, sealed } = w();
+  const { world, gold, asks: asksDefault, sealed } = w();
+  const asks = opts.asks || asksDefault;
   if (opts.explain && sealed) throw new Error("--explain never runs on a sealed world");
   const bar = JSON.parse(fs.readFileSync(BAR_FILE, "utf8"));
   let questions = gold.questions;
+  if (opts.classes) questions = questions.filter(q => opts.classes.includes(q.class));
   if (opts.only) questions = CLASSES.flatMap(c => questions.filter(q => q.class === c).slice(0, opts.only));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-eval-bar-"));
   const realNow = Date.now;
@@ -178,7 +194,7 @@ export async function runBar(opts = {}) {
     const t0 = performance.now();
     await embedAll(db, embedder);
     const embedMs = performance.now() - t0;
-    mem = await startBar(db, { me: world.ME, embedder, dense, fixture: reachFixture(world), iqRunner: opts.record ? recorder(dir) : null });
+    mem = await startBar(db, { me: world.ME, embedder, dense, fixture: reachFixture(world), iqRunner: opts.runner || (opts.record ? recorder(dir) : null) });
     // The kept replies, replayed. A reply kept under another prompt version is not used.
     let kept = 0;
     if (fs.existsSync(asks)) {
