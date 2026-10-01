@@ -6,7 +6,7 @@ name: release-dist
 on:
   workflow_dispatch:
   push:
-    paths: ["scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]
+    paths: ["scripts/build-app-out.mjs", "relay/app/**", "test/build-app-out.test.js", "scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]
 permissions:
   contents: read
 jobs:
@@ -38,3 +38,5 @@ jobs:
           if node scripts/check-release-dist.mjs dist --pulled 2>"$RUNNER_TEMP/pulled.err"; then echo "a release with no images passed --pulled"; exit 1; fi
           cat "$RUNNER_TEMP/pulled.err"
           grep -q "names no ghcr.io/vyre-ai digest for the box image" "$RUNNER_TEMP/pulled.err"
+      - name: The hosted phone app's sealing and signing (fixture, throwaway key)
+        run: node --test test/build-app-out.test.js

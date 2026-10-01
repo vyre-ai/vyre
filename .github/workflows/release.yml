@@ -189,6 +189,32 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           retention-days: 7
 
+  # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
+  # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
+  app-web:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app
+        working-directory: apps/app
+        run: |
+          npm ci --no-audit --no-fund
+          npx expo export -p web --output-dir dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-web
+          path: apps/app/dist
+          retention-days: 7
+
   # Join the per-arch digests into one list per image, tag it, sign it, attach the SBOM and provenance.
   manifests:
     needs: [prepare, images]
@@ -261,9 +287,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests]
+    needs: [prepare, images, manifests, app-web]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The minisign key lives only in this environment's secrets; its reviewers (the lead and the
@@ -321,6 +347,24 @@ jobs:
           else
             node scripts/check-release-dist.mjs dist
           fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-web
+          path: apps/app/dist
+      - name: Seal and sign the hosted phone app (scripts/build-app-out.mjs)
+        env:
+          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            node scripts/build-app-out.mjs --dist apps/app/dist --release "$VERSION" --out app-out
+          else
+            node scripts/build-app-out.mjs --dist apps/app/dist --release "$VERSION" --out app-out --throwaway
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PUBLISH == 'true' && 'app-out' || 'app-out-dryrun' }}
+          path: app-out
+          retention-days: 7
       - name: Sign SHA256SUMS (minisign, the release key)
         if: env.PUBLISH == 'true'
         env:
