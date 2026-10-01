@@ -112,6 +112,12 @@ function pipeToken(root) {
     if (t) return t;
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
   }
+  // Still empty: its writer died between creating and writing. An empty file that old is nobody's
+  // token; remove it and make one (once), so a crash cannot wedge every later start.
+  try { if (fs.statSync(file).size === 0 && Date.now() - fs.statSync(file).mtimeMs > 2000) fs.rmSync(file, { force: true }); } catch {}
+  try { fs.writeFileSync(file, token, { mode: 0o600, flag: "wx" }); return token; } catch {}
+  const t = read();
+  if (t) return t;
   throw new Error(`${file} exists but holds no token`);
 }
 

@@ -25,7 +25,10 @@ grep -qs "/srv/vyre-test/win11" /etc/apparmor.d/local/usr.bin.swtpm 2>/dev/null 
 command -v sshpass >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y sshpass python3-venv >/dev/null
 [ -x "$ROOT/venv/bin/wsgidav" ] || { python3 -m venv "$ROOT/venv" && "$ROOT/venv/bin/pip" install -q wsgidav cheroot; }
 
-mkdir -p "$ROOT/share/release"; [ -s "$ROOT/share/release/OpenSSH-Win64.zip" ] || curl -sL --fail -o "$ROOT/share/release/OpenSSH-Win64.zip" https://github.com/PowerShell/Win32-OpenSSH/releases/latest/download/OpenSSH-Win64.zip
+mkdir -p "$ROOT/share/release"; # Pinned release and checksum (Win32-OpenSSH 10.0.0.0p2-Preview): the guest installs this with sshd on automatic start.
+OPENSSH_SHA256=23f50f3458c4c5d0b12217c6a5ddfde0137210a30fa870e98b29827f7b43aba5
+[ -s "$ROOT/share/release/OpenSSH-Win64.zip" ] || curl -sL --fail -o "$ROOT/share/release/OpenSSH-Win64.zip" https://github.com/PowerShell/Win32-OpenSSH/releases/download/10.0.0.0p2-Preview/OpenSSH-Win64.zip
+echo "$OPENSSH_SHA256  $ROOT/share/release/OpenSSH-Win64.zip" | sha256sum -c - >/dev/null || { echo "OpenSSH zip does not match its pinned sha256" >&2; rm -f "$ROOT/share/release/OpenSSH-Win64.zip"; exit 1; }
 [ -s "$ROOT/iso/win11.iso" ] || { curl -L --fail -o "$ROOT/iso/win11.iso.part" "$ISO_URL" && mv "$ROOT/iso/win11.iso.part" "$ROOT/iso/win11.iso"; }
 [ -s "$ROOT/iso/virtio-win.iso" ] || { curl -L --fail -o "$ROOT/iso/virtio-win.iso.part" "$VIRTIO_URL" && mv "$ROOT/iso/virtio-win.iso.part" "$ROOT/iso/virtio-win.iso"; }
 

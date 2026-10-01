@@ -193,6 +193,17 @@ test("config: processes starting at once on one home agree on the win32 pipe tok
   assert.match(names[0], /^\\\\\.\\pipe\\vyre-/);
 });
 
+test("config: an empty pipe-token left by a writer that died is replaced, not fatal", t => {
+  const root = tempHome(t);
+  const f = path.join(root, "pipe-token");
+  fs.writeFileSync(f, "");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(f, old, old);
+  const name = config.socketPath(root, { platform: "win32" });
+  assert.match(name, /-[0-9a-f]{32}$/);
+  assert.equal(config.socketPath(root, { platform: "win32" }), name, "and it is stable afterwards");
+});
+
 test("config: two different homes never share a win32 pipe token, even with colliding hash prefixes forced", t => {
   const a = config.socketPath(tempHome(t), { platform: "win32" });
   const b = config.socketPath(tempHome(t), { platform: "win32" });
