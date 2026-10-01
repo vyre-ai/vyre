@@ -1,6 +1,42 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
  "tools": {
+  "appearance.check": {
+   "module": "appearance",
+   "reason": "read-only: checks a theme override, changes nothing"
+  },
+  "appearance.presets": {
+   "module": "appearance",
+   "reason": "read-only: lists Vyre's own presets"
+  },
+  "appearance.resolve": {
+   "module": "appearance",
+   "reason": "read-only, scoped to the caller's own device and project"
+  },
+  "apps.act": {
+   "module": "apps",
+   "reason": "guard: an action that sends is refused unless it is gated, and a gated send is held at the Gate, where the person's approval (gate.approve) is the proof; what an agent may do unprompted is a timer, an alarm, a note, a reminder or the weather"
+  },
+  "apps.list": {
+   "module": "apps",
+   "reason": "read-only: lists apps and their tiers"
+  },
+  "apps.route": {
+   "module": "apps",
+   "reason": "read-only: turns words into one app action and runs nothing"
+  },
+  "apps.send": {
+   "module": "apps",
+   "reason": "guard: a presence proof is needed from every caller but a module, shown the preview, so an agent holds at the proof and cannot send silently"
+  },
+  "apps.setup": {
+   "module": "apps",
+   "reason": "guard: the callers list in code (cli, capsule, deck): it signs files and opens import windows, which no model or module may do"
+  },
+  "apps.targets": {
+   "module": "apps",
+   "reason": "read-only: an app's people and channels, cached 60 s"
+  },
   "artifacts.archive": {
    "module": "artifacts",
    "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
@@ -64,6 +100,18 @@
   "artifacts.versions": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
+  },
+  "capsule.report": {
+   "module": "capsule",
+   "reason": "guard: the callers list in code (capsule, local, cli): only the app on this Mac reports what macOS allows it"
+  },
+  "capsule.status": {
+   "module": "capsule",
+   "reason": "read-only: whether the Capsule can run here"
+  },
+  "commands.list": {
+   "module": "commands",
+   "reason": "read-only: the verbs the caller can run"
   },
   "events.catalog": {
    "module": "events",
@@ -232,6 +280,38 @@
   "releases.sign": {
    "module": "releases",
    "reason": "callers limited in code to cli, local, module"
+  },
+  "settings.changes": {
+   "module": "settings",
+   "reason": "read-only: recent changes, secret values never included"
+  },
+  "settings.get": {
+   "module": "settings",
+   "reason": "read-only: a secret's value reaches only the person, agents see names"
+  },
+  "settings.request": {
+   "module": "settings",
+   "reason": "guard: the ask check: it works only when gate.said.match finds the person's own words asking for this change in this conversation (lib/said/setting.js); no match is refused"
+  },
+  "settings.reset": {
+   "module": "settings",
+   "reason": "guard: the callers list in code (cli, local, deck, capsule), the person's own surfaces; an agent uses settings.request"
+  },
+  "settings.schema": {
+   "module": "settings",
+   "reason": "read-only: every key with its group"
+  },
+  "settings.set": {
+   "module": "settings",
+   "reason": "guard: the callers list in code (cli, local, deck, capsule), the person's own surfaces; an agent uses settings.request"
+  },
+  "settings.snapshot": {
+   "module": "settings",
+   "reason": "read-only: the settings in effect, secrets masked"
+  },
+  "settings.undo": {
+   "module": "settings",
+   "reason": "guard: the callers list in code (cli, local, deck, capsule), the person's own surfaces"
   },
   "sync.consent": {
    "module": "sync",

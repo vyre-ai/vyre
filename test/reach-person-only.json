@@ -19,7 +19,7 @@
   },
   "capsule.report": {
    "module": "capsule",
-   "why": "pending"
+   "why": "the callers list in code (capsule, local, cli) is narrower than the person list: only the app on this Mac reports what macOS allows it"
   },
   "computers.giveback": {
    "module": "computers",
@@ -151,11 +151,11 @@
   },
   "settings.reset": {
    "module": "settings",
-   "why": "pending"
+   "why": "the callers list in code (cli, local, deck, capsule) is narrower than the person list; an agent uses settings.request, which needs the person's own words"
   },
   "settings.set": {
    "module": "settings",
-   "why": "pending"
+   "why": "the callers list in code (cli, local, deck, capsule) is narrower than the person list; an agent uses settings.request, which needs the person's own words"
   },
   "team.add": {
    "module": "team",
