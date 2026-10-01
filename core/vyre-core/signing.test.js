@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ensureIdentity, signApp, removeIdentity, IDENTITY, CAPSULE_ID } from "./signing.js";
+import { ensureIdentity, signApp, removeIdentity, retryPending, IDENTITY, CAPSULE_ID } from "./signing.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const SHA1 = "AB".repeat(20);
@@ -38,7 +38,10 @@ test("signing: the identity is made once, in a folder only root can read, truste
   const a = ensureIdentity({ dir, run: f.run, systemKeychain: "/tmp/System.keychain" });
   assert.deepEqual([a.created, a.sha1], [true, SHA1]);
   assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
-  assert.equal(fs.statSync(path.join(dir, "pw")).mode & 0o777, 0o600);
+  assert.ok(!fs.existsSync(path.join(dir, "pw")), "no password file: the keychain's password is empty and the folder is the protection");
+  const arg = (/** @type {string} */ sub, /** @type {string} */ flag) => f.calls.filter(c => c.args[0] === sub).map(c => c.args[c.args.indexOf(flag) + 1]);
+  assert.deepEqual([...arg("create-keychain", "-p"), ...arg("unlock-keychain", "-p"), ...arg("import", "-P"), ...arg("set-key-partition-list", "-k")], ["", "", "", ""], "every keychain and p12 password argument is empty: nothing secret in `ps`");
+  assert.ok(f.calls.filter(c => c.cmd.endsWith("openssl")).every(c => !c.args.some(a => /^pass:./.test(a))));
   assert.equal(fs.statSync(path.join(dir, "identity.json")).mode & 0o777, 0o600);
   assert.deepEqual(fs.readdirSync(dir).filter(n => n.startsWith(".make-")), [], "no scratch left");
   const trust = f.calls.find(c => c.args[0] === "add-trusted-cert");
@@ -61,15 +64,46 @@ test("signing: signApp unlocks, signs with the certificate's hash and the Capsul
   assert.ok(sign && sign.args.includes(SHA1) && sign.args.includes(CAPSULE_ID) && sign.args.includes("runtime") && sign.args.includes("/x/Vyre.app"));
   const order = f.calls.filter(c => c.cmd.endsWith("codesign")).map(c => c.args[0]);
   assert.deepEqual(order, ["--force", "--verify", "-d", "-dvvv"]);
-  assert.ok(!f.calls.some(c => c.args.some(a => a.includes(fs.readFileSync(path.join(dir, "pw"), "utf8").trim())) && c.cmd.endsWith("codesign")), "the keychain password never reaches codesign");
 });
 
-test("signing: removeIdentity takes the trust and the folder away", t => {
+test("signing: removeIdentity deletes the certificate and its trust by sha1, takes the keychain off root's list, and removes the folder", t => {
   const dir = dirOf(t), f = fake();
-  ensureIdentity({ dir, run: f.run });
-  removeIdentity({ dir, run: f.run });
+  const kc = path.join(dir, "vyre-core.keychain-db");
+  let list = `    "/Library/Keychains/System.keychain"\n    "${kc}"\n`;
+  const run = (/** @type {string} */ cmd, /** @type {string[]} */ args) => {
+    if (cmd.endsWith("security") && args[0] === "list-keychains" && args.length === 3) return list;
+    if (cmd.endsWith("security") && args[0] === "list-keychains" && args[3] === "-s") { list = args.slice(4).map(k => `    "${k}"\n`).join(""); f.calls.push({ cmd, args }); return ""; }
+    return f.run(cmd, args);
+  };
+  ensureIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
+  const r = removeIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
+  assert.deepEqual(r, { pending: null, command: null });
   assert.ok(!fs.existsSync(dir));
-  assert.ok(f.calls.some(c => c.args[0] === "remove-trusted-cert"));
+  assert.ok(f.calls.some(c => c.args[0] === "delete-certificate" && c.args.join(" ") === `delete-certificate -Z ${SHA1} -t /tmp/System.keychain`), "the certificate itself, with its trust");
+  assert.ok(!list.includes(kc), "the keychain is off root's search list");
+  assert.ok(!fs.existsSync(path.join(path.dirname(dir), ".signing-cert-retry")), "no retry record when it worked");
+});
+
+test("signing: when macOS will not delete the certificate, the sha1 is written outside the folder, the exact command is returned, and the next install retries", t => {
+  const dir = dirOf(t), f = fake();
+  let stuck = true;
+  const run = (/** @type {string} */ cmd, /** @type {string[]} */ args) => {
+    if (cmd.endsWith("security") && args[0] === "delete-certificate" && stuck) throw new Error("timed out");
+    if (cmd.endsWith("security") && args[0] === "find-certificate") return stuck ? "SHA-1 hash: " + SHA1 : (() => { throw new Error("not found"); })();
+    return f.run(cmd, args);
+  };
+  ensureIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
+  const r = removeIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
+  assert.equal(r.pending, SHA1);
+  assert.equal(r.command, `sudo /usr/bin/security delete-certificate -Z ${SHA1} -t /tmp/System.keychain`);
+  assert.ok(!fs.existsSync(dir), "the key folder is gone regardless");
+  const rec = path.join(path.dirname(dir), ".signing-cert-retry");
+  assert.deepEqual(JSON.parse(fs.readFileSync(rec, "utf8")), { sha1: SHA1 });
+  assert.equal(fs.statSync(rec).mode & 0o777, 0o600);
+  assert.equal(retryPending({ dir, run, systemKeychain: "/tmp/System.keychain" }), SHA1, "still stuck: still pending");
+  stuck = false;
+  ensureIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" }); // the next install retries first
+  assert.ok(!fs.existsSync(rec), "done, record gone");
 });
 
 test("signing: an identity codesign would not list as valid fails at install, with what the keychain said", t => {

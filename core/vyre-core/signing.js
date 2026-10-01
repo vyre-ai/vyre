@@ -11,7 +11,6 @@
 // Every command goes through an injected `run(cmd, args)` (installer.js's Run), so tests record them
 // and the macOS runner proof runs them for real.
 
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -32,6 +31,7 @@ const SYSTEM_KEYCHAIN = "/Library/Keychains/System.keychain";
  */
 export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
   const meta = path.join(dir, "identity.json");
+  retryPending({ dir, run, systemKeychain });
   try {
     const j = JSON.parse(fs.readFileSync(meta, "utf8"));
     if (typeof j.sha1 === "string" && fs.existsSync(j.keychain)) return { sha1: j.sha1, keychain: j.keychain, created: false };
@@ -41,12 +41,15 @@ export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
   const tmp = fs.mkdtempSync(path.join(dir, ".make-"));
   fs.chmodSync(tmp, 0o700);
   const keychain = path.join(dir, "vyre-core.keychain-db");
-  const pw = crypto.randomBytes(24).toString("base64url");
+  // No secret ever goes in an argument: a password in argv shows in `ps`. The keychain and the p12 carry an
+  // EMPTY password, and the protection is the folder (root:wheel 0700), which is also where a password file
+  // would have had to live.
+  const pw = "";
   const key = path.join(tmp, "key.pem"), cert = path.join(tmp, "cert.pem"), p12 = path.join(tmp, "id.p12"), cnf = path.join(tmp, "req.cnf");
   fs.writeFileSync(cnf, `[req]\ndistinguished_name=dn\nx509_extensions=v3\nprompt=no\n[dn]\nCN=${IDENTITY}\n[v3]\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=critical,codeSigning\nbasicConstraints=critical,CA:false\n`, { mode: 0o600 });
   try {
     run(OPENSSL, ["req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "3650", "-nodes", "-keyout", key, "-out", cert, "-config", cnf]);
-    run(OPENSSL, ["pkcs12", "-export", "-inkey", key, "-in", cert, "-out", p12, "-name", IDENTITY, "-passout", `pass:${pw}`]);
+    run(OPENSSL, ["pkcs12", "-export", "-inkey", key, "-in", cert, "-out", p12, "-name", IDENTITY, "-passout", "pass:"]);
     fs.rmSync(keychain, { force: true });
     run(SECURITY, ["create-keychain", "-p", pw, keychain]);
     run(SECURITY, ["set-keychain-settings", keychain]); // no auto-lock, no timeout
@@ -66,7 +69,6 @@ export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
     if (!valid.toUpperCase().includes(sha1)) {
       throw new Error(`the signing identity is not valid for code signing. valid: ${valid.trim()} | all: ${tryOut(["find-identity", "-p", "codesigning", keychain]).trim()} | verify: ${tryOut(["verify-cert", "-c", cert, "-p", "codeSign", "-k", keychain])}`.replace(/\s+/g, " "));
     }
-    fs.writeFileSync(path.join(dir, "pw"), pw + "\n", { mode: 0o600 });
     fs.writeFileSync(path.join(dir, "cert.pem"), fs.readFileSync(cert), { mode: 0o600 });
     fs.writeFileSync(meta, JSON.stringify({ sha1, keychain, identity: IDENTITY, created: new Date().toISOString() }) + "\n", { mode: 0o600 });
     return { sha1, keychain, created: true };
@@ -83,8 +85,7 @@ export function ensureIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
  */
 export function signApp({ app, dir, run }) {
   const { sha1, keychain } = ensureIdentity({ dir, run });
-  const pw = fs.readFileSync(path.join(dir, "pw"), "utf8").trim();
-  run(SECURITY, ["unlock-keychain", "-p", pw, keychain]);
+  run(SECURITY, ["unlock-keychain", "-p", "", keychain]);
   // codesign looks identities up through root's own keychain search list, so put ours on it (root's
   // list only: the person's and _vyre's are never touched).
   const listed = String(run(SECURITY, ["list-keychains", "-d", "user"])).split("\n").map((l) => l.trim().replace(/^"|"$/g, "")).filter(Boolean);
@@ -103,12 +104,58 @@ export function signApp({ app, dir, run }) {
   return { requirement, cdhash, sha1 };
 }
 
+/** Where an unfinished certificate removal is written down: root's folder, but outside the signing folder that is deleted. @param {string} dir */
+const pendingFile = (dir) => path.join(path.dirname(path.resolve(dir)), ".signing-cert-retry");
+
+/** The exact command that removes the certificate by hand. @param {string} sha1 @param {string} systemKeychain */
+export const removeCommand = (sha1, systemKeychain = SYSTEM_KEYCHAIN) => `sudo /usr/bin/security delete-certificate -Z ${sha1} -t ${systemKeychain}`;
+
 /**
- * Remove the identity: the system trust for its certificate and the folder with the key.
- * @param {{ dir: string, run: Run }} o
+ * Delete the certificate and its trust settings from the system keychain. `delete-certificate -t` does
+ * both (remove-trusted-cert alone leaves the certificate in the keychain). macOS may not answer, so it
+ * gets 20 s. @returns {boolean} whether it is gone
  */
-export function removeIdentity({ dir, run }) {
-  const cert = path.join(dir, "cert.pem");
-  if (fs.existsSync(cert)) { try { run(SECURITY, ["remove-trusted-cert", "-d", cert], { timeout: 20_000 }); } catch { /* not trusted, already gone, or macOS would not answer in 20 s: the key goes either way, and a trusted certificate with no key is inert */ } }
+function dropCertificate(sha1, systemKeychain, run) {
+  try { run(SECURITY, ["delete-certificate", "-Z", sha1, "-t", systemKeychain], { timeout: 20_000 }); return true; } catch { /* maybe never there, maybe stuck: look */ }
+  try { run(SECURITY, ["find-certificate", "-Z", "-a", "-c", IDENTITY, systemKeychain], { timeout: 20_000 }); } catch { return true; } // no certificate by that name: nothing left
+  return false;
+}
+
+/** Finish a certificate removal an earlier uninstall could not. @param {{ dir: string, run: Run, systemKeychain?: string }} o @returns {string | null} the sha1 still pending */
+export function retryPending({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
+  const f = pendingFile(dir);
+  let j;
+  try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
+  if (typeof j.sha1 !== "string" || !/^[0-9A-F]{40}$/.test(j.sha1)) { fs.rmSync(f, { force: true }); return null; }
+  if (dropCertificate(j.sha1, systemKeychain, run)) { fs.rmSync(f, { force: true }); return null; }
+  return j.sha1;
+}
+
+/**
+ * Remove the identity completely: the certificate and its trust from the system keychain, the keychain
+ * from root's search list, and the folder with the key. If macOS will not remove the certificate, the
+ * sha1 is written down (root's folder, outside the one deleted) so the next install or uninstall retries,
+ * and the exact command is returned.
+ * @param {{ dir: string, run: Run, systemKeychain?: string }} o
+ * @returns {{ pending: string | null, command: string | null }}
+ */
+export function removeIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
+  let sha1 = null;
+  let keychain = null;
+  try { const j = JSON.parse(fs.readFileSync(path.join(dir, "identity.json"), "utf8")); sha1 = j.sha1; keychain = j.keychain; } catch { /* none */ }
+  let pending = retryPending({ dir, run, systemKeychain });
+  if (sha1) {
+    fs.mkdirSync(path.dirname(path.resolve(dir)), { recursive: true });
+    fs.writeFileSync(pendingFile(dir), JSON.stringify({ sha1 }) + "\n", { mode: 0o600 });
+    if (dropCertificate(sha1, systemKeychain, run)) { fs.rmSync(pendingFile(dir), { force: true }); pending = null; } else pending = sha1;
+  }
+  if (keychain) {
+    // Root's own search list only; a failure here must not stop the removal.
+    try {
+      const listed = String(run(SECURITY, ["list-keychains", "-d", "user"])).split("\n").map((l) => l.trim().replace(/^"|"$/g, "")).filter(Boolean);
+      if (listed.includes(keychain)) run(SECURITY, ["list-keychains", "-d", "user", "-s", ...listed.filter((k) => k !== keychain)]);
+    } catch { /* the keychain file is deleted below either way */ }
+  }
   fs.rmSync(dir, { recursive: true, force: true });
+  return { pending, command: pending ? removeCommand(pending, systemKeychain) : null };
 }
