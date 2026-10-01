@@ -3,7 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text } from "../test/fake-dom.js";
 
-install();
+const doc = /** @type {any} */ (install());
+doc.importNode = n => n;
+/** @type {any} */ (globalThis).DOMParser = class { parseFromString() { return { documentElement: doc.createElement("svg") }; } };
 const { providerMark, providerName, badgeSize } = await import("./provider-mark.js");
 
 test("no provider, no badge: a turn that does not say who wrote it gets none", () => {
@@ -12,10 +14,15 @@ test("no provider, no badge: a turn that does not say who wrote it gets none", (
   assert.equal(providerMark(undefined, 20), null);
 });
 
-test("each known provider has its own shape and monogram; an unknown one is a circle with its first two letters", () => {
-  const cl = /** @type {any} */ (providerMark("claude", 18)), cx = /** @type {any} */ (providerMark("Codex", 18)), gk = /** @type {any} */ (providerMark("grok", 18)), q = /** @type {any} */ (providerMark("mistral", 18));
-  assert.deepEqual([cl, cx, gk, q].map(e => e.getAttribute("class").split(" ")[1]), ["pmark-circle", "pmark-square", "pmark-drop", "pmark-circle"]);
-  assert.deepEqual([cl, cx, gk, q].map(e => text(e)), ["Cl", "Cx", "Gk", "Mi"]);
+test("Claude, Codex and OpenRouter hold their own mark; Grok and an unknown provider get a monogram", () => {
+  const cl = /** @type {any} */ (providerMark("claude", 18)), cx = /** @type {any} */ (providerMark("Codex", 18)), or = /** @type {any} */ (providerMark("openrouter", 18));
+  const gk = /** @type {any} */ (providerMark("grok", 18)), q = /** @type {any} */ (providerMark("mistral", 18));
+  for (const e of [cl, cx, or]) assert.match(e.getAttribute("class"), /pmark-art/);
+  for (const e of [gk, q]) assert.doesNotMatch(e.getAttribute("class"), /pmark-art/);
+  assert.deepEqual([gk, q].map(e => text(e)), ["Gk", "Mi"]);
+  assert.doesNotMatch(cl.getAttribute("class"), /pmark-two/, "Claude's spark is one colour on both themes");
+  assert.match(cx.getAttribute("class"), /pmark-two/, "OpenAI has a white and a black variant");
+  assert.match(or.getAttribute("class"), /pmark-two/);
 });
 
 test("the accessible name says who wrote it, with the model when known", () => {
