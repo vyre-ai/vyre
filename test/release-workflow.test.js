@@ -81,6 +81,14 @@ test("release.yml: the approver summary names what is being released on its righ
   assert.ok(yml.indexOf("name: signing-diff") < yml.indexOf("- name: Box files and vyre.tgz"), "uploaded from the prepare job, before any approval");
 });
 
+test("release.yml: the hosted phone app is sealed for a stable release only (its manifest takes x.y.z, and a prerelease is never served there)", () => {
+  const i = yml.indexOf("Seal and sign the hosted phone app");
+  const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10) > 0 ? yml.indexOf("\n      - name:", i + 10) : undefined);
+  assert.match(step, /if: env\.CHANNEL == 'stable'/);
+  const upload = yml.slice(yml.indexOf("- uses: actions/upload-artifact", i), yml.indexOf("- uses: actions/upload-artifact", i) + 400);
+  assert.match(upload, /if: env\.CHANNEL == 'stable'/, "and so is its upload");
+});
+
 test("release.yml: prepare refuses a release whose package, lockfile and plugin versions disagree", () => {
   const i = yml.indexOf('the tag says $version but package.json says $pkg');
   assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);

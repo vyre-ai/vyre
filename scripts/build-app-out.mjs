@@ -28,19 +28,21 @@ export function baseUrlOf(file = path.join(path.dirname(new URL(import.meta.url)
 }
 
 /**
- * @param {{ dist: string, release: string, out: string, pem?: string, throwaway?: boolean, base?: string }} o
+ * @param {{ dist: string, release: string, out: string, pem?: string, throwaway?: boolean, base?: string, pinned?: string }} o
+ *   release: plain x.y.z (a prerelease is never served: the release workflow skips this step for one).
+ *   pinned: the public key a real run must match (SPKI base64); tests only, the default is the pinned RELEASE_KEY.
  * @returns {Promise<{ line: any, pub: string, folders: string[], throwaway: boolean }>}
  */
-export async function buildAppOut({ dist, release, out, pem = "", throwaway = false, base = baseUrlOf() }) {
+export async function buildAppOut({ dist, release, out, pem = "", throwaway = false, base = baseUrlOf(), pinned = RELEASE_KEY }) {
   if (!fs.existsSync(path.join(dist, "index.html"))) throw new Error(`${dist} has no index.html: build the web export first`);
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release)) throw new Error(`release must be x.y.z, got "${release}"`);
+  if (!/^\d+\.\d+\.\d+$/.test(release)) throw new Error(`release must be a plain x.y.z, got "${release}" (a prerelease is never served: skip this step for one)`);
   /** @type {string} */ let key = pem;
   if (throwaway) {
     if (pem) throw new Error("--throwaway and a signing key are two ways to sign: use one");
     key = crypto.generateKeyPairSync("ed25519").privateKey.export({ format: "pem", type: "pkcs8" }).toString();
   } else if (!pem) throw new Error("no signing key: set VYRE_SIGNING_KEY (the release environment's secret), or pass --throwaway for a dry run");
   const pub = publicOf(key);
-  if (!throwaway && !Buffer.from(RELEASE_KEY, "base64").subarray(-32).equals(Buffer.from(pub))) throw new Error("the signing key is not the pinned release key (core/vyre-core/release.js RELEASE_KEY)");
+  if (!throwaway && !Buffer.from(pinned, "base64").subarray(-32).equals(Buffer.from(pub))) throw new Error("the signing key is not the pinned release key (core/vyre-core/release.js RELEASE_KEY)");
   rawKey(key); // an invalid key stops here, before anything is written
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
