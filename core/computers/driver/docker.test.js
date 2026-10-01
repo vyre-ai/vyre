@@ -41,6 +41,15 @@ async function engine(t) {
         NetworkSettings: { Networks: { [body.HostConfig.NetworkMode]: { IPAddress: "172.20.0.5" } } } });
       return send(201, { Id: id, Warnings: [] });
     }
+    if (req.method === "GET" && url.pathname === "/v1.43/events" && url.searchParams.get("since") === "7") { res.writeHead(404); res.end(); return; }
+    if (req.method === "GET" && url.pathname === "/v1.43/events") {
+      seen.push({ method: "EVENTS", path: String(req.url), body: undefined });
+      res.writeHead(200, { "content-type": "application/json" });
+      const n = seen.filter(x => x.method === "EVENTS").length;
+      if (n === 1) { res.write(JSON.stringify({ Type: "container", Action: "die", Actor: { ID: "cA", Attributes: { "vyre.computer": "kit", exitCode: "137" } }, time: 200 }) + "\n"); setTimeout(() => res.end(), 20); }
+      else res.write(JSON.stringify({ Type: "container", Action: "oom", Actor: { ID: "cB", Attributes: { "vyre.computer": "pax" } }, time: 205 }) + "\n");
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/v1.43/containers/json") {
       return send(200, [...boxes.values()].map(b => ({ Id: b.Id, Labels: b.Config.Labels, State: b.State.Status })));
     }
@@ -291,4 +300,31 @@ test("docker: seedAgentTokens() writes .agent-tokens the same way seed() writes 
   assert.match(put.body.toString("latin1"), /id1:alice=a{40}\nid2:bob=b{40}\n/);
   await assert.rejects(d.seedAgentTokens("db1", [{ id: "id1", name: "alice", token: "a".repeat(40) }]));
   assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
+});
+
+test("docker: watchEvents hands over each death with its agent and exit code, reconnects with since=, and says when a gap may have opened", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, bearer: "b".repeat(20) });
+  const got = [];
+  let gaps = 0;
+  const w = d.watchEvents(ev => got.push(ev), { onGap: () => gaps++ });
+  t.after(() => w.stop());
+  for (let i = 0; i < 60 && got.length < 2; i++) await new Promise(r => setTimeout(r, 100));
+  assert.deepEqual(got.map(x => [x.id, x.agent, x.action, x.exitCode]), [["cA", "kit", "die", 137], ["cB", "pax", "oom", null]]);
+  assert.equal(gaps, 1, "one reconnect, one gap notice");
+  const evs = e.seen.filter(x => x.method === "EVENTS");
+  assert.equal(evs[0].path, "/v1.43/events");
+  assert.equal(evs[1].path, "/v1.43/events?since=200");
+});
+
+test("docker: watchEvents asks for a look at every computer when /events answers with anything but a stream", async t => {
+  const server = http.createServer((req, res) => { res.writeHead(404); res.end(); });
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  t.after(() => server.close());
+  const d = new DockerDriver({ url: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`, bearer: "b".repeat(20) });
+  let gaps = 0;
+  const w = d.watchEvents(() => {}, { onGap: () => gaps++ });
+  t.after(() => w.stop());
+  for (let i = 0; i < 30 && gaps < 1; i++) await new Promise(r => setTimeout(r, 50));
+  assert.equal(gaps, 1);
 });

@@ -21,48 +21,8 @@
    "module": "computers",
    "why": "pending"
   },
-  "computers.member.add": {
-   "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.dispose": {
-   "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.remove": {
-   "module": "computers",
-   "why": "pending"
-  },
-  "computers.member.rotate": {
-   "module": "computers",
-   "why": "pending"
-  },
   "computers.takeover": {
    "module": "computers",
-   "why": "pending"
-  },
-  "files.drive.access": {
-   "module": "files",
-   "why": "pending"
-  },
-  "files.drive.mount": {
-   "module": "files",
-   "why": "pending"
-  },
-  "files.drive.open": {
-   "module": "files",
-   "why": "pending"
-  },
-  "files.drive.unmount": {
-   "module": "files",
-   "why": "pending"
-  },
-  "files.receive": {
-   "module": "files",
-   "why": "pending"
-  },
-  "files.send": {
-   "module": "files",
    "why": "pending"
   },
   "gate.reject": {
@@ -72,14 +32,6 @@
   "gate.revise": {
    "module": "gate",
    "why": "callers list in code, narrower than person: it is callers list in code (cli, local, module, tailnet): no model caller"
-  },
-  "glass.release": {
-   "module": "glass",
-   "why": "pending"
-  },
-  "glass.take": {
-   "module": "glass",
-   "why": "pending"
   },
   "learn.accept": {
    "module": "learn",

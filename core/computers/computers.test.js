@@ -146,6 +146,28 @@ test("computers: endpoint checks out and thaws; may-act touches", async t => {
   assert.deepEqual(s.events().map(e => e.type), ["computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed", "computer.checked-out"]);
 });
 
+test("computers: an agent can pause its own hands but never lift a pause: only the person resumes", async t => {
+  const s = await boot(t);
+  await s.cli("computers.checkout", { agent: "kit" });
+  assert.equal((await s.kit("computers.pause", {})).error, undefined, "an agent may stop its own hands");
+  const r = await s.kit("computers.resume", {});
+  assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), "an agent resumed its own paused computer: " + JSON.stringify(r.error || r.data));
+  assert.equal(s.h.pool.isPaused("kit"), true, "the pause is still on");
+  assert.ok((await s.module("computers.resume", { agent: "kit" })).error, "a module cannot lift it either");
+  assert.equal((await s.cli("computers.resume", { agent: "kit" })).error, undefined);
+  assert.equal(s.h.pool.isPaused("kit"), false);
+});
+
+test("computers: an agent's checkout takes the thread from the verified call, never from its input; and list shows an ordinary agent only its own computer", async t => {
+  const s = await boot(t);
+  const r = await s.kit("computers.checkout", { thread: "someone-elses-thread" });
+  assert.equal(r.error, undefined);
+  assert.notEqual(s.h.pool.view("kit").thread, "someone-elses-thread");
+  const l = await s.kit("computers.list", {});
+  assert.deepEqual(l.data.computers.map(c => c.agent), ["kit"]);
+  assert.ok((await s.juno("computers.list", {})).data.computers.length >= 2, "the assistant sees them all");
+});
+
 test("computers: pause refuses the hands, resume lets them act", async t => {
   const s = await boot(t);
   assert.deepEqual((await s.cli("computers.pause", { agent: "kit" })).data, { paused: true });
@@ -271,6 +293,20 @@ test("computers: watch hands out a one-use ticket that expires", async t => {
   s.clock.t += 30_000;
   assert.equal(s.h.pool.redeem(late.ticket), null);
   assert.match((await s.cli("computers.watch", { agent: "juno", surface: "glass:laptop" })).error.message, /juno has no computer/);
+});
+
+test("computers: watch refuses a computer that died on its own, in plain words, until it is started again", async t => {
+  const s = await boot(t);
+  await s.cli("computers.checkout", { agent: "kit" });
+  const driver = s.h.pool.driver;
+  [...driver.containers.values()][0].state = "exited";
+  const w = await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" });
+  assert.equal(w.error.message, "This computer stopped. Start it again?");
+  assert.equal(w.error.code, "stopped");
+  assert.equal(s.h.pool.view("kit").state, "stopped");
+  // Starting it again clears that, and a ticket is handed out as before.
+  await s.cli("computers.checkout", { agent: "kit" });
+  assert.ok((await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" })).data.ticket);
 });
 
 test("computers: eviction and a full pool through the tools", async t => {
@@ -495,8 +531,8 @@ test("computers: tailnet is off by default; status says so, and whether the key 
 test("computers: tailnet.set and status are the owner's, refused to agents and the assistant; set is saved to config", async t => {
   const s = await boot(t);
   for (const as of [s.kit, s.juno]) {
-    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /is an agent/);
-    assert.match((await as("computers.tailnet.status")).error.message, /is an agent/);
+    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /not available to mcp callers/);
+    assert.match((await as("computers.tailnet.status")).error.message, /not available to mcp callers/);
   }
   assert.ok(s.d.registry.tools.get("computers.tailnet.set")?.presence, "computers.tailnet.set does not declare presence");
   const ok = await s.cli("computers.tailnet.set", { enabled: true });
@@ -511,7 +547,7 @@ test("computers: tailnet.set and status are the owner's, refused to agents and t
 test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
   const s = await boot(t);
   assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
-  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /is an agent/);
+  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /not available to mcp callers/);
   assert.ok((await s.cli("computers.handback.set", { minutes: 7 })).error, "a minutes value that is not a choice was saved");
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
   const ok = await s.cli("computers.handback.set", { minutes: 2 });
@@ -563,6 +599,23 @@ test("computers: all four member tools are on the PERSON_ONLY floor -- the same 
   for (const tool of ["computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose"]) {
     assert.ok(PERSON_ONLY.has(tool), `${tool} is not on the PERSON_ONLY floor`);
   }
+});
+
+test("computers: the admin tools are a person's alone: an agent and a module are refused, the person is not", async t => {
+  const s = await boot(t);
+  const person = ["computers.handback.set", "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose",
+    "computers.egress.set", "computers.tailnet.set"];
+  for (const tool of person) {
+    const input = { agent: "kit", computer: "browser-abc123", name: "alice", mode: "off", on: false, minutes: 5 };
+    for (const [who, call] of [["an agent", s.kit], ["the assistant", s.juno], ["a module", s.module]]) {
+      const r = await call(tool, input);
+      assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${who} reached ${tool}: ${JSON.stringify(r.error || r.data).slice(0, 120)}`);
+    }
+  }
+  // The person's own surface gets past the door (this one needs no input to answer).
+  const ok = await s.cli("computers.handback.status");
+  assert.equal(ok.error, undefined);
+  assert.notEqual((await s.kit("computers.handback.status")).error, undefined, "its status is the person's too");
 });
 
 test("computers: computers.member.add reaches pool.js and the vault (there is no vault module running here, so it fails there, not at the tool's own gate)", async t => {

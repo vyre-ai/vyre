@@ -17,6 +17,8 @@ const SKIP = new Set(["node_modules", ".git", "testing"]);
 const PERSON_PROXY = new Set([
   // A tolerated refusal: the switchboard asks mentions.search and, when a module is refused it, falls back to vault by name (core/switchboard/said.js).
   "switchboard:mentions.search",
+  // The Windows app's own page (local/capsule/native-win/app/ui/link.js) asks the box through the person's signed-in panel; it is the person calling, not a module.
+  "capsule:files.drive.address",
 ]);
 
 function* files(dir) {
