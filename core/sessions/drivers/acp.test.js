@@ -536,7 +536,7 @@ test("projectDefinesMcp: a project's .codex/config.toml defining an MCP server i
   t.after(() => fsx.rmSync(root, { recursive: true, force: true }));
   const deep = pathx.join(root, "a", "b"); fsx.mkdirSync(deep, { recursive: true });
   assert.equal(projectDefinesMcp(deep), false, "no config");
-  const forms = ["[mcp_servers.vyre]\ncommand = \"x\"", "[ mcp_servers.vyre ]\ncommand = \"x\"", "[[mcp_servers]]\nname = \"x\"", "mcp_servers = { vyre = { command = \"x\" } }", "mcp_servers.vyre.command = \"x\"", "\"mcp_servers\".vyre.command = \"x\"", "[ \"mcp_servers\" . vyre ]\ncommand = \"x\"", "mcp-servers.vyre = 1"];
+  const forms = ["[mcp_servers.vyre]\ncommand = \"x\"", "[ mcp_servers.vyre ]\ncommand = \"x\"", "[[mcp_servers]]\nname = \"x\"", "mcp_servers = { vyre = { command = \"x\" } }", "mcp_servers.vyre.command = \"x\"", "\"mcp_servers\".vyre.command = \"x\"", "[ \"mcp_servers\" . vyre ]\ncommand = \"x\"", "mcp-servers.vyre = 1", "[\"mcp_servers\".vyre]\ncommand = \"x\"", "['mcp_servers'.vyre]\ncommand = \"x\"", "'mcp_servers'.vyre.command = \"x\"", "\"\\u006dcp_servers\".vyre.command = \"x\""];
   for (const body of forms) {
     fsx.mkdirSync(pathx.join(root, ".codex"), { recursive: true });
     fsx.writeFileSync(pathx.join(root, ".codex", "config.toml"), `model = "m"\n${body}\n`);

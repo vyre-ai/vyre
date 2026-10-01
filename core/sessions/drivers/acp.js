@@ -88,14 +88,14 @@ function descendants(pid) {
 }
 /** Does a .codex/config.toml in this folder or any above it define an MCP server? Codex loads those on top of the account's own config. @param {string} dir */
 export function projectDefinesMcp(dir) {
-  // Conservative on purpose: any .codex/config.toml from here up that mentions mcp_servers in any spelling (header, array table, inline, dotted, quoted,
-  // even a comment) counts, and so does one that exists but cannot be read. A TOML parser disagreeing with a regex is the bypass; a substring is not.
+  // Conservative on purpose: any .codex/config.toml from here up that contains the text "mcp" anywhere, or any \u escape (a key can be spelled through
+  // escapes), counts, whatever the TOML form, and so does one that exists but cannot be read. A TOML parser disagreeing with a regex is the bypass; a substring is not.
   let d = path.resolve(dir);
   for (let i = 0; i < 40; i++) {
     const file = path.join(d, ".codex", "config.toml");
     let text = null;
     try { text = fs.readFileSync(file, "utf8"); } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT" && /** @type {any} */ (e).code !== "ENOTDIR") return true; }
-    if (text !== null && /mcp[_\s"'-]*servers/i.test(text)) return true;
+    if (text !== null && /mcp|\\u[0-9a-f]{4}|\\U[0-9a-f]{8}/i.test(text)) return true; // the text mcp anywhere, or any unicode escape (which can spell the key without it)
     const up = path.dirname(d);
     if (up === d) break;
     d = up;
