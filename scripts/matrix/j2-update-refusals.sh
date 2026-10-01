@@ -20,7 +20,8 @@ rec() { # rec STEP ok|false [why]
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 # What the host's own VERSION file says it holds: the release variants share the candidate's vyre.tgz, so the running image's
 # own version does not move with them, and the file the update writes is the honest record.
-hv() { tr -d ' \r\n' <"$DIR/VERSION" 2>/dev/null; }
+# An install has no VERSION file until its first update, so until then the running image's version is the record.
+hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else version; fi; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
 mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
