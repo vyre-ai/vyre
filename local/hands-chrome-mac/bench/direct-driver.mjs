@@ -135,7 +135,9 @@ export class DirectDriver {
       case "page.fill": return this.evaluate(a.tabId, expr(fillFn, a.fields));
       case "page.eval": return this.evaluate(a.tabId, a.expression);
       case "page.act": {
-        const c = await this.evaluate(a.tabId, expr(centerFn, a.selector));
+        // A control the previous click opens (the drawer) can be a frame behind a fast click: the baseline looks again for up to 2 s, as a person's own next click would.
+        let c = await this.evaluate(a.tabId, expr(centerFn, a.selector));
+        for (let i = 0; !c && i < 100; i++) { await new Promise(r => setTimeout(r, 20)); c = await this.evaluate(a.tabId, expr(centerFn, a.selector)); }
         if (!c) throw new Error("not found: " + a.selector);
         const tab = /** @type {any} */ (this.tabs.get(a.tabId));
         await this.cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: c.x, y: c.y, button: "left", clickCount: 1 }, tab.sessionId);

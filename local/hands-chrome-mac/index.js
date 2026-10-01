@@ -748,6 +748,6 @@ export function guide(dir, id, browsers) {
     "Then run chrome.status: it should say connected.",
     "Two bars in Chrome are normal and cannot be hidden. On every start, Chrome warns about developer-mode extensions. While Vyre works in a tab, Chrome says the extension started debugging this browser; it goes away when Vyre lets go of the tab.",
     "Esc stops Vyre at once, and it waits for you before doing anything else.",
-    "Agents can run a script in a page you are signed in to. While it runs, and for what it leaves running (a timer, a frame it made) until the page changes, Vyre stops it from sending anything to a site the page does not already use; a worker it made is closed when the call returns. Limit: a script cannot be held beyond that, so an agent you do not trust should not be given a page with your logins in it.",
+    "Agents can run a script in a page you are signed in to. Vyre blocks what it can see a script send to a site the page does not already use, and closes a worker it made when the call returns. It cannot hold a script that builds code from text or starts a worker some other way, so an agent you do not trust should not be given a page with your logins in it.",
   ].join("\n");
 }
