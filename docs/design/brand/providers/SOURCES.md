@@ -11,16 +11,11 @@ wrote a reply or owns an account, never as Vyre branding. Retrieved 1 Oct 2026.
 | openai-blossom-black.svg | OpenAI Blossom | same zip, "OAI_OpenAI-Blossom_Black.svg" | Black, published monochrome |
 | openrouter-glyph-cloud.svg | OpenRouter glyph | OpenRouter brand page https://openrouter.ai/brand, https://openrouter.ai/brand/logos/transparent/glyph/svg/glyph-cloud.svg | Cloud (#FCFCFE), the light glyph, for dark grounds |
 | openrouter-glyph-ink.svg | OpenRouter glyph | https://openrouter.ai/brand/logos/transparent/glyph/svg/glyph-ink.svg | Ink (#03080A), the dark glyph, for light grounds |
-
-## Not yet obtained: xAI Grok
-
-xAI's brand guidelines page (https://x.ai/legal/brand-guidelines) links its asset kit at
-https://data.x.ai/logos/SpaceXAI_Grok_Assets.zip. That host answers 403 to every scripted request (curl from
-the Mac and from the test box, a headless browser, and the Internet Archive has no copy), so the kit has not
-been downloaded. Someone with a normal browser should download that zip, take the Grok mark SVG (and its
-monochrome variants if published), drop them here as grok-*.svg and add their rows above. Until then the Grok
-badge is the neutral monogram "Gk" described in provider-badge.md.
+| grok-logomark-light.svg | Grok logomark | xAI brand guidelines https://x.ai/legal/brand-guidelines, kit https://data.x.ai/logos/SpaceXAI_Grok_Assets.zip (downloaded in a browser by the user, 1 Oct 2026), file "Grok_Logomark_Light.svg" | Light (white mark), for dark grounds |
+| grok-logomark-dark.svg | Grok logomark | same kit, "Grok_Logomark_Dark.svg" | Dark (#0A0A0A mark), for light grounds |
 
 The guidelines that govern use: https://openai.com/brand/, https://x.ai/legal/brand-guidelines, Anthropic's
 press kit terms, https://openrouter.ai/brand. Do not recolour, outline, crop, animate or combine the marks
 beyond the published variants above, and do not use them to imply that Vyre is made or endorsed by the provider.
+
+xAI's asset host answers 403 to scripted requests, so the Grok kit was fetched by the user in a normal browser and unpacked locally; the two Grok files are byte-for-byte the kit's logomarks.

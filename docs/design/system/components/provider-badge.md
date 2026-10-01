@@ -30,8 +30,8 @@ ring, so a mark always sits on a neutral ground and never touches the page.
 | Claude | Claude Spark | claude-spark-clay.svg (published colour, #D97757) | same |
 | Codex (OpenAI) | OpenAI Blossom | openai-blossom-white.svg | openai-blossom-black.svg |
 | OpenRouter (the driver) | OpenRouter glyph | openrouter-glyph-cloud.svg | openrouter-glyph-ink.svg |
-| Grok (xAI) | not yet obtained, see SOURCES.md | neutral monogram "Gk": mono 600, `-0.04em`, `--text` on a `--panel` tile | same |
-| Any other provider | none | monogram of the provider's first two letters, same style as Grok's | same |
+| Grok (xAI) | Grok logomark | grok-logomark-light.svg (white mark) | grok-logomark-dark.svg (dark mark) |
+| Any other provider | none | monogram of the provider's first two letters: mono 600, `-0.04em`, `--text` on a `--panel` tile | same |
 
 Rules for the official marks (from the providers' own guidelines): use the SVGs as published, with no
 recolouring beyond the published variants above, no outline, crop, shadow, glow or animation, and leave the
