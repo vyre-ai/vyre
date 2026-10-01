@@ -71,30 +71,6 @@
    "module": "appearance",
    "default": "open to any caller"
   },
-  "apps.act": {
-   "module": "apps",
-   "default": "open to any caller"
-  },
-  "apps.list": {
-   "module": "apps",
-   "default": "open to any caller"
-  },
-  "apps.route": {
-   "module": "apps",
-   "default": "open to any caller"
-  },
-  "apps.send": {
-   "module": "apps",
-   "default": "open to any caller"
-  },
-  "apps.setup": {
-   "module": "apps",
-   "default": "limited by callers in code"
-  },
-  "apps.targets": {
-   "module": "apps",
-   "default": "open to any caller"
-  },
   "assistant.brief": {
    "module": "assistant",
    "default": "open to any caller"
