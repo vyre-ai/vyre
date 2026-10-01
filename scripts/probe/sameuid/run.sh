@@ -22,6 +22,7 @@ for i in $(seq 1 60); do [ -S "$VYRE_HOME/vyre.sock" ] || ls "$VYRE_HOME"/*.sock
 sleep 2
 echo "who, before: $(who | tr '\n' ';')" | tee "$OUT/context.txt"
 cd "$REPO" && "$PROBE_NODE" "$HERE/agent.mjs" 2>&1 | tee "$OUT/cases.txt"
+[ "$(uname)" = Darwin ] && "$HERE/keychain.sh" 2>&1 | tee -a "$OUT/cases.txt"
 { echo "who, after: $(who | tr '\n' ';')"; echo "$(uname -sr) / node $(node -v)"; [ "$(uname)" = Linux ] && echo "legacy_tiocsti=$(sysctl -n dev.tty.legacy_tiocsti 2>/dev/null || echo n/a)"; } | tee -a "$OUT/context.txt"
 tail -5 "$TMP/vyred.log" >"$OUT/vyred-tail.txt"
 kill $VP 2>/dev/null
