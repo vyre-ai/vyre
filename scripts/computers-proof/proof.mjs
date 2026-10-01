@@ -63,6 +63,14 @@ console.log("modules running: " + mods.join(", "));
 const person = (tool, input) => callSocket(socketPath, tool, input, "cli");
 const agent = (tool, input) => d.registry.call(tool, input, `mcp:agent:${AGENT}`);
 
+// A hang leaves nothing to read, so after 6 minutes dump what vyred and the computer say, and stop.
+setTimeout(() => {
+  console.log("FAIL watchdog: the proof was still running after 6 minutes\n--- last vyred log lines\n" + logs.slice(-40).join("\n"));
+  console.log("--- container log (tail)\n" + shOk(["logs", "--tail", "40", CONTAINER]).slice(-3000));
+  console.log("--- computerd and Xvnc\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -E 'Xvnc|computerd|index.js' | grep -v grep | cut -c1-200; ls -la /var/lib/vyre/vnc.sock 2>&1"]).slice(-1500));
+  process.exit(3);
+}, 6 * 60_000).unref();
+
 let exitCode = 0;
 const viewers = [];
 try {
