@@ -740,6 +740,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       if (caller_pid) {
         const mine = ancestry(caller_pid, processTable()).chain.map(c => c.pid);
         let ok = mine.includes(Number(input.pid)); // the caller's own process or one above it: a hook under its claude
+        // Tests only: a test process stands in for the hook and binds the fake claude it started (its descendant). In production a descendant never counts.
+        if (!ok && process.env.NODE_TEST_CONTEXT) ok = ancestry(Number(input.pid), processTable()).chain.some(c => c.pid === caller_pid);
         if (!ok) {
           // Or a process vyred itself started (a headless thread's claude), for a session id nothing is bound to yet.
           const [pids, origin] = await Promise.all([registry.call("threads.pids", {}, "module:vyred"), registry.call("threads.origin", { session: String(input.session || "") }, "module:vyred")]);

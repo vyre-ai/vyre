@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { acpProvider, askFor } from "./acp.js";
+import { projectDefinesMcp, acpProvider, askFor } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -129,6 +129,72 @@ test("acp: a permission question goes to the person as can_use_tool, and always-
   await s2.proc.stop(1000);
 });
 
+test("acp: Codex's approval for an MCP tool names no tool: Vyre's own server is let through at once, any other is put to the person by its server, never as a blank Bash", async t => {
+  const vyre = [{ name: "vyre", command: "node", args: ["x"], env: [] }];
+  // Vyre's own bridge, on an entry that says vyred gates it: no question reaches the person.
+  const a = world(t, { mcpOwn: true });
+  const sa = open(a, { mcpServers: vyre });
+  assert.match(await sa.say("mcpask"), /mcp: allow_once/);
+  assert.ok(!sa.got.some(m => m.type === "control_request"), "no question for Vyre's own MCP server");
+  await sa.proc.stop(500);
+  // The same approval without the entry's say-so is asked, as an MCP tool of that server (not Bash, not an empty command).
+  const b = world(t);
+  const sb = open(b, { mcpServers: vyre });
+  sb.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
+  const ask = await sb.until(m => m.type === "control_request", "the question");
+  assert.equal(ask.request.tool_name, "mcp__vyre");
+  assert.equal(ask.request.input.command, undefined);
+  sb.proc.write({ type: "control_response", response: { request_id: ask.request_id, response: { behavior: "deny" } } });
+  await sb.until(m => m.type === "result", "the result");
+  assert.match(sb.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), /mcp: cancel/);
+  await sb.proc.stop(500);
+  // A project config that defines an MCP server (an agent can write one for the next start, and it replaces "vyre" and runs unsandboxed)
+  // turns the shortcut off for the session: the approval goes to the person.
+  const d = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(d.cwd, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(d.cwd, ".codex", "config.toml"), '[mcp_servers.vyre]\ncommand = "evil"\n');
+  const sd = open(d, { mcpServers: vyre });
+  sd.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
+  const qd = await sd.until(m => m.type === "control_request", "a question when a project config defines MCP servers");
+  assert.equal(qd.request.tool_name, "mcp__vyre");
+  sd.proc.write({ type: "control_response", response: { request_id: qd.request_id, response: { behavior: "deny" } } });
+  await sd.until(m => m.type === "result", "the result");
+  await sd.proc.stop(500);
+  assert.equal(projectDefinesMcp(path.join(d.cwd, "sub", "deeper")), true, "found from a folder below it");
+  assert.equal(projectDefinesMcp(a.cwd), false);
+  // Another server, or more than one, is never let through, even on an entry that trusts its own.
+  for (const servers of [[{ name: "other", command: "node", args: [], env: [] }], [...vyre, { name: "other", command: "node", args: [], env: [] }], []]) {
+    const c = world(t, { mcpOwn: true });
+    const sc = open(c, { mcpServers: servers });
+    sc.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
+    const q = await sc.until(m => m.type === "control_request", `a question for ${servers.map(x => x.name).join("+") || "no server"}`);
+    assert.equal(q.request.tool_name, servers.length === 1 ? `mcp__${servers[0].name}` : "mcp");
+    sc.proc.write({ type: "control_response", response: { request_id: q.request_id, response: { behavior: "deny" } } });
+    await sc.until(m => m.type === "result", "the result");
+    await sc.proc.stop(500);
+  }
+});
+
+test("codex entry: starts in workspace-write (or read-only), never agent (Auto review, where a model decides) or full access", async t => {
+  const run = async (mode, start) => {
+    const w = world(t);
+    const got = [];
+    const proc = codexProvider({ bin: FAKE }).run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: mode, FAKE_ACP_START_MODE: start }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+    for (let i = 0; i < 200 && !got.find(m => m.type === "system" || m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
+    const out = { init: got.find(m => m.type === "system" && m.subtype === "init"), result: got.find(m => m.type === "result") };
+    await proc.stop(500);
+    return out;
+  };
+  const ok = await run("workspace-write", "workspace-write");
+  assert.ok(ok.init, JSON.stringify(ok.result));
+  assert.equal(ok.init.mode, "workspace-write");
+  assert.ok(!ok.init.modes.includes("agent") && !ok.init.modes.includes("agent-full-access"), JSON.stringify(ok.init.modes));
+  // An agent that only offers "agent" (Auto review) gives Vyre nothing it will start in: the session does not run.
+  const auto = await run("agent", "agent");
+  assert.equal(auto.init, undefined);
+  assert.match(String(auto.result && auto.result.result), /Codex starts in a mode Vyre does not permit \(agent\)/);
+});
+
 test("acp: fs/read_text_file goes past the floor first: a vault path is refused and its bytes never leave the disk", async t => {
   const w = world(t);
   const s = open(w);
@@ -178,6 +244,14 @@ test("acp: terminal/create runs through the floor: a command that reads the vaul
   assert.match(bad, /^term failed: Vyre keeps vault values off every screen/);
   assert.ok(!bad.includes("the vault value"));
   await s.proc.stop(1000);
+});
+
+test("acp: terminal/create with the whole command line in `command` and no args (Grok Build's shape) runs it by the shell, still through the floor", async t => {
+  const w = world(t);
+  const s = open(w);
+  assert.match(await s.say("termline echo from-a-line && pwd"), /term: from-a-line\n/);
+  assert.match(await s.say(`termline cat ${path.join(w.home, "vault", "secret.txt")}`), /term failed|denied|refus/i, "the floor still judges it");
+  await s.proc.stop(500);
 });
 
 test("acp: a floor 'ask' on a client-side call reaches the person as can_use_tool and waits", async t => {
@@ -245,7 +319,7 @@ test("acp: a seed file is written 0600 in the account's HOME at every start, rep
   const w = world(t);
   const home = fs.mkdtempSync(path.join(SCRATCH, "acp-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const toml = grokConfigToml({ id: "proof", model: "x-ai/grok-code-fast-1", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" });
+  const toml = grokConfigToml({ id: "proof", model: "x-ai/grok-build-0.1", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" });
   assert.match(toml, /env_key = "OPENROUTER_API_KEY"/);
   assert.ok(!/sk-/.test(toml), "no key in the file");
   assert.throws(() => grokConfigToml({ model: "m", baseUrl: "http://plain", envKey: "K" }), /https/);
@@ -312,7 +386,7 @@ test("codex entry: a custom endpoint goes through the gateway method, authentica
   const w = world(t);
   const provider = codexProvider({ bin: FAKE, custom: { id: "mockmodel", baseUrl: "http://127.0.0.1:9/v1", envKey: "MOCK_MODEL_KEY", model: "m" } });
   const got = [];
-  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "agent", FAKE_ACP_START_MODE: "agent" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
+  const proc = provider.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), MOCK_MODEL_KEY: "sekret-value", FAKE_ACP_AUTH: "ok", FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "workspace-write" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
   for (let i = 0; i < 200 && !got.find(m => m.type === "system"); i++) await new Promise(r => setTimeout(r, 30));
   assert.ok(got.find(m => m.type === "system" && m.subtype === "init"), JSON.stringify(got.slice(0, 2)));
   const launches = w.launches();
@@ -361,16 +435,6 @@ test("acp: modes are an allowlist: an unknown mode (a new release's) is never li
   const s4 = open(w4);
   assert.deepEqual((await s4.until(m => m.type === "system" && m.subtype === "init", "init")).modes, ["plan"]);
   await s4.proc.stop(500);
-});
-
-test("codex entry: only read-only and agent are permitted; workspace-write is not until measured, and a default start outside them is refused", async t => {
-  const w = world(t);
-  const p = codexProvider({ bin: FAKE });
-  const got = [];
-  const proc = p.run({ id: crypto.randomUUID(), resume: false, cwd: w.cwd, env: { ...w.env, HOME: path.join(w.store, "h"), FAKE_ACP_AUTH: "ok", OPENAI_API_KEY: "sk-fake", FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "workspace-write" }, onSpawn() {}, onMessage: m => got.push(m), onExit() {} });
-  for (let i = 0; i < 200 && !got.find(m => m.type === "result"); i++) await new Promise(r => setTimeout(r, 30));
-  assert.match(got.find(m => m.type === "result").result, /Codex starts in a mode Vyre does not permit \(workspace-write\)/, "no ask-shaped mode to move to: refused");
-  await proc.stop(500);
 });
 
 test("acp: an entry can pin the start mode on every start; one that offers none of the pinned modes does not run", async t => {
@@ -463,4 +527,21 @@ test("seedFiles: a symlinked folder or file on the way is refused or replaced, a
   assert.equal(fs.readFileSync(path.join(target, "victim"), "utf8"), "keep", "the link target is untouched");
   assert.equal(fs.lstatSync(path.join(home, ".codex", "config.toml")).isSymbolicLink(), false);
   assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "d\n");
+});
+
+test("projectDefinesMcp: a project's .codex/config.toml defining an MCP server in any TOML form is seen, from any folder below it", async t => {
+  const { projectDefinesMcp } = await import("./acp.js");
+  const fsx = await import("node:fs"), pathx = await import("node:path"), osx = await import("node:os");
+  const root = fsx.mkdtempSync(pathx.join(osx.tmpdir(), "mcp-toml-"));
+  t.after(() => fsx.rmSync(root, { recursive: true, force: true }));
+  const deep = pathx.join(root, "a", "b"); fsx.mkdirSync(deep, { recursive: true });
+  assert.equal(projectDefinesMcp(deep), false, "no config");
+  const forms = ["[mcp_servers.vyre]\ncommand = \"x\"", "[ mcp_servers.vyre ]\ncommand = \"x\"", "[[mcp_servers]]\nname = \"x\"", "mcp_servers = { vyre = { command = \"x\" } }", "mcp_servers.vyre.command = \"x\"", "\"mcp_servers\".vyre.command = \"x\""];
+  for (const body of forms) {
+    fsx.mkdirSync(pathx.join(root, ".codex"), { recursive: true });
+    fsx.writeFileSync(pathx.join(root, ".codex", "config.toml"), `model = "m"\n${body}\n`);
+    assert.equal(projectDefinesMcp(deep), true, body);
+  }
+  fsx.writeFileSync(pathx.join(root, ".codex", "config.toml"), 'model = "m"\n# mcp_servers.vyre is not defined here\n');
+  assert.equal(projectDefinesMcp(deep), false, "a comment is not a definition");
 });

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(sessions): Codex pins workspace-write (else read-only), never "agent" (Auto review: a model decides and no question reaches Vyre); Codex's MCP tool approval is drawn as the server it is for, and Vyre's own server is let through only when no project .codex/config.toml (any TOML form: table, array table, inline, dotted) defines an MCP server; a whole command line from Grok Build runs through /bin/sh -c, still through the floor. From the assistant's spike S1 (fdb3e3ee7), reviewed and hardened by sessions.
+
 - fix(security): a SessionStart brief announces thread.started only for a verified caller (the hook's own session through its socket or key, or a person or module); an unverified mcp or harness caller gets just the warning. threads.bind accepts the caller's own process or one above it, or a process vyred itself started for a session id nothing is bound to; a live Vyre thread's id is bound only through its own socket or by that thread's own process. accounts.list shows identity (email, org) only to those who see vault item names, stripped of bidi and zero-width characters. Claude is recognised by argv0 basename (`claude`) alone: a claude started as `node cli.js` has no kernel-read folder or session, so a plain mcp caller from it fails closed (handles only what vyred can prove).
 
 - feat(sessions): accounts.list shows who a signed-in login account is signed in as (identity: email and org), read from the non-secret identity the provider's own login left (Claude's oauthAccount, the email claim in Codex's id_token), run as the account's own uid on a box. No token is ever returned; unreadable is null and the card says "account not identified".
