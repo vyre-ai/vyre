@@ -2302,14 +2302,6 @@
    "module": "sync",
    "default": "limited by callers in code"
   },
-  "system.echo": {
-   "module": "system",
-   "default": "open to any caller"
-  },
-  "system.info": {
-   "module": "system",
-   "default": "open to any caller"
-  },
   "team.add": {
    "module": "team",
    "default": "limited by callers in code"
