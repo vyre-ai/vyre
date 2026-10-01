@@ -1,0 +1,42 @@
+# Runs the node suite for any branch head on the hosted runner, from this file. Branches that have not merged
+# the hosted-runner change in node.yml still route their own node.yml to the test-box runners; dispatch this against
+# such a branch instead (gh workflow run node-hosted.yml --ref <a ref that has this file> -f ref=<branch>).
+# The result is posted as the commit status "node-hosted" on the branch's head sha.
+name: node-hosted
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch (or sha) to test
+        required: true
+permissions:
+  contents: read
+  statuses: write
+concurrency:
+  group: node-hosted-${{ inputs.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - id: head
+        run: echo "sha=$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run eval:answer
+      - run: npm run perf-check
+      - if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: gh api -X POST "repos/${{ github.repository }}/statuses/${{ steps.head.outputs.sha }}" -f state="$STATE" -f context=node-hosted -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
