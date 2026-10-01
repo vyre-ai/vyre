@@ -462,6 +462,8 @@ export class Registry {
     this.upgrades = new Map();
     /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
     this.routes = new Map();
+    /** What each route declared: read-only, or the writing methods it answers. @type {Map<string, { readOnly: boolean, methods: string[] }>} */
+    this.routeInfo = new Map();
     /** @type {Map<string, { module: string, driver: any }>} session providers (ADR 0030), by name */
     this.providers = new Map();
     /** A retried write runs once (ADR 0029, R2). */
@@ -623,7 +625,7 @@ export class Registry {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
-      for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) this.routes.delete(k);
+      for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
   }
@@ -899,11 +901,18 @@ export class Registry {
       },
       // A raw HTTP route on vyred's socket at /v1/<module>/<name>, for what a tool cannot carry:
       // a stream. The route sees the caller the router established; it never reads one itself.
-      route: (name, fn) => {
+      // `opts` is required: { readOnly: true } for a route that only reads (a GET answers with no side effect), or { methods: ["PUT"] } for
+      // one that writes and answers only those methods, never GET. A route is reached with whatever a request carries, and a GET
+      // can be made by any page the person opens, so one that changes something must not answer GET (reviews/platform.md, fetch-site rule).
+      route: (name, fn, opts) => {
         if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`route ${name} must be lowercase letters, digits and dashes`);
+        const writes = opts && Array.isArray(opts.methods) && opts.methods.length > 0 && opts.methods.every(x => ["POST", "PUT", "PATCH", "DELETE"].includes(x));
+        if (!(opts && (opts.readOnly === true || writes))) throw new Error(`route ${m.name}/${name} must say { readOnly: true } or { methods: ["PUT"] }`);
+        if (opts.readOnly === true && writes) throw new Error(`route ${m.name}/${name} is read-only or writes, not both`);
         const at = `/v1/${m.name}/${name}`;
         if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
         this.routes.set(at, fn);
+        this.routeInfo.set(at, { readOnly: opts.readOnly === true, methods: writes ? [...opts.methods] : ["GET", "HEAD"] });
       },
       // A session provider: a driver the Switchboard runs sessions on (core/sessions/provider.js).
       // Declared under does.providers; it must pass core/sessions/conformance.js.

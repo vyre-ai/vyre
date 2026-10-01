@@ -38,11 +38,29 @@ const hash = s => crypto.createHash("sha256").update(String(s)).digest("hex");
 const same = (a, b) => crypto.timingSafeEqual(Buffer.from(hash(a)), Buffer.from(hash(b)));
 export const bodyHash = raw => crypto.createHash("sha256").update(raw || "").digest("base64url");
 
+
+/**
+ * Did something other than this origin's own page start this request? Sec-Fetch-Site "cross-site" (an opaque-origin frame counts as
+ * cross-site even to the same host), or a frame, iframe, embed or object load whose site is not "same-origin". A request with no
+ * Sec-Fetch headers (curl, native clients, old browsers) is untouched.
+ * @param {any} headers
+ */
+export function foreignFetch(headers) {
+  const site = String(headers["sec-fetch-site"] || "").toLowerCase();
+  const dest = String(headers["sec-fetch-dest"] || "").toLowerCase();
+  if (site === "cross-site") return true;
+  return ["iframe", "frame", "embed", "object"].includes(dest) && site !== "" && site !== "same-origin";
+}
+
 /** The session a request carries, and how: the cookie, or the bearer header. Null for none. @param {any} headers */
 export function carried(headers) {
   const auth = String(headers.authorization || "");
   const m = /^Vyre ([A-Za-z0-9_-]{8,64})\.([A-Za-z0-9_-]{16,128})$/.exec(auth);
   if (m) return { kind: "bearer", id: m[1], secret: m[2] };
+  // A cookie is sent by the browser with whatever the page asks for, and WebKit judges SameSite from the top frame, so a sandboxed
+  // artifact frame that navigates itself to this origin carries it even as SameSite=Strict. Browsers say who started the request:
+  // a request from another site, or a frame, embed or object load that is not from this origin, is not the person's own.
+  if (foreignFetch(headers)) return null;
   for (const part of String(headers.cookie || "").split(";")) {
     const [k, ...v] = part.trim().split("=");
     if (k !== COOKIE) continue;
