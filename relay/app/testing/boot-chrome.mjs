@@ -56,10 +56,11 @@ for (const f of m.entry) { const s = document.createElement("script"); s.src = "
 
 /** @type {any[]} */
 const reports = [];
+const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript", ".html": "text/html; charset=utf-8", ".css": "text/css", ".json": "application/json" };
 const env = { ASSETS: { fetch: async req => {
   const p = new URL(req.url).pathname;
   const f = path.join(out, p === "/" ? "index.html" : p);
-  return f.startsWith(out) && fs.existsSync(f) && fs.statSync(f).isFile() ? new Response(fs.readFileSync(f)) : new Response("missing", { status: 404 });
+  return f.startsWith(out) && fs.existsSync(f) && fs.statSync(f).isFile() ? new Response(fs.readFileSync(f), { headers: { "content-type": TYPES[path.extname(f)] || "application/octet-stream" } }) : new Response("missing", { status: 404 });
 } } };
 const server = http.createServer(async (rq, rs) => {
   const url = new URL(rq.url, "http://localhost");
@@ -73,7 +74,7 @@ await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
 const port = /** @type {any} */ (server.address()).port;
 
 // /adopt.js is served by the real Worker from the sealed loader tree; /boot.html is the harness page.
-const c = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", "--enable-logging=stderr", "--v=0", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: ["ignore", "inherit", "inherit"] });
+const c = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: "ignore" });
 const end = Date.now() + 60000;
 while (!reports.some(r => r.stage === "app") && Date.now() < end) await new Promise(r => setTimeout(r, 300));
 c.kill();
