@@ -1,6 +1,7 @@
 # A teammate's standing duty end to end, against the real product on a hosted runner: a person turns it on, the real watchers
 # module writes it, the real wall (bubblewrap with the installer's own profile) runs it once, and the item it files lands in the
-# project; a model (mcp) cannot turn it on (core/team/duty-e2e.test.js). Never the person's Mac.
+# project; a model (mcp) cannot turn it on (core/team/duties-wall.test.js). Never the person's Mac. Watchers' watchers-isolation job
+# also runs the same file (linux-profile and macos) once work/watchers lands; delete this workflow then, it is the one mechanism.
 name: team-duty-e2e
 on:
   workflow_dispatch:
@@ -36,4 +37,4 @@ jobs:
         env:
           VYRE_WALL_CHECK: "1"
           VYRE_EXPECT_WALL: bwrap
-        run: node --test --test-reporter=spec core/team/duty-e2e.test.js
+        run: node --test --test-reporter=spec core/team/duties-wall.test.js
