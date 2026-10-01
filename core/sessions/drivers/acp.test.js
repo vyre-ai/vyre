@@ -569,3 +569,26 @@ test("seedFiles: a symlinked folder or file on the way is refused or replaced, a
   assert.equal(fs.lstatSync(path.join(home, ".codex", "config.toml")).isSymbolicLink(), false);
   assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "d\n");
 });
+
+test("VYRE_ACP_RECORD: every JSON-RPC line both ways lands in <dir>/<provider>-<thread>.jsonl with key-like values replaced; off when unset", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "acp-rec-"));
+  t.after(() => { delete process.env.VYRE_ACP_RECORD; fs.rmSync(dir, { recursive: true, force: true }); });
+  process.env.VYRE_ACP_RECORD = dir;
+  const w = world(t);
+  const id = crypto.randomUUID();
+  const s = open(w, { id });
+  await s.say("hello");
+  await s.proc.stop(500);
+  const file = path.join(dir, `fake-${id}.jsonl`);
+  assert.ok(fs.existsSync(file), "recorded");
+  const raw = fs.readFileSync(file, "utf8");
+  const lines = raw.trim().split("\n").map(l => JSON.parse(l));
+  assert.ok(lines.some(l => l.dir === "out" && l.msg.method === "initialize") && lines.some(l => l.dir === "in"), "both directions");
+  assert.ok(lines.some(l => l.dir === "in" && l.msg.method === "session/update"), "the agent's own updates");
+  delete process.env.VYRE_ACP_RECORD;
+  const before = fs.readdirSync(dir).length;
+  const again = open(w);
+  await again.say("hello");
+  await again.proc.stop(500);
+  assert.equal(fs.readdirSync(dir).length, before, "nothing is written when the variable is unset");
+});
