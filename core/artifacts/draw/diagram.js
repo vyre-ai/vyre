@@ -332,10 +332,10 @@ export function drawMermaid(title, src) {
     const first = (src.replace(/%%.*$/gm, "").split("\n").map(l => l.trim()).find(Boolean) || "").split(/\s+/)[0].toLowerCase();
     if (first === "sequencediagram") return head + figure(src, svgSeq(parseSeq(src)));
     if (first === "graph" || first === "flowchart") return head + figure(src, svgFlow(parseFlow(src)));
-    throw new MermaidError(1, `Vyre draws flowcharts and sequence diagrams, and this is ${first ? `a ${esc(first)}` : "something else"}`);
+    throw new MermaidError(1, `Vyre draws flowcharts and sequence diagrams, and this is ${first ? `a ${first}` : "something else"}`);
   } catch (e) {
     if (!(e instanceof MermaidError)) throw e;
-    return head + state("Cannot draw this diagram", `Line ${e.line}: ${e.message.startsWith("Vyre draws") ? e.message : esc(e.message)}. The source is below so you can see it.`) + `<pre class="src">${esc(src)}</pre>`;
+    return head + state("Cannot draw this diagram", `Line ${e.line}: ${esc(e.message)}. The source is below so you can see it.`) + `<pre class="src">${esc(src)}</pre>`;
   }
 }
 

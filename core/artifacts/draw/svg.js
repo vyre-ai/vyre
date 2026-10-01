@@ -20,7 +20,8 @@ export function cleanSvg(src) {
   const out = [];
   const re = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE[^>]*>|<(\/?)([A-Za-z][\w:-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>|([^<]+)|</g;
   let m, skipDepth = 0, skipName = "";
-  while ((m = re.exec(String(src).slice(0, 5 * 1024 * 1024)))) {
+  const text = String(src).slice(0, 5 * 1024 * 1024);
+  while ((m = re.exec(text))) {
     if (m[4] !== undefined) { if (!skipDepth) out.push(m[4].replace(/&(?!amp;|lt;|gt;|quot;|apos;)/g, "&amp;").replace(/>/g, "&gt;")); continue; }
     if (m[2] === undefined) { if (m[0] === "<") removed.other++; continue; } // comments, the XML declaration and a doctype go without a word
     const closing = m[1] === "/", name = m[2].toLowerCase().replace(/^svg:/, ""), selfClose = /\/\s*$/.test(m[3]);
@@ -45,7 +46,7 @@ export function cleanSvg(src) {
       if (/^(?:xlink:)?href$/i.test(an)) { removed.links++; continue; }
       if (an.toLowerCase() === "style") { removed.other++; continue; }
       if (!ATTR_OK.test(an) || badValue(av)) { if (!/^(?:xmlns:.*|xml:.*|data-.*|aria-.*|role|tabindex)$/i.test(an)) removed.other++; continue; }
-      attrs.push(` ${an}="${av.replace(/"/g, "&quot;").replace(/</g, "&lt;")}"`);
+      attrs.push(` ${an}="${av.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"`);
     }
     out.push(`<${name === "lineargradient" ? "linearGradient" : name === "radialgradient" ? "radialGradient" : name === "clippath" ? "clipPath" : name}${attrs.join("")}${selfClose ? "/" : ""}>`);
   }

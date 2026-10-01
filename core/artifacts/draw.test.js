@@ -45,6 +45,7 @@ test("svg: scripts, links, handlers, styles and foreign content go, shapes and t
   assert.equal(removedSentence(removed), "Vyre removed 2 scripts, 2 links and 2 other unsafe parts from this SVG. The shapes and text are unchanged.");
   assert.equal(removedSentence({ scripts: 1, links: 0, other: 0 }), "Vyre removed a script from this SVG. The shapes and text are unchanged.");
   assert.equal(cleanSvg("not svg at all").svg, "");
+  assert.match(cleanSvg('<svg><text x="1" data-a="b">a</text><rect fill="a&b" width="1"/></svg>').svg, /fill="a&amp;b"/, "a bare & in an attribute is escaped so the picture still parses");
   const page1 = drawSvg("Logo", '<svg width="10"><circle r="3"/></svg>');
   assert.ok(page1.includes('src="data:image/svg+xml;base64,') && !page1.includes("Cleaned."), "a clean SVG shows no notice");
 });
@@ -88,6 +89,8 @@ test("mermaid: sequence diagrams, errors with the parser's line, and other types
   assert.match(text(err), /Cannot draw this diagram Line 3: expected an arrow after B\. The source is below/);
   assert.ok(err.includes("<pre") && err.includes("B Fits?"), "the source is shown");
   assert.match(text(drawMermaid("P", "pie\n  \"a\": 1")), /Vyre draws flowcharts and sequence diagrams, and this is a pie/);
+  assert.match(text(drawMermaid("P", "<img src=x>\n a")), /this is a &lt;img|this is a <img/, "the type is shown as text, never as markup");
+  assert.ok(!drawMermaid("P", "<img onerror=1>").includes("<img onerror"));
   assert.match(text(drawMermaid("H", "hello")), /Line 1/);
   assert.match(text(drawMermaid("N", "  ")), /Nothing to draw yet/);
   assert.match(text(drawMermaid("U", "flowchart TD\n subgraph X\n A-->B")), /missing its end/);
