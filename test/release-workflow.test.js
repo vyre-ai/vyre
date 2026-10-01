@@ -10,10 +10,10 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const yml = fs.readFileSync(path.join(REPO, ".github/workflows/release.yml"), "utf8");
 
-test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed25519 key, the gate runs before minisign, cosign and publish", () => {
+test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed25519 key, the gate runs before the cosign blob and publish", () => {
   const at = s => { const i = yml.indexOf(s); assert.ok(i >= 0, `release.yml has no "${s}"`); return i; };
-  const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), minisign = at("minisign -S -s"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
-  assert.ok(pin < sign && sign < gate && gate < minisign && minisign < blob && blob < publish, "order: pin, Ed25519 sign, gate, minisign, cosign blob, publish");
+  const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
+  assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
   assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
@@ -61,4 +61,12 @@ test("release.yml: the Windows installer is built in this run, required by the r
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
+});
+
+test("release.yml: no step needs a secret or a file that does not exist: the only secret is the Ed25519 release key, and minisign is gone", () => {
+  const secrets = [...new Set([...yml.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map(m => m[1]))];
+  assert.deepEqual(secrets, ["VYRE_RELEASE_SIGNING_KEY"]);
+  assert.ok(!/minisign/i.test(yml), "no minisign step, key or public key reference");
+  // Every repo path a step reads exists in the tree (release/notes is optional on a dry run; the publish path checks it itself).
+  for (const f of ["release/min_from", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/lock-changes.mjs"]) assert.ok(yml.includes(f) ? fs.existsSync(path.join(REPO, f)) : true, `${f} is referenced and missing`);
 });

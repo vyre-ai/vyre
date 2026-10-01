@@ -13,8 +13,8 @@
 #   compose.yml pins both images by digest.
 # - release.json: { version, channel, commit, date, min_from, notes, images: { box, computer: { ref,
 #   platforms } } }. Only additive fields, so an older reader still parses it.
-# - SHA256SUMS over every file; SHA256SUMS.minisig (minisign, the release key, from the protected "release"
-#   environment only); SHA256SUMS.cosign.bundle (cosign sign-blob, keyless); a provenance attestation.
+# - SHA256SUMS over every file; SHA256SUMS.sig (Ed25519 by the release key, from the protected "release" environment
+#   only: the one signature every updater verifies); SHA256SUMS.cosign.bundle (cosign sign-blob, keyless); a provenance attestation.
 #
 # notes is release/notes/<version>.md: short, plain, read by the lead before the tag (a missing file fails a
 # publish). The long engineering notes stay in CHANGELOG.md. min_from is release/min_from.
@@ -345,7 +345,7 @@ jobs:
     if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # The minisign key lives only in this environment's secrets; its reviewers (the lead and the
+    # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the
     # integrator) approve every publish. A dry run needs no environment and gets no key.
     environment: ${{ needs.prepare.outputs.publish == 'true' && 'release' || '' }}
     permissions:
@@ -431,18 +431,6 @@ jobs:
           name: ${{ env.PUBLISH == 'true' && 'app-out' || 'app-out-dryrun' }}
           path: app-out
           retention-days: 7
-      - name: Sign SHA256SUMS (minisign, the release key)
-        if: env.PUBLISH == 'true'
-        env:
-          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
-          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
-        run: |
-          [ -n "$MINISIGN_SECRET_KEY" ] || { echo "no MINISIGN_SECRET_KEY in the release environment"; exit 1; }
-          sudo apt-get install -y -qq minisign >/dev/null
-          printf '%s\n' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/minisign.key"
-          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s "$RUNNER_TEMP/minisign.key" -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig -t "vyre $VERSION"
-          rm -f "$RUNNER_TEMP/minisign.key"
-          minisign -V -p release/minisign.pub -m dist/SHA256SUMS -x dist/SHA256SUMS.minisig
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
         if: env.PUBLISH == 'true'
       - name: Sign SHA256SUMS (cosign, keyless)
