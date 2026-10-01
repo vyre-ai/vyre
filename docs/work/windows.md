@@ -148,12 +148,23 @@ workflow is on the default branch):** on a hosted Windows Server 2025 runner wit
 from a local release, ONLOGON task, `--selftest` (DPAPI, theme, icons, System32 path, live update check), first-run
 page driven over the WebView2 debug port (needs the AdditionalBrowserArguments POLICY on this runner: the env var is
 ignored by WebView2 153), pair code shown as 13 words and a QR, first-run window 520x749 (the size fix holds),
-restricted-key hand-off of the words to the throwaway box on the testbox. BLOCKED: the box's `relay.pair.ticket` gets no
-"registered" answer from the hosted relay within 5 s (status null, three tries, relay.connected fired), so the app never
-resolves a ticket and the confirm window, finish_pair, link window, Drive letter and hotkey steps do not run. Needs
-tailnet: does relay.vyre.run answer ticket registrations from a fresh route? Also found: the update check was
-asking the REST API (403 from a shared address) and `releases/latest` (an Android release): both replaced by the public
-releases feed. A hosted runner has no WebDAV client, so the Drive letter itself can only be proven on a real PC or the VM.
+restricted-key hand-off of the words to the throwaway box on the testbox. UPDATE (run 36822314371, work/windows feeaa81c): the pairing half now runs end to end on the hosted runner against a
+throwaway box on the testbox, through relay.vyre.run (the deployed Worker predates the "registered" reply, so the box
+copy ignores a missing reply; tailnet is changing relay.pair.ticket to match): the app finds the ticket, the confirm window
+shows "Pair with winlab?", Address vyre-lab.invalid, the key fingerprint and the own-domain line; Pair (pressed through UI
+Automation) runs the Noise handshake, the box logs device.paired for "this computer", finish_pair pins
+https://vyre-lab.invalid and stores the link record, the hidden link window runs, and the box log shows the link window
+calling files.drive.candidates and files.drive.address through the relay as device:<id>. Bugs this run found and fixed:
+(1) a command that builds a window must be async on Windows (the confirm window deadlocked at about:blank);
+(2) the app exited when its last window closed, right after pairing (now it stays in the tray; Quit still exits);
+(3) a named box on its own domain could never pair: every box sends its name as `handle`, so an address off vyre.run
+is now accepted as the box's own domain (one on vyre.run must still equal the handle); (4) the update check and installer
+used the rate-limited REST API and a "latest" release that is an Android build (now the public releases feed);
+(5) the pipe-token race behind windows-socket-acl (29f27cc9). NOT proven on a hosted runner: the Drive letter (no WebDAV
+client; proven on the VM earlier), toasts, and the Alt+Space hotkey (the panel is already open after pairing, so that
+check passes without proving the key; needs a real PC). The throwaway box, its restricted SSH key and the BOX_SSH_* secrets
+are torn down; rerunning needs them recreated (scripts/testbox-win11/box.mjs, the key restricted to
+`cat > words.txt`).
 
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,

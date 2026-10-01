@@ -23,24 +23,44 @@ function Shot($name) {
 }
 
 # ---- Chrome DevTools helpers: the app's WebView2 exposes a debug port in this run only --------------------
-function Pages { try { Invoke-RestMethod http://127.0.0.1:9222/json -TimeoutSec 5 } catch { @() } }
+# Unrolled one target at a time: Invoke-RestMethod hands back a JSON array as ONE object, which made two open pages look like one page with array-valued fields.
+function Pages { try { $r = Invoke-RestMethod http://127.0.0.1:9222/json -TimeoutSec 5; foreach ($x in $r) { $x } } catch { } }
 function PageLike($pat) { Pages | Where-Object { $_.type -eq "page" -and $_.url -like $pat } | Select-Object -First 1 }
 function Cdp($page, $expr) {
   $ws = New-Object System.Net.WebSockets.ClientWebSocket
-  $ws.ConnectAsync([Uri]$page.webSocketDebuggerUrl, [Threading.CancellationToken]::None).Wait()
+  try { $ws.ConnectAsync([Uri]$page.webSocketDebuggerUrl, [Threading.CancellationToken]::None).Wait() } catch { Say ("cdp: connect to {0} failed: {1}" -f $page.webSocketDebuggerUrl, $_.Exception.InnerException.Message) }
   $msg = @{ id = 1; method = "Runtime.evaluate"; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Compress -Depth 6
   $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
   $ws.SendAsync([ArraySegment[byte]]$bytes, "Text", $true, [Threading.CancellationToken]::None).Wait()
-  $buf = New-Object byte[] 262144; $res = $null
-  for ($i = 0; $i -lt 40 -and -not $res; $i++) {
-    $r = $ws.ReceiveAsync([ArraySegment[byte]]$buf, [Threading.CancellationToken]::None).Result
-    $s = [Text.Encoding]::UTF8.GetString($buf, 0, $r.Count)
-    if ($s -match '"id":1[,}]') { $res = $s }
-  }
+  $buf = New-Object byte[] 262144; $res = $null; $seen = @()
+  $cts = New-Object System.Threading.CancellationTokenSource 15000
+  try {
+    for ($i = 0; $i -lt 40 -and -not $res; $i++) {
+      $r = $ws.ReceiveAsync([ArraySegment[byte]]$buf, $cts.Token).Result
+      $s = [Text.Encoding]::UTF8.GetString($buf, 0, $r.Count)
+      if ($s -match '"id":1[,}]') { $res = $s } else { $seen += $s.Substring(0, [Math]::Min(120, $s.Length)) }
+    }
+  } catch { $seen += "receive: $($_.Exception.Message)" }
+  if (-not $res -and $seen) { Say ("cdp: saw " + ($seen -join " || ")) }
   $ws.Dispose()
-  if ($res) { ($res | ConvertFrom-Json).result.result.value } else { $null }
+  if (-not $res) { Say "cdp: no answer for: $expr"; return $null }
+  $j = $res | ConvertFrom-Json
+  if ($j.result.exceptionDetails -or $j.error) { Say ("cdp: error for '{0}': {1}" -f $expr, ($res.Substring(0, [Math]::Min(300, $res.Length)))) }
+  $j.result.result.value
 }
 function WaitPage($pat, $secs) { $end = (Get-Date).AddSeconds($secs); while ((Get-Date) -lt $end) { $p = PageLike $pat; if ($p) { return $p }; Start-Sleep 2 }; return $null }
+
+# Fallback when DevTools gives no answer for a window: press a button by its visible name through UI Automation.
+Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+function UiaPress($name) {
+  $cond = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::NameProperty), $name
+  $found = [System.Windows.Automation.AutomationElement]::RootElement.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
+  Say "uia: $($found.Count) element(s) named '$name'"
+  foreach ($e in $found) {
+    try { ($e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)).Invoke(); Say "uia: pressed '$name'"; return $true } catch { Say "uia: could not invoke: $($_.Exception.Message)" }
+  }
+  $false
+}
 
 # ---- 1. install with the real install script, from a local release ------------------------------------
 $rel = Join-Path $env:RUNNER_TEMP "rel"; New-Item -ItemType Directory -Force -Path $rel | Out-Null
@@ -116,18 +136,29 @@ if ($first) {
   if (-not $confirm) { Say ("first-run page state: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
   Result "confirm-window" ($null -ne $confirm) $(if ($confirm) { "appeared" } else { "no confirm window in 120 s" })
   if ($confirm) {
-    Start-Sleep 3
-    $detail = Cdp $confirm "document.getElementById('title').textContent + ' | ' + document.getElementById('detail').textContent"
+    Say ("pages now: " + ((Pages | ForEach-Object { "$($_.type) $($_.url) $($_.id)" }) -join " ; "))
+    Say ("cdp 1+1 on confirm: " + (Cdp $confirm "1+1"))
+    $detail = $null
+    for ($i = 0; $i -lt 3 -and -not $detail; $i++) { Start-Sleep 2; $d = Cdp $confirm "document.getElementById('detail').textContent"; if ($d) { $detail = (Cdp $confirm "document.getElementById('title').textContent") + " | " + $d } }
     Say "confirm shows: $detail"
     Result "confirm-shows-host" ($detail -match "vyre-lab.invalid" -and $detail -match "not on vyre.run") $detail
     Shot "03-confirm"
-    Cdp $confirm "document.getElementById('yes').click(); 1" | Out-Null
+    # Press Pair; if the window is still there a few seconds later, press again (the click can land before the page is ready).
+    for ($i = 0; $i -lt 6; $i++) {
+      $r = Cdp $confirm "document.getElementById('yes').click(); 'clicked'"
+      if (-not $r) { UiaPress "Pair" | Out-Null }
+      Start-Sleep 5
+      if (-not (PageLike "*confirm.html*")) { Say "confirm window closed after the click"; break }
+    }
     # finish_pair writes the record with the link
     $rec = "$env:APPDATA\run.vyre.app\pairing.json"
     $end = (Get-Date).AddSeconds(150); $paired = $false
     while ((Get-Date) -lt $end -and -not $paired) { Start-Sleep 3; if (Test-Path $rec) { $j = Get-Content $rec -Raw | ConvertFrom-Json; if ($j.link) { $paired = $true } } }
+    if (-not $paired) { Say ("first-run page state after Pair: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
     Result "finish-pair" $paired $(if ($paired) { "pinned $($j.address), link route $($j.link.route.Substring(0,6))..., device $($j.link.device)" } else { "no pairing record with a link" })
     Shot "04-after-pair"
+    Say ("after pair: Vyre running={0}; pages: {1}" -f [bool](Get-Process Vyre -ErrorAction SilentlyContinue), ((Pages | ForEach-Object { $_.url }) -join ", "))
+    try { Get-WinEvent -FilterHashtable @{ LogName = "Application"; StartTime = (Get-Date).AddMinutes(-15) } -MaxEvents 40 -ErrorAction Stop | Where-Object { $_.Message -match "Vyre" } | Select-Object -First 4 | ForEach-Object { Say ("eventlog: {0} {1}" -f $_.ProviderName, ($_.Message -replace "\s+", " ").Substring(0, [Math]::Min(300, $_.Message.Length))) } } catch { Say "no event log entries for Vyre" }
 
     # ---- 6. the link window: tray's "Open Vyre Drive" is the same event --------------------------------------
     $link = WaitPage "*link.html*" 60

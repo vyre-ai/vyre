@@ -56,6 +56,8 @@ const tick = async () => {
   busy = true;
   try {
     const words = fs.readFileSync(wordsFile, "utf8");
+    // The file is written by an ssh `cat > words.txt`: it can exist empty or half written. Wait for all 13 words.
+    if (words.trim().split(/\s+/).filter(Boolean).length < 13) { busy = false; return; }
     fs.rmSync(wordsFile, { force: true });
     const seed = await wordsToSeed(words, nodeCrypto());
     const r = await d.registry.call("relay.pair.ticket", { seed: Buffer.from(seed).toString("base64url") }, "cli", PROOF);

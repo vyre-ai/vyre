@@ -42,9 +42,13 @@ jobs:
         run: cargo test --locked --verbose
       - name: version, from the repo's package.json (the release checks it equals the tag)
         shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then v="${{ inputs.tag }}"; v="${v#v}"; else v=$(node -p 'require("../../../package.json").version'); fi
-          case "$v" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a version: $v"; exit 1 ;; esac
+          # The tag arrives as an environment variable, never interpolated into the script text.
+          if [ -n "$TAG" ]; then v="${TAG#v}"; else v=$(node -p 'require("../../../package.json").version'); fi
+          case "$v" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a version"; exit 1 ;; esac
+          printf %s "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' || { echo "not a version"; exit 1; }
           sed -i "0,/\"version\": \".*\"/s//\"version\": \"$v\"/" app/tauri.conf.json
           echo "VERSION=$v" >> "$GITHUB_ENV"
           echo "VYRE_APP_VERSION=$v" >> "$GITHUB_ENV"
