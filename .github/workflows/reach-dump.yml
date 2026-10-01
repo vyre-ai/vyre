@@ -1,0 +1,20 @@
+# Temporary (vault, reach sweep): the booted registry's callers per tool, as an artifact.
+name: reach-dump
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/vault-reach"]
+permissions:
+  contents: read
+jobs:
+  dump:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - run: mkdir -p out && VYRE_NO_DIALOGS=1 node scripts/reach-dump.mjs > out/dump.json
+      - uses: actions/upload-artifact@v4
+        with: { name: reach-dump, path: out }
