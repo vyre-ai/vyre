@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### pairing: say so when the relay did not confirm the code
+
+- `relay.pair.ticket` can return `confirmed: false` (an older relay never acknowledges a registration). The "Add a Windows PC" card and the Wink card then add "The relay did not confirm this code. If the PC does not finish, make a new one." once about 30 seconds pass without a finished pairing. Nothing shows when `confirmed` is true or absent. The ticket works either way.
+
 #### settings: Standing permissions
 
 - New Settings section "Standing permissions" (`deck/views/settings-permissions.js`) over `gate.said.list`, `gate.said.add` and `gate.said.revoke`. It lists what Vyre may send, post or pay without asking, one sentence each with who, where, to whom and the payment cap; things you asked to go out that have not gone yet sit under their own line. "Take back" is one tap and needs no confirmation, since taking permission away needs no proof. "Add a permission" asks for exact recipients, and a payment one needs a most-per-payment amount. A complaint in the form leaves what you typed in place.
