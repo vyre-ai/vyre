@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { projectCodexConfig, acpProvider, askFor } from "./acp.js";
+import { projectCodexConfig, seedTampered, acpProvider, askFor } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -129,7 +129,7 @@ test("acp: a permission question goes to the person as can_use_tool, and always-
   await s2.proc.stop(1000);
 });
 
-test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let through only when it is the one server and no project config has content; every other is denied and said once", async t => {
+test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let through only when it is the one server and no project config exists; every other is denied and said once", async t => {
   const vyre = [{ name: "vyre", command: "node", args: ["x"], env: [] }];
   const textOf = s => s.got.filter(m => m.type === "stream_event" && m.event.delta && m.event.delta.text).map(m => m.event.delta.text).join("");
   // Vyre's own bridge, on an entry that says vyred gates it, in a clean folder: no question, allowed.
@@ -138,14 +138,14 @@ test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let t
   assert.match(await sa.say("mcpask"), /mcp: allow_once/);
   assert.ok(!sa.got.some(m => m.type === "control_request"), "no question for Vyre's own MCP server");
   await sa.proc.stop(500);
-  // A comment-only or empty project config is not content.
+  // A project config that exists, even an empty one, turns it off: existing is enough, nothing is parsed.
   const q = world(t, { mcpOwn: true });
   fs.mkdirSync(path.join(q.cwd, ".codex"), { recursive: true });
-  fs.writeFileSync(path.join(q.cwd, ".codex", "config.toml"), "# nothing here\n\n");
+  fs.writeFileSync(path.join(q.cwd, ".codex", "config.toml"), "");
   const sq = open(q, { mcpServers: vyre });
-  assert.match(await sq.say("mcpask"), /mcp: allow_once/);
+  assert.match(await sq.say("mcpask"), /mcp: cancel/);
   await sq.proc.stop(500);
-  // Any content in a project config, in any TOML spelling of an MCP server (or none), turns the shortcut off: denied, never asked blind, said once.
+  // Any project config, in any TOML spelling of an MCP server (or none), turns the shortcut off: denied, never asked blind, said once.
   const spellings = [
     '[mcp_servers.vyre]\ncommand = "evil"\n', 'mcp_servers.vyre.command = "evil"\n', 'mcp_servers = { vyre = { command = "evil" } }\n',
     '["mcp_servers".vyre]\ncommand = "evil"\n', '"mcp_servers".vyre.command = "evil"\n', "[ 'mcp_servers' . 'vyre' ]\ncommand = \"evil\"\n", 'approval_policy = "never"\n',
@@ -158,12 +158,21 @@ test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let t
     const first = await sd.say("mcpask");
     assert.match(first, /mcp: cancel/, toml);
     assert.ok(!sd.got.some(m => m.type === "control_request"), `no blind question: ${toml}`);
-    assert.match(first, /refused an MCP tool call: this folder has its own Codex config/, toml);
+    assert.equal(first.trim().replace(/\s+/g, " "), "This project's Codex settings define their own tool servers, so Vyre can't tell which tool is asking. It was refused.mcp: cancel", toml);
     const second = await sd.say("mcpask");
-    assert.doesNotMatch(second, /refused an MCP tool call/, "said once");
+    assert.doesNotMatch(second, /Codex settings define/, "said once");
     assert.match(second, /mcp: cancel/);
     await sd.proc.stop(500);
   }
+  // The account's own seeded config edited since Vyre wrote it turns it off too.
+  const tam = world(t, { mcpOwn: true, seed: { ".codex/config.toml": 'approval_policy = "on-request"\n' } });
+  const th = path.join(tam.store, "th");
+  fs.mkdirSync(path.join(th, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(th, ".codex", "config.toml"), '[mcp_servers.x]\ncommand = "evil"\n');
+  assert.equal(seedTampered(th, { ".codex/config.toml": 'approval_policy = "on-request"\n' }), true);
+  fs.writeFileSync(path.join(th, ".codex", "config.toml"), 'approval_policy = "on-request"\n');
+  assert.equal(seedTampered(th, { ".codex/config.toml": 'approval_policy = "on-request"\n' }), false);
+  assert.equal(seedTampered(path.join(tam.store, "no-home"), { ".codex/config.toml": "x" }), false);
   // A config higher up the tree counts too.
   const up = world(t, { mcpOwn: true });
   fs.mkdirSync(path.join(up.cwd, ".codex"), { recursive: true });
@@ -177,7 +186,7 @@ test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let t
     const out = await sc.say("mcpask");
     assert.match(out, /mcp: cancel/, JSON.stringify([over, servers.map(x => x.name)]));
     assert.ok(!sc.got.some(m => m.type === "control_request"));
-    assert.match(out, /refused an MCP tool call: Vyre cannot tell which MCP server it is for/);
+    assert.match(out, /Vyre can't tell which tool server is asking\. It was refused\./);
     await sc.proc.stop(500);
   }
 });

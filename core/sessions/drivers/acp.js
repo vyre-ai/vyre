@@ -87,18 +87,30 @@ function descendants(pid) {
   } catch { return []; }
 }
 /**
- * Does a .codex/config.toml in this folder or any above it have any content (a line that is not blank or a comment)? Codex loads those
- * on top of the account's own config, and one can add or replace an MCP server in many TOML spellings (a table, a dotted key, an inline
- * table, quoted keys), so this reads for ANY content rather than for MCP: a project config can also change approval and sandbox.
+ * Does a .codex/config.toml exist in this folder or any above it? Codex loads those on top of the account's own config, and one can add
+ * or replace an MCP server (and change approval and sandbox) in many TOML spellings, so this does not parse: existing is enough.
  * @param {string} dir
  */
 export function projectCodexConfig(dir) {
   let d = path.resolve(dir);
   for (let i = 0; i < 40; i++) {
-    try { if (fs.readFileSync(path.join(d, ".codex", "config.toml"), "utf8").split("\n").some(l => l.replace(/#.*$/, "").trim() !== "")) return true; } catch { /* none here */ }
+    try { fs.accessSync(path.join(d, ".codex", "config.toml")); return true; } catch { /* none here */ }
     const up = path.dirname(d);
     if (up === d) break;
     d = up;
+  }
+  return false;
+}
+
+/**
+ * Is a file Vyre seeds in the account's HOME anything but what Vyre wrote? (An agent's edit to it is overwritten at every start, so at a
+ * start this is false unless something else changed it in between.)
+ * @param {string|undefined} home @param {Record<string, string>} seed
+ */
+export function seedTampered(home, seed) {
+  if (!home) return false;
+  for (const [rel, want] of Object.entries(seed || {})) {
+    try { if (fs.readFileSync(path.join(home, rel), "utf8") !== want) return true; } catch { /* not there: nothing extra */ }
   }
   return false;
 }
@@ -259,6 +271,8 @@ function runAcp(entry, known, o) {
   let ownMcpSafe = false;
   /** The refusal of an MCP approval is said once per session. */
   let mcpDenied = false;
+  /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
+  let projectConfig = false;
   function toolDone(u) {
     const body = Array.isArray(u.content) ? u.content.map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
     say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body }] } });
@@ -274,8 +288,8 @@ function runAcp(entry, known, o) {
     // agent with workspace write can create for the next start: a project config that redefines "vyre" replaces it, runs unsandboxed and
     // inherits the approval setting. So: Vyre's own server ("vyre") is gated by vyred on every call (reach, the Gate, presence), and an
     // entry that says so (`mcpOwn`) has its approval let through, but only when "vyre" is the one server Vyre passed and NO
-    // .codex/config.toml from the session folder up has any content (not a parse of it: any text, in any TOML spelling, since it can
-    // also change approval and sandbox), checked at every start. Every other MCP approval is DENIED, and said once in words.
+    // .codex/config.toml exists from the session folder up (not a parse of it: existing is enough, since it can add a server in any TOML
+    // spelling and change approval and sandbox) and the account's own seeded config is as Vyre wrote it, checked at every start. Every other MCP approval is DENIED, and said once in words.
     if (p._meta && p._meta.is_mcp_tool_approval === true) {
       const servers = (Array.isArray(o.mcpServers) ? o.mcpServers : []).map(x => String((x && x.name) || ""));
       const only = servers.length === 1 && servers[0] === "vyre";
@@ -286,8 +300,7 @@ function runAcp(entry, known, o) {
       respond(m.id, { outcome: no ? { outcome: "selected", optionId: no.optionId } : { outcome: "cancelled" } });
       if (!mcpDenied) {
         mcpDenied = true;
-        const why = !ownMcpSafe ? "this folder has its own Codex config (a .codex/config.toml), which can add or replace MCP servers" : "Vyre cannot tell which MCP server it is for";
-        const t = `Vyre refused an MCP tool call: ${why}, and Codex's approval does not say which server or tool is asking. Remove that file, or run the tool yourself.`;
+        const t = projectConfig ? "This project's Codex settings define their own tool servers, so Vyre can't tell which tool is asking. It was refused." : "Vyre can't tell which tool server is asking. It was refused.";
         say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } });
       }
       return;
@@ -425,7 +438,9 @@ function runAcp(entry, known, o) {
     const caps = init.agentCapabilities || {};
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
-    ownMcpSafe = !projectCodexConfig(cwd);
+    const seeded = typeof entry.seed === "function" ? entry.seed(o) : entry.seed;
+    projectConfig = projectCodexConfig(cwd);
+    ownMcpSafe = !projectConfig && !seedTampered(o.env && o.env.HOME, seeded || {});
     // Real agents (codex-acp, Grok Build) answer session/new with "Authentication required" (-32000) until the client calls
     // authenticate {methodId}. The entry names the method it wants from what the agent offers (never a prompt to the person):
     // an API key method when the key is in the environment, else the stored login. An agent that then waits for a browser
