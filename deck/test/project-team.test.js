@@ -7,7 +7,7 @@ import { install, text, $, $$ } from "./fake-dom.js";
 const doc = /** @type {any} */ (install());
 doc.importNode = n => n;
 doc.createDocumentFragment = () => new /** @type {any} */ (globalThis).Element("fragment");
-Object.assign(globalThis, { dispatchEvent: () => true });
+Object.assign(globalThis, { dispatchEvent: () => true, DOMParser: class { parseFromString() { const E = /** @type {any} */ (globalThis).Element; const svg = new E("svg"); svg.append(new E("circle")); return { documentElement: svg }; } } });
 const { drawTeam, teammatesOf, stateWord, clip } = await import("../views/project-team.js");
 
 const LIST = [
@@ -21,7 +21,7 @@ function world(answers = {}) {
 const click = el => el.dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
 const settle = () => new Promise(r => setTimeout(r, 10));
 const ANS = { "team.list": LIST, "team.default.get": { project: "harlow-legal", enabled: true }, "team.notes": { agent: "x", part: "general", text: "Uses the warm palette.", versions: [] },
-  "team.charter.get": { agent: "x", charter: { version: 2, text: "Own the site's look." } }, "team.duties.list": { duties: [{ id: "d1", instruction: "Check contrast weekly", when: "every Monday", enabled: false }] },
+  "team.charter.get": { agent: "x", charter: { version: 2, text: "Own the site's look." } }, "team.duties.list": { duties: [{ id: "d1", title: "Weekly contrast check", instruction: "Check contrast weekly", trigger: "every Monday", act: false, enabled: false, started: false, watcher: "duty-design-contrast" }] },
   "team.status": { state: "running", position: 0 }, "agents.list": [{ name: "kit", kind: "agent" }, { name: "juno", kind: "assistant" }] };
 async function mount(answers = {}) {
   const w = world({ ...ANS, ...answers });
@@ -63,12 +63,12 @@ test("Open reads the pane: now, last result, notes, charter, duties; only reads"
   assert.match(t, /2 requests waiting/);
   assert.match(t, /Uses the warm palette/);
   assert.match(t, /Own the site's look/);
-  assert.match(t, /Check contrast weekly/);
+  assert.match(t, /Check contrast weekly.*every Monday/);
   assert.equal(m.calls.filter(c => /set|update|fill|retire|add/.test(c.tool)).length, 0);
 });
 
 test("Edit notes saves through team.notes set; Edit charter through team.charter.set; fill and duties call their tools", async () => {
-  const m = await mount({ "team.notes": i => (i.action === "set" ? { version: 2 } : ANS["team.notes"]), "team.charter.set": { version: 3 }, "team.role.fill": {}, "team.duties.update": {} });
+  const m = await mount({ "team.notes": i => (i.action === "set" ? { version: 2 } : ANS["team.notes"]), "team.charter.set": { version: 3 }, "team.role.fill": {}, "team.duties.enable": {}, "team.duties.disable": {} });
   const a = "design-harlow-legal";
   click($(row(m.el, a), "[data-act=open]")); await settle();
   click($(row(m.el, a), "[data-act=notes-edit]"));
@@ -83,7 +83,8 @@ test("Edit notes saves through team.notes set; Edit charter through team.charter
   click($(row(m.el, a), "[data-act=fill]")); await settle();
   assert.deepEqual(m.of("team.role.fill")[0].input, { teammate: a }, "no agent means the project's helper");
   click($(row(m.el, a), "[data-act=duty-toggle]")); await settle();
-  assert.deepEqual(m.of("team.duties.update")[0].input, { id: "d1", enabled: true });
+  assert.deepEqual(m.of("team.duties.enable")[0].input, { id: "d1", expect: "Check contrast weekly" }, "enable carries the instruction the person was shown, so a duty edited since never starts");
+  assert.equal(m.of("team.duties.update").length, 0);
 });
 
 test("Retire asks once, says the notes are kept, then calls team.retire", async () => {
@@ -125,4 +126,28 @@ test("team events reload the list", async () => {
   assert.ok(m.subs.some(s => s[0] === "teammate.added") && m.subs.some(s => s[0] === "team.done"));
   m.subs.find(s => s[0] === "teammate.retired")[1]({}); await settle();
   assert.equal(m.of("team.list").length, 2);
+});
+
+test("a failed enable shows the box's own words (a bad trigger reads watchers: how to write it)", async () => {
+  const m = await mount({ "team.duties.enable": { $error: { code: "bad_input", message: "watchers: write the trigger like daily 07:00" } } });
+  const a = "design-harlow-legal";
+  click($(row(m.el, a), "[data-act=open]")); await settle();
+  click($(row(m.el, a), "[data-act=duty-toggle]")); await settle();
+  assert.match(text(m.el), /watchers: write the trigger like daily 07:00/);
+});
+
+test("a duty shows its title together with the full instruction, trigger and whether it acts, and offers What it will do", async () => {
+  const m = await mount();
+  const a = "design-harlow-legal";
+  click($(row(m.el, a), "[data-act=open]")); await settle();
+  const t = text(row(m.el, a));
+  assert.match(t, /Weekly contrast check.*Check contrast weekly.*every Monday · Only looks and tells you/);
+  assert.equal($(row(m.el, a), "[data-act=duty-card]"), null, "a proposal (not started) has no card to read yet");
+});
+
+test("a started duty offers What it will do", async () => {
+  const m = await mount({ "team.duties.list": { duties: [{ id: "d2", title: "Weekly", instruction: "Check weekly", trigger: "every Monday", act: false, enabled: true, started: true, watcher: "duty-design-weekly" }] } });
+  const a = "design-harlow-legal";
+  click($(row(m.el, a), "[data-act=open]")); await settle();
+  assert.ok($(row(m.el, a), "[data-act=duty-card]"));
 });

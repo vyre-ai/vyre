@@ -6,6 +6,7 @@
 // presence prompt the tool always has, and the seed lives only in this function's variables: never a
 // URL, storage, a log or an event.
 import { h, put } from "./dom.js";
+import { UNCONFIRMED_MS, UNCONFIRMED_LINE } from "./phone-code.js";
 import { webCrypto } from "../../relay/client/webcrypto.js";
 import { parseSeedText, seedToWords, QR_PREFIX } from "../../relay/client/seedwords.js";
 import { base64url } from "../../relay/client/bytes.js";
@@ -36,7 +37,7 @@ export async function addPc(text, attempt) {
   try { seed = await parseSeedText(text, crypto); } catch (e) { return { ok: false, message: seedProblem(e) }; }
   const r = await attempt("relay.pair.ticket", { seed: base64url(seed) }, { presence: "asked" });
   if (r.error) return { ok: false, message: seedProblem(r.error) };
-  return { ok: true, expiresAt: Number(r.data && r.data.expiresAt) || 0 };
+  return { ok: true, expiresAt: Number(r.data && r.data.expiresAt) || 0, confirmed: !(r.data && r.data.confirmed === false) };
 }
 
 /**
@@ -51,16 +52,25 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
   const video = /** @type {HTMLVideoElement} */ (h("video", { class: "add-pc-video", muted: "", playsinline: "", hidden: "" }));
   let stream = /** @type {MediaStream | null} */ (null), timer = /** @type {any} */ (null);
   const stopScan = () => { if (timer) clearInterval(timer); timer = null; if (stream) for (const t of stream.getTracks()) t.stop(); stream = null; video.hidden = true; };
+  let unconfTimer = /** @type {any} */ (null);
+  cleanup(() => { if (unconfTimer) clearTimeout(unconfTimer); });
   cleanup(stopScan);
   cleanup(() => { words.value = ""; });
 
   const run = async (/** @type {string} */ text, /** @type {string} */ lead = "") => {
+    if (unconfTimer) clearTimeout(unconfTimer);
     add.disabled = true;
     put(status, lead + "Waiting for your approval…");
     const r = await addPc(text, attempt);
     if (!alive()) return;
     add.disabled = false;
-    if (r.ok) { words.value = ""; put(status, "Ready. Your PC finishes on its own in a moment; the code works for five minutes."); }
+    if (r.ok) {
+      words.value = "";
+      const ready = "Ready. Your PC finishes on its own in a moment; the code works for five minutes.";
+      put(status, ready);
+      // An older relay never acknowledges the registration; the ticket works anyway, so only say so if the wait drags on.
+      if (!r.confirmed) { if (unconfTimer) clearTimeout(unconfTimer); unconfTimer = setTimeout(() => { if (alive()) put(status, ready, h("br"), UNCONFIRMED_LINE); }, UNCONFIRMED_MS); }
+    }
     else put(status, r.message);
   };
   add.addEventListener("click", () => run(words.value));

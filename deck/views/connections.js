@@ -41,6 +41,7 @@ import { showToast } from "../js/toast.js";
 import { since, plural } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
 import { drawCatalog } from "./connectors.js";
+import { redact } from "../js/redact.js";
 
 /** Vault kinds that make sense for each way of using an item (ADR 0016, decision 2). */
 export const ITEM_KINDS = {
@@ -91,7 +92,9 @@ export function pickServers(d) {
       tools: num(s.tools), lastUsed: num(s.lastUsed),
       auth: { type: str(s.auth?.type) || "none", item: str(s.auth?.item) }, env,
       scope: { projects: s.scope?.projects === "*" || !Array.isArray(s.scope?.projects) ? "*" : strs(s.scope.projects),
-        agents: s.scope?.agents === "*" || !Array.isArray(s.scope?.agents) ? "*" : strs(s.scope.agents) },
+        agents: s.scope?.agents === "*" || !Array.isArray(s.scope?.agents) ? "*" : strs(s.scope.agents),
+        // connectors' default for a server nobody widened: no project's agents, only the person and the assistant.
+        assistant: s.scope?.assistant === true && Array.isArray(s.scope?.agents) && s.scope.agents.length === 0 },
       command: str(s.command), args: strs(s.args), url: str(s.url),
       policy: { ...(Array.isArray(s.policy?.allow) ? { allow: strs(s.policy.allow) } : {}), ...(Array.isArray(s.policy?.deny) ? { deny: strs(s.policy.deny) } : {}), mode },
     };
@@ -235,7 +238,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   const githubBox = h("div", { class: "cn-group" });
   const formBox = h("div");
   put(el, top, cardsBox, catalogBox, mcpBox, googleBox, githubBox, formBox);
-  void drawCatalog(catalogBox, ctx, { attempt });
+  void drawCatalog(catalogBox, ctx, { attempt, projects: () => (st.projects.length ? st.projects.map(x => ({ slug: x.slug, name: x.name })) : null) });
 
   async function load() {
     const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
@@ -446,7 +449,7 @@ export async function drawConnections(el, ctx, deps = {}) {
         meta("Runs", h("code", { class: "set-mono" }, how || "")),
         meta("Tools", s.tools === null ? h("span", { class: "muted" }, "Not listed yet. Test lists them.") : String(s.tools)),
         meta("Auth", authWords(s)),
-        meta("Scope", `${scopeWords(s.scope.projects, "Every project", "project")} · ${scopeWords(s.scope.agents, "every agent", "agent")}`),
+        meta("Scope", s.scope.assistant ? "Just you and the assistant" : `${scopeWords(s.scope.projects, "Every project", "project")} · ${scopeWords(s.scope.agents, "every agent", "agent")}`),
         meta("Last used", s.lastUsed ? `${since(s.lastUsed)} ago` : h("span", { class: "muted" }, "Never"))),
       st.tested.has(s.name) ? testedPanel(s) : null,
       st.confirming === `mcp:${s.name}`
@@ -609,6 +612,25 @@ export async function drawConnections(el, ctx, deps = {}) {
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cgh-name", autocomplete: "off", spellcheck: "false", placeholder: "work" }));
     const stt = h("div", { class: "small muted set-status", role: "status" });
     const save = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-primary" }, "Sign in with GitHub"));
+    // The second way in: a token the person made at GitHub. A secret: a password field, sent once, never shown, logged or kept here.
+    const token = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "cgh-token", type: "password", autocomplete: "off", spellcheck: "false", "aria-label": "GitHub token" }));
+    const tokBtn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm", "data-act": "github-token", onclick: async () => {
+      const n = name.value.trim(), t = token.value.trim();
+      if (!n) { put(stt, "Give the account a name, like work or personal."); return; }
+      if (!t) { put(stt, "Paste the token first."); return; }
+      tokBtn.disabled = true; save.disabled = true;
+      put(stt, "Checking the token.");
+      const r = await attempt("github.connect", { name: n, token: t });
+      token.value = "";
+      if (!ctx.alive()) return;
+      tokBtn.disabled = false; save.disabled = false;
+      // GitHub's own message is shown as it came (a bad token is a 401 with its words); nothing is made up.
+      if (r.error) { put(stt, redact(r.error.message || r.error.code || "GitHub did not take that token.", [t])); return; }
+      const login = str(r.data?.login), repos = num(r.data?.repos);
+      st.form = ""; put(formBox);
+      showToast({ text: login ? `Connected ${login}${repos != null ? `, reaches ${plural(repos, "repo")}` : ""}` : "Connected the GitHub account." });
+      await load();
+    } }, "Connect with this token"));
     const form = h("form", { class: "set-form cn-form", "data-form": "github", onsubmit: async (/** @type {Event} */ e) => {
       e.preventDefault();
       const n = name.value.trim();
@@ -628,7 +650,10 @@ export async function drawConnections(el, ctx, deps = {}) {
       h("div", { class: "rows" },
         frow("cgh-name", "Name", name, "What the assistant calls it, like work or personal.")),
       h("p", { class: "small faint" }, "GitHub asks for repo access, full read/write on every repo the account can reach. Its device sign-in has no narrower option; a later release narrows this to the repos you pick."),
-      h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")), stt);
+      h("div", { class: "set-actions" }, save, h("button", { type: "button", class: "btn btn-ghost", onclick: closeForm }, "Cancel")),
+      h("details", { class: "cn-token" }, h("summary", { class: "small" }, "Paste a token instead"),
+        h("div", { class: "rows" }, frow("cgh-token", "Token", token, "A token you made at GitHub. A fine-grained token can reach fewer repos than signing in does.")),
+        h("div", { class: "set-actions" }, tokBtn)), stt);
     put(formBox, form);
     name.focus();
   }

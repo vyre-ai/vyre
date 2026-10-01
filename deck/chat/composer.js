@@ -56,6 +56,8 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
+import { answerRows, chipWord, accountAtStart, accountToken, isModel, EFFORTS, chipLine, runsOn } from "./core/answer-with.js";
+import { providerMark, providerName } from "../js/provider-mark.js";
 import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { tagPicker } from "./tag-picker.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
@@ -115,7 +117,7 @@ const COMMANDS_RETRY_MS = 15_000;
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
  *   machine?: string|null, onOffline?: (machine: string|null) => void, onQueue?: (n: number, name: string) => void, onStop?: () => void,
  *   session?: import("./core/session-state.js").Session, patch?: (keys: string[]) => void, cwd?: () => string|null, name?: () => string,
- *   project?: () => string|null, onRewind?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
+ *   project?: () => string|null, onRewind?: () => void, onUndo?: () => void, onTasks?: () => void, onThinkingView?: () => void, onOverlayEscape?: () => boolean, onFind?: (query: string) => void,
  *   onRecall?: (hit: { session: string, seq: number, role: string, ts: number, name: string|null, title: string|null, cwd: string|null, snippet: string }) => void }} opts
  * session and patch: the view's session-state and how it redraws what changed (steers, queue rows and shell rows are drawn
  * here, on send). onOffline: called with the Mac's name when a send finds it offline, with null when a send goes through.
@@ -124,7 +126,7 @@ const COMMANDS_RETRY_MS = 15_000;
  * onRecall: a "From your past sessions" row was tapped (recall.related's own hit shape) - opening
  * and rendering that session at its seq is the caller's job; without onRecall the hint never shows.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
- *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
+ *   setText: (text: string, note?: string) => void, tag: (v: { kind: string, id: string, name: string }) => string, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
  *   key: (e: KeyboardEvent) => boolean, keyUp: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
  */
 export function mountComposer(opts) {
@@ -276,18 +278,31 @@ export function mountComposer(opts) {
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
     const vts = tagUI.chips();
-    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
+    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking, s.provider, s.effort ?? null, machine ? null : runsOn(ta.value, answers, providerName), answers.map(a => [a.provider, a.account, a.now]),
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
     chipSig = sig;
     const chip = (/** @type {string} */ cls, /** @type {string} */ tool, /** @type {string} */ title, /** @type {() => void} */ fn, /** @type {any[]} */ ...kids) =>
       h("button", { class: "btn btn-ghost btn-sm composer-chip " + cls, type: "button", disabled: off(tool), title: off(tool) ? NEEDS_UPDATE : title, onclick: fn }, ...kids);
     const label = kindLabel(kind);
+    // The one picker: who answers, its model and the effort, as one chip ("Codex · GPT-5 high"). A menu whenever there is anything to choose.
+    const who = s.provider ? chipWord(answers, s.provider, providerName(s.provider)) : "";
+    const cur = answers.find(a => a.now);
+    const modelLabel = cur?.models.find(m => isModel(s.model, m.id))?.label || shortModel(s.model) || "";
+    const line = chipLine(who, modelLabel, /** @type {any} */ (s).effort);
+    const choosable = answers.length > 1 || answers.some(a => a.models.length > 0 || a.effort);
+    const fallback = !answers.length; // an older box without providers.list: the model menu it always had
+    const gate = fallback ? "threads.model" : "threads.switch";
     put(chips,
-      chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
+      !machine && (s.provider || s.model) ? h("button", { class: "btn btn-ghost btn-sm composer-chip composer-answer", type: "button", disabled: fallback ? off(gate) : (!choosable || off(gate)),
+        title: choosable || fallback ? "Choose who answers, its model and effort" : "The account that answers", "aria-label": `Answered by ${line}`, "aria-haspopup": choosable || fallback ? "menu" : null,
+        onclick: () => (fallback ? openModels() : openAnswerWith()) },
+        s.provider ? providerMark(s.provider, 18) : null, h("span", { class: "composer-answer-name" }, line || "Model"), choosable || fallback ? icon("chevron", 16) : null) : null,
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
       tagUI.chipsEl(),
+      // "@codex ...": this one turn runs on that account, and says which when the provider has more than one.
+      (() => { const on = machine ? null : runsOn(ta.value, answers, providerName); return on ? h("span", { class: "composer-kind composer-runs-on", role: "status" }, "This turn runs on " + on) : null; })(),
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },
@@ -331,6 +346,67 @@ export function mountComposer(opts) {
     if (typeof d.thinking === "boolean") s.thinking = d.thinking;
     patch(["@session"]);
   }
+
+  // ---- who answers (model-picker.md) ----------------------------------------------------------
+
+  /** The accounts that can answer, from providers.list: read once now and again when the menu opens. */
+  let answers = /** @type {import("./core/answer-with.js").AnswerRow[]} */ ([]);
+  async function loadAnswers() {
+    const r = await attempt("providers.list", {});
+    if (r.error) return false;
+    const s = /** @type {any} */ (S) || {};
+    answers = answerRows(r.data, { provider: s.provider, account: s.account });
+    drawChips();
+    return true;
+  }
+  async function openAnswerWith() {
+    if (!rich() || (answers.length < 2 && !answers.some(a => a.models.length || a.effort))) return;
+    const ok = await loadAnswers();
+    const cur = /** @type {any} */ (S)?.model || null;
+    // Each account, then its models under it: an account row changes who answers, a model row also picks the model.
+    /** @type {any[]} */ const list = [];
+    if (ok) for (const a of answers) {
+      list.push({ key: a.provider + ":" + (a.account || ""), value: { account: a }, render: () => [
+        providerMark(a.provider, 22), h("span", { class: "cv-menu-name" }, a.label), a.sub ? h("span", { class: "cv-menu-desc" }, a.sub) : null,
+        a.now ? h("span", { class: "cv-menu-badge" }, "now") : null] });
+      for (const m of a.models) list.push({ key: a.provider + ":" + (a.account || "") + ":" + m.id, value: { account: a, model: m }, render: () => [
+        h("span", { class: "cv-menu-name cv-menu-sub" }, m.label), a.now && isModel(cur, m.id) ? h("span", { class: "cv-menu-badge" }, "now") : null] });
+    }
+    // Effort, for the account that answers now when its provider has it: how hard it thinks, from the next turn.
+    const now = answers.find(a => a.now);
+    const sEffort = /** @type {any} */ (S)?.effort ?? null;
+    if (ok && now?.effort) for (const e of EFFORTS) list.push({ key: "effort:" + (e.id || "default"), value: { effort: e }, render: () => [
+      h("span", { class: "cv-menu-name cv-menu-sub" }, "Effort: " + e.label), (e.id ?? null) === sEffort ? h("span", { class: "cv-menu-badge" }, "now") : null] });
+    menu.setKind("answer");
+    menu.open(list, row => (row.value.effort ? pickEffort(row.value.effort) : pickAnswer(row.value.account, row.value.model || null)), "Answer with", keysLine(["↑↓", "move"], ["⏎", "choose"], ["Esc", "close"]));
+  }
+  /** How hard it thinks, from the next turn: threads.effort (null is the model's own default). */
+  async function pickEffort(/** @type {{ id: string|null, label: string }} */ e) {
+    menu.close();
+    const s = /** @type {any} */ (S);
+    const was = s.effort ?? null;
+    if (was === e.id) { ta.focus(); return; }
+    s.effort = e.id; patch(["@session"]); drawChips();
+    const r = await CAPS.use("threads.effort", () => attempt("threads.effort", { thread, ...(e.id ? { effort: e.id } : {}) }));
+    if (r.error) { s.effort = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change the effort: " + (r.error.message || r.error.code)); }
+    ta.focus();
+  }
+  /** Change who answers, and with a model row which model, from the next turn in this same session (its memory and files go with it).
+   * Another provider or account: threads.switch (model included). The same one: threads.model. The box leaves the one switch line. */
+  async function pickAnswer(/** @type {import("./core/answer-with.js").AnswerRow} */ a, /** @type {{ id: string, label: string }|null} */ model = null) {
+    menu.close();
+    if (a.now && !model) { ta.focus(); return; }
+    if (a.now && model && isModel(/** @type {any} */ (S)?.model, model.id)) { ta.focus(); return; }
+    const tool = a.now ? "threads.model" : "threads.switch";
+    const input = a.now ? { thread, model: model?.id } : { thread, provider: a.provider, ...(a.account ? { account: a.account } : {}), ...(model ? { model: model.id } : {}) };
+    const r = await CAPS.use(tool, () => attempt(tool, input));
+    if (r.error) say(r.missing ? NEEDS_UPDATE : r.error.code === "busy" ? "A turn is running. Stop it or wait for it to end, then choose again." : "Could not switch: " + (r.error.message || r.error.code));
+    else { if (model && a.now) { /** @type {any} */ (S).model = model.id; patch(["@session"]); } await loadAnswers(); }
+    ta.focus();
+  }
+
+  // Only a session that can switch has anything to choose from; the composer in a test or a recorded view has no session state.
+  if (S) loadAnswers();
 
   async function openModels() {
     if (!rich()) return;
@@ -403,8 +479,9 @@ export function mountComposer(opts) {
     ta.focus();
   }
   function runLocal(/** @type {string} */ what, query = "") {
-    if (what === "model") openModels();
+    if (what === "model") { if (answers.length) openAnswerWith(); else openModels(); }
     else if (what === "rewind") opts.onRewind?.();
+    else if (what === "undo") opts.onUndo?.();
     else if (what === "find") opts.onFind?.(query);
     else if (what === "goal") { goal = { title: query, milestones: [] }; setValue(""); drawChips(); }
   }
@@ -690,18 +767,32 @@ export function mountComposer(opts) {
       const now = findMention(ta.value, caret());
       if (!now) return;
       const named = s.error ? [] : suggestRows(s.data, 5).filter(x => x.kind === "mention");
+      // Accounts that can answer one turn: only while the word is the very first of the draft ("@codex ..."), as send reads it.
+      const q = now.query.toLowerCase();
+      const accts = now.start === 0 ? answers.filter(a => accountToken(a, answers, providerName).toLowerCase().startsWith(q)).slice(0, 5) : [];
       const list = rankFiles(found, now.query, cwd, scorePath, compareScores);
       menu.setKind("mention");
       menu.open([
+        ...accts.map(a => ({ key: "a:" + a.provider + ":" + (a.account || ""), value: { account: a }, render: () => [providerMark(a.provider, 18), h("span", { class: "cv-menu-name" }, accountToken(a, answers, providerName)),
+          a.sub ? h("span", { class: "cv-menu-desc" }, a.sub) : null, h("span", { class: "cv-menu-badge" }, "Accounts")] })),
         ...named.map(x => ({ key: "s:" + x.source + ":" + x.id, value: { suggestion: x }, render: () => [h("span", { class: "cv-menu-name" }, x.label),
           x.detail ? h("span", { class: "cv-menu-desc" }, x.detail) : null, h("span", { class: "cv-menu-badge" }, x.sub || x.kind)] })),
         ...list.map(f => {
           const cut = f.rel.lastIndexOf("/");
           return { key: f.path, value: f, render: () => [h("span", { class: "cv-menu-dir" }, cut >= 0 ? f.rel.slice(0, cut + 1) : ""), h("span", { class: "cv-menu-name" }, cut >= 0 ? f.rel.slice(cut + 1) : f.rel)] };
-        })], row => (row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
-      named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
+        })], row => (row.value.account ? pickAccount(row.value.account) : row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
+      accts.length || named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
     }, 120);
     fileTimer.unref?.();
+  }
+  /** An account chosen from the @ menu: "@Codex " in place of what was typed; send reads it as the account for one turn. */
+  function pickAccount(/** @type {import("./core/answer-with.js").AnswerRow} */ a) {
+    const range = findMention(ta.value, caret());
+    menu.close();
+    if (!range) return;
+    const r = applyMention(ta.value, range, accountToken(a, answers, providerName));
+    setValue(r.text, r.caret, true);
+    ta.focus();
   }
   /** A word completed from suggest (Tab on a word, or an @ name): put it in and say it was picked. */
   function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
@@ -805,6 +896,8 @@ export function mountComposer(opts) {
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
     if (a.kind === "memory") { saveMemory(draftBody(ta.value)); return; }
+    // "@codex ...": this turn runs on that account (threads.send's account mention); the session stays where it is. Not a teammate.
+    if (a.kind === "teammate" && !machine && accountAtStart(ta.value, answers, providerName)) { sendMessage(ta.value.trim(), a.mode); return; }
     if (a.kind === "teammate" && !machine) { askTeammate(teammateRole(ta.value), draftBody(ta.value), ta.value); return; }
     if (a.kind === "command" && !machine) {
       const name = ta.value.trim().slice(1).split(/\s/)[0];
@@ -838,6 +931,8 @@ export function mountComposer(opts) {
     sending = true;
     // The tags still in the words go with the turn as {kind, id, name}; the text keeps its #tokens.
     const mentions = tagUI.take();
+    const acct = machine ? null : accountAtStart(text, answers, providerName);
+    if (acct) mentions.push(acct.mention);
     const pasted = [...new Set(pastes.of(ta.value).map(x => x.trim()).filter(x => x && text.includes(x)))];
     sentMeta.set(text, { pasted, mentions });
     if (sentMeta.size > 50) sentMeta.delete(/** @type {string} */ (sentMeta.keys().next().value));
@@ -1228,6 +1323,7 @@ export function mountComposer(opts) {
       if (was && !busy) queueToggle = false;
       drawChips();
     },
+    tag: v => tagUI.add(v),
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
     stop: () => { flushDraft(); voiceSession?.stop(); stopVoiceElapsed(); clearSilenceTimers(); window.removeEventListener("blur", onWindowBlur); clearTimeout(hintTimer); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };

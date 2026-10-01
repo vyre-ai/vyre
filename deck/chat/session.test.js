@@ -615,8 +615,8 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   assert.equal(text($(box4, ".cv-context")), "62% of context");
   at("model.switched", { model: "haiku", live: true });
   await wait();
-  assert.match(text($(box4, ".composer-model")), /haiku/);
-  await $(box4, ".composer-model").click();
+  assert.match(text($(box4, ".composer-answer")), /haiku/);
+  await $(box4, ".composer-answer").click();
   await wait();
   assert.ok(calls.some(c => c.tool === "sessions.models.get"), "the picker reads the per-purpose map");
   assert.match(text($(box4, ".composer-menu")), /claude-haiku-4-5/);

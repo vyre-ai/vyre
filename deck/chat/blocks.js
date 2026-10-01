@@ -16,6 +16,7 @@ import { madeNow, unmark } from "./core/made.js";
 import { icon } from "../js/icons.js";
 import { personAvatar, assistantAvatar, agentAvatar, teammateAvatar, teammateId } from "../js/avatars.js";
 import { clock } from "../js/fmt.js";
+import { providerMark, providerName, badgeSize } from "../js/provider-mark.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
 import { highlight } from "./lib/highlight.js";
@@ -105,12 +106,27 @@ export function userRow(who, text, ts, me = null, images = 0) {
 /** The header an assistant run starts with: the assistant's name (or the agent's) and the time.
  * `av`: the avatar to wear (session.js passes js/avatars.js threadAvatar: the project's tile, a
  * chat's draft tile, an agent or teammate, or the assistant); without it, agentAv's. */
-export function headRow(who, ts, assistant = who === "Vyre", av = null) {
-  return tag(h("div", { class: "cv-row cv-head" },
-    av || agentAv(who, assistant),
+export function headRow(who, ts, assistant = who === "Vyre", av = null, prov = null) {
+  const avatar = av || agentAv(who, assistant);
+  const wrap = h("span", { class: "msg-av-wrap" }, avatar);
+  const meta = h("span", { class: "msg-prov" });
+  const row = /** @type {any} */ (tag(h("div", { class: "cv-row cv-head" },
+    wrap,
     h("span", { class: "msg-who" }, who),
+    meta,
     ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
-  ), "assistant", ts);
+  ), "assistant", ts));
+  /** Which AI account wrote this run: the badge at the avatar's lower right and "Provider, model" beside the name. Nothing without a provider. @param {{ provider?: string|null, model?: string|null }|null} p */
+  row.setProv = p => {
+    wrap.querySelector(".pmark")?.remove();
+    meta.replaceChildren();
+    if (!p || !p.provider) return;
+    const badge = providerMark(p.provider, badgeSize(24), { model: p.model });
+    if (badge) { badge.classList.add("pmark-on-av"); wrap.append(badge); }
+    meta.append([providerName(p.provider), p.model].filter(Boolean).join(", "));
+  };
+  row.setProv(prov);
+  return row;
 }
 
 /** Assistant text as markdown. */

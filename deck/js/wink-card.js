@@ -19,7 +19,7 @@
 //     one-tap Remove (relay.devices.remove).
 import { h, put } from "./dom.js";
 import { icon } from "./icons.js";
-import { ticketRingSvg, ticketPhase, countdown, playDance, idleAvatarSvg } from "./phone-code.js";
+import { UNCONFIRMED_MS, UNCONFIRMED_LINE, ticketRingSvg, ticketPhase, countdown, playDance, idleAvatarSvg } from "./phone-code.js";
 
 const parser = new DOMParser();
 // pwa's committed route for pairScanSheet() (28 Sep, not yet a real page — an exported function
@@ -40,7 +40,7 @@ const parseSvg = src => /** @type {SVGElement} */ (document.importNode(parser.pa
  * }} deps
  */
 export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive = () => true, onNext = null }) {
-  let mintedAt = 0, ttlMs = 5 * 60_000, ticket = "", shown = false, focused = true, ringDrawn = false;
+  let mintedAt = 0, ttlMs = 5 * 60_000, ticket = "", shown = false, focused = true, ringDrawn = false, unconfirmed = false;
 
   const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" });
   const setRing = (/** @type {SVGElement} */ node) => put(ringEl, node);
@@ -77,6 +77,7 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     // never blanked it either, see below) never drew the new ticket at all. A fresh mint
     // always needs a fresh draw, whether it lands a ticket or comes back empty.
     blank();
+    unconfirmed = r.data?.confirmed === false; // an older relay never acknowledges a registration
     if (r.data?.ticket) { ticket = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt); }
     else ticket = ""; // a declined passkey, or the tool is still unmerged: nothing real to draw yet
   };
@@ -97,7 +98,8 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     ringEl.classList.toggle("shimmer", phase === "live" && !calm());
     ringEl.classList.toggle("expiring", phase === "expiring");
     if (!ringDrawn) drawRing();
-    put(meta, h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`));
+    put(meta, h("p", { class: "small muted" }, `Expires in ${countdown(msLeft)}`),
+      unconfirmed && Date.now() - mintedAt > UNCONFIRMED_MS ? h("p", { class: "small muted" }, UNCONFIRMED_LINE) : null);
   };
 
   const start = async () => {

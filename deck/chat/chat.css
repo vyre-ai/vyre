@@ -939,3 +939,25 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .ns-textwrap { position: relative; }
 .ns-textwrap .composer-menu { left: 0; right: 0; }
 .ns-tags { margin-top: 6px; }
+
+/* The agent's own checklist (thread.plan): one row, updated in place. */
+.cv-plan { margin: 6px 0 2px 44px; padding: 10px 12px; border: 1px solid var(--rule); border-radius: 8px; }
+.cv-plan-head { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; line-height: 16px; color: var(--label); }
+.cv-plan-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
+.cv-plan-step { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; }
+.cv-plan-mark { flex: none; width: 14px; height: 14px; margin-top: 2px; border: 1px solid var(--rule); border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.cv-plan-step[data-status="running"] .cv-plan-mark { border-color: var(--signal); background: var(--signal); }
+.cv-plan-step[data-status="done"] .cv-plan-mark { border-color: transparent; color: var(--signal); }
+.cv-plan-step[data-status="done"] .cv-plan-text { color: var(--label); text-decoration: line-through; }
+
+/* Which AI wrote a run (provider-badge.md): the badge at the avatar's lower right with a ring in the ground colour, "Provider, model" beside the name. */
+.msg-av-wrap { position: relative; display: inline-flex; flex-shrink: 0; }
+.msg-av-wrap .pmark-on-av { position: absolute; right: -4px; bottom: -4px; box-shadow: 0 0 0 2px var(--bg), inset 0 0 0 1px var(--rule-strong); }
+.msg-prov { font-size: 12px; line-height: 16px; color: var(--label); }
+.msg-prov:empty { display: none; }
+.cv-head .msg-av-wrap { margin-right: 4px; }
+.cv-head .msg-av-wrap .msg-av { margin-right: 0; }
+.composer-answer { gap: 6px; padding-left: 6px; }
+.composer-answer-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.composer-answer:disabled { opacity: 1; cursor: default; }
+.cv-menu-sub { padding-left: 30px; font-weight: 400; }

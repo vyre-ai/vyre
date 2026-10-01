@@ -208,6 +208,109 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   dropped; the credential never reaches the watcher's code.
 
 - settings.loosened: when an agent changes a guard because the person asked (settings.request, a loosening key or a change that needed a confirm, a reset of a loosening key included), settings emits `settings.loosened { change, key, label, level, project|device|session?, by, said }` with no value. core/push turns it into a loud `notice` push (not in the daily budget, rings through quiet hours, on by default) with the fixed sentence "<label> changed, as you asked. Undo" and the path /settings?change=<id>; the change's Undo (settings.undo) needs no proof.
+#### test: the chat contract knows thread.plan
+
+- `test/chat-sessions-contract.test.js` listed events the Deck listens for that nothing emits by name; `thread.plan` (the plan checklist) is built by `core/switchboard/translate.js` as an event object, which that scan does not see, so it joins AHEAD_EVENTS with the reason. Found by a run of the contract tests on the test box.
+
+#### chat: "@claude" says which account this turn runs on
+
+- When a draft starts with `@claude`, `@codex` or `@grok`, a line under the box says "This turn runs on Claude (Personal)": the account's label when the provider has several, so a bare provider name never surprises (the box picks the provider's default account; `@Claude-Work` names one). One account says just the provider. (reviewer-2's LOW on 6e91b09f7.)
+
+#### chat: one picker for who answers, the model and the effort
+
+- The composer has one chip, "Codex · GPT-5 high", instead of an answer chip plus a model chip (the standalone model chip is gone; `/model` opens this menu). Its menu lists each signed-in account (`providers.list`) with its models under it and the current one marked "now", then an "Effort" group (Default, Low, Medium, High, Extra high, Max) for the answering account when its provider has it. A model of the answering account asks `threads.model`; a model of another provider or account asks `threads.switch` with it; an effort asks `threads.effort` (Default asks for none). The session core keeps `effort` from the thread record and `effort.switched`. A box without `providers.list` keeps the model menu it had, behind the same chip. Codex and Grok list models only once sessions' init has reported them.
+
+#### chat: "@codex" asks one account for one turn
+
+- Typing `@codex`, `@grok` or `@claude` (or `@Provider-label` when a provider has several accounts) at the very start of a message runs that turn on that account while the session stays where it is. Send passes it as `threads.send`'s account mention (`{ kind: "account", id: "codex" | "codex:<account>" }`), not as a teammate; a word that is no account is still a teammate as before. The `@` menu lists the accounts that can answer, under "Accounts", only at the start of a draft. A refusal (out of usage, busy, open elsewhere) says what the box said and puts the words back. "Use in..." on a media card fills the composer with `@<Provider> #<item>` and this does the rest.
+
+#### chat: "Answer with" chip in the composer
+
+- A chip at the left of the composer's bar shows who answers: the provider's badge and its name (or the account's label when that provider has several). With more than one signed-in account it has a chevron and opens a menu, "Answer with", of the accounts that can answer (`providers.list`: signed in, Claude counts with none), each with its plan and up to three models and the current one marked "now". Choosing another asks the box to continue the same thread on it (`threads.switch`): same session, memory and files, no new session, the avatar unchanged. A refusal while a turn runs says "A turn is running. Stop it or wait for it to end, then choose again." With one account the chip says who answers and does nothing. The switch line in the thread is the box's. Models for Codex and Grok and an account's plan appear when sessions' init carries them.
+
+#### chat: the frame runs script only when told to
+
+- `artifactFrame` gives `allow-scripts` only when `interactive` is exactly true; absent, false or anything else is an empty sandbox. On a box that does not say, only a page or an app is read as interactive, so an unknown kind runs no script (reviewer-2's note on 9d87f92b3).
+
+#### chat: provider caps read providers.list's real rows
+
+- `liveCaps` (`deck/chat/core/provider-caps.js`) now reads `{ id, capabilities }`, the shape `providers.list` really answers, as well as the earlier draft's `{ provider, caps }`. Nothing in the Deck reads it yet, so no screen changed.
+
+#### chat: replies wear the provider badge
+
+- Each reply's `thread.text` now carries `provider` and `model` (sessions' event tag, on every driver), and the session core keeps them on the reply. The header that starts an assistant run wears the badge at its avatar's lower right (55 percent of it, with a ring in the ground colour) and names "Provider, model" beside the name. A reply whose event says nothing, from an older box, gets no badge and no guess; a later reply that does fills it in. The badge's accessible name is "Written by Codex, GPT-5". Account labels for two accounts of one provider, and the switch line, wait on the box's wording.
+
+#### chat: static artifacts run no script, interactive ones say so
+
+- The artifact frame's sandbox is now empty for a static kind (doc, report, dashboard, diagram, deck, image, video, audio) and `allow-scripts` only when the box marks the artifact `interactive` (a page or an app; an older box that says nothing is read by kind). Never allow-same-origin, top-navigation, popups, forms or downloads. An interactive artifact shows one fixed line under the origin line, "Runs its own code and can reach the internet", with no dialog. When it navigates itself away (the frame is already blanked), the Deck tells the box that it happened with `artifacts.activity.log {id, kind: "navigated-away"}`; the destination cannot be read, so none is sent.
+
+#### chat: generated media shows inline
+
+- An artifact of kind image, video or audio (a provider's own generation, artifacts 5ae43ad5) draws inline in the reply instead of a file row: the picture, player or audio bar straight from the box's own content route (`/v1/artifacts/content?id=`, no frame, since the box serves it with its own type, nosniff and a sandbox policy), a caption row with Open and Download, and "Made by <agent> · provider, model" and "Asked for: <prompt>" from `artifacts.get`'s media block, read once. A load that fails says "This item is no longer in the project." The viewer shows the same media at full size. The prompt is text, never markup. Copy link waits: media has no public link in 0.2.0.
+- "Use in..." on a media card lists the providers with a signed-in account (`providers.list`). Choosing one does not switch the session: it fills the composer with "@<provider> #<item>" so the person addresses that model for one turn and sends when ready. The box copies the item into the session's folder when that turn starts. The card calls no tool but `providers.list`. "Saved in <project>" shows under the caption, from the session around the card.
+
+#### chat: the provider badge, with the providers' own marks
+
+- `providerMark(provider, size, { model })` in `deck/js/provider-mark.js`, from app-design's provider-badge spec: a neutral circular tile (`--hover`, 1 px ring) holding the provider's own official mark at 62 percent. Claude is its spark (one colour on both themes), Codex the OpenAI blossom (white on dark, black on paper) Grok its logomark (light on dark, dark on paper) and OpenRouter its glyph (cloud on dark, ink on paper), all unmodified from `docs/design/brand/providers/` (`deck/js/provider-art.js`, sources in that folder's SOURCES.md). An unknown provider gets a monogram tile. It draws nothing for a turn that does not say its provider. Not placed on replies yet: that needs the provider and model on each turn from sessions.
+
+#### chat: /undo takes a session's changes back, and Put back returns them
+
+- New `/undo` in the composer opens a sheet (`deck/chat/undo-sheet.js`, drawn in the rewind sheet's box) over `github.session.history`, `.undo` and `.redo`. It lists the session's own changes, newest first; you pick the one to go back past ("take off this and N newer changes") or take off everything. Nothing is deleted, unsaved files are kept with it, and "Put back" returns it, or says why it cannot when the session has moved on. A session that is not in a project folder of its own says so. The session is the folder it works in under its project's `.sessions`.
+
+#### chat: the agent's plan shows as a checklist
+
+- `thread.plan` (Claude's todo list, or a provider's own plan) was dropped by the Deck. The shared session core (`deck/chat/core/session-state.js`) now keeps it as one "plan" row where it first appeared and updates it in place; the chat draws it as "Plan, 2 of 5 done" with each step done, in progress or not started. An empty or malformed list never clears a plan already shown. A cold open gets it from the stored events the same way.
+
+#### gate: held and settled sends say more
+
+- A held send that failed now says whether it may have gone out anyway ("Check the app before you send again"), did not go out, or just stayed held, from the sender's own `reached` read. A sent item says where it went, and "You said to, so it went without asking" when your own words covered it; one you changed says so; a discarded one says nothing was sent. Words live in `deck/chat/gate-lines.js`, used by the held card (`gate-item.js`) and the draft card.
+
+#### pairing: say so when the relay did not confirm the code
+
+- `relay.pair.ticket` can return `confirmed: false` (an older relay never acknowledges a registration). The "Add a Windows PC" card and the Wink card then add "The relay did not confirm this code. If the PC does not finish, make a new one." once about 20 seconds pass without a finished pairing. Nothing shows when `confirmed` is true or absent. The ticket works either way.
+
+#### settings: Standing permissions
+
+- New Settings section "Standing permissions" (`deck/views/settings-permissions.js`) over `gate.said.list`, `gate.said.add` and `gate.said.revoke`. It lists what Vyre may send, post or pay without asking, one sentence each with who, where, to whom and the payment cap; things you asked to go out that have not gone yet sit under their own line. "Take back" is one tap and needs no confirmation, since taking permission away needs no proof. "Add a permission" asks for exact recipients, and a payment one needs a most-per-payment amount. A complaint in the form leaves what you typed in place.
+
+#### honesty pass: stub onboarding steps removed, and a guard for settings with no reader
+
+- The old onboarding (`deck/onboard/onboard.js`) no longer has the screens that did nothing: Your secrets, Agent computers (a choice that saved nowhere) and Vyre Drive (a disabled preview) are gone, and Connect accounts drops its "Coming soon" note and points at Settings, Connections. The ending screen no longer lists or hints at them. Agent computers and Drive live in Settings.
+- `test/settings-have-readers.test.js` looks for a reader of every setting a module declares (the key, its tail, or its camelCase tail, outside tests). 15 settings have none today and sit on a shrinking `DEAD` list by owner: `sessions.*` (fallback_model, send_while_busy, tool_detail, max_turns, output_style, box_teammates, box_subagents), `vault.lock_*` (idle, max, on_sleep, on_screen_lock), `computers.handback_minutes`, `learn.distill_daily` and `update.auto_install`. An owner wires the reader or removes the setting, then deletes the line.
+
+#### connections: an entry with no scope is "not recorded", not the default
+
+- A connected entry that carries no `scope` key at all (a box from before scopes) reads "Scope not recorded" instead of "Just you and the assistant", since the hub reads such a row as open to all. Only an explicit `scope: null` from the box reads as the default.
+
+#### connections: say what a connection already grants
+
+- "Who can use it" now reads "All projects, every agent" for the wide choice, and each connected row shows its scope in words beside its name ("Just you and the assistant", "All projects, every agent", or the projects), so a person sees what a migrated connection had been granting and can narrow it.
+
+#### connections: connectors' default scope, and Turn back on carries the hash
+
+- A server whose scope is connectors' default (`{projects: "*", agents: [], assistant: true}`) reads "Just you and the assistant" in Settings, Connections, not "Every project". Turn back on on a watcher card sends `watchers.resume {name, hash}` (watchers accepts it now).
+
+#### chat and projects: the watcher card
+
+- `deck/chat/cards/watcher.js` (+ css; app-design's section 16): a card for a watcher or duty before it runs on its own. `watchers.card {name}` gives three plain sentences (When, Check, Then or Do, in the author's words when it has them) and the runtime's own facts drawn exactly as given (Reads, Uses as credential chips, Acts, Cost, Runs), with the provenance line. Turn on is `watchers.create {name, hash}` with the card's own hash; if the box says the code changed after the card was shown, the card says so and offers "Show the new card" and never turns on a different version. On shows Turn off (`watchers.pause`), paused shows Turn back on (`watchers.resume`). It draws as render kind `watcher` ({kind, name}), read-only when the result is not from a Vyre tool. The project Team tab's duty rows show the title together with the full instruction, trigger and whether it acts (never the title alone) and open the same card, starting the duty through `team.duties.enable {id, expect}`.
+- The trust card already leads with the key fingerprint after a reload now that tailnet's device list carries it (4edbc7eb).
+
+#### connections: "Who can use it"; duties carry what was shown; shown errors are redacted
+
+- Add a service (`deck/views/connectors.js`): Connect first asks "Who can use it": "Just me and the assistant" (the default, which sends no `scope`), "All projects" (`scope {projects: "*", agents: "*"}`) or "Only these projects" (a picker; none chosen is refused in words). The choice rides along to every later step of the same connect (token, client). An existing connection has the same control ("Who can use it", prefilled from the `scope` the catalog row carries), saved through `connectors.scope {name, scope}` (null is the default), which I asked connectors for.
+- The project Team tab turns a duty on through `team.duties.enable {id, expect}` with the duty's full instruction as shown, so a duty edited since never starts; it reads the row's `trigger`, and a failed enable shows the box's own words. 
+- `deck/js/redact.js` masks token shapes (and whatever was just typed) in error text the Deck shows for a pasted token, in the GitHub token form and the connect steps (reviewer-2).
+
+#### deck: trust asks survive a reload; the box's error texts join the internal-words guard
+
+- The trust card reads who is waiting from `relay.devices.list` (tailnet's `trustAsked`, for a web device that asked and is not trusted), so an ask waits until it is acted on, and drops when the box no longer lists it. The key fingerprint comes from the event; a row from the list has none yet, so after a reload the card says the key is not shown, turns Trust off, and asks the browser to ask again (asked of tailnet: a `fingerprint` on the row). The claimed name also loses bidi, zero-width and C1 control characters (reviewer-2).
+- `test/no-internal-words.test.js` now also counts internal words ("vyred", "switchboard") in error texts built in `core/`, `modules/` and `local/` (the terminal, the daemon's own process messages and tests are out of scope): a file may not gain one, and each owner lowers its count in `BASELINE` as it cleans its file. `core/resilience` said "vyred answered ... with no JSON" to the Deck and now says "The box answered ...".
+
+#### deck: a GitHub token paste, and duties through team.duties.enable
+
+- Settings, Connections, Add a GitHub account: under "Sign in with GitHub", "Paste a token instead" opens a password field (autocomplete and spellcheck off) and "Connect with this token", which calls `github.connect {name, token}`. The token is cleared from the field once sent and never drawn. On success the form closes and a toast says the login and, when GitHub said, "reaches N repos"; on failure GitHub's own message is shown as it came. A one-line hint says a fine-grained token can reach fewer repos than signing in.
+- The project Team tab turns a duty on or off through teammates' `team.duties.enable` and `team.duties.disable` (a click on a person's surface is the asking), not `team.duties.update`.
+
 - eval (iq): the real-use memory test, on Vyre's own sessions only (the user approved it, 1 Oct 2026). `scripts/real-use-extract.mjs` reads Claude Code transcripts whose cwd is under a folder and writes a scrubbed corpus: it keeps only the person's typed turns, teammate messages and assistant text (meta messages such as CLAUDE.md and the memory index, system reminders, tool results and thinking are dropped first), redacts with recall's rules and the vault's shapes plus emails, addresses, home paths, the owner's handle and session temp paths, drops a session that names a client or a private matter more than twice and replaces a passing mention with [client]. `scripts/eval-realuse.mjs` generates about 50 specific-fact questions from that corpus (each expected string must appear verbatim in its session, in at most two sessions, and not in the question), then runs four arms on one model, none, a simulated Claude auto memory, Vyre's memory.ask and the full context, scored by the expected strings, under a hard spend cap (REALUSE_CAP_USD, default $5) and the key's own usage before and after. eval-bar gains a `real` world read from a file. The corpus is data a caller holds and is never part of the repository. Tests: `scripts/real-use-extract.test.js`, `scripts/lib/realuse.test.js`. The `memory-realuse` workflow (environment `eval`, runs on the test box's own runner) reads the corpus from the fixed folder on the test box, so it never leaves the test box; it uploads only a results table and a list of session ids, dates and sizes, and wipes the corpus, questions, replies and ledger when a run ends (`step: gen` keeps them so the questions can be read on the test box first).
 - grok: the meter spike's "Internal error" on OpenRouter was a retired model id. `x-ai/grok-code-fast-1` is no longer on OpenRouter (its list now has grok-4.x and `x-ai/grok-build-0.1`), OpenRouter answers a retired id with a 400, and Grok Build shows that as "Internal error" on every turn while session/new still succeeds: reproduced against the real Grok CLI with an endpoint that rejects the model (the retired-model case fails every turn, the title request's own unknown model, `grok-4.6`, does not). The proofs use `x-ai/grok-build-0.1`, and `scripts/lib/eval-openrouter.js` `modelListed()` asks OpenRouter's public model list first, so a retired slug stops the run with its name instead of "Internal error" and spends nothing.
 - codex: Vyre now starts Codex in `workspace-write` (or `read-only`), never `agent`. Measured on codex-cli 0.159.3 and codex-acp 2.1.0 against a scripted stand-in for the model: `agent` is now "Auto review", where a model (the guardian, on the same gateway) decides and no question ever reaches Vyre or the person, so the floor and the person's yes were bypassed; `workspace-write` and `read-only` send `session/request_permission` for a command that must leave the sandbox and run it only on an allow. Codex's per-call approval for an MCP tool names no server and no tool (only `_meta.is_mcp_tool_approval`), which used to be drawn as a blank Bash command: Vyre's own `vyre` server (gated by vyred on every call) is let through, any other is asked as `mcp__<server>`.

@@ -5,7 +5,7 @@
 //      draws the permission, question or plan card it always did).
 //   2. A non-blocking display: a tool block that carries `render: { kind, ... }` (renderOf(block)),
 //      drawn by displayRow(render, ctx). Kinds: pr_review, email_thread, calendar_event, diff,
-//      report, file_preview, link_preview, artifact.
+//      report, file_preview, link_preview, artifact, watcher.
 // Every factory is (data, ctx) => an element with .update(data), and asks also .answered(decision,
 // answers, from) like the cards in ask-item.js. ctx: { thread, phone, agent, open(href) }.
 
@@ -20,6 +20,7 @@ import { surveyCard, isSurvey } from "./survey.js";
 import { confirmationLine } from "./confirmation.js";
 import { filePreview } from "./file-preview.js";
 import { artifactCard } from "./artifact.js";
+import { watcherCard } from "./watcher.js";
 
 /** Where a card sends the person by default: an address in this app goes through the router, an outside http(s) link opens
  * in a new tab with no opener; anything else (a compose: or vyre: pseudo-address) is left to a ctx.open the caller gives. @param {string} href */
@@ -44,7 +45,7 @@ export function firstParty(tool) {
 /** Non-blocking display kinds. */
 export const DISPLAY = {
   pr_review: prReview, diff: diffFiles, report, email_thread: emailThread, calendar_event: calendarEvent,
-  file_preview: filePreview, link_preview: filePreview, artifact: artifactCard,
+  file_preview: filePreview, link_preview: filePreview, artifact: artifactCard, watcher: watcherCard,
 };
 /** Blocking ask kinds beyond permission, question and plan. */
 export const ASKS = { pr_review: prReview, email_draft: draftCard, calendar_draft: draftCard, survey: surveyCard, confirmation: confirmationLine };

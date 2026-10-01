@@ -40,3 +40,12 @@
 .sm-badge { background: var(--beacon-dot); color: var(--beacon-badge-ink); }
 .sm-count { background: var(--hover); color: var(--text-2); }
 .sm-badge[hidden], .sm-count[hidden] { display: none; }
+
+/* The provider badge (js/provider-mark.js): a neutral circular tile holding the provider's own mark at 62 percent, or a monogram. */
+.pmark { display: inline-flex; flex: none; align-items: center; justify-content: center; border-radius: 50%; background: var(--hover); box-shadow: inset 0 0 0 1px var(--rule-strong); font-family: var(--mono); font-weight: 600; letter-spacing: -0.04em; line-height: 1; color: var(--text); }
+.pmark:not(.pmark-art) { background: var(--panel); }
+.pmark-dark, .pmark-paper { display: inline-flex; align-items: center; justify-content: center; width: 62%; height: 62%; }
+.pmark-dark > svg, .pmark-paper > svg { width: 100%; height: 100%; }
+.pmark-two .pmark-paper { display: none; }
+:root[data-theme="paper"] .pmark-two .pmark-paper { display: inline-flex; }
+:root[data-theme="paper"] .pmark-two .pmark-dark { display: none; }
