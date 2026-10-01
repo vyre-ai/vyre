@@ -423,11 +423,11 @@
   },
   "threads.archive": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.asks": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.bind": {
    "module": "threads",
@@ -439,31 +439,31 @@
   },
   "threads.delete": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.effort": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.fork": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.get": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.interrupt": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.items": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.lease": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.list": {
    "module": "threads",
@@ -471,59 +471,59 @@
   },
   "threads.model": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.queue": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.release": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.rewind": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.send": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; modules call it (keyboard, glass, agents), so it cannot be person"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; modules call it (keyboard, glass, agents), so it cannot be person"
   },
   "threads.send-now": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.start": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; a session's start of a child records it as the parent"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; a session's start of a child records it as the parent"
   },
   "threads.stop": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; agents.stop stops threads through it as module:agents"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; agents.stop stops threads through it as module:agents"
   },
   "threads.switch": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.tasks": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.thinking": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.unarchive": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter recorded by vyred), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.unwatch": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "threads.watch": {
    "module": "threads",
-   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
   },
   "undo.list": {
    "module": "undo",

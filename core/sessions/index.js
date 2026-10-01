@@ -19,8 +19,10 @@ import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./conf
 import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
+import { readIdentity } from "./identity.js";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { isPerson } from "../../lib/caller.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
@@ -256,10 +258,34 @@ export default {
       run: async i => routes.next(i, usable),
     });
 
+    /** @type {Map<string, { email?: string, org?: string } | null>} */ const identities = new Map();
+    /** @param {any} a an account row */
+    const identityOf = async a => {
+      const key = `${a.id}:${a.signed_in_at}`;
+      if (identities.has(key)) return identities.get(key) ?? null;
+      let out = null;
+      try {
+        if (usesSpawner() && a.uid != null) {
+          const acctHome = path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(a.uid));
+          const child = spawnSession(process.execPath, [fileURLToPath(new URL("./identity.js", import.meta.url)), a.provider, acctHome], { cwd: acctHome, env: { PATH: process.env.PATH, HOME: acctHome }, account: { uid: a.uid, shared: false } });
+          let buf = "";
+          child.stdout && child.stdout.on("data", d => { buf += d; });
+          await new Promise(r => { const t = setTimeout(r, 5000); child.on("close", () => { clearTimeout(t); r(undefined); }); child.on("error", () => { clearTimeout(t); r(undefined); }); });
+          try { out = JSON.parse(buf.trim().split("\n").pop() || "null"); } catch { out = null; }
+        } else {
+          out = readIdentity(a.provider, path.join(root, "accounts", String(a.id)));
+        }
+      } catch { out = null; }
+      identities.set(key, out);
+      return out;
+    };
     tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
       { type: "object", properties: { provider: str } },
       async (i, meta) => {
-        const rows = accounts.list(i.provider ? String(i.provider) : undefined);
+        const listed = accounts.list(i.provider ? String(i.provider) : undefined);
+        // Who a signed-in login account is signed in as (the non-secret email and org its own login left), so the person's confirm of an account the
+        // assistant started can tell whose it is; null reads as "account not identified".
+        const rows = await Promise.all(listed.map(async a => (a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a)));
         // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
         const seesItems = !meta || !meta.agent || /** @type {any} */ (meta).agentKind === "assistant";
         return seesItems ? rows : rows.map(({ vault_item, ...r }) => r);

@@ -13,6 +13,7 @@
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -550,8 +551,9 @@ export class Switchboard {
       // The thread this one was started for (a teammate's or sub-agent's), so a person's words in the parent
       // count for it (threads.lineage). Only what vyred verified: never an id read from a model's input.
       if (o.parent && this.record(String(o.parent))) kept.parent = String(o.parent);
-      // A plain mcp caller (the person's own Claude Code through Vyre's MCP, no verified thread or agent) started it: only vyred sets this.
-      if (o.starter === "mcp") kept.starter = "mcp";
+      // A plain mcp caller (the person's own Claude Code through Vyre's MCP) started it: "mcp:<claude pid>:<its start time>", set by vyred from the socket
+      // peer and never from input, so one terminal session cannot handle another's threads.
+      if (typeof o.starter === "string" && /^mcp:\d+:/.test(o.starter)) kept.starter = o.starter;
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
@@ -2372,10 +2374,16 @@ export default {
      * Guard every tool. Inside an agent's own thread (caller mcp:agent:<name>) only the assistant
      * may drive sessions; other agents stay inside their own work.
      */
+    // The verified meta of the call being run (set by tool() below), so a label never grants: an agent is the assistant only by vyred's meta.agent
+    // and meta.agentKind (the stored row), not by the label or by whether it already has a thread record.
+    const calls = new AsyncLocalStorage();
     const guard = (caller, what) => {
       if (fromLink(caller)) return;
       const agent = agentOf(caller);
-      if (agent && sb.kindOf(agent) !== "assistant") throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
+      if (!agent) return;
+      const v = /** @type {any} */ (calls.getStore());
+      if (v && v.agent === agent && v.agentKind === "assistant") return;
+      throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
     const surfaceOf = (input, caller) => {
       const s = String(input.surface || caller || "vyre");
@@ -2391,18 +2399,27 @@ export default {
      * session (reviewer-2 and the lead, 1 Oct).
      * @param {any} meta @param {string|undefined} target a thread id @param {boolean} mutating
      */
-    const sessionMay = (meta, target, mutating, tool = "") => {
+    const sessionMay = async (meta, target, mutating, tool = "") => {
       const m = meta || {};
       const caller = String(m.caller || "");
       if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
       if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
       if (typeof m.thread !== "string" || !m.thread) {
-        // The person's own Claude Code through Vyre's MCP, no verified thread: like a session. It starts threads and stops, archives or sends
-        // into the threads it started; never deletes or rewinds, and never touches another's. (Its folder is not verified, so reads are not narrowed.)
-        if (!mutating || tool === "threads.start") return true;
-        if (tool === "threads.delete" || tool === "threads.rewind") return false;
-        const t = typeof target === "string" ? sb.record(target) : null;
-        return !t ? true : t.starter === "mcp";
+        // The person's own Claude Code through Vyre's MCP, no verified thread: like a session, and known by the kernel (meta.peerSession is the claude
+        // process and its start time, meta.peerCwd its folder, both read by vyred from the socket peer). It starts threads and stops, archives or
+        // sends into those it started; never deletes or rewinds; reads the threads it started and its folder's project's. Where the OS will not say
+        // who or where, it handles only what it can prove it started, and reads nothing else.
+        if (tool === "threads.start") return true;
+        const me = typeof m.peerSession === "string" && m.peerSession ? `mcp:${m.peerSession}` : null;
+        if (mutating && (tool === "threads.delete" || tool === "threads.rewind")) return false;
+        const t = typeof target === "string" && target ? sb.record(target) : null;
+        if (!t) return !target ? !mutating : true; // an unknown id: the tool's own not-found answers
+        if (me && t.starter === me) return true;
+        if (mutating) return false;
+        if (typeof m.peerCwd !== "string" || !m.peerCwd) return false;
+        const of = await ctx.call("projects.of", { cwd: m.peerCwd }).catch(() => null);
+        const project = of && of.data && of.data.slug;
+        return Boolean(project && t.project === project);
       }
       if (typeof target !== "string" || !target || target === m.thread) return true;
       const t = sb.record(target);
@@ -2417,11 +2434,11 @@ export default {
     const SESSION_READS = new Set(["threads.fork", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
       ? async (i, meta, ...rest) => {
-        if (!sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name), name)) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
+        if (!(await sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name), name))) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
         return run(i, meta, ...rest);
       }
       : run;
-    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run: scoped(name, run), callers, ...extra });
+    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: (i, m, ...r) => calls.run(m, () => inner(i, m, ...r)), callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
 
@@ -2434,7 +2451,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent }) => {
+      async (i, { caller, thread, firstParty, agent, peerSession }) => {
         guard(caller, "start sessions");
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -2445,7 +2462,7 @@ export default {
         const { mentions, pasted, starter: _claimed, ...rest } = i;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
-        return sb.launch({ ...rest, parent, ...(plain ? { starter: "mcp" } : {}), surface: surfaceOf(i, caller) }, person);
+        return sb.launch({ ...rest, parent, ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -2580,7 +2597,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); return Array.isArray(rows) ? rows.filter(r => sessionMay(meta, r && r.id, false)) : rows; }
+        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });

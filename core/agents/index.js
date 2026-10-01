@@ -19,6 +19,7 @@
 // The switchboard is used through ctx.call and its events, never by importing it.
 
 import fs from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
 import { within } from "../../lib/within.js";
@@ -69,7 +70,10 @@ const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort"
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 
 export default {
-  async start(ctx) {
+  async start(ctx0) {
+    // Each tool runs with the verified meta of its call in scope, so guard() can read vyred's meta.agent and meta.agentKind (never the label).
+    const calls = new AsyncLocalStorage();
+    const ctx = Object.create(ctx0, { tool: { value: (name, def) => ctx0.tool(name, def && typeof def.run === "function" ? { ...def, run: (i, m, ...r) => calls.run(m, () => def.run(i, m, ...r)) } : def) } });
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
@@ -247,9 +251,14 @@ export default {
     };
 
     /** Only the assistant may drive other sessions, from inside its own thread. */
+    // A label never grants: an agent is the assistant only by what vyred verified (meta.agent, meta.agentKind from the stored row); a label that
+    // names an agent with nothing verified behind it is refused.
     const guard = (caller, what) => {
       const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
-      if (m && get(m[1])?.kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
+      if (!m) return;
+      const v = /** @type {any} */ (calls.getStore());
+      if (v && v.agent === m[1] && v.agentKind === "assistant") return;
+      throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
 
     // A model's call (mcp or harness) is judged by what vyred verified, never the label: the verified assistant passes; a plain caller with

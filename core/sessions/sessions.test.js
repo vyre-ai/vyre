@@ -1095,22 +1095,36 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(child.id);
     assert.equal((await as(a1, "threads.stop", { thread: child.id })).error, undefined, "a child it started");
     // A plain mcp caller with no verified thread or agent never mutates.
-    // (the person's own Claude Code through the MCP, no verified thread): it may start threads and stop, archive or send into those it started, never
-    // delete or rewind, and never touch another's.
+    // (the person's own Claude Code through the MCP, no verified thread; vyred reads the claude process and its folder from the socket peer and
+    // puts them in meta.peerSession and meta.peerCwd, which the test sets as the daemon does): it starts threads and stops, archives or sends into
+    // only those that same session started, never deletes or rewinds, reads its folder's project, never another's.
+    const sess = { peerSession: "4242:9001", peerCwd: path.join(w.work, "harlow") }, other = { peerSession: "4343:9002", peerCwd: path.join(w.work, "harlow") };
+    const plain = (tool, input, meta = sess) => w.d.registry.call(tool, input, "mcp", meta);
     for (const [tool, input] of [["threads.stop", { thread: a2 }], ["threads.archive", { thread: a2 }], ["threads.delete", { thread: a2 }], ["threads.rewind", { thread: a2, uuid: "x" }], ["threads.send", { thread: a2, text: "x" }]]) {
-      assert.equal((await w.d.registry.call(tool, input, "mcp", {})).error?.code, "denied", `${tool} from a plain mcp caller on another's thread`);
+      assert.equal((await plain(tool, input)).error?.code, "denied", `${tool} from a plain mcp caller on another's thread`);
     }
-    const mine = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", starter: "mcp" }, "mcp", {});
+    const mine = await plain("threads.start", { cwd: w.work, prompt: "hello", starter: "mcp:1:1" });
     assert.equal(mine.error, undefined, "a plain mcp caller starts threads");
     await w.finished(mine.data.id);
-    assert.equal((await w.tool("threads.get", { thread: mine.data.id })).data.thread.starter, "mcp");
-    const forged = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", starter: "mcp" })).data;
-    assert.equal((await w.tool("threads.get", { thread: forged.id })).data.thread.starter, null, "a claimed starter is dropped; only vyred sets it");
-    assert.equal((await w.d.registry.call("threads.send", { thread: mine.data.id, text: "again" }, "mcp", {})).error, undefined, "into a thread it started");
-    assert.equal((await w.d.registry.call("threads.delete", { thread: mine.data.id }, "mcp", {})).error?.code, "denied", "never delete, even its own");
-    assert.equal((await w.d.registry.call("threads.stop", { thread: mine.data.id }, "mcp", {})).error, undefined, "stop one it started");
+    assert.equal((await w.tool("threads.get", { thread: mine.data.id })).data.thread.starter, "mcp:4242:9001", "vyred records the peer's own session; a claimed starter is dropped");
+    const forged = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", starter: "mcp:4242:9001" })).data;
+    assert.equal((await w.tool("threads.get", { thread: forged.id })).data.thread.starter, null);
+    assert.equal((await plain("threads.send", { thread: mine.data.id, text: "again" })).error, undefined, "into a thread this session started");
+    assert.equal((await plain("threads.stop", { thread: mine.data.id }, other)).error?.code, "denied", "another terminal session cannot handle it");
+    assert.equal((await plain("threads.stop", { thread: mine.data.id }, {})).error?.code, "denied", "an unverifiable session handles nothing");
+    assert.equal((await plain("threads.delete", { thread: mine.data.id })).error?.code, "denied", "never delete, even its own");
+    // Reads: its folder's project and its own threads; nothing else, and nothing at all when the folder cannot be read.
+    assert.equal((await plain("threads.get", { thread: a2 })).error, undefined, "its folder's project");
+    for (const tool of ["threads.get", "threads.items", "threads.queue", "threads.asks"]) {
+      assert.equal((await plain(tool, { thread: b1 })).error?.code, "denied", `${tool} on another project`);
+      assert.equal((await plain(tool, { thread: a2 }, { peerSession: "1:1" })).error?.code, "denied", `${tool} when the folder cannot be read`);
+    }
+    const seen = (await plain("threads.list", { all: true })).data.map(r => r.id);
+    assert.ok(seen.includes(a2) && seen.includes(mine.data.id) && !seen.includes(b1) && !seen.includes(loose), `its project and its own: ${seen}`);
+    assert.equal((await plain("threads.stop", { thread: mine.data.id })).error, undefined, "stop one it started");
     // The verified assistant (meta.agent from vyred), and the person, are not narrowed.
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
+    assert.equal((await w.tool("agents.ask", { agent: "juno", text: "hello", wait: true })).error, undefined); // the assistant has a thread, as it always does
     assert.equal((await w.d.registry.call("threads.get", { thread: b1 }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined);
     assert.equal((await w.d.registry.call("threads.stop", { thread: loose }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined);
     assert.equal((await w.tool("threads.get", { thread: b1 })).error, undefined);
@@ -1120,6 +1134,26 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp", {})).error?.code, "denied");
     assert.equal((await w.d.registry.call("agents.ask", { agent: "kit", text: "hi" }, "mcp", {})).error?.code, "denied");
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined, "the verified assistant");
+  });
+
+  test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet
+    assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    for (const [tool, input] of [["threads.list", {}], ["threads.start", { cwd: w.work, prompt: "x" }], ["threads.stop", { thread: th.id }], ["agents.list", {}], ["agents.stop", { agent: "kit" }]]) {
+      const forged = await w.d.registry.call(tool, input, "mcp:agent:juno", {});
+      assert.ok(forged.error, `${tool} by a label alone is refused`);
+      assert.doesNotMatch(String(forged.error.code), /^(no_such_tool|bad_input)$/, `${tool}: refused for who it is, not for its shape`);
+      const real = await w.d.registry.call(tool, input, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: th.id });
+      assert.equal(real.error, undefined, `${tool} by the verified assistant: ${JSON.stringify(real.error)}`);
+    }
+    // A verified ordinary agent is refused, and a label naming the assistant over an ordinary agent's verified meta is too.
+    const kit = await w.d.registry.call("threads.list", {}, "mcp:agent:kit", { agent: "kit", agentKind: "agent", thread: th.id });
+    assert.match(String(kit.error && kit.error.message), /only the assistant/);
+    const swapped = await w.d.registry.call("threads.list", {}, "mcp:agent:juno", { agent: "kit", agentKind: "agent", thread: th.id });
+    assert.match(String(swapped.error && swapped.error.message), /only the assistant/);
   });
 
   test(`${driver}: a hook names only its own session: harness.stop, brief, enrich, learn, rules and touched on another session's id are refused`, { skip }, async t => {
@@ -1136,11 +1170,15 @@ for (const driver of ["cli", "sdk"]) {
     assert.notEqual((await w.d.registry.call("harness.touched", { session: crypto.randomUUID() }, "harness", {})).error?.code, "denied");
   });
 
-  test(`${driver}: threads.bind refuses a pid that is not the caller's own process or one above it`, { skip }, async t => {
+  test(`${driver}: threads.bind refuses a pid that is not the caller's own process, one above it or one it started`, { skip }, async t => {
     const w = await boot(t, { driver });
-    const other = spawn(process.execPath, ["-e", "setTimeout(()=>{},30000)"], { stdio: "ignore" });
-    t.after(() => { try { process.kill(other.pid, "SIGKILL"); } catch { /* gone */ } });
-    const r = await call("threads.bind", { session: crypto.randomUUID(), pid: other.pid }, { root: w.root, caller: "harness", timeout: 20_000 });
+    // A process this test did NOT start (an orphan, as another session's claude would be): started by a shell that exits, so its parent is init.
+    const starter = spawn("sh", ["-c", `${JSON.stringify(process.execPath)} -e "setTimeout(()=>{},30000)" >/dev/null 2>&1 & echo $!`], { stdio: ["ignore", "pipe", "ignore"] });
+    let out = ""; starter.stdout.on("data", d => { out += d; });
+    await new Promise(r => starter.on("close", r));
+    const orphan = Number(out.trim());
+    t.after(() => { try { process.kill(orphan, "SIGKILL"); } catch { /* gone */ } });
+    const r = await call("threads.bind", { session: crypto.randomUUID(), pid: orphan }, { root: w.root, caller: "harness", timeout: 20_000 });
     assert.equal(r.error && r.error.code, "denied", JSON.stringify(r));
     assert.match(String(r.error && r.error.message), /own process/);
   });
