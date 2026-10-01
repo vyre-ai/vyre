@@ -12,7 +12,7 @@ const { default: sites, sitesOf, countsLine, ago, hostOf, forgottenOf } = await 
 
 const LIST = { sites: [
   { key: "https://portal.northwind.example", kind: "origin", names: ["Northwind portal"], family: null, rev: 4, updated: Date.now() - 3600e3, verified: new Date(Date.now() - 86400e3).toISOString(), counts: { controls: 12, api: 0, flows: 3, notes: 2, frames: 1 }, used_to_work: 1 },
-  { key: "family:harlow", kind: "family", names: ["Harlow sites"], family: "harlow", rev: 2, updated: Date.now() - 7200e3, verified: null, counts: { controls: 0, api: 0, flows: 0, notes: 0, frames: 0 }, used_to_work: 0 },
+  { key: "family:harlow", kind: "family", names: [], family: "harlow", rev: 2, updated: Date.now() - 7200e3, verified: null, counts: { controls: 0, api: 0, flows: 0, notes: 0, frames: 0 }, used_to_work: 0 },
   { key: "https://portal.harlow.example", kind: "origin", names: ["Harlow portal"], family: "harlow", rev: 1, updated: Date.now(), verified: null, counts: { controls: 2, api: 0, flows: 0, notes: 0, frames: 0 }, used_to_work: 0 }] };
 const DETAIL = { key: "https://portal.northwind.example", found: true, kind: "origin", names: ["Northwind portal"], related: [], rev: 4, updated: 1, verified: null, used_to_work: 1, events: [{ at: Date.now(), kind: "learned" }],
   parts: { controls: [{ id: "c1", label: "Sign in button on /login", conf: 0.92, verified: new Date().toISOString(), quarantined: false, src: "chrome" }, { id: "c2", label: "Export on /reports", conf: 0.4, verified: null, quarantined: true, src: "chrome" }],
@@ -33,7 +33,7 @@ async function mount(answers) {
 const row = (el, key) => $(el, `[data-site="${key}"]`);
 
 test("sitesOf and countsLine: names first, a group marked, counts in words", () => {
-  assert.deepEqual(sitesOf(LIST).map(s => [s.name, s.kind]), [["Northwind portal", "origin"], ["Harlow sites", "family"], ["Harlow portal", "origin"]]);
+  assert.deepEqual(sitesOf(LIST).map(s => [s.name, s.kind]), [["Northwind portal", "origin"], ["harlow family", "family"], ["Harlow portal", "origin"]], "a family with no name reads as its id plus family, never the raw key");
   assert.equal(hostOf("https://portal.northwind.example"), "portal.northwind.example");
   assert.equal(ago(Date.now() - 12 * 86400e3), "12 days ago");
   assert.equal(ago(Date.now()), "today");
@@ -155,7 +155,7 @@ test("forgetting a family asks once with the count of sites it covers", async ()
   click($(row(m.root, "family:harlow"), "[data-act=forget]"));
   assert.equal(m.of("memory.site.forget").length, 0, "one tap asks");
   const t = text(row(m.root, "family:harlow"));
-  assert.match(t, /Forget the Harlow sites\?/);
+  assert.match(t, /Forget the harlow family\?/);
   assert.match(t, /shared across 1 site/);
   click($(row(m.root, "family:harlow"), "[data-act=family-no]"));
   assert.equal(m.of("memory.site.forget").length, 0);
@@ -191,4 +191,14 @@ test("Wrong? on a row forgets it, with no confirmation and no warning that it ca
   click($(row(m.root, key), "[data-item=c1] [data-act=item-forget]")); await settle();
   assert.equal(m.of("memory.site.forget").length, 1);
   assert.doesNotMatch(text(m.root), /cannot be undone/);
+});
+
+test("a family with no member sites known says A group of sites, not Family of 0 sites", async () => {
+  const lone = { ...LIST.sites[1], family: "harlowcrm", key: "family:harlowcrm" };
+  const m = await mount({ "memory.site.list": { sites: [lone] } });
+  const t = text(row(m.root, "family:harlowcrm"));
+  assert.match(t, /harlowcrm family/);
+  assert.match(t, /A group of sites/);
+  assert.doesNotMatch(t, /Family of 0/);
+  assert.doesNotMatch(t, /family:harlowcrm/);
 });

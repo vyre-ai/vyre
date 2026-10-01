@@ -26,3 +26,5 @@
 .ms-recent-head { color: var(--label); }
 .ms-recent-head svg { transition: transform var(--motion-tap, 120ms) ease; }
 .ms-recent-head[aria-expanded="true"] svg { transform: rotate(90deg); }
+.ms { width: 100%; max-width: 920px; }
+.ms .ml-rows, .ms .ml-row { max-width: 920px; }

@@ -38,7 +38,7 @@ export function hostOf(key) { try { return new URL(key).host; } catch { return k
 /** @param {any} d memory.site.list's answer @returns {{ key: string, name: string, kind: string, family: string|null, updated: number, verified: string|null, counts: Record<string, number>, usedToWork: number }[]} */
 export function sitesOf(d) {
   return (Array.isArray(d?.sites) ? d.sites : []).filter((/** @type {any} */ s) => s && typeof s.key === "string").map((/** @type {any} */ s) => ({
-    key: String(s.key), name: String((Array.isArray(s.names) && s.names[0]) || s.key), kind: s.kind === "family" ? "family" : "origin", family: s.family ? String(s.family) : null,
+    key: String(s.key), name: String((Array.isArray(s.names) && s.names[0]) || (s.kind === "family" ? `${String(s.key).replace(/^family:/, "")} family` : s.key)), kind: s.kind === "family" ? "family" : "origin", family: s.family ? String(s.family) : null,
     updated: Number(s.updated) || 0, verified: s.verified ? String(s.verified) : null, counts: s.counts && typeof s.counts === "object" ? s.counts : {}, usedToWork: Number(s.used_to_work) || 0 }));
 }
 
@@ -215,7 +215,7 @@ export default async function sites(root, ctx, deps = {}) {
         h("div", { class: "ml-rule" }, s.name),
         h("div", { class: "code ms-host" }, fam ? "" : hostOf(s.key)),
         h("div", { class: "ml-meta small" },
-          fam ? h("span", { class: "tag ml-quiet" }, `Family of ${plural(familyCount(s), "site")}`) : null,
+          fam ? h("span", { class: "tag ml-quiet" }, familyCount(s) ? `Family of ${plural(familyCount(s), "site")}` : "A group of sites") : null,
           s.usedToWork ? h("span", { class: "tag ml-quiet" }, `${s.usedToWork} used to work`) : null,
           h("span", { class: "faint" }, countsLine(s.counts)),
           s.verified ? h("span", { class: "faint" }, `checked ${ago(s.verified)}`) : null),
