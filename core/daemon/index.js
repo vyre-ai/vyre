@@ -262,8 +262,14 @@ const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard
  */
 export function socketCaller(req) {
   const label = String(req.headers["x-vyre-caller"] || "");
-  return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
+  if (!label || FORBIDDEN_LABEL.test(label)) return "anonymous";
+  // An allowlist: the person's surfaces, a model's own labels, and a label that carries an agent or thread claim
+  // (which route() then refuses unless it comes with the agent's key). Anything else, "module", "Module",
+  // "internal", "system" and the rest, is anonymous: a label is only a claim, and a bare "module" read as a
+  // module through callerKind, which skips presence (reviewer-2, 2 Oct 2026).
+  return SOCKET_LABEL.test(label) || /(?:^|[\s:])(?:agent|thread):/i.test(label) ? label : "anonymous";
 }
+const SOCKET_LABEL = /^(?:(?:cli|local|deck|capsule|mobile)|(?:mcp|harness)(?:[\s:][^\s].*)?)$/;
 
 /** A model's own label: its tools' callers lists and the agent key already decide what it may do. */
 const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
@@ -460,7 +466,12 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   // Inverted trust: a person's label on the socket is only a claim, and a child that left the claude ancestry
   // (setsid, nohup, a launchd or cron job an agent wrote) sends the same label. The label is kept only for a
   // peer that proves it is the person; everything else is capped at mcp, silently, with no prompt.
-  if (socketTrust() === "strict" && PERSON_LABEL.test(caller) && !(await personSocket(socket, registry, a, deps))) return { ...asModel, capped: true };
+  if (socketTrust() === "strict" && PERSON_LABEL.test(caller) && !(await personSocket(socket, registry, a, deps))) {
+    // A chain that ends at a named server (a terminal app vyred does not list, ssh to a Mac) is asked once for a proof on
+    // a person's tool, and route() caps it for every other tool; anything with no such server is capped here.
+    if (a.server) return { caller, model: false, unproven: true };
+    return { ...asModel, capped: true };
+  }
   return { caller, model: false };
 }
 const PERSON_LABEL = /^(?:cli|local|deck|capsule|mobile)$/;
@@ -727,6 +738,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         }
       }
     }
+    // A peer behind a named server the person has not proved is the person only for a person's tool, which asked above;
+    // for every other tool its label is only a claim, so it is capped like any unproven peer.
+    if (socket && shell.unproven && !personal) caller = via.thread ? `mcp:thread:${via.thread}` : "mcp";
     // Held in `inflight` until the answer has left, not just until the tool returns: stop()
     // closes every connection once these settle.
     // (A module's own listener may hand over a response that is not a stream; nothing to wait on.)

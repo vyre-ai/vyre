@@ -344,10 +344,16 @@ test("peer: a person's label from under a claude is the session's own, for every
   }
   // Every surface's label in the kernel's list, and a surface name no module uses yet, is the
   // session's own from inside; from outside each stays what it said.
-  for (const label of [...SURFACE_LABELS, "phone", "glass-now"]) {
+  for (const label of SURFACE_LABELS) {
     const headers = { "x-vyre-caller": label };
     assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "mcp", label);
     assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, label, label);
+  }
+  // A surface name the socket does not know ("phone", "glass-now") is nobody's: anonymous, from inside a claude or outside.
+  for (const label of ["phone", "glass-now"]) {
+    const headers = { "x-vyre-caller": label };
+    assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "anonymous", label);
+    assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, "anonymous", label);
   }
   // A model's own label is not traced and not changed; a person-only tool from inside is still
   // refused out loud, never run as the model's.

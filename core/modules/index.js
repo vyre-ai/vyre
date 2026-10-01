@@ -384,6 +384,8 @@ export const callerKind = caller => {
   const c = String(caller);
   if (c.startsWith("module:")) return "module";
   const base = c.replace(/[\s:](agent|thread):.*$/si, "");
+  // Only the "module:<name>" prefix is a module. A bare "module" (any case) is nobody's: it must never read as one.
+  if (/^\s*module/i.test(base)) return "anonymous";
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp". A claim
   // carried on a person's surface label ("cli:agent:kit", "capsule thread:x") is the agent's own, never
   // the surface: it reads as the model session it is, so no callers list, reach or kind check that
@@ -1035,6 +1037,8 @@ export class Registry {
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const callerRaw = caller;
     caller = canonicalCaller(caller);
+    // A label that starts like a module's but is not "module:<name>" is not a module: nothing of a module's rides with it.
+    if (typeof caller === "string" && /^\s*module/i.test(caller) && !caller.startsWith("module:")) caller = "anonymous";
     if (caller !== callerRaw) {
       // A claim on a label that is not a model session's own was rewritten (canonicalCaller). It is an unverified
       // claim, so nothing vyred verified about an agent rides with it, and the original label is kept for the audit.
