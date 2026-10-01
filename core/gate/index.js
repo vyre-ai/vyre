@@ -18,7 +18,6 @@
 // items are named by each sender in config.json, and each still needs `vyre vault grant <item>
 // gate`), or from vault.relay for a sender that uses someone else's relayed pass.
 
-import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { Gate, MIGRATIONS, KINDS } from "./gate.js";
 import { inputHash } from "../presence/index.js";
 
@@ -49,7 +48,6 @@ const OUTBOUND = new Set(["send", "spend", "delete", "act"]);
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    closeToAddedModules(ctx, { except: ["gate.request"] });
     ctx.store.migrate(MIGRATIONS);
     const opts = (ctx.config && ctx.config.gate) || {};
     const approvers = Array.isArray(opts.approvers) ? opts.approvers.map(String) : ["chat"];

@@ -18,7 +18,6 @@
 // item held before a restart can still be approved once this module has started again. A removed
 // server's sender stays offered until vyred restarts; release refuses it.
 
-import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { Credentials } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
@@ -40,7 +39,6 @@ const fields = {
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    closeToAddedModules(ctx);
     ctx.store.migrate(MIGRATIONS);
     const opts = (ctx.config && ctx.config.mcp) || {};
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };

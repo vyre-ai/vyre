@@ -12,7 +12,6 @@
 // - `connectors.persist` is internal and answers only the MCP hub, which calls it when a vendor
 //   rotates a refresh token.
 
-import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
@@ -24,7 +23,6 @@ const PEOPLE = ["cli", "local", "deck", "capsule"];
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    closeToAddedModules(ctx);
     ctx.store.migrate(MIGRATIONS);
     const data = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
     const fail = (msg, code) => Object.assign(new Error(msg), { code });

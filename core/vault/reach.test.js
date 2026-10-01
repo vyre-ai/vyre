@@ -54,12 +54,12 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
   assert.equal(checked, PERSON.length);
 });
 
-test("an added module that lists vault, Gate, Google, mail and MCP tools in needs.tools is still refused them (not_declared), and reaches the Gate's own door", async t => {
+test("an added module that lists the vault's put, request, totp and relay in needs.tools is still refused them (not_declared)", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
-  const TOOLS = ["vault.list", "vault.put", "vault.request", "vault.totp", "gate.approve", "gate.held", "google.mail.send", "google.mail.read", "mail.send", "mcp.call", "mcp.add", "connectors.list"];
+  const TOOLS = ["vault.put", "vault.request", "vault.totp", "vault.relay"];
   writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery's orders.", does: { tools: [{ name: "bakery.try", reach: "anyone" }] },
-    needs: { tools: [...TOOLS, "gate.request"] } }, `export default { async start(ctx) {
+    needs: { tools: [...TOOLS, "vault.list"] } }, `export default { async start(ctx) {
     ctx.tool("bakery.try", { input: { type: "object", properties: { tool: { type: "string" } } },
       run: async ({ tool }) => { const r = await ctx.call(tool, {}); return { code: r.error && r.error.code }; } });
     return { async stop() {} };
@@ -71,7 +71,7 @@ test("an added module that lists vault, Gate, Google, mail and MCP tools in need
     const r = await d.registry.call("bakery.try", { tool }, "local");
     assert.equal(r.data && r.data.code, "not_declared", `${tool}: ${JSON.stringify(r)}`);
   }
-  // Positive control: the one door an added module is meant to have, and a first-party module reaching a tool the same way.
-  const gate = await d.registry.call("bakery.try", { tool: "gate.request" }, "local");
-  assert.notEqual(gate.data && gate.data.code, "not_declared", JSON.stringify(gate));
+  // Positive control: the same door lets a read-only vault tool through to its own code, so not_declared is the guard and not a missing tool.
+  const list = await d.registry.call("bakery.try", { tool: "vault.list" }, "local");
+  assert.notEqual(list.data && list.data.code, "not_declared", JSON.stringify(list));
 });

@@ -372,8 +372,8 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
   // A third-party module in the home's modules folder. ADR 0047: it reaches a connection through
-  // ctx.connections.call, which builds the hub's input itself, so it can't pass on_behalf; and a
-  // direct ctx.call to mcp.call is refused by the loader's default-deny, whatever its input.
+  // ctx.connections.call, which builds the hub's input itself, so it can't pass on_behalf; and mcp.call
+  // declares reach anyone (ADR 0047), so a direct ctx.call reaches it, where on_behalf is refused in code and a write is held.
   writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "Northwind Bakery's issues.",
     does: { tools: [{ name: "bakery.try" }, { name: "bakery.issue" }] }, needs: { tools: ["mcp.call"], connections: [{ provider: "chat", purpose: "file an issue" }] } }, `export default { async start(ctx) {
     ctx.tool("bakery.try", { input: { type: "object", properties: { on_behalf: { type: "object" }, hold: { type: "boolean" } } },
@@ -389,8 +389,8 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
   const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
-  assert.equal(refused.error.code, "not_declared", JSON.stringify(refused));
-  assert.equal((await cli("bakery.try", {})).data.error.code, "not_declared", "mcp.call itself is not open to a home module");
+  assert.equal(refused.error.code, "denied", JSON.stringify(refused));
+  assert.ok((await cli("bakery.try", {})).data.data.held, "mcp.call declares reach anyone (ADR 0047): a home module that lists it reaches it, and its write is held as usual");
   const plain = (await cli("bakery.issue", {})).data;
   assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
   const it = (await cli("gate.get", { id: plain.data.held })).data;

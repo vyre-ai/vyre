@@ -58,7 +58,9 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    closeToAddedModules(ctx);
+    // A first-party tool declared anyone is open to an added module that lists it in needs.tools (ADR 0047). These four
+    // take or use secrets for Vyre's own modules only: an added module reaches a secret through ctx.vault.fetch.
+    closeToAddedModules(ctx, { only: ["vault.put", "vault.totp", "vault.relay", "vault.request", "vault.verify"] });
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
     if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
