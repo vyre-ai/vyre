@@ -272,6 +272,7 @@ try {
     const got = await new Promise(res => { const b = []; const c = net.connect(5900, ip); const t = setTimeout(() => { c.destroy(); res("timeout, got " + Buffer.concat(b).toString("latin1").length + " bytes"); }, 4000); c.on("data", d => { b.push(d); if (Buffer.concat(b).length >= 12) { clearTimeout(t); c.destroy(); res(JSON.stringify(Buffer.concat(b).subarray(0, 12).toString("latin1"))); } }); c.on("error", e => { clearTimeout(t); res("error " + e.message); }); });
     console.log("--- host read of " + ip + ":5900 first 12 bytes: " + got);
   }
+  console.log("--- vnc package\n" + shOk(["exec", CONTAINER, "sh", "-c", "dpkg -l 'tigervnc*' 2>&1 | tail -4; Xvnc -version 2>&1 | head -5"]).slice(-900));
   console.log("--- first bytes of the VNC port\n" + shOk(["exec", CONTAINER, "sh", "-c", "for p in 5900 5901; do echo port $p; (timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/'$p'; head -c 16 <&3 | od -c | head -3') 2>&1; done; ss -ltn 2>&1 | head -10; ls -la /var/lib/vyre/.vnc 2>&1 | head"]).slice(-800));
   // For debugging a failure by hand: keep the computer up for PROOF_HOLD seconds.
   if (Number(process.env.PROOF_HOLD) > 0) { console.log(`HOLDING ${process.env.PROOF_HOLD} s`); await sleep(Number(process.env.PROOF_HOLD) * 1000); }
