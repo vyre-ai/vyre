@@ -17,7 +17,7 @@ import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
 import { macCoreRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
-import { pairTicket, resolveTicket, pairOffer } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, pairOffer, connect } from "../relay/client/client.js";
 import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
@@ -199,15 +199,58 @@ test("relay: the first-device path closes once a person exists", async t => {
   assert.equal((await d.registry.call("relay.pair.first", {}, "cli", PROOF)).error?.code, "denied");
 });
 
-test("relay: removing a device closes its connection at once and it cannot come back", async t => {
+test("relay: removing a device closes its connection at once with 4401 'device removed', and it is refused on the same code when it comes back", async t => {
   const { d } = await world(t);
   const url = await firstPairing(d);
   const p = await phone(url);
   const r = await d.registry.call("relay.devices.remove", { id: p.reply.device }, "cli", PROOF);
   assert.ok(r.data, JSON.stringify(r.error));
-  await new Promise(res => setTimeout(res, 50));
+  await new Promise(res => setTimeout(res, 100));
   assert.equal(p.channel.closed, true);
-  await assert.rejects(phone(url, { keys: p.keys, pair: false }), /closed|not a paired/);
+  assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" }, "the open channel hears it");
+  await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/, "a reconnect is refused with the same words");
+  // What is kept of a removed device is what that answer needs: its key and when, never the name the person deleted.
+  const kept = /** @type {any} */ (d.registry.deps.db.prepare("SELECT name, pub, presence_key, release, removed_at, trusted FROM relay_devices WHERE id = ?").get(p.reply.device));
+  assert.ok(kept.pub && kept.removed_at, "key and time stay");
+  assert.deepEqual([kept.name, kept.presence_key, kept.release, kept.trusted], ["", null, null, 0], "the rest is blanked");
+  // a stranger's key is just not paired, which is a different answer
+  await assert.rejects(phone(url, { keys: keyPair(), pair: false }), /box closed the connection/, "a stranger's key just gets the relay's generic close");
+});
+
+test("relay: the shared client stops for good when the owner removes its device, in a 'relay_removed' state (the relay's word, not the box's), and does not redial", async t => {
+  const { d } = await world(t);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const keyStore = fileKeyStore(path.join(tempHome(t), "k.json"));
+  const url = await firstPairing(d);
+  const offer = /** @type {any} */ (parsePairUrl(url));
+  const paired = await pairOffer(offer, { crypto: nodeCrypto(), keyStore, name: "alex's phone" });
+  const states = [];
+  const conn = connect({ relay: paired.relay, route: paired.route, box: fromBase64url(paired.box), crypto: nodeCrypto(), keyStore, backoff: { min: 30, max: 60 } });
+  conn.onstate = s => states.push(s);
+  t.after(() => conn.close());
+  for (let i = 0; i < 100 && !conn.open; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(conn.open, true);
+  await d.registry.call("relay.devices.remove", { id: paired.device }, "cli", PROOF);
+  for (let i = 0; i < 100 && states.at(-1) !== "relay_removed"; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(states.at(-1), "relay_removed", states.join(","));
+  const n = states.length;
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(states.length, n, "no redial after relay_removed");
+  void status;
+});
+
+test("relay: taking a device's presence key away removes the device the same way", async t => {
+  const { d } = await world(t);
+  const url = await firstPairing(d);
+  const p = await phone(url);
+  const key = (await d.registry.call("relay.device.presence", { id: p.reply.device }, "module:test")).data.key;
+  assert.ok(key, "the phone enrolled a presence key at pairing");
+  const r = await d.registry.call("presence.remove", { id: key }, "cli", PROOF);
+  assert.ok(r.data || !r.error, JSON.stringify(r));
+  await new Promise(res => setTimeout(res, 150));
+  assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" });
+  await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/);
+  assert.equal(((await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).some(x => x.id === p.reply.device), false, "and it is gone from the list");
 });
 
 test("relay: a socket client cannot claim to be a device", async t => {

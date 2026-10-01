@@ -544,7 +544,9 @@ export class RouteRelay {
 
   /** @param {any} ws */
   async webSocketClose(ws, code, reason) {
-    await this.gone(ws);
+    // The one thing a box may tell the device it was serving through its own close: "device removed"
+    // (4401). Nothing else the box writes is forwarded, so a box cannot put words in a device's ear.
+    await this.gone(ws, code === CLOSE.refused && reason === "device removed" ? { code, reason } : null);
     try { ws.close(code === 1005 || code === 1006 ? 1000 : code, reason); } catch {}
   }
 
@@ -559,18 +561,18 @@ export class RouteRelay {
   }
 
   /** A socket went away on its own. */
-  async gone(ws) {
+  async gone(ws, told = null) {
     const r = this.role(ws);
     if (r.k === "gone") return;
     ws.serializeAttachment({ k: "gone" });
-    await this.after(r);
+    await this.after(r, told);
   }
 
   /** What a socket leaving means for the others. @param {Role} r */
-  async after(r) {
+  async after(r, told = null) {
     if (r.k === "data") {
       const device = this.live(`dev:${r.c}`)[0];
-      if (device) this.end(device, CLOSE.boxGone, "box closed the connection");
+      if (device) this.end(device, told ? told.code : CLOSE.boxGone, told ? told.reason : "box closed the connection");
     } else if (r.k === "device") {
       const data = this.live(`data:${r.c}`)[0];
       if (data) this.end(data, CLOSE.deviceGone, "device left");
