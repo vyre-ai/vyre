@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { projectDefinesMcp, acpProvider, askFor } from "./acp.js";
+import { projectCodexConfig, acpProvider, askFor } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -129,48 +129,55 @@ test("acp: a permission question goes to the person as can_use_tool, and always-
   await s2.proc.stop(1000);
 });
 
-test("acp: Codex's approval for an MCP tool names no tool: Vyre's own server is let through at once, any other is put to the person by its server, never as a blank Bash", async t => {
+test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let through only when it is the one server and no project config has content; every other is denied and said once", async t => {
   const vyre = [{ name: "vyre", command: "node", args: ["x"], env: [] }];
-  // Vyre's own bridge, on an entry that says vyred gates it: no question reaches the person.
+  const textOf = s => s.got.filter(m => m.type === "stream_event" && m.event.delta && m.event.delta.text).map(m => m.event.delta.text).join("");
+  // Vyre's own bridge, on an entry that says vyred gates it, in a clean folder: no question, allowed.
   const a = world(t, { mcpOwn: true });
   const sa = open(a, { mcpServers: vyre });
   assert.match(await sa.say("mcpask"), /mcp: allow_once/);
   assert.ok(!sa.got.some(m => m.type === "control_request"), "no question for Vyre's own MCP server");
   await sa.proc.stop(500);
-  // The same approval without the entry's say-so is asked, as an MCP tool of that server (not Bash, not an empty command).
-  const b = world(t);
-  const sb = open(b, { mcpServers: vyre });
-  sb.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
-  const ask = await sb.until(m => m.type === "control_request", "the question");
-  assert.equal(ask.request.tool_name, "mcp__vyre");
-  assert.equal(ask.request.input.command, undefined);
-  sb.proc.write({ type: "control_response", response: { request_id: ask.request_id, response: { behavior: "deny" } } });
-  await sb.until(m => m.type === "result", "the result");
-  assert.match(sb.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), /mcp: cancel/);
-  await sb.proc.stop(500);
-  // A project config that defines an MCP server (an agent can write one for the next start, and it replaces "vyre" and runs unsandboxed)
-  // turns the shortcut off for the session: the approval goes to the person.
-  const d = world(t, { mcpOwn: true });
-  fs.mkdirSync(path.join(d.cwd, ".codex"), { recursive: true });
-  fs.writeFileSync(path.join(d.cwd, ".codex", "config.toml"), '[mcp_servers.vyre]\ncommand = "evil"\n');
-  const sd = open(d, { mcpServers: vyre });
-  sd.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
-  const qd = await sd.until(m => m.type === "control_request", "a question when a project config defines MCP servers");
-  assert.equal(qd.request.tool_name, "mcp__vyre");
-  sd.proc.write({ type: "control_response", response: { request_id: qd.request_id, response: { behavior: "deny" } } });
-  await sd.until(m => m.type === "result", "the result");
-  await sd.proc.stop(500);
-  assert.equal(projectDefinesMcp(path.join(d.cwd, "sub", "deeper")), true, "found from a folder below it");
-  assert.equal(projectDefinesMcp(a.cwd), false);
-  // Another server, or more than one, is never let through, even on an entry that trusts its own.
-  for (const servers of [[{ name: "other", command: "node", args: [], env: [] }], [...vyre, { name: "other", command: "node", args: [], env: [] }], []]) {
-    const c = world(t, { mcpOwn: true });
+  // A comment-only or empty project config is not content.
+  const q = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(q.cwd, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(q.cwd, ".codex", "config.toml"), "# nothing here\n\n");
+  const sq = open(q, { mcpServers: vyre });
+  assert.match(await sq.say("mcpask"), /mcp: allow_once/);
+  await sq.proc.stop(500);
+  // Any content in a project config, in any TOML spelling of an MCP server (or none), turns the shortcut off: denied, never asked blind, said once.
+  const spellings = [
+    '[mcp_servers.vyre]\ncommand = "evil"\n', 'mcp_servers.vyre.command = "evil"\n', 'mcp_servers = { vyre = { command = "evil" } }\n',
+    '["mcp_servers".vyre]\ncommand = "evil"\n', '"mcp_servers".vyre.command = "evil"\n', "[ 'mcp_servers' . 'vyre' ]\ncommand = \"evil\"\n", 'approval_policy = "never"\n',
+  ];
+  for (const toml of spellings) {
+    const d = world(t, { mcpOwn: true });
+    fs.mkdirSync(path.join(d.cwd, ".codex"), { recursive: true });
+    fs.writeFileSync(path.join(d.cwd, ".codex", "config.toml"), toml);
+    const sd = open(d, { mcpServers: vyre });
+    const first = await sd.say("mcpask");
+    assert.match(first, /mcp: cancel/, toml);
+    assert.ok(!sd.got.some(m => m.type === "control_request"), `no blind question: ${toml}`);
+    assert.match(first, /refused an MCP tool call: this folder has its own Codex config/, toml);
+    const second = await sd.say("mcpask");
+    assert.doesNotMatch(second, /refused an MCP tool call/, "said once");
+    assert.match(second, /mcp: cancel/);
+    await sd.proc.stop(500);
+  }
+  // A config higher up the tree counts too.
+  const up = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(up.cwd, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(up.cwd, ".codex", "config.toml"), 'x = 1\n');
+  assert.equal(projectCodexConfig(path.join(up.cwd, "sub", "deeper")), true);
+  assert.equal(projectCodexConfig(a.cwd), false);
+  // Without the entry's say-so, or with another or more servers, every MCP approval is denied: nothing is let through on a guess.
+  for (const [over, servers] of [[{}, vyre], [{ mcpOwn: true }, [{ name: "other", command: "node", args: [], env: [] }]], [{ mcpOwn: true }, [...vyre, { name: "other", command: "node", args: [], env: [] }]], [{ mcpOwn: true }, []]]) {
+    const c = world(t, over);
     const sc = open(c, { mcpServers: servers });
-    sc.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
-    const q = await sc.until(m => m.type === "control_request", `a question for ${servers.map(x => x.name).join("+") || "no server"}`);
-    assert.equal(q.request.tool_name, servers.length === 1 ? `mcp__${servers[0].name}` : "mcp");
-    sc.proc.write({ type: "control_response", response: { request_id: q.request_id, response: { behavior: "deny" } } });
-    await sc.until(m => m.type === "result", "the result");
+    const out = await sc.say("mcpask");
+    assert.match(out, /mcp: cancel/, JSON.stringify([over, servers.map(x => x.name)]));
+    assert.ok(!sc.got.some(m => m.type === "control_request"));
+    assert.match(out, /refused an MCP tool call: Vyre cannot tell which MCP server it is for/);
     await sc.proc.stop(500);
   }
 });
