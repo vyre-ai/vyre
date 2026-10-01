@@ -178,3 +178,20 @@ test("voice: a live phrase is shown, and only a final phrase reaches the agent, 
   assert.equal(os.guard("kit", AGENT).interjection, "skip the phone number");
   assert.equal(os.guard("kit", AGENT).interjection, undefined, "once");
 });
+
+test("oversight: a finished run emits chrome.finished {agent, run, ok}; a stop emits it with ok false; a run that was never planned emits nothing on stop", () => {
+  /** @type {any[]} */ const got = [];
+  const o = createOversight({ emit: (/** @type {string} */ type, /** @type {any} */ p) => got.push({ type, ...p }) });
+  o.plan("kit", [{ id: "1", text: "read" }], { thread: "t-7" });
+  o.finish("kit");
+  const fin = got.filter(e => e.type === "chrome.finished");
+  assert.equal(fin.length, 1);
+  assert.deepEqual([fin[0].agent, fin[0].run, fin[0].ok], ["kit", "t-7", true]);
+  o.plan("kit", [{ id: "1", text: "read" }], { thread: "t-8" });
+  o.finish("kit", { ok: false });
+  assert.equal(got.filter(e => e.type === "chrome.finished").pop().ok, false);
+  o.plan("kit", [{ id: "1", text: "read" }], { thread: "t-9" });
+  o.stop({ by: "esc" });
+  const last = got.filter(e => e.type === "chrome.finished").pop();
+  assert.deepEqual([last.run, last.ok, last.stopped], ["t-9", false, true]);
+});

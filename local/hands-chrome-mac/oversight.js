@@ -153,7 +153,10 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
     /** @param {string} id @param {string} [why] */ stepFailed: (id, why) => step("failed", id, why),
 
     /** The run is over: forget the plan so the next run must post its own. @param {string} agent */
-    finish(agent) {
+    finish(agent, { ok = true } = {}) {
+      const p = /** @type {any} */ (plans.get(agent));
+      // The run is over: Lumen's panel closes on this (a run that never finishes keeps it open).
+      emit("chrome.finished", { agent, ...(p && p.thread ? { thread: p.thread } : {}), ok: ok !== false });
       plans.delete(agent);
       if (active === agent) { active = null; if (state === "planning" || state === "running") state = "idle"; }
       return { ok: true };
@@ -183,6 +186,7 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
       state = "stopped";
       stoppedBy = by;
       emit("chrome.stopped", { agent: active, by });
+      if (active) { const p = /** @type {any} */ (plans.get(active)); emit("chrome.finished", { agent: active, ...(p && p.thread ? { thread: p.thread } : {}), ok: false, stopped: true }); }
       return Promise.resolve(push({ event: "stop", by })).catch(() => false).then(() => {
         const ms = Math.max(0, now() - t0);
         latencies.push(ms);

@@ -601,14 +601,14 @@ export default {
       });
 
     tool("chrome.plan", "Post what you are about to do in the person's Chrome, as a short list of steps ({id, text, risk?}), before your first action: they see it and can interject or stop. Then report each step with step and status (running, done, failed), and finish when the run is over.",
-      obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, agent: str }),
+      obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, ok: { ...bool, description: "With finish: false when the run ended in failure. Default true." }, agent: str }),
       async (i, meta) => {
         const agent = agentOf(meta.caller);
         await requireGrant(agent);
         const name = agent || (i.agent ? String(i.agent) : "you");
         return via.run(meta, async () => {
           if (Array.isArray(i.steps)) return oversight.plan(name, i.steps, { thread: meta.thread, title: i.title });
-          if (i.finish) { showPresence({ done: true }); return oversight.finish(name); }
+          if (i.finish) { showPresence({ done: true }); return oversight.finish(name, { ok: i.ok !== false }); }
           if (i.step) return i.status === "done" ? oversight.stepDone(i.step) : i.status === "failed" ? oversight.stepFailed(i.step, i.why) : oversight.stepStarted(i.step);
           throw Object.assign(new Error("bad_request: give steps to post a plan, or step and status to report one"), { code: "bad_request" });
         }).catch(e => { throw wrapErr(e); });
