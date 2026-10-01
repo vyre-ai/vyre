@@ -71,11 +71,11 @@
   },
   "gate.reject": {
    "module": "gate",
-   "why": "pending"
+   "why": "callers list in code, narrower than person: it is callers list in code (capsule, cli, deck, local, module, tailnet): no model caller"
   },
   "gate.revise": {
    "module": "gate",
-   "why": "pending"
+   "why": "callers list in code, narrower than person: it is callers list in code (cli, local, module, tailnet): no model caller"
   },
   "glass.release": {
    "module": "glass",
@@ -187,15 +187,11 @@
   },
   "vault.device.join": {
    "module": "vault",
-   "why": "pending"
-  },
-  "vault.device.revoke": {
-   "module": "vault",
-   "why": "pending"
+   "why": "callers list in code, narrower than person: it is callers list in code (cli, local): no model caller"
   },
   "vault.vaults.create": {
    "module": "vault",
-   "why": "pending"
+   "why": "callers list in code, narrower than person: it is callers list in code (cli, local): no model caller"
   },
   "voice.speak": {
    "module": "voice",

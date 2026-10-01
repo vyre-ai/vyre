@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "gate.request", "projectArg": "project" }, "gate.senders", { "name": "gate.held", "projectArg": "project" }, "gate.get", "gate.revise", "gate.approve", "gate.reject", "gate.settle", "gate.route", "gate.offer", "gate.said.list", "gate.said.add", "gate.said.revoke"] },
+  "does": { "tools": [{ "name": "gate.request", "reach": "anyone", "projectArg": "project" }, { "name": "gate.senders", "reach": "anyone" }, { "name": "gate.held", "reach": "anyone", "projectArg": "project" }, { "name": "gate.get", "reach": "anyone" }, { "name": "gate.revise", "reach": "anyone" }, { "name": "gate.approve", "reach": "anyone" }, { "name": "gate.reject", "reach": "anyone" }, { "name": "gate.settle", "reach": "anyone" }, { "name": "gate.route", "reach": "modules" }, { "name": "gate.offer", "reach": "modules" }, { "name": "gate.said.list", "reach": "anyone" }, { "name": "gate.said.add", "reach": "person" }, { "name": "gate.said.revoke", "reach": "anyone" }] },
   "watches": { "emits": ["gate.held", "gate.revised", "gate.released", "gate.failed", "gate.rejected", "gate.settled"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": { "vault": ["per-sender"] },
