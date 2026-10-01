@@ -30,3 +30,11 @@ iPhone when iCloud Keychain is on. With only the Mac, a pairing cannot be approv
 Owner: deck with link (a decision for the lead). Pages: [install](get-started/install.md),
 [onboarding](get-started/onboarding.md), [troubleshooting](get-started/troubleshooting.md),
 [the box and the Mac](concepts/box-and-mac.md), [Tailscale](using/tailscale.md).
+
+## The first Windows install checks a checksum, not a signature
+
+`irm https://vyre.run/w | iex` downloads `VyreSetup.exe` and checks its SHA-256 against the line in the release's `SHA256SUMS`, both fetched over https from GitHub. It does not verify `SHA256SUMS.sig`: Windows PowerShell 5.1 cannot check an Ed25519 signature, and the installer is not code-signed yet, so Windows shows its "unrecognized app" warning (choose More info, then Run anyway). Every later update is different: the app verifies it against Vyre's release key and refuses anything unsigned.
+
+What to do: install only from `vyre.run/w` or the release page on GitHub. A signature-verified first install (a PowerShell Ed25519 check, or code-signing the installer) is planned for 0.2.1.
+
+Owner: windows with launch.
