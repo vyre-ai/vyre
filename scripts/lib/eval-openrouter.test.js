@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
-import { Budget, BudgetStop, StartRefused, openrouterOnce, marginFor, MARGIN_BY_MODEL, keyUsage, START_LIMIT_USD } from "./eval-openrouter.js";
+import { Budget, BudgetStop, StartRefused, openrouterOnce, marginFor, MARGIN_BY_MODEL, keyUsage, START_LIMIT_USD, modelListed } from "./eval-openrouter.js";
 
 const reply = (text, cost) => async (url, init) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: text } }], usage: { cost, prompt_tokens: 10, completion_tokens: 5 } }), url, init });
 
@@ -127,4 +127,13 @@ test("the key base is refreshed every N calls: spend by something else on the sa
   await run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 }); await run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 });
   await assert.rejects(run2({ system: "s", prompt: "p", model: "m", maxUsd: 1 }), e => e instanceof BudgetStop);
   assert.equal(n, 2);
+});
+
+test("modelListed: a retired model id is false (Grok Build shows OpenRouter's 400 for one as Internal error), a listed one true, an unreadable list null", async () => {
+  const list = async () => ({ ok: true, status: 200, json: async () => ({ data: [{ id: "x-ai/grok-build-0.1" }, { id: "openai/gpt-5.1-codex-mini" }] }) });
+  assert.equal(await modelListed("x-ai/grok-build-0.1", { fetch: /** @type {any} */ (list) }), true);
+  assert.equal(await modelListed("x-ai/grok-code-fast-1", { fetch: /** @type {any} */ (list) }), false);
+  assert.equal(await modelListed("x", { fetch: /** @type {any} */ (async () => ({ ok: false, status: 503, json: async () => ({}) })) }), null);
+  assert.equal(await modelListed("x", { fetch: /** @type {any} */ (async () => { throw new Error("offline"); }) }), null);
+  assert.equal(await modelListed("x", { fetch: /** @type {any} */ (async () => ({ ok: true, status: 200, json: async () => ({ nope: 1 }) })) }), null);
 });

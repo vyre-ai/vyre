@@ -47,6 +47,23 @@ export async function keyUsage(o) {
   return { usage, limit: Number.isFinite(limit) ? limit : null };
 }
 
+export const MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models";
+
+/**
+ * Is this model still on OpenRouter? Its model list is public (no key). OpenRouter answers a retired id with a 400 that Grok Build shows
+ * as "Internal error" (x-ai/grok-code-fast-1, retired, did exactly that in the meter spike), so a proof asks first. null when the list
+ * cannot be read: unknown, not a reason to stop.
+ * @param {string} slug @param {{ fetch?: typeof fetch, endpoint?: string }} [o] @returns {Promise<boolean|null>}
+ */
+export async function modelListed(slug, o = {}) {
+  try {
+    const res = await (o.fetch || fetch)(o.endpoint || MODELS_ENDPOINT);
+    if (!res.ok) return null;
+    const j = await res.json();
+    return Array.isArray(j && j.data) ? j.data.some(/** @param {any} m */ m => m && m.id === slug) : null;
+  } catch { return null; }
+}
+
 /** A run that may not start: the key has already spent START_LIMIT_USD. */
 export class StartRefused extends Error {
   /** @param {number} usage */
