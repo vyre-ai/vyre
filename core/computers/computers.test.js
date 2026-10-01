@@ -148,6 +148,28 @@ test("computers: endpoint checks out and thaws; may-act touches", async t => {
   assert.deepEqual(s.events().map(e => e.type), ["computer.created", "computer.checked-out", "computer.released", "computer.frozen", "computer.thawed", "computer.checked-out"]);
 });
 
+test("computers: an agent can pause its own hands but never lift a pause: only the person resumes", async t => {
+  const s = await boot(t);
+  await s.cli("computers.checkout", { agent: "kit" });
+  assert.equal((await s.kit("computers.pause", {})).error, undefined, "an agent may stop its own hands");
+  const r = await s.kit("computers.resume", {});
+  assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), "an agent resumed its own paused computer: " + JSON.stringify(r.error || r.data));
+  assert.equal(s.h.pool.isPaused("kit"), true, "the pause is still on");
+  assert.ok((await s.module("computers.resume", { agent: "kit" })).error, "a module cannot lift it either");
+  assert.equal((await s.cli("computers.resume", { agent: "kit" })).error, undefined);
+  assert.equal(s.h.pool.isPaused("kit"), false);
+});
+
+test("computers: an agent's checkout takes the thread from the verified call, never from its input; and list shows an ordinary agent only its own computer", async t => {
+  const s = await boot(t);
+  const r = await s.kit("computers.checkout", { thread: "someone-elses-thread" });
+  assert.equal(r.error, undefined);
+  assert.notEqual(s.h.pool.view("kit").thread, "someone-elses-thread");
+  const l = await s.kit("computers.list", {});
+  assert.deepEqual(l.data.computers.map(c => c.agent), ["kit"]);
+  assert.ok((await s.juno("computers.list", {})).data.computers.length >= 2, "the assistant sees them all");
+});
+
 test("computers: pause refuses the hands, resume lets them act", async t => {
   const s = await boot(t);
   assert.deepEqual((await s.cli("computers.pause", { agent: "kit" })).data, { paused: true });

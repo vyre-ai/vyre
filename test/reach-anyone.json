@@ -101,10 +101,6 @@
    "module": "computers",
    "reason": "own-scope check: resolve() limits an agent to its own computer; a new container on the same home"
   },
-  "computers.resume": {
-   "module": "computers",
-   "reason": "own-scope check: resolve() limits an agent to its own computer; it only resumes that computer's own hands"
-  },
   "computers.stop": {
    "module": "computers",
    "reason": "own-scope check: resolve() limits an agent to its own computer; its home volume stays and the next checkout starts it again"

@@ -14,7 +14,7 @@
       {"name": "computers.limits", "reach": "anyone"},
       {"name": "computers.stats", "reach": "modules"},
       {"name": "computers.pause", "reach": "anyone"},
-      {"name": "computers.resume", "reach": "anyone"},
+      {"name": "computers.resume", "reach": "person"},
       {"name": "computers.takeover", "reach": "anyone"},
       {"name": "computers.giveback", "reach": "anyone"},
       {"name": "computers.watch", "reach": "anyone"},

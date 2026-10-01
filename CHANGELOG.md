@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Only the person lifts a pause: `computers.resume` is reach person (an agent may still pause its own hands). An
+  agent's `computers.checkout` takes its thread from the verified call, never from its input, and `computers.list`
+  shows an ordinary agent only its own computer.
 - Computers and Glass say their reach on purpose. `computers.handback.set`, `computers.member.*`,
   `computers.egress.*`, `computers.tailnet.*` and `computers.handback.status` are the person's alone (an agent,
   the assistant and a module are refused); the tools that scope an agent to its own computer through `resolve`

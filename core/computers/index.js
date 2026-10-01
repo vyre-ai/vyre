@@ -205,9 +205,11 @@ export default {
       async (i, { caller }) => pool.view(await resolve(i, caller)));
 
     tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when every screen is held.",
-      obj({ agent: str, thread: str, why: str }), async (i, { caller }) => {
+      obj({ agent: str, thread: str, why: str }), async (i, { caller, thread: live }) => {
         if (!driver) throw new Error(NO_DRIVER);
-        return pool.checkout(await resolve(i, caller), { thread: i.thread, why: i.why });
+        // A model's thread is the verified one the harness gives the call, never a thread id it names in its input.
+        const thread = agentClaim(caller) ? live : i.thread;
+        return pool.checkout(await resolve(i, caller), { thread, why: i.why });
       });
 
     tool("computers.release", "Let go of an agent's screen. The computer freezes a little later.", obj({ agent: str }),
