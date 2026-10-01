@@ -4,7 +4,7 @@
   "roles": ["box"],
   "requires": [],
   "does": {
-    "tools": ["chrome.snapshot", "chrome.open", "chrome.click", "chrome.type", "chrome.screenshot"]
+    "tools": [{ "name": "chrome.snapshot", "reach": "anyone" }, { "name": "chrome.open", "reach": "anyone" }, { "name": "chrome.click", "reach": "anyone" }, { "name": "chrome.type", "reach": "anyone" }, { "name": "chrome.screenshot", "reach": "anyone" }]
   },
   "watches": { "emits": ["chrome.acted"] },
   "shows": { "deck": [], "cli": [] },
