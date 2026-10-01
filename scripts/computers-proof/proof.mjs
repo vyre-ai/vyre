@@ -287,7 +287,12 @@ try {
     const FORWARDERS = /^(tailscaled?|socat|redir|rinetd|haproxy|nginx|ncat|nc|netcat|sshd|dropbear|stunnel|gost|3proxy|squid|microsocks)$/;
     const fwd = procs.filter(x => FORWARDERS.test(x));
     const tcp = shOk(["exec", CONTAINER, "sh", "-c", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"]).split("\n");
-    const listen = tcp.map(l => l.trim().split(/\s+/)).filter(f => f[3] === "0A").map(f => { const [ip, port] = f[1].split(":"); return { loopback: /^(0100007F|00000000000000000000000001000000)$/.test(ip), port: parseInt(port, 16) }; });
+    const listen = tcp.map(l => l.trim().split(/\s+/)).filter(f => f[3] === "0A").map(f => { const [ip, port] = f[1].split(":"); return { loopback: /^(0100007F|00000000000000000000000001000000)$/.test(ip), port: parseInt(port, 16), inode: f[9] }; });
+    for (const x of listen.filter(x => !x.loopback && x.port !== 5900 && x.port !== 7000)) {
+      // Who owns a listener nobody expected: the process whose descriptors hold its socket.
+      const who = shOk(["exec", CONTAINER, "sh", "-c", `for p in /proc/[0-9]*; do ls -l $p/fd 2>/dev/null | grep -q 'socket:\\[${x.inode}\\]' && echo "$(cat $p/comm) pid $(basename $p) $(cat $p/cmdline | tr '\\0' ' ' | cut -c1-160)"; done`]);
+      console.log(`unexpected listener :${x.port} is held by: ${who || "(not found)"}`);
+    }
     const open = [...new Set(listen.filter(x => !x.loopback).map(x => x.port))].sort((a, b) => a - b);
     console.log("--- processes in the computer: " + procs.join(" ") + "\n--- listening: non-loopback " + open.join(",") + "; loopback " + [...new Set(listen.filter(x => x.loopback).map(x => x.port))].join(","));
     note(fwd.length === 0 && open.every(p => p === 5900 || p === 7000), "4j nothing in the computer forwards remote traffic to loopback (no tailscaled, socat, proxy or sshd), and only 5900 and 7000 listen beyond it", { forwarders: fwd, open });
