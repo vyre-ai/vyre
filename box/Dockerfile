@@ -1,7 +1,9 @@
 # The Vyre box image. Build context is the repo root:
 #   docker build -f box/Dockerfile .
 # Normally built through box/compose.build.yml, or pulled as ghcr.io/vyre-ai/vyre.
-FROM node:22-bookworm-slim
+# Base images are pinned by digest, so `compose build --pull` (a source build) cannot be handed other bytes under the same tag. Bump a pin on purpose,
+# with the tag it was taken from in the comment (test/box-init.test.js fails an unpinned FROM or COPY --from).
+FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c
 
 ARG CLAUDE_CODE_VERSION=latest
 
@@ -14,7 +16,7 @@ RUN apt-get update \
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
 # through the shared socket at /var/run/tailscale/tailscaled.sock.
-COPY --from=tailscale/tailscale:stable /usr/local/bin/tailscale /usr/local/bin/tailscale
+COPY --from=tailscale/tailscale:stable@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065 /usr/local/bin/tailscale /usr/local/bin/tailscale
 
 # The GitHub CLI, for "Sign in with GitHub": vyred runs the real `gh auth login --web` (core/github), so gh is in the image at
 # /usr/local/bin/gh, where vyred finds it as plain `gh`. Pinned, and the release archive is checked against the sum in the release's

@@ -83,3 +83,12 @@ test("box: /work is closed to every uid but vyre and the shared group (2770), in
   assert.match(read("box/Dockerfile"), /chown 1000:1002 \/work && chmod 2770 \/work/);
   assert.match(read("core/spawner/main.js"), /chmod", "o-rwx", WORK/);
 });
+
+test("box: every base image a Dockerfile builds from is pinned by digest (FROM and COPY --from), so a source build cannot be handed other bytes", () => {
+  for (const f of ["box/Dockerfile", "core/computers/image/Dockerfile"]) {
+    const text = read(f);
+    const refs = [...text.matchAll(/^FROM\s+(\S+)/gm)].map(m => m[1]).concat([...text.matchAll(/^COPY\s+--from=(\S+)/gm)].map(m => m[1]));
+    assert.ok(refs.length > 0, `${f} has a FROM`);
+    for (const r of refs) if (!/^build\d*$|^[a-z]+$/.test(r) || r.includes("/") || r.includes(":")) assert.match(r, /@sha256:[0-9a-f]{64}$/, `${f}: ${r} is not pinned by digest`);
+  }
+});

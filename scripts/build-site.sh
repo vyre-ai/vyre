@@ -53,7 +53,13 @@ rm -rf "$out"
 mkdir -p "$out"
 
 cp "$src/box/compose.yml" "$src/box/compose.build.yml" \
-  "$src/box/vyre.env.example" "$src/box/vyre" "$src/box/Dockerfile" "$out/"
+  "$src/box/vyre.env.example" "$src/box/Dockerfile" "$out/"
+# The wrapper is the RELEASE build: every test override of box/vyre cut out, the pinned release key and cosign image as constants
+# (scripts/strip-wrapper.mjs). VYRE_TEST_UNSTRIPPED_WRAPPER=1 copies the source for the CI matrix that rehearses the overrides with a
+# throwaway key; release.sh and release-check.sh refuse a build made that way.
+if [ -n "${VYRE_TEST_UNSTRIPPED_WRAPPER:-}" ]; then cp "$src/box/vyre" "$out/vyre"
+else node "$here/scripts/strip-wrapper.mjs" "$src/box/vyre" >"$out/vyre" || { echo "build-site: could not build the release wrapper" >&2; exit 1; }
+fi
 # Served without the leading dot: some hosts refuse dotfiles.
 [ -f "$src/.dockerignore" ] && cp "$src/.dockerignore" "$out/dockerignore"
 cp "$src/scripts/install-box.sh" "$out/install-box.sh"
