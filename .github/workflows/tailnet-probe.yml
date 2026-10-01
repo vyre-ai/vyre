@@ -8,6 +8,14 @@ on:
 permissions:
   contents: read
 jobs:
+  rebind-clients:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq dnsmasq-base dnsutils bc
+      - name: real clients against a resolver that drops the IPv6 tailnet answer
+        run: scripts/probe/dns-rebind-clients.sh
   login-url:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
