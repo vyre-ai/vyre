@@ -34,7 +34,7 @@ jobs:
           for i in $(seq 1 50); do [ -s ports.json ] && break; sleep 0.2; done
           LOCAL=$(node -p 'JSON.parse(require("fs").readFileSync("ports.json","utf8")).local'); PUB=$(node -p 'JSON.parse(require("fs").readFileSync("ports.json","utf8")).public')
           (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:$PUB > cf.log 2>&1 &)
-          for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1); [ -n "$URL" ] && break; sleep 1; done
+          for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1 || true); [ -n "$URL" ] && break; sleep 1; done
           echo "LOCAL=http://127.0.0.1:$LOCAL" >> "$GITHUB_ENV"; echo "PUBLIC=$URL" >> "$GITHUB_ENV"
       - name: Chrome, headed
         run: |
