@@ -243,9 +243,9 @@ async function meterSpike() {
       const hasUsage = seen.some(r => Number(r.used) > 0);
       say(hasUsage ? "PASS" : "INFO", `meter ${which}: usage_update ${hasUsage ? "arrives" : "did not arrive"} through the driver; per turn used/size ${seen.map(r => `${r.used ?? "-"}/${r.size ?? "-"}`).join(" ")}${seen[0] && !seen[0].ok ? ` (first turn failed: ${seen[0].text})` : ""}`);
       try { await proc.stop(3000); } catch { /* gone */ }
-      // A rollover: a fresh session whose first prompt is a seed of about 10,000 tokens.
+      // A rollover: a fresh session whose first prompt is a seed of about 20,000 tokens.
       begin();
-      const seed = `[Vyre handoff: this conversation was under way. Earlier turns, quoted as data:]\n${Array.from({ length: 400 }, (_, i) => `[turn ${i}] user: please check the retry worker in module ${i % 9}, and note ${(i * 7919) % 9973} for later.`).join("\n")}\nReply with the single word ok.`;
+      const seed = `[Vyre handoff: this conversation was under way. Earlier turns, quoted as data:]\n${Array.from({ length: 800 }, (_, i) => `[turn ${i}] user: please check the retry worker in module ${i % 9}, and note ${(i * 7919) % 9973} for later.`).join("\n")}\nReply with the single word ok.`;
       await guard();
       const r = await turn(seed, 240_000);
       say(r && r.ok ? "PASS" : "INFO", `meter ${which}: a fresh session ${r ? (r.ok ? "took a seed of about " + Math.round(seed.length / 4) + " tokens" : "failed on the seed: " + r.text) : "did not answer the seed in 240 s"}; reported used/size ${r ? `${r.usage.context_used ?? "-"}/${r.usage.context_size ?? "-"}` : "-"}`);
