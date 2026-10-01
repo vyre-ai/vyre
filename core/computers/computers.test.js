@@ -511,8 +511,8 @@ test("computers: tailnet is off by default; status says so, and whether the key 
 test("computers: tailnet.set and status are the owner's, refused to agents and the assistant; set is saved to config", async t => {
   const s = await boot(t);
   for (const as of [s.kit, s.juno]) {
-    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /is an agent/);
-    assert.match((await as("computers.tailnet.status")).error.message, /is an agent/);
+    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /not available to mcp callers/);
+    assert.match((await as("computers.tailnet.status")).error.message, /not available to mcp callers/);
   }
   assert.ok(s.d.registry.tools.get("computers.tailnet.set")?.presence, "computers.tailnet.set does not declare presence");
   const ok = await s.cli("computers.tailnet.set", { enabled: true });
@@ -527,7 +527,7 @@ test("computers: tailnet.set and status are the owner's, refused to agents and t
 test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
   const s = await boot(t);
   assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
-  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /is an agent/);
+  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /not available to mcp callers/);
   assert.ok((await s.cli("computers.handback.set", { minutes: 7 })).error, "a minutes value that is not a choice was saved");
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
   const ok = await s.cli("computers.handback.set", { minutes: 2 });

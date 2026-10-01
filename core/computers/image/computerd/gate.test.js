@@ -57,7 +57,7 @@ function ask(port, from, bearer) {
     let got = "";
     s.on("connect", () => s.write(`GET /ping HTTP/1.0\r\n${bearer ? `Authorization: Bearer ${bearer}\r\n` : ""}\r\n`));
     s.on("data", d => { got += d; });
-    s.on("close", () => resolve(got.split("\r\n")[0]));
+    s.on("close", () => resolve(got.split("\r\n")[0].replace("HTTP/1.1", "HTTP/1.0")));
     s.on("error", e => resolve(/** @type {any} */ (e).code === "EADDRNOTAVAIL" ? "unavailable" : "error"));
     setTimeout(() => { s.destroy(); }, 2000).unref();
   });
