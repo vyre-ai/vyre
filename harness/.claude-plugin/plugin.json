@@ -1,7 +1,7 @@
 {
   "name": "vyre",
   "displayName": "Vyre",
-  "version": "0.1.1",
+  "version": "0.2.0-rc.1",
   "description": "Projects, memory, rules and every Vyre tool, inside Claude Code.",
   "author": { "name": "Vyre AI", "url": "https://vyre.run" },
   "license": "Apache-2.0"

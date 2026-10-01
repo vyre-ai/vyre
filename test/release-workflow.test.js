@@ -87,4 +87,8 @@ test("release.yml: the hosted phone app is sealed for a stable release only (its
   assert.match(step, /if: env\.CHANNEL == 'stable'/);
   const upload = yml.slice(yml.indexOf("- uses: actions/upload-artifact", i), yml.indexOf("- uses: actions/upload-artifact", i) + 400);
   assert.match(upload, /if: env\.CHANNEL == 'stable'/, "and so is its upload");
+test("release.yml: prepare refuses a release whose package, lockfile and plugin versions disagree", () => {
+  const i = yml.indexOf('the tag says $version but package.json says $pkg');
+  assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
+  assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
 });
