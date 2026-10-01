@@ -3413,7 +3413,7 @@ Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with co
   - `env` object
   - `headers` object
   - `idle` integer
-  - `scope` object
+  - `scope` object or null
   - `tools` object
   - `url` string
   - `vars` object
@@ -3505,7 +3505,7 @@ Change an MCP server: any field of mcp.add. A new command, url or credential sto
   - `env` object
   - `headers` object
   - `idle` integer
-  - `scope` object
+  - `scope` object or null
   - `tools` object
   - `transport` one of "stdio", "http", "sse"
   - `url` string

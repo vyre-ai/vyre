@@ -33,7 +33,7 @@ const fields = {
   transport: { type: "string", enum: TRANSPORTS }, command: str, args: { type: "array", items: str }, cwd: str,
   env: { type: "object" }, vars: { type: "object" }, url: str, headers: { type: "object" },
   auth: { type: "object", properties: { type: { type: "string", enum: AUTH_TYPES } } },
-  scope: { type: "object" }, tools: { type: "object" }, idle: { type: "integer" },
+  scope: { type: ["object", "null"] }, tools: { type: "object" }, idle: { type: "integer" },
 };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
