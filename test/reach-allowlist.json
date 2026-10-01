@@ -1438,54 +1438,6 @@
    "module": "network",
    "default": "open to any caller"
   },
-  "onboard.claude": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.finish": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.history": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.join": {
-   "module": "onboard",
-   "default": "limited by callers in code"
-  },
-  "onboard.link": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.machine": {
-   "module": "onboard",
-   "default": "limited by callers in code"
-  },
-  "onboard.name": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.passkey": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.skip": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.status": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.tailscale": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
-  "onboard.you": {
-   "module": "onboard",
-   "default": "open to any caller"
-  },
   "planner.add": {
    "module": "planner",
    "default": "limited by callers in code"

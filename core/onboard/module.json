@@ -8,18 +8,18 @@
   "requires": [],
   "does": {
     "tools": [
-      "onboard.status",
-      "onboard.you",
-      "onboard.machine",
-      "onboard.name",
-      "onboard.claude",
-      "onboard.tailscale",
-      "onboard.join",
-      "onboard.history",
-      "onboard.skip",
-      "onboard.finish",
-      "onboard.passkey",
-      "onboard.link"
+      { "name": "onboard.status", "reach": "anyone" },
+      { "name": "onboard.you", "reach": "anyone" },
+      { "name": "onboard.machine", "reach": "anyone" },
+      { "name": "onboard.name", "reach": "anyone" },
+      { "name": "onboard.claude", "reach": "anyone" },
+      { "name": "onboard.tailscale", "reach": "anyone" },
+      { "name": "onboard.join", "reach": "person" },
+      { "name": "onboard.history", "reach": "anyone" },
+      { "name": "onboard.skip", "reach": "anyone" },
+      { "name": "onboard.finish", "reach": "anyone" },
+      { "name": "onboard.passkey", "reach": "anyone" },
+      { "name": "onboard.link", "reach": "person" }
     ]
   },
   "watches": {

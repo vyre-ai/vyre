@@ -373,12 +373,16 @@ export default {
     }
 
     ctx.tool("onboard.status", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard", "module"],
       description: "Where the onboarding stands: every step's state and what it needs.",
       input: obj(),
       run: async (_, { caller }) => status(caller),
     });
 
     ctx.tool("onboard.you", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Step 1: your name as you like it shown, and your assistant's name. A name that is also a valid vyre.run name becomes the default candidate.",
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
@@ -439,6 +443,8 @@ export default {
     });
 
     ctx.tool("onboard.name", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
       input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
       run: async ({ name, action = "check", confirm }, { caller }) => {
@@ -473,6 +479,8 @@ export default {
     });
 
     ctx.tool("onboard.claude", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
@@ -497,6 +505,8 @@ export default {
     });
 
     ctx.tool("onboard.tailscale", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on. policy merges the tailnet policy JSON for whatever is turned on today (Taildrive, Taildrop, SSH, and egress if it is on) into one snippet to paste, instead of one per feature.",
       input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock", "policy"] } }),
       run: async ({ action = "status" }, { caller }) => {
@@ -566,6 +576,8 @@ export default {
     });
 
     ctx.tool("onboard.history", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Find and index this machine's Claude Code sessions, in the background.",
       input: obj({ action: { type: "string", enum: ["status", "start"] } }),
       run: async ({ action = "status" }, { caller }) => {
@@ -579,6 +591,8 @@ export default {
     });
 
     ctx.tool("onboard.skip", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Skip a step for now; it can be finished later from Settings.",
       input: obj({ step: { type: "string", enum: STEPS } }, ["step"]),
       run: async ({ step }, { caller }) => {
@@ -633,6 +647,8 @@ export default {
     }
 
     ctx.tool("onboard.passkey", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
       input: obj(),
       run: async (_, { caller }) => {
@@ -643,6 +659,8 @@ export default {
     });
 
     ctx.tool("onboard.finish", {
+      // The loopback onboarding page is the caller "onboard"; its own router lets it reach only the onboarding tools (loopback.js TOOLS).
+      callers: ["cli", "local", "deck", "capsule", "onboard"],
       description: "Finish the onboarding.",
       input: obj(),
       run: async (_, { caller }) => {
