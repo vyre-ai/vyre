@@ -112,8 +112,8 @@ fn show_first_run(app: &AppHandle) {
     }
     let _ = WebviewWindowBuilder::new(app, "first-run", WebviewUrl::App("first-run.html".into()))
         .title(APP_NAME)
-        .inner_size(480.0, 360.0)
-        .resizable(false)
+        // Tall enough for the pairing code (QR, 13 words, buttons) without scrolling much.
+        .inner_size(520.0, 760.0)
         .build();
 }
 
@@ -222,23 +222,49 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
     app.notification().builder().title(title).body(body).show().map_err(|e| e.to_string())
 }
 
-const RELEASE_BASE: &str = "https://github.com/vyre-ai/vyre/releases/latest/download";
-
 fn fetch(url: &str, limit: u64) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let mut buf = Vec::new();
-    ureq::get(url).call().map_err(|e| e.to_string())?.into_reader().take(limit).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    ureq::get(url).set("User-Agent", "vyre-app").call().map_err(|e| e.to_string())?.into_reader().take(limit).read_to_end(&mut buf).map_err(|e| e.to_string())?;
     Ok(buf)
+}
+
+/// What the update check found. Nothing is installed here.
+enum Answer {
+    /// The newest signed release has nothing newer than this build.
+    Current(String),
+    /// A newer installer, listed and hashed in the signed sums.
+    Newer { name: String, version: String, base: String, listed: std::collections::HashMap<String, String> },
+    /// The release cannot be trusted or read; the reason is plain words.
+    Refused(String),
+}
+
+fn latest_check() -> Answer {
+    let current = option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let run = || -> Result<Answer, String> {
+        let feed = String::from_utf8(fetch("https://github.com/vyre-ai/vyre/releases.atom", 4 << 20)?).map_err(|_| "the releases feed is not text")?;
+        let tag = update::pick_tag(&feed).ok_or("no stable release found")?;
+        let base = update::release_base(&tag);
+        // A release this app cannot verify is refused, never read part way: no signature file, no update.
+        let sums = fetch(&format!("{base}/SHA256SUMS"), 1 << 20).map_err(|e| format!("{tag}: no SHA256SUMS ({e})"))?;
+        let sig = match fetch(&format!("{base}/SHA256SUMS.sig"), 4096) {
+            Ok(b) => String::from_utf8(b).map_err(|_| "signature is not text")?,
+            Err(_) => return Ok(Answer::Refused(format!("{tag} has no SHA256SUMS.sig, so it is unsigned"))),
+        };
+        let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
+        Ok(match update::newer_installer(&listed, current) {
+            Some((name, version)) => Answer::Newer { name, version, base, listed },
+            None => Answer::Current(tag),
+        })
+    };
+    run().unwrap_or_else(|e| Answer::Refused(e))
 }
 
 /// Download and run a newer installer, but only one the Vyre release key signed for. Unsigned,
 /// unlisted, hash-mismatched and not-newer all refuse; nothing is written until every check passes.
 fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
-    let sums = fetch(&format!("{RELEASE_BASE}/SHA256SUMS"), 1 << 20)?;
-    let sig = String::from_utf8(fetch(&format!("{RELEASE_BASE}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
-    let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
-    let Some((name, version)) = update::newer_installer(&listed, option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))) else { return Ok(None) };
-    let bytes = fetch(&format!("{RELEASE_BASE}/{name}"), 300 << 20)?;
+    let Answer::Newer { name, version, base, listed } = latest_check() else { return Ok(None) };
+    let bytes = fetch(&format!("{base}/{name}"), 300 << 20)?;
     update::check_file(&listed, &name, &bytes)?;
     // Written to the app's own data dir (not the shared temp dir), then re-hashed from disk so
     // what runs is what was checked.
@@ -457,7 +483,40 @@ fn device_key_dh(app: AppHandle, remote: String) -> Result<String, String> {
     Ok(b64u(&devicekey::dh(&device_secret(&app)?, &r)?))
 }
 
+/// `Vyre.exe --selftest <file>` with VYRE_SELFTEST=1: checks the Windows-only pieces on a real PC
+/// (DPAPI round trip, the taskbar theme read, both tray icons decode, the pinned-path helper), writes
+/// one line per check to <file>, and exits. It opens no window and touches no pairing or key file.
+fn selftest(out: &str) {
+    let mut lines = Vec::new();
+    let mut check = |name: &str, r: Result<String, String>| lines.push(match r { Ok(d) => format!("pass {name} {d}"), Err(e) => format!("FAIL {name} {e}") });
+    check("dpapi-roundtrip", (|| {
+        let secret = [7u8; 32];
+        let sealed = protect(&secret, true)?;
+        if sealed == secret { return Err("the blob equals the secret".into()); }
+        let back = protect(&sealed, false)?;
+        if back == secret { Ok(format!("{} byte blob", sealed.len())) } else { Err("did not round-trip".into()) }
+    })());
+    check("taskbar-theme", Ok(if taskbar_is_light() { "light".into() } else { "dark".into() }));
+    check("tray-icons-decode", (|| {
+        for (n, b) in [("white", TRAY_DARK_TASKBAR), ("black", TRAY_LIGHT_TASKBAR)] {
+            tauri::image::Image::from_bytes(b).map_err(|e| format!("{n}: {e}"))?;
+        }
+        Ok("both".into())
+    })());
+    check("system-path", Ok(sys("System32\\icacls.exe")));
+    // The live update check against GitHub (read only, installs nothing).
+    check("update-check", Ok(match latest_check() { Answer::Current(t) => format!("signed {t}, nothing newer"), Answer::Newer { name, version, .. } => format!("newer {version} ({name})"), Answer::Refused(r) => format!("refused: {r}") }));
+    check("version", Ok(option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")).to_string()));
+    let _ = std::fs::write(out, lines.join("\n") + "\n");
+}
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if std::env::var("VYRE_SELFTEST").as_deref() == Ok("1") {
+        if let Some(i) = args.iter().position(|a| a == "--selftest") {
+            if let Some(out) = args.get(i + 1) { selftest(out); return; }
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // A second launch (a vyre:// link) arrives through the deep-link plugin below.
