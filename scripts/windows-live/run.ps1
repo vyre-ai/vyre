@@ -55,7 +55,10 @@ $exe = Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe"
 Result "install-script" (Test-Path $exe) "installed in $([int]$sw.Elapsed.TotalSeconds)s, Vyre.exe $((Get-Item $exe -ErrorAction SilentlyContinue).Length) bytes"
 $task = schtasks /query /tn Vyre /fo list /v 2>&1 | Out-String
 Result "autostart-task" ($task -match "Interactive only" -and $task -match "Vyre.exe") "ONLOGON task registered"
-Stop-Process -Name Vyre -Force -ErrorAction SilentlyContinue; Start-Sleep 2
+function KillApp { Stop-Process -Name Vyre -Force -ErrorAction SilentlyContinue; Stop-Process -Name msedgewebview2 -Force -ErrorAction SilentlyContinue; Start-Sleep 4 }
+# The first launch (by the install script) leaves WebView2 processes on the app's data folder; a relaunch with new
+# browser arguments would join them and get no debug port.
+KillApp
 
 # ---- 2. the app's own selftest (DPAPI, theme read, icons, live update check) ----------------------------
 $env:VYRE_SELFTEST = "1"
@@ -71,6 +74,7 @@ $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--disable-gpu --remote-debugging-p
 Remove-Item "$env:APPDATA\run.vyre.app\pairing.json", "$env:APPDATA\run.vyre.app\device.key" -ErrorAction SilentlyContinue
 $app = Start-Process $exe -PassThru
 $first = WaitPage "*first-run.html*" 90
+if (-not $first) { Say "debug port answered: $((Pages | Measure-Object).Count) pages; app running: $([bool](Get-Process Vyre -ErrorAction SilentlyContinue)); webview2 procs: $((Get-Process msedgewebview2 -ErrorAction SilentlyContinue | Measure-Object).Count)"; $cl = (Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" | Where-Object { $_.CommandLine -like '*run.vyre.app*' -and $_.CommandLine -notlike '*--type=*' } | Select-Object -First 1).CommandLine; Say "webview2 cmdline: $cl" }
 Result "first-run-page" ($null -ne $first) $(if ($first) { "title '$($first.title)'" } else { "no first-run page" })
 Start-Sleep 3; Shot "01-first-run"
 $wsize = Cdp $first "window.outerWidth + 'x' + window.outerHeight"
