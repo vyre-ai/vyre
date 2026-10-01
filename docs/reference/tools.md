@@ -1816,6 +1816,7 @@ Add a standing permission yourself, from Settings: what may go out without askin
     - `max_amount` number
   - `what` string
 - Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `gate.said.list`
 
