@@ -22,7 +22,7 @@ import { PLACES, place as placeOf, pickItems, pickPasses, pickPending, pickUsage
 import { icon, kindIcon, tile, everySecond, mmss, sheet, toast, hideToast, favorites, errText } from "../vault/ui.js";
 import { passkeysHere } from "../vault/presence.js";
 import { itemPane } from "./vault-item.js";
-import { editPane } from "./vault-edit.js";
+import { editPane, replaceKeyPane } from "./vault-edit.js";
 import { watchtower, passesView, sharedView, devicesView, shareSheet, offboardSheet } from "./vault-places.js";
 
 const EVENTS = ["vault.item-added", "vault.item-changed", "vault.item-deleted", "vault.granted", "vault.revoked", "grant.requested",
@@ -41,7 +41,7 @@ export default async function vault(ctx) {
     health: /** @type {any} */ (null),
     fav: favorites.get(),
     query: "", cursor: 0,
-    /** @type {null | { mode: "item", name: string } | { mode: "add", kind?: string } | { mode: "edit", name: string }} */
+    /** @type {null | { mode: "item", name: string } | { mode: "add", kind?: string } | { mode: "edit", name: string } | { mode: "replace", name: string }} */
     panel: null,
     flash: "",
   };
@@ -73,8 +73,8 @@ export default async function vault(ctx) {
     const s = sheet({ label: "Confirm it's you", title: summaryFor(ask.tool, ask.input, st.host), onClose: () => { if (!answered) { answered = true; resolve(false); } },
       body: [
         h("p", { class: "vt-sheet-p" }, can
-          ? "vyred asks for proof that a person is here. Your device will ask for Touch ID or its PIN. Nothing happens until you confirm."
-          : "vyred asks for proof that a person is here, and this browser cannot use a passkey on this address. Open the Deck on localhost or over https, or confirm from a terminal or the Capsule."),
+          ? "Vyre asks for proof that a person is here. Your device will ask for Touch ID or its PIN. Nothing happens until you confirm."
+          : "Vyre asks for proof that a person is here, and this browser cannot use a passkey on this address. Open the Deck on localhost or over https, or confirm from a terminal or Lumen."),
         h("div", { class: "vt-sheet-meta" }, h("span", { class: "lbl" }, "Tool"), h("span", { class: "code" }, ask.tool)),
         h("div", { class: "vt-form-acts" },
           can ? h("button", { type: "button", class: "btn btn-primary", onclick: () => finish(true) }, icon("shield", 14), "Use passkey") : null,
@@ -126,6 +126,8 @@ export default async function vault(ctx) {
   }
   function open(p, push = true) {
     leavePane();
+    // Every way into Edit (the button, the key, a Watchtower fix) lands on Replace the key for an API credential, which is never read back.
+    if (p.mode === "edit" && st.items.some(i => i.name === p.name && i.kind === "api-credential")) p = { mode: "replace", name: p.name };
     st.panel = p;
     if (push) history.pushState(null, "", href(st.place, p.mode === "item" ? `?item=${encodeURIComponent(p.name)}` : p.mode === "add" ? `?new=${p.kind || ""}` : `?item=${encodeURIComponent(p.name)}`));
     if (p.mode === "item") { const i = visible().findIndex(x => x.name === p.name); if (i >= 0) st.cursor = i; }
@@ -277,7 +279,7 @@ export default async function vault(ctx) {
   // cleared what the person typed and the error a refused vault.update put under it, which read
   // as the editor closing and saying nothing. It is drawn again only when its item first arrives.
   /** @type {{ key: string, whole: boolean } | null} */ let form = null;
-  const formOf = p => p && p.mode !== "item" ? { key: `${p.mode}:${p.name || p.kind || ""}`, whole: p.mode !== "edit" || st.items.some(i => i.name === p.name) } : null;
+  const formOf = p => p && p.mode !== "item" ? { key: `${p.mode}:${p.name || p.kind || ""}`, whole: (p.mode !== "edit" && p.mode !== "replace") || st.items.some(i => i.name === p.name) } : null;
   const formUp = () => { const f = formOf(st.panel); return Boolean(f && form && f.key === form.key && (form.whole || !f.whole)); };
 
   function drawPanel(focus = false) {
@@ -289,6 +291,7 @@ export default async function vault(ctx) {
     if (!p) { put(panel); panel.hidden = true; return; }
     panel.hidden = false;
     if (p.mode === "item") itemPane(app, panel, p.name, focus);
+    else if (p.mode === "replace") replaceKeyPane(app, panel, p.name, focus);
     else editPane(app, panel, p.mode === "edit" ? { name: p.name } : { kind: p.kind }, focus);
   }
 
@@ -297,7 +300,7 @@ export default async function vault(ctx) {
 
   async function copy(it, field, label = field) {
     if (!it) return;
-    if (!vc.has("vault.copy")) { toast({ text: "Copy needs vault.copy, which this vyred does not have yet." }); return; }
+    if (!vc.has("vault.copy")) { toast({ text: "This box cannot copy yet." }); return; }
     const r = await vc.call("vault.copy", { name: it.name, field });
     if (!ctx.alive()) return;
     if (r.error) { toast({ text: r.error.code === "presence_refused" || r.error.code === "cancelled" ? "Not copied." : errText({ ...r.error, tool: "vault.copy" }) }); return; }

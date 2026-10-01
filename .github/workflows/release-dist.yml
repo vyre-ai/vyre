@@ -1,0 +1,61 @@
+# The release folder, checked the way the updater will read it (launch, with the integrator). Assembles dist/ the way release.yml's dry run does
+# (build-site.sh's box files, release.json, SHA256SUMS), signs SHA256SUMS with a THROWAWAY key (the real key lives only in the release
+# environment and is never used here), and runs scripts/check-release-dist.mjs on it. Publishes nothing, approves nothing.
+# What it cannot show: a pulled image's cosign signature (needs the real release workflow's identity and registry images).
+name: release-dist
+on:
+  workflow_dispatch:
+  push:
+    paths: ["apps/app/package.json", "apps/app/package-lock.json", "scripts/build-app-out.mjs", "relay/app/**", "test/build-app-out.test.js", "scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]
+permissions:
+  contents: read
+jobs:
+  dist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: Assemble dist/ like the dry run, and sign it with a throwaway key
+        run: |
+          sh scripts/build-site.sh
+          cmp site/w scripts/install-windows.ps1
+          mkdir dist
+          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do cp "site/box/$f" dist/; done
+          node -e '
+            const fs = require("fs"), v = fs.readFileSync("dist/VERSION", "utf8").trim();
+            fs.writeFileSync("dist/release.json", JSON.stringify({ version: v, channel: "stable", commit: process.env.GITHUB_SHA, date: new Date().toISOString(), min_from: "0.1.0", notes: "rehearsal" }, null, 2) + "\n");'
+          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          node -e '
+            const c = require("crypto"), fs = require("fs"), k = c.generateKeyPairSync("ed25519");
+            fs.writeFileSync("pub.b64", k.publicKey.export({ type: "spki", format: "der" }).toString("base64"));
+            fs.writeFileSync("dist/SHA256SUMS.sig", c.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), fs.readFileSync("dist/SHA256SUMS")]), k.privateKey).toString("base64") + "\n");'
+      - name: A release whose boxes build from source passes
+        run: node scripts/check-release-dist.mjs dist --pubkey "$(cat pub.b64)"
+      - name: A release whose boxes pull is refused until its compose.yml and release.json carry digests (what the practice release must fix)
+        run: |
+          if node scripts/check-release-dist.mjs dist --pulled 2>"$RUNNER_TEMP/pulled.err"; then echo "a release with no images passed --pulled"; exit 1; fi
+          cat "$RUNNER_TEMP/pulled.err"
+          grep -q "names no ghcr.io/vyre-ai digest for the box image" "$RUNNER_TEMP/pulled.err"
+      - name: The hosted phone app's sealing and signing (fixture, throwaway key)
+        run: node --test test/build-app-out.test.js
+
+  app-web:
+    # The same build the release's app-web job does, with its install scripts off: proves expo can export without them.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Export the web app with no install scripts
+        working-directory: apps/app
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo export -p web --output-dir dist
+          test -f dist/index.html

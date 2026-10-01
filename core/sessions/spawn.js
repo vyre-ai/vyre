@@ -7,6 +7,9 @@
 // - Under a subreaper where there is one (`tini -s` on the box): a model's Bash that detaches
 //   (`nohup ... &`, `setsid`) reparents to tini, not to init, so its ancestry still leads to a
 //   session process and the peer check still refuses it.
+// - With an account (o.account, ADR 0030 phase 2), the spawner runs it as that account's own uid
+//   instead, in that uid's private HOME, so one account's sign-in and processes are out of every
+//   other's reach. Without a spawner an account changes nothing here (a Mac has one user).
 // - On the box, as uid vyre-agent through the spawner (core/spawner, ADR 0032 part 3), which
 //   cannot open vyred's socket or read its home: vyred itself has no right to change uid. The
 //   spawner runs it under `tini -s` in its own group and session, and passes the API key on fd 3.
@@ -38,12 +41,13 @@ export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && p
  * reads at start and its tools never inherit. A setup token (CLAUDE_CODE_OAUTH_TOKEN) Claude Code
  * already keeps from its tools.
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
- *           uid?: number, gid?: number, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
+ *           uid?: number, gid?: number, account?: { uid: number, shared?: boolean }, seed?: Record<string, string>, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
  */
 export function spawnSession(command, args, o = {}) {
   // With sessions.spawner "on" (VYRE_SESSIONS_SPAWNER=on) and a spawner here. vyre-agent cannot
   // open vyred's socket, so the session reaches Vyre on its own one (VYRE_SOCKET in o.env).
   if (o.spawner === true || (o.spawner !== false && usesSpawner())) return viaSpawner(command, args, o);
+  if (o.seed && o.env && o.env.HOME) seedFiles(o.env.HOME, o.seed);
   const posix = process.platform !== "win32";
   const [cmd, argv] = o.subreaper && posix ? [o.subreaper, ["-s", "--", command, ...args]] : [command, args];
   const env = { ...(o.env || {}) };
@@ -55,6 +59,33 @@ export function spawnSession(command, args, o = {}) {
   // detached is setsid(): the child leads a new session and a new process group, both its pid.
   if (child.pid && o.onSpawn) { try { o.onSpawn({ pid: child.pid, pgid: child.pid, sid: child.pid }); } catch {} }
   return child;
+}
+
+/**
+ * Put a provider's config files in a HOME (relative paths only), mode 0600, replacing what is there:
+ * written again at every start, so nothing the agent edited last time is read this time. Where the
+ * spawner runs the session it writes them itself, as the account's uid.
+ * @param {string} home @param {Record<string, string>} files
+ */
+export function seedFiles(home, files) {
+  fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+  for (const [rel, text] of Object.entries(files)) {
+    if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) throw new Error(`seed path ${rel} must stay inside the HOME`);
+    const file = path.join(home, rel);
+    // No part of the path below HOME may be a symlink (an agent can plant ~/.codex as a link to somewhere else, and this runs
+    // as whoever starts the session): each folder is made and checked with lstat, and the file is opened with O_NOFOLLOW.
+    let dir = home;
+    for (const part of path.dirname(rel).split(/[\\/]/).filter(x => x && x !== ".")) {
+      dir = path.join(dir, part);
+      let st = null;
+      try { st = fs.lstatSync(dir); } catch {}
+      if (!st) { fs.mkdirSync(dir, { mode: 0o700 }); st = fs.lstatSync(dir); }
+      if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`seed path ${rel}: ${path.relative(home, dir)} is not a plain folder`);
+    }
+    try { const st = fs.lstatSync(file); if (st.isSymbolicLink() || !st.isFile()) fs.rmSync(file, { force: true, recursive: false }); else fs.rmSync(file, { force: true }); } catch {}
+    const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
+    try { fs.writeFileSync(fd, text); } finally { fs.closeSync(fd); }
+  }
 }
 
 /** Does any process of this group still run? @param {number} pgid */
@@ -112,7 +143,7 @@ function viaSpawner(command, args, o) {
   const env = { ...(o.env || {}) };
   const key = env.ANTHROPIC_API_KEY;
   if (key) { delete env.ANTHROPIC_API_KEY; env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = "3"; }
-  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd), ...(key ? { fd3: String(key) } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
+  spawnAsAgent([absolute(command, env), ...args], { env, cwd: agentCwd(o.cwd, o.account ? { agentHome: path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(o.account.uid)) } : {}), ...(key ? { fd3: String(key) } : {}), ...(o.account ? { account: o.account.uid, shared: o.account.shared } : {}), ...(o.seed ? { seed: o.seed } : {}), ...(o.spawnerSocket ? { socket: o.spawnerSocket } : {}) }).then(h => {
     handle = h;
     proc.pid = h.pid;
     // The spawner starts it detached: it leads a new group and session, both its pid.

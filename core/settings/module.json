@@ -4,8 +4,8 @@
   "description": "One way to read and change every setting, at account, project, device or session level, wherever it is kept.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["settings.schema", "settings.get", "settings.set", "settings.reset", "settings.resolve", "settings.snapshot", "settings.write"] },
-  "watches": { "emits": ["settings.changed"] },
+  "does": { "tools": ["settings.schema", { "name": "settings.get", "projectArg": "project" }, "settings.set", "settings.reset", "settings.resolve", { "name": "settings.snapshot", "projectArg": "project" }, "settings.write", { "name": "settings.request", "projectArg": "project" }, "settings.undo", "settings.changes"] },
+  "watches": { "emits": ["settings.changed", "settings.loosened"] },
   "shows": { "deck": ["settings"], "cli": [] },
   "needs": {},
   "teaches": {}

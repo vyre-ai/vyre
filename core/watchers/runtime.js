@@ -17,9 +17,14 @@
 // Time comes from `now()` and runs are started by `tick()`, so tests drive the clock by hand.
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import * as cron from "./cron.js";
 import * as folder from "./folder.js";
 import { runOnce, normalize } from "./run.js";
+import { parseWhen } from "./when.js";
+import { buildPreset } from "./presets.js";
+import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
 const PUSHED = new Set(["webhook", "event"]);
@@ -74,6 +79,8 @@ export const MIGRATIONS = [`
     logs TEXT
   );
   CREATE INDEX watchers_runs_watcher ON watchers_runs(watcher, id);
+`, `
+  CREATE TABLE watchers_spend (watcher TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
 `];
 
 /**
@@ -85,6 +92,17 @@ export const MIGRATIONS = [`
  *   log: (msg: string) => void, now?: () => number,
  *   listen?: (type: string, fn: (event: any) => void) => (() => void) }} Deps
  */
+
+/** Does a vault.push event's scope ({projects, agents}) cover this project? */
+export function pushInScope(scope, project) {
+  const p = scope && scope.projects;
+  return p === "*" || (Array.isArray(p) && (p.includes("*") || p.includes(project)));
+}
+
+/** A watcher name is checked before it is ever joined into a path or looked up. */
+function mustName(name) {
+  if (!folder.NAME.test(String(name || "")) || String(name).length > 60) throw Object.assign(new Error(`"${String(name).slice(0, 60)}" is not a watcher name`), { code: "bad_input" });
+}
 
 export class Runtime {
   /** @param {Deps} deps */
@@ -135,7 +153,7 @@ export class Runtime {
         : f.hash !== r.hash ? "changed" : r.paused ? "paused" : "on";
       const schedule = f.spec?.schedule || r?.schedule || null;
       const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule) : null;
-      out.push({ name, state, project: f.spec?.project || r?.project || null, schedule, every,
+      out.push({ name, state, hash: f.hash || null, title: f.spec?.summary?.do || null, project: f.spec?.project || r?.project || null, schedule, every,
         next: on && !r.paused && r.next_at ? new Date(r.next_at).toISOString() : null,
         lastRun: r?.last_run ? new Date(r.last_run).toISOString() : null, lastError: r?.last_error || null, failures: r?.failures || 0,
         pausedWhy: r?.paused ? r.paused_why : null, items: Number(count.get(name)?.n || 0), problems: f.problems });
@@ -169,14 +187,45 @@ export class Runtime {
       ...(project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
       schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), needs: spec.needs, count: res.items.length,
       alreadyFiled: res.items.filter(i => filed.get(name, i.id)).length,
-      items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed,
+      items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed, networkIsolated: res.isolated === true, wall: res.wall || null,
       ...(res.items.length ? {} : { note: "no items. That can be right (nothing new matches), or the filter or the parsing is wrong; the logs show what it saw" }),
     };
   }
 
-  /** Turn on what was dry-run. A scheduled watcher runs once straight away, then on its schedule. */
-  async create(name) {
+  /**
+   * What the card shows before the one tap. The safety-relevant lines (what it reads, whether it can
+   * act, what it costs) come from the folder itself, never from `summary`, which is only the
+   * author's description; `hash` is what Turn on must still match (watchers.create refuses if it moved).
+   */
+  card(name) {
     const { spec, hash } = this.spec(name);
+    const r = this.row(name);
+    const when = spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule);
+    const duty = spec.owner != null;
+    return {
+      name, hash, project: spec.project, state: !r || !r.enabled ? "draft" : r.paused ? "paused" : r.hash !== hash ? "changed" : "on",
+      owner: spec.owner ? { kind: "teammate", teammate: spec.owner.teammate } : { kind: "project", project: spec.project },
+      lines: {
+        when: spec.summary ? spec.summary.when : spec.when ? `Runs ${when} (${spec.when})` : `Runs ${when}`,
+        ...(spec.summary && spec.summary.check ? { check: spec.summary.check } : {}),
+        do: spec.summary ? spec.summary.do : duty && spec.instruction ? spec.instruction.split("\n")[0].slice(0, 240) : "Files what it finds into the project, marked as from outside",
+      },
+      facts: {
+        reads: spec.net ? Object.keys(spec.net) : [],
+        readsText: spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
+        credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential).map(([h, v]) => ({ host: h, item: v.vault || v.credential, how: v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
+        acts: duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
+        cost: spec.ask ? `Asks a model, at most $${spec.ask.dailyUsd} a day` : "No model cost",
+        schedule: when,
+      },
+      described: spec.summary ? "by its author" : "by Vyre",
+    };
+  }
+
+  /** Turn on what was dry-run. A scheduled watcher runs once straight away, then on its schedule. */
+  async create(name, { hash: shown = null } = {}) {
+    const { spec, hash } = this.spec(name);
+    if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     const r = this.row(name);
     if (!r || r.tested_hash !== hash) throw new Error(`${name} has ${r && r.tested_hash ? "changed since its last dry run" : "not been dry-run"}; run watchers.test, show the user its items, then create it`);
     const project = await this.project(spec.project);
@@ -195,6 +244,97 @@ export class Runtime {
       ...(hook ? { hook: { method: "POST", path: `/v1/watchers/${name}/hook`, header: "x-vyre-token", token } } : {}) };
   }
 
+  /**
+   * A teammate's duty: the folder is written here from plain words (the code is the fixed template
+   * in duty.js), marked as dry-run, and turned on. The person's own ask already covered it, so there
+   * is no separate dry-run step; teammates makes no call until a person turned the duty on.
+   * @param {{ name: string, project: string, owner: { kind: string, teammate: string }, when: string, instruction: string, act?: boolean }} d
+   */
+  async createDuty(d) {
+    if (!DUTY_NAME.test(String(d.name || ""))) throw new Error(`a duty's name starts with duty-, like duty-reviewer-1a2b3c4d`);
+    if (this.row(d.name)?.enabled) throw new Error(`${d.name} already exists; use watchers.update`);
+    this.writeDuty(d);
+    const { hash, spec } = this.spec(d.name);
+    this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(d.name, spec.project, spec.schedule, hash, this.now());
+    try { return await this.create(d.name); }
+    catch (e) { fs.rmSync(path.join(this.d.dir, d.name), { recursive: true, force: true }); this.db.prepare("DELETE FROM watchers_watchers WHERE name = ? AND enabled = 0").run(d.name); throw e; }
+  }
+
+  /**
+   * A preset watcher, from a few plain fields: written, hashed as dry-run (there is no live fetch to
+   * try), and left OFF with its card, so one tap turns it on. The grant the vault needs comes back
+   * as the exact command, since a module's use of an api-credential is the person's to allow.
+   * @param {{ kind: string, project: string, credential?: string, [k: string]: any }} o
+   */
+  async createPreset(o) {
+    const p = buildPreset(o);
+    if (!(await this.project(o.project))) throw new Error(`no project "${o.project}"; vyre projects lists them`);
+    const dir = path.join(this.d.dir, p.name);
+    if (this.row(p.name)?.enabled || fs.existsSync(dir)) throw new Error(`${p.name} already exists; watchers.card shows it`);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "watcher.json"), JSON.stringify(p.json, null, 2));
+    fs.writeFileSync(path.join(dir, "watch.js"), p.code);
+    const f = folder.read(this.d.dir, p.name);
+    if (f.problems.length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(f.problems.join("; ")); }
+    this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
+      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, f.spec ? f.spec.schedule : "event", f.hash, this.now());
+    return { ...this.card(p.name), grant: `vyre vault grant ${o.credential} watchers --watcher ${p.name}` };
+  }
+
+  /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
+  async updateDuty(d) {
+    mustName(d.name);
+    const r = this.row(d.name);
+    const cur = this.spec(d.name).spec;
+    if (!r || !cur.owner) throw Object.assign(new Error(`${d.name} is not a duty`), { code: "not_found" });
+    this.writeDuty({ project: cur.project, owner: cur.owner, when: d.when, instruction: d.instruction, act: d.act, name: d.name, current: cur });
+    const { hash, spec } = this.spec(d.name);
+    const next = PUSHED.has(spec.schedule) ? null : cron.next(cron.parse(spec.schedule), this.now());
+    this.db.prepare("UPDATE watchers_watchers SET tested_hash = ?, tested_at = ?, hash = ?, schedule = ?, next_at = ? WHERE name = ?").run(hash, this.now(), hash, spec.schedule, r.paused ? null : next, d.name);
+    if (spec.schedule === "event") this.subscribe();
+    return { name: d.name, state: r.paused ? "paused" : "on", schedule: spec.schedule };
+  }
+
+  writeDuty(d) {
+    mustName(d.name);
+    const bad = [];
+    folder.checkOwner(d.owner, bad);
+    if (bad.length) throw new Error(bad.join("; "));
+    if (typeof d.project !== "string" || !d.project.trim()) throw new Error("a duty needs project");
+    const cur = d.current || {};
+    const when = String(d.when === undefined ? cur.when : d.when);
+    const t = parseWhen(when);
+    const dir = path.join(this.d.dir, d.name);
+    fs.mkdirSync(dir, { recursive: true });
+    const json = { name: d.name, project: d.project, when, ...(t.on ? { on: t.on, ...(t.where ? { where: t.where } : {}) } : { schedule: t.schedule }),
+      owner: { kind: "teammate", teammate: d.owner.teammate }, instruction: d.instruction === undefined ? cur.instruction : d.instruction,
+      act: d.act === undefined ? cur.act === true : Boolean(d.act), emits: "duty.fired", timeout: 60 };
+    fs.writeFileSync(path.join(dir, "watcher.json"), JSON.stringify(json, null, 2));
+    fs.writeFileSync(path.join(dir, "watch.js"), DUTY_WATCH_JS);
+  }
+
+  /** Stop and forget a watcher. A duty's folder goes too; its filed items stay, as history. */
+  remove(name) {
+    mustName(name);
+    const r = this.row(name);
+    const f = folder.read(this.d.dir, name);
+    if (!r && !f.hash) throw Object.assign(new Error(`no watcher ${name}`), { code: "not_found" });
+    this.db.prepare("DELETE FROM watchers_watchers WHERE name = ?").run(name);
+    if (DUTY_NAME.test(name)) fs.rmSync(path.join(this.d.dir, name), { recursive: true, force: true });
+    this.d.emit("watcher.deleted", { name }, { project: r?.project || f.spec?.project });
+    return { name, deleted: true };
+  }
+
+  /** Run a turned-on watcher now and say what happened. */
+  async run(name) {
+    mustName(name);
+    const r = this.row(name);
+    if (!r || !r.enabled || r.paused) throw Object.assign(new Error(`${name} is not on`), { code: "denied" });
+    await this.kick(name, "run");
+    return this.logs(name, 1);
+  }
+
   pause(name, why = "paused by the user") {
     const r = this.row(name);
     if (!r || !r.enabled) throw new Error(`${name} is not turned on`);
@@ -204,10 +344,11 @@ export class Runtime {
     return { name, state: "paused", why };
   }
 
-  resume(name) {
+  resume(name, { hash: shown = null } = {}) {
     const r = this.row(name);
     if (!r || !r.enabled) throw new Error(`${name} is not turned on; dry-run it with watchers.test, then watchers.create`);
     const { hash } = this.spec(name);
+    if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     if (hash !== r.hash) throw new Error(`${name} changed since it was turned on; run watchers.test and watchers.create again`);
     const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
     this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, failures = 0, next_at = ? WHERE name = ?").run(next, name);
@@ -301,6 +442,8 @@ export class Runtime {
       // A folder edited since it was turned on is caught by fire(), which pauses it; one whose
       // type or where no longer fits this event is not run for it.
       if (!spec || spec.on !== event.type || !folder.matches(spec.where, event.payload)) continue;
+      // A connection's push reaches only the projects it is granted to (vault's scope); no scope, no run.
+      if (event.type === "vault.push" && !pushInScope(event.payload && event.payload.scope, spec.project)) continue;
       this.kick(name, "event", await this.eventInput(event.type, event.payload));
     }
   }
@@ -357,7 +500,7 @@ export class Runtime {
       for (const item of fresh) {
         await this.d.teach("watcher.item", {
           subject: { name: typeof item.about === "string" && item.about.trim() ? item.about.trim().slice(0, 120) : name },
-          text: [item.title || String(item.id), item.url].filter(Boolean).join(" · ").slice(0, 400),
+          text: [item.title || String(item.id), typeof item.quote === "string" && item.quote ? `"${item.quote.slice(0, 200)}"` : null, item.url].filter(Boolean).join(" · ").slice(0, 500),
           at: item.at || undefined, key: `${name}/${item.id}`, project_cwds: project.folders,
         }).catch(() => false);
       }
@@ -372,6 +515,14 @@ export class Runtime {
   }
 
   failed(name, r, trigger, res, started) {
+    if (res.unisolated) {
+      this.d.forgetWall?.();      // the next run finds the wall again, instead of trusting one that stopped answering
+      // Not the watcher's failure and not retried in a hurry: nothing ran, the machine cannot keep it off the network.
+      this.db.prepare("UPDATE watchers_watchers SET last_run = ?, last_error = ?, next_at = ? WHERE name = ?").run(started, res.error, this.now() + 3_600_000, name);
+      this.record(name, trigger, res, 0, 0);
+      this.d.emit("watcher.failed", { name, error: res.error.slice(0, 300), failures: Number(r.failures || 0), paused: false }, { project: r.project });
+      return;
+    }
     const failures = Number(r.failures || 0) + 1;
     const pause = failures >= MAX_FAILURES;
     const next = pause ? null : this.now() + BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)];
@@ -383,10 +534,48 @@ export class Runtime {
 
   /** Run in a child and check the items; a bad item is the run's error. */
   async exec(dir, spec, since, hook) {
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal });
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
+        const rule = spec.net[url.hostname];
+        if (!rule || !rule.credential) return undefined;
+        const method = String((init && init.method) || "GET").toUpperCase();
+        if (method !== "GET" && method !== "HEAD") throw new Error(`${method} is not allowed from a watcher; only GET and HEAD`);
+        if (typeof this.d.request !== "function") throw new Error("the vault is not running on this machine");
+        const r = await this.d.request({ credential: rule.credential, method, url: url.href, watcher: spec.name });
+        return { status: Number(r.status), url: url.href, headers: Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [String(k).toLowerCase(), String(v)])), body: typeof r.body === "string" ? r.body : JSON.stringify(r.body ?? ""), truncated: false };
+      } : null,
+      askFn: spec.ask ? (prompt => this.askModel(spec, prompt)) : null, hosts: spec.net ? Object.keys(spec.net) : null,
+      netAuth: spec.net ? async url => {
+        const rule = spec.net[url.hostname];   // the exact declared host, never a subdomain
+        if (!rule || !rule.vault) return undefined;
+        const value = await this.d.fetch(rule.vault, spec.name, rule.field);
+        return { host: url.hostname, header: rule.header, value: rule.scheme ? `${rule.scheme} ${value}` : String(value) };
+      } : undefined, netOptions: typeof this.d.netOptions === "function" ? this.d.netOptions() : this.d.netOptions });
     if (res.error) return res;
     try { return { ...res, items: normalize(res.items) }; }
     catch (e) { return { ...res, items: [], error: /** @type {Error} */ (e).message }; }
+  }
+
+  /**
+   * A watcher's one way to a model: a judgment fed back into its own code (is this relevant, which
+   * of these). No tools, no vault values, never a decision to send. The dollars are already in
+   * core/spend: the switchboard's thread.finished for the quick session lands in the ledger by
+   * itself, so recording again here would count it twice. What core/spend cannot do is say which
+   * watcher spent it, so this keeps only a per-watcher tally for watcher.json's ask.dailyUsd, and
+   * asks core/spend whether the provider's own daily cap still has room (spend.check).
+   */
+  async askModel(spec, prompt) {
+    const sp = this.d.spend;
+    if (typeof this.d.ask !== "function") throw new Error("no model is available to a watcher on this machine yet");
+    if (!sp) throw new Error("a watcher cannot ask a model while the spend ledger is off");
+    const day = new Date(this.now()).toISOString().slice(0, 10), cap = spec.ask ? spec.ask.dailyUsd : 0;
+    const standing = await sp.check();
+    if (standing && standing.ok === false) throw new Error(standing.line || "today's model budget is reached");
+    const used = Number(/** @type {any} */ (this.db.prepare("SELECT usd FROM watchers_spend WHERE watcher = ? AND day = ?").get(spec.name, day))?.usd || 0);
+    if (used >= cap) throw new Error(`${spec.name} reached its daily model budget of $${cap}`);
+    const r = await this.d.ask(prompt, { purpose: `watcher:${spec.name}`, maxUsd: Math.max(0.001, cap - used) });
+    this.db.prepare(`INSERT INTO watchers_spend (watcher, day, usd, calls) VALUES (?,?,?,1)
+      ON CONFLICT(watcher, day) DO UPDATE SET usd = usd + excluded.usd, calls = calls + 1`).run(spec.name, day, Number(r && r.usd) || 0);
+    return String((r && r.text) || "");
   }
 
   record(name, trigger, res, items, filed) {

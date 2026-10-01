@@ -93,7 +93,7 @@ let startVyreSuite = Suite("start vyre") { t in
             t.ok(until { m.offline })
             m.text = "vyre voice status"
             t.eq(m.flat.map(\.title), ["Start Vyre first"])
-            t.ok(m.flat.first?.subtitle.contains("vyre voice status needs vyred") == true)
+            t.ok(m.flat.first?.subtitle.contains("vyre voice status needs Vyre") == true)
             m.text = "vyre up"
             t.eq(m.flat.map(\.title), ["Start Vyre"])
             m.text = "   "

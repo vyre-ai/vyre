@@ -16,6 +16,21 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Signins, LOGINS } from "./signin.js";
+import { spawnSession } from "./spawn.js";
+import { readIdentity } from "./identity.js";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { isPerson } from "../../lib/caller.js";
+import { Routes, ROUTES_MIGRATION } from "./routes.js";
+import { usesSpawner } from "./spawn.js";
+import { grokProvider } from "./drivers/grok.js";
+import { codexProvider } from "./drivers/codex.js";
+import { openrouterProvider } from "./drivers/openrouter.js";
+import { wipeAccount } from "../spawner/client.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
 const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
@@ -35,14 +50,51 @@ import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
 /** Per-project concurrency limits a person set (sessions.limits.set). */
 const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
 
+/** The agent's own session id for a thread on an ACP provider, so a resume after a vyred restart loads it instead of starting fresh. */
+const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIMARY KEY, provider TEXT NOT NULL, agent_session TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, messages TEXT NOT NULL)`;
+
+/**
+ * "asked" reach, enforced here until the kernel's own check (P17) lands: the tool runs for a person's own
+ * surface; anyone else only when meta.asked says the person's own words in their own turn asked for exactly this; and,
+ * for the tools that only start something the person must finish (add, signin, bind), the verified assistant (lead's ruling, 1 Oct).
+ * @param {any} meta @param {string} what
+ */
+/** What a provider last said about itself in a session: the models its account can use and the plan it is on (a model picker's list; null until one session has run). */
+const META_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_provider_meta (provider TEXT NOT NULL, account TEXT NOT NULL DEFAULT '', models TEXT, plan TEXT, at INTEGER NOT NULL, PRIMARY KEY (provider, account))`;
+
+export function askedOnly(meta, what, { assistant = false } = {}) {
+  const m = meta || {};
+  if (isPerson(m)) return;
+  if (m.asked) return;
+  // The verified assistant (vyred's meta.agent, never the label) may start an account for the person; the account stays pending until the
+  // person finishes it on their own device (accounts.js pending), so this lets it start, never finish.
+  if (assistant && m.agent && m.agentKind === "assistant") return;
+  throw Object.assign(new Error(`${what} runs only when the person asked for it; nothing in their own words asked for this`), { code: "not_asked" });
+}
+
+/**
+ * Where the OpenRouter key may be sent besides openrouter.ai: this machine only, a test double. A
+ * VYRE_OPENROUTER_URL in the environment that names any other host is ignored, so a poisoned
+ * environment cannot point the key elsewhere.
+ * @param {string|undefined} u
+ */
+export const testBase = u => { try { const x = new URL(String(u)); return x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname); } catch { return false; } };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION, META_MIGRATION]);
     const db = ctx.store.db;
+    // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
+    try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
+    // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
+    // removing the account's folder on a machine without one (there the uid only numbers it).
+    /** Does the vault hold an item by this name? null when the vault cannot say (not running, locked). Never its value. */
+    const vaultHas = async name => { try { const r = await ctx.call("vault.list", {}); const items = r && r.data && (Array.isArray(r.data) ? r.data : r.data.items); return Array.isArray(items) ? items.some(x => x && x.name === name) : null; } catch { return null; } };
+    const accounts = new Accounts(db, { wipe: async uid => { if (usesSpawner()) await wipeAccount(uid); } });
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
      * The model a session runs on: an explicit one, else its agent's, else its project's override,
@@ -145,6 +197,265 @@ export default {
       description: "The model a session starting now runs on, and where that comes from.", internal: true,
       input: { type: "object", properties: { purpose: str, project: str, model: str } },
       run: async i => modelFor(i),
+    });
+
+    // ------------------------------------------------------------ providers and accounts (0.2)
+
+    // Claude only for now (0.2 charter narrowed to Claude, Codex, Grok); a module adds another
+    // provider with ctx.provider (ADR 0030 section 5) and its own entry here belongs to whichever
+    // module registers it - this module only ever speaks for "claude", the one built in. The
+    // public name is providers.list (agreed with capsule-pro/native-core, CHAT.md), which lives in
+    // the tiny core/providers module since a tool name must start with its own module's name
+    // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
+    // internal snapshot that module calls through ctx.call.
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }];
+    // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
+    // with strictest-approval flags at every start and its own sign-in in the account's HOME.
+    const acpSessions = provider => ({
+      get: id => { const r = /** @type {any} */ (db.prepare("SELECT agent_session FROM sessions_acp WHERE thread = ? AND provider = ?").get(String(id), provider)); return r ? String(r.agent_session) : undefined; },
+      set: (id, a) => { db.prepare("INSERT INTO sessions_acp (thread, provider, agent_session) VALUES (?,?,?) ON CONFLICT(thread) DO UPDATE SET agent_session = excluded.agent_session").run(String(id), provider, String(a)); },
+    });
+    const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }),
+      // The last rung: a plain API-key driver, its conversation kept here so a resume carries on.
+      openrouter: openrouterProvider({ ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: {
+        get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
+        set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
+    for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
+    /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
+    const providerModels = provider => {
+      const r = /** @type {any} */ (db.prepare("SELECT models FROM sessions_provider_meta WHERE provider = ? AND models IS NOT NULL ORDER BY at DESC LIMIT 1").get(provider));
+      try { return r ? JSON.parse(String(r.models)) : []; } catch { return []; }
+    };
+    const accountPlan = (provider, account) => {
+      const r = /** @type {any} */ (db.prepare("SELECT plan FROM sessions_provider_meta WHERE provider = ? AND account = ?").get(provider, String(account)));
+      return r && r.plan ? String(r.plan) : null;
+    };
+    // The Switchboard tells us what a session's provider said about itself (init: models, plan), so providers.list can fill a model picker. Internal.
+    ctx.tool("sessions.providers.learn", {
+      description: "Record what a provider reported in a session: the models its account can use (id, label) and its plan. For providers.list; not a public name.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, models: { type: "array", maxItems: 200, items: { type: "object", required: ["id"], properties: { id: str, label: str } } }, plan: str } },
+      run: async i => {
+        const models = Array.isArray(i.models) && i.models.length ? JSON.stringify(i.models.map(m => ({ id: String(m.id).slice(0, 100), label: String(m.label || m.id).slice(0, 100) }))) : null;
+        const plan = typeof i.plan === "string" && i.plan.trim() ? i.plan.trim().slice(0, 60) : null;
+        if (!models && !plan) return { recorded: false };
+        const acct = String(i.account || "");
+        db.prepare(`INSERT INTO sessions_provider_meta (provider, account, models, plan, at) VALUES (?,?,?,?,?)
+          ON CONFLICT(provider, account) DO UPDATE SET models = COALESCE(excluded.models, models), plan = COALESCE(excluded.plan, plan), at = excluded.at`).run(String(i.provider), acct, models, plan, Date.now());
+        return { recorded: true };
+      },
+    });
+    ctx.tool("sessions.providers.snapshot", {
+      description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
+        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
+        models: p.id === "claude" ? MODEL_ALIASES : providerModels(p.id),
+        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
+    });
+
+    // ---- the "@" picker's Accounts kind: the AI accounts that are signed in, so "@codex" picks who answers one turn
+    /** Is this account one a turn could run on now: not waiting on a person, and signed in or holding its key. @param {any} a */
+    const signedIn = async a => !a.pending && (a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false);
+    /** One row per signed-in account: the provider's own name when it has one, "Name (label)" when it has several. */
+    const accountChoices = async () => {
+      const out = [];
+      for (const p of PROVIDERS) {
+        const ok = [];
+        for (const a of accounts.list(p.id)) if (await signedIn(a)) ok.push(a);
+        for (const a of ok) out.push({ kind: "account", id: ok.length === 1 ? p.id : `${p.id}:${a.id}`, name: ok.length === 1 ? p.label : `${p.label} (${a.label})`, hint: `${p.label} account, ${a.kind === "login" ? "signed in" : a.kind}`, provider: p.id, account: ok.length === 1 ? null : a.id });
+      }
+      return out;
+    };
+    tool("sessions.mention.search", "The @ picker's Accounts results: the AI accounts that are signed in (Claude, Codex, Grok, OpenRouter), by provider name. Names and a short hint only.",
+      { type: "object", properties: { q: str, limit: { type: "integer", minimum: 1, maximum: 50 } } },
+      async i => {
+        const q = String(i.q || "").trim().toLowerCase();
+        const rows = (await accountChoices()).filter(r => !q || r.name.toLowerCase().includes(q) || r.provider.includes(q));
+        return rows.slice(0, i.limit || 12).map(({ provider: _p, account: _a, ...r }) => r);
+      });
+    tool("sessions.mention.resolve", "What an account tagged with @ means for a thread: the person asked this one turn to run on it. No grant; threads.send reads the tag. Called by the mentions core.",
+      { type: "object", required: ["id"], properties: { id: str, thread: str, said: str } },
+      async i => {
+        const hit = (await accountChoices()).find(r => r.id === String(i.id));
+        if (!hit) throw Object.assign(new Error("that account is not signed in"), { code: "not_found" });
+        return { name: hit.name, hint: hit.hint, outside: false, note: `The person asked ${hit.name} to answer this one turn. The session keeps its own provider.` };
+      });
+
+    // ---- routing and fallback order (plans/sessions.md 9.4)
+    // A conversation kept for OpenRouter goes with its thread: swept at start, and on thread.deleted.
+    const sweep = () => { try { db.exec("DELETE FROM sessions_openrouter WHERE thread NOT IN (SELECT id FROM threads_runs); DELETE FROM sessions_acp WHERE thread NOT IN (SELECT id FROM threads_runs)"); } catch {} };
+    sweep();
+    // No thread is deleted anywhere in Vyre today (no such event or path exists), so this also runs hourly:
+    // whichever path removes a threads_runs row later, its OpenRouter history goes within the hour.
+    const sweeper = setInterval(sweep, 3_600_000); sweeper.unref?.();
+    try { ctx.events.on("thread.deleted", e => { const t = e && e.payload && e.payload.thread; if (t) { db.prepare("DELETE FROM sessions_openrouter WHERE thread = ?").run(String(t)); db.prepare("DELETE FROM sessions_acp WHERE thread = ?").run(String(t)); } }); } catch {}
+    const routes = new Routes(db, name => PROVIDERS.some(p => p.id === name));
+    // Every provider but Claude needs a real, in-scope account: a fallback never runs on a login or key that nobody set up.
+    const usable = e => { try { const a = accounts.resolve({ provider: e.provider, ...(e.account ? { account: e.account } : {}) }); return e.provider === "claude" || Boolean(a && !a.synthetic); } catch { return false; } };
+    tool("sessions.routes.get", "The fallback order for a scope (default, project:<slug> or agent:<name>): the ordered (provider, account) list a thread moves down when its turn hits a limit. Without a scope, every list.",
+      { type: "object", properties: { scope: str } },
+      async i => (i.scope ? routes.get(String(i.scope)) : routes.all()));
+    tool("sessions.routes.set", `Set the fallback order for a scope: entries is an ordered list of { provider, account? }, e.g. Claude, then Codex, then Grok. An empty list clears it. Two entries on one provider (two accounts combining one vendor's quota) may break that vendor's terms: it saves only with acknowledge: true, after the person has seen the warning. An agent sets only its own list or a project it is granted.`,
+      { type: "object", required: ["scope", "entries"], properties: { scope: str, acknowledge: { type: "boolean" },
+        entries: { type: "array", items: { type: "object", required: ["provider"], properties: { provider: str, account: str, model: { type: "string", description: "The model this entry runs (required for OpenRouter): what the person chose." } } } } } },
+      async (i, meta) => {
+        const who = meta && meta.agent ? String(meta.agent) : null;
+        if (who) {
+          // Grants come from vyred's own read of the agent's stored row, never from the input.
+          const granted = /** @type {any} */ (meta).granted;
+          const m = /^(project|agent):(.+)$/.exec(String(i.scope));
+          const ok = m && (m[1] === "agent" ? m[2] === who : granted === "*" || (Array.isArray(granted) && granted.includes(m[2])));
+          if (!ok) throw Object.assign(new Error("an agent sets its own fallback order, or a project it is granted"), { code: "denied" });
+        }
+        return routes.set(i, who ? `agent:${who}` : String(meta && meta.caller || "person"));
+      });
+    ctx.tool("sessions.routes.next", {
+      description: "The next (provider, account) a limited thread moves to, for the Switchboard. Not a public name.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, agent: str, project: str, tried: { type: "array", items: str } } },
+      run: async i => routes.next(i, usable),
+    });
+
+    /** @type {Map<string, { email?: string, org?: string } | null>} */ const identities = new Map();
+    /** @param {any} a an account row */
+    const identityOf = async a => {
+      const key = `${a.id}:${a.signed_in_at}`;
+      if (identities.has(key)) return identities.get(key) ?? null;
+      let out = null;
+      try {
+        if (usesSpawner() && a.uid != null) {
+          const acctHome = path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(a.uid));
+          const child = spawnSession(process.execPath, [fileURLToPath(new URL("./identity.js", import.meta.url)), a.provider, acctHome], { cwd: acctHome, env: { PATH: process.env.PATH, HOME: acctHome }, account: { uid: a.uid, shared: false } });
+          let buf = "";
+          child.stdout && child.stdout.on("data", d => { buf += d; });
+          await new Promise(r => { const t = setTimeout(r, 5000); child.on("close", () => { clearTimeout(t); r(undefined); }); child.on("error", () => { clearTimeout(t); r(undefined); }); });
+          try { out = JSON.parse(buf.trim().split("\n").pop() || "null"); } catch { out = null; }
+        } else {
+          out = readIdentity(a.provider, path.join(root, "accounts", String(a.id)));
+        }
+      } catch { out = null; }
+      identities.set(key, out);
+      return out;
+    };
+    tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
+      { type: "object", properties: { provider: str } },
+      async (i, meta) => {
+        const listed = accounts.list(i.provider ? String(i.provider) : undefined);
+        // Who a signed-in login account is signed in as (the non-secret email and org its own login left), so the person's confirm of an account the
+        // assistant started can tell whose it is; null reads as "account not identified".
+        const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video.";
+        const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's sessions and may train on them; Grok can make video.";
+        const rows = await Promise.all(listed.map(async a0 => { const a = a0.provider === "grok" && !a0.synthetic ? { ...a0, privacy_label: a0.privacy ? PRIVACY_ON : PRIVACY_OFF, privacy_note: "Change it in Grok's /privacy settings; Vyre shows what you chose." } : a0;
+          return a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a; }));
+        // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
+        const seesItems = !meta || !meta.agent || /** @type {any} */ (meta).agentKind === "assistant";
+        return seesItems ? rows : rows.map(({ vault_item, identity, ...r }) => r);
+      });
+
+    /** The project the request came from: the calling session's own thread's project, or null. @param {any} meta */
+    const requestProject = async meta => {
+      const th = meta && typeof meta.thread === "string" ? await ctx.call("threads.get", { thread: meta.thread, limit: 1 }).catch(() => null) : null;
+      const p = th && th.data && th.data.thread && th.data.thread.project;
+      return p ? String(p) : null;
+    };
+    tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
+      { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
+        scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
+      async (i, meta) => {
+        askedOnly(meta, "Adding an account", { assistant: true });
+        // Not a person's surface: the account covers only the project the request came from, never every project, and is pending
+        // (unusable) until the person finishes it on their own device (a login's sign-in, or their bind of a key's account).
+        const byPerson = isPerson(meta || {});
+        if (!byPerson) {
+          const project = await requestProject(meta);
+          i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
+        }
+        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i);
+      });
+
+    // ---- signing in (each provider's own login, run as the account; Vyre never sees the token)
+    const signins = new Signins({ spawn: (bin, args, { account }) => {
+      // On a box the spawner puts the account's uid and HOME in place. Elsewhere a provider that
+      // keeps its login in HOME gets one private folder per account.
+      const home = usesSpawner() ? undefined : path.join(root, "accounts", String(account.id));
+      if (home) fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+      const acctHome = usesSpawner() ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(account.uid)) : /** @type {string} */ (home);
+      return spawnSession(bin, args, { cwd: acctHome, env: { PATH: process.env.PATH, ...(home ? { HOME: home } : {}), TERM: "dumb", NO_COLOR: "1", BROWSER: "none" }, ...(usesSpawner() && account.uid != null ? { account: { uid: account.uid, shared: false } } : {}) });
+    } });
+    tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
+      { type: "object", properties: { provider: str, label: str, account: str, flow: str, code: str } },
+      async (i, meta) => {
+        askedOnly(meta, "Signing in an account", { assistant: true });
+        const byPerson = isPerson(meta || {});
+        if (i.flow && i.code) return signins.submit(String(i.flow), String(i.code));
+        if (i.flow) return signins.status(String(i.flow));
+        const provider = String(i.provider || "");
+        if (!LOGINS[provider] || !PROVIDERS.some(p => p.id === provider)) throw Object.assign(new Error(`there is no sign-in for ${provider || "that provider"}`), { code: "bad_input" });
+        if (provider === "claude" && !usesSpawner()) throw Object.assign(new Error("on this machine Claude uses the login already on it (run claude and sign in there)"), { code: "bad_input" });
+        let row = i.account ? accounts.row(String(i.account)) : null;
+        if (i.account && (!row || row.provider !== provider || row.kind !== "login")) throw Object.assign(new Error("that is not a login account on this provider"), { code: "bad_input" });
+        // A non-person starts a sign-in only for a new account, or one still pending: it never re-signs-in a working account.
+        if (!byPerson && row && !row.pending) throw Object.assign(new Error("only the person signs a working account in again"), { code: "denied" });
+        const created = !row;
+        if (!row) {
+          const project = byPerson ? null : await requestProject(meta);
+          row = await accounts.add({ provider, label: String(i.label || PROVIDERS.find(p => p.id === provider)?.label || provider), kind: "login",
+            ...(byPerson ? {} : { scope: { projects: project ? [project] : [], agents: "*" }, pending: true }) });
+        }
+        const account = row;
+        try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
+        catch (e) { if (created) accounts.remove(account.id); throw e; }
+      });
+
+    tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
+      { type: "object", required: ["id"], properties: { id: str } },
+      async (i, meta) => { if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" }); return accounts.remove(i.id); });
+
+    tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
+      { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
+      async (i, meta) => {
+        askedOnly(meta, "Binding an account", { assistant: true });
+        if (isPerson(meta || {})) return accounts.bind({ ...i, confirm: true });
+        // Not a person's surface: only to the project the request came from, never "*", an agent or a default; it never finishes a pending account.
+        const project = await requestProject(meta);
+        if (!project || i.project !== project || i.agent || i.is_default) throw Object.assign(new Error("outside a person's surface an account is bound only to the project the request came from; a wider scope is set from the person's own surface"), { code: "denied" });
+        return accounts.bind({ id: i.id, project });
+      });
+
+    // A file a provider left in an account's own folder (Grok Build's generated images are 0600 there), read as that account and returned as base64, for
+    // the Switchboard to hand to artifacts. Internal: only Vyre's modules call it. The read runs as the account's uid on a box.
+    const MEDIA_MAX = 20 * 1024 * 1024;
+    ctx.tool("sessions.files.read", {
+      description: "Read one regular file from inside an account's own folder, as that account (`file` is relative to the account's HOME, under a provider's own folder such as .grok or .codex, no links, at most 20 MB). Answers { size, sha256, data_b64 }. Not a public name.", internal: true,
+      input: { type: "object", required: ["account", "file"], properties: { account: str, file: str } },
+      run: async i => {
+        const a = accounts.row(String(i.account));
+        if (!a) throw Object.assign(new Error(`no account ${i.account}`), { code: "not_found" });
+        // Relative on purpose: the floor refuses any path inside Vyre's own home in a call's input, and on a Mac an account's HOME is there; the provider's
+        // own folder (.grok, .codex) is the only place a generated file is read from, and nothing else of the HOME.
+        const rel = String(i.file);
+        if (path.isAbsolute(rel) || rel.includes("\0") || rel.split("/").includes("..") || !/^\.(?:grok|codex)\//.test(rel)) throw Object.assign(new Error("file must be a path under .grok or .codex in the account's folder"), { code: "bad_input" });
+        const home = usesSpawner() && a.uid != null ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(a.uid)) : path.join(root, "accounts", String(a.id));
+        const child = spawnSession(process.execPath, [fileURLToPath(new URL("./readfile.js", import.meta.url)), home, path.join(home, rel), String(MEDIA_MAX)],
+          { cwd: home, env: { PATH: process.env.PATH, HOME: home }, ...(usesSpawner() && a.uid != null ? { account: { uid: a.uid, shared: false } } : {}) });
+        /** @type {Buffer[]} */ const chunks = [];
+        let size = 0, err = "";
+        child.stderr && child.stderr.on("data", d => { err = (err + d).slice(-300); });
+        child.stdout.on("data", d => { size += d.length; if (size <= MEDIA_MAX) chunks.push(d); });
+        const code = await new Promise(r => { child.on("close", c => r(c)); child.on("error", () => r(127)); });
+        if (code !== 0 || size > MEDIA_MAX) throw Object.assign(new Error(err.trim() || "the file could not be read"), { code: "denied" });
+        const bytes = Buffer.concat(chunks);
+        return { size, sha256: crypto.createHash("sha256").update(bytes).digest("hex"), data_b64: bytes.toString("base64") };
+      },
+    });
+    // The person's choice about whether xAI keeps this Grok account's sessions (and so whether Grok can make video). The setting itself lives on xAI's side for the
+    // account and is changed there (in Grok's own /privacy settings); this records what the person chose so Vyre says it plainly and a surface can offer the choice.
+    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings.",
+      { type: "object", required: ["account", "privacy"], properties: { account: str, privacy: { type: "boolean" } } },
+      async i => accounts.setPrivacy(String(i.account), Boolean(i.privacy)));
+    ctx.tool("sessions.accounts.resolve", {
+      description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str } },
+      run: async i => accounts.resolve(i),
     });
 
     // ------------------------------------------------------------ concurrency slots
@@ -283,6 +594,6 @@ export default {
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null }),
     });
 
-    return { async stop() {} };
+    return { async stop() { clearInterval(sweeper); signins.stop(); } };
   },
 };

@@ -13,6 +13,7 @@ import { pair, connect, PAIR_BASE } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
+import { registerWorker, adoptInWorker } from "./adopt.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
 const BOX = "vyre.box";
@@ -71,7 +72,7 @@ function inject(base, manifest) {
 }
 
 async function main() {
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  const registered = registerWorker();
   const crypto = webCrypto();
   const keyStore = indexedDbKeyStore();
   const last = load(LAST) || {};
@@ -90,6 +91,9 @@ async function main() {
   /** @type {any} */ (globalThis).vyre = { conn, box, release: { ...want } };
   const shell = document.getElementById("vyre-loader");
   if (shell) shell.hidden = true;
+  // Tell the worker which build this is, so it can answer the app's own /app/<path> requests
+  // from that build, hash-checked, after it re-verifies the signed manifest itself.
+  await adoptInWorker(want, registered);
   inject(base, manifest);
 }
 

@@ -41,7 +41,14 @@ export const MIGRATIONS = [
    ALTER TABLE gate_items ADD COLUMN event INTEGER;`,
 ];
 
-export const KINDS = ["send", "spend", "delete"];
+/**
+ * What a held item may be. "act" is an outward step taken on the person's computer or accounts
+ * that no said_intents row covers (P15, P17): after the one grant, acting is audited and never a
+ * per-action prompt, so this is held only for an act that performs a send, post or pay nobody asked for.
+ */
+export const KINDS = ["send", "spend", "delete", "act"];
+/** What a sender that names no kinds takes: the three a person always meant. A module may offer "act" by name. */
+const DEFAULT_KINDS = ["send", "spend", "delete"];
 /** Words in an MCP tool's own name that mean it sends something as the user (as core/harness/rules.js). */
 const SENDS = /(^|[_-])(send|post|reply|forward|publish|share|invite|tweet|dm|comment)([_-]|$)/i;
 const READS = /(^|_)(draft|list|get|search|read)(_|$)/i;
@@ -70,6 +77,9 @@ const isObject = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
  */
 const moduleType = o => ({
   kinds: o.kinds, content: o.content,
+  // A first-party sender that says its `to` is the real destination (chrome: the site's origin, a
+  // contact) lets what the person said cover it exactly, like an email's addresses. Others name none.
+  ...(o.reports ? { recipients: (to) => to } : {}),
   check(to, c) { if (!isObject(c)) throw new Error("content must be an object"); },
   summary: (to, c) => cut(String(c.summary || c.subject || c.tool || o.name), 120),
   async send(to, c, s, deps) {
@@ -112,7 +122,7 @@ export class Gate {
    * @param {{ name: string, tool: string, kinds?: string[], content?: Record<string, string> }} input
    * @param {string} caller
    */
-  offer({ name, tool, kinds, content }, caller) {
+  offer({ name, tool, kinds, content, recipients }, caller, firstParty = false) {
     const m = /^module:(.+)$/.exec(String(caller || ""))?.[1];
     if (!m) throw new Error("only a module offers a sender");
     name = String(name || ""); tool = String(tool || "");
@@ -122,7 +132,9 @@ export class Gate {
     if (this.offered[name] && this.offered[name].module !== m) throw new Error(`${name} is already offered by ${this.offered[name].module}`);
     if (kinds !== undefined && (!Array.isArray(kinds) || !kinds.length || kinds.some(k => !KINDS.includes(k)))) throw new Error(`kinds must be some of ${KINDS.join(", ")}`);
     if (content !== undefined && !isObject(content)) throw new Error("content must be an object describing what the sender takes");
-    this.offered[name] = { module: m, name, tool, kinds: kinds || [...KINDS], content: content || {} };
+    // Only a module the registry says ships with Vyre (meta.firstParty, set by the loader, never by a caller) may say its `to` is the real destination.
+    if (recipients !== undefined && recipients !== "to") throw new Error('recipients is "to": the sender\'s `to` is its real destination');
+    this.offered[name] = { module: m, name, tool, kinds: kinds || [...DEFAULT_KINDS], content: content || {}, reports: recipients === "to" && firstParty === true };
     return { name, kinds: this.offered[name].kinds };
   }
 
@@ -166,15 +178,10 @@ export class Gate {
    * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string, tool_use_id?: string }} input
    * @param {{ agent?: string|null }} [who]
    */
-  request({ kind, via, to, content, why, thread, project, tool_use_id }, { agent = null } = {}) {
-    if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
-    const { s, t } = this.sender(via);
-    const kinds = s.kinds || t.kinds;
-    if (!kinds.includes(kind)) throw new Error(`sender ${via} does not ${kind}; it takes ${kinds.join(", ")}`);
-    const dest = (Array.isArray(to) ? to : [to]).map(String).filter(Boolean);
-    if (!dest.length) throw new Error("say where it is going: to");
-    if (!content || typeof content !== "object" || Array.isArray(content)) throw new Error("content must be an object");
-    t.check(dest, content, s);
+  request(input, who = {}) {
+    const { kind, via, content, why, thread, project, tool_use_id } = input;
+    const agent = who.agent ?? null;
+    const { s, dest, t } = this.prepare(input);
     const id = crypto.randomBytes(9).toString("hex");
     this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module, tool_use_id)
       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
@@ -183,6 +190,68 @@ export class Gate {
     const ev = this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
     if (ev && typeof ev.id === "number") this.db.prepare("UPDATE gate_items SET event = ? WHERE id = ?").run(ev.id, id);
     return { id, state: "held", message: `Held at the Gate as ${id}. The user sees it, with where it is going, and nothing goes out until they approve it. Do not send it another way.` };
+  }
+
+  /** The sender, its type and the destinations, with the request checked the way every path checks it. */
+  prepare({ kind, via, to, content }) {
+    if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
+    const { s, t } = this.sender(via);
+    const kinds = s.kinds || t.kinds;
+    if (!kinds.includes(kind)) throw new Error(`sender ${via} does not ${kind}; it takes ${kinds.join(", ")}`);
+    const dest = (Array.isArray(to) ? to : [to]).map(String).filter(Boolean);
+    if (!dest.length) throw new Error("say where it is going: to");
+    if (!content || typeof content !== "object" || Array.isArray(content)) throw new Error("content must be an object");
+    t.check(dest, content, s);
+    return { s, t, dest };
+  }
+
+  /**
+   * A call the person's own words already covered (P17, "asking is approving"): it goes out now,
+   * with no hold card and no proof of presence. It still leaves a row, `by` naming the intent, so
+   * the log shows what went out and why it did not wait, and gate.released says so. If the sender
+   * fails, the item falls back to held with the error, exactly as a failed approval does: the
+   * person decides, and nothing is sent twice.
+   * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string, tool_use_id?: string }} input
+   * @param {{ agent?: string|null, intent?: string|null, by?: string }} who `by` names a person's confirmation ("asked:capsule") when no intent covers it
+   */
+  async sendNow(input, { agent = null, intent = null, by: byWho }) {
+    const { kind, via, content, why, thread, project, tool_use_id } = input;
+    const { s, t, dest } = this.prepare(input);
+    const id = crypto.randomBytes(9).toString("hex");
+    const by = byWho || `said:${intent}`;
+    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, final, why, agent, thread, project, state, sender_module, tool_use_id, by)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'sending', ?, ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content), JSON.stringify(content),
+      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null, by);
+    const w = where(thread, project);
+    try {
+      const result = await t.send(dest, content, s, { fetchCredential: this.deps.fetchCredential, relay: this.deps.relay, fetch: this.deps.fetch, call: this.deps.call, id });
+      this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, error = NULL, decided = ? WHERE id = ?").run(JSON.stringify(result ?? null), this.now(), id);
+      this.deps.emit("gate.released", { id, kind, via, to: dest, edited: false, by, said: intent || null, agent, thread: thread || null, project: project || null }, w);
+      return { id, state: "sent", by, result: result ?? null, message: "Sent at once: you asked for this, so it did not wait at the Gate." };
+    } catch (e) {
+      const error = cut(scrub(String(/** @type {Error} */ (e)?.message || e), []), 500);
+      this.db.prepare("UPDATE gate_items SET state = 'held', error = ?, final = NULL, by = NULL WHERE id = ?").run(error, id);
+      const reached = /** @type {any} */ (e)?.detail?.reached;
+      const known = reached === "maybe" || reached === "no" ? { reached } : {};
+      const summary = t.summary(dest, content);
+      const ev = this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, w);
+      if (ev && typeof ev.id === "number") this.db.prepare("UPDATE gate_items SET event = ? WHERE id = ?").run(ev.id, id);
+      this.deps.emit("gate.failed", { id, via, error: cut(error, 200), ...known }, w);
+      return { id, state: "held", error, ...known, message: `You asked for this, but it did not go out (${error}). It is held at the Gate as ${id} for you to try again. Do not send it another way.` };
+    }
+  }
+
+  /**
+   * Every real destination of a call, for the asked-for match: the sender type says what they are
+   * (an email's to, cc and bcc). A sender that cannot name them (http, a module's own) answers null,
+   * so nothing the person said ever covers it and it holds as before.
+   * @returns {string[] | null}
+   */
+  recipients({ kind, via, to, content }) {
+    try {
+      const { t, dest } = this.prepare({ kind, via, to, content });
+      return typeof t.recipients === "function" ? t.recipients(dest, content) : null;
+    } catch { return null; }
   }
 
   /** Held items, oldest first: what has waited longest should be answered first. */
@@ -215,7 +284,9 @@ export class Gate {
     const r = this.row(id);
     const draft = json(r.draft, {}), final = json(r.final, null);
     return { ...this.brief(r), state: r.state, draft, final, diff: final ? diff(draft, final) : { removed: [], added: [] },
-      result: json(r.result, null), error: r.error || null, by: r.by || null, decided: r.decided || null };
+      result: json(r.result, null), error: r.error || null, by: r.by || null, decided: r.decided || null,
+      // The intent that covered it when the person's own words asked for it ("You said to"): look it up in gate.said.list.
+      said: typeof r.by === "string" && r.by.startsWith("said:") ? r.by.slice(5) : null };
   }
 
   /**

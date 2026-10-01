@@ -48,7 +48,11 @@ test("presence: every value-out or access-giving tool declares it, with a summar
   }
   for (const n of NO_PRESENCE) assert.ok(!tools.get(n)?.presence, `${n} needs no person`);
   // vault.release is internal (modules only) and exempt; everything else registered is listed above.
-  const known = new Set([...NEEDS_PRESENCE, ...NO_PRESENCE, "vault.release", "vault.generate", "vault.match", "vault.relay"]);
+  const known = new Set([...NEEDS_PRESENCE, ...NO_PRESENCE, "vault.release", "vault.generate", "vault.match", "vault.relay",
+    // P17 and vault-routed API access: internal tools other modules call, and a request the Gate holds when nothing the person said covers it.
+    "vault.said.record", "vault.said.add", "vault.env.scan", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send",
+    // Connectors stores a finished sign-in in an oauth api-credential: internal (only module:connectors, and only from the token endpoint the person's own config names), it takes tokens in and gives nothing out, and it runs right after the sign-in the person just did, so it asks for no presence.
+    "vault.credential.tokens"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 
@@ -57,9 +61,9 @@ test("presence: summaries name items and destinations and never a value, and nev
   const canary = `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
   const sum = (n, input) => tools.get(n).presence.summary(input);
 
-  assert.equal(await sum("vault.put", { name: "billing-key", kind: "api-key", value: canary }), `Add api-key "billing-key" in the vault`);
+  assert.equal(await sum("vault.put", { name: "billing-key", kind: "api-key", value: canary }), `Add a key "billing-key" to your vault`);
   await run("vault.put", { name: "billing-key", kind: "api-key", value: canary });
-  assert.equal(await sum("vault.put", { name: "billing-key", value: canary }), `Replace api-key "billing-key" in the vault`);
+  assert.equal(await sum("vault.put", { name: "billing-key", value: canary }), `Replace the key "billing-key" in your vault`);
   assert.match(await sum("vault.inject", { items: [{ name: "billing-key", env: "BILLING_KEY" }] }), /"billing-key" as BILLING_KEY into a program's environment/);
   assert.match(await sum("vault.backup", { file: "/tmp/acme.vyre", passphrase: canary }), /Write a sealed backup of 1 items to \/tmp\/acme.vyre/);
   assert.match(await sum("vault.grant", { name: "billing-key", module: "mail" }), /Let mail use "billing-key"/);
@@ -121,4 +125,56 @@ test("presence: reveal, copy and totp take the floor's session proof, except for
     assert.equal(s({}), false);
   }
   for (const n of ["vault.inject", "vault.fill.native", "vault.resolve"]) assert.ok(!tools.get(n).presence.session, `${n} never rides a session`);
+});
+
+test("presence: unlocking the vault with its password asks once; Touch ID, or no password at all, still asks for presence", async t => {
+  const { tools } = await recorded(t);
+  const { Presence } = await import("../presence/index.js");
+  const def = tools.get("vault.account.unlock");
+  const needs = input => Presence.prototype.required.call({}, "vault.account.unlock", def, input);
+  assert.equal(needs({ password: "fixture-password-000000" }), false, "the vault password is the proof");
+  assert.equal(needs({ method: "password", password: "fixture-password-000000" }), false);
+  assert.equal(needs({ method: "touchid" }), true, "Touch ID keeps its presence proof");
+  assert.equal(needs({ method: "touchid", password: "fixture-password-000000" }), true);
+  assert.equal(needs({}), true, "no password, no shortcut");
+  assert.equal(needs(undefined), true, "a listing of tools counts as asking");
+});
+
+test("account tools: ten wrong guesses fired at once are tried one after another, so only five are evaluated before the lock (reviewer-2)", async t => {
+  const { run } = await recorded(t);
+  const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
+  await run("vault.account.create", { password: pw });
+  await run("vault.account.lock", {}, "mcp");
+  t.mock.timers.enable({ apis: ["Date"], now: 1_800_000_000_000 });
+  const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => run("vault.account.unlock", { password: `fixture-wrong-${i}` })));
+  assert.ok(results.every(r => r.status === "rejected"), "every guess was refused");
+  const msgs = results.map(r => String(/** @type {any} */ (r).reason && /** @type {any} */ (r).reason.message));
+  assert.equal(msgs.filter(m => /does not open/.test(m)).length, 5, "five guesses were tested against the key: " + msgs.join(" | "));
+  assert.equal(msgs.filter(m => /too many wrong passwords/.test(m)).length, 5, "the other five met the lock without being tested");
+  await assert.rejects(run("vault.account.unlock", { password: pw }), /too many wrong passwords/, "locked now, even for the right password");
+  // Positive control: the lock is a wait, not a lockout; the right password works once it is over.
+  t.mock.timers.tick(31_000);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true);
+});
+
+test("account tools: five wrong passwords in a row slow every try, a right one resets, and a refused try is not tested (reviewer-2)", async t => {
+  const { run } = await recorded(t);
+  const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
+  await run("vault.account.create", { password: pw });
+  await run("vault.account.lock", {}, "mcp");
+  t.mock.timers.enable({ apis: ["Date"], now: 1_800_000_000_000 });
+  const wrong = () => run("vault.account.unlock", { password: "fixture-wrong-password" });
+  for (let i = 0; i < 4; i++) await assert.rejects(wrong(), /does not open/);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "four wrong do not slow the right one");
+  await run("vault.account.lock", {}, "mcp");
+  for (let i = 0; i < 5; i++) await assert.rejects(wrong(), /does not open/);
+  await assert.rejects(run("vault.account.unlock", { password: pw }), /too many wrong passwords in a row · try again in 30 seconds/, "the sixth try is refused, even the right password");
+  t.mock.timers.tick(31_000);
+  await assert.rejects(wrong(), /does not open/, "after the wait a wrong try counts again and doubles the wait");
+  await assert.rejects(run("vault.account.unlock", { password: pw }), /try again in 60 seconds/);
+  t.mock.timers.tick(61_000);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "the right password after the wait");
+  await run("vault.account.lock", {}, "mcp");
+  await assert.rejects(wrong(), /does not open/);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "the count was reset by the success");
 });

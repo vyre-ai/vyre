@@ -31,8 +31,8 @@ const PROBE = `export default { async start(ctx) {
 
 /** A module that skips ctx.vault.fetch and calls vault.release itself, with nothing declared. */
 const SNEAK = `export default { async start(ctx) {
-  ctx.tool("sneak.try", { input: { type: "object", properties: { name: { type: "string" } } },
-    run: async ({ name }) => { const r = await ctx.call("vault.release", { name }); return { refused: Boolean(r.error), message: r.error && r.error.message }; } });
+  ctx.tool("sneak.try", { input: { type: "object", properties: { name: { type: "string" }, project: { type: "string" } } },
+    run: async ({ name, project }) => { const r = await ctx.call("vault.release", { name, ...(project ? { project } : {}) }); return { refused: Boolean(r.error), message: r.error && r.error.message }; } });
   return { async stop() {} };
 } };`;
 
@@ -45,7 +45,9 @@ async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
     writeModule(mods, "sneak", { does: { tools: ["sneak.try"] } }, SNEAK);
   }
   const lines = [];
-  const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // The fixtures stand in for Vyre's own modules using the built in only vault.fetch
+  // (needs.vault, ADR 0047), so the home's modules folder loads as first party. Test only.
+  const d = await start({ root, presence: present, firstPartyRoots: [mods], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   return { root, d, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
 
@@ -77,11 +79,24 @@ test("vault: put, list, grant, fetch through a real module, revoke", async t => 
   const undeclared = await cli("probe.use", { name: "other" });
   assert.match(undeclared.error.message, /does not declare/);
 
+  // A grant scoped to one project (docs/design/session-credentials.md) only releases to a caller
+  // naming that project; a caller with no project concept still gets it, as every caller did
+  // before this column existed.
+  await cli("vault.grant", { name: "api-token", module: "sneak", project: "harlow" });
+  assert.equal((await cli("sneak.try", { name: "api-token" })).data.refused, false, "no project asked: matches any grant");
+  const wrongProject = (await cli("sneak.try", { name: "api-token", project: "northwind" })).data;
+  assert.equal(wrongProject.refused, true);
+  assert.match(wrongProject.message, /not granted to sneak/);
+  assert.equal((await cli("sneak.try", { name: "api-token", project: "harlow" })).data.refused, false);
+  assert.deepEqual((await cli("vault.list")).data.items[0].grants.find(g => g.module === "sneak"), { module: "sneak", project: "harlow" });
+  assert.equal((await cli("vault.revoke", { name: "api-token", module: "sneak", project: "harlow" })).data.revoked, 1);
+
   assert.equal((await cli("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 1);
   assert.match((await cli("probe.use", { name: "api-token" })).error.message, /not granted/);
 
   const trail = (await cli("vault.audit", { name: "api-token" })).data.entries.map(e => `${e.action}:${e.ok}`);
-  assert.deepEqual(trail.reverse(), ["add:true", "release:false", "grant:true", "release:true", "release:false", "revoke:true", "release:false"]);
+  assert.deepEqual(trail.reverse(), ["add:true", "release:false", "grant:true", "release:true", "release:false",
+    "grant:true", "release:true", "release:false", "release:true", "revoke:true", "revoke:true", "release:false"]);
   const types = d.events.since(0, { limit: 1000 }).map(e => e.type);
   for (const ty of ["vault.item-added", "vault.granted", "vault.released", "vault.revoked"]) assert.ok(types.includes(ty), `no ${ty}`);
 });
@@ -129,8 +144,8 @@ test("vault: Claude is never the channel for a value, and cannot give access on 
   assert.match((await mcp("vault.generate", {})).error.message, /give a name/);
 
   const offered = (await request("GET", "/v1/tools", undefined, { root, caller: "mcp" })).data.map(x => x.name);
-  for (const hidden of ["vault.put", "vault.inject", "vault.approve", "vault.unlock", "vault.release", "vault.totp", "vault.delete"]) assert.ok(!offered.includes(hidden), `${hidden} is offered to Claude`);
-  for (const shown of ["vault.list", "vault.grant", "vault.pass.create", "vault.offboard", "vault.import", "vault.audit"]) assert.ok(offered.includes(shown), `${shown} is missing for Claude`);
+  for (const hidden of ["vault.put", "vault.inject", "vault.approve", "vault.unlock", "vault.release", "vault.totp", "vault.delete", "vault.offboard"]) assert.ok(!offered.includes(hidden), `${hidden} is offered to Claude`);
+  for (const shown of ["vault.list", "vault.grant", "vault.pass.create", "vault.import", "vault.audit"]) assert.ok(offered.includes(shown), `${shown} is missing for Claude`);
 
   // Claude's grant waits for a person.
   const g = (await mcp("vault.grant", { name: "api-token", module: "probe" })).data.grant;

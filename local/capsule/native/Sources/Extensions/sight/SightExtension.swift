@@ -105,11 +105,12 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     /// again could clobber whatever came next (a new question, a follow-up box).
     private var finishedUtterance = false
     /// 2 minutes: a "still listening?" nudge. 5 minutes: stop (keeping the words), never sent.
-    /// Tests shorten both.
-    var silenceWarnDelay: Duration = .seconds(120)
-    var silenceStopDelay: Duration = .seconds(300)
-    private var silenceWarnTask: Task<Void, Never>?
-    private var silenceStopTask: Task<Void, Never>?
+    /// Seconds. Tests give `clock` a ManualClock and advance it, so no timing is involved.
+    var silenceWarnDelay: TimeInterval = 120
+    var silenceStopDelay: TimeInterval = 300
+    var clock: VyClock = SystemClock()
+    private var silenceWarnTask: VyTimer?
+    private var silenceStopTask: VyTimer?
     /// For tests: how the mic and the stream are made. Nil means vyre-mic and vyred's socket.
     var makeMic: (@Sendable (String) -> MicSource)?
     var openStream: Talker.Opener?
@@ -332,15 +333,11 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private func resetSilenceTimers() {
         silenceWarnTask?.cancel(); silenceStopTask?.cancel()
         let warn = silenceWarnDelay, stop = silenceStopDelay
-        silenceWarnTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: warn)
-            guard !Task.isCancelled, let self else { return }
-            self.say("Still listening? Option-Return to stop.")
+        silenceWarnTask = clock.schedule(after: warn) { [weak self] in
+            self?.say("Still listening? Option-Return to stop.")
         }
-        silenceStopTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: stop)
-            guard !Task.isCancelled, let self else { return }
-            _ = self.stopTalking()
+        silenceStopTask = clock.schedule(after: stop) { [weak self] in
+            _ = self?.stopTalking()
         }
     }
 
@@ -596,7 +593,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
 
     /// Why voice cannot start, from voice.status, or nil when it can.
     nonisolated static func cannotTalk(_ error: String?, _ status: [String: Any]) -> String? {
-        if let e = error { return e.contains("no_such_tool") || e.contains("no such tool") ? "vyred has no voice module; it needs a vyred with local/voice" : e }
+        if let e = error { return e.contains("no_such_tool") || e.contains("no such tool") ? "Vyre has no voice module; it needs a newer Vyre with local/voice" : e }
         if status["key"] as? Bool == true { return nil }
         switch status["key_state"] as? String {
         case "not_granted": return "The speech key is saved but voice may not use it yet. Allow it in the vault."
@@ -653,7 +650,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
                          _ run: @escaping @MainActor (SightExtension) async -> ActionOutcome) -> CapsuleCommand {
         CapsuleCommand(id: "sight:\(id)", title: title, keywords: keywords, icon: .symbol(symbol, .stone), subtitle: subtitle,
                        actions: [ResultAction(id: "run", title: title, symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
-                           guard let self else { return .failed("the Capsule is closing") }
+                           guard let self else { return .failed("Lumen is closing") }
                            return await run(self)
                        }])
     }

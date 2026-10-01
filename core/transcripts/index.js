@@ -26,7 +26,7 @@ export const CLIP = 4000;
 
 /**
  * @typedef {{ id: string, file: string, parent: string|null, size: number, mtime: number }} Entry
- * @typedef {{ seq: number, role: "user"|"assistant", ts: number, text: string }} Turn
+ * @typedef {{ seq: number, role: "user"|"assistant", ts: number, text: string, model?: string }} Turn
  * @typedef {{ id: string, file: string, cwd: string|null, name: string|null, title: string|null,
  *   started: number, ended: number, human: number, parent: string|null, turns: Turn[], redacted: number, bad: number }} Transcript
  */
@@ -148,7 +148,9 @@ export function turnOf(o) {
   if (typeof c === "string") text = c;
   else if (Array.isArray(c)) text = c.filter(p => p && p.type === "text" && typeof p.text === "string").map(p => p.text).join("\n");
   text = text.trim();
-  return text ? { role, text } : null;
+  // The model that wrote an assistant line (Claude Code records it on the message); a placeholder like "<synthetic>" is no model.
+  const model = role === "assistant" && typeof m.model === "string" && m.model && !m.model.startsWith("<") ? m.model.slice(0, 80) : null;
+  return text ? { role, text, ...(model ? { model } : {}) } : null;
 }
 
 /**
@@ -199,7 +201,7 @@ export function read(file, who = {}) {
     if (!turn) continue;
     const clean = redact(turn.text.length > CLIP ? turn.text.slice(0, CLIP) : turn.text);
     t.redacted += clean.hits.length;
-    t.turns.push({ seq: t.turns.length, role: turn.role, ts, text: clean.text });
+    t.turns.push({ seq: t.turns.length, role: turn.role, ts, text: clean.text, ...(turn.model ? { model: turn.model } : {}) });
     // The first real thing the user typed is a better title than anything generated. Command
     // echoes and injected context start with a tag and are not what anyone would call it.
     if (t.title === null && turn.role === "user" && !clean.text.startsWith("<") && clean.text.length > 3) {

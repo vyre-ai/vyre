@@ -1,7 +1,7 @@
 // @ts-check
 // A held Gate item, inline: exactly what Send will send, editable in place, never behind a
 // separate Edit surface (docs/work/gate-chat.md's pivot note; this carries the Mattermost-era
-// rule forward). Shape matched to the Capsule's (capsule teammate, 2026-09-27): a HELD FOR YOU
+// rule forward). Shape matched to Lumen's (capsule teammate, 2026-09-27): a HELD FOR YOU
 // badge, a To/Subject grid, a hairline, the body, everything contenteditable plaintext-only with
 // a Signal underline on focus, SEND primary with a keycap, DISCARD a ghost button, no Edit button.
 // Edits stay on the card until Send, which passes them as gate.approve's `edited` (only the fields
@@ -12,10 +12,12 @@
 // refused proof says why and leaves the buttons. While a presence session covers this device
 // (js/api.js), one quiet line under the buttons says until when, and Send asks for no passkey.
 
+import { kbd } from "../js/platform.js";
 import { h, put } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when } from "../js/fmt.js";
+import { failureLine, settledLines } from "./gate-lines.js";
 import { renderDiff } from "./lib/diff.js";
 import { problemLine } from "./presence.js";
 import { presenceWord } from "../js/need-rows.js";
@@ -31,7 +33,7 @@ const GRID_ORDER = ["to", "cc", "bcc", "subject", "url", "method"];
  */
 export function gateCard(held) {
   const el = h("div", { class: "gate-card" });
-  const state = { item: /** @type {any} */ (null), dirty: /** @type {Record<string, string>} */ ({}), busy: false, problem: /** @type {any} */ (null) };
+  const state = { item: /** @type {any} */ (null), dirty: /** @type {Record<string, string>} */ ({}), busy: false, problem: /** @type {any} */ (null), reached: /** @type {string|null} */ (null) };
 
   async function load() {
     const r = await attempt("gate.get", { id: held.id });
@@ -66,9 +68,10 @@ export function gateCard(held) {
     if (r.error) { state.problem = r.error; draw(); return; }
     // Approved but the sender failed: gate.js keeps it held with the edit as `final`, so reload it.
     state.dirty = {};
+    state.reached = r.data?.state === "failed" && typeof r.data.reached === "string" ? r.data.reached : null;
     await load();
     // gate.get carries the sender's error, which draw() shows; say it here only if it did not.
-    if (r.data?.state === "failed" && state.item && !state.item.error) { state.problem = { message: "Not sent: " + (r.data.error || "the sender failed") + ". It is still held; Send tries again." }; draw(); }
+    if (r.data?.state === "failed" && state.item && !state.item.error) { state.problem = { message: failureLine(r.data.error, r.data.reached) }; draw(); }
   }
 
   async function discard() {
@@ -87,6 +90,7 @@ export function gateCard(held) {
       put(el,
         h("div", { class: "gate-row" }, h("span", { class: "who" }, it.summary || it.via), h("span", { style: { flexGrow: "1" } }), h("span", { class: "when" }, when(it.at))),
         h("div", { class: "gate-resolved" }, icon(it.state === "sent" ? "check" : "close", 14), it.state === "sent" ? "Sent" : "Discarded"),
+        ...settledLines(it).map(t => h("div", { class: "gate-note" }, t)),
       );
       return;
     }
@@ -103,9 +107,9 @@ export function gateCard(held) {
       ...longKeys.map(k => longField(k)),
       it.why ? h("div", { class: "gate-note" }, it.why) : null,
       it.diff && (it.diff.removed?.length || it.diff.added?.length) ? h("div", null, h("div", { class: "code", style: { marginBottom: "4px" } }, "changed from the draft"), renderDiff(String(it.draft?.body ?? ""), String(it.final?.body ?? content.body ?? ""))) : null,
-      it.error ? h("div", { class: "gate-note" }, h("span", { class: "code" }, "failed: " + it.error), " Send tries again.") : null,
+      it.error ? h("div", { class: "gate-note" }, failureLine(it.error, state.reached)) : null,
       h("div", { class: "gate-actions" },
-        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, "⌘⏎")),
+        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: send }, "Send", h("span", { class: "kbd" }, kbd("Enter"))),
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: discard }, "Discard"),
         state.busy ? h("span", { class: "code" }, "…") : null,
       ),

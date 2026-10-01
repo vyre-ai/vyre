@@ -13,14 +13,14 @@ import Foundation
 
 public enum Bridge {
     static let missing = [
-        "agents": "The assistant and agents come with the switchboard, which this vyred is not running yet.",
-        "threads": "Driving a session needs the switchboard, which this vyred is not running yet.",
-        "gate": "Holds come from the Gate, which this vyred is not running yet.",
+        "agents": "The assistant and agents come with the switchboard, which this Vyre is not running yet.",
+        "threads": "Driving a session needs the switchboard, which this Vyre is not running yet.",
+        "gate": "Holds come from the Gate, which this Vyre is not running yet.",
     ]
 
     /// Words for an error, for the one line the Capsule shows.
     public static func explain(code: String, message: String) -> String {
-        if code == "unreachable" { return "vyred is not running. Start Vyre: Return on an empty Capsule." }
+        if code == "unreachable" { return "Vyre is not running. Start Vyre: Return on an empty Lumen." }
         if code == "presence" { return message }
         if code == "no_such_tool" {
             if let mod = VyRx.first("no tool (\\w+)\\.", message, group: 1, caseless: false), let words = missing[mod] { return words }
@@ -58,11 +58,11 @@ public enum Bridge {
     static func presenceRefused(code: String, message: String, lesson: Bool, yes: Bool, id: String) -> String? {
         guard code == "presence" || VyRx.test("presence|signed|passkey|person", message) else { return nil }
         if lesson {
-            return "Vyre needs proof that a person \(yes ? "accepted" : "declined") this, which the Capsule cannot give yet. Do it in the Deck, or with vyre learn \(yes ? "accept" : "retire") \(id). It is still waiting."
+            return "Vyre needs proof that a person \(yes ? "accepted" : "declined") this, which Lumen cannot give yet. Do it in the Deck, or with vyre learn \(yes ? "accept" : "retire") \(id). It is still waiting."
         }
         // The Capsule asked and the person said no, or it could not ask: its own words.
         if code == "presence" { return "\(message) It is still held." }
-        return "Vyre needs proof that a person \(yes ? "approved" : "discarded") this, and it refused the Capsule's. Do it in the Deck. It is still held."
+        return "Vyre needs proof that a person \(yes ? "approved" : "discarded") this, and it refused Lumen's. Do it in the Deck. It is still held."
     }
 
     /// vyred's home from its socket, when the socket sits in it (<home>/vyred.sock).

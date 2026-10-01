@@ -139,7 +139,7 @@ the tunnel dropping every few minutes, make the tailnet unreliable as the only p
   fallback.
 
 The flow runs from the laptop ("Add your phone" in Devices, or `vyre phone add`): pick the phone, <!-- terms: ignore -->
-scan the single-use relay QR (10 min), install, then live checks the laptop watches turn lime:
+scan the single-use relay QR (10 min), install, then live checks the laptop watches turn bone:
 reached the box (via relay), HTTPS works, opened as an app, test notification arrived, Face ID key
 saved. Then an optional card, "Faster and private: add Tailscale", whose check reads "Switched to
 Tailscale · direct 18 ms" once the phone reaches it. Android with a cable: `vyre phone add <!-- terms: ignore -->

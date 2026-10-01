@@ -74,13 +74,13 @@ extension CapsuleModel {
         case .recall: title = "Memory only"
         }
         let unavailable = Bridge.needs(d).flatMap { vyred.has($0) || !vyred.isUp ? nil : Bridge.explain(code: "no_such_tool", message: "no tool \($0.split(separator: ".")[0]).") }
-        let sub = unavailable ?? why ?? (d.kind == .recall ? (showsMemory ? "Memory answered above. There is no assistant on this vyred to ask further." : "Nothing in memory answers that yet, and there is no assistant on this vyred to ask.") : d.meta)
+        let sub = unavailable ?? why ?? (d.kind == .recall ? (showsMemory ? "Memory answered above. There is no assistant on this Vyre to ask further." : "Nothing in memory answers that yet, and there is no assistant on this Vyre to ask.") : d.meta)
         let id = "dest:\(d.kind.rawValue):\(d.agent ?? ""):\(d.project ?? ""):\(d.thread ?? ""):\(d.model ?? "")"
         let symbol = d.kind == .quick ? "sparkle" : d.kind == .thread ? "arrowshape.turn.up.right" : "paperplane"
         return ResultItem(id: id, kind: "ask", title: title, subtitle: sub, icon: .mark, section: .vyre, score: 0,
                           actions: [ResultAction(id: "go", title: d.kind == .quick ? "Ask" : "Send", symbol: symbol) { [weak self] _, _ in
                               if let u = unavailable { return .failed(u) }
-                              return await self?.go(d, words) ?? .failed("The Capsule closed.")
+                              return await self?.go(d, words) ?? .failed("Lumen closed.")
                           }], sendsTo: d.kind == .quick ? (d.deep ? "\(assistantName), deeper" : assistantName) : to)
     }
 
@@ -88,7 +88,7 @@ extension CapsuleModel {
     func go(_ d: VyreDestination, _ words: String) async -> ActionOutcome {
         switch d.kind {
         case .quick: return await ask(words, model: d.model ?? models.quick)
-        case .recall: return .said("Nothing to send to: there is no assistant on this vyred yet. Memory has answered what it can.")
+        case .recall: return .said("Nothing to send to: there is no assistant on this Vyre yet. Memory has answered what it can.")
         case .assistant, .agent:
             let a = d.agent ?? ""
             // With the conversation open, the words go into it and the reply streams there.

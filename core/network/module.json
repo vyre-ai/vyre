@@ -1,11 +1,11 @@
 {
   "name": "network",
   "version": "0.1.0",
-  "description": "Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools.",
+  "description": "Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the box's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.",
   "roles": ["box"],
   "requires": [],
-  "does": { "tools": ["network.guests.list", "network.guests.add", "network.guests.remove", "network.guests.enable", "network.guests.check"] },
-  "watches": { "emits": ["guest.added", "guest.removed"] },
+  "does": { "tools": [{ "name": "network.guests.list", "reach": "person" }, { "name": "network.guests.add", "reach": "person" }, { "name": "network.guests.remove", "reach": "person" }, { "name": "network.guests.enable", "reach": "person" }, { "name": "network.guests.check", "reach": "person" }, { "name": "network.funnel.status", "reach": "person" }, { "name": "network.tailscale.status", "reach": "anyone" }, { "name": "network.tailscale.login", "reach": "anyone" }, { "name": "network.tailscale.peers", "reach": "anyone" }] },
+  "watches": { "emits": ["guest.added", "guest.removed", "funnel.changed", "tailscale.changed"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": {},
   "teaches": {

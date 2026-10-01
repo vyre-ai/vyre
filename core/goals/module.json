@@ -4,7 +4,7 @@
   "description": "A goal and an ordered milestone list, attached to a session or a project. An agent may propose one; a person's tap (goals.accept) makes it real.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["goals.set", "goals.accept", "goals.milestone-done", "goals.get", "goals.list"] },
+  "does": { "tools": [{ "name": "goals.set", "reach": "anyone", "projectArg": "project" }, { "name": "goals.accept", "reach": "person" }, { "name": "goals.milestone-done", "reach": "anyone" }, { "name": "goals.get", "reach": "anyone" }, { "name": "goals.list", "reach": "anyone", "projectArg": "project" }] },
   "watches": { "emits": ["goal.created", "goal.proposed", "goal.accepted", "goal.milestone", "goal.done"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": {},

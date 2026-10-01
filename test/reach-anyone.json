@@ -1,0 +1,1665 @@
+{
+ "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
+ "tools": {
+  "agents.ask": {
+   "module": "agents",
+   "reason": "guard() refuses non-assistant agent labels; modelMay refuses a plain mcp or harness caller with no verified thread or agent; sessions, the verified assistant, the person and modules pass (onboard asks as a module)"
+  },
+  "agents.create": {
+   "module": "agents",
+   "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
+  },
+  "agents.history": {
+   "module": "agents",
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
+  },
+  "agents.list": {
+   "module": "agents",
+   "reason": "read-only: names, kinds and project grants; guard() refuses non-assistant agent labels"
+  },
+  "agents.resume": {
+   "module": "agents",
+   "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
+  },
+  "agents.rollover": {
+   "module": "agents",
+   "reason": "caller allowlist: module:assistant or the person's own surfaces only"
+  },
+  "agents.stop": {
+   "module": "agents",
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules stop an agent; a session or a plain caller is refused"
+  },
+  "agents.threads": {
+   "module": "agents",
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
+  },
+  "agents.update": {
+   "module": "agents",
+   "reason": "PERSON_ONLY at the socket peer check and the harness floor; modules call it for the person (see reach-person-only.json)"
+  },
+  "agents.usage": {
+   "module": "agents",
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
+  },
+  "artifacts.activity": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
+  },
+  "artifacts.archive": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
+  },
+  "artifacts.create": {
+   "module": "artifacts",
+   "reason": "own-scope check: target() puts an agent's artifact only in its own project (or its own space); the maker is recorded from the call, never the input; content is secret-scanned only for a share"
+  },
+  "artifacts.delete": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; a delete keeps 30 days to undo"
+  },
+  "artifacts.diff": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.export": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; export only reads: it returns the file to the caller and changes nothing"
+  },
+  "artifacts.get": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.list": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.media.copy": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() with the read option (own project or a # tag) on the artifact, and the file is copied only into the caller's own registered artifacts folder (the folder must still be the registered one); it never writes anywhere else and never changes the artifact"
+  },
+  "artifacts.media.read": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag), and the tool refuses any caller that is not the person or a first-party module"
+  },
+  "artifacts.move": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; an agent may move only into its own project"
+  },
+  "artifacts.public.status": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.restore": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() runs on the artifact's own project for the caller; restore only writes a NEW version from an old one in that same artifact, so nothing is lost and nothing leaves the project; the version is marked untrusted when an agent makes it"
+  },
+  "artifacts.search": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.share": {
+   "module": "artifacts",
+   "reason": "the Gate's outward post hold (module.json declares outward post, so an agent's or a module's call is held for the person), plus the fail-closed stopgap in the tool: artifacts.share refuses anyone but the person unless the Gate's own mark (meta.gate) is on the call; a share also refuses when public links are off or the content looks like it holds a secret"
+  },
+  "artifacts.undelete": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach(id, meta, {deleted: true}) runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made); undelete only brings back what the same scope deleted, within the 30 day window"
+  },
+  "artifacts.unshare": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() runs on the artifact's own project for the caller; it only stops a link (never publishes anything), so it is never held, and anyone who can reach the artifact can withdraw it"
+  },
+  "artifacts.update": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
+  },
+  "artifacts.versions": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "assistant.brief": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.capabilities": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.daily": {
+   "module": "assistant",
+   "reason": "guard: in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent; it rolls the assistant's own daily thread and nothing else, deferred while the assistant is working"
+  },
+  "assistant.glance": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.log": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.patterns": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.prompt.diff": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.welcome": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "chrome.act": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.api": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.approve": {
+   "module": "chrome",
+   "reason": "posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
+  },
+  "chrome.batch": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.click": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.console": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.eval": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.fill": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.frames": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.ghl": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.inspect": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.login": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.net": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.open": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.plan": {
+   "module": "chrome",
+   "reason": "posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
+  },
+  "chrome.point": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard); the URL floor applies to the tab and to the frame the point lands in; what is under the point is classified by its text (a Send, Delete, publish or payment holds at the Gate whatever the plan says) and a drawn surface (no text of its own) holds unless the approved plan covers it for this tab and origin (trust.pointBudget, set only by the module); the page must still match the kept screenshot. Tests: local/hands-chrome-mac/ext-point.test.js and the point_rung stage"
+  },
+  "chrome.recipe": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.screenshot": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.site": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.snapshot": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.sources": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.state": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.status": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.stop": {
+   "module": "chrome",
+   "reason": "a model may stop itself: it only halts (oversight.stop), never changes a page; chrome.resume is callers: PEOPLE, so a stop is undone only by the person"
+  },
+  "chrome.summary": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.tabs": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "chrome.type": {
+   "module": "chrome",
+   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.wait": {
+   "module": "chrome",
+   "reason": "read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+  },
+  "computers.checkout": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.get": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
+  "computers.giveback": {
+   "module": "computers",
+   "reason": "PERSON_ONLY floor (core/presence) plus the ownSurface check: an agent that is not the assistant is refused; the assistant is an mcp caller and the owner's way to these tools from chat, so reach person would cut it off"
+  },
+  "computers.limits": {
+   "module": "computers",
+   "reason": "callers check in code: an agent that is not the assistant is refused (the user sets limits); the assistant and the person may set them"
+  },
+  "computers.list": {
+   "module": "computers",
+   "reason": "read-only: an agent sees only its own computer (resolve() and the self-only list filter); the assistant may see all"
+  },
+  "computers.pause": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.release": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.restart": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.stop": {
+   "module": "computers",
+   "reason": "own-computer scope: resolve() lets an agent name only its own computer and refuses any other (the assistant may name another); a stop or restart removes no data (the home volume stays)"
+  },
+  "computers.takeover": {
+   "module": "computers",
+   "reason": "PERSON_ONLY floor (core/presence) plus the ownSurface check: an agent that is not the assistant is refused; the assistant is an mcp caller and the owner's way to these tools from chat, so reach person would cut it off"
+  },
+  "computers.watch": {
+   "module": "computers",
+   "reason": "ownSurface check in code: an agent that is not the assistant is refused, and the one-use ticket is for a person's screen"
+  },
+  "events.catalog": {
+   "module": "events",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "files.dirs": {
+   "module": "files",
+   "reason": "read-only: names of folders inside the files roots through the guard (no dot folders, no secrets), no content"
+  },
+  "files.drive.audit": {
+   "module": "files",
+   "reason": "owner check inside: reach(ctx).all is required, an agent is refused; it reports and changes nothing"
+  },
+  "files.drive.candidates": {
+   "module": "files",
+   "reason": "scope check: a scoped caller sees only granted folders; read-only"
+  },
+  "files.drive.list": {
+   "module": "files",
+   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
+  },
+  "files.drive.local": {
+   "module": "files",
+   "reason": "scope check: a named agent gets a local path only for a box path inside its grant; read-only"
+  },
+  "files.drive.measure": {
+   "module": "files",
+   "reason": "scope check: a scoped caller may measure only inside its granted folders (real path checked); read-only"
+  },
+  "files.drive.read": {
+   "module": "files",
+   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
+  },
+  "files.drive.search": {
+   "module": "files",
+   "reason": "scope check: a named agent searches only the intersection of each share and its granted folders; read-only"
+  },
+  "files.drive.status": {
+   "module": "files",
+   "reason": "scope check: a named agent sees only the shares inside its granted projects; read-only"
+  },
+  "files.fetch": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only, and a restricted agent never reaches the other machine"
+  },
+  "files.preview": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
+  },
+  "files.recent": {
+   "module": "files",
+   "reason": "read-only: the folders sessions worked in lately, through the guard"
+  },
+  "files.search": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to the folders of the projects it is granted; secrets and dot folders are refused by the files guard"
+  },
+  "files.stat": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
+  },
+  "gate.approve": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller; presence proof required"
+  },
+  "gate.get": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller"
+  },
+  "gate.held": {
+   "module": "gate",
+   "reason": "read-only: the held queue; owner scope of the caller's thread"
+  },
+  "gate.reject": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller"
+  },
+  "gate.request": {
+   "module": "gate",
+   "reason": "held at the Gate: it only files a request the person approves; an asked confirmation is valid only from a person's surface and a mismatch always holds"
+  },
+  "gate.revise": {
+   "module": "gate",
+   "reason": "callers list in code (cli, local, module, tailnet): no model caller"
+  },
+  "gate.said.list": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "gate.said.revoke": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "gate.senders": {
+   "module": "gate",
+   "reason": "read-only: the sender catalog, never a credential"
+  },
+  "gate.settle": {
+   "module": "gate",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "github.accounts": {
+   "module": "github",
+   "reason": "read-only: names, logins and avatars of connected accounts, never a token; callers list is the person's surfaces plus first-party modules (checked in code)"
+  },
+  "github.mentions.resolve": {
+   "module": "github",
+   "reason": "read-only: one repo, PR or issue as context, marked outside text; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+  },
+  "github.mentions.search": {
+   "module": "github",
+   "reason": "read-only: repo, PR and issue names and short hints; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+  },
+  "github.project.issue.get": {
+   "module": "github",
+   "reason": "read-only: one issue with comments marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.issue.list": {
+   "module": "github",
+   "reason": "read-only: a repo's issues, titles marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.local-init": {
+   "module": "github",
+   "reason": "guard: callers list (person, agents, first-party projects/sessions/threads) and a project-grant check (inGrant); only a folder with no history becomes a repo, secret-looking files stay out of the first commit, nothing is overwritten"
+  },
+  "github.project.of": {
+   "module": "github",
+   "reason": "read-only: which account and repo a project came from; callers are the person's surfaces and first-party sessions and threads (checkModuleCaller)"
+  },
+  "github.project.pr.comments": {
+   "module": "github",
+   "reason": "read-only: a PR's comments marked person or outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.pr.get": {
+   "module": "github",
+   "reason": "read-only: one PR shaped for the review card; the project-grant check (inGrant) bounds an agent to its granted projects; text from others is marked outside"
+  },
+  "github.project.pr.status": {
+   "module": "github",
+   "reason": "read-only: checks, reviews and a ready verdict, no text from others; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.repos": {
+   "module": "github",
+   "reason": "read-only: the repos an account can see; callers are the person's surfaces and module:sessions only (checkModuleCaller)"
+  },
+  "github.session.history": {
+   "module": "github",
+   "reason": "read-only: a session's own commits and uncommitted count; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.push": {
+   "module": "github",
+   "reason": "guard: pushes only the session's own vyre/<id> branch, by explicit refspec, never forced, to the project's recorded repo from a throwaway repo that reads none of the project's git config; the outgoing commits are secret-scanned and allow_secret counts only for a person or a call the person's words asked for; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.redo": {
+   "module": "github",
+   "reason": "guard: restores only what github.session.undo saved for that session, refused when the branch moved on; never touches the default branch or a remote; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.undo": {
+   "module": "github",
+   "reason": "guard: acts only on the session's own worktree and branch; nothing is deleted (the tip and unsaved work are kept under a ref and github.session.redo restores them); never touches the default branch or a remote; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "glass.files.download": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.list": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.mkdir": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.move": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.preview": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.stat": {
+   "module": "glass",
+   "reason": "read-only; filesFor() limits an agent caller to its own computer's files, and private places and key files are never shown"
+  },
+  "glass.files.trash": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.upload": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "goals.get": {
+   "module": "goals",
+   "reason": "read-only"
+  },
+  "goals.list": {
+   "module": "goals",
+   "reason": "read-only"
+  },
+  "goals.milestone-done": {
+   "module": "goals",
+   "reason": "callerMayTouch in core/goals: an agent only in its own thread or project"
+  },
+  "goals.set": {
+   "module": "goals",
+   "reason": "an agent's goal is a proposal (state pending) in its own thread or project only; goals.accept is person"
+  },
+  "google.accounts": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.add": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.calendar.create": {
+   "module": "google",
+   "reason": "an invite with attendees is held at the Gate; a solo event is written only on a connected account (forWrite) and tells nobody"
+  },
+  "google.calendar.list": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.next": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.search": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.today": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.calendar.update": {
+   "module": "google",
+   "reason": "an invite with attendees is held at the Gate; a change with no attendees is written only on a connected account (forWrite) and tells nobody"
+  },
+  "google.connect": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.connect.cancel": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.connect.finish": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.find": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.mail.draft": {
+   "module": "google",
+   "reason": "a draft goes nowhere: the person sends it, or it is held at the Gate with google.mail.send; connected account only (forWrite)"
+  },
+  "google.mail.read": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.mail.search": {
+   "module": "google",
+   "reason": "read-only: names and states, never a value"
+  },
+  "google.mail.send": {
+   "module": "google",
+   "reason": "held at the Gate: always held until the person approves the final content; nothing sends from here"
+  },
+  "google.remove": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "google.test": {
+   "module": "google",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "hands-desktop.act": {
+   "module": "hands-desktop",
+   "reason": "scoped to the agent's own computer (resolveAgent); computers.may-act refuses while paused or taken over; a consequential control is held (consequence.js)"
+  },
+  "hands-desktop.apps": {
+   "module": "hands-desktop",
+   "reason": "read-only; resolveAgent scopes an agent to its own computer, and computers.may-act refuses reads while shielded"
+  },
+  "hands-desktop.screenshot": {
+   "module": "hands-desktop",
+   "reason": "read-only; resolveAgent scopes an agent to its own computer, and computers.may-act refuses reads while shielded"
+  },
+  "hands-desktop.tree": {
+   "module": "hands-desktop",
+   "reason": "read-only; resolveAgent scopes an agent to its own computer, and computers.may-act refuses reads while shielded"
+  },
+  "hands.act": {
+   "module": "hands",
+   "reason": "an agent needs the person's grant (gated); a consequential control is held at the Gate (consequence.js), and a stop or pause refuses the act"
+  },
+  "hands.commit": {
+   "module": "hands",
+   "reason": "an agent needs the person's grant (gated); a consequential control is held at the Gate (consequence.js), and a stop or pause refuses the act"
+  },
+  "hands.find": {
+   "module": "hands",
+   "reason": "read-only; gated by the grant (agents need hands.grant.add by the person) and the hands floor"
+  },
+  "hands.grant.list": {
+   "module": "hands",
+   "reason": "callers list in code: cli, local, deck, capsule and module only; read-only"
+  },
+  "hands.indicator": {
+   "module": "hands",
+   "reason": "callers list in code: cli, local, deck, capsule and module only; read-only"
+  },
+  "hands.observe": {
+   "module": "hands",
+   "reason": "read-only; gated by the grant (agents need hands.grant.add by the person) and the hands floor"
+  },
+  "hands.stop": {
+   "module": "hands",
+   "reason": "a model may stop itself: it only halts (hands.halt), never acts; hands.resume is callers: PEOPLE"
+  },
+  "harness.brief": {
+   "module": "harness",
+   "reason": "own-session check (own(), core/harness): a verified hook names only its own session; an unverified SessionStart brief only informs (it warns a terminal resuming a live headless thread), so it may name any session; it reads and says, never drains"
+  },
+  "harness.enrich": {
+   "module": "harness",
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
+  },
+  "harness.learn": {
+   "module": "harness",
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
+  },
+  "harness.rules": {
+   "module": "harness",
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
+  },
+  "harness.stop": {
+   "module": "harness",
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
+  },
+  "harness.touched": {
+   "module": "harness",
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
+  },
+  "hooks.delivery": {
+   "module": "hooks",
+   "reason": "callers check in the tool: any mcp, harness or agent caller is refused (a webhook body is untrusted data for the owner's watchers); guests and the internet are refused by reader()"
+  },
+  "hooks.list": {
+   "module": "hooks",
+   "reason": "read-only: open routes with vault item names, never values; reader() refuses guests and the internet"
+  },
+  "hooks.status": {
+   "module": "hooks",
+   "reason": "read-only: the listener and what Funnel publishes; reader() refuses guests and the internet"
+  },
+  "link.call": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.events": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.find": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.health": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.hello": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.macs": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pair.approve": {
+   "module": "link",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "link.pair.poll": {
+   "module": "link",
+   "reason": "tailnetLogin(caller) check plus a secret compared in constant time and the asking node pinned (peer.stableId): the link key goes once to the node that asked"
+  },
+  "link.pair.request": {
+   "module": "link",
+   "reason": "tailnetLogin(caller) check in the tool: only the owner's own device over the tailnet may start a pairing, the code shows on that device only, and pending requests are capped"
+  },
+  "link.peers": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pending": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.reply": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.serve": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.signin": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.status": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "mail.accounts": {
+   "module": "mail",
+   "reason": "read-only: names and states, never a value"
+  },
+  "mail.compose": {
+   "module": "mail",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "mail.find": {
+   "module": "mail",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
+  },
+  "mail.map": {
+   "module": "mail",
+   "reason": "callers list in code (cli, deck, local, module): no model caller"
+  },
+  "mail.read": {
+   "module": "mail",
+   "reason": "read-only: names and states, never a value"
+  },
+  "mail.search": {
+   "module": "mail",
+   "reason": "read-only: names and states, never a value"
+  },
+  "mail.send": {
+   "module": "mail",
+   "reason": "held at the Gate: always held until the person approves; the account must be allowed to send (capabilities check)"
+  },
+  "mail.test": {
+   "module": "mail",
+   "reason": "callers list in code (cli, deck, local, module): no model caller"
+  },
+  "names.check": {
+   "module": "names",
+   "reason": "read-only: whether a name is free; no side effect"
+  },
+  "names.claim": {
+   "module": "names",
+   "reason": "the steward check in the tool: a callers list of the person's surfaces plus module, narrowed by name to module:onboard and module:launch; refuses an agent claim, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
+  },
+  "names.connect": {
+   "module": "names",
+   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:onboard and module:launch; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
+  },
+  "names.fallback": {
+   "module": "names",
+   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:onboard and module:launch; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
+  },
+  "names.owner": {
+   "module": "names",
+   "reason": "the steward check in the tool: callers list of surfaces plus module, narrowed to module:network for the owner adoption during a live setup; refuses an agent, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
+  },
+  "names.status": {
+   "module": "names",
+   "reason": "read-only; no secret, no side effect"
+  },
+  "network.tailscale.login": {
+   "module": "network",
+   "reason": "the positive callers check allowed() in the tool: the person's surfaces, their devices, module:onboard and their own session; refuses a guest, another agent, an added module and anonymous"
+  },
+  "network.tailscale.peers": {
+   "module": "network",
+   "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
+  },
+  "network.tailscale.status": {
+   "module": "network",
+   "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
+  },
+  "planner.add": {
+   "module": "planner",
+   "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
+  },
+  "planner.agenda": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.calendar.create": {
+   "module": "planner",
+   "reason": "guard: an agent may only ask for an invite; attendees mean invites, which hold at the Gate for the person (returns held); its own planner event is the agent's own item"
+  },
+  "planner.calendar.sync": {
+   "module": "planner",
+   "reason": "guard: reads the connected Google calendars into the planner's own copy only; it never writes to a calendar and changes nothing of the person's"
+  },
+  "planner.delete": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.dismiss": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.done": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.get": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.list": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.parse": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.ringing": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.snooze": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.upcoming": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.update": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "presence.capsule.pin": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.code": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.enroll": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.keys": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.person.sessions": {
+   "module": "presence",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "presence.person.start": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.remove": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.session.open": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.check": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.access.grant": {
+   "module": "projects",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.list": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.migrate": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.archive": {
+   "module": "projects",
+   "reason": "callers list in code (cli, local, capsule, deck, module; no mcp), person-only by the floor; module:agents and presence archive on the person's behalf"
+  },
+  "projects.catalog": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.context": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.create": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.history": {
+   "module": "projects",
+   "reason": "read-only; callers in code: capsule, cli, deck, local, mcp"
+  },
+  "projects.list": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.of": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.rename": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.threads": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "providers.list": {
+   "module": "providers",
+   "reason": "read-only: names and states, never a value"
+  },
+  "relay.pair.first": {
+   "module": "relay",
+   "reason": "callers list in the tool: only the onboarding page's caller, and the tool refuses once a device is paired or an owner exists"
+  },
+  "relay.pair.start": {
+   "module": "relay",
+   "reason": "the callers list (surfaces, the owner's devices, a module) plus owner() in the tool, which refuses a model, an agent, a hook, a guest and anonymous, and the presence proof the tool requires"
+  },
+  "relay.setup.status": {
+   "module": "relay",
+   "reason": "the setup channel's own allowlist and the owner() style check in the tool; read-only, answers state and the words, no secret"
+  },
+  "relay.status": {
+   "module": "relay",
+   "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
+  },
+  "relay.tailnet.status": {
+   "module": "relay",
+   "reason": "owner() check in the tool refuses a model, an agent, a hook, a guest and anonymous; read-only"
+  },
+  "releases.cert": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, deck, local, tailnet"
+  },
+  "releases.sign": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, local, module"
+  },
+  "screen.context": {
+   "module": "screen",
+   "reason": "shows the real screen (mail, banks, passwords), so a model needs the person's computer-use grant: an agent caller needs its own grant AND a posted plan (agentGate: hands.grant.list, then chrome.plan.check), a plain model session (mcp) needs the one-time grant hands.grant.add { agent: \"mcp\" } and then no prompts; refused otherwise. The person's own surfaces (cli, local, deck, capsule) and modules are not asked (Lumen's ask about my screen). Local only: refusePeer refuses a tailnet caller; secure fields and blind places stay redacted. Tests: local/screen-mac/module.test.js"
+  },
+  "screen.shot": {
+   "module": "screen",
+   "reason": "shows the real screen (mail, banks, passwords), so a model needs the person's computer-use grant: an agent caller needs its own grant AND a posted plan (agentGate: hands.grant.list, then chrome.plan.check), a plain model session (mcp) needs the one-time grant hands.grant.add { agent: \"mcp\" } and then no prompts; refused otherwise. The person's own surfaces (cli, local, deck, capsule) and modules are not asked (Lumen's ask about my screen). Local only: refusePeer refuses a tailnet caller; secure fields and blind places stay redacted. Tests: local/screen-mac/module.test.js"
+  },
+  "sessions.accounts.add": {
+   "module": "sessions",
+   "reason": "askedOnly(): runs for a person's surface, on meta.asked, or for the verified assistant (meta.agent), which only STARTS an account: it covers the request's project only and is pending (never resolved, never a fallback) until the person finishes it on their own device; any other agent gets not_asked"
+  },
+  "sessions.accounts.bind": {
+   "module": "sessions",
+   "reason": "askedOnly(): a non-person (the verified assistant, or on meta.asked) binds only to the project the request came from, never an agent, a default or '*', and never finishes a pending account; the person's surface sets anything wider and confirms any pending account"
+  },
+  "sessions.accounts.list": {
+   "module": "sessions",
+   "reason": "read-only (an agent sees accounts without their vault item names)"
+  },
+  "sessions.accounts.signin": {
+   "module": "sessions",
+   "reason": "askedOnly(): as add; a non-person starts a sign-in only for a new or still-pending account, scoped to the request's project, and the account stays pending after the sign-in, whoever completed it, until the person confirms it on their own surface (bind with confirm)"
+  },
+  "sessions.limits.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.mode.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.models": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.models.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.prompt.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.prompt.history": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.prompt.preview": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.routes.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.slots.status": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.status": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sessions.usage.get": {
+   "module": "sessions",
+   "reason": "read-only"
+  },
+  "sideview.close": {
+   "module": "sideview",
+   "reason": "window tiling on this Mac only, never content: tailnet callers are refused in code (local callers only); no titles are logged or emitted; status is read-only"
+  },
+  "sideview.open": {
+   "module": "sideview",
+   "reason": "window tiling on this Mac only, never content: tailnet callers are refused in code (local callers only); no titles are logged or emitted; status is read-only"
+  },
+  "sideview.status": {
+   "module": "sideview",
+   "reason": "window tiling on this Mac only, never content: tailnet callers are refused in code (local callers only); no titles are logged or emitted; status is read-only"
+  },
+  "sight.frame": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.now": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.steps": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.targets": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sight.watch": {
+   "module": "sight",
+   "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "sync.consent": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete": {
+   "module": "sync",
+   "reason": "callers list in code (cli, local, deck, capsule) and a preview unless confirm: true. Weak on its own: confirm is caller-supplied and cli or local is only as strong as the socket label, so a detached child could claim cli. The socket-trust inversion (a person label only from the owner's login session) closes that; its tests include a detached child claiming cli with confirm:true, which must be refused"
+  },
+  "sync.delete.import": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.scan": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.upload.cancel": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.chunk": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.finish": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.plan": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.start": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "team.ask": {
+   "module": "team",
+   "reason": "project check in code: only the person or a session in that project may ask; the request carries its asker and queues serially; a teammate's outward act still holds at the Gate"
+  },
+  "team.cancel": {
+   "module": "team",
+   "reason": "owner check in code: only the requester or the person, and only a queued request; stopping a running one is the person's"
+  },
+  "team.charter.diff": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the teammate's project, or the teammate itself"
+  },
+  "team.charter.draft": {
+   "module": "team",
+   "reason": "project check in code (person, assistant or a session in the project, never a teammate); saved as a new version the person can read and revert"
+  },
+  "team.charter.get": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the teammate's project, or the teammate itself"
+  },
+  "team.charter.history": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the teammate's project, or the teammate itself"
+  },
+  "team.default.get": {
+   "module": "team",
+   "reason": "read-only; callers limited in code to the person's surfaces and modules, never mcp"
+  },
+  "team.done": {
+   "module": "team",
+   "reason": "owner check in code: only the teammate whose request it is, and only while it is running"
+  },
+  "team.duties.create": {
+   "module": "team",
+   "reason": "scope check in code; a model's duty is only a proposal (off, no watcher) until the person turns it on, and a teammate may only propose for itself"
+  },
+  "team.duties.list": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the person, the assistant, a session in the project, or the teammate itself"
+  },
+  "team.duties.update": {
+   "module": "team",
+   "reason": "owner check in code: a model may only pause or edit a proposal; turning one on or editing a running duty is refused, that is the person's tap"
+  },
+  "team.fail": {
+   "module": "team",
+   "reason": "owner check in code: only the teammate whose request it is, and only while it is running"
+  },
+  "team.list": {
+   "module": "team",
+   "reason": "read-only; scope check in code: the caller's own project, and every project only for the person or the assistant"
+  },
+  "team.merge": {
+   "module": "team",
+   "reason": "owner check in code: only the project's integrator, and only with an attested passing exit code; main moves by compare-and-swap and the result says an agent vouched for it"
+  },
+  "team.notes": {
+   "module": "team",
+   "reason": "owner check in code: the teammate itself or the person writes its notes; a session in the project reads them"
+  },
+  "team.project-append": {
+   "module": "team",
+   "reason": "read-only; callers limited in code to the person's surfaces and modules, never mcp"
+  },
+  "team.project-has-any": {
+   "module": "team",
+   "reason": "read-only; callers limited in code to the person's surfaces and modules, never mcp"
+  },
+  "team.status": {
+   "module": "team",
+   "reason": "read-only; owner check in code: the requester, the teammate or the person"
+  },
+  "threads.answer": {
+   "module": "threads",
+   "reason": "callers list in code (cli, local, deck, capsule) plus the link: callers a paired Mac federates through (the box's answer to a Mac's ask) and modules answering the box's own asks; PERSON_ONLY at the socket peer check, so a model's shell never answers; a model never approves a permission in the tool; any installed module may answer an ask (module is on the callers list): a module is the person's own installed code, and a call traced to the session that raised the ask is refused"
+  },
+  "threads.archive": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.asks": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.bind": {
+   "module": "threads",
+   "reason": "callers list (harness) plus a check in the daemon route: the pid must be the caller's own process or one above it, where the OS can tell; claudeOf needs a running claude; a live session bound to another process is refused"
+  },
+  "threads.commands": {
+   "module": "threads",
+   "reason": "read-only: the slash commands a thread offers"
+  },
+  "threads.delete": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.effort": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.fork": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.get": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.interrupt": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.items": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.lease": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.list": {
+   "module": "threads",
+   "reason": "guard() refuses non-assistant agent labels; the rows are filtered by sessionMay (a session sees its own project's threads and its children)"
+  },
+  "threads.model": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.queue": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.release": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.rewind": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.send": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; modules call it (keyboard, glass, agents), so it cannot be person"
+  },
+  "threads.send-now": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.start": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; a session's start of a child records it as the parent"
+  },
+  "threads.stop": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; agents.stop stops threads through it as module:agents"
+  },
+  "threads.switch": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.tasks": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.thinking": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.unarchive": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.unwatch": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.watch": {
+   "module": "threads",
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "undo.list": {
+   "module": "undo",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "undo.run": {
+   "module": "undo",
+   "reason": "own-action check in the tool: the person, or whoever did the action (sameActor); the inverse runs as module:undo, never as the person, and only a declared inverse that is not outward or person-only is replayed"
+  },
+  "vault.account.create": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.account.enroll-touchid": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.account.status": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.account.unlock": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.agent.grant": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
+  },
+  "vault.agent.grants": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.audit": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.backup": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.breach.check": {
+   "module": "vault",
+   "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.caps": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.clipboard.clear": {
+   "module": "vault",
+   "reason": "guard in code: it clears only a clipboard that still holds the value vyred copied (hash compared first); no secret read or written"
+  },
+  "vault.codes": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.codes.import": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.connections.list": {
+   "module": "vault",
+   "reason": "read-only and own-scope: the caller's surface sees only its own connections; callers list in code"
+  },
+  "vault.connections.revoke": {
+   "module": "vault",
+   "reason": "own-scope check: only the caller's own surface use is taken away; taking access away is always allowed"
+  },
+  "vault.copy": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
+  },
+  "vault.delete": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and module): a person's surface needs a presence proof; a first-party module may delete only an item whose origin is that module (set by vyred at put, a refusal otherwise), and an added module is refused (not_declared)"
+  },
+  "vault.device.approve": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.device.code": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.device.join": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller"
+  },
+  "vault.device.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.device.unlock": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.devices": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.edit": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.emergency.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.env.scan": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.fill.native": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.fingerprint": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.generate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mcp): a named password is stored and never returned; it adds an item and reads none"
+  },
+  "vault.git": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.grant": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
+  },
+  "vault.grants.status": {
+   "module": "vault",
+   "reason": "read-only: tailnet policy status per pass holder, never a value"
+  },
+  "vault.health": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.history": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.identity": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.import": {
+   "module": "vault",
+   "reason": "presence proof and a preview token binding the import to one exact file; vyred reads the file, values never pass through Claude (callers list in code)"
+  },
+  "vault.import.preview": {
+   "module": "vault",
+   "reason": "presence proof and a preview-only token: it reads names and counts and writes nothing (callers list in code)"
+  },
+  "vault.inject": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.item": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.items.names": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
+  },
+  "vault.kit": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.match": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.members.accept": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.members.invite": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.members.remove": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.members.role": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.mention.search": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
+  },
+  "vault.migrate-key": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.move": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.need": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  },
+  "vault.pass.accept": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it waits for a person to approve"
+  },
+  "vault.pass.create": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it waits for a person to approve"
+  },
+  "vault.pass.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.pending": {
+   "module": "vault",
+   "reason": "read-only: lists what waits for a person, never a value"
+  },
+  "vault.people": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.people.verify": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.person.add": {
+   "module": "vault",
+   "reason": "presence proof: adding a person's card needs a person's touch; the assistant's kit flow adds a pasted card and waits for it (kit.test.js); callers list in code"
+  },
+  "vault.put": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller; presence proof required"
+  },
+  "vault.relay": {
+   "module": "vault",
+   "reason": "owner check: the owner's Vyre checks the pass before adding any value; callers list in code"
+  },
+  "vault.remind.run": {
+   "module": "vault",
+   "reason": "callers list in code (cli, deck, local): no model caller"
+  },
+  "vault.render": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.request": {
+   "module": "vault",
+   "reason": "scope check and the Gate: the key is never shown, a read runs, a send, payment or deletion runs only when asked for exactly or is held at the Gate"
+  },
+  "vault.resolve": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.restore": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.reveal": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
+  },
+  "vault.revoke": {
+   "module": "vault",
+   "reason": "callerKind check inside: a named agent or a module can only withdraw its own pending request; only the person's surfaces and an unnamed session revoke freely (G-MV4)"
+  },
+  "vault.rotation": {
+   "module": "vault",
+   "reason": "read-only: how an item is rotated, names only"
+  },
+  "vault.search": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.session.close": {
+   "module": "vault",
+   "reason": "taking access away is always allowed: it closes a fill session and grants nothing (surfaces.test.js pins it offered to Claude); the session id is the guard"
+  },
+  "vault.session.open": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
+  },
+  "vault.session.status": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller"
+  },
+  "vault.ssh.add": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.ssh.approvals": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller"
+  },
+  "vault.ssh.approve": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.ssh.generate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local, mcp): the private key is never returned and using it needs a person's approval (vault.ssh.approve)"
+  },
+  "vault.ssh.keys": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.sweep": {
+   "module": "vault",
+   "reason": "read-only: places and item names, never a value; presence proof (callers list in code)"
+  },
+  "vault.totp": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller; presence proof required"
+  },
+  "vault.unlock": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.unlock-passphrase": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.update": {
+   "module": "vault",
+   "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
+  },
+  "vault.uses": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.vaults.create": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller"
+  },
+  "vault.vaults.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a value"
+  },
+  "vault.vaults.rotate": {
+   "module": "vault",
+   "reason": "callers list in code (cli, local): no model caller; presence proof required"
+  },
+  "vault.verify": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces, tailnet, module; no model) and the presence proof carried to core"
+  },
+  "watchers.card": {
+   "module": "watchers",
+   "reason": "read-only: the card is worked out from the folder, no network, no model"
+  },
+  "watchers.items": {
+   "module": "watchers",
+   "reason": "read-only: items watchers have filed, scoped by project"
+  },
+  "watchers.list": {
+   "module": "watchers",
+   "reason": "read-only"
+  },
+  "watchers.logs": {
+   "module": "watchers",
+   "reason": "read-only: a watcher's recent runs"
+  },
+  "watchers.pause": {
+   "module": "watchers",
+   "reason": "guard: stops a watcher only; it never starts anything (an agent cannot undo a person's pause: watchers.resume is the person's)"
+  },
+  "watchers.test": {
+   "module": "watchers",
+   "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
+  }
+ }
+}

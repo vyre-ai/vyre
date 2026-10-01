@@ -11,15 +11,19 @@
 // Nothing here uses innerHTML: every string is a text node.
 
 import { h, add, put } from "../js/dom.js";
+import { attempt } from "../js/api.js";
+import { madeNow, unmark } from "./core/made.js";
 import { icon } from "../js/icons.js";
 import { personAvatar, assistantAvatar, agentAvatar, teammateAvatar, teammateId } from "../js/avatars.js";
 import { clock } from "../js/fmt.js";
+import { providerMark, providerName, badgeSize } from "../js/provider-mark.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
 import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, elapsed, langOf, rawLines, shortPath, toolState, toolTitle, toolVerb, turnParts } from "./lib/blocks.js";
 import { dataUrl, humanSize, inlineable, tooLarge, THUMB } from "./core/images.js";
 import { openLightbox } from "./lightbox.js";
+import { toolDisplay } from "./cards/index.js";
 
 const OUTPUT_LINES = 12;
 /** Bash shows this much of what it printed before "show all". */
@@ -102,12 +106,27 @@ export function userRow(who, text, ts, me = null, images = 0) {
 /** The header an assistant run starts with: the assistant's name (or the agent's) and the time.
  * `av`: the avatar to wear (session.js passes js/avatars.js threadAvatar: the project's tile, a
  * chat's draft tile, an agent or teammate, or the assistant); without it, agentAv's. */
-export function headRow(who, ts, assistant = who === "Vyre", av = null) {
-  return tag(h("div", { class: "cv-row cv-head" },
-    av || agentAv(who, assistant),
+export function headRow(who, ts, assistant = who === "Vyre", av = null, prov = null) {
+  const avatar = av || agentAv(who, assistant);
+  const wrap = h("span", { class: "msg-av-wrap" }, avatar);
+  const meta = h("span", { class: "msg-prov" });
+  const row = /** @type {any} */ (tag(h("div", { class: "cv-row cv-head" },
+    wrap,
     h("span", { class: "msg-who" }, who),
+    meta,
     ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
-  ), "assistant", ts);
+  ), "assistant", ts));
+  /** Which AI account wrote this run: the badge at the avatar's lower right and "Provider, model" beside the name. Nothing without a provider. @param {{ provider?: string|null, model?: string|null }|null} p */
+  row.setProv = p => {
+    wrap.querySelector(".pmark")?.remove();
+    meta.replaceChildren();
+    if (!p || !p.provider) return;
+    const badge = providerMark(p.provider, badgeSize(24), { model: p.model });
+    if (badge) { badge.classList.add("pmark-on-av"); wrap.append(badge); }
+    meta.append([providerName(p.provider), p.model].filter(Boolean).join(", "));
+  };
+  row.setProv(prov);
+  return row;
 }
 
 /** Assistant text as markdown. */
@@ -341,7 +360,23 @@ export function handoffCard(b) {
       ),
       failed ? h("span", { class: "cv-tool-state cv-failed" }, "no answer") : null,
     );
-    put(el, head, body);
+    // "@design" made this teammate a moment ago: say so, and offer Undo while nothing has run (no reply yet).
+    const made = !replied && !failed && project ? madeNow(project, role) : null;
+    const undo = made ? h("button", { class: "btn btn-ghost btn-sm cv-made-undo", type: "button", onclick: async () => {
+      undo.disabled = true;
+      let r = await attempt("team.retire", { project, role, undo: true });
+      // Refused because it has already run: a plain retire instead (the teammate goes, its history stays), no second prompt.
+      if (r.error && !r.error.missing) {
+        const plain = await attempt("team.retire", { project, role });
+        if (!plain.error) { unmark(project, role); put(madeLine, `Retired ${role}.`); return; }
+        r = plain;
+      }
+      if (r.error) { undo.disabled = false; put(madeLine, `Made ${role}, a new teammate. Could not undo it: ${r.error.missing ? "this box cannot remove teammates yet" : r.error.message || r.error.code}`, undo); return; }
+      unmark(project, role);
+      put(madeLine, `Undone. ${role} is gone.`);
+    } }, "Undo") : null;
+    const madeLine = made ? h("div", { class: "cv-made", role: "status" }, `Made ${role}, a new teammate `, undo) : null;
+    put(el, head, body, madeLine);
     show();
   };
   el.update(b);
@@ -355,6 +390,9 @@ export function handoffCard(b) {
  * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
  */
 export function toolCard(b) {
+  // A result that carries a render payload (a PR, a thread, an event, a diff, an artifact) is that card, not a generic tool row.
+  const shown = toolDisplay(b);
+  if (shown) return shown;
   const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool" }), "assistant", b.ts));
   let open = null;
   /** @type {any} */ let timeEl = null;

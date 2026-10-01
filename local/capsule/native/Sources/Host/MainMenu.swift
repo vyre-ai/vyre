@@ -24,7 +24,7 @@ import AppKit
     static func make(_ actions: MenuActions) -> NSMenu {
         let main = NSMenu(title: "Main")
 
-        let app = NSMenu(title: "Vyre")
+        let app = NSMenu(title: "Lumen")
         add(app, "Settings…", #selector(MenuActions.openSettings(_:)), ",", target: actions)
         app.addItem(.separator())
         let services = NSMenu(title: "Services")
@@ -33,7 +33,7 @@ import AppKit
         app.addItem(servicesItem)
         NSApplication.shared.servicesMenu = services
         app.addItem(.separator())
-        add(app, "Close Capsule", #selector(MenuActions.closeCapsule(_:)), "q", target: actions)
+        add(app, "Close Lumen", #selector(MenuActions.closeCapsule(_:)), "q", target: actions)
         sub(main, app)
 
         let edit = NSMenu(title: "Edit")

@@ -1,6 +1,6 @@
 ---
 title: Glass mini-view
-summary: "What the agent is doing now": a small live frame of an agent's screen with its current step line, on Now, in a thread, in the Capsule as a pill and on the phone. A chat tool row links to its step.
+summary: "What the agent is doing now": a small live frame of an agent's screen with its current step line, on Now, in a thread, in Lumen as a pill and on the phone. A chat tool row links to its step.
 audience: builders
 owner: app-design
 status: draft
@@ -18,7 +18,7 @@ line.
 |---|---|---|
 | Deck | Now's agent row and the thread's header (work/pwa, work/chat) | not built |
 | App | the Now screen and the thread (work/mobile), from `sight.frame` stills | not built |
-| Capsule | the step pill (work/capsule-pro); the Mac's own screen is never shown | not built |
+| Lumen | the step pill (work/capsule-pro); the Mac's own screen is never shown | not built |
 
 ## Anatomy
 
@@ -41,7 +41,7 @@ second line, 12 `--text-2`.
 |---|---|---|---|
 | Card | Now, one per acting agent, under its agent row | 240 wide (desktop), the screen width minus 32, drawn outside any card (phone) | a `sight.frame` still on each step (at most one per 2 s), desktop and phone alike (Refresh, below) |
 | Header | a thread whose agent has a computer, under the thread's top bar, collapsible | 320 wide, right aligned | `sight.watch` live while the thread is open and shown; a still when hidden |
-| Pill | the Capsule, and the phone's thread when the frame is collapsed | no picture: a pill 28 tall (pill.md's shape) with the status mark and the step line at 13 `--text`, not pill.md's meta size | none |
+| Pill | Lumen, and the phone's thread when the frame is collapsed | no picture: a pill 28 tall (pill.md's shape) with the status mark and the step line at 13 `--text`, not pill.md's meta size | none |
 
 **Refresh (the light rule: nothing polls).** A still (`sight.frame`, a small JPEG) is fetched once
 when the card appears, and again only when `sight.stepped` arrives for that agent: its screen
@@ -51,7 +51,7 @@ nothing is fetched while the card is off screen or the app is in the background.
 one view the person opened (the thread header, or a card they expanded), and it closes the moment
 that view is hidden, the window loses visibility or the phone locks. Never a timer.
 
-The Capsule never draws a picture of the user's own Mac (`sight.watch` answers `local_only`); for
+Lumen never draws a picture of the user's own Mac (`sight.watch` answers `local_only`); for
 an agent's computer it shows the pill, and ⌘O opens Glass in the Deck.
 
 ## States
@@ -107,7 +107,7 @@ App (work/mobile)
 - [ ] The phone has no Glass screen yet: tapping the card opens the step's thread, or does nothing
       when the step has no thread. Glass on the phone replaces this.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Nothing built: the step pill for an agent's computer, ⌘O to Glass.
 
 System (app-design)

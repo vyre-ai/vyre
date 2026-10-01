@@ -21,6 +21,8 @@ import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 process.env.TZ = "UTC";
 
 const S = "https://www.googleapis.com/auth/";
+// Later than the fake's "tomorrow 10:00" whatever day the suite runs (fixed dates went stale on 2026-09-30).
+const dayAt = (days, hh) => { const d = new Date(Date.now() + days * 86_400_000); d.setUTCHours(hh, 0, 0, 0); return d.toISOString(); };
 const ME = "alex@example.com";
 
 /** A vyred in a temp home with the file keystore, and helpers to call it as each kind of caller. */
@@ -179,7 +181,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
   assert.equal(fake.mail.sent.length, 1);
 
   // An event with no attendees is written at once, and nobody is told.
-  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: "2026-10-01T09:00:00Z", end: "2026-10-01T10:00:00Z" });
+  const quiet = await v.model("google.calendar.create", { title: "Focus: Northwind Bakery menu", start: dayAt(2, 9), end: dayAt(2, 10) });
   assert.ok(quiet.data.event.id, JSON.stringify(quiet));
   const quietEv = fake.calendar.events.find(e => e.id === quiet.data.event.id);
   assert.equal(quietEv._sendUpdates, "none");
@@ -190,7 +192,7 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
 
   // An event with attendees is held; approval creates it with sendUpdates=all.
   const before = fake.calendar.events.length;
-  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: "2026-10-02T15:00:00Z", where: "Zoom", attendees: ["dana@harlowlegal.com"] });
+  const invite = await v.model("google.calendar.create", { title: "Harlow Legal signing", start: dayAt(3, 15), where: "Zoom", attendees: ["dana@harlowlegal.com"] });
   const inviteId = invite.data.held;
   assert.ok(inviteId, JSON.stringify(invite));
   assert.equal(fake.calendar.events.length, before);
@@ -210,7 +212,10 @@ test("google: a DWD service account reads with read-only tokens, holds sends and
 
   // The Capsule.
   const find = async q => (await v.local("google.find", { q, limit: 4 })).data.rows;
-  assert.deepEqual((await find("what's next")).map(r => r.id), ["google:work:event:evharlow1", "google:work:event:evnorthwind1", `google:work:event:${quiet.data.event.id}`, `google:work:event:${released.data.result.event_id}`]);
+  // The two events this test made land wherever the clock puts them relative to each other, so only the fixed pair is ordered.
+  const nextIds = (await find("what's next")).map(r => r.id);
+  assert.deepEqual(nextIds.filter(id => /evharlow1|evnorthwind1/.test(id)), ["google:work:event:evharlow1", "google:work:event:evnorthwind1"]);
+  assert.deepEqual(nextIds.filter(id => !/evharlow1|evnorthwind1/.test(id)).sort(), [`google:work:event:${quiet.data.event.id}`, `google:work:event:${released.data.result.event_id}`].sort());
   assert.equal((await find("next meeting"))[0].name, "Harlow Legal check-in");
   assert.ok((await find("tomorrow")).some(r => r.id === "google:work:event:evnorthwind1"));
   const soon = new Date(Date.now() + 30 * 60_000);
@@ -439,4 +444,53 @@ test("google: on_behalf files a first-party module's held send under the thread 
   assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-none" } }, "module:mail", {})).error.code, "bad_input");
   assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "juno" } }, "module:mail", {})).error.code, "denied");
   assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
+});
+
+test("google: google.calendar.today lists today's next meetings, with a join link, cached for a minute, and nothing without a calendar (the Capsule's `next` command reads it through connectors)", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  // Nothing connected: an empty list, not an error.
+  assert.deepEqual((await v.cli("google.calendar.today", {})).data, { events: [] });
+
+  const sa = fake.serviceAccount(ME);
+  await item(v, "work-google", "secret", { value: sa });
+  await v.cli("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base });
+  // A meeting in ten minutes with a video link, and an all-day event, which is not a meeting.
+  const at = Date.now();
+  fake.calendar.events.push(
+    { kind: "calendar#event", id: "evjoin1", status: "confirmed", summary: "Kit and Alex, menu call", hangoutLink: "https://meet.example.test/abc-defg-hij",
+      start: { dateTime: new Date(at + 10 * 60_000).toISOString() }, end: { dateTime: new Date(at + 40 * 60_000).toISOString() } },
+    { kind: "calendar#event", id: "evphish1", status: "confirmed", summary: "Invoice review", location: "https://evil.example.test/login",
+      start: { dateTime: new Date(at + 20 * 60_000).toISOString() }, end: { dateTime: new Date(at + 50 * 60_000).toISOString() } },
+    { kind: "calendar#event", id: "evdecl1", status: "confirmed", summary: "Declined sync", hangoutLink: "https://meet.example.test/zzz",
+      attendees: [{ email: ME, self: true, responseStatus: "declined" }],
+      start: { dateTime: new Date(at + 15 * 60_000).toISOString() }, end: { dateTime: new Date(at + 45 * 60_000).toISOString() } },
+    { kind: "calendar#event", id: "evallday1", status: "confirmed", summary: "Bakery closed", start: { date: new Date(at).toISOString().slice(0, 10) }, end: { date: new Date(at + 86_400_000).toISOString().slice(0, 10) } },
+  );
+  const local = new Date(at), endOfDay = new Date(at); endOfDay.setHours(23, 59, 59, 999);
+  if (endOfDay.getTime() - at < 2 * 3_600_000) return void t.skip("too close to the end of this box's day to have a meeting left today");
+  void local;
+
+  fake.calls.length = 0;
+  const today = (await v.cli("google.calendar.today", {})).data;
+  assert.deepEqual(today.events.map(e => e.id), ["evjoin1", "evphish1", "evharlow1"], "all-day and declined events are left out and the rest are in order");
+  const first = today.events[0];
+  assert.equal(first.title, "Kit and Alex, menu call");
+  assert.equal(first.join, "https://meet.example.test/abc-defg-hij");
+  assert.equal(first.link, first.join, "the link opens the meeting");
+  assert.match(first.when, /^in (9|10) min · meet\.example\.test$/, "the host the link goes to is shown");
+  const phish = today.events[1];
+  assert.equal(phish.join, undefined, "a link in the location that is not on a known meeting host is not a join link");
+  assert.doesNotMatch(phish.when, /evil/);
+  assert.match(phish.link, /^https:\/\/calendar\.google\.com\//, "it opens the event instead");
+  assert.equal(today.events[2].join, undefined, "a location that is not a link has no join");
+
+  // Cached for a minute: the second ask does not call Calendar.
+  const calls = fake.calls.length;
+  assert.deepEqual((await v.cli("google.calendar.today", {})).data, today);
+  assert.equal(fake.calls.length, calls, "no second Calendar call inside the minute");
+  // A model may read it too (it is read only) and `limit` narrows it.
+  assert.equal((await v.model("google.calendar.today", { limit: 1 })).data.events.length, 1);
+
+  assertNoLeak(v, secretsOf(fake, [sa]));
 });

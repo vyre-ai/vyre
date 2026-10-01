@@ -86,6 +86,36 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+1 Oct 2026, the gated deploy of the three Workers (.github/workflows/relay-deploy.yml, prepared and never run): dispatch with a stage sha and which Workers; the dry run (no credentials) prints the bindings, then the `deploy` environment's reviewer approves and wrangler 4.145.0 deploys. relay/worker and names/worker deploy from the commit; relay/app needs the signed `app-out` artifact of a release run (`app_out_run`), because its build needs the release signing key, which stays in the `release` environment. Guards (reviewer-2): both jobs fail unless the workflow runs from main or work/stage-0.2 (the `deploy` environment's branch rule is to match); the sha must be on stage; `app_out_run` must be the `release` workflow's own run for that exact commit, not a pull request's, and successful, and `scripts/deploy/verify-app-out.mjs` checks every sealed folder against the pinned RELEASE_KEY (and refuses the placeholder) before anything is deployed; wrangler comes from tools/wrangler/package-lock.json with `npm ci --ignore-scripts` and the Cloudflare token exists only in the steps that deploy; checkout and setup-node are pinned by commit. The release workflow does not yet upload an `app-out` artifact, so the app step stays unusable until pwa's web export is built there. The names Worker's two runtime secrets can be set on the first deploy from the environment secrets NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID.
+
+### Cloudflare token (for the `deploy` environment's CLOUDFLARE_API_TOKEN)
+One API token, scoped to the one account and the one zone, and nothing more:
+- Account, Workers Scripts: Edit (it covers the Workers, their Durable Objects and migrations, rate limiter bindings, cron triggers, observability, and the static assets of vyre-app).
+- Account, Account Settings: Read (wrangler looks the account up; it is also why CLOUDFLARE_ACCOUNT_ID is set as a variable).
+- Zone vyre.run, Workers Routes: Edit (the custom domains names.vyre.run and app.vyre.run; relay.vyre.run already has its).
+- Zone vyre.run, DNS: Edit (a Worker custom domain creates its DNS record) and Zone: Read.
+No KV, R2, D1, Queues or Workers Rate Limiting permission is needed: none is bound. The account id goes in the variable CLOUDFLARE_ACCOUNT_ID. The names Worker's own runtime token is a different, narrower one (Zone, DNS: Edit on vyre.run only), set as the Worker secret CF_API_TOKEN beside CF_ZONE_ID; it never leaves Cloudflare and no box sees it.
+
+30 Sep 2026, own domain serves (core/names/service.js serveDomain, tool names.domain.serve, events domain.ready and domain.failed): DNS-01 through the CNAME delegation via the directory's acmeOwn, SNI on the one listener, Host and Origin rules unchanged, daily renewal. Names tests 13 of 13 including a real TLS connection on loopback. Local commit only until CI on b15748df finishes.
+
+30 Sep 2026, Mac server: device key in core (core/relay/devicekey.js, against anywhere's f449fa0f shape), macCoreRefusal lifts everywhere with core, relay.tailnet.status available with core; relay/tailnet/keys/setup tests 73 of 73 on this Mac with a fake core (this Mac was the failing platform). Not pushed while CI runs on 3-commit tip. Next: after CI green on tailnet-02, land it, merge work/vyre-core, swap in its fakeCoreKeys and createCoreKeys at daemon boot; then bring-your-own-domain ACME DNS-01 (lead's ask).
+
+30 Sep 2026, vyre-core phase 5, relay side (on work/tailnet-02, code to anywhere's shape, async only): `keyHandle` in core/relay/keys.js; Handshake static key as `{pub, dh}` with `readMessageAsync` (one generator, sync and async drivers); relayLink signs through `routeKey.sign`; `ctx.coreKeys` reaches the relay module only (core/modules); `macCoreRefusal(platform, core)` lifts for setup, tickets and the tailnet key paths, not relay.join or the desktop join. Tests use test/fake-core-keys.js until anywhere's `fakeCoreKeys` lands; a darwin end to end pairs a phone through core with no key file. Waiting on anywhere: the daemon must pass `coreKeys: createCoreKeys(...)` to `start()` when core is present (I did not touch daemon boot), and the sha of lib/vyre-core-keys.js. 11 tests in test/relay.test.js and core/relay/tailnet.test.js still fail on a Mac as on main (they do not fake the platform).
+
+30 Sep 2026, reviewer-2's two changes on cc103f19 (d1e975c9 plus regenerated reference): the grant stores the claimed host and enrolls only a passkey whose rp_id equals it; relay.setup.claim is in WEB_DENY. presence and setup tests 56 of 56. Next: vyre-core phase 5 with anywhere (keys.js as a handle so macCoreRefusal can lift); asked anywhere in CHAT.md for the key-store client path and whether dh is sync.
+
+30 Sep 2026, 0.2 build on work/tailnet-02 (plan: team/0.2/plans/tailnet.md 3.6b, 3.6c). Built, each
+with tests in temp homes and fakes: link.health in the C5 shape (acf8c538); Funnel on /s/ with
+consent state, ADR 0014 amended (14f4599b; event is `funnel.changed`, `artifacts.public.set` gets
+`{base: null}` when off); the names directory Worker and the box's signed client, tailnet IPs only,
+tombstones, no ZeroSSL (7e6a040d); the setup session: fingerprint-in-code, first-writer-wins
+locators, the /v1/setup/mbx mailbox, the setup allowlist, relay.setup.begin/end/status (4dc19cc6);
+relay.route.id and relay.route.sign for the names client (signs only vyre-names-v1 messages for
+its own route). Next: network.tailscale.login/status/peers (plan step 4), the /hello popup page,
+Wink tokens for the setup page with launch, deploy of names/worker (needs the user's OK and a
+Cloudflare token), ADR number for the directory. Open: 5 core/relay/tailnet.test.js tests fail on a
+Mac because they do not fake the platform; not checked against main on a runner.
+
 28 Sep ~14:55 UTC: relay.vyre.run is LIVE. Worker vyre-relay version ac4f2172-a06a-4258-8845-aa423ef26b16,
 migration v2, custom domain attached, cert valid (Let's Encrypt, to Dec 25 2026), workers.dev
 subdomain "vyre-run" created (not served, workers_dev=false), Free plan. Smoke from the testbox

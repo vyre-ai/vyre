@@ -25,7 +25,7 @@ name: vyre
 
 services:
   tailscale:
-    image: ${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}
+    image: ${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:v1.102.5@sha256:c507f3a2a6ab1cabd8d809b98edeb41edbd5c3fb6ad9632ffd098b4c7d0b4065}
     hostname: ${VYRE_TS_HOSTNAME:-vyre}
     restart: unless-stopped
     labels:
@@ -108,7 +108,10 @@ services:
     # container drops to uid vyre by itself.
     user: "0:0"
     cap_drop: [ALL]
-    cap_add: [SETUID, SETGID, KILL]
+    # NET_ADMIN and SETPCAP are for the entry script's one-shot step only (core/spawner/wall-entry.sh): it installs the
+    # watcher wall's outbound REJECT rule on this namespace, probes it, and replaces itself with the spawner under a bounding
+    # set without both, so the serving spawner holds neither. vyred (uid vyre) and every child hold no capability at all.
+    cap_add: [SETUID, SETGID, KILL, NET_ADMIN, SETPCAP]
     security_opt:
       - no-new-privileges:true
     labels:
@@ -133,6 +136,8 @@ services:
       - vyre-home:/home/vyre
       # Vyre-owned sessions' own home (their ~/.claude and transcripts), readable by vyred's group.
       - vyre-agent-home:/home/vyre-agent
+      # Each signed-in account's own home (uids 2000 to 2063, made in the image, private to the account).
+      - vyre-accounts:/home/acct
       # Projects.
       - vyre-work:/work
       # The CLI in this image talks to tailscaled through this socket.
@@ -142,6 +147,15 @@ services:
       # docker-api service below, mode 0400 -- unreadable to vyre-agent (uid 1001), which shares
       # this container's filesystem and network but never this volume's file.
       - docker-api-bearer:/var/lib/vyre-secrets
+      # Updates asked for from the Deck (core/update): vyred, and only vyred, drops the one-line file
+      # `request` in /var/lib/vyre-update/request (a folder root owns, with root-owned parents); a root path unit on the host (vyre updater install) runs the signed
+      # `vyre update` when it appears. Progress and the result come back through /var/lib/vyre-update/status, read-only
+      # here: the host writes it and vyred cannot. No socket, no arguments. See box/vyre.
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/request:/run/vyre-update
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status:/run/vyre-update-state:ro
+      # The release's SHA256SUMS, signature and shell.json, which vyred serves at /release/ for the phone's shell check.
+      # On the host, so a recreate of this container keeps them; root writes them (box/vyre publish_release).
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/deck/release:ro
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s
@@ -202,6 +216,9 @@ volumes:
     labels:
       run.vyre: "1"
   vyre-work:
+    labels:
+      run.vyre: "1"
+  vyre-accounts:
     labels:
       run.vyre: "1"
   vyre-agent-home:

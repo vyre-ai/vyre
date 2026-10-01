@@ -123,7 +123,7 @@ let screenAttachSuite = Suite("screen attach") { t in
         t.eq(b, """
 
 
-        [Screen context, shared by the user from the Capsule]
+        [Screen context, shared by the user from Lumen]
         App: Google Chrome
         Window: Northwind Bakery - Orders
         URL: https://orders.example/northwind/42

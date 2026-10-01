@@ -17,7 +17,7 @@ permissions:
   contents: read
 concurrency:
   group: sessions-sdk-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 env:
   VYRE_NO_DIALOGS: "1"
 jobs:
@@ -75,7 +75,9 @@ jobs:
           VYRE_SESSIONS_SDK_DIR: ${{ env.D }}
           VYRE_SESSIONS_DRIVER: sdk
         run: |
-          node --test --test-reporter=spec --test-timeout=120000 \
+          # The timeout counts a whole test FILE as one test: core/sessions/sessions.test.js runs over a hundred tests in a row and passed all of them in
+          # a hosted run (36922363851) before hitting 120 s as a file. Ten minutes covers a slow runner; the job's own limit is 30.
+          node --test --test-force-exit --test-reporter=spec --test-timeout=600000 \
             "core/sessions/*.test.js" "core/switchboard/*.test.js" "core/agents/*.test.js" "core/learn/*.test.js" "harness/**/*.test.js"
 
   real:

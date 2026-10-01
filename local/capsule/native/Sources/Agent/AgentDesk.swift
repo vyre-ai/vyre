@@ -204,7 +204,7 @@ public final class Desk: ObservableObject {
         case .lesson:
             let yes = decision == .accept || decision == .allow || decision == .send
             let tool = yes ? "learn.accept" : "learn.retire"
-            guard vyred.has(tool) else { note = "Lessons come from core/learn, which this vyred is not running."; return }
+            guard vyred.has(tool) else { note = "Lessons come from core/learn, which this Vyre is not running."; return }
             let idv: Any = Int(w.id).map { $0 as Any } ?? w.id
             r = await vyred.call(tool, ["id": idv], presence: false)
             if case .failure(let code, let message) = r {

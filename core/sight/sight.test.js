@@ -279,7 +279,7 @@ test("sight.watch refuses an ordinary agent's real caller even once a module has
   const { reg } = await world(t, [FAKES.computers, FAKES.agents]);
   const r = await reg.call("sight.watch", { target: "agent:kit", surface: "glass:laptop" }, "module:agent:kit");
   assert.equal(r.error?.code, "denied");
-  assert.match(r.error?.message, /"kit" is an agent/);
+  assert.match(r.error?.message, /"kit" is an agent|not available to mcp callers/);
   // The assistant is exempt, same as computers' own floor: it is how the user reaches this tool.
   const ok = data(await reg.call("sight.watch", { target: "agent:kit", surface: "glass:laptop" }, "module:agent:vyre"));
   assert.equal(ok.ticket, "t-kit");
@@ -328,7 +328,7 @@ test("sight.frame refuses a surface-prefixed agent claim, not only \"mcp:agent:\
   const { reg } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc], FAKES.agents]);
   const r = await reg.call("sight.frame", { target: "agent:kit" }, "cli:agent:kit");
   assert.equal(r.error?.code, "denied");
-  assert.match(r.error?.message, /"kit" is an agent/);
+  assert.match(r.error?.message, /"kit" is an agent|not available to mcp callers/);
   // The assistant still reaches it under the same shape.
   const ok = data(await reg.call("sight.frame", { target: "agent:kit" }, "cli:agent:vyre"));
   assert.equal(ok.mime, "image/jpeg");

@@ -2,7 +2,7 @@
   "name": "harness",
   "version": "0.1.0",
   "roles": ["box", "local"],
-  "does": { "tools": ["harness.brief", "harness.enrich", "harness.rules", "harness.learn", "harness.stop", "harness.touched"] },
+  "does": { "tools": [{ "name": "harness.brief", "reach": "anyone", "projectArg": ["project", "projects"], "cwdArg": "cwd" }, { "name": "harness.enrich", "reach": "anyone", "projectArg": "projects", "cwdArg": "cwd" }, { "name": "harness.rules", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.learn", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.stop", "reach": "anyone", "cwdArg": "cwd" }, { "name": "harness.touched", "reach": "anyone" }] },
   "watches": { "emits": ["thread.started", "file.touched", "turn.completed", "tool.held"] },
   "shows": { "cli": [] },
   "needs": {},

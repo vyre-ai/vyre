@@ -23,6 +23,10 @@ import { seams } from "./index.js";
 import { sign } from "./verify.js";
 import { Deliveries, MIGRATIONS, KEEP, KEEP_MS } from "./deliveries.js";
 import { migrate } from "../store/index.js";
+import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+// These tests are about the flow around a watcher (the CLI, a hook delivery, a duty), not the wall, and a hosted
+// runner has no bubblewrap profile: use the test seam. Production still fails closed (lib/sandbox/wall.js).
+testHooks.wall = OPEN_WALL;
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SECRET = "nw-hook-secret-8c1f3a9e0d";

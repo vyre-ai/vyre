@@ -85,20 +85,21 @@ import { toolDetail } from "./tool-detail.js";
  *   images?: number|import("./composer-state.js").Attachment[] }} UserItem
  * @typedef {{ key: string, kind: "steer", uuid: string|null, user: string|null, step: number|null, turn: string|null, pending: boolean,
  *   taken?: boolean, at?: number, seq?: number }} SteerItem
- * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number }} TextItem
+ * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number, provider?: string, model?: string|null }} TextItem
  * @typedef {{ key: string, kind: "tool", call: string, name: string, status: "running"|"completed"|"failed"|"canceled", summary?: string,
  *   error?: string|boolean, input?: any, output?: string|null, detail?: import("./tool-detail.js").ToolDetail, duration_ms?: number|null,
  *   patch?: any, images?: import("./composer-state.js").Attachment[], at?: number, seq?: number,
- *   reply?: string }} ToolItem
+ *   reply?: string, render?: Record<string, any> }} ToolItem
  *   reply: a teammate's answer (team_ask/team.ask only, attachHandoffReply below), once it lands.
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
  * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
+ * @typedef {{ key: string, kind: "plan", items: { text: string, status: "pending"|"running"|"done" }[], at?: number, seq?: number }} PlanItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
  *   decision?: string|null, summary?: string|null, answers?: any, at?: number, seq?: number }} AskItem
  * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number,
  *   local?: boolean, answered?: boolean, echoed?: boolean }} ShellItem
- * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem|ShellItem} Item
+ * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|PlanItem|AskItem|SteerItem|ShellItem} Item
  * @typedef {{ ask: string, kind: string, tool: string|null, state: "open"|"answered"|"cancelled", decision: string|null, at: number|null }} Ask
  * @typedef {{ uuid: string|null, text: string, queued: number|string|null, at: number|null, local?: boolean }} Queued
  * @typedef {{ content: string, status: string, activeForm?: string }} Todo
@@ -108,7 +109,7 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ uuid: string, seq: number|null, from: number|null, at: number }} Rewind
  *   A rewind: the message's line (seq) and time (from) once known, and when it happened (at).
  * @typedef {{
- *   thread: string, provider: string|null, model: string|null, auth: string|null, state: SessionState, turn: number|null,
+ *   thread: string, provider: string|null, model: string|null, effort?: string|null, auth: string|null, state: SessionState, turn: number|null,
  *   items: Item[], byKey: Map<string, Item>, queued: Queued[], asks: Map<string, Ask>,
  *   usage: any, limit: any, stopped: string|null,
  *   mode: string|null, modes: string[]|null, thinking: boolean|null,
@@ -789,7 +790,9 @@ function onText(s, p, at, e, out) {
   }
   if (!item) {
     const block = typeof p.block === "number" ? p.block : nextBlock(s, kind, message);
-    item = /** @type {TextItem} */ ({ key: `${prefix}:${message}:${block}`, kind, message, block, text: "", streaming: true, ...(at !== undefined ? { at } : {}) });
+    // Who wrote it, when the box says (every reply's event carries provider and model): taken once, never guessed.
+    item = /** @type {TextItem} */ ({ key: `${prefix}:${message}:${block}`, kind, message, block, text: "", streaming: true, ...(at !== undefined ? { at } : {}),
+      ...(typeof p.provider === "string" && p.provider ? { provider: p.provider } : {}), ...(typeof p.model === "string" && p.model ? { model: p.model } : {}) });
     insert(s, item);
   }
   if (delta !== null) item.text += delta;
@@ -826,6 +829,7 @@ function onTool(s, p, at, out) {
   // after a reopen. Never overwrites input that already arrived (a later live event, or the
   // transcript read patching it in).
   if (p.input !== undefined && item.input === undefined) item.input = p.input;
+  if (p.render && typeof p.render === "object") item.render = p.render;
   out.add(key);
   guess(s, "working");
 }
@@ -1095,6 +1099,9 @@ export function applyEvent(s, e) {
     case "model.switched": case "thread.model":
       if (p.model != null && p.model !== "") { s.model = String(p.model); out.add("@session"); }
       break;
+    case "effort.switched":
+      s.effort = typeof p.effort === "string" && p.effort ? p.effort : null; out.add("@session");
+      break;
     case "thinking.switched":
       if (typeof p.on === "boolean") { s.thinking = p.on; out.add("@session"); }
       break;
@@ -1120,6 +1127,27 @@ export function applyEvent(s, e) {
     // Thinking as its own event: the same row as thread.text kind "reasoning".
     case "thread.thinking": onText(s, { ...p, kind: "reasoning", notice: undefined }, at, e, out); break;
     case "thread.tool": onTool(s, p, at, out); break;
+    // The agent's checklist, whole each time: one row, updated in place. An empty list takes nothing away.
+    case "thread.plan": {
+      const items = (Array.isArray(p.items) ? p.items : []).filter((/** @type {any} */ x) => x && typeof x.text === "string" && x.text)
+        .map((/** @type {any} */ x) => ({ text: String(x.text), status: x.status === "done" || x.status === "running" ? x.status : "pending" }));
+      if (!items.length) break;
+      const old = /** @type {PlanItem|undefined} */ (s.byKey.get("plan"));
+      if (old) old.items = items;
+      else insert(s, /** @type {PlanItem} */ ({ key: "plan", kind: "plan", items, ...(at !== undefined ? { at } : {}) }));
+      out.add("plan");
+      break;
+    }
+    // An artifact the agent made or changed (AR2): one card per version, drawn by cards/artifact.js.
+    case "thread.artifact": {
+      if (!p.artifact) break;
+      const key = `art:${p.artifact}:${p.version ?? 0}`;
+      if (s.byKey.has(key)) break;
+      insert(s, /** @type {any} */ ({ key, kind: "tool", call: key, name: "artifact", status: "completed", ...(at !== undefined ? { at } : {}),
+        render: { kind: "artifact", id: String(p.artifact), thread: p.thread ?? null, version: p.version ?? null, type: p.kind ?? null, title: p.title ?? null, agent: p.agent ?? null, at: at ?? null, ...(p.mime ? { mime: String(p.mime) } : {}), ...(Number.isFinite(p.bytes) ? { bytes: p.bytes } : {}) } }));
+      out.add(key);
+      break;
+    }
     case "ask.raised": case "ask.answered": case "ask.cancelled": onAsk(s, e.type, p, at, out); break;
     case "thread.usage":
       // cost_usd is the turn's own, total_cost_usd the session's so far: never the one for the other.
@@ -1240,6 +1268,8 @@ function fieldsOf(b) {
       if (output !== null) f.status = b.error ? "failed" : "completed";
       if (b.error) f.error = true;
       if (b.patch) f.patch = b.patch;
+      // A result a card draws (cards/index.js renderOf): pr_review, email_thread, calendar_event, diff, report, artifact.
+      if (b.render && typeof b.render === "object") f.render = b.render;
       // A tool's own picture (cohesion item 18): the caps are already applied by transcripts.blocks.
       if (Array.isArray(b.images) && b.images.length) f.images = b.images;
       return f;

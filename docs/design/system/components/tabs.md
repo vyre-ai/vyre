@@ -18,7 +18,7 @@ computers".
 |---|---|---|
 | Deck | `deck/css/deck.css` `.seg`, `deck/glass/index.js` `.gl-tabs` (main); `deck/css/views/memory.css` `.mem-tab` | partial |
 | App | none (work/mobile) | not built |
-| Capsule | not used (the Mac Capsule has no detail pane) | not used |
+| Lumen | not used (the Mac Lumen has no detail pane) | not used |
 
 ## Anatomy
 

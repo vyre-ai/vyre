@@ -1,12 +1,12 @@
 ---
-title: "Vyre IQ everywhere"
-summary: What Vyre IQ does on each surface today, what it should do, the gaps ranked by value for cost, and who builds each one. The contract is memory.ask (ADR 0034).
+title: "Vyre Memory everywhere"
+summary: What Vyre Memory does on each surface today, what it should do, the gaps ranked by value for cost, and who builds each one. The contract is memory.ask (ADR 0034).
 audience: builders, agents
 owner: memory-iq
 status: draft
 ---
 
-# Vyre IQ everywhere
+# Vyre Memory everywhere
 
 The user asked for IQ to be "really smart and designed really well and implemented across every
 surface". This page is the map. It lists each surface, what IQ does there today, what it should do,

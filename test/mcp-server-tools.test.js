@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../core/presence/index.js";
 import { tempHome } from "./helpers.js";
+import { ALIASES } from "../harness/mcp/memory-tools.js";
 
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "harness", "mcp", "server.js");
 
@@ -34,7 +35,10 @@ test("mcp server: no person-only or human-only tool is listed; ordinary ones are
   const names = new Set((await ask(2, "tools/list")).result.tools.map(x => x.name));
   assert.ok(names.size > 10, `${names.size} tools`);
   assert.ok(names.has("system_echo"), "an ordinary tool is offered");
-  for (const tool of [...PERSON_ONLY, ...HUMAN_ONLY]) assert.ok(!names.has(tool.replace(/\./g, "_")), `${tool} is not offered`);
+  // memory_correct is the agent's own tool (memory.heard); the person's memory.correct is not behind it.
+  const agentNames = new Set(Object.keys(ALIASES));
+  for (const tool of [...PERSON_ONLY, ...HUMAN_ONLY]) assert.ok(agentNames.has(tool.replace(/\./g, "_")) || !names.has(tool.replace(/\./g, "_")), `${tool} is not offered`);
+  for (const a of Object.keys(ALIASES)) assert.ok(names.has(a), `${a} is offered`);
 });
 
 test("mcp server: a tool call carries Claude Code's tool_use id as X-Vyre-Call-Id", async t => {

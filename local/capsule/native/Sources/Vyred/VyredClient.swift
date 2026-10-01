@@ -47,7 +47,7 @@ public func vyredSocketPath(_ env: [String: String] = ProcessInfo.processInfo.en
 }
 
 /// The words a call fails with when the Capsule would need to prove a person is at the Mac.
-public let presenceNotBuilt = "This needs you at the Mac. Presence from the Capsule is not built yet."
+public let presenceNotBuilt = "This needs you at the Mac. Presence from Lumen is not built yet."
 
 // MARK: - Time, injectable so backoff is tested without waiting
 
@@ -178,6 +178,27 @@ struct ChunkDecoder {
     }
 }
 
+/// Splits an ndjson body arriving in pieces into whole lines.
+final class NDJSONState: @unchecked Sendable {
+    /// A line no longer than this; more with no newline means a broken or hostile stream.
+    static let limit = 2 << 20
+    var isNDJSON = false
+    private(set) var overflowed = false
+    private var buf = Data()
+    func feed(_ d: Data) -> [Data] {
+        if overflowed { return [] }
+        buf.append(d)
+        if buf.count > Self.limit && buf.firstIndex(of: 0x0A) == nil { overflowed = true; buf = Data(); return [] }
+        var out: [Data] = []
+        while let i = buf.firstIndex(of: 0x0A) {
+            let line = Data(buf[buf.startIndex..<i])
+            buf.removeSubrange(buf.startIndex...i)
+            if !line.isEmpty { out.append(line) }
+        }
+        return out
+    }
+}
+
 struct HTTPHead {
     var status: Int
     var headers: [String: String]
@@ -215,12 +236,13 @@ enum VyHTTP {
 
     /// One request, blocking. The body as sent, or why not.
     static func exchange(socket: String, method: String, path: String, body: Data?, timeout: TimeInterval, headers: [String: String] = [:],
-                         onHead: ((HTTPHead) -> Void)? = nil) -> Result<(Int, Data), Failure> {
+                         accept: String = "application/json", onHead: ((HTTPHead) -> Void)? = nil,
+                         onBody: ((Data) -> Void)? = nil) -> Result<(Int, Data), Failure> {
         let deadline = Date().addingTimeInterval(timeout)
         let fd = VySock.connect(socket)
         if fd < 0 { return .failure(.unreachable) }
         defer { close(fd) }
-        guard VySock.writeAll(fd, requestBytes(method, path, body: body, headers: headers), deadline: deadline) else { return .failure(.broken) }
+        guard VySock.writeAll(fd, requestBytes(method, path, body: body, accept: accept, headers: headers), deadline: deadline) else { return .failure(.broken) }
         var raw = Data(), head: HTTPHead?, bodyBytes = Data(), chunks = ChunkDecoder()
         var buf = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
@@ -233,21 +255,28 @@ enum VyHTTP {
             if n < 0 { if errno == EINTR || errno == EAGAIN { continue }; return .failure(.broken) }
             if n == 0 { break }
             let got = Data(buf[0..<n])
-            if let h = head { bodyBytes.append(h.chunked ? chunks.feed(got) : got); continue }
+            if let h = head {
+                let more = h.chunked ? chunks.feed(got) : got
+                bodyBytes.append(more)
+                if !more.isEmpty { onBody?(more) }
+                continue
+            }
             raw.append(got)
-            if let (h, rest) = HTTPHead.parse(raw) { head = h; bodyBytes = h.chunked ? chunks.feed(rest) : rest; raw = Data() }
+            if let (h, rest) = HTTPHead.parse(raw) { head = h; bodyBytes = h.chunked ? chunks.feed(rest) : rest; raw = Data()
+                onHead?(h)
+                if !bodyBytes.isEmpty { onBody?(bodyBytes) }
+            }
         }
         guard let h = head else { return .failure(.broken) }
-        onHead?(h)
         return .success((h.status, bodyBytes))
     }
 
     /// {data} or {error}, as vyred answers, never a throw.
     static func result(_ r: Result<(Int, Data), Failure>, timeout: TimeInterval) -> VyredResult {
         switch r {
-        case .failure(.unreachable): return .failure(code: "unreachable", message: "vyred is not running")
-        case .failure(.timeout): return .failure(code: "timeout", message: "vyred did not answer within \(Int(timeout * 1000))ms")
-        case .failure(.broken): return .failure(code: "unreachable", message: "vyred closed the connection")
+        case .failure(.unreachable): return .failure(code: "unreachable", message: "Vyre is not running")
+        case .failure(.timeout): return .failure(code: "timeout", message: "Vyre did not answer within \(Int(timeout * 1000))ms")
+        case .failure(.broken): return .failure(code: "unreachable", message: "Vyre closed the connection")
         case .success(let (_, body)):
             guard let j = VJ.decode(body) as? [String: Any] else {
                 return .failure(code: "bad_response", message: String(String(decoding: body, as: UTF8.self).prefix(200)))
@@ -375,7 +404,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
             DispatchQueue.global(qos: .userInitiated).async { k.resume(returning: VyHTTP.exchange(socket: socket, method: "GET", path: route, body: nil, timeout: timeout)) }
         }
         guard case .success(let (_, body)) = r else { return (nil, VyHTTP.result(r, timeout: timeout).error) }
-        guard let j = OJ.parse(body) else { return (nil, "vyred's answer was not JSON") }
+        guard let j = OJ.parse(body) else { return (nil, "Vyre's answer was not JSON") }
         if let e = j["error"] { return (nil, e["message"]?.string ?? e.string ?? "It did not work.") }
         return (j["data"] ?? .null, nil)
     }
@@ -464,6 +493,39 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
             DispatchQueue.global(qos: .userInitiated).async {
                 k.resume(returning: VyHTTP.result(VyHTTP.exchange(socket: socket, method: "POST", path: "/v1/tools/" + Glass.encode(tool), body: body,
                                                                   timeout: timeout, headers: headers, onHead: { onHeaders?($0.headers) }), timeout: timeout))
+            }
+        }
+    }
+
+    /// A tool call that asks for its live draft (Accept: application/x-ndjson): `onDraft` gets each
+    /// {"draft": {id, text}} line as it arrives, then the result comes from the final {"result"} line.
+    /// A tool with no draft answers plain JSON, which reads as any other call.
+    public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval,
+                     onDraft: @escaping @Sendable (_ id: String, _ text: String) -> Void) async -> VyredResult {
+        guard let body = VJ.encode(input) else { return .failure(code: "bad_input", message: "The input to \(tool) is not JSON.") }
+        let socket = self.socket
+        return await withCheckedContinuation { (k: CheckedContinuation<VyredResult, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let state = NDJSONState()
+                let r = VyHTTP.exchange(socket: socket, method: "POST", path: "/v1/tools/" + Glass.encode(tool), body: body, timeout: timeout,
+                                        accept: "application/x-ndjson",
+                                        onHead: { state.isNDJSON = ($0.headers["content-type"] ?? "").contains("x-ndjson") },
+                                        onBody: { d in
+                                            guard state.isNDJSON else { return }
+                                            for line in state.feed(d) {
+                                                guard let j = VJ.decode(line) as? [String: Any], let dr = j["draft"] as? [String: Any] else { continue }
+                                                onDraft(VJ.s(dr["id"]), VJ.s(dr["text"]))
+                                            }
+                                        })
+                if state.isNDJSON, case .success(let (status, all)) = r {
+                    // The last line is {"result": {data|error}}; the result is what the plain call would have said.
+                    let lines = all.split(separator: 0x0A).map { Data($0) }
+                    let last = lines.last.flatMap { VJ.decode($0) as? [String: Any] }
+                    if let res = last?["result"], let one = VJ.encode(res as? [String: Any] ?? [:]) {
+                        k.resume(returning: VyHTTP.result(.success((status, one)), timeout: timeout)); return
+                    }
+                }
+                k.resume(returning: VyHTTP.result(r, timeout: timeout))
             }
         }
     }

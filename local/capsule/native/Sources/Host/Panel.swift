@@ -73,7 +73,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         observe = model.objectWillChange.sink { [weak self] in DispatchQueue.main.async { self?.fit() } }
     }
 
-    var isShown: Bool { panel.isVisible }
+    /// True for the moment the prewarm has the panel on screen, far away and clear: not a shown Capsule.
+    private var warming = false
+    var isShown: Bool { panel.isVisible && !warming }
 
     func toggle(front: FrontApp? = nil) {
         if isShown { hide() } else { show(front: front ?? Self.frontApp()) }
@@ -85,6 +87,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func show(front: FrontApp?) {
+        warming = false
+        if model.warming { model.warming = false; model.text = "" }   // summoned during the warm-up
         // A second open within a moment of closing is the same gesture landing twice.
         if Date().timeIntervalSince(hiddenAt) > 30 { model.reset() }
         model.willShow(front: front)
@@ -93,21 +97,59 @@ final class PanelController: NSObject, NSWindowDelegate {
         let f = screen.frame
         top = f.maxY - (f.height * Theme.topFraction).rounded()
         let h = height()
-        panel.setFrame(NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h), display: false)
+        let target = NSRect(x: (f.midX - Theme.width / 2).rounded(), y: top - h, width: Theme.width, height: h)
+        let still = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        // The bar arrives over 220 ms: it fades up and rises 4 points (LumenMotion). Reduce Motion: there at once.
+        var start = target
+        start.origin.y -= CGFloat(LumenMotion.riseDistance)
+        panel.setFrame(still ? target : start, display: false)
         // Set again before every show (capsule-now rule 6): macOS can drop it after a Space change.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
-        // In quickly: a fade over two frames' worth, so it arrives rather than blinks.
-        panel.alphaValue = 0
+        panel.alphaValue = still ? 1 : 0
         panel.orderFrontRegardless()
         panel.makeKey()
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.11
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
+        if !still {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = LumenMotion.arrivalMs / 1000
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.33, 1, 0.68, 1)   // ease-out
+                panel.animator().alphaValue = 1
+                panel.animator().setFrame(target, display: true)
+            }
         }
         focus.count += 1
         startKeys()
         onShownChange?(true)
+    }
+
+    /// Build and draw the panel's view once while it is hidden, so the first summon after launch does
+    /// not pay for the first layout, first fonts and first render. Nothing is shown, no key is taken.
+    func prewarm() {
+        guard !panel.isVisible else { return }
+        warming = true
+        let size = NSSize(width: Theme.width, height: height())
+        host.frame = NSRect(origin: .zero, size: size)
+        // Draw real rows once: the first letter a person types was the slow one (first row views, first
+        // fonts, first icons). A search for "a", local rows only, then the box is emptied again.
+        model.warming = true
+        model.text = "a"
+        host.layoutSubtreeIfNeeded()
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) { host.cacheDisplay(in: host.bounds, to: rep) }
+        // The window server makes its half of a translucent, shadowed window the first time it is put
+        // on screen, and that was most of a cold first summon. Do it once now: far off screen and
+        // fully clear, for a moment, taking no focus.
+        let offscreen = NSRect(x: -20_000, y: -20_000, width: size.width, height: size.height)
+        panel.alphaValue = 0
+        panel.setFrame(offscreen, display: false)
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.warming else { return }                            // summoned meanwhile: leave it be
+                self.warming = false
+                self.panel.orderOut(nil)
+                self.panel.alphaValue = 1
+                if self.model.warming { self.model.warming = false; self.model.text = "" }
+            }
+        }
     }
 
     /// For the typing check: shown far off screen, never key, no global monitors, so a test types
@@ -225,6 +267,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// One key while shown. Internal so the driven mode (Agent/AgentDrive.swift) can press keys in this
     /// window alone, never system-wide.
     func key(_ e: NSEvent) -> Bool {
+        // A key that may type a character: what comes into the box next within a moment is typed, nothing else is.
+        model.noteKey(characters: e.characters, command: e.modifierFlags.contains(.command), control: e.modifierFlags.contains(.control))
+        // Setting a hotkey: the shortcut pressed is the answer (Esc leaves).
+        if model.bindingEdit?.field == .hotkey {
+            let f = e.modifierFlags
+            return model.captureHotkey(keyCode: e.keyCode, command: f.contains(.command), option: f.contains(.option), control: f.contains(.control), shift: f.contains(.shift))
+        }
         // The waiting list and its cards take their keys first (Agent/AgentPanelKeys.swift).
         if agentKey(e) { return true }
         let cmd = e.modifierFlags.contains(.command), shift = e.modifierFlags.contains(.shift)
@@ -238,9 +287,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             // recording AND removes exactly what this dictation added -- anything typed before or
             // after it stays (the user's spec, 28 Sep, matching chat's tap-to-talk).
             if extensions?.cancelTalking() == true { return true }
+            if model.bindingEdit != nil { model.cancelBinding(); return true }
+            if model.vaultPassword != nil { model.cancelVaultPassword(); return true }
             if model.presenceAsk != nil { model.cancelPresence(); return true }
             if model.credentialAsk != nil { model.cancelCredential(); return true }
             if model.escCommand() { return true }
+            if model.viewBack() { return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             // An answer on screen, or the follow-up box: back to plain search. The next Esc hides.
@@ -251,6 +303,10 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.removeAttachment(); return true
         case 51 where model.text.isEmpty && model.target != nil: // delete on an empty box drops the chip (a child first)
             model.dropChip(); return true
+        case 48 where model.current?.kind == "tag": // Tab picks the # row
+            model.run(); return true
+        case 48 where model.viewSession != nil: // Tab: the row's detail, in a module command
+            return model.viewOpenDetail()
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
         case 124 where cmd && !shift && (model.showsMemory || model.askedMemory != nil) && caretAtEnd: // ⌘→ at the end of the box shows or folds memory's sources
@@ -259,6 +315,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.deeper(); return true
         case 31 where cmd && !shift && model.reply.map({ !$0.thread.isEmpty }) == true: // ⌘O: the thread in Vyre chat
             model.openInChat(); return true
+        case 18, 19, 20 where cmd && !shift && (model.askedMemory?.sources.isEmpty == false): // ⌘1 ⌘2 ⌘3: a Vyre IQ source
+            model.openSource(e.keyCode == 18 ? 0 : e.keyCode == 19 ? 1 : 2); return true
         // An answer that runs past its card scrolls from the keyboard; the focus stays in the box.
         // ⌘↑ ⌘↓ are the card's only while it has more to show, else the box's (start, end).
         case 126 where cmd && !shift && model.asked != nil && model.answerScroll.overflows: model.answerScroll.toTop(); return true
@@ -274,12 +332,20 @@ final class PanelController: NSObject, NSWindowDelegate {
         case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
+            // A # row is listed: ⏎ adds that tag, it does not send the words.
+            if model.current?.kind == "tag" { model.run(); return true }
+            // A module command's form, or a previewed send: ⏎ submits (a second ⏎ on a preview sends it).
+            if let vs = model.viewSession, vs.isFormOrPreview { Task { await model.viewSubmit() }; return true }
+            if model.viewRunDetailAction() { return true }
             // A key being added: ⏎ saves it (the field's own submit does the same).
             if model.credentialAsk != nil { Task { await model.saveCredential() }; return true }
+            if model.vaultPassword != nil { Task { await model.submitVaultPassword() }; return true }
             // Plain ⏎ while listening: stop the mic (keeping the words already heard) and send,
             // same as chat's tap-to-talk. ⌘⏎/⇧⏎ are left alone -- only a plain ⏎ means "send".
             if !shift, !cmd { _ = extensions?.stopTalking() }
             // Offline with an empty box: ⏎ is the Offline line's "Start Vyre".
+            // A setting an agent changed on your word, shown under the empty box: Return undoes it.
+            if !shift, !cmd, model.loosenedShown, model.groups.isEmpty { Task { await model.undoLoosened() }; return true }
             if !shift, !cmd, model.returnStartsVyre() { return true }
             // A question: ⏎ asks (or keeps the answer and opens the follow-up box), ⌘⏎ thinks deeper.
             if !shift, model.handleReturn(command: cmd) { return true }

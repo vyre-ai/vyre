@@ -73,7 +73,7 @@ extension CapsulePresence {
     func pinSelf() async {
         guard case .ask(let cdhash) = pinStep() else { return }
         let short = String(cdhash.prefix(16))
-        let summary = "Pin this Mac's Capsule build (\(short))"
+        let summary = "Pin this Mac's Lumen build (\(short))"
         let proved: Result<String, VyredFailure>
         if let pinProof { proved = await pinProof("presence.capsule.pin", ["cdhash": cdhash], summary) }
         else { proved = await proof(tool: "presence.capsule.pin", input: ["cdhash": cdhash], summary: summary) }

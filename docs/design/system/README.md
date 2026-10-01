@@ -1,6 +1,6 @@
 ---
 title: Vyre design system
-summary: Design A v1, frozen 27 Sep 2026. Tokens, 47 component specs, layout and navigation, copy rules and the render audit, for the Deck, the app and the Capsule.
+summary: Design A v1, frozen 27 Sep 2026. Tokens, 47 component specs, layout and navigation, copy rules and the render audit, for the Deck, the app and Lumen.
 audience: builders
 owner: app-design
 status: draft
@@ -9,7 +9,7 @@ status: draft
 # Vyre design system
 
 Design A v1, frozen 27 Sep 2026. This folder is the design system of record: the Deck (pwa, chat,
-native-core), the app (mobile) and the Capsule (capsule-pro) build from it with no guessing.
+native-core), the app (mobile) and Lumen (capsule-pro) build from it with no guessing.
 
 Where this folder and the canvas disagree, this folder wins. Where it is silent, the canvas
 (https://claude.ai/artifact/CKLkX4pcZpsyiKYDEnXKWr) is the reference, and the gap is a bug in this
@@ -18,10 +18,10 @@ spec says "(proposed)".
 
 - [Tokens](tokens.md): the one JSON, what each surface generates from it, and the theme rules.
 - [Layout and navigation](layout.md): breakpoints, the three shapes, the rail, the phone shell,
-  the Capsule.
+  Lumen.
 - [Copy](copy.md): voice, words we use and never use, formats.
 - [The render audit](audit.md): the check every board and every change to it passes.
-- [The Capsule, redesigned](capsule.md): the Design A Capsule, keyboard first, with Vyre IQ,
+- [Lumen, redesigned](capsule.md): the Design A Lumen, keyboard first, with Vyre Memory,
   voice and computer use.
 - [Spec lists by team](teams.md): every open gap, sorted by the team that closes it.
 - The component specs below, one file each: anatomy, variants, sizes, states, keyboard and touch,
@@ -46,7 +46,7 @@ does not have it by design.
 
 ### Foundations
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Icons](components/icons.md) | partial | not built | not built |
 | [Status mark](components/status-mark.md) | partial | partial | partial |
@@ -54,7 +54,7 @@ does not have it by design.
 
 ### Controls
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Button](components/button.md) | partial | partial | partial |
 | [Icon button](components/icon-button.md) | built | not built | partial |
@@ -66,7 +66,7 @@ does not have it by design.
 
 ### Containers
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Card](components/card.md) | partial | partial | partial |
 | [List](components/list.md) | partial | partial | partial |
@@ -78,7 +78,7 @@ does not have it by design.
 
 ### Rows
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Needs row](components/needs-row.md) | built | partial | partial |
 | [List row](components/list-row.md) | partial | partial | partial |
@@ -87,7 +87,7 @@ does not have it by design.
 
 ### Session and chat
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Turn](components/turn.md) | partial | partial | partial |
 | [Tool row](components/tool-row.md) | partial | partial | partial |
@@ -102,13 +102,13 @@ does not have it by design.
 
 ### Places and surfaces
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Rail](components/rail.md) | partial | not built | not used |
 | [Top bar](components/top-bar.md) | partial | not built | not used |
 | [Command bar](components/command-bar.md) | partial | not built | not used |
 | [Phone shell](components/phone-shell.md) | partial | partial | not used |
-| [Capsule on the Mac](components/capsule-mac.md) | not used | not used | partial |
+| [Lumen on the Mac](components/capsule-mac.md) | not used | not used | partial |
 | [Glass frame](components/glass-frame.md) | partial | not built | not used |
 | [Authenticator code](components/otp.md) | partial | not built | not built |
 | [Agenda](components/agenda.md) | partial | not built | partial |
@@ -119,7 +119,7 @@ does not have it by design.
 
 The parts every surface draws from one shared answer on the box (ADR 0036).
 
-| Component | Deck | App | Capsule |
+| Component | Deck | App | Lumen |
 |---|---|---|---|
 | [Suggestions](components/suggestions.md) | partial | not built | partial |
 | [Account picker row](components/account-row.md) | not built | not built | not built |
@@ -132,6 +132,6 @@ The parts every surface draws from one shared answer on the box (ADR 0036).
 |---|---|---|---|---|
 | Deck | 5 | 35 | 6 | 1 |
 | App | 1 | 20 | 25 | 1 |
-| Capsule | 0 | 23 | 13 | 11 |
+| Lumen | 0 | 23 | 13 | 11 |
 
 Every spec's Gaps section is a checklist. When a surface closes one, tick it in the same commit.

@@ -281,6 +281,35 @@ defend against a bug in vyre-core's own update-checking code itself, or a compro
 key -- those are supply-chain risks this ADR's boundary doesn't reach, same as any software's
 update mechanism.
 
+### 5a. First-install trust and the limits, as built (anywhere, 30 Sep, after reviewer-2's round)
+
+- **The first install is verified before sudo, against a key the script carries.** The person already
+  trusts the install script (it is the curl|sh line). It embeds the release public key and, before any
+  password prompt, checks SHA256SUMS.sig (the one signature Linux and Mac share, over "vyre-release-sums\n" plus the exact bytes of SHA256SUMS, which lists manifest.json and vyre.tgz) with the pinned, sha256-checked Node and a check written in the
+  script, then checks the manifest and the tarball against its lines; the version and the anti-rollback floor stay in manifest.json. A key inside the tarball proves nothing
+  on a first install, since the tarball controls it.
+- **Root runs nothing the person can write.** The sudo step is one fixed `sh -c` literal in the script.
+  It copies the release files and the Node tarball into a fresh root-owned 0700 folder, hashes the
+  root-owned copies against the two expected sums, extracts with /usr/bin/tar, and runs the installer
+  from that tree with that node. The installer also refuses a node whose bytes do not match the hash
+  it was given, because the update daemon runs that binary as root for the life of the install.
+- **The honest limit.** The script and the release files are both served from vyre.run. Someone who
+  controls that whole origin can serve a script with their own key; the offline key then protects
+  updates, not the first install.
+- **The placeholder key cannot ship.** scripts/check-release-key.mjs stops the site build and
+  scripts/release.sh while release.js still carries the placeholder, or while the script's key differs
+  from release.js's. Only a dry run may pass it (VYRE_ALLOW_PLACEHOLDER_KEY=1), and a publishing run
+  cannot.
+- **The update daemon never recurses in a folder _vyre owns.** It unlinks the three known staged names
+  (a link is removed, never followed), opens each with O_NOFOLLOW, and ignores everything else.
+- **keys.* is not model-proof, and does not claim to be.** core cannot tell vyred (a launchd job) from a
+  process that detached itself to look like one, because both have no Claude ancestor and a launchd
+  parent. keys.* therefore protects the private halves from being read or copied, and refuses a model
+  that stays in its session; it does not stop a model that deliberately daemonizes from asking core for
+  a DH or a signature as the owner. Every such use is counted, logged and emitted as a `keys.used` event
+  vyred shows, so misuse is visible. The real fix is identifying the peer by code signature (the audit
+  token and SecCode) once vyred and the Capsule are signed.
+
 ### 6. Vault migration sequence and its failure modes
 
 **The rule (reviewer, 28 Sep): only item secrets move; every piece of trust state is made

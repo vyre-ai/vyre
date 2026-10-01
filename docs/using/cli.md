@@ -8,9 +8,9 @@ status: draft
 
 # The vyre command
 
-`vyre` is Vyre in a terminal. Every command is a call to vyred, the daemon on your machine, so
-the terminal, the [Deck](deck.md) and the [Capsule](capsule.md) never disagree about what is
-true. This page is organised by task. Every command and its usage line is in the
+`vyre` is Vyre in a terminal, on your Mac or on your own server over SSH. Every command is a
+call to Vyre's background service on that machine, so the terminal, the [Deck](deck.md), your
+phone and [Lumen](capsule.md) never disagree about what is true. This page is organised by task. Every command and its usage line is in the
 [CLI reference](../reference/cli.md); `vyre help` prints the same list, and `vyre help <command>`
 shows one command's usage and flags.
 
@@ -19,16 +19,21 @@ shows one command's usage and flags.
 ::: tabs
 ::: tab On a server
 The host's `vyre` (in `/usr/local/bin`) is a small wrapper that runs the same CLI inside the
-box's container, so every command on this page works there. The wrapper adds two of its own:
+box's container, so every command on this page works there. The wrapper adds a few of its own:
 
 ```sh
-vyre update    # fetch a new release, check it, rebuild and recreate the box
-vyre logs      # follow vyred's output
+vyre update               # fetch the newest stable release, check it, back up, rebuild and recreate the box
+vyre update --rollback    # put the previous release back
+vyre logs                 # follow Vyre's output
+vyre uninstall            # stop Vyre and take it off this server; it asks whether to delete the data
 ```
 
-It looks for the box in `/srv/vyre`; set `VYRE_DIR` if you put it elsewhere.
+`vyre update` checks every file against the release's checksums and the checksums against
+Vyre's release signature, and refuses an unsigned release. The stable channel never installs a
+prerelease; `--channel beta` does. If the new release does not come up, it puts the old one
+back. It looks for the box in `/srv/vyre`; set `VYRE_DIR` if you put it elsewhere.
 ::: tab On this Mac
-`vyre` talks to the vyred on your Mac. `vyre box` looks after a box on a server from here:
+`vyre` talks to the Vyre running on your Mac. `vyre box` looks after a box on a server from here:
 
 ```sh
 vyre box            # which box, and whether it answers
@@ -42,22 +47,21 @@ See [Box care](box-care.md).
 ## Start Vyre and check on it
 
 ```sh
-vyre up        # start vyred; print the onboarding link, or your box's address
+vyre up        # start Vyre; print the onboarding link, or your box's address
 vyre status    # is it running, which version, how many modules
 vyre modules   # every module and whether it started
-vyre down      # stop vyred
+vyre down      # stop Vyre
 ```
 
 ```output
-  vyred running · 0.0.1 · box · pid 412 · up 3600s
-  17 modules running
+  vyred running · 0.2.0 · box · pid 412 · up 3600s
 ```
 
-`vyre up` is safe to run any time. After an upgrade it restarts an older vyred. When it has
+`vyre up` is safe to run any time. After an upgrade it restarts an older Vyre. When it has
 nothing left to set up, it prints the same "Vyre is ready" block every time.
 
 > [!SNAG] vyre status says a module failed
-> Run `vyre modules`. A failed module shows its error on its line; vyred keeps running without it.
+> Run `vyre modules`. A failed module shows its error on its line; Vyre keeps running without it.
 
 ## Open your projects
 
@@ -106,8 +110,8 @@ These hand your terminal to Claude Code until it exits. They load Vyre's hooks a
 
 ## Drive a running session
 
-Headless threads are sessions vyred runs in the background, so they outlive every terminal and
-browser tab.
+Headless threads are sessions Vyre runs in the background on your server, so they outlive every
+terminal, browser tab and closed laptop.
 
 1. Start one:
 
@@ -120,8 +124,9 @@ browser tab.
      vyre threads watch 3f9c2a71
    ```
 
-   Without `--project`, it starts in the current folder (`--cwd` picks another). `--name` and
-   `--model` are optional.
+   Without `--project`, it starts in the current folder (`--cwd` picks another). `--name`,
+   `--model` and `--provider` are optional. `--provider codex` (or `grok`, `openrouter`) starts it
+   on that provider's account instead of Claude's.
 2. Watch it. Its recent history prints, then what it does next, until it stops or you press
    Control-C:
 
@@ -138,6 +143,17 @@ browser tab.
    ```
 
 4. Stop it: `vyre threads stop 3f9c`.
+
+To change a running thread's model, `vyre threads model 3f9c sonnet` (or a model id). To move
+the thread to another provider between turns, which is what the model picker in Chat does:
+
+```sh
+vyre call threads.switch '{"thread":"3f9c...","provider":"codex"}'
+```
+
+The thread says "Switched to Codex" and carries on with the same folder and files. It is
+refused while a turn is running. A provider with more than one account also needs
+`"account"`. [Sessions](sessions.md#one-picker-per-session) says what carries over.
 
 `vyre threads list` shows headless threads from the last day (`--all` for every one). A thread id
 can be shortened to its first four or more characters.
@@ -162,7 +178,7 @@ vyre agents usage juno               # turns, time, tokens, spend, rate limits
 question, it prints the ask and the `vyre threads answer` line to answer it.
 
 `vyre agents create kit --projects harlow-intake` makes an agent; see [Agents](agents.md) for
-every flag.
+every flag, and for `vyre agents computer kit` to look after an agent's own computer.
 
 ## Ask what memory knows
 
@@ -196,11 +212,11 @@ vyre call system.echo '{"text":"hi"}'
 ```
 
 `vyre call` prints the tool's data as JSON, or an error with its code. A tool that needs a person
-(an approval, a vault reveal) asks you to prove you are here: Touch ID when vyred offers it, or a
+(an approval, a vault reveal) asks you to prove you are here: Touch ID when Vyre offers it, or a
 code typed in this terminal. `--tty` asks for the code in the terminal.
 
-For machine-readable output from a command, use `--json` where it exists: `vyre up`,
-`vyre recall` and every `vyre vault` command.
+For machine-readable output, add `--json`: most commands take it, and `vyre help <command>`
+shows whether one does.
 
 ## What it will not do
 
@@ -208,6 +224,14 @@ For machine-readable output from a command, use `--json` where it exists: `vyre 
   would see it. `vyre vault put` prompts or reads stdin.
 - It will not approve anything for a script or for Claude's own shell. Approvals need a person at
   a terminal: a process with no terminal is refused.
+
+## How Vyre runs its sessions
+
+`vyre sessions` shows and sets how the sessions Vyre starts run: `vyre sessions status` (driver,
+sign-in, Claude Code, Agent SDK), `vyre sessions models` (the model per kind of session) and
+`vyre sessions prompt` (the system prompt at three levels, with history and undo). Changing a
+model or a prompt is refused from inside a Claude session: do it from the Deck or a plain
+terminal. [Sessions](sessions.md) has the rest.
 
 ## Next
 

@@ -1,6 +1,6 @@
 ---
 title: Your first day
-summary: What to do on your first day after onboarding: open the Capsule, start a thread in a project, launch an agent, store a secret, and find something from last week.
+summary: What to do on your first day after onboarding: open Lumen, start a thread in a project, launch an agent, store a secret, and find something from last week.
 audience: users
 owner: e2e
 status: draft
@@ -8,7 +8,7 @@ status: draft
 
 # Your first day
 
-Onboarding left you with a box at your own address, a paired Mac, and an assistant. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
+Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
 
 ## Check that everything is up
 
@@ -19,29 +19,23 @@ vyre status
 vyre link
 ```
 
-```output
-  vyred running · 0.0.1 · local · pid 4242 · up 380s
-  17 modules running
-  ● linked to vyre.tail1234.ts.net
-```
+`vyre status` says whether Vyre is running on this Mac and how many of its modules started (a failed one is named with `vyre modules`). `vyre link` says whether this Mac is paired with your server and whether the server answers; paired and answering, it prints `●` and `linked to` with your server's name. If either is wrong, see [Troubleshooting](troubleshooting.md).
 
-`vyre status` says whether `vyred` is running and how many modules started (a failed one is named with `vyre modules`). `vyre link` says whether this Mac is paired with your box and whether the box answers. If either is wrong, see [Troubleshooting](troubleshooting.md).
+## Open Lumen
 
-## Open the Capsule
+Press Control twice, in any app. Lumen opens over what you are doing, with the caret in its box. Press Escape to put it away.
 
-Press Control twice, in any app. The Capsule opens over what you are doing, with the caret in its box. Press Escape to put it away.
-
-- Type a question and press Return. It goes to your assistant, which can see every project and every session. The Capsule shows where a message goes before you send it.
+- Type a question and press Return. It goes to your assistant, which can see every project and every session. Lumen shows where a message goes before you send it.
 - Type `@` to pick who hears it: an agent (`@kit`), a project, or a thread. Talking to a thread types into that session directly.
 - Anything that came from memory rather than a model shows in gold, with its source.
-- Anything waiting on you (a permission question from a thread, a message held before sending) shows in the Capsule and can be answered there.
+- Anything waiting on you (a permission question from a thread, a message held before sending) shows in Lumen and can be answered there.
 
 > [!SNAG] Control twice does nothing
-> Click the Capsule's menu bar icon. If a line there starts `Double-Control is off:`, it says why.
+> Click Lumen's menu bar icon. If a line there starts `Double-Control is off:`, it says why.
 > Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` to open
-> it wired to this Mac's `vyred`. Option-Space opens it meanwhile.
+> it again. Option-Space opens it meanwhile.
 
-More in [The Capsule](../using/capsule.md).
+More in [Lumen](../using/capsule.md).
 
 ## Start a thread in a project
 
@@ -64,6 +58,8 @@ To see what a new thread will be told before you start one:
 ```
 vyre context harlow-legal
 ```
+
+A thread can run on Claude, Codex, Grok or OpenRouter, from the accounts you signed in to at setup. In Chat, the chip above the message box shows who answers, with its model and effort, and opens a menu to change them. Starting a message with `@codex` or `@grok` sends only that message to that provider, and the thread keeps its own. More in [Sessions](../using/sessions.md#one-message-on-another-provider).
 
 More in [Projects and threads](../using/projects-and-threads.md).
 
@@ -95,7 +91,7 @@ Put a credential in the vault once, and never paste it into a session again. Cla
 vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
 ```
 
-It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code vyred writes to your terminal. In the Deck, it is your passkey.
+It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Deck, it is your passkey.
 
 To use it from a script outside Vyre, let the vault hand it to that one process:
 
@@ -127,17 +123,17 @@ Until the search model is on this machine, recall matches keywords, and says so 
 
 Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Deck: its threads are listed newest first.
 
-You can also ask for it in words. In the Capsule, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
+You can also ask for it in words. In Lumen, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
 
 ## What is not here yet
 
 - A date filter for recall, as above.
-- A native phone app. On the phone, open your address in Safari and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
-- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Capsule.
-- Automatic updates. On the box run `vyre update`; on the Mac run the install line again. See [Looking after the box](../using/box-care.md).
+- A phone app from an app store. Native iPhone and Android builds exist, but you build and install them yourself. On the phone, open your address in Safari or Chrome and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
+- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
+- Updates on a Mac by themselves. Run `vyre update` on the Mac. A server updates from Settings, with `vyre update`, or by itself between 2 and 5 in the morning if you turn on **Update automatically** (off by default). Updates are signed. See [Looking after the box](../using/box-care.md).
 
 ## Where to go next
 
-- [The Capsule](../using/capsule.md), [The Deck](../using/deck.md), [Chat](../using/chat.md)
+- [Lumen](../using/capsule.md), [The Deck](../using/deck.md), [Chat](../using/chat.md)
 - [Watchers](../using/watchers.md), for work that should happen while you are away
 - [Troubleshooting](troubleshooting.md)

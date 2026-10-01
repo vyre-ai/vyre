@@ -76,9 +76,9 @@ final class Health: ObservableObject {
     }
 
     var summary: String {
-        if !vyredUp { return "vyred is not running" }
+        if !vyredUp { return "Vyre is not running" }
         if let l = link { return "Box \(l.path)" }
-        return "vyred is running"
+        return "Vyre is running"
     }
 }
 
@@ -98,7 +98,7 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
         self.health = health
         super.init()
         item.button?.image = CapsuleApp.menuBarMark()
-        item.button?.toolTip = "Vyre"
+        item.button?.toolTip = "Vyre Lumen"
         item.button?.target = self
         item.button?.action = #selector(clicked(_:))
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -121,7 +121,7 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
 
     func paint() {
         dot.layer?.backgroundColor = health.dotColor.cgColor
-        item.button?.toolTip = "Vyre · \(health.summary)"
+        item.button?.toolTip = "Vyre Lumen · \(health.summary)"
     }
 
     @objc private func clicked(_ sender: NSStatusBarButton) {
@@ -166,8 +166,8 @@ struct MenuBarPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                MarkView(size: 20)
-                Text("Vyre").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
+                LumenMark(size: 20)
+                Text("Vyre Lumen").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
                 Spacer()
                 Circle().fill(Color(nsColor: health.dotColor)).frame(width: 7, height: 7)
             }
@@ -180,8 +180,8 @@ struct MenuBarPopover: View {
             }
             .padding(.horizontal, 14).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
-                status(health.vyredUp ? "vyred is running" : "vyred is not running", ok: health.vyredUp,
-                       sub: health.vyredUp ? nil : "Start Vyre below, or press Return in the Capsule")
+                status(health.vyredUp ? "Vyre is running" : "Vyre is not running", ok: health.vyredUp,
+                       sub: health.vyredUp ? nil : "Start Vyre below, or press Return in Lumen")
                 if let l = health.link {
                     status("Box \(l.path)", ok: l.dot == .direct, sub: l.handshake)
                 } else if let why = health.linkWhy {
@@ -192,12 +192,12 @@ struct MenuBarPopover: View {
             Rule()
             VStack(spacing: 2) {
                 if !health.vyredUp, let start { PopoverButton(title: "Start Vyre", hint: nil, action: start) }
-                PopoverButton(title: "Open Capsule", hint: hotkeys, action: open)
+                PopoverButton(title: "Open Lumen", hint: hotkeys, action: open)
                 if canTurnOnControl { PopoverButton(title: "Turn on Control twice…", hint: nil, action: turnOnControl) }
             }
             .padding(6)
             Rule()
-            PopoverButton(title: "Quit Vyre Capsule", hint: "⌘Q", action: quit).padding(6)
+            PopoverButton(title: "Quit Lumen", hint: "⌘Q", action: quit).padding(6)
         }
         .frame(width: 280)
         .background(Theme.carbon)

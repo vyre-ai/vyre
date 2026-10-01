@@ -41,8 +41,8 @@ vyre modules   # each module, and the error of any that failed
 
 On the server, the host's `vyre` is a small shell script, `/usr/local/bin/vyre`. It runs every
 command in the `vyre` container, except three it handles itself: `vyre up` starts the stack if it
-is not running, waits up to a minute for vyred, then prints the setup link or your address;
-`vyre update` upgrades (below); `vyre logs` follows vyred's output.
+is not running, waits up to a minute for Vyre, then prints the setup link or your address;
+`vyre update` upgrades (below); `vyre logs` follows Vyre's output.
 
 > [!SNAG] `vyre box` says "no box yet: vyre box add <user@host>"
 > The `vyre box` commands work only for a box this Mac knows the SSH target of. If you installed
@@ -58,11 +58,31 @@ is not running, waits up to a minute for vyred, then prints the setup link or yo
 On the box:
 
 ```
-vyre logs      # follow vyred's output (docker compose logs -f vyre)
+vyre logs      # follow Vyre's output (docker compose logs -f vyre)
 ```
 
-vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker box that is
+Vyre also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker box that is
 `/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume.
+
+## Cap what it spends
+
+Vyre keeps one ledger of what sessions, agents and memory spend, per provider and per day (UTC).
+Some figures are estimates, which the list marks, because they are tokens times a price rather
+than a cost the provider reported. A daily cap per provider stops the spending without asking you
+on every call.
+
+```
+vyre spend                      # today's spend per provider against its cap
+vyre spend raise claude 20      # cap Claude at $20 a day
+vyre spend raise claude +5      # add $5 to the cap
+vyre spend raise all 50         # one cap over every provider together
+vyre spend raise claude off     # no cap
+```
+
+At the cap, the thread that was spending is paused with one line that says what happened and the
+command to raise the cap, and memory answers from facts and search until the next UTC day or until
+you raise it. A provider with no cap has none. The Deck shows the same list under Settings, Spend,
+with a way to change each cap.
 
 ## Upgrade
 
@@ -90,16 +110,27 @@ vyre update
 
 `vyre update` brings the box to the newest release. It asks GitHub Releases for `vyre-ai/vyre`:
 `stable` (the default) is the newest release that is not a prerelease, and `beta` is the newest of
-either. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a release by version
+either. A stable box never takes a prerelease, such as `0.2.0-rc.1`: only a box you set to `beta`
+would. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a release by version
 with `--to 0.2.0`. While GitHub has no release yet, or when you set `VYRE_BOX_URL` yourself, it
 uses the site instead (`https://vyre.run/box/` by default), as it always has.
 
-Every file comes from the release and is checked against its `SHA256SUMS` before anything on the
-box changes. Then, in order:
+Vyre looks for a newer release once a day and keeps the answer, so Settings can say "Update available" and show what changed. On a server set up by the install line, Settings also has an **Update to 0.x** button. It does not run anything itself: it drops a one-line request into `/var/lib/vyre-update/request`, a folder that only Vyre can write to and that root owns along with every folder above it, and a small systemd unit on the host (`vyre-update.path`, owned by root) runs `vyre update` for it. That update never accepts `--allow-unsigned`, never goes back to an older version than the newest this server has had (a version the host keeps in a file only root writes), waits at least ten minutes between updates, backs up your data first, and puts the old version back on its own if the new one does not start. The card shows each step and the result. The command above always works too, and a server with no systemd shows only the command.
+
+Turn on **Update automatically** in Settings (off by default) and Vyre asks for a new release by itself between 2 and 5 in the morning, once per version, the same way. The channel is the host's own: set `VYRE_CHANNEL=beta` in the server's `.env`, or leave it on stable. Set `auto` to `"off"` inside the `update` object in `config.json` to stop the daily look. On a Mac there is no update button: run `vyre update` (see Update Vyre on a Mac, below).
+
+Updates are signed. Every file comes from the release and is checked against its `SHA256SUMS`
+before anything on the box changes. The `SHA256SUMS` list itself is checked against its Ed25519
+signature (`SHA256SUMS.sig`) from Vyre's release key, which is built into the `vyre` command. An
+unsigned or badly signed release is refused, and `vyre update --allow-unsigned` installs it anyway
+after a plain warning that nothing proves it came from Vyre. The same holds for `vyre update` on
+a Mac. A box that pulls its image instead of building it also checks every Vyre image of the
+release with cosign against the release workflow's identity, and refuses to pull one it cannot
+check. Then, in order:
 
 1. It backs up the database with `vyre backup`, into `/home/vyre/.vyre/backups/pre-<version>.tar.gz`
-   in the container, with a copy in `/srv/vyre/backups/` that only you can read. It holds the
-   sealed vault, so treat it like the vault.
+   in the container, with a copy in `/srv/vyre/backups/` that only you can read. It is sealed like
+   any `vyre backup` file and holds the sealed vault, so treat it like the vault.
 2. It tags the image that runs now as `vyre:prev`, and keeps the box files as they are in
    `/srv/vyre/box.prev/`.
 3. It refreshes the box files (`compose.yml`, `compose.build.yml`, `vyre.env.example`, `Dockerfile`,
@@ -107,16 +138,16 @@ box changes. Then, in order:
 4. When `/srv/vyre/.env` lists `compose.build.yml` in `COMPOSE_FILE` and `VYRE_SOURCE` is
    `/srv/vyre/src`, it swaps in the new `vyre.tgz` and keeps the old one as `/srv/vyre/src.prev`,
    then rebuilds the image with fresh base images. Otherwise it pulls the new image.
-5. It recreates what changed and waits up to a minute for vyred.
+5. It recreates what changed and waits up to a minute for Vyre.
 
-If vyred does not come up in that minute, the update undoes itself: the old source, the old image,
+If Vyre does not come up in that minute, the update undoes itself: the old source, the old image,
 the old box files and the database from step 1 all go back, and `vyre update` exits 1 saying it
 rolled back. Store migrations only go forward, which is why the database comes back from the
 backup. Once an update has come up healthy, nothing restores the database on its own, so nothing
 you write after that is lost.
 
-After a healthy update it brings the phone app along, when the release has one: it checks the APK
-and `android.json` against `SHA256SUMS`, copies the APK into `/home/vyre/.vyre/releases/android/`,
+After a healthy update, when the release carries an Android build, it brings the phone app along:
+it checks the APK and `android.json` against `SHA256SUMS`, copies the APK into `/home/vyre/.vyre/releases/android/`,
 then `android.json` last (the old one stays as `android.json.prev`), and runs
 `vyre call releases.sign`. If signing refuses (`no_release` or `release_mismatch`), the update
 says so and still succeeds. A release without an Android build leaves the folder alone. Last, it
@@ -178,16 +209,16 @@ the version you run and the new one. When you say yes it:
 1. backs up your data into `~/.vyre/backups/pre-<version>/`;
 2. downloads the release into `~/.vyre/releases/<version>/` and checks every file against the
    release's `SHA256SUMS`, so a damaged or wrong download stops it before anything changes;
-3. installs it with `npm install -g`, restarts vyred the way `vyre up` does after an upgrade, and
-   waits for vyred to report the new version.
+3. installs it with `npm install -g`, restarts Vyre the way `vyre up` does after an upgrade, and
+   waits for Vyre to report the new version.
 
-If vyred does not come back on the new version, `vyre update` puts the previous version back,
+If Vyre does not come back on the new version, `vyre update` puts the previous version back,
 restores the backup, and says it rolled back. Once the new version has answered, it never touches
 your data again on its own.
 
 | Option | Does |
 |---|---|
-| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `update.channel` in `config.json` |
+| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `channel` inside the `update` object in `config.json` |
 | `--to <version>` | a given release, when an update says to step through one first |
 | `--yes` | installs without asking; needed when there is no terminal to ask on |
 | `--rollback` | puts the previous release back and keeps your current data |
@@ -282,19 +313,25 @@ sudo and says so; from then on the host's commands need `sudo vyre`.
 
 There are two kinds of backup.
 
-**Vyre's own data**, taken while vyred runs, on the box:
+**Vyre's own data**, taken while Vyre runs, on the box:
 
 ```
-vyre backup                  # vyre-backup-YYYY-MM-DD.tar.gz in /home/vyre, mode 0600
+vyre backup                  # vyre-backup-YYYY-MM-DD.vyre in /home/vyre, asks for a passphrase
 ```
 
-It holds `config.json`, a consistent copy of the store (taken with SQLite's `VACUUM INTO` while
-vyred writes), `vault/`, `watchers/`, `modules/`, `certs/` and `names/`. It leaves out
-`models/`, `logs/`, the socket and the pid file. The file lands in `/home/vyre`, inside the
-`vyre_vyre-home` volume. Copy it off the box:
+It asks for a passphrase twice (12 characters or more) and seals the file with it: there is no
+unencrypted backup, and the file opens only with that passphrase. It holds `config.json`, a
+consistent copy of the store (taken with SQLite's `VACUUM INTO` while Vyre writes), `vault/`,
+`watchers/`, `modules/`, `certs/`, `names/` and `data/` (your artifacts), plus your project files
+(the box's `/work`) and your session transcripts. Add `--skip-projects` if your projects live in
+git or Drive, and `--skip-transcripts` to leave the transcripts out. It leaves out `models/`,
+`logs/`, the socket and the pid file, and your Claude, Codex and Grok sign-ins: sign in again after
+a restore, or pass `--with-provider-logins` to carry them. An unfinished backup resumes when you run
+the same command again. The file lands in `/home/vyre`, inside the `vyre_vyre-home` volume. Copy
+it off the box:
 
 ```
-cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.tar.gz .
+cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.vyre .
 ```
 
 **Everything**, Claude Code's sign-in and transcripts, your projects in `/work` and the box's
@@ -305,28 +342,37 @@ vyre box backup                         # vyre-box-backup-YYYY-MM-DD.tar.gz here
 vyre box backup ~/Backups/box.tar.gz
 ```
 
-This stops the stack, copies the `vyre-home`, `vyre-work` and `tailscale-state` volumes into one
-file on your Mac (mode 0600), and starts the stack again, even if the copy fails or you press
-Control-C. `--force` replaces an existing file.
+The box is stopped while this runs: it stops the stack, copies the `vyre-home`, `vyre-work` and
+`tailscale-state` volumes into one file on your Mac (mode 0600), and starts the stack again, even
+if the copy fails or you press Control-C. `--force` replaces an existing file.
 
-Both files contain your sealed vault. Keep them somewhere only you can read, or encrypt them
+Both files contain your sealed vault. Keep them somewhere only you can read. The `vyre backup`
+file is already sealed with its passphrase; encrypt the `vyre box backup` file yourself
 (`age -r <key> file`).
 
 ## Restore
 
-A `vyre backup` file goes back with vyred stopped. vyred is the container's main process, so
+A `vyre backup` file goes back with Vyre stopped. Vyre is the container's main process, so
 restore runs in a one-off container:
 
 ```
 cd /srv/vyre
-docker compose cp vyre-backup-2026-09-27.tar.gz vyre:/home/vyre/
+docker compose cp vyre-backup-2026-09-27.vyre vyre:/home/vyre/
 docker compose stop vyre
-docker compose run --rm vyre vyre restore /home/vyre/vyre-backup-2026-09-27.tar.gz --force
+docker compose run --rm vyre vyre restore /home/vyre/vyre-backup-2026-09-27.vyre --force
 vyre up
 ```
 
-Without `--force`, restore refuses to replace a store the box already has. It also refuses an
+Restore asks for the backup's passphrase. Without `--force`, it refuses to replace a store the box already has. It also refuses an
 archive with paths outside the known folders, or with links in it.
+
+The backup carries the artifacts your agents made (`data/artifacts`: every version, a dashboard's
+data, a deck's images, and the archive and 30-day undo state). A restore swaps them in by moving the
+box's current artifacts folder aside first and deleting it only once the new one is in place, so a
+failed restore keeps what was there. If the power fails between those two steps, a folder named
+`.artifacts.old-<number>` is left under `data/`; it is safe to delete once you have checked that
+your artifacts are there. Public links come back as they were when the backup was made: a link that
+was on then is on again.
 
 A `vyre box backup` file holds the three volumes as folders (`vyre-home/`, `vyre-work/`,
 `tailscale-state/`). To put it on a server that has no Vyre volumes yet, install without starting,
@@ -379,7 +425,7 @@ using the computers.
 
 ## Remove it
 
-If you claimed a `vyre.run` name, run `vyre name release` on the box first to free it.
+If you claimed a `vyre.run` name, run `vyre name release` on the box first to give it up. A name that was pointed at a server stays reserved afterwards, so nobody, you included, can claim it again.
 
 ::: tabs
 ::: tab On this Mac
@@ -418,3 +464,11 @@ A Linux box installed from npm with systemd units is upgraded with
   who can reach the box.
 - [Troubleshooting](../get-started/troubleshooting.md), when something does not start.
 - [CLI reference](../reference/cli.md#vyre-box), every `vyre box` form.
+
+## What root runs, and what it reads
+
+Updates that run as root (the automatic path from Settings and `sudo vyre update`) never read a file you or an agent on your account can write as configuration. Root starts compose from its own copies of the released compose.yml, in a folder only root can write, with a root-written env file and every file, project and folder named explicitly. It refuses an override file or a COMPOSE_* setting, takes how the box is built (pulled, built from the released source, or from your own checkout) from a record it made when the updater was installed, and checks every ghcr.io/vyre-ai image of a release with cosign before pulling. `sudo vyre up` and the other root commands use the same copies once the updater is installed. A host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
+
+One thing no script can fix: if your account may run `sudo` without a password, anything running as you can already become root, and none of this protects you from it. Keep `sudo` asking for a password on a box where agents run as your account.
+
+Being in the docker group is equivalent to root on that host, so only the owner should be in it. The installer's own first `vyre up` runs as you, straight after it lays down the files it just verified; root's copies exist from the next step, when the updater is installed.

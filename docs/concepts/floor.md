@@ -15,7 +15,8 @@ The status is `draft` because several rules are only partly enforced.
 ## Where the floor lives
 
 - **The Harness `PreToolUse` hook** (`core/harness/rules.js`), for every tool call Claude Code makes in a session that loads the Vyre plugin. It can only deny or ask; it never loosens Claude Code's own permissions. It also runs in-process when vyred is down (`harness/hooks/hook.js`).
-- **The same rules in vyred** (`registryRules` in `core/harness/rules.js`), for every tool call through the module registry that does not come from you at your own surface. The CLI, the Capsule, the Deck and `local`, naming no agent, are left to presence and the Gate. Every other caller (an agent through the Switchboard or MCP, a module, a device on the tailnet) gets the rules' answer, and an "ask" becomes a refusal, since nobody is there to say yes.
+- **The same rules in vyred** (`registryRules` in `core/harness/rules.js`), for every tool call through the module registry that does not come from you at your own surface. The CLI, Lumen, the Deck and `local`, naming no agent, are left to presence and the Gate. Every other caller (an agent through the Switchboard or MCP, a module, a device on the tailnet) gets the rules' answer, and an "ask" becomes a refusal, since nobody is there to say yes.
+- **A separate user for sessions, on a Docker box.** The sessions Vyre runs itself (the assistant, agents, chat) run as `vyre-agent`, which cannot open vyred's socket. A tailnet device or a paired phone is also not "you" until you sign in on it with a passkey (see [presence](presence.md)).
 - **Presence** (`core/presence`), checked by vyred on every call to a human-only tool, whoever the caller is. See [presence](presence.md).
 - **The Gate** (`core/gate`), which holds what would go out as you until you approve the final words.
 - **The event log** (`core/events`), which refuses payloads that look like secrets.
@@ -37,7 +38,7 @@ Enforced: the Harness question for a sending tool names the destination, taken f
 
 ## 3. A thread is one thing wherever it is viewed
 
-Enforced by design: a thread's id is its Claude Code session id, fixed with `--session-id` before the process starts, so the terminal, the Deck, the Capsule and Chat all name the same session. There is no Vyre copy to drift from it. No separate runtime check exists.
+Enforced by design: a thread's id is its Claude Code session id, fixed with `--session-id` before the process starts, so the terminal, the Deck, Lumen and Chat all name the same session. There is no Vyre copy to drift from it. No separate runtime check exists.
 
 ## 4. One screen types into a thread at a time
 
@@ -53,13 +54,13 @@ Not enforced yet: files a `Bash` command changes are not recorded.
 
 ## 6. Only an explicit question from an agent asks for your attention
 
-Enforced in the surfaces: the Capsule turns its menu-bar dot on for a permission question or a Gate hold and never opens itself or takes the keyboard. Web Push sends only four kinds (a session asking, something held at the Gate, a thread you chose to watch, a proposed lesson), each of which you can turn off, with quiet hours.
+Enforced in the surfaces: Lumen turns its menu-bar dot on for a permission question or a Gate hold and never opens itself or takes the keyboard. Web Push sends only a fixed set of kinds (a session asking, something held at the Gate, a thread you chose to watch, a proposed lesson, planner items, goals, proactive notes and notices). You can turn each off except notices, and quiet hours apply, except that a notice that a guard was loosened rings through them.
 
 No central check stops a module from raising some other notification.
 
 ## 7. Anything Vyre tells you, it can show the source of
 
-Enforced for memory and recall: every fact in Memory keeps the turn it came from, and `memory.why` returns the turns that support a fact. Enrich marks memory it adds to a prompt with its source, age and confidence. The Capsule opens the turn a recalled answer came from.
+Enforced for memory and recall: every fact in Memory keeps the turn it came from, and `memory.why` returns the turns that support a fact. Enrich marks memory it adds to a prompt with its source, age and confidence. Lumen opens the turn a recalled answer came from.
 
 ## 8. No vault value appears on any screen, log or event
 
@@ -74,13 +75,13 @@ Enforced:
 - The event log refuses a payload that looks like a secret (known key prefixes, private keys, `"password": "..."` and similar).
 - Push notifications carry a kind, a fixed title and a Deck path, never content.
 
-## 9. The Capsule works offline for your own Mac
+## 9. Lumen works offline for your own Mac
 
-Enforced: the Capsule's launcher (apps, files, settings, the calculator) runs from the Mac alone, with vyred down and no network. On the Mac, calls to the box fail fast with `box_unreachable` while the box is away, so nothing waits on it.
+Enforced: Lumen's launcher (apps, files, settings, the calculator) runs from the Mac alone, with vyred down and no network. On the Mac, calls to the box fail fast with `box_unreachable` while the box is away, so nothing waits on it.
 
 ## What the floor does not cover
 
-Root on the box, and anyone who can reach its Docker socket. Code that runs as you and rewrites Vyre itself. A filter over shell text can be dodged by a determined enough command, which is why the human-only actions rest on [presence](presence.md), not on the Harness filter alone.
+Root on the box, and anyone who can reach its Docker socket. Code that runs as you (on a Mac, or a Claude Code you start by hand in the box's container) and rewrites Vyre itself. A filter over shell text can be dodged by a determined enough command, which is why the human-only actions rest on [presence](presence.md), not on the Harness filter alone.
 
 ## Next
 

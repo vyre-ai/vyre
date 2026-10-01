@@ -224,7 +224,7 @@ let sightSuite = Suite("sight") { t in
         t.eq(SightExtension.cannotTalk(nil, ["key": false, "key_state": "not_granted"]), "The speech key is saved but voice may not use it yet. Allow it in the vault.")
         t.ok(SightExtension.keyNeed(["key_state": "not_granted"]) == nil && SightExtension.keyNeed(["key_state": "no_vault"]) == nil)
         t.eq(SightExtension.keyNeed(["key_state": "missing", "provider": "deepgram", "item": "voice-deepgram-key", "need": ["module": "voice", "need": "deepgram"]])?.item, "voice-deepgram-key")
-        t.eq(SightExtension.cannotTalk("no such tool: voice.status", [:]), "vyred has no voice module; it needs a vyred with local/voice")
+        t.eq(SightExtension.cannotTalk("no such tool: voice.status", [:]), "Vyre has no voice module; it needs a newer Vyre with local/voice")
         let mic = FakeMic()
         let said = t.wait { () -> [String] in
             let link = SightLink()
@@ -413,6 +413,7 @@ let sightSuite = Suite("sight") { t in
     t.test("talk: 2 minutes with nothing new nudges once; 5 minutes stops (never sends)") {
         let mic = FakeMic(), stream = FakeStream()
         let box = ResultBox<@Sendable ([String: Any]) -> Void>()
+        let clock = ManualClock()
         let r = t.wait { () -> (Bool, Int, Bool) in
             let link = SightLink()
             link.answer("voice.status") { _ in .success(["key": true, "mic": "/nowhere/vyre-mic"]) }
@@ -421,15 +422,21 @@ let sightSuite = Suite("sight") { t in
                 let ext = SightExtension(host: host)
                 ext.makeMic = { _ in mic }
                 ext.openStream = { onMessage, _ in box.value = onMessage; return .success(stream) }
-                ext.silenceWarnDelay = .milliseconds(20)
-                ext.silenceStopDelay = .milliseconds(60)
+                ext.clock = clock
                 ext.toggleTalk()
                 return (host, ext)
             }
             _ = await until { mic.onData != nil && box.value != nil }
-            _ = await until { await MainActor.run { host.said.contains { $0.contains("Still listening?") } } }
+            // Listening began: the two timers wait at 120 s and 300 s.
+            _ = await until { await MainActor.run { clock.pending.count == 2 } }
+            await MainActor.run { clock.advance(119) }
+            let early = await MainActor.run { host.said.contains { $0.contains("Still listening?") } }
+            await MainActor.run { clock.advance(2) }
+            let nudged = await MainActor.run { host.said.contains { $0.contains("Still listening?") } }
+            let stillOn = await MainActor.run { ext.model.talking }
+            await MainActor.run { clock.advance(200) }
             _ = await until { mic.stopped == 1 }
-            return await MainActor.run { (host.said.contains { $0.contains("Still listening?") }, host.submits, !ext.model.talking) }
+            return await MainActor.run { (!early && nudged && stillOn, host.submits, !ext.model.talking) }
         }
         t.eq(r?.0, true)
         t.eq(r?.1, 0, "the auto-stop never sends")
@@ -509,7 +516,7 @@ let sightSuite = Suite("sight") { t in
         if case .success(let s) = ok { t.ok(s === stream, "the link's stream is used as is") } else { t.ok(false, "open failed: \(ok)") }
         t.eq(link.streamPaths, ["/v1/streams/voice/listen", "/v1/streams/voice/listen", "/v1/streams/voice/listen"])
         if case .failure(let f) = missing {
-            t.eq(f, TalkFailure(code: "no_voice", message: "vyred has no voice module; it needs a vyred with local/voice"))
+            t.eq(f, TalkFailure(code: "no_voice", message: "Vyre has no voice module; it needs a newer Vyre with local/voice"))
         } else { t.ok(false, "a 404 must fail") }
         if case .failure(let f) = down { t.eq(f.code, "unreachable") } else { t.ok(false, "a missing vyred must fail") }
     }

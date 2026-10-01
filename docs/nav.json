@@ -10,7 +10,7 @@
       "get-started/without-docker.md",
       "get-started/troubleshooting.md"
     ]},
-    {"title": "Releases", "pages": ["releases/0.1.0.md"]}, { "title": "Using Vyre", "pages": [
+    {"title": "Releases", "pages": ["releases/0.1.0.md", "releases/checklist.md"]}, { "title": "Using Vyre", "pages": [
       "using/capsule.md",
       "using/deck.md",
       "using/chat.md",
@@ -18,9 +18,11 @@
       "using/claude-code.md",
       "using/sessions.md",
       "using/projects-and-threads.md",
+      "using/teammates.md",
       "using/agents.md",
       "using/vault.md",
       "using/memory.md",
+    "using/artifacts.md",
       "using/learning.md",
       "using/glass.md",
       "using/watchers.md",
@@ -28,6 +30,7 @@
       "using/connectors.md",
       "using/tailscale.md",
       "using/mobile.md",
+      "using/windows.md",
       "using/box-care.md", "using/tips.md"
     ]},
     { "title": "Concepts", "pages": [
@@ -38,10 +41,12 @@
       "concepts/modules.md"
     ]},
     { "title": "Build on Vyre", "pages": [
+      "MODULES.md",
       "build/module-contract.md",
       "build/tools-and-events.md",
       "build/writing-a-module.md",
       "build/first-module.md",
+    "build/AGENT-BRIEF.md",
       "build/tips.md",
       "build/mcp-hub.md"
     ]},
@@ -95,8 +100,12 @@
       "adr/0039-vyre-anywhere.md",
       "adr/0045-wink.md",
       "adr/0046-relay-introduces-tailscale-carries.md",
+      "adr/0047-module-contract-v1.md",
+      "adr/0049-deep-chrome-control.md",
       "adr/0041-github-everywhere.md",
-      "adr/0042-move-engine.md"
+      "adr/0042-move-engine.md",
+      "adr/0043-identity-marks-and-vyre-code.md",
+      "adr/0037-windows.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -104,10 +113,12 @@
       "CONTRIBUTING-DOCS.md",
       "contributing/testing.md",
       "design/TOKENS.md",
+      "design/brand/README.md",
       "design/deck.md",
       "design/settings-inventory.md",
       "design/native-bar.md",
       "design/phone.md",
+      "design/session-credentials.md",
       "design/one-app/README.md",
       "design/one-app/DIRECTION.md",
       "design/cohesion.md",
@@ -123,7 +134,11 @@
       "design/agent-browsers.md",
       "design/teammates.md",
       "design/tailscale-plan.md",
-      "design/vitals.md"
+      "design/vitals.md",
+      "design/assistant.md",
+      "design/said.md",
+      "design/undo.md",
+      "design/windows-plan.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",
@@ -135,19 +150,25 @@
       "design/system/teams.md",
       "design/system/components/account-row.md",
       "design/system/components/agenda.md",
+      "design/system/components/artifact-card.md",
       "design/system/components/ask-card.md",
       "design/system/components/avatar.md",
       "design/system/components/banner.md",
       "design/system/components/button.md",
+      "design/system/components/calendar.md",
       "design/system/components/capsule-mac.md",
+      "design/system/components/capsule-windows.md",
       "design/system/components/card.md",
       "design/system/components/chip.md",
       "design/system/components/command-bar.md",
       "design/system/components/composer.md",
+      "design/system/components/confirmation.md",
       "design/system/components/credential-sheet.md",
       "design/system/components/device-row.md",
       "design/system/components/diff.md",
       "design/system/components/draft-card.md",
+      "design/system/components/email-thread.md",
+      "design/system/components/file-preview.md",
       "design/system/components/form-controls.md",
       "design/system/components/glass-frame.md",
       "design/system/components/glass-mini.md",
@@ -163,6 +184,7 @@
       "design/system/components/pill.md",
       "design/system/components/plan-card.md",
       "design/system/components/popover.md",
+      "design/system/components/pr-review.md",
       "design/system/components/presence-line.md",
       "design/system/components/question-card.md",
       "design/system/components/rail.md",

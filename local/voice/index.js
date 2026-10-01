@@ -15,8 +15,10 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import * as config from "../../core/config/index.js";
-import { listener, LOCAL } from "./listen.js";
+import { callerKind } from "../../core/modules/index.js";
+import { listener, LOCAL, isAgentCaller } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
+import { spoken } from "./spoken.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
 
 /** A spoken reply is a sentence or two, not a document. */
@@ -24,7 +26,7 @@ const MAX_SPEAK = 2000;
 /** How long a speech ticket waits to be redeemed before its audio is dropped. */
 const TICKET_MS = 30_000;
 
-const kindOf = caller => String(caller || "").replace(/[\s:]agent:.*$/s, "");
+const kindOf = callerKind;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void>, idle(): { streams: number, tickets: number } }> }} */
 export default {
@@ -54,7 +56,7 @@ export default {
     // never uses either, whatever surface it is wrapped in (the lead, 28 Sep). core/projects's
     // own isAgent() convention, since callers: LOCAL matches by the bare kind and would let it
     // through otherwise.
-    const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+    const isAgent = caller => /(?:^|[\s:])(?:agent|thread):/i.test(String(caller || ""));
     const refuseAgent = meta => {
       if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw new VoiceError("denied", "an agent cannot use the person's mic or speech key");
     };
@@ -116,14 +118,14 @@ export default {
     });
 
     ctx.tool("voice.speak", {
-      description: "Say a reply aloud through the speech provider. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.",
+      description: "Say a reply aloud through the speech provider. Pass reply: true for the assistant's written reply; it is made speakable first (no code, tables or links, cut at a sentence). A surface calls it when the person's own question was spoken, never for a typed one. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.",
       callers: LOCAL,
-      input: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
-      run: async ({ text }, meta) => {
+      input: { type: "object", properties: { text: { type: "string" }, reply: { type: "boolean", description: "The text is a written reply: code, tables and links are left out, and a long one is cut at a sentence with a note that the rest is on screen." } }, required: ["text"] },
+      run: async ({ text, reply }, meta) => {
         refusePeer(meta);
         const s = settings(ctx.config);
         if (!s.speak) throw new VoiceError("speak_off", "spoken replies are off; turn them on in Settings");
-        const said = String(text).trim();
+        const said = reply === true ? spoken(String(text)).text : String(text).trim();
         if (!said) throw new VoiceError("bad_input", "nothing to say");
         if (said.length > MAX_SPEAK) throw new VoiceError("bad_input", `a spoken reply is at most ${MAX_SPEAK} characters`);
         const base = origin(s.provider, s.endpoints);
@@ -144,7 +146,7 @@ export default {
     ctx.route("speech", (req, res, { caller, url }) => {
       const ticket = url.searchParams.get("ticket") || "";
       const x = tickets.get(ticket);
-      if (req.method !== "GET" || !LOCAL.includes(kindOf(caller)) || !x) {
+      if (req.method !== "GET" || isAgentCaller(caller) || !LOCAL.includes(kindOf(caller)) || !x) {
         res.writeHead(req.method !== "GET" ? 405 : 404, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: { code: "not_found", message: "no such speech ticket here" } }));
         return;

@@ -90,7 +90,7 @@ extension CapsuleModel {
                 }
             }
         } else {
-            why = "This vyred cannot save keys from the Capsule yet (no vault.connect)."
+            why = "This Vyre cannot save keys from Lumen yet (no vault.connect)."
         }
         fields = [:]
         a.saving = false

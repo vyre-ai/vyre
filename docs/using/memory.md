@@ -20,9 +20,9 @@ people and links.
 Anything Vyre shows you in **gold** (the Recall colour) came from memory or the search index, not
 from a model's words: a matched quote in search results, a fact, a fact's source thread, your own
 correction. When text is gold you can ask where it came from, and Vyre can show you the turn.
-This is floor rule 7: anything Vyre tells you, it can show the source of. The gold appears in the
+Vyre holds itself to one rule here: anything it tells you, it can show the source of. The gold appears in the
 terminal (`vyre recall`, `vyre memory`, `vyre why`), in the Deck's Memory view and Now page, in
-Chat next to a thread, and in the Capsule when memory answers.
+Chat next to a thread, and in Lumen when memory answers.
 
 ## Search past sessions
 
@@ -53,7 +53,7 @@ In the Deck, the search box at the top (Command-K) runs the same search:
 
 ### Keep the index up to date
 
-vyred indexes on its own: a session a moment after each Claude Code turn ends, and every folder
+Vyre indexes on its own: a session a moment after each Claude Code turn ends, and every folder
 every 5 minutes (`recall.every` in `config.json`; 0 turns the timer off). `vyre index` indexes
 new and changed sessions now.
 
@@ -66,7 +66,7 @@ With no query, `vyre recall` says how much is indexed and whether search can ran
 ```
 
 > [!WHY] Why does the first search after an install only match words?
-> Search by meaning needs a small embedding model. vyred downloads it once (23 MB) into
+> Search by meaning needs a small embedding model. Vyre downloads it once (23 MB) into
 > `~/.vyre/models` and embeds your sessions in the background. Until that finishes, recall
 > searches full text only, and `vyre status` says "downloading the search model".
 
@@ -77,7 +77,7 @@ With no query, `vyre recall` says how much is indexed and whether search can ran
 Elsewhere:
 
 - **Deck**: the search box in the header searches every session; a hit opens the thread.
-- **Capsule**: press Control twice and ask; when memory can answer, the answer shows in gold with
+- **Lumen**: press Control twice and ask; when memory can answer, the answer shows in gold with
   its sources.
 - **Claude**: `/vyre recall <query>` inside a session, or the `recall.search` and `recall.thread`
   tools. An agent's search is held to its own projects' folders.
@@ -121,8 +121,19 @@ its source turns. **Now** shows **Memory learned today**, each fact with its sou
 ![Memory in the Deck as a map: rooms for Northwind Bakery and Harlow Legal with Sam Okafor, Dana Reyes, their things and threads, and each fact as a gold dot](shots/deck-memory.png)
 
 > [!SNAG] The Deck says "Memory is not available."
-> The Memory view could not read the graph from vyred. Choose **Try again**. If it keeps failing,
-> check that vyred runs (`vyre status`) and that the memory module started (`vyre modules`).
+> The Memory view could not read the graph from Vyre. Choose **Try again**. If it keeps failing,
+> check that Vyre runs (`vyre status`) and that the memory module started (`vyre modules`).
+
+## See what Vyre has learned about a site
+
+When Vyre for Chrome learns how a website works, the Deck lists it under **Memory**, on the
+**Sites** tab. Open a site to see what Vyre kept: the flows that worked, the controls it knows how
+to find, the site's own API calls and its notes. Each row has **Wrong?**, which forgets just that
+item. **Forget** on a site removes everything Vyre learned about it. Neither asks first, because
+each can be undone for 24 hours: the line says "Forgot ... Undo", and **Recently forgotten** at
+the bottom lists what can still be brought back, on any device.
+
+![The Sites tab in Memory: Harlow CRM with its host, its family, and what Vyre for Chrome has learned about it, with a Forget button.](shots/deck-memory-sites.png)
 
 ## How projects keep memory apart
 
@@ -130,13 +141,17 @@ Memory is kept in **rooms**: one per project, and `unfiled` for sessions in no p
 facts come only from its own sessions and what its watchers taught. A project's brief and a
 session in that project draw only on that room, so nothing from one client's project reaches
 another's. The main graph, across every room, is visible only to you on your own surfaces (the
-terminal, the Deck, the Capsule), to the assistant, and to an agent granted every project.
+terminal, the Deck, Lumen), to the assistant, and to an agent granted every project.
 `--project <slug>` reads one room; `--project unfiled` reads the room of no project.
+
+A [teammate's](teammates.md) notes are not part of this graph. They are a text file the teammate keeps for
+itself, shown in the project's **Team** tab. Its sessions are ordinary sessions in the project, so
+search finds them and they feed the project's room like any other.
 
 ## Correct a fact
 
 You are the only one who can change memory: correcting, merging and splitting are open to your
-own surfaces (the CLI, the Deck, the Capsule) and ask nothing more. A session's tools and an
+own surfaces (the CLI, the Deck, Lumen) and ask nothing more. A session's tools and an
 agent never write memory: they are refused.
 
 ```
@@ -166,13 +181,13 @@ vyre memory mute "Old Vendor Inc"   # never offered
 vyre memory mute "Old Vendor Inc" --off
 ```
 
-Pin and mute are `memory.pin` and `memory.mute`. While you type a prompt, the Harness's Enrich hook
+Pin and mute are `memory.pin` and `memory.mute`. While you type a prompt, Vyre's Claude Code plugin
 asks `memory.relevant` for the few facts worth adding, and adds nothing when nothing in the prompt
 is known.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | Search sessions | `vyre recall` | header search | ask | `/vyre recall`, `recall.search` |
 | Read one session | `vyre resume` | open the thread | | `recall.thread` |

@@ -17,11 +17,13 @@ import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
 import { macCoreRefusal } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
-import { pairTicket, resolveTicket, pairOffer } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, pairOffer, connect } from "../relay/client/client.js";
+import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import crypto from "node:crypto";
 import { tempHome } from "./helpers.js";
+import { fakeCoreKeys, macCore } from "./fake-core-keys.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
 const lenient = {
@@ -39,14 +41,14 @@ const SPKI = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).pub
 const P = { "x-vyre-presence": "passkey id=abc" };
 const PROOF = { proof: { method: "passkey", id: "x" } };
 
-async function world(t, relayConfig = {}) {
-  const relay = createRelay();
+async function world(t, relayConfig = {}, startOpts = {}, relayOpts = {}) {
+  const relay = createRelay(relayOpts);
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url, ...relayConfig }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore(), ...startOpts });
   t.after(() => d.stop());
   return { d, relay, url, root };
 }
@@ -134,6 +136,30 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
   assert.equal(events.connected, true);
 });
 
+test("relay: a pairing that asks for it is handed the one-time enrolment grant for the box's address, the same {grant, expires, rpId} as the setup claim", async t => {
+  const { d } = await world(t);
+  // No address yet: nothing to enroll at, so no grant, whatever the hello says.
+  const bare = await phone(await firstPairing(d), { hello: { enroll: true } });
+  assert.equal(bare.reply.enroll, undefined);
+  bare.ws.close();
+  d.registry.deps.config.network = { ...(d.registry.deps.config.network || {}), address: "https://alex.vyre.run:8443" };
+  const minted = await d.registry.call("relay.pair.start", {}, "cli", PROOF);
+  const asked = await phone(minted.data.url, { hello: { enroll: true }, presence: false });
+  const e = asked.reply.enroll;
+  assert.equal(e.rpId, "alex.vyre.run", "the host of the address, no port");
+  assert.match(e.grant, /^[A-Za-z0-9_-]{40,}$/);
+  assert.ok(e.expires > Date.now() && e.expires <= Date.now() + 5 * 60_000 + 1000);
+  const plain = await phone((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { presence: false });
+  assert.equal(plain.reply.enroll, undefined, "a pairing that did not ask gets none");
+  asked.ws.close(); plain.ws.close();
+  // The shared client library asks and validates the same way.
+  const viaClient = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { enroll: true, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) });
+  assert.equal(viaClient.enroll?.rpId, "alex.vyre.run");
+  assert.match(String(viaClient.enroll?.grant), /^[A-Za-z0-9_-]{40,}$/);
+  const noAsk = await pairOffer(/** @type {any} */ (parsePairUrl((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url)), { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k2.json")) });
+  assert.equal(noAsk.enroll, null);
+});
+
 test("relay: a relayed device is a device; a person's action needs its person session, then presence", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
@@ -173,15 +199,58 @@ test("relay: the first-device path closes once a person exists", async t => {
   assert.equal((await d.registry.call("relay.pair.first", {}, "cli", PROOF)).error?.code, "denied");
 });
 
-test("relay: removing a device closes its connection at once and it cannot come back", async t => {
+test("relay: removing a device closes its connection at once with 4401 'device removed', and it is refused on the same code when it comes back", async t => {
   const { d } = await world(t);
   const url = await firstPairing(d);
   const p = await phone(url);
   const r = await d.registry.call("relay.devices.remove", { id: p.reply.device }, "cli", PROOF);
   assert.ok(r.data, JSON.stringify(r.error));
-  await new Promise(res => setTimeout(res, 50));
+  await new Promise(res => setTimeout(res, 100));
   assert.equal(p.channel.closed, true);
-  await assert.rejects(phone(url, { keys: p.keys, pair: false }), /closed|not a paired/);
+  assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" }, "the open channel hears it");
+  await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/, "a reconnect is refused with the same words");
+  // What is kept of a removed device is what that answer needs: its key and when, never the name the person deleted.
+  const kept = /** @type {any} */ (d.registry.deps.db.prepare("SELECT name, pub, presence_key, release, removed_at, trusted FROM relay_devices WHERE id = ?").get(p.reply.device));
+  assert.ok(kept.pub && kept.removed_at, "key and time stay");
+  assert.deepEqual([kept.name, kept.presence_key, kept.release, kept.trusted], ["", null, null, 0], "the rest is blanked");
+  // a stranger's key is just not paired, which is a different answer
+  await assert.rejects(phone(url, { keys: keyPair(), pair: false }), /box closed the connection/, "a stranger's key just gets the relay's generic close");
+});
+
+test("relay: the shared client stops for good when the owner removes its device, in a 'relay_removed' state (the relay's word, not the box's), and does not redial", async t => {
+  const { d } = await world(t);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const keyStore = fileKeyStore(path.join(tempHome(t), "k.json"));
+  const url = await firstPairing(d);
+  const offer = /** @type {any} */ (parsePairUrl(url));
+  const paired = await pairOffer(offer, { crypto: nodeCrypto(), keyStore, name: "alex's phone" });
+  const states = [];
+  const conn = connect({ relay: paired.relay, route: paired.route, box: fromBase64url(paired.box), crypto: nodeCrypto(), keyStore, backoff: { min: 30, max: 60 } });
+  conn.onstate = s => states.push(s);
+  t.after(() => conn.close());
+  for (let i = 0; i < 100 && !conn.open; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(conn.open, true);
+  await d.registry.call("relay.devices.remove", { id: paired.device }, "cli", PROOF);
+  for (let i = 0; i < 100 && states.at(-1) !== "relay_removed"; i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(states.at(-1), "relay_removed", states.join(","));
+  const n = states.length;
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(states.length, n, "no redial after relay_removed");
+  void status;
+});
+
+test("relay: taking a device's presence key away removes the device the same way", async t => {
+  const { d } = await world(t);
+  const url = await firstPairing(d);
+  const p = await phone(url);
+  const key = (await d.registry.call("relay.device.presence", { id: p.reply.device }, "module:test")).data.key;
+  assert.ok(key, "the phone enrolled a presence key at pairing");
+  const r = await d.registry.call("presence.remove", { id: key }, "cli", PROOF);
+  assert.ok(r.data || !r.error, JSON.stringify(r));
+  await new Promise(res => setTimeout(res, 150));
+  assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" });
+  await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/);
+  assert.equal(((await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).some(x => x.id === p.reply.device), false, "and it is gone from the list");
 });
 
 test("relay: a socket client cannot claim to be a device", async t => {
@@ -205,6 +274,49 @@ test("relay: an event stream stays open and delivers events through the channel"
   await phone(url, { name: "alex's laptop" });
   assert.match(await chunk, /device\.paired/);
   s.reset("done");
+});
+
+test("relay: an untrusted browser asks to be trusted once, about itself only, and the owner's relay.devices.trust is the approval", async t => {
+  const { d } = await world(t);
+  const asked = [];
+  d.events.on("device.trust-asked", e => asked.push(e.payload || e.data || e));
+  const p = await phone(await firstPairing(d));
+  await p.signIn(d);
+  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
+  // The limited browser can reach it (the web deny list does not hold it back) and no presence is needed to ask.
+  const first = await web.call("relay.devices.ask-trust");
+  assert.equal(first.status, 200, JSON.stringify(first));
+  assert.deepEqual([first.data.asked, first.data.already], [true, false]);
+  assert.equal(asked.length, 1);
+  // A reloaded Deck can show the ask again: the list carries when it asked, to the owner's surfaces only.
+  const listed = (await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device);
+  assert.ok(listed.trustAsked > 0 && listed.trustAsked <= Date.now(), JSON.stringify(listed));
+  assert.match(listed.fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
+  assert.equal((await web.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "a limited browser does not see who is waiting");
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === p.reply.device).trustAsked, undefined, "an app device has none");
+  assert.deepEqual([asked[0].id, asked[0].name], [web.reply.device, "Harlow Legal laptop"]);
+  assert.match(asked[0].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
+  assert.equal(listed.fingerprint, asked[0].fingerprint, "the list and the event give the same fingerprint");
+  // Again says so and tells nobody twice.
+  const second = await web.call("relay.devices.ask-trust");
+  assert.deepEqual([second.data.asked, second.data.already], [true, true]);
+  assert.equal(asked.length, 1, "once");
+  // An app device has no limits to lift; a person's own surface is not a browser asking about itself.
+  assert.equal((await p.call("relay.devices.ask-trust")).error.code, "bad_input");
+  const cli = await d.registry.call("relay.devices.ask-trust", {}, "cli");
+  assert.equal(cli.error.code, "denied");
+  // Approval is the owner's, with presence; then the browser is trusted and asking again only says so.
+  assert.equal((await web.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 404, "it cannot approve itself");
+  assert.equal((await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 200);
+  const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
+  assert.deepEqual([(await again.call("relay.devices.ask-trust")).data.trusted], [true]);
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "trusted: no longer waiting");
+  // Taking trust back lets it ask afresh.
+  assert.equal((await p.call("relay.devices.trust", { id: web.reply.device, trusted: false }, P)).status, 200);
+  const back = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
+  assert.equal((await back.call("relay.devices.ask-trust")).data.already, false);
+  assert.equal(asked.length, 2);
 });
 
 test("relay: a browser from the web app is a web device, limited until trusted from another device", async t => {
@@ -340,7 +452,7 @@ test("relay: the pairing offer names the box as configured, never the machine's 
   for (const [cfg, want] of [[{ name: "Northwind Bakery" }, "Northwind Bakery"], [{}, "Vyre box"]]) {
     const root = tempHome(t);
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], ...cfg, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-    const d = await start({ presence: lenient, root, log: () => {} });
+    const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
     t.after(() => d.stop());
     const offer = /** @type {any} */ (parsePairUrl((await firstPairing(d))));
     assert.equal(offer.name, want);
@@ -358,7 +470,7 @@ test("relay: loads on a Solo Mac (role local) but opens no connection until the 
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [],
     modules: { disable: ["names", "onboard"] } }));
   const events = [];
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const off = d.events.on("relay.connected", () => events.push("connected"));
   const off2 = d.events.on("relay.disconnected", () => events.push("disconnected"));
@@ -383,14 +495,14 @@ test("relay: relay.join redeems a code minted on another box, and this device sh
   const boxRoot = tempHome(t);
   fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
     network: { name: "alex" }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const box = await start({ presence: lenient, root: boxRoot, log: () => {} });
+  const box = await start({ presence: lenient, root: boxRoot, log: () => {}, coreKeys: macCore() });
   t.after(() => box.stop());
   const pairUrl = (await box.registry.call("relay.pair.first", {}, "onboard", PROOF)).data.url;
 
   const deviceRoot = tempHome(t);
   fs.writeFileSync(path.join(deviceRoot, "config.json"), JSON.stringify({ role: "local", transcripts: [],
     modules: { disable: ["names", "onboard"] } }));
-  const device = await start({ presence: lenient, root: deviceRoot, log: () => {} });
+  const device = await start({ presence: lenient, root: deviceRoot, log: () => {}, coreKeys: macCore() });
   t.after(() => device.stop());
   const r = await device.registry.call("relay.join", { url: pairUrl, name: "kit's laptop" }, "cli", PROOF);
   assert.equal(r.error, undefined, JSON.stringify(r.error));
@@ -421,7 +533,7 @@ test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, b
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local", transcripts: [], modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: url, i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
   const bad = await d.registry.call("relay.join", { url: bogus }, "cli", PROOF);
@@ -484,7 +596,7 @@ test("relay: relay.join's presence prompt names the box, its relay host and a ke
   assert.ok(hostPart.length <= 64, hostPart);
 });
 
-test("relay: relay.join is not available on a Mac until vyre-core holds its own device key", async t => {
+test("relay: relay.join is not available on a Mac without vyre-core to hold its device key", async t => {
   // A pure function of an explicit platform (like installCommand/operator elsewhere), so this
   // does not depend on the OS running the suite: darwin always refuses, every other platform
   // (this test box's own linux included) never does.
@@ -502,7 +614,7 @@ test("relay: relay.join is not available on a Mac until vyre-core holds its own 
   const real = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", real));
-  const { d } = await world(t);
+  const { d } = await world(t, {}, { coreKeys: null });
   const def = d.registry.tools.get("relay.join");
   assert.equal(await def.presence.when({ url: "https://vyre.run/pair#anything" }), false, "no prompt on darwin: the call can only refuse");
   const bogus = `https://vyre.run/pair#${Buffer.from(JSON.stringify({ v: 1, r: "wss://relay.example.com", i: "a".repeat(26), k: Buffer.alloc(32).toString("base64url"), s: "x", n: "test" })).toString("base64url")}`;
@@ -542,6 +654,67 @@ test("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and re
   // Single-use: resolving (and so redeeming) the same ticket again is refused outright.
   await assert.rejects(() => pairTicket(fromBase64url(ticket), { relay: status.url, crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "phone-key-2.json")) }),
     /expired or was already used/);
+});
+
+test("relay: a computer that chose its own ticket has the box register it; the record carries the box's own origin, own domain included, and no origin when there is none", async t => {
+  const { d } = await world(t);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const seed = crypto.randomBytes(16);
+  // No address yet: no origin in the record.
+  let minted = (await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF)).data;
+  assert.equal(minted.ticket, undefined, "the app's own ticket is not echoed back");
+  assert.equal(minted.confirmed, true, "a current relay confirmed it");
+  assert.ok(minted.expiresAt > Date.now());
+  let resolved = await resolveTicket(new Uint8Array(seed), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.address, null);
+  // With an address, the origin (port kept, path dropped) rides in the MAC-covered record.
+  d.registry.deps.config.network = { ...(d.registry.deps.config.network || {}), address: "https://harlow.example.com:8443/deck" };
+  const seed2 = crypto.randomBytes(16);
+  await d.registry.call("relay.pair.ticket", { seed: seed2.toString("base64url") }, "cli", PROOF);
+  resolved = await resolveTicket(new Uint8Array(seed2), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.address, "https://harlow.example.com:8443");
+  // A seed is 8 to 32 bytes of base64url; anything else is refused before a ticket exists.
+  for (const bad of [crypto.randomBytes(4).toString("base64url"), crypto.randomBytes(33).toString("base64url"), "not base64url!", 5]) {
+    const r = await d.registry.call("relay.pair.ticket", { seed: bad }, "cli", PROOF);
+    assert.equal(r.error?.code, "bad_input", String(bad));
+  }
+  // A second box (or a second ask) registering a seed the relay still holds is a failure, not a ticket that quietly does not resolve.
+  const held = crypto.randomBytes(16).toString("base64url");
+  assert.ok((await d.registry.call("relay.pair.ticket", { seed: held }, "cli", PROOF)).data);
+  const twin = await d.registry.call("relay.pair.ticket", { seed: held }, "cli", PROOF);
+  assert.equal(twin.error?.code, "conflict", JSON.stringify(twin));
+  // The app's own ticket pairs like any other.
+  const seed3 = crypto.randomBytes(16);
+  await d.registry.call("relay.pair.ticket", { seed: seed3.toString("base64url") }, "cli", PROOF);
+  // ...including when the device's private key never leaves its shell: the Noise handshake runs with the shell's own DH.
+  const shellPair = crypto.generateKeyPairSync("x25519");
+  const shellPub = new Uint8Array(shellPair.publicKey.export({ format: "der", type: "spki" }).subarray(-32));
+  const shell = shellDeviceKey(async (cmd, args) => {
+    if (cmd === "device_key_pub") return Buffer.from(shellPub).toString("base64url");
+    const remote = crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b656e032100", "hex"), Buffer.from(args.remote, "base64url")]), format: "der", type: "spki" });
+    return crypto.diffieHellman({ privateKey: shellPair.privateKey, publicKey: remote }).toString("base64url");
+  }, { crypto: nodeCrypto() });
+  const paired = await pairTicket(new Uint8Array(seed3), { relay: status.url, ...shell, name: "kit's PC" });
+  assert.ok(paired.device);
+  void minted;
+});
+
+test("relay: an older relay that never answers a registration still gets a usable, unconfirmed ticket; a refusal from a current one is still a failure", async t => {
+  const { d } = await world(t, {}, {}, { legacyNoAck: true });
+  const seed = crypto.randomBytes(16);
+  const minted = await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF);
+  assert.ok(minted.data, JSON.stringify(minted.error));
+  assert.equal(minted.data.confirmed, false, "no answer from the relay is said plainly");
+  assert.equal(minted.data.connected, true);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const resolved = await resolveTicket(new Uint8Array(seed), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.offer.route, status.route, "the older relay did store it");
+});
+
+test("relay: a relay that says it answers registrations but does not is a failure, not an older relay", async t => {
+  const { d } = await world(t, {}, {}, { dropAck: true });
+  const r = await d.registry.call("relay.pair.ticket", { seed: crypto.randomBytes(16).toString("base64url") }, "cli", PROOF);
+  assert.equal(r.error && r.error.code, "unavailable", JSON.stringify(r));
 });
 
 test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {
@@ -619,7 +792,7 @@ test("relay: resolveTicket's handle is null when no vyre.run name is claimed, no
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -636,7 +809,7 @@ test("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" 
   const root = tempHome(t);
   const ownerId = "0123456789abcdef0123456789abcdef";
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, owner: { id: ownerId }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {} });
+  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
   t.after(() => d.stop());
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -697,11 +870,37 @@ test("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, th
   const real = Object.getOwnPropertyDescriptor(process, "platform");
   Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
   t.after(() => Object.defineProperty(process, "platform", real));
-  const { d } = await world(t);
+  const { d } = await world(t, {}, { coreKeys: null });
   const def = d.registry.tools.get("relay.pair.ticket");
   assert.equal(await def.presence.when(), false, "no prompt on darwin: the call can only refuse");
   const r = await d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   assert.equal(r.error.code, "not_available_here");
+});
+
+test("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end to end through core's dh and signature, and no key file is written", async t => {
+  assert.equal(macCoreRefusal("darwin", true), null);
+  assert.equal(macCoreRefusal("darwin", false).code, "not_available_here");
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", real));
+  const core = fakeCoreKeys({ made: false });
+  const { d, root } = await world(t, {}, { coreKeys: core });
+  const def = d.registry.tools.get("relay.pair.ticket");
+  assert.equal(await def.presence.when(), true, "the ticket is offered once core holds the keys");
+  const url = await firstPairing(d);
+  const p = await phone(url);
+  assert.equal(p.reply.paired, true);
+  assert.ok(core.calls.boxDh >= 2, "the handshake's static DHs were answered by core");
+  assert.ok(core.calls.routeSign >= 1, "the relay's challenge was signed by core");
+  assert.equal(fs.existsSync(path.join(root, "relay", "keys.json")), false, "no key file at the login uid");
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  assert.equal(status.connected, true);
+  const ts = (await d.registry.call("relay.tailnet.status", {}, "cli", PROOF)).data;
+  assert.equal(ts.available, true, "a Mac server can hand paired desktops a tailnet key once core holds its keys");
+  assert.equal(ts.why, null);
+  // relay.join is offered too: its device key is core's as well, so a garbage code is refused as garbage, not as "not on a Mac"
+  const j = await d.registry.call("relay.join", { url: "vyre://x" }, "cli", PROOF);
+  assert.equal(j.error.code, "bad_input");
 });
 
 test("relay: /v1/pair is rate-limited per IP", async t => {

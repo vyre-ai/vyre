@@ -80,16 +80,6 @@
 .sk-dim .sk-ctl :disabled { color: var(--label); }
 .sk-hi { background: var(--hover); }
 
-/* The confirm line: what changes and where, then Confirm or Cancel. */
-.sk-ask { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
-  padding: 10px 12px; border-radius: var(--radius-card, var(--radius-card, 12px)); background: var(--panel); border: 1px solid var(--rule); }
-.sk-ask[hidden] { display: none; }
-.sk-ask-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; line-height: 18px; color: var(--text); }
-.sk-where { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
-.sk-ask-btns { display: flex; gap: 8px; flex-shrink: 0; }
-.sk-ask-btns .btn-sm { height: 32px; padding: 0 12px; border-radius: var(--radius-button, var(--radius-field, 8px)); }
-.sk-ask-btns .btn-ghost { color: var(--text); }
-
 .sk-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
 .sk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .sk-chip { max-width: 100%; }
@@ -120,7 +110,7 @@
   .sk-ctl .seg button { height: 38px; }
   .sk-ctl .input, .sk-input, .sk-other { height: 44px; font-size: 16px; max-width: 100%; }
   .sk-ctl select.input { min-width: 0; }
-  .sk-slot .btn-sm, .sk-ask-btns .btn-sm, .sk-add-row .btn-sm { height: 44px; }
+  .sk-slot .btn-sm, .sk-add-row .btn-sm { height: 44px; }
   .sk-row .sk-reset { visibility: visible; }
   .sk-ctl .seg { max-width: 100%; overflow-x: auto; }
   .sk-ask-btns { width: 100%; }

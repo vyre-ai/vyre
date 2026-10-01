@@ -1,0 +1,22 @@
+{
+  "name": "mentions",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "The # tag: one picker over everything the person may mention, from the modules that offer a kind.",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      { "name": "mentions.kinds", "reach": "person" },
+      { "name": "mentions.search", "reach": "person" },
+      { "name": "mentions.resolve", "reach": "modules" }
+    ]
+  },
+  "watches": {},
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

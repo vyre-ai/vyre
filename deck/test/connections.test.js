@@ -87,7 +87,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes four calls, and never google.test or github.connect");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["connectors.catalog", "github.accounts", "google.accounts", "mcp.servers", "vault.connections.list"], "opening makes five calls, and never google.test or github.connect");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -139,12 +139,12 @@ test("Connections cards: one per vault connection, whatever the source, granted 
   assert.doesNotMatch(alex, /min ago/, "Last used is not shown once Default applies");
   assert.match(alex, /Connected 9 d ago/);
   assert.match(alex, /Wrong account\?/);
-  // Granted: Capsule and Chat show pressed; Agents and Phone do not. The Agents chip trails a
+  // Granted: Lumen and Chat show pressed; Agents and Phone do not. The Agents chip trails a
   // shield glyph while off (chip.md's Asking state); the others do not.
   assert.deepEqual(chipsOf(connection(el, "cn_alex")), [
-    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
+    { text: "Lumen", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
   assert.ok($(findChip(connection(el, "cn_alex"), "Agents"), "svg.cn-chip-shield"), "the Agents chip, off, trails the shield glyph");
-  assert.equal($(findChip(connection(el, "cn_alex"), "Capsule"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
+  assert.equal($(findChip(connection(el, "cn_alex"), "Lumen"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
 
   const tracker = text(connection(el, "cn_tracker"));
   assert.match(tracker, /tracker/, "the account (its own name/ref for an MCP row) is the heading");
@@ -161,7 +161,7 @@ test("Connections cards: one per vault connection, whatever the source, granted 
   noLeak(el);
 });
 
-test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
+test("Connections cards: a chip toggle is optimistic for Lumen/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
   const { el, api } = await render();
   const chatChip = findChip(connection(el, "cn_tracker"), "Chat");
   assert.equal(chatChip.getAttribute("aria-pressed"), "false");
@@ -179,7 +179,7 @@ test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, cal
 
 test("Connections cards: revoking any surface, including Agents, is one tap through vault.connections.revoke directly, never presence", async () => {
   const { el, api, p } = await render();
-  const capsuleChip = findChip(connection(el, "cn_alex"), "Capsule");
+  const capsuleChip = findChip(connection(el, "cn_alex"), "Lumen");
   await Promise.all(capsuleChip.dispatchEvent(new Event("click")));
   assert.deepEqual(api.of("vault.connections.revoke"), [{ tool: "vault.connections.revoke", input: { id: "cn_alex", surface: "capsule" } }]);
   assert.equal(api.of("vault.connections.grant").length, 0);
@@ -432,7 +432,7 @@ test("GitHub Disconnect asks first, then calls github.remove; a failed revoke st
   await $(githubAccount(el, "work"), "button[data-act=remove]").click();
   assert.equal(api.of("github.remove").length, 0);
   assert.match(text(githubAccount(el, "work")), /Disconnect work\?/);
-  assert.match(text(githubAccount(el, "work")), /This removes the account from Vyre\. To also cancel access at GitHub, open github\.com\/settings\/applications\./);
+  assert.match(text(githubAccount(el, "work")), /This removes its token from your vault and the account from Vyre\. It does not revoke the token at GitHub\. To do that, delete it at github\.com\/settings\/applications \(signed in with GitHub\) or github\.com\/settings\/tokens \(a token you pasted\)\./);
   const settingsLink = [...$$(githubAccount(el, "work"), "a")].find(a => a.getAttribute("href") === "https://github.com/settings/applications");
   assert.ok(settingsLink, "a real link, not just the words");
   await $(githubAccount(el, "work"), "button[data-act=remove-yes]").click();
@@ -486,6 +486,39 @@ test("Sign in with GitHub: github.connect with the name, then the code and Open 
   assert.match(open.getAttribute("rel"), /noopener/);
   assert.match(text(wait()), /15 minutes/);
   noLeak(el);
+});
+
+test("GitHub: Paste a token sends github.connect {name, token}, clears the field, shows the login and the repo count, and never draws the token", async () => {
+  const SECRET = "ghp_pastedtoken_0123456789";
+  const { el, api } = await render({ over: { "github.connect": { connected: true, id: "gh2", name: "work2", login: "harlow-dev", repos: 12 } } });
+  await $(el, "button[data-act=add-github]").click();
+  const form = $(el, "form[data-form=github]");
+  const tok = $(form, "#cgh-token");
+  assert.equal(tok.getAttribute("type"), "password");
+  assert.equal(tok.getAttribute("autocomplete"), "off");
+  assert.equal(tok.getAttribute("spellcheck"), "false");
+  type($(form, "#cgh-name"), "work2");
+  await $(form, "button[data-act=github-token]").click();
+  assert.match(text($(form, "[role=status]")), /Paste the token first/);
+  assert.equal(api.of("github.connect").length, 0);
+  type(tok, SECRET);
+  await $(form, "button[data-act=github-token]").click();
+  assert.deepEqual(api.of("github.connect").map(c => c.input), [{ name: "work2", token: SECRET }]);
+  assert.equal(tok.value, "", "the field is emptied once sent");
+  assert.ok(!text(el).includes(SECRET), "the token is never on the page");
+  assert.equal($(el, "form[data-form=github]"), null, "the form closes on success");
+});
+
+test("GitHub: a refused token shows GitHub's own message as given, and keeps the form", async () => {
+  const { el } = await render({ over: { "github.connect": { $error: { code: "unauthorized", message: "Bad credentials" } } } });
+  await $(el, "button[data-act=add-github]").click();
+  const form = $(el, "form[data-form=github]");
+  type($(form, "#cgh-name"), "work2");
+  type($(form, "#cgh-token"), "ghp_bad");
+  await $(form, "button[data-act=github-token]").click();
+  assert.match(text($(form, "[role=status]")), /^Bad credentials$/);
+  assert.equal($(form, "#cgh-token").value, "");
+  assert.ok($(el, "form[data-form=github]"));
 });
 
 test("Sign in with GitHub: a verification_uri that is not https://github.com/... never reaches the href", async () => {
@@ -768,9 +801,11 @@ test("Add Google account, service account: the admin block shows on the new row 
 
 test("follows mcp.* and google.* events, with no timer of its own", async () => {
   const { subs, api, cleanups } = await render();
-  assert.deepEqual(subs.map(s => s[0]).sort(), [...EVENTS].sort());
+  const mine = subs.filter(s => !String(s[0]).startsWith("connectors."));
+  assert.deepEqual(mine.map(s => s[0]).sort(), [...EVENTS].sort());
+  assert.equal(subs.filter(s => String(s[0]).startsWith("connectors.")).length, 3, "the catalog follows connectors.connected, connect-failed and disconnected");
   const before = api.of("mcp.servers").length;
-  for (const [, fn] of subs.slice(0, 3)) fn({});
+  for (const [, fn] of mine.slice(0, 3)) fn({});
   await new Promise(r => setTimeout(r, 460));
   assert.equal(api.of("mcp.servers").length, before + 1, "a burst of events is one reload");
   for (const f of cleanups) f();
@@ -822,4 +857,11 @@ test("pickConnections: one card per row, named fields only, whatever the source"
   assert.deepEqual(pickConnections([{ id: "c5", provider: "stripe", account: "a", label: "a", state: "ready", capabilities: [], default: [] }])[0],
     { id: "c5", provider: "stripe", providerWord: "stripe", group: "other", account: "a", label: "a", ready: true, needs: [],
       capabilities: [], surfaces: [], defaultFor: [], lastUsed: null, connected: null });
+});
+
+test("a server with connectors' default scope reads Just you and the assistant, not 'Every project'", () => {
+  const s = pickServers([{ name: "notion", transport: "http", scope: { projects: "*", agents: [], assistant: true } }]);
+  assert.deepEqual(s[0].scope, { projects: "*", agents: [], assistant: true });
+  const widened = pickServers([{ name: "linear", transport: "http", scope: { projects: "*", agents: "*" } }]);
+  assert.equal(widened[0].scope.assistant, false);
 });

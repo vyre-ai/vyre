@@ -1,4 +1,4 @@
-// vyre.run: copy buttons, your own address, the Capsule states, and the Control-Control demo.
+// vyre.run: copy buttons, your own address, the Lumen states, and the Control-Control demo.
 (() => {
   'use strict';
 
@@ -33,7 +33,7 @@
     });
   }
 
-  // Capsule state tabs: each group drives the capsule whose id it names.
+  // Lumen state tabs: each group drives the demo whose id it names.
   function setState(group, state) {
     const cap = document.getElementById(group.getAttribute('data-cap-tabs'));
     if (!cap) return;
@@ -158,7 +158,7 @@
     status.textContent = 'Demo: on your Mac this sends the final words you see. Nothing left this page.';
   }));
 
-  // Option-Space toggles the Capsule, same as the real default. Control pressed twice, with no
+  // Option-Space toggles Lumen, same as the real default. Control pressed twice, with no
   // other key in between, does too: that's the optional toggle a person turns on from the
   // menu-bar mark, kept here so the demo matches either way someone tries it.
   document.addEventListener('keydown', (e) => {

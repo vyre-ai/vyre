@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "roles": ["box"],
   "requires": [],
-  "does": { "tools": ["names.status", "names.check", "names.claim", "names.fallback", "names.release", "names.connect", "names.owner", "names.claim-code"] },
-  "watches": { "emits": ["name.claimed", "name.released", "certificate.issued", "certificate.failed", "owner.seen", "owner.changed"] },
+  "does": { "tools": [{ "name": "names.status", "reach": "anyone" }, { "name": "names.check", "reach": "anyone" }, { "name": "names.claim", "reach": "anyone" }, { "name": "names.recover", "reach": "person" }, { "name": "names.recover.code", "reach": "modules" }, { "name": "names.domain.check", "reach": "person" }, { "name": "names.domain.serve", "reach": "person" }, { "name": "names.fallback", "reach": "anyone" }, { "name": "names.release", "reach": "person" }, { "name": "names.connect", "reach": "anyone" }, { "name": "names.owner", "reach": "anyone" }, { "name": "names.claim-code", "reach": "modules" }] },
+  "watches": { "emits": ["name.claimed", "name.recovered", "name.recovery-pending", "name.recovery-cancelled", "name.released", "certificate.issued", "certificate.failed", "domain.ready", "domain.failed", "owner.seen", "owner.changed"] },
   "shows": { "cli": ["name"] },
   "needs": { "vault": ["cloudflare-vyre-token"] },
   "teaches": {

@@ -84,7 +84,12 @@ export const SHOTS = [
     alt: "Step 4: the address https://alex-box.tail0000.ts.net is reserved, pointed at the machine and has its certificate.",
     page: "get-started/onboarding.md", heading: "4. Your address" },
   { name: "onboarding-history", dir: "get-started", world: "onboard", url: "#history", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    script: `await until('/sessions/.test(document.querySelector(".meter") && document.querySelector(".meter").innerText) && !document.querySelector(".bar.moving")', 20000); await wait(800);`,
+    // The step lists the folders it found, "N sessions" each; the sample world's transcripts live in a temp folder, whose path must not
+    // be in a picture, so it is written as a folder in the sample person's own Claude Code folder (keeping its last segment, so rows stay different) before the shot.
+    script: `await until('/[0-9]+ sessions?/.test(document.body.innerText) && !document.querySelector(".bar.moving")', 20000);
+      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const bad = []; while (w.nextNode()) bad.push(w.currentNode);
+      for (const n of bad) n.textContent = n.textContent.replace(/\\/(?:private\\/)?(?:tmp|var\\/folders)\\/[^\\s|]*/g, m => "/home/alex/.claude/projects/" + (m.replace(/\\/+$/, "").split("/").pop() || "sessions")).replace(/a temporary folder/g, "Claude Code");
+      await wait(800);`,
     alt: "Step 5: Vyre has read the Claude Code sessions on the machine and offers to group them into first projects.",
     page: "get-started/onboarding.md", heading: "5. Your history" },
   { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: "fit", maxHeight: 1300, themes: ["dark"], shows: [...ONBOARD, ...PAIR],
@@ -121,6 +126,11 @@ export const SHOTS = [
     shows: [...DECK, "deck/views/memory.js", "deck/views/memory-data.js", "deck/views/memory-map.js", "deck/css/views/memory.css"],
     alt: "Memory in the Deck as a map: Sam Okafor and Dana Reyes, their projects and the facts linking them.",
     page: "using/memory.md", heading: "See what memory holds" },
+  { name: "deck-memory-sites", dir: "using", world: "deck", url: "/memory?tab=sites", width: 1280, height: "fit", maxHeight: 1200, themes: BOTH,
+    script: `await until('/Harlow CRM/.test(document.body.innerText)', 15000); click('[data-site] [data-act="details"]'); await wait(800);`,
+    shows: [...DECK, "deck/views/memory.js", "deck/views/memory-sites.js", "deck/css/views/memory.css", "deck/css/views/memory-sites.css", "deck/test/site-sample.js"],
+    alt: "The Sites tab in Memory: Harlow CRM with its host, its family, and what Vyre for Chrome has learned about it, with a Forget button.",
+    page: "using/memory.md", heading: "See what Vyre has learned about a site" },
   { name: "deck-agents", dir: "using", world: "deck", url: "/agents", width: 1280, height: 440, themes: BOTH,
     shows: [...DECK, "deck/views/agents.js", "deck/css/views/agents.css"],
     alt: "Agents in the Deck: juno, the assistant on every project, and kit on Harlow Legal and Northwind Bakery.",

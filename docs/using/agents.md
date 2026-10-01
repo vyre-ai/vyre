@@ -1,6 +1,6 @@
 ---
 title: Agents
-summary: How to talk to your assistant, make agents that run headless on your own Claude quota, keep them inside the projects you choose, and see what they cost.
+summary: How to talk to your assistant, make agents that run on your own server with your own Claude quota, keep them inside the projects you choose, give them their own computer, and see what they cost.
 audience: users, agents
 owner: docs
 status: stable
@@ -8,11 +8,13 @@ status: stable
 
 # Agents
 
-Every Vyre session is a real Claude Code session. An **agent** is a named record that says how
-Vyre should run such sessions for you: which credentials, which projects, what instructions. Its
-work happens in ordinary headless threads that vyred owns, so each one keeps running after you
-close a window, streams to every surface, and routes its permission questions to wherever you
-are. Every install has one special agent, **the assistant**, made at onboarding. You can make
+An **agent** is a named record that says how Vyre should run sessions for you on your own
+server: which credentials, which projects, what instructions. Its work happens in ordinary
+headless threads that Vyre owns, so each one keeps running after you close a window or turn off
+your laptop, streams to every surface, and routes its permission questions to wherever you are,
+your phone included. An agent's sessions start on Claude. When Claude's usage runs out, the
+session can move to Codex, Grok or OpenRouter if you set a fallback order for the agent (see
+[Sessions](sessions.md#one-picker-per-session)). Every install has one special agent, **the assistant**, made at onboarding. You can make
 others, such as a research agent or a bookkeeping agent.
 
 | | The assistant | Other agents |
@@ -21,13 +23,14 @@ others, such as a research agent or a bookkeeping agent.
 | Projects it can see | every project (`"*"`) | only the ones in its list |
 | Can start, drive and stop other sessions | yes, through the `threads.*` and `agents.*` tools | no |
 | Where it works | its own folder under Vyre's home | its project's home when it has one project, else its own folder |
+| Its computer | can name any agent's computer | its own computer only |
 
 An agent never draws context from a project outside its list: its brief, its prompt hints and its
 `recall.search` stay inside those projects' folders.
 
 ## Talk to the assistant or an agent
 
-From the Capsule, press Control twice and type. The assistant is the default destination; type
+From Lumen, press Control twice and type. The assistant is the default destination; type
 `@` to pick another agent, a project or a thread. The "Sends to" row shows where Enter will send
 before anything goes.
 
@@ -101,7 +104,7 @@ To store your own and point an agent at them:
 > [!SNAG] "juno cannot start: ..."
 > The item named by `--vault` is missing, has no value, or is not granted to `agents`. Check it
 > with `vyre vault list`, then grant it. A missing fallback key does not stop the agent: it starts
-> without one, and vyred's log says so.
+> without one, and Vyre's log says so.
 
 ## Make an agent
 
@@ -121,8 +124,8 @@ takes the same flags and changes only what you name; the change applies from the
 thread.
 
 In the Deck, `/agents` has a form for a new agent, including **Give it its own computer, from the
-pool**. Making or changing an agent asks for no passkey. It is yours: the CLI, the Deck, the
-Capsule and onboarding may call `agents.create` and `agents.update`. Your assistant may also call
+pool**. `agents.create` and `agents.update` also take an `effort`; `vyre agents` has no flag for it. Making or changing an agent asks for no passkey. It is yours: the CLI, the Deck, the
+Lumen and onboarding may call `agents.create` and `agents.update`. Your assistant may also call
 `agents.update` to change an agent's name, job, model, effort and description. Any other agent, a
 bare MCP session and a guest are refused with "denied", and nobody is asked.
 
@@ -147,14 +150,16 @@ too, with the flags you give it.
 ```sh
 vyre agents                 # every agent, the assistant first, with what each is doing
 vyre agents threads kit     # its threads, newest first
+vyre agents history kit     # what was asked of it, and its answers
+vyre agents resume kit      # bring its latest thread back, with its own credentials
 vyre agents usage           # turns, time, tokens, dollars against each budget, rate-limit state
 vyre agents stop kit        # stop every running thread of kit; its record and transcripts stay
 vyre agents delete kit      # remove the record; refused while a thread runs, and for the assistant
 ```
 
-The matching tools are `agents.list`, `agents.threads`, `agents.usage`, `agents.stop` and
-`agents.delete`. `agents.delete` is open only to your own surfaces (the terminal, the Deck and the
-Capsule), not to Claude.
+The matching tools are `agents.list`, `agents.threads`, `agents.history`, `agents.resume`,
+`agents.usage`, `agents.stop` and `agents.delete`. `agents.delete` is open only to your own surfaces (the terminal, the Deck and the
+Lumen), not to Claude.
 
 In the Deck, **Agents** (`/agents`) shows the same list:
 
@@ -162,14 +167,34 @@ In the Deck, **Agents** (`/agents`) shows the same list:
 
 ## Give an agent a computer
 
-An agent can have its own computer: a container with a desktop, Chrome and a terminal. Screens
-come from a small shared pool and are checked out only while the agent needs to look at
-something; an idle computer is frozen and its home volume stays. Computers need a machine that
-can run containers; on one that cannot, `computers.list` reports driver `none`.
+An agent can have its own computer: a container on your server with a desktop, Chrome and a
+terminal. Screens come from a small shared pool and are checked out only while the agent needs to
+look at something; an idle computer is frozen and its home volume stays. Computers need a machine
+that can run containers; on one that cannot, `computers.list` reports driver `none`.
 
 Turn it on with `computer: true` on `agents.create` or `agents.update`, or **Give kit a
-computer** (with the agent's name) in the Computer panel of its board in the Deck. Watch the screen, take over the keyboard and give it
-back in [Glass](glass.md). Taking over needs you to prove you are present.
+computer** (with the agent's name) in the Computer panel of its board in the Deck. Watch the
+screen, take over the keyboard and give it back in [Glass](glass.md). Taking the keyboard asks
+for no passkey: it is your own screen, and it pauses the agent's hands while you type.
+
+Two rules hold for every computer:
+
+- **Each agent has its own.** An agent can start, stop, pause and read only its own computer.
+  Naming another agent's computer is refused. Your assistant can, because it acts for you.
+- **Only you resume a pause.** When a computer is paused, or you have taken it over, its hands
+  refuse every input action. The agent cannot lift that, and neither can another agent or a
+  model. Resuming is yours, and so is giving the keyboard back.
+
+From a terminal:
+
+```sh
+vyre agents computer kit                          # its state, screen, cores and memory
+vyre agents computer kit restart                  # a new container on the same home
+vyre agents computer kit limits --cpus 2 --memory 4
+```
+
+A restart closes whatever is open on its screen and keeps its files and Chrome profile. New
+limits apply at the next restart.
 
 ## The `vyre` home
 
@@ -179,11 +204,11 @@ a project**, and every agent with what it is doing. Pick an agent to talk to it.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | Talk to an agent | `vyre agents ask`, `vyre` | `/ask`, `/agents/<name>` | Control twice, `@name` | `agents.ask` |
 | List agents | `vyre agents` | `/agents` | `@` | `agents.list` |
-| Make or change one | `vyre agents create`, `update` | `/agents` | | `agents.create`, `agents.update` |
+| Make or change one | `vyre agents create`, `update` | `/agents` | | `agents.create`, `agents.update` (the assistant, for an agent's name, instructions, model, effort and description) |
 | Usage and budget | `vyre agents usage` | agent board | | `agents.usage` |
 | Stop or delete | `vyre agents stop`, `delete` | agent board | | `agents.stop` |
 | Answer a question | `vyre threads answer` | Now, the thread | the held row | never |
@@ -192,6 +217,7 @@ a project**, and every agent with what it is doing. Pick an agent to talk to it.
 
 - Let a model answer a permission question, its own or another session's.
 - Give an agent other than the assistant the tools to drive other sessions.
+- Let an agent act on another agent's computer, or resume its own paused one.
 - Show an agent's token or key. It goes from the Vault into the agent's child process and nowhere
   else.
 - Spend past an agent's budget on the API key.

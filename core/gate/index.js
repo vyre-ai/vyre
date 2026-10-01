@@ -4,7 +4,8 @@
 // This file is the tool layer. It decides who may call what and hands the work to the Gate class.
 // The rule behind the table: anyone may ask for something to go out, only a person may let it go.
 // So gate.request is open to Claude, and gate.approve, gate.revise and gate.reject refuse every
-// mcp caller. Only approving what acts as the user outside (a send, a spend, a deletion) needs presence
+// mcp caller. Only approving what acts as the user outside (a send, a spend, a deletion, or an
+// outward computer-use act) needs presence
 // (core/presence, floor rule 1, the no-nag rule), and one live presence session on the device
 // covers it; revising and discarding send nothing and need none. `presence.summary` says what the
 // person is proving before they prove it, and every held item carries `presence: {required,
@@ -18,6 +19,7 @@
 // gate`), or from vault.relay for a sender that uses someone else's relayed pass.
 
 import { Gate, MIGRATIONS, KINDS } from "./gate.js";
+import { inputHash } from "../presence/index.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -37,10 +39,11 @@ const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments)
 
 /**
  * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
- * their mail, files or posts (which cannot be undone). Approving one needs presence. Every Gate
- * kind is one of these today; a kind added later asks only if it is listed here.
+ * their mail, files or posts (which cannot be undone), plus computer use pressing a control that
+ * does one of those (kind "act", PLAN.md C4). Approving one needs presence. Every Gate kind is
+ * one of these today; a kind added later asks only if it is listed here.
  */
-const OUTBOUND = new Set(["send", "spend", "delete"]);
+const OUTBOUND = new Set(["send", "spend", "delete", "act"]);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -111,15 +114,54 @@ export default {
       return items.map(it => ({ ...it, presence: { required: OUTBOUND.has(it.kind), ...c } }));
     };
 
+    /**
+     * The intent the vault says covers this call, or null: kind, via and EVERY real destination exact
+     * (an email's cc and bcc too), the sending agent when the intent names agents, in the call's own
+     * thread, its lineage (a teammate working on the person's ask in a parent thread), or standing.
+     * A plain ask is used up by the match (consume). A sender that cannot name its destinations never matches.
+     */
+    const said = async (input, thread, agent) => {
+      try {
+        const to = gate.recipients(input);
+        if (!to || !to.length) return null;
+        let lineage = [];
+        if (thread) { const l = await ctx.call("threads.lineage", { thread }); if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String); }
+        const r = await ctx.call("vault.said.match", { kind: String(input.kind), via: String(input.via), to, consume: true, ...(agent ? { agent } : {}), ...(thread ? { thread } : {}), ...(lineage.length ? { lineage } : {}) });
+        return r && r.data && r.data.matched === true && typeof r.data.id === "string" ? r.data.id : null;
+      } catch { return null; }
+    };
+
     ctx.tool("gate.request", {
-      description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
+      description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here, unless the user's own words already asked for exactly this (same kind, same recipients), which goes out at once and is logged. See gate.senders for the `via` values and what each takes.",
       input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
+        asked: { type: "object", description: "A person's own confirmation of exactly this send, from their surface: { surface, hash, at }. hash is inputHash({kind, via, to[], content}); valid 60 s; a mismatch always holds." },
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
-      run: async (input, { caller, thread, agent }) => gate.request({ ...input, ...(await filed(input, caller, thread)) },
-        { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) }),
+      run: async (input, { caller, thread, agent }) => {
+        const filing = await filed(input, caller, thread);
+        const by = { agent: agent || agentOf(caller) || (String(caller || "").startsWith("module:") && typeof input.agent === "string" ? input.agent : null) };
+        // Asking is approving (P17): what the person's own words covered goes out now, with no
+        // card and no proof; anything else holds. No match, or no vault to ask, is a hold as before.
+        // A person's own confirmation of exactly this send (Lumen or a Capsule form): from their surface, fresh, and the hash of what they saw.
+        const a = input.asked;
+        if (a !== undefined) {
+          const surface = String(caller || "");
+          const dests = (Array.isArray(input.to) ? input.to : [input.to]).map(String).filter(Boolean);
+          const fresh = a && typeof a === "object" && Number.isFinite(a.at) && Date.now() - a.at >= -5_000 && Date.now() - a.at <= 60_000;
+          const mine = a && a.surface === surface && ["deck", "capsule", "local", "cli"].includes(surface);
+          if (fresh && mine && a.hash === inputHash({ kind: input.kind, via: input.via, to: dests, content: input.content })) {
+            const { asked: _drop, ...rest } = input;
+            return gate.sendNow({ ...rest, ...filing }, { ...by, by: `asked:${surface}` });
+          }
+          const { asked: _drop, ...rest } = input;
+          return gate.request({ ...rest, ...filing }, by);
+        }
+        const intent = await said(input, filing.thread, by.agent);
+        if (intent) return gate.sendNow({ ...input, ...filing }, { ...by, intent });
+        return gate.request({ ...input, ...filing }, by);
+      },
     });
 
     ctx.tool("gate.senders", {
@@ -184,8 +226,64 @@ export default {
     ctx.tool("gate.offer", {
       internal: true,
       description: "A module offers a sender of its own: `name` in its namespace (<module>, <module>:<x> or <module>-<x>), and `tool`, one of its own internal tools, which the Gate calls with { id, to, content } once the user approves. Offer again at every start; it replaces the last.",
-      input: obj({ name: str, tool: str, kinds: { type: "array", items: { type: "string", enum: KINDS } }, content: { type: "object" } }, ["name", "tool"]),
-      run: (input, { caller }) => gate.offer(input, caller),
+      input: obj({ name: str, tool: str, recipients: { type: "string", enum: ["to"] }, kinds: { type: "array", items: { type: "string", enum: KINDS } }, content: { type: "object" } }, ["name", "tool"]),
+      run: (input, { caller, firstParty }) => gate.offer(input, caller, firstParty === true),
+    });
+
+    // What the person's own words asked to go out (P17). The intents live in the vault; these are
+    // the person's two tools over them, so nothing here can record one. Taking one back needs no proof.
+    const asPerson = caller => { person(caller); return String(caller); };
+    const vaultCall = async (tool, input) => {
+      const r = await ctx.call(tool, input);
+      if (r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message), { code: r.error.code });
+      return r.data;
+    };
+
+    // The person's own surfaces, or the assistant acting for them. Anything else is refused.
+    const isAssistant = caller => String(caller) === "module:assistant";
+
+    ctx.tool("gate.said.list", {
+      description: "What you have asked to go out, by voice or in chat: each thing Vyre will send, post or pay without asking again, and standing permissions. Revoked ones with `all`. The assistant may read it for you.",
+      input: obj({ thread: str, all: { type: "boolean" } }),
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: (input, { caller }) => { if (!isAssistant(caller)) asPerson(caller); return vaultCall("vault.said.list", input); },
+    });
+
+    ctx.tool("gate.said.add", {
+      description: "Add a standing permission yourself, from Settings: what may go out without asking each time. `kind` send, post or pay; `to` the exact addresses, handles or channels; `agents` to limit it to named agents (none means any of yours); a pay one needs `limits {max_amount, currency}`. Only you, on your own surface, add one; needs no proof, since you asked.",
+      input: obj({ kind: { type: "string", enum: ["send", "post", "pay", "act_out"] }, channel: str, to: { type: "array", items: str }, what: str, agents: { type: "array", items: str }, limits: obj({ max_amount: { type: "number" }, currency: str }) }, ["kind", "to"]),
+      callers: ["cli", "local", "deck", "capsule"],
+      // A rare, power-granting act: paying, or a blanket allow that names no agent, needs a person's proof (the Deck's presence session
+      // covers it). A narrow send or post for named agents stays one tap. The summary names the kind, the recipients and the cap, so
+      // the proof binds exactly this permission. Taking one away (gate.said.revoke) never needs proof.
+      presence: {
+        when: (/** @type {any} */ i) => Boolean(i) && (i.kind === "pay" || !(Array.isArray(i.agents) && i.agents.length)),
+        summary: (/** @type {any} */ i) => {
+          const to = Array.isArray(i && i.to) && i.to.length ? i.to.join(", ") : "no one named";
+          const who = Array.isArray(i && i.agents) && i.agents.length ? `only ${i.agents.join(", ")}` : "any agent";
+          const cap = i && i.limits && typeof i.limits === "object" ? Object.entries(i.limits).map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(", ") : "";
+          return `Allow a standing permission to ${i && i.kind} to ${to} for ${who}${cap ? ` (${cap})` : ""}`;
+        },
+      },
+      run: (input, { caller }) => { asPerson(caller); return vaultCall("vault.said.add", { ...input, surface: String(caller) }); },
+    });
+
+    ctx.tool("gate.said.revoke", {
+      description: "Take back something you asked to go out, or a standing permission. It stops covering sends at once. Needs no proof: taking permission away never does. The assistant may do it only when your own words asked for it (\"stop letting kit post there\").",
+      input: obj({ id: str, thread: str }, ["id"]),
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      run: async (input, { caller }) => {
+        if (!isAssistant(caller)) { asPerson(caller); return vaultCall("vault.said.revoke", { id: input.id }); }
+        // The assistant acts for the person only on an intent of kind "revoke" that names this id,
+        // recorded from the person's own turn in this thread (or its lineage), and used up by this call.
+        if (!input.thread) throw new Error("say which thread the request came from: thread");
+        let lineage = [];
+        const l = await ctx.call("threads.lineage", { thread: input.thread });
+        if (l && l.data && Array.isArray(l.data.lineage)) lineage = l.data.lineage.map(String);
+        const m = await vaultCall("vault.said.match", { kind: "revoke", to: [String(input.id)], thread: input.thread, lineage, consume: true });
+        if (!m || m.matched !== true) throw new Error("only you can take a permission back, unless your own words in this conversation asked for it");
+        return vaultCall("vault.said.revoke", { id: input.id });
+      },
     });
 
     ctx.tool("gate.route", {

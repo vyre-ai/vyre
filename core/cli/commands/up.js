@@ -14,16 +14,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline/promises";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
+import { json, emit, fail, failTool, usage, viewing, openInBrowser } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
-import { backup, restore } from "../../names/backup.js";
+import { wallSteps, wallUninstallSteps } from "../../../lib/sandbox/index.js";
+import { backup, restore, estimate, planRestore, isStream, inspect as inspectSealed } from "../../names/backup.js";
+import { hiddenPrompt } from "../../vault/cli-io.js";
 import * as tailnet from "../tailnet.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
@@ -44,6 +46,27 @@ export function parse(args, valued = ["user", "connect"]) {
 }
 
 /**
+ * A backup passphrase (R8): typed twice, hidden, on a real terminal; one line, unhidden, when
+ * stdin is piped (scripted use, e2e2's matrix, `vyre setup --name ... --yes`'s own automation).
+ * @param {string} question @param {{ confirm?: boolean }} [opts]
+ */
+export async function readPassphrase(question, { confirm = false } = {}) {
+  if (!process.stdin.isTTY) {
+    const rl = readline.createInterface({ input: process.stdin });
+    const { value: line } = await rl[Symbol.asyncIterator]().next();
+    rl.close();
+    if (line == null || !line.trim()) throw new Error("no passphrase piped on stdin");
+    return line.trim();
+  }
+  const a = await hiddenPrompt(question);
+  if (confirm) {
+    const b = await hiddenPrompt("again: ");
+    if (a !== b) throw new Error("the two did not match");
+  }
+  return a;
+}
+
+/**
  * The line that reaches a headless box's loopback page from the person's own computer, or null
  * when this terminal is not over SSH. In the box's container, the host's `vyre` passes its own
  * SSH_CONNECTION through and names the host account in VYRE_HOST_USER, since the container's
@@ -57,6 +80,8 @@ export function sshLine(port, user, env = process.env) {
 }
 
 const UNIT = path.join(system.ETC, "vyre.service");
+/** The folders that hold this machine's session transcripts, as config.json names them, the ones that exist. */
+const transcriptRoots = () => (config.load().transcripts || []).filter(r => { try { return fs.statSync(r).isDirectory(); } catch { return false; } });
 const systemdManaged = () => process.platform === "linux" && fs.existsSync(UNIT);
 
 /** vyred's /v1/health, or null when it does not answer. */
@@ -130,7 +155,7 @@ export const terminal = {
 /** Open a link in the browser. VYRE_OPEN_BIN points tests at a fake `open`; without one, tests open nothing. */
 export function openUrl(url) {
   if (!process.env.VYRE_OPEN_BIN && !dialogsAllowed()) return;
-  try { spawn(process.env.VYRE_OPEN_BIN || "open", [url], { detached: true, stdio: "ignore" }).unref(); } catch {}
+  openInBrowser(url);
 }
 
 /** A box on this machine's own loopback (a dev world or a test's): never the person's real box. */
@@ -521,7 +546,7 @@ async function upSystem(flags) {
   try { acct = account(user); } catch (e) { out(beacon(`  no such account: ${user}`)); return 1; }
   const seen = system.detect();
   const steps = system.installPlan({ user, group: acct.group, home: acct.home, node: process.execPath, pkg: REPO,
-    hasUnit: seen.units, tailscale: seen.tailscale, systemd: seen.systemd });
+    hasUnit: seen.units, tailscale: seen.tailscale, systemd: seen.systemd, wall: wallSteps() });
   if (dryRun) out(dim("  dry run: nothing will change"));
   try { await system.apply(steps, { dryRun, out: l => out("  " + l) }); }
   catch (e) { out(beacon("  stopped: ") + /** @type {Error} */ (e).message); return 1; }
@@ -543,7 +568,7 @@ export default [
       const user = String(flags.user || process.env.SUDO_USER || os.userInfo().username);
       let home = os.homedir();
       try { home = account(user).home; } catch {}
-      await system.apply(system.uninstallPlan({ purge: Boolean(flags.purge), home }), { dryRun, out: l => out("  " + l) });
+      await system.apply(system.uninstallPlan({ purge: Boolean(flags.purge), home, wall: process.platform === "linux" ? wallUninstallSteps() : [] }), { dryRun, out: l => out("  " + l) });
       return 0;
     },
   },
@@ -552,32 +577,83 @@ export default [
     async run() { await import("../../daemon/main.js"); return new Promise(() => {}); },
   },
   {
-    name: "backup", order: 80, usage: "vyre backup [file]", summary: "copy config, store, vault, watchers and certificates into one file",
+    name: "backup", order: 80, usage: "vyre backup [file] [--skip-projects] [--skip-transcripts] [--work DIR] [--with-provider-logins]",
+    summary: "seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes)",
     async run(args) {
-      const [file] = args.filter(a => a !== "--json");
-      const target = path.resolve(file || `vyre-backup-${new Date().toISOString().slice(0, 10)}.tar.gz`);
-      const r = await backup({ root: config.home(), file: target });
-      if (json()) {
-        return emit(r, { kind: "card", title: "Backup", state: "ok", fields: [{ label: "File", value: String(r.file) }, { label: "Size", value: `${Math.round(r.bytes / 1024)} KB` },
-          { label: "Holds", value: r.included.join(", ") }, { label: "Keep it", value: "somewhere only you can read: it holds the sealed vault" }] });
+      const { flags, rest } = parse(args, ["user", "connect", "work"]);
+      const target = path.resolve(rest[0] || `vyre-backup-${new Date().toISOString().slice(0, 10)}.vyre`);
+      // Project files: the box's /work by default, or the folder named. A Mac with none has only its data.
+      const skip = Boolean(flags["skip-projects"]) || process.env.VYRE_BACKUP_SKIP_PROJECTS === "1";
+      const workRoot = typeof flags.work === "string" ? path.resolve(flags.work) : config.workDir();
+      const roots = fs.existsSync(workRoot) && fs.statSync(workRoot).isDirectory() ? [workRoot] : [];
+      // The folders holding session transcripts (Claude Code's, and the synced copies) ride along unless left out.
+      const skipT = Boolean(flags["skip-transcripts"]) || process.env.VYRE_BACKUP_SKIP_TRANSCRIPTS === "1";
+      const tRoots = skipT ? [] : transcriptRoots();
+      const est = estimate({ root: config.home(), workRoots: [...(skip ? [] : roots), ...tRoots] });
+      const mb = n => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${Math.round(n / 1024 / 1024)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
+      if (!json()) {
+        out(dim(`  your data: ${mb(est.state)}` + (skip ? " · project files skipped" : roots.length ? ` · project files in ${workRoot}: ${mb(est.work[0].bytes)} (${est.work[0].files} files)` : " · no project folder here")
+          + (skipT ? " · transcripts skipped" : tRoots.length ? ` · transcripts: ${mb(est.work.slice(skip ? 0 : roots.length).reduce((n, w) => n + w.bytes, 0))}` : " · no transcripts found")));
+        if (est.total - est.state > 1024 ** 3) out(dim("  that is a lot: add --skip-projects if they live in git or Drive, or --skip-transcripts"));
       }
-      out(`  ${signal(r.file)} ${dim(`· ${Math.round(r.bytes / 1024)} KB · ${r.included.join(", ")}`)}`);
-      out(dim("  it holds the sealed vault: keep it somewhere only you can read"));
+      let passphrase;
+      try { passphrase = await readPassphrase("backup passphrase (12 characters or more): ", { confirm: true }); }
+      catch (e) { return fail(String(/** @type {Error} */ (e).message)); }
+      let last = 0;
+      const onProgress = process.stderr.isTTY && !json() ? p => { const now = Date.now(); if (p.total && now - last > 2000) { last = now; process.stderr.write(`\r  ${Math.min(100, Math.round(p.done / p.total * 100))}% of the project files `); } } : undefined;
+      let r;
+      try { r = await backup({ root: config.home(), file: target, passphrase, includeProviderLogins: Boolean(flags["with-provider-logins"]), work: { roots, skip, transcripts: tRoots, skipTranscripts: skipT }, onProgress }); }
+      finally { passphrase = ""; if (onProgress) process.stderr.write("\r\x1b[K"); }
+      const holds = r.included.join(", ") + (r.projects.length ? `, project files (${r.projects.map(p => p.name).join(", ")})` : "")
+        + (r.excludedLogins.length ? ` (left out: ${r.excludedLogins.join(", ")}, sign in again after restoring, or pass --with-provider-logins next time)` : "");
+      const size = mb(r.bytes);
+      if (json()) {
+        return emit({ ...r, estimate: est }, { kind: "card", title: "Backup", state: "ok", fields: [{ label: "File", value: String(r.file) }, { label: "Size", value: size },
+          { label: "Holds", value: holds }, { label: "Keep it", value: "somewhere only you can read: it opens only with that passphrase" }] });
+      }
+      out(`  ${signal(r.file)} ${dim(`· ${size} · ${holds}${r.resumed ? " · picked up an unfinished export" : ""}`)}`);
+      for (const w of r.warnings) out(dim(`  note: ${w}`));
+      out(dim("  it opens only with that passphrase; keep the two apart"));
       return 0;
     },
   },
   {
-    name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force]", summary: "put a backup back (vyred must be stopped)",
+    name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]", summary: "put a backup back (vyred must be stopped)",
     async run(args) {
-      const { flags, rest } = parse(args);
+      const { flags, rest } = parse(args, ["user", "connect", "work-to"]);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
-      try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
+      const file = path.resolve(rest[0]);
+      let v2 = false;
+      try {
+        const fd = fs.openSync(file, "r"); const head = Buffer.alloc(8192);
+        let n = 0; try { n = fs.readSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
+        v2 = isStream(head.subarray(0, n));
+        const { header } = inspectSealed(v2 ? head.subarray(0, n) : fs.readFileSync(file));
+        out(dim(`  backup from ${new Date(header.at).toISOString().slice(0, 10)} · ${Math.round(fs.statSync(file).size / 1024)} KB sealed`));
+      } catch (e) { return fail(`${file} is not a sealed Vyre backup: ${String(/** @type {Error} */ (e).message)}`); }
+      let passphrase;
+      try { passphrase = await readPassphrase("backup passphrase: "); }
+      catch (e) { return fail(String(/** @type {Error} */ (e).message)); }
+      let r;
+      try {
+        // --work-to DIR: where the project files go, when it is not where they came from. Each
+        // project gets a folder of its own name inside it.
+        const workTo = typeof flags["work-to"] === "string" ? new Proxy({}, { get: (_, name) => typeof name === "string" ? path.resolve(String(flags["work-to"]), name) : undefined }) : undefined;
+        // Where the project files will go, said before anything is written (and refused if it is not allowed).
+        if (v2) {
+          const plan = planRestore({ file, passphrase, workTo, skipProjects: Boolean(flags["skip-projects"]), skipTranscripts: Boolean(flags["skip-transcripts"]), projectRoots: [config.workDir(), ...transcriptRoots()] });
+          if (!json()) for (const p of plan.projects) out(dim(`  project files "${p.name}" -> ${p.to} (${p.files} files)`));
+        }
+        r = await restore({ root: config.home(), file, passphrase, force: Boolean(flags.force), skipProjects: Boolean(flags["skip-projects"]), skipTranscripts: Boolean(flags["skip-transcripts"]), projectRoots: [config.workDir(), ...transcriptRoots()], workTo });
+      }
       catch (e) {
         const m = String(/** @type {Error} */ (e).message);
         return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
       }
-      if (json()) return emit({ restored: path.resolve(rest[0]) });
+      finally { passphrase = ""; }
+      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects, publicLinks: "as they were when the backup was made" });
       out("  restored · vyre up to start");
+      if (r.restored && r.restored.includes("data")) out(dim("  artifacts are back with their versions; public links return as they were when the backup was made, so a link that was on then is on again"));
       return 0;
     },
   },
@@ -607,6 +683,12 @@ export default [
       }
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
       else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
+      // The recovery code is the answer to this one call, never in a status or a log: print it here or it is lost.
+      if (tool === "names.claim" && d.recoveryCode) {
+        out("");
+        out(`  Recovery code: ${bold(String(d.recoveryCode))}`);
+        out("  Store it somewhere safe now (a password manager). It is shown once and cannot be shown again; with it you can take this name back after a reinstall.");
+      }
       return 0;
     },
   },

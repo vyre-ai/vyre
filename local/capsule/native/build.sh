@@ -13,7 +13,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 out="${VYRE_CAPSULE_BUILD:-$here/.build}"
 mode="${1:-app}"
 target="$(uname -m)-apple-macosx14.0"
-[ "$(uname -s)" = Darwin ] || { echo "the Capsule builds only on macOS" >&2; exit 1; }
+[ "$(uname -s)" = Darwin ] || { echo "Lumen builds only on macOS" >&2; exit 1; }
 command -v swiftc >/dev/null 2>&1 || { echo "swiftc not found. Install the Xcode command line tools: xcode-select --install" >&2; exit 1; }
 mkdir -p "$out/gen"
 
@@ -62,9 +62,10 @@ case "$mode" in
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>sh.vyre.capsule</string>
-  <key>CFBundleName</key><string>Vyre</string>
-  <key>CFBundleDisplayName</key><string>Vyre</string>
+  <key>CFBundleName</key><string>Lumen</string>
+  <key>CFBundleDisplayName</key><string>Vyre Lumen</string>
   <key>CFBundleExecutable</key><string>Vyre</string>
+  <key>CFBundleIconFile</key><string>Lumen</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${version:-0.0.0}</string>
   <key>CFBundleVersion</key><string>${version:-0.0.0}</string>
@@ -72,14 +73,18 @@ case "$mode" in
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><false/>
-  <key>NSContactsUsageDescription</key><string>Vyre lists the people you search for, on this Mac only.</string>
-  <key>NSCalendarsFullAccessUsageDescription</key><string>Vyre shows your events when you search for them, on this Mac only.</string>
-  <key>NSRemindersFullAccessUsageDescription</key><string>Vyre shows and adds reminders when you ask, on this Mac only.</string>
-  <key>NSAppleEventsUsageDescription</key><string>Vyre runs the Mac commands you pick, such as Empty Trash or Toggle Dark Mode.</string>
+  <key>NSContactsUsageDescription</key><string>Lumen lists the people you search for, on this Mac only.</string>
+  <key>NSCalendarsFullAccessUsageDescription</key><string>Lumen shows your events when you search for them, on this Mac only.</string>
+  <key>NSRemindersFullAccessUsageDescription</key><string>Lumen shows and adds reminders when you ask, on this Mac only.</string>
+  <key>NSAppleEventsUsageDescription</key><string>Lumen runs the Mac commands you pick, such as Empty Trash or Toggle Dark Mode.</string>
 PLIST
       find "$here/Sources/Extensions" -name Info.plist.part -exec cat {} \; 2>/dev/null
       printf '</dict>\n</plist>\n'
     } > "$app/Contents/Info.plist"
+    # The app icon (app-design's Lumen lens), from the brand export. Missing is not an error: the app
+    # then has the generic icon and everything else works.
+    icon="$here/../../../docs/design/brand/export/lumen/macos/Lumen.icns"
+    if [ -f "$icon" ]; then cp "$icon" "$app/Contents/Resources/Lumen.icns"; else echo "note: no Lumen.icns at $icon; the app gets the generic icon" >&2; fi
     # One stable identity keeps Accessibility and Input Monitoring grants across updates. The
     # identifier pins the designated requirement; VYRE_SIGN_IDENTITY names a local certificate
     # when there is one, otherwise the signature is ad hoc.

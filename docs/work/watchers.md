@@ -1,8 +1,16 @@
 # watchers
 
-Branch: work/watchers · Worktree: ../vyre-watchers · Milestone: M4 · Wave 1
+Branch: work/watchers · Worktree: ../vyre-watchers · Milestone: 0.2 · Wave A (per team/0.2/PLAN.md
+and team/0.2/plans/watchers.md, reviewed and revised through reviewer-2's pass; not yet re-reviewed)
 
 ## Scope
+
+0.1.x scope below stays true; 0.2 adds: `lib/sandbox` (shared with platform's module host, build
+step 2b of plans/watchers.md — the uid isolation and mediated-fetch firewall), the structured
+`when`/`check`/`do`/`owner`/`lifetime` shape in `folder.js`, the connection/owner scope model (You/
+Project/Teammate, `vault.push` consumption), duties-as-watchers with `team.duties.*`, and the
+authenticated-trigger + C25-extraction checks for standing permissions (3.1f/3.1g of the plan). The
+preview card UI is app-design's, not built here; this worktree builds the runtime it reads from.
 
 Owns `core/watchers/`, `core/cli/commands/watchers.js`, and `harness/skills/write-a-watcher/`
 (it exists; refine it once the runtime is real).
@@ -72,15 +80,83 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
 
 ## Doing
 
+lib/sandbox built (2b): addr.js (public-address check), fetch.js (mediated GET/HEAD, DNS pinned, redirects
+rechecked, parent-attached credential), identity.js (vyre-sandbox uid when root), wired into run.js/runner.js
+(`fetch` IPC verb, child globalThis.fetch replaced) and `net` in watcher.json (declared hosts plus a vault
+item attached per host). 27 watchers + sandbox tests pass (note: module.test.js boots an in-process vyred
+in a temp home; I ran it once on the Mac before the lead's runners-only rule reached me; from here it runs
+on a runner or the test box only). NOT done: the uid/iptables IM1 check (integrator's box image, needs a runner),
+retiring raw vault.fetch for plain watchers (still allowed via `needs`). Next: When/Check/Do in folder.js.
+
+Duties (teammates' exact calls, CHAT 09:21): watchers.create with owner/when/instruction/act writes a
+duty folder from a fixed template (core/watchers/duty.js), when.js reads the trigger words,
+watchers.update/delete/run added, callers limited to module:team or the person. Tests in
+runtime.test.js and when.test.js pass; the tool-level caller check is in index.js and is NOT covered
+by a test yet (module.test.js boots a daemon: runner only). Still open: ask() for model judgment
+(threads.quick), `vault.push` (vault must emit it), filing to the teammate's notes (team.notes refuses
+module callers; items go to watchers.items for now, teammates can read them into its brief).
+
+Raw vault release retired (lead's order, reviewer-2 H1): `needs` refused in watcher.json, `vault.fetch` refused
+in the child, credentials only via `net` (parent-attached, scrubbed in body/logs with base64/hex/url forms), no
+`net` means no network. Skill, use-the-vault line and docs/using/watchers.md updated. module.test.js edited to
+the net shape but not run here (daemon: runner only).
+
+ask(): runner verb + run.js handler + runtime.askModel; model via threads.quick (on stage, internal, module-only,
+purpose helper); watcher.json `ask: {dailyUsd}`. FINDING: the switchboard's quick answer rides a thread.finished with
+cost_usd (core/switchboard/index.js:921) and core/spend's listener records every thread.finished cost, so a quick is
+ALREADY in the ledger; recording again under watcher:<name> would double count. So watchers only calls spend.check and
+keeps a per-watcher day tally (watchers_spend) for dailyUsd. Attribution by watcher in the ledger needs core/spend to
+take a purpose for a quick (asked of iq/lead). Real-tool test of ask() still to write and run on a runner.
+
+Card (3.1c): `summary` in watcher.json, runtime.card + watchers.card, create pinned to the shown hash. The
+structured when/check/do PRESETS (mail and the rest, step 6b/9) are not built; the card reads `summary` or derives.
+
+Mail preset (core/watchers/presets.js, watchers.preset, createPreset): runs on vault.push, reads through
+vault.request via `net.<host>.credential` (viaRequest in run.js/runtime.js), ask() yes/no, files quoted notes.
+Tested against fakes (36 pass). NOT verified against the real vault.request or Gmail: needs a runner with a
+throwaway Google account (plan G1). Asked vault to add `gmailId` to vault.push meta rows (saves a search call).
+
 ## Next
-- A Deck panel (`panel:watchers` is declared) once the deck stream wants it.
-- Webhooks from outside the machine arrive once networking (box stream) serves vyred on the
-  tailnet; today the route is on the local socket only.
+
+Build order agreed with the lead (GO message): lib/sandbox first, jointly with platform and the
+integrator (2b: own uid, no network namespace of its own, the third mediated `fetch` verb, GET/HEAD
+only, parent-attached credentials, private/CGNAT/loopback/link-local refusal after DNS + on every
+redirect — platform's module host reuses the identical lib, so land it as a shared library, not a
+watchers-only one) — then the When/Check/Do runtime (structured `when`/`check`/`do` in `folder.js`,
+the instant card-summary path, no live fetch) — then the connection/owner scope model (3.0/3.8:
+`owner`/`lifetime` fields, the zero-setup default, `vault.push` consumption as one more event type
+on the already-built `on`/`where` mechanism). The preview card itself waits for app-design's screen.
+Do not start the preview card, the authenticated-trigger/C25-extraction step (11b — needs C25 to
+exist first), or duties (needs teammates' `team_duties` table) before those dependencies land;
+check CHAT.md before resuming in case any of that changed while on hold.
+
+Concrete first steps once unblocked:
+1. Confirm with platform/integrator where `lib/sandbox` lives and who's already touched it (CHAT.md
+   06:10/01:10 agreed the shape; check for a branch before starting a second one).
+2. `run.js`/`runner.js`: add the network-namespace isolation and the mediated `fetch` IPC verb;
+   retire raw `vault.fetch` release for plain/standing-permission watchers; separate uid for the
+   child.
+3. `folder.js`: the structured `when`/`check`/`do`/`owner`/`lifetime` fields, spec/check additions,
+   the `summary` field, instant card-text derivation.
+4. Real-Registry tests for both, not the fake registry reviewer-2 flagged in platform's own review
+   (reviews/platform.md CR-H1..H4) — same fail-closed lesson applies here if lib/sandbox is shared
+   code.
 
 ## Needs from others
-- vault: nothing outstanding. On main the runtime fetches with `{ watcher }` and grants are per
-  watcher. The use-the-vault skill still says a watcher "lists it under needs and calls
-  vault.fetch", which is true but leaves out the per-watcher grant; worth one line there.
+- **platform + integrator**: where `lib/sandbox` lands and its exact module boundary (this worktree
+  needs to land 2b against it, not duplicate it).
+- **vault**: the CONNECTIONS layer's grant-shape reuse (`{projects, agents}`, plans/watchers.md 3.0/
+  3.8) is still open as of the last plan revision — check CHAT.md for an answer before building the
+  owner-scoped grant check.
+- **sessions/vault/assistant**: C25's real contract name and shape (this plan used the placeholder
+  `threads.said`) — needed before build step 11b (authenticated triggers, permission-field refusal)
+  can be more than a stub.
+- **teammates**: `team_duties` table + `team.charter`'s context-composing pattern, needed before
+  duties-on-the-runtime (build step 9).
+- vault: nothing outstanding on the 0.1.x per-watcher grant path. On main the runtime fetches with
+  `{ watcher }` and grants are per watcher. The use-the-vault skill still says a watcher "lists it
+  under needs and calls vault.fetch", which is true but leaves out the per-watcher grant; worth one
+  line there.
 - projects: nothing adds a watcher to a project's `project.json` `watchers` list yet (spec 7.2).
   The runtime files by `watcher.json`'s `project`, so nothing depends on it; a
   `projects.add-watchers` tool would let the brief mention them.
@@ -105,3 +181,10 @@ it runs on schedule under vyred (a public source, so no credentials are needed f
 - Events: `watcher.created {name, project, schedule}`, `watcher.fired {name, items, seen,
   trigger}` (items = newly filed), `watcher.failed {name, error, failures, paused}`,
   `watcher.paused {name, why}`, `watcher.resumed {name}`. Each carries the project.
+
+## PAUSE (2026-10-01, usage limit)
+work/watchers pushed. Done since the last note: lib/sandbox (wall: bwrap, macOS deny-default, spawner candidate), net/credentials/ask, presets
+(mail, calendar, repo, slack, feed), card, duties (watchers.duty.*), reach (asked recorder path, targets, shown), project/thread/peer scoping.
+Open: node run on 14d3b504c (36824583908) result not read; windows-socket-acl failed once (pipe Test-Path, looks like a flake, rerun not done);
+spend_purpose switch waits on sessions; 11b authenticated trigger waits on C25; cli:agent:kit case waits on platform's caller fix
+(work/plat-caller d7e63b20); mac-trace and isolation workflows are green on their last runs.

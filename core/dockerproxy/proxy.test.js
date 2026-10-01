@@ -94,6 +94,13 @@ async function engine(t) {
       res.write("hel"); setTimeout(() => res.end("lo"), 5);
       return;
     }
+    if (req.method === "GET" && p === "/events" && u.searchParams.get("since") === "999") { res.writeHead(200, { "content-type": "application/json" }); res.write("{}\n"); return; }
+    if (req.method === "GET" && p === "/events") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write(JSON.stringify({ Type: "container", Action: "die", Actor: { ID: "kitfull0001", Attributes: { exitCode: "137" } }, time: 101 }) + "\n");
+      setTimeout(() => res.end(JSON.stringify({ Type: "container", Action: "oom", Actor: { ID: "kitfull0001", Attributes: {} }, time: 102 }) + "\n"), 5);
+      return;
+    }
     if (/^\/containers\/[^/]+\/exec$/.test(p)) return send(201, { Id: "ex9" });
     if (req.method === "PUT" && /^\/containers\/[^/]+\/archive$/.test(p)) return send(200);
     if (/^\/containers\/[^/]+\/(start|stop|pause|unpause)$/.test(p) || (req.method === "DELETE" && /^\/containers\/[^/]+$/.test(p))) return send(204);
@@ -135,7 +142,7 @@ async function proxy(t, policy = stub, bearer = BEARER) {
     req.end(data || undefined);
   });
   const sent = () => e.seen.filter(s => !(s.method === "GET" && /\/(json|volumes\/[^/]+)$/.test(new URL(s.url, "http://d").pathname)));
-  return { call, seen: e.seen, sent, logs };
+  return { call, seen: e.seen, sent, logs, port };
 }
 
 const CREATE = () => ({
@@ -217,7 +224,7 @@ test("dockerproxy: refused endpoints are 403 and never reach the Engine", async 
     ["GET", "/containers/kitfull0001/logs"], ["POST", "/containers/kitfull0001/attach"], ["GET", "/containers/kitfull0001/export"],
     ["POST", "/volumes/create"], ["DELETE", "/volumes/run.vyre.computers-home-kit"], ["GET", "/networks"],
     ["POST", "/networks/create"], ["GET", "/swarm"], ["GET", "/plugins"], ["GET", "/secrets"], ["GET", "/configs"],
-    ["GET", "/system/df"], ["GET", "/events"], ["GET", "/version"], ["GET", "/_ping"], ["GET", "/info"],
+    ["GET", "/system/df"], ["GET", "/version"], ["GET", "/_ping"], ["GET", "/info"],
     ["GET", "/exec/ex1/json"], ["POST", "/containers/kitfull0001/kill"], ["POST", "/containers/kitfull0001/update"],
     ["GET", "/v2.0/containers/json"], ["PATCH", "/containers/kitfull0001"],
     ["POST", "/containers/kitfull0001/start?detachKeys=x"], ["DELETE", "/containers/kitfull0001?link=true"],
@@ -415,4 +422,37 @@ test("dockerproxy: every request needs Authorization: Bearer <token>, checked ag
   // The right one still works.
   const ok = await call("GET", "/v1.43/containers/json");
   assert.equal(ok.status, 200);
+});
+
+test("dockerproxy: /events streams this box's computers' deaths, with the type, the events and the labels forced and only since= the caller's", async t => {
+  const px = await proxy(t);
+  const r = await px.call("GET", "/v1.43/events?since=100");
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.text.trim().split("\n").map(l => JSON.parse(l).Action), ["die", "oom"]);
+  const ev = px.seen.find(x => new URL(x.url, "http://d").pathname.endsWith("/events"));
+  const q = new URL(ev.url, "http://d").searchParams;
+  assert.equal(q.get("since"), "100");
+  assert.deepEqual(JSON.parse(String(q.get("filters"))), { type: ["container"], event: ["die", "oom", "kill", "stop"], label: [`${PREFIX}.managed=true`, "run.vyre=1"] });
+  for (const bad of ["?filters=%7B%7D", "?until=1", "?since=abc", "?since=1&since=2"]) {
+    const x = await px.call("GET", "/v1.43/events" + bad);
+    assert.ok(x.status === 403 || x.status === 400, `${bad} -> ${x.status}`);
+  }
+  assert.equal((await px.call("POST", "/v1.43/events")).status, 403);
+});
+
+test("dockerproxy: at most four /events streams at once; a closed one frees its place", async t => {
+  const px = await proxy(t);
+  const held = [];
+  for (let i = 0; i < 4; i++) {
+    held.push(await new Promise(resolve => {
+      const req = http.request({ host: "127.0.0.1", port: px.port, method: "GET", path: "/v1.43/events?since=999", headers: { authorization: `Bearer ${BEARER}` } }, res => { res.once("data", () => resolve(req)); });
+      req.end();
+    }));
+  }
+  assert.equal((await px.call("GET", "/v1.43/events?since=999")).status, 429);
+  held[0].destroy();
+  let ok = false;
+  for (let i = 0; i < 40 && !ok; i++) { await new Promise(r => setTimeout(r, 50)); const r = await px.call("GET", "/v1.43/events?since=100"); ok = r.status === 200; }
+  assert.ok(ok, "a place is free again once a stream closes");
+  for (const h of held) h.destroy();
 });

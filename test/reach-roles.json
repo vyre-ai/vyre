@@ -1,0 +1,4 @@
+{
+ "_comment": "Tools a box and a local registry both define with different callers or internal flags. The wider counts for reach-registry. Each needs a reason; the test fails on a new one.",
+ "tools": {}
+}

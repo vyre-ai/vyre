@@ -11,37 +11,66 @@
 // A file whose size and mtime have not moved is not read. The check is inequality, not "newer",
 // because a restored copy or clock skew can move an mtime backwards.
 
+import fs from "node:fs";
+import path from "node:path";
 import * as transcripts from "../transcripts/index.js";
+import { REDACTIONS, REDACT_VERSION, redact, redactLinks } from "../../lib/secret-shapes.js";
 import { chunks, encode } from "./embed.js";
 
 /** Let the event loop breathe between files, so vyred keeps answering while it indexes. */
 const breathe = () => new Promise(r => setImmediate(r));
+
+/** How long a threads.origin answer is kept: a session's record changes rarely, and a pass asks once per file. */
+const ORIGIN_TTL_MS = 30_000;
+
+/**
+ * The folder holding the per-account homes (VYRE_ACCOUNTS_HOME, else /home/acct where it exists), or null on
+ * a machine with none. A transcript under it was written by a process running as an account, so its own
+ * words about who started it prove nothing.
+ * @returns {string|null}
+ */
+function defaultAccountsHome() {
+  if (process.env.VYRE_ACCOUNTS_HOME) return path.resolve(process.env.VYRE_ACCOUNTS_HOME);
+  try { return fs.statSync("/home/acct").isDirectory() ? "/home/acct" : null; } catch { return null; }
+}
 
 /**
  * @typedef {import("node:sqlite").DatabaseSync} DB
  * @typedef {{ sessions: number, added: number, appended: number, reindexed: number, skipped: number, failed: number, turns: number, ms: number }} Stats
  */
 
+// The redaction rules are shared (lib/secret-shapes.js): this file applies them to every turn it indexes.
+export { REDACTIONS, REDACT_VERSION, redact, redactLinks };
+
 export class Indexer {
   /**
    * @param {DB} db
    * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void,
-   *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void }} [hooks]
+   *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void,
+   *           origin?: (session: string) => Promise<{ known?: boolean, human?: boolean } | null | undefined>,
+   *           accountsHome?: string | null }} [hooks]
+   *   origin: the Switchboard's own record of a session (threads.origin). For a transcript under an
+   *   account folder, whether it is a person's comes only from this, never from the transcript: no
+   *   answer, or known false, is not human.
    */
   constructor(db, hooks = {}) {
     this.db = db;
     this.emit = hooks.emit || (() => {});
     this.log = hooks.log || (() => {});
     this.onVector = hooks.onVector || (() => {});
+    this.origin = hooks.origin || null;
+    this.accountsHome = hooks.accountsHome === undefined ? defaultAccountsHome() : hooks.accountsHome;
+    /** @type {Map<string, { at: number, human: boolean }>} */
+    this.origins = new Map();
     this.q = {
-      get: db.prepare("SELECT file, bytes, mtime, turns, name FROM recall_sessions WHERE id = ?"),
+      get: db.prepare("SELECT file, bytes, mtime, turns, name, human FROM recall_sessions WHERE id = ?"),
       moved: db.prepare("UPDATE recall_sessions SET file = ? WHERE id = ?"),
       // Two stored turns, found in one pass. session is UNINDEXED in the FTS table, so any
       // lookup by it reads the whole table; this runs only for sessions that changed.
       ends: db.prepare("SELECT seq, role, text FROM recall_turns WHERE session = ? AND seq IN (?, ?)"),
       delTurns: db.prepare("DELETE FROM recall_turns WHERE session = ?"),
       delVectors: db.prepare("DELETE FROM recall_vectors WHERE session = ?"),
-      addTurn: db.prepare("INSERT INTO recall_turns (session, seq, role, ts, text) VALUES (?,?,?,?,?)"),
+      addTurn: db.prepare("INSERT INTO recall_turns (session, seq, role, ts, text, provider, model) VALUES (?,?,?,?,?,?,?)"),
       put: db.prepare(`INSERT INTO recall_sessions (id, file, cwd, name, title, started, ended, turns, human, parent, bytes, mtime)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET file=excluded.file, cwd=COALESCE(excluded.cwd, cwd),
@@ -67,12 +96,14 @@ export class Indexer {
     const t0 = Date.now();
     /** @type {Stats} */
     const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
+    // The one-time re-clean of what is already stored, a batch at a time between yields.
+    while (!this.scrubbed() && !stopped()) { this.scrub(); await breathe(); }
     const all = [...transcripts.list(folders)];
     for (const entry of all) {
       if (stopped()) break;
       s.sessions++;
       const t = Date.now();
-      try { this.one(entry, s); }
+      try { this.one(entry, s, await this.humanOf(entry)); }
       catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
       onProgress?.(s.sessions, all.length);
       // An unchanged file costs a stat; only real work is paced.
@@ -85,32 +116,97 @@ export class Indexer {
   }
 
   /**
+   * Clean the turns already stored, once per REDACT_VERSION, a bounded batch per call and resumable:
+   * the last rowid done is kept with the version, so a stop or a restart carries on. A turn a newer
+   * rule would change is rewritten in place and its vectors dropped (they embed the old text).
+   * @param {number} [batch]
+   * @returns {number} turns cleaned in this batch; done() is true once every turn has been read
+   */
+  scrub(batch = 500) {
+    const get = () => /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get());
+    const cur = get();
+    if (cur && cur.v === REDACT_VERSION) return 0;
+    const [ver, last] = cur && typeof cur.v === "string" && cur.v.includes(":") ? cur.v.split(":") : ["", "0"];
+    const from = ver === REDACT_VERSION + "-working" ? Number(last) || 0 : 0;
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT rowid, session, seq, text FROM recall_turns WHERE rowid > ? ORDER BY rowid LIMIT ?").all(from, batch));
+    const upd = this.db.prepare("UPDATE recall_turns SET text = ? WHERE rowid = ?");
+    const dv = this.db.prepare("DELETE FROM recall_vectors WHERE session = ? AND seq = ?");
+    let n = 0;
+    this.db.exec("BEGIN");
+    try {
+      for (const r of rows) {
+        const clean = redact(r.text);
+        if (clean === r.text) continue;
+        upd.run(clean, r.rowid); dv.run(r.session, r.seq); n++;
+      }
+      if (n) this.q.generation.run();
+      this.q.meta.run("redact", rows.length < batch ? REDACT_VERSION : `${REDACT_VERSION}-working:${rows[rows.length - 1].rowid}`);
+      this.db.exec("COMMIT");
+    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+    if (n) this.log(`recall: cleaned ${n} stored turns of credentials`);
+    return n;
+  }
+
+  /** True when every stored turn has been read against the current rules. */
+  scrubbed() {
+    const r = /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'redact'").get());
+    return Boolean(r && r.v === REDACT_VERSION);
+  }
+
+  /**
    * Index one session now, for a turn that just completed: its transcript copies only, and no
    * last_index mark, since this is not a pass over everything.
    * @param {string[]} folders @param {string} id
-   * @returns {Stats}
+   * @returns {Promise<Stats>}
    */
-  session(folders, id) {
+  async session(folders, id) {
     const t0 = Date.now();
     /** @type {Stats} */
     const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
     for (const entry of transcripts.list(folders)) {
       if (entry.id !== id) continue;
       s.sessions++;
-      try { this.one(entry, s); }
+      try { this.one(entry, s, await this.humanOf(entry)); }
       catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
     }
     s.ms = Date.now() - t0;
     return s;
   }
 
+  /** Whether a transcript file sits under an account's home. @param {string} file */
+  underAccounts(file) {
+    if (!this.accountsHome) return false;
+    const rel = path.relative(this.accountsHome, path.resolve(file));
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  }
+
+  /**
+   * For a transcript under an account folder: the Switchboard's word on whether a person started it
+   * (null for any other folder, where the transcript's own reading stands). Fails closed: no origin
+   * hook, an error, or no matching thread is false.
+   * @param {transcripts.Entry} entry @returns {Promise<boolean|null>}
+   */
+  async humanOf(entry) {
+    if (!this.underAccounts(entry.file)) return null;
+    const hit = this.origins.get(entry.id);
+    if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.human;
+    let human = false;
+    try {
+      const r = this.origin ? await this.origin(entry.id) : null;
+      human = Boolean(r && r.known === true && r.human === true);
+    } catch { human = false; }
+    this.origins.set(entry.id, { at: Date.now(), human });
+    return human;
+  }
+
   /**
    * @param {transcripts.Entry} entry
    * @param {Stats} s
+   * @param {boolean|null} [human] the Switchboard's answer for an account-folder transcript; null otherwise
    */
-  one(entry, s) {
+  one(entry, s, human = null) {
     const prev = /** @type {any} */ (this.q.get.get(entry.id));
-    if (prev && prev.bytes === entry.size && prev.mtime === entry.mtime) {
+    if (prev && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
       // Same bytes somewhere else (an archived folder): note where it lives now, read nothing.
       if (prev.file !== entry.file) this.q.moved.run(entry.file, entry.id);
       s.skipped++;
@@ -118,6 +214,7 @@ export class Indexer {
     }
     const t = transcripts.read(entry.file, { id: entry.id, parent: entry.parent });
     if (!t) { s.failed++; return; }
+    for (const turn of t.turns) turn.text = redact(turn.text);
 
     const have = prev ? Number(prev.turns) : 0;
     let from = 0, rewritten = false;
@@ -139,9 +236,9 @@ export class Indexer {
         this.q.delTurns.run(entry.id);
         this.q.generation.run();
       }
-      for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text);
+      for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text, turn.provider || "claude", turn.model || null);
       this.q.put.run(entry.id, entry.file, t.cwd, t.name, t.title, t.started || null, t.ended || null,
-        t.turns.length, t.human, t.parent, entry.size, entry.mtime);
+        t.turns.length, human === null ? t.human : (human && t.human ? 1 : 0), t.parent, entry.size, entry.mtime);
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
 

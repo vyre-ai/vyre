@@ -5,11 +5,11 @@
   "requires": ["vault", "gate"],
   "does": {
     "tools": [
-      "google.accounts", "google.add", "google.remove", "google.test",
-      "google.connect", "google.connect.finish", "google.connect.cancel",
-      "google.calendar.next", "google.calendar.list", "google.calendar.search", "google.calendar.create", "google.calendar.update",
-      "google.mail.search", "google.mail.read", "google.mail.draft", "google.mail.send",
-      "google.find", "google.open", "google.release"
+      { "name": "google.accounts", "reach": "anyone" }, { "name": "google.add", "reach": "anyone" }, { "name": "google.remove", "reach": "anyone" }, { "name": "google.test", "reach": "anyone" },
+      { "name": "google.connect", "reach": "anyone" }, { "name": "google.connect.finish", "reach": "anyone" }, { "name": "google.connect.cancel", "reach": "anyone" },
+      { "name": "google.calendar.next", "reach": "anyone" }, { "name": "google.calendar.today", "reach": "anyone" }, { "name": "google.calendar.list", "reach": "anyone" }, { "name": "google.calendar.search", "reach": "anyone" }, { "name": "google.calendar.create", "reach": "anyone" }, { "name": "google.calendar.update", "reach": "anyone" },
+      { "name": "google.mail.search", "reach": "anyone" }, { "name": "google.mail.read", "reach": "anyone" }, { "name": "google.mail.draft", "reach": "anyone" }, { "name": "google.mail.send", "reach": "anyone" },
+      { "name": "google.find", "reach": "anyone" }, { "name": "google.open", "reach": "person" }, { "name": "google.release", "reach": "modules" }
     ]
   },
   "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent", "google.connected", "google.connect-failed"] },

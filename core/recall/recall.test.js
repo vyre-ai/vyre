@@ -509,3 +509,15 @@ test("recall: prefix mode completes what is typed: every word a prefix, keyword 
   assert.deepEqual((await search(db, { q: "north-(", prefix: true })).hybrid, false);
   assert.deepEqual((await search(db, { q: "zzzqx", prefix: true })).hits, []);
 });
+
+test("recall: a turn row says which provider and model spoke, and an older row reads as Claude", async t => {
+  const e = setup(t);
+  fs.mkdirSync(path.dirname(e.file), { recursive: true });
+  const line = (type, text, extra = {}) => JSON.stringify({ type, timestamp: "2026-09-01T09:00:00Z", cwd: "/tmp/p", message: { role: type, content: text, ...extra } });
+  fs.writeFileSync(e.file, [line("user", "plan the menu"), line("assistant", "Here is a menu", { model: "claude-opus-4-1" })].join("\n") + "\n");
+  await e.index();
+  const rows = e.rows("SELECT role, provider, model FROM recall_turns ORDER BY seq");
+  assert.deepEqual(rows.map(r => ({ ...r })), [{ role: "user", provider: "claude", model: null }, { role: "assistant", provider: "claude", model: "claude-opus-4-1" }]);
+  // The words stay the indexed column: a search still finds them and the snippet is the text.
+  assert.equal(e.rows("SELECT snippet(recall_turns, 4, '[', ']', '', 8) AS s FROM recall_turns WHERE recall_turns MATCH 'menu' ORDER BY seq")[0].s.includes("[menu]"), true);
+});

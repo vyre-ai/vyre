@@ -18,6 +18,18 @@ Owns `local/capsule/` (now native Swift, `local/capsule/native/`) and `local/han
    Calendar, browser tabs/history/bookmarks, windows, system commands, Shortcuts, snippets and
    user commands, paste into the front app, vault inline, currency, time zones, emoji, colour
    picker, media keys. Each permission asked for on first use.
+   STATUS (2026-09-30, checked in code): wired and in use today are apps, files, contacts, the
+   dictionary, settings, clipboard history, the calculator with units, system commands, and (since
+   Providers/LocalAnswers.swift) emoji, colours, time zones, money with rates from open.er-api.com,
+   snippets, quicklinks and user commands from <home>/capsule/snippets.json. Aliases and per-command hotkeys (Core/Bindings.swift, Host/CommandBindings.swift,
+   <home>/capsule/bindings.json; native-core's settings hub keys can replace the file later). Window
+   layouts (Core/WindowLayout.swift, Providers/WindowsProvider.swift) and Return-pastes
+   (Host/Paste.swift; Accessibility asked once) are in. `view:` commands (Core/ViewFrames.swift,
+   Host/ViewSession.swift, Host/ViewMode.swift, Providers/ViewCommandsProvider.swift, UI/ViewLevelView.swift)
+   draw platform's capsule.commands/view/act frames; needs a vyred with those tools (platform-follow 39a3886e).
+   Not built: needs-a-credential (host.askCredential) from a `needs` frame, groups within a list, the
+   settings hub overrides (native-core). The list above is scope,
+   not what works.
 3. The Capsule gaps from the gallery (brief item 6) and the Capsule items moved here from
    polish-surfaces (items 2, the Capsule half of 3, and 5).
 
@@ -87,6 +99,68 @@ without editing Capsule files:
   capsule-apps. Swift 267/267.
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
+
+## 0.2 build: IQ streaming and corrections (C13), work/capsule-02-iq2
+Worktree ../vyre-capsule-02-iq, based on main 9381ab15. Landed:
+- work/capsule-pro-iq's two code commits (streaming, source chips ⌘1..⌘3, corrections with Undo,
+  and the two test-race fixes), merged onto main's newer IQAsk: `context` still goes with every
+  ask, the reply's model is `models.quick`, and the IQ line under the answer keeps the assistant's
+  mark. The notes-only commit was left out; this section replaces it.
+- iq's C13 additions: `memory.draft {id, text}` drawn dimmed with a "Checking" label (the reply
+  replaces it; an abstained or limited `memory.answered`, or a failed call, removes it). Stages
+  `understand|search|read|answer|check` map to Understanding, Searching your sessions, Reading,
+  Writing, Checking; an unknown stage shows nothing new. `context.thread` is the session window's
+  thread when it is non-empty, alongside `project`.
+- The old non-streaming path (threads.start) is still only for a vyred with no memory.ask.
+  A vyred that answers `bad_input` to stream/id gets one plain retry, context kept.
+- Tests (FakeVyred): draft frames then the answer, draft removed on abstain, stages mapped and
+  another id's or an unknown stage ignored, context carries project and thread, corrections round
+  trip. capsule-mac run 36658983627 on 7b366c9b green, Native Capsule tests 393 passed, 0 failed
+  (https://github.com/vyre-ai/vyre/actions/runs/36658983627).
+- No restyling: the draft reuses Theme.reply/stone/ash; app-design's glass theme will restyle it.
+
+## Speed proof (0.2 item 1)
+On CI (macos-latest, every run): scripts/capsule-native-check.mjs types real words a letter at a time
+(apps, files, the calculator answer in one frame) and reports the median and 95th percentile from
+key to rows against one frame (16 ms), and 10 hide-and-show cycles against 50 ms wake, plus the
+hidden footprint (60 MB) and CPU (0.1%). Numbers land in the job summary ("Capsule speed"). A miss
+prints OVER and does not fail the run; it is a number to fix.
+By hand on the real Mac, only in the separate test account, never the person's own, when the lead says the Mac is
+free: log in to the test account, build with `sh local/capsule/native/build.sh app` under the build lock,
+then `node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app` for the same numbers
+on real hardware and a real display. What a runner cannot show and a person must: (1) the hot key opens
+it with no visible lag, (2) typing a word draws rows as fast as you type, (3) holding a key does not
+stutter, (4) nothing flickers between keystrokes, (5) hiding and reopening is instant.
+
+## Notes parked (0.2.x)
+- Speed, key to first rows: median 21 ms, 95th 52.5 ms on the CI runner (release build, 246 keys, no profiler; the main thread is idle in a profile). Idea not chased: icon-ready callbacks from an earlier key landing in the next key's turn and re-drawing rows. Measure on a real Mac first.
+- threads.start and agents.ask carry `mentions` and `pasted` (sessions' work/sessions-start-mentions a257dd5a must land for them to count).
+- Text expansion, script commands, AI presets, browser tabs and bookmarks, Focus and Shortcuts, `@` targets from manifests: 0.2.x per the lead.
+
+## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
+Computer-use oversight panel (capsule-02.html section 11). 2026-10-01: rewired from my proposed hands.plan/step/voice to the real contract on stage (chrome.plan, chrome.step, chrome.voice, chrome.plan.edit, chrome.interject, chrome.pause); before this it could never have opened. Originally built against my proposed hands.* contract
+(CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
+OversightModel (folds chrome.plan/step/voice/paused/resumed/stopped by run, taps -> chrome.pause/resume/stop/
+plan.edit/steer, presence:false), OversightView (Bone tokens, Backdrop glass, grip, 6-step window, edit in
+place for todo steps, voice line, steer field, Esc stops, small mode), OversightExtension (opens on chrome.plan,
+closes on stop or after a 4 s linger when all done, remembers the dragged top-left). Seam additions:
+CapsuleHost.floatingWindow(owner:) and SessionWindow.onMoved (defaults keep every fake host compiling);
+CapsuleSessionWindow(floating: true) is level .floating, movable by background, non-activating.
+Controls whose tool the vyred lacks (pause, edit, steer) are not drawn. Typechecked with swiftc (build lock);
+tests in Tests/Oversight run on CI only.
+Enrolment handoff (anywhere, ADR 0040 s4-5): Host/CoreEnroll.swift reads the code from fd 3 first thing in main.swift (6 chars A-Za-z0-9 then EOF, else failed; a closed or non-pipe fd 3 is an ordinary launch), core.json under the readCoreConfig rule, socketProblem before any proof, then CapsulePresence.enroll(client:header:) with `code code=<code>`; fingerprint = sha256(SPKI) 16 hex. Tests/CoreEnrollTests.swift with a fake core. Needs the real-Mac run from anywhere's installer.
+`#` tags (Core/TagPicker.swift, Host/TagMode.swift): mentions.search {q, limit} as the contract says; the chips ride in threads.send as `mentions:[{kind,id,name}]` only (threads.start and agents.ask carry the #Name token in the text).
+Lumen icon and motion: Lumen.icns from docs/design/brand/export (build.sh copies it, CFBundleIconFile), LumenMark in the bar and menu bar, summon arrival in Panel.show, first-launch open in Host/LumenOpen.swift.
+Next: CI result, then reviewer-2; adjust to capsule-sight's answer on the contract; Chrome "being debugged"
+coexistence needs a real-Mac look (panel opens top right, below the menu bar).
+
+## Earlier (session 8, 2026-09-30, 0.2, work/capsule-02-glass off work/capsule-02-iq2 7b366c9b)
+Handed: IQ streaming (work/capsule-02-iq2 7b366c9b, CI green 393/393) to reviewer-2 (unreachable at handoff, notified integrator).
+1. Deep glass skin (Sources/UI/Glass.swift, glassSuite): 0.62 tint, border, reduce-transparency fallback. CI run pending.
+   Light variant done: Theme colours are dynamic (dark/paper tokens by system appearance), IconCache keys carry the scheme, backdrop material .popover + paper tint 0.66. 395/395 on CI.
+   memory.ask drafts now come from the ndjson response (VyredClient.call(onDraft:)); the IQ stage test waits on the stage, not a sleep.
+   CI note: TypingPerfTests flicker and StreamPerfTests size-change each failed once on a loaded runner and passed on rerun; layout timing tests are flaky under CI load (not from these changes as far as I can tell).
+Next: 2. computer-use oversight panel UI with capsule-sight. 3. the other approved 0.2 screens (capsule-02.html, chat-components.html).
 
 ## Doing (session 7, 2026-09-28, 0.1.1 on work/capsule-011)
 work/capsule-011 is rebased on stage/0.1.1 e793afdf (the integrator's final P-256 + voice parity).
@@ -241,7 +315,7 @@ a held talk from a tapped one and Esc does not cancel dictation yet (T2).
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
 
 Only what cannot be tested for them: the keychain, Touch ID, lock and sleep, the hot keys, a
-banner. About 20 minutes. Everything goes to the user's own address and nobody else. Before
+banner. About 30 minutes. Everything goes to the user's own address and nobody else. Before
 starting: this Vyre install is the user's own (not a temp home), a Gmail sender is connected
 (`vyre call gate.senders '{}'` lists `gmail`), and the Mac has Touch ID.
 Held test mail: `H='{"kind":"send","via":"gmail","to":"<your own address>","content":{"subject":"Vyre check N","body":"Capsule check."}}'`,
@@ -272,13 +346,28 @@ then `vyre call gate.request "$H"` with N changed each time.
 9. **A banner from the box.** `vyre timer 1m vyre check`. Hide the Capsule. The first time,
    macOS asks to allow notifications: allow them. Pass: a banner at the top right after a minute,
    with Done and Snooze. Press Done: it goes, and the Deck and phone show it answered.
-10. **An update keeps permissions.** Update Vyre (the next npm version, or `npm i -g` of the
-   branch), then `vyre capsule`. Pass: it rebuilds once ("Building the Capsule"), still
-   `Vyre Local` (step 1's command), and Control twice (step 3) works with no new permission
-   prompt.
+10. **An update and permissions.** Update Vyre (the next npm version, or `npm i -g` of the
+   branch), then `vyre capsule`. Pass: it rebuilds once ("Building the Capsule") and is still
+   `Vyre Local` (step 1's command). Note whether Control twice (step 3) still works or macOS
+   asks again. 0.2.0 ships self-signed and says it may ask again; a silent keep is a bonus, and
+   a note either way.
 11. **Light while hidden.** Leave the Capsule hidden for a minute. Then run
    `footprint $(pgrep -x Vyre) | grep phys_footprint:` and `ps -o %cpu= -p $(pgrep -x Vyre)`.
    Pass: under 60 MB and under 0.1% (CI measured 24 MB and 0.07%).
+
+12. **Speed.** Press Option-Space and type "a", then a word. Pass: rows appear as you type with
+   no pause you can see (the runner measures 52 ms to first rows at the 95th percentile). Note
+   any visible lag and which letters.
+13. **Icon and motion.** The Dock and menu bar show the Lumen lens (Bone, not lime). Opening
+   draws the lens in about a fifth of a second. The very first open runs about 1.6 s. With
+   Reduce Motion on in System Settings, it appears without the draw-in.
+14. **Unlock.** Lock the Vault (`vyre call vault.lock '{}'`), open Lumen, choose a login. Pass:
+   Touch ID or the Mac password card opens, and a correct entry fills the login. A wrong
+   password says so and keeps the card.
+15. **Oversight and voice** (needs stage with the platform, vault and assistant branches).
+   Start a computer-use task from an agent. Pass: the oversight panel opens top right with the
+   plan first, can be dragged, takes a typed note, and Esc waits for the current act. A spoken
+   reply plays from a mic turn.
 
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.

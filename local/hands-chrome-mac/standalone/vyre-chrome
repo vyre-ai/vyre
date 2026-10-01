@@ -1,0 +1,35 @@
+#!/bin/sh
+# Vyre for Chrome: the launcher. Finds a Node 22 or newer on its own, so it works from a login shell whose PATH has no node
+# (nvm, Volta, fnm and asdf only put node on PATH in an interactive shell), then runs cli.mjs with the same arguments.
+# Follows a symlink to itself (install puts one in ~/.local/bin).
+self="$0"
+while [ -h "$self" ]; do
+  d="$(cd "$(dirname "$self")" && pwd)"; l="$(readlink "$self")"
+  case "$l" in /*) self="$l" ;; *) self="$d/$l" ;; esac
+done
+here="$(cd "$(dirname "$self")" && pwd)"
+cli="$here/standalone/cli.mjs"
+[ -f "$cli" ] || cli="$here/cli.mjs"
+
+ok() { [ -x "$1" ] && "$1" -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1; }
+
+node=""
+# 1. what is on PATH, 2. the places a version manager or the OS puts it.
+if p="$(command -v node 2>/dev/null)" && ok "$p"; then node="$p"; fi
+if [ -z "$node" ]; then
+  # Newest first inside each manager's folder (version sort), then the fixed places.
+  for cand in \
+    $(ls -d "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | sort -t v -k2 -V -r) \
+    "$HOME/.volta/bin/node" \
+    $(ls -d "$HOME"/.local/share/fnm/node-versions/*/installation/bin/node "$HOME"/Library/Application\ Support/fnm/node-versions/*/installation/bin/node 2>/dev/null | sort -V -r) \
+    $(ls -d "$HOME"/.asdf/installs/nodejs/*/bin/node 2>/dev/null | sort -V -r) \
+    /opt/homebrew/bin/node /usr/local/bin/node /opt/homebrew/opt/node/bin/node /usr/bin/node; do
+    if ok "$cand"; then node="$cand"; break; fi
+  done
+fi
+if [ -z "$node" ]; then
+  echo "Vyre for Chrome needs Node 22 or newer, and could not find one (looked on PATH, in nvm, Volta, fnm, asdf, Homebrew and /usr/local)." >&2
+  echo "Install it from https://nodejs.org (or with nvm or Homebrew) and run this again." >&2
+  exit 127
+fi
+exec "$node" "$cli" "$@"

@@ -39,11 +39,11 @@ values.
 
 - Type: Instrument Sans; JetBrains Mono for commands, code, paths, IDs and codes. Desktop
   12/16, 13/18, 15/22, 20/26, 28/34. Phone 12/16, 13/18, 17/24, 22/28, 28/34. Weights 400, 600.
-- Colour: the Deck's eight neutrals per theme, lime for action, focus, running and selection,
+- Colour: the Deck's eight neutrals per theme, bone for action, focus, running and selection,
   violet for needs you (teal the one alternative). No other hue. Devices and hosts never get a
   colour.
 - Status, one model, most urgent first: needs you (violet dot), failed (crossed circle, text
-  colour), running (lime ring with elapsed time), unread (text dot), done (hollow dot). It drives
+  colour), running (bone ring with elapsed time), unread (text dot), done (hollow dot). It drives
   rows, tabs, the favicon, the app badge, the Capsule's mark and the CLI.
 - Buttons: primary (one per surface), secondary (quiet fill), outline, ghost (Cancel, Deny,
   Discard), hold (destructive: label carries the count, 0.6 s hold). Heights 28, 32; 44 and 54 on

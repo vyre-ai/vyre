@@ -1,0 +1,20 @@
+# The setup page makes a key that only it can use and holds a one-time code in memory: no other origin's
+# script, style or font loads there, and it talks to Vyre's relay only. (Cloudflare Pages reads this file.)
+# /setup is the redirect to /setup/, so it carries the same headers.
+/setup
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Cache-Control: no-store
+/setup/*
+  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self' https://relay.vyre.run wss://relay.vyre.run; img-src 'self' data:; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), clipboard-read=()
+  X-Content-Type-Options: nosniff
+  Cache-Control: no-store
+
+# The Windows installer script, `irm https://vyre.run/w | iex`: plain text, never cached for long (a fix must reach people at once), never sniffed.
+/w
+  Content-Type: text/plain; charset=utf-8
+  X-Content-Type-Options: nosniff
+  Cache-Control: public, max-age=300

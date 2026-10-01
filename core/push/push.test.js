@@ -460,3 +460,65 @@ test("push: live checks for `vyre phone add`: push.subscribed, a test receipt po
   await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
   await until(() => events("push.seen").length === 3, "again after 10 minutes");
 });
+
+test("push: the proactive kinds share one daily budget; asks and set reminders do not count", async t => {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+  const until = async (fn, what) => { const end = Date.now() + 5000; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
+  const phone = await browser();
+  await deck("push.key");
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
+  const capped = [];
+  d.events.on("push.capped", e => capped.push(e.payload.tag));
+  const got = () => svc.got.filter(g => g.path === "/push/phone").length;
+  for (let i = 1; i <= 5; i++) d.events.emit("assistant", "push.proactive", { title: "kit finished the intake form", path: "/threads/t1", tag: `p${i}` }, {});
+  await until(() => got() === 3, "three pushes");
+  await until(() => capped.length === 2, "two over budget");
+  assert.deepEqual(capped, ["p4", "p5"]);
+  d.events.emit("threads", "ask.raised", { ask: "z9", tool: "Bash", summary: "x", destination: "/w" }, { thread: "t-1" });
+  await until(() => got() === 4, "an ask is never capped");
+  assert.equal(got(), 4);
+});
+
+test("push: settings.loosened is a loud notice with one fixed sentence, not counted in the daily budget, and never carries a value", async t => {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+  const until = async (fn, what) => { const end = Date.now() + 5000; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 25)); } };
+  const phone = await browser();
+  await deck("push.key");
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
+  const got = () => svc.got.filter(g => g.path === "/push/phone");
+  // Quiet hours around now, and the daily budget used up: a notice still rings.
+  const hhmm = ms => new Date(ms).toISOString().slice(11, 16);
+  const now = Date.now();
+  await deck("push.settings", { quiet: { start: hhmm(now - 3600_000), end: hhmm(now + 3600_000), timezone: "UTC" } });
+  d.events.emit("settings", "settings.loosened", { change: "chg_1", key: "vault.lock_on_sleep", label: "Lock when the Mac sleeps", level: "account", by: "mcp:agent:kit", said: "s_9" }, {});
+  const first = await until(() => got()[0], "the notice");
+  const msg = JSON.parse((await decrypt(phone, first.body)).toString());
+  assert.equal(msg.kind, "notice");
+  assert.equal(msg.title, "Lock when the Mac sleeps changed, as you asked. Undo");
+  assert.equal(msg.path, "/settings?change=chg_1");
+  assert.ok(!/kit|false|true|s_9/.test(JSON.stringify(msg)), JSON.stringify(msg));
+  const capped = [];
+  d.events.on("push.capped", e => capped.push(e.payload.tag));
+  for (let i = 1; i <= 5; i++) d.events.emit("assistant", "push.proactive", { title: "x", path: "/t", tag: `p${i}` }, {});
+  for (let i = 2; i <= 4; i++) d.events.emit("settings", "settings.loosened", { change: `chg_${i}`, key: "vault.lock_on_sleep", label: "Lock when the Mac sleeps", level: "account", by: "mcp:agent:kit", said: "s" }, {});
+  await until(() => got().length >= 4, "the notices after the budget");
+  assert.deepEqual(capped.filter(tag => String(tag).startsWith("settings-loosened")), [], "a notice is never capped");
+  // Nothing switches the notice off: an agent cannot touch push.settings, and the person's own try is refused.
+  const agent = await call("push.settings", { kinds: { notice: false } }, { root, caller: "mcp:agent:kit" });
+  assert.ok(agent.error, "an agent may not change notification preferences");
+  const own = await deck("push.settings", { kinds: { notice: false } });
+  assert.ok(own.error && /cannot be turned off/.test(own.error.message), JSON.stringify(own));
+  assert.equal((await deck("push.settings")).data.kinds.notice, true);
+});

@@ -109,6 +109,41 @@ export function describe(tool, input = {}) {
   return { summary: cut(`${tool}${firstString ? ` ${firstString[0]}: ${firstString[1]}` : ""}`), destination };
 }
 
+/** What a tool call does, for a card's icon and verb: the kinds a surface draws. Anything else is "other". */
+export const TOOL_KINDS = ["read", "edit", "write", "run", "search", "fetch", "mcp", "task", "other"];
+const CLAUDE_KIND = { Read: "read", Write: "write", Edit: "edit", MultiEdit: "edit", NotebookEdit: "edit", Grep: "search", Glob: "search", Bash: "run", WebFetch: "fetch", WebSearch: "fetch", Task: "task", Agent: "task" };
+
+/**
+ * A tool call's kind and, where it has them, its path, command and query (redacted and capped, as
+ * describe() does). `hint`: a provider's own kind when it said one (ACP: delete and move are edits).
+ * @param {string} tool @param {Record<string, any>} input @param {string} [hint]
+ * @returns {{ kind: string, path?: string, command?: string, query?: string }}
+ */
+export function toolFields(tool, input = {}, hint) {
+  const i = input || {};
+  const kind = TOOL_KINDS.includes(String(hint)) ? String(hint) : CLAUDE_KIND[tool] || (String(tool).startsWith("mcp__") ? "mcp" : "other");
+  const out = /** @type {{ kind: string, path?: string, command?: string, query?: string }} */ ({ kind });
+  const path = i.file_path || i.notebook_path || (kind !== "run" ? i.path : "") || "";
+  if (typeof path === "string" && path && ["read", "edit", "write", "search"].includes(kind)) out.path = cut(clip(path, 500), 300);
+  if (typeof i.command === "string" && i.command && kind === "run") out.command = cut(clip(i.command, 4000), 1000);
+  const q = i.query || (kind === "search" ? i.pattern : "");
+  if (typeof q === "string" && q && ["search", "fetch"].includes(kind)) out.query = cut(clip(q, 500), 300);
+  else if (typeof i.url === "string" && i.url && kind === "fetch") out.query = cut(clip(i.url, 500), 300);
+  return out;
+}
+
+/**
+ * A plan's items as a card draws them: a todo list or an agent's plan entries, each pending,
+ * running or done. Claude's TodoWrite says in_progress and completed; ACP's plan says the same.
+ * @param {any} list @returns {{ text: string, status: "pending"|"running"|"done" }[]}
+ */
+export function planItems(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 50).map(x => {
+    const st = String(x && x.status || "pending");
+    return { text: cut(clip(String(x && (x.content ?? x.text ?? x.activeForm) || ""), 1000), 500), status: /** @type {"pending"|"running"|"done"} */ (st === "in_progress" || st === "running" ? "running" : st === "completed" || st === "done" ? "done" : "pending") };
+  });
+}
+
 /**
  * One stream-json message, as the thread events it stands for.
  *
@@ -122,6 +157,8 @@ export function describe(tool, input = {}) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
+   *   media?: { mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[],
+   *   providerMeta?: { models?: { id: string, label?: string }[], plan?: string },
    *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[], reasoning?: string, task?: any,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
@@ -130,6 +167,8 @@ export function translate(m) {
   if (m.type === "system" && m.subtype === "init") {
     out.session = m.session_id;
     out.model = m.model || null;
+    // What a provider says about itself at init (ACP drivers): the models its account can use and its plan, for the model picker.
+    if (Array.isArray(m.models) || typeof m.plan === "string") out.providerMeta = { ...(Array.isArray(m.models) ? { models: m.models.filter(x => x && typeof x.id === "string").slice(0, 200) } : {}), ...(typeof m.plan === "string" ? { plan: m.plan } : {}) };
     // The slash commands this session offers (built in, the user's, the project's, plugins'), for a composer's menu.
     if (Array.isArray(m.slash_commands)) out.commands = m.slash_commands.map(String);
     return out;
@@ -159,7 +198,11 @@ export function translate(m) {
       if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, block, text: String(b.text).slice(0, 20000), done: true } });
       // Thinking is its own event, so a surface that does not show it never takes it for the reply.
       if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.thinking", payload: { message: id, block, text: String(b.thinking).slice(0, 20000), done: true } });
-      if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input) } });
+      if (b.type === "tool_use") {
+        out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input), ...toolFields(b.name, b.input, b.vyre_kind) } });
+        // Claude's todo list is the plan: one event carrying the whole list, so a card just replaces its state.
+        if (b.name === "TodoWrite" && b.input && Array.isArray(b.input.todos)) out.events.push({ type: "thread.plan", payload: { items: planItems(b.input.todos), at: Date.now() } });
+      }
     });
     out.blocks = (m.message.content || []).length;
     // The request's own usage: what the context held when Claude answered (for thread.usage context).
@@ -171,8 +214,15 @@ export function translate(m) {
 
   if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
     for (const b of m.message.content) {
-      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error) } });
+      if (b.type === "tool_result" && Array.isArray(b.vyre_media) && b.vyre_media.length) (out.media ||= []).push(...b.vyre_media.slice(0, 4));
+      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error), ...(Number.isInteger(b.exit_code) ? { exit_code: b.exit_code } : {}) } });
     }
+    return out;
+  }
+
+  // A provider's own plan (ACP session/update "plan"), said through the driver's own wire line.
+  if (m.type === "system" && m.subtype === "vyre_plan") {
+    out.events.push({ type: "thread.plan", payload: { items: planItems(m.entries), at: Date.now() } });
     return out;
   }
 
@@ -221,6 +271,8 @@ export function translate(m) {
     // A turn that failed on the subscription's limit reads as an error result naming the limit.
     if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
     out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
+    // An agent that names the model per turn (Grok Build, Codex) says so on the result: the reply's events carry it.
+    if (typeof m.model === "string" && m.model) out.model = m.model;
     if (Array.isArray(m.user_message_uuids)) out.folded = m.user_message_uuids.map(String);
     // The model's context window, from the result's per-model usage.
     const windows = m.modelUsage && typeof m.modelUsage === "object" ? Object.values(m.modelUsage).map(x => Number(x && x.contextWindow) || 0).filter(Boolean) : [];

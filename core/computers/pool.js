@@ -106,6 +106,11 @@ function memberToken(key, computerId, agentId, generation) {
  * @typedef {{ agent: string, thread: string|null, screen: number, since: number, touched: number, viewers: number, verified?: number }} Checkout
  */
 
+/** What a person is told when the computer they were watching died, or is dead when they ask for its screen. */
+export const STOPPED = "This computer stopped. Start it again?";
+/** What a person is told when the container runtime cannot be asked about a computer. */
+export const UNKNOWN = "Can't check this computer right now.";
+
 export class Pool {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, driver: import("./driver/index.js").Driver|null,
@@ -136,6 +141,12 @@ export class Pool {
     this.wait = deps.wait;
     // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
+    /** Agents whose computer died on its own since it last started: Glass tells a viewer so instead of starting it. @type {Set<string>} */
+    this.died = new Set();
+    /** Agents whose computer the runtime could not be asked about at the last check. @type {Set<string>} */
+    this.unknown = new Set();
+    /** When the sweep last looked at every running computer (its backstop runs once a minute). */
+    this.lastVerify = -Infinity;
     this.probe = deps.probe !== undefined ? deps.probe : deps.driver && deps.driver.name === "docker" ? tcpProbe : null;
     this.opts = {
       screens: Math.max(1, Number(c.screens || 2)),
@@ -444,6 +455,7 @@ export class Pool {
     }
     await this.boot(agent, id);
     this.set(agent, { state: "running" });
+    this.died.delete(agent);
     // A computer that just started or thawed joins the tailnet (when the switch is on), and so
     // does a running one that has no node yet. It never holds up the checkout.
     if (before !== "running" || !this.row(agent).stable_id) this.joinTailnet(agent);
@@ -469,7 +481,16 @@ export class Pool {
       }
       if (st.host) this.hosts.set(agent, { host: st.host, ports: st.ports || { ...PORTS } });
       const h = this.hosts.get(agent);
-      if (!this.probe || (h && await this.probe(h.host, h.ports.vnc))) return;
+      // The screen AND computerd (its port answers a little after Xvnc: the first hands call right after a checkout used to hit a refused connection).
+      // computerd starts after Xvnc, so its port answering means the screen is up too. The screen's own port is dialled
+      // only when there is no computerd to ask: every connection to it that does not log in counts against Xvnc's
+      // host blacklist, and enough of them make Glass's first real connection from this address refused.
+      if (!this.probe) return;
+      if (h && await this.probe(h.host, h.ports.helper ? h.ports.helper : h.ports.vnc)) {
+        // Show computerd the token once: it then answers vyred's address alone (another computer on the network is refused).
+        await this.pin(agent).catch(() => {});
+        return;
+      }
       if (Date.now() >= deadline) {
         throw bootFailure(`${agent}'s computer started but its screen did not answer within ${Math.round(this.opts.bootMs / 1000)} s`, `see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
       }
@@ -601,7 +622,7 @@ export class Pool {
         const st = await this.driver.inspect(r.container).catch(() => null);
         if (st && st.state === "missing") { this.leftTailnet(agent); this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); }
         // It died while nobody held it: say stopped, not running, until the next checkout starts it.
-        else if (st && st.state === "exited") { this.leftTailnet(agent); this.set(agent, { state: "stopped" }); this.hosts.delete(agent); this.emit("computer.stopped", { agent }); }
+        else if (st && st.state === "exited") { this.leftTailnet(agent); this.set(agent, { state: "stopped" }); this.hosts.delete(agent); this.died.add(agent); this.emit("computer.stopped", { agent }); }
         this.log(`could not freeze ${agent}'s computer: ${/** @type {Error} */ (e).message}`);
         return false;
       }
@@ -655,8 +676,74 @@ export class Pool {
 
   // ---- time ------------------------------------------------------------------------------
 
+  /**
+   * Make the computer's computerd (and its screen) answer this vyred and nothing else on the network: one authenticated
+   * call pins vyred's address there. Done after a computer starts, and before a screen is opened, since vyred's own
+   * address can change when its container is recreated while the computer keeps running.
+   * @param {string} agent
+   */
+  async pin(agent) {
+    const e = this.endpoint(agent).helper;
+    const r = await fetch(new URL("/ping", e.url), { headers: { authorization: `Bearer ${e.token}` }, signal: AbortSignal.timeout(3_000) });
+    if (!r.ok) throw new Error(`computerd answered ${r.status}`);
+  }
+
+  /**
+   * Is the agent's computer still running? A container that died (killed, out of memory, crashed) is
+   * marked stopped at once: its checkout and viewers are released, the tailnet node is forgotten, and
+   * computer.stopped is emitted, so nothing keeps saying "running". Returns true when it was dead.
+   * @param {string} agent
+   */
+  async verifyAlive(agent) {
+    // Behind whatever is already happening to this computer (a stop of ours makes the same container exit, and must not read as a death).
+    return this.serial(agent, async () => {
+      const d = this.driver;
+      const r = this.row(agent);
+      if (!d || !r || r.state !== "running" || !r.container) return false;
+      /** @type {any} */
+      let st;
+      try { st = await d.inspect(r.container); } catch { st = undefined; }
+      // The runtime would not say: the computer is neither running nor dead as far as anyone knows. It is shown as unknown,
+      // never as running, until a check succeeds.
+      if (st === undefined) { this.unknown.add(agent); return false; }
+      this.unknown.delete(agent);
+      if (!st || st.state === "running" || st.state === "paused") return false;
+      this.leftTailnet(agent);
+      this.release(agent, "stopped");
+      this.set(agent, st.state === "missing" ? { state: "none", container: null } : { state: "stopped" });
+      this.hosts.delete(agent);
+      this.died.add(agent);
+      this.emit("computer.stopped", { agent, died: true });
+      this.log(`${agent}'s computer died (${st.state}${st.exitCode != null ? `, exit code ${st.exitCode}` : ""})`);
+      return true;
+    });
+  }
+
+  /**
+   * Hear about a computer's death from the container runtime instead of polling for it: the driver's event stream
+   * (die, oom, kill, stop) names the container, and that computer is checked at once. After a reconnect every running
+   * computer is checked once, since an event can be lost while the stream is down. Returns a stop function; a driver with
+   * no event stream (the fake, or a runtime without one) leaves the sweep's backstop as the only signal.
+   */
+  watchDeaths() {
+    const d = /** @type {any} */ (this.driver);
+    if (!d || typeof d.watchEvents !== "function") return () => {};
+    const all = () => { for (const r of this.rows()) if (r.state === "running") this.verifyAlive(r.agent).catch(() => {}); };
+    const w = d.watchEvents(e => {
+      const r = this.rows().find(x => x.container && (x.container === e.id || String(x.container).startsWith(e.id) || e.id.startsWith(String(x.container))));
+      if (r && r.state === "running") this.verifyAlive(r.agent).catch(() => {});
+    }, { onGap: all, log: m => this.log(m) });
+    return () => w.stop();
+  }
+
   /** Release idle checkouts and freeze computers idle past freezeMs. index.js calls it on a timer, tests by hand. */
   async sweep() {
+    // The backstop for a death the runtime's event stream did not report (no stream, or an event lost): one local inspect
+    // per running computer, at most once a minute (SPEC principle 8), however often the sweep itself runs.
+    if (this.now() - this.lastVerify >= 55_000) {
+      this.lastVerify = this.now();
+      for (const r of this.rows()) if (r.state === "running") await this.verifyAlive(r.agent).catch(() => {});
+    }
     const now = this.now();
     for (const co of [...this.checkouts.values()]) {
       if (co.viewers === 0 && !this.heldBy(co.agent) && now - co.touched >= this.opts.idleMs) this.release(co.agent, "idle");
@@ -696,6 +783,9 @@ export class Pool {
       try { await this.driver.remove(c.id); this.log(`removed ${c.agent}'s orphaned computer ${c.id}: its passwords were lost with the table`); }
       catch (e) { this.log(`could not remove orphaned computer ${c.id}: ${/** @type {Error} */ (e).message}`); }
     }
+    // vyred's address can change while a computer keeps running (its container recreated). computerd re-pins on the first
+    // valid token from the new address, so show each running computer the token once after a start.
+    if (this.probe) for (const r of this.rows()) if (r.state === "running" && this.hosts.has(r.agent)) await this.pin(r.agent).catch(() => {});
   }
 
   // ---- what Glass and the hands need -----------------------------------------------------
@@ -1018,7 +1108,7 @@ export class Pool {
   view(agent) {
     const r = this.row(agent), co = this.checkouts.get(agent);
     return {
-      agent, state: r ? String(r.state) : "none", screen: co ? co.screen : null, thread: co ? co.thread : null,
+      agent, state: r ? (this.unknown.has(agent) && r.state === "running" ? "unknown" : String(r.state)) : "none", screen: co ? co.screen : null, thread: co ? co.thread : null,
       viewers: co ? co.viewers : 0, takeover: this.heldBy(agent), paused: Boolean(r && r.paused), size: this.size(agent),
       since: co ? co.since : r ? Number(r.updated) : null, screens: this.opts.screens,
       cpus: this.limitsOf(r).cpus, memory_gb: Math.round(this.limitsOf(r).memoryMb / 1024 * 10) / 10,

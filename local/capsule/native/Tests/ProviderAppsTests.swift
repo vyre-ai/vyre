@@ -113,7 +113,7 @@ let providerAppsSuite = Suite("provider apps") { t in
         t.eq(Launch.tilde("/Users/alex/Documents/a", home: "/Users/alex"), "~/Documents/a")
         t.eq(Launch.tilde("/Users/alex", home: "/Users/alex"), "~")
         t.eq(Launch.tilde("/Users/alexandra/x", home: "/Users/alex"), "/Users/alexandra/x")
-        t.eq(t.wait { await Launch.open(URL(string: "javascript:x")!) }, .failed("The Capsule does not open that."))
+        t.eq(t.wait { await Launch.open(URL(string: "javascript:x")!) }, .failed("Lumen does not open that."))
         t.eq(t.wait { await Launch.open(URL(fileURLWithPath: "/nonexistent/northwind.pdf")) }, .failed("That file is gone."))
     }
 

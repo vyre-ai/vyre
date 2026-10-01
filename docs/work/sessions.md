@@ -43,6 +43,37 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- 0.2 build, wave A0/A on branch work/sessions-02 (pushed; land only through the integrator onto
+  stage/0.2 after reviewer-2). Done so far, in order:
+  1. 845ae5dc caller identity: vyred's route() reads the verified agent's stored grant from the new
+     internal `agents.scope` and puts `meta.granted` ("*" or slugs) and `meta.agentKind` on every
+     call. iq's memory.facts/ask/recall.search must read meta.granted, not input.project_cwds
+     (harness/mcp/server.js scoped() is still client-side; iq's to change). Test: "carry the grant".
+  2. be926527 spawner: spawn request `account` (uid 2000-2063) and `shared`; HOME /home/acct/<uid>
+     checked (dir, not symlink, owner uid, no group/other bits) at request and at start; gid = uid, no
+     groups unless shared; `wipe` op. Env: VYRE_ACCOUNT_UID_MIN/MAX, VYRE_ACCOUNTS_HOME.
+  3. 1bad084f, cbc79cee accounts: sessions_accounts (kind api-key|setup-token|login, uid allocation,
+     dirty-uid wipe before reuse), scope-checked resolve (H1), `account` kept on threads_runs and in
+     KEPT opts, credential from the vault as the provider's env var (threads manifest needs.vault
+     "per-account"), removed account on resume -> code account_removed (M3).
+  4. 97e18c8a, 8d60b974 generic ACP driver (hand-rolled ndjson, not the SDK), fake ACP agent,
+     conform() safety set, Grok and Codex entries registered by core/sessions (does.providers),
+     floor passed to non-Claude drivers, harness MCP server passed in session/new mcpServers,
+     agent session ids persisted (sessions_acp).
+- Known gaps, honest: (a) Claude accounts on a box run as the account uid, so vyred cannot read
+  their transcripts under /home/acct/<uid> (0700): needs a decision (group-readable projects dir or
+  a transcript relay) before Claude accounts are used on a box. (b) Grok/Codex flags and login
+  locations are UNVERIFIED until a real account runs on a hosted runner (needs a pay-per-use test
+  key from the lead). (c) 11 Mac-only failures in core/sessions tests (/proc pid, subreaper, socket
+  peer) predate this work; Linux CI is the judge. (d) sessions.accounts.signin (device-code flow)
+  not built; login accounts need it. (e) The handoff brief's older half is a plain cut, not iq's summary yet; an agent thread's own auth (agents auth.vault) is dropped on a switch, so a switch needs an account.
+  5. 0f58e2ce threads.switch (between turns, brief, thread.provider event, notice) and
+     sessions.routes.get/set/next with switchboard routeFallback on a limit; same-provider lists need
+     acknowledge:true; an agent sets only its own list or a granted project (uses meta.granted).
+  6. Review round (to 0.2 head): uid allocation lock + unique index; provider keys via spawner env (fd 3 cannot serve env-reading CLIs; runner spike must check tool subprocesses); wipe kills uid procs and clears /tmp, TMPDIR in HOME; ACP fs O_NOFOLLOW + fd check; bypass start mode pinned or refuse; accounts add/remove/bind no longer person-only; signed_in from vault; threads.quick {stream} via ctx.call onPartial; account HOME 710 gid=uid with vyred in every account group, transcript glob per account, real-uid isolation test (accounts-isolation workflow, green on a hosted runner); codex custom endpoint flags for the OpenRouter proof.
+  7. eed82569 asked reach enforced in code + threads.origin for recall. Then: sessions.accounts.signin (core/sessions/signin.js: runs codex login --device-auth / grok login --device-code / claude auth login as the account, returns url+code, paste-back for claude; all three commands UNVERIFIED until a runner proof) and the OpenRouter API-key driver (drivers/openrouter.js, process:false tools:false, conform adjusted; registered as provider openrouter; VYRE_OPENROUTER_URL overrides the endpoint for tests). Socket-based agent tests (grant, asked) flake on the Mac with 'caller is not in it' (process-table race), pass on quiet runs.
+  Next (old list, signin and OpenRouter now done): sessions.accounts.signin (device code per provider), OpenRouter driver, rooms deferred to 0.2.x, real-account proofs on a runner once keys exist, review fixes.
+
 - 0.1.1 test-fix queue from team-lead (branch work/sessions-011 off stage/0.1.1 d9b916d4, both
   failures predate today, also seen on 029756bc): fixed.
   1. `apps/app/src/session/model.test.js` "idle is not ended": `deck/chat/core/session-state.js`
@@ -386,3 +417,16 @@ optional deps; without them the tests silently run on the CLI).
 - onboard: CREDENTIAL_READERS gains threads.
 - New module sessions: tools sessions.status, setup, prompt.get/set/history/revert/preview,
   internal prompt.compose; event prompt.changed.
+
+## 2026-09-30 rebase onto stage/0.2 795a00b7 (platform 12a09627 landed)
+- work/sessions-02 rebuilt as 31 cherry-picked own commits on 795a00b7 (merge 3e1eef47 and 40f007ca dropped); de16d00d's core/daemon/peer.js hunk dropped (platform owns it), its other hunks kept. One conflict (core/modules/index.js: ctx.call keeps platform's undeclared-tools check plus my onPartial). Old head kept as backup/sessions-02-pre-rebase (f6d3e1f1 tip 434eaa2b). Pushed 066cabaf.
+- Next: CI run on 066cabaf, compare failures by name to stage 795a00b7, send sha + diff to reviewer-2 and integrator. After landing: threads.archive/unarchive (github.session.worktree reuses an existing branch; 50ddcffb), four native-core fields, checkCaps from lib/caps-flags, memory.prompt from acp.js (iq b52dd457; agree shape in CHAT.md).
+- CI on 066cabaf: sessions-sdk failed once (sessions.test.js finished all tests, then the process did not exit for 120 s: the known runner teardown hang), green on rerun. node run 36668272219 hit the 30-minute cap the same way (last output after the final sessions.test.js test); stage 795a00b7 node is green. Rerunning node.
+- Local after rebase (not pushed, waiting for the node rerun on 066cabaf): a724c1a1 daemon catch no longer throws ERR_HTTP_HEADERS_SENT (cause of the flaky "threads watch"); d21e020b threads.lineage; next commit threads.archive/unarchive. Said-row ingress NOT built: needs vault.said.record on stage; contract posted in CHAT.md. memory.prompt shape posted to iq. Still to do: four native-core fields, checkCaps from lib/caps-flags, memory.prompt from acp.js, said ingress.
+- Local, unpushed (CI on 066cabaf still running): 9c9f5add memory.prompt into ACP prompts; 74a21031 said ingress + #mentions (core/switchboard/said.js; vault calls fail-soft, vault.items.names/vault.said.record not on stage yet). Not built: threads.mention.stop (waits for vault's revoke shape), checkCaps (lib/caps-flags on no branch). Mac-only failures unchanged vs stage: 4 in core/sessions/sessions-turns.test.js.
+
+## 2026-10-01 real CLIs on a hosted runner (scripts/provider-wire-proof.mjs, workflow proof-wire)
+PROVEN with no account and no key: each login command reaches its provider's own address (codex auth.openai.com + a 10-character code; grok accounts.x.ai + a 9-character code; claude claude.com, paste-back) through Vyre's own Signins class; Vyre's ACP driver starts real codex-acp and Grok Build to a first prompt; a REAL Codex turn and a REAL Grok turn ran end to end against a local stand-in for the model (POST /v1/responses, POST /v1/chat/completions). FOUND and fixed: session/new needs authenticate first; `-c` flags do not reach Codex; CODEX_HOME must exist; Codex offers a mode agent-full-access that the old bypass-name denylist missed (modes are now an allowlist: anything unlisted is refused by default, a start in one is moved or refused, a mid-session switch to one is reverted or the session stopped; Codex is narrowed to read-only and agent and pinned to agent on every start); Codex custom endpoints go through the gateway method.
+NEEDS THE USER'S REAL ACCOUNTS (added to e2e2's by-hand list): complete a real `codex login --device-auth` and `grok login --device-code` and then a turn (that chat-gpt/grok.com authenticate uses the stored token); a real Claude sign-in with the pasted code; Codex on OpenRouter needs a model id (the gateway sets the endpoint, not the model; session/set_config_option unproven); Grok's permission round trip (it advertises no modes at all; session/request_permission on a tool call is unproven); a real Codex turn that edits a file (the floor and mode "agent"). No OpenRouter key exists in the eval environment (0 secrets), so no real-model turn was run.
+
+PARKED (reviewer-2 M2): when Codex's `custom` endpoint gets a production caller (the OpenRouter rung), its baseUrl and envKey must come only from a person surface, be https unless loopback, and the key must be bound to that host (a key never sent to another). Today only tests and the proof use it, and grokConfigToml already requires https. Not wired, so not built.

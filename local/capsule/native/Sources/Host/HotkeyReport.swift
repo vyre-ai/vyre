@@ -38,10 +38,10 @@ struct HotkeyReport {
         let cause: String
         switch why {
         case .noPermission: cause = "Input Monitoring is off, so Control twice is off."
-        case .tapFailed: cause = "macOS would not let the Capsule listen for Control, so Control twice is off."
-        case .tapDisabled: cause = "macOS turned off the Capsule's Control listener and it could not be turned back on, so Control twice is off."
+        case .tapFailed: cause = "macOS would not let Lumen listen for Control, so Control twice is off."
+        case .tapDisabled: cause = "macOS turned off Lumen's Control listener and it could not be turned back on, so Control twice is off."
         }
-        if let chord { return cause + " \(chord) still opens the Capsule." }
-        return cause + " No other hot key is set, so open the Capsule from the menu bar."
+        if let chord { return cause + " \(chord) still opens Lumen." }
+        return cause + " No other hot key is set, so open Lumen from the menu bar."
     }
 }

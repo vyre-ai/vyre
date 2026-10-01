@@ -1,0 +1,5 @@
+{
+  "codex": ["openai.com", "chatgpt.com"],
+  "grok": ["x.ai", "grok.com"],
+  "claude": ["claude.ai", "claude.com", "anthropic.com"]
+}

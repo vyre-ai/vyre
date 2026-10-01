@@ -12,7 +12,11 @@ On a phone, Vyre is the [Deck](deck.md) installed as a web app. You add it to yo
 from the browser, it opens full screen like an app, and it can notify you when a session asks
 permission, a draft waits at the Gate, a thread you watch finishes, or Vyre proposes a lesson.
 The phone reaches your box over Tailscale, like every other device (see
-[Tailscale](tailscale.md)). Native iPhone and Android apps are being built and are not released.
+[Tailscale](tailscale.md)).
+
+Installing the web app is the way to put Vyre on a phone in 0.2.0, and the rest of this page
+describes it. Native iPhone and Android builds of the same app exist too (see
+[Native builds](#native-builds)), but you build and install them yourself.
 
 ## Set up the phone
 
@@ -44,30 +48,36 @@ Now then shows **Set up this phone**, three steps with what is left:
 
 ## What you can do from the phone
 
-The tab bar at the bottom has Now, Projects, Chat, Find and Agents.
+The header holds three pages, Now, Chats and Agents, which you swipe between. Your initial at
+the top right opens the Places sheet: Projects, Planner, Memory, Vault, Devices and Settings.
+Hold a tile for a moment to keep that place as a fourth page after Agents. A Lumen bar floats at
+the bottom of the three pages; tap it, or pull down from the top of a screen, to open Find.
 
 ![Find on a phone with harlow typed: ask juno first, then the Harlow sessions, and the projects that match.](shots/phone-find.png)
 
 - **Now**: what needs you and what is running.
 - **Approve or edit a held draft**: tap it in Now. It opens full screen; tap a field to edit it,
-  then Send or Discard.
-- **Answer a permission question**: tap it in Now, then Allow or Deny.
+  then Send or Discard. Swiping a draft right opens it; swiping left discards it.
+- **Answer a permission question**: swipe its row in Now right to allow or left to deny, or tap it
+  and choose Allow or Deny. Neither asks for Face ID.
 - **Chat**: your Claude Code sessions, including the ones you run in a terminal, mirrored a
   moment after each turn. With a Mac paired to the box, the Mac's sessions are listed too, each
   with the Mac's name on a chip; you can read them, and continue them on the Mac. If a session is
   busy in your Mac's terminal, what you send waits and the line above the box says "Queued for"
   the session's name; it goes in when that turn ends.
 - **Find**: one box for sessions, files, agents, memory and projects, and for asking your
-  assistant. Pull down from the top of any screen to open it. `@kit ...` asks an agent,
+  assistant. It is the phone's Lumen: open it from the bar at the bottom or by pulling down. `@kit ...` asks an agent,
   `tell <session> to ...` types into a session, and `watch <session>` notifies you when it
   finishes or asks. The line under the box says what Enter will do.
 - **Ask**: talk to your assistant or any agent, at `/ask`.
+- **Drive**: browse the folders your box shares as Vyre Drive, at `/files`. A phone cannot mount a
+  share, so it reads them: a preview for a picture, text or PDF up to 8 MB, otherwise a download.
 - **Glass**: watch an agent's computer and take over. A tap is a click, a long press a right
   click, two fingers scroll, pinch zooms your view, and a keyboard button opens the soft
   keyboard. See [Glass](glass.md).
 
-Memory, Vault and Settings open from their paths (`/memory`, `/vault`, `/settings`), laid out for
-a narrow screen.
+Memory, Vault, Planner and Settings open from the Places sheet or their paths (`/memory`,
+`/vault`, `/planner`, `/settings`), laid out for a narrow screen.
 
 ![Now on a phone: two drafts held at the Gate, what is running and recent sessions, with the tab bar at the bottom](shots/phone-now.png)
 
@@ -127,9 +137,20 @@ approved until the box answers.
   not load ([what to check](../get-started/tailscale.md#the-phone-cannot-open-the-address-but-the-mac-can)).
 - It will not show a draft's contents in a notification.
 
-Coming, from the mobile workstream (not on this branch): native iPhone and Android apps with Now,
-Chat, a mobile Capsule with voice, Files, Agents, Memory, Vault and native push, and a device key
-on the phone for approvals.
+- The native builds do not get notifications yet. Notifications on the phone are the web app's
+  push, so they need the installed web app.
+
+## Native builds
+
+The phone app is one app, in `apps/app`. It runs as the web app your box serves, and the same code
+builds an Android APK and an iPhone app. The native builds keep the phone's signing key in the
+phone's hardware (Secure Enclave on an iPhone, Keystore on Android), and approvals ask for Face ID
+or a fingerprint. You type your box's name, and the Deck's passkey approves the phone once.
+
+In 0.2.0 you build these yourself: [`apps/RELEASE.md`](https://github.com/vyre-ai/vyre/blob/main/apps/RELEASE.md)
+has the steps for a cable install, TestFlight and an Android APK, and they need your own Apple or
+Google developer account. Native push is not on the box yet, so the web app is the one that
+notifies you.
 
 ## Next
 

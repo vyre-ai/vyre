@@ -1,22 +1,22 @@
 ---
-title: Capsule
-summary: Open the Capsule on your Mac with Control twice, and use it to find things, ask your assistant or an agent, drive a session, and answer what is waiting on you.
+title: Lumen
+summary: Open Lumen on your Mac with Control twice, and use it to find things, ask your assistant or an agent, drive a session, and answer what is waiting on you.
 audience: users
 owner: capsule-pro
 status: draft
 ---
 
-# Capsule
+# Lumen
 
-The Capsule is Vyre's command bar on the Mac. Press Control twice, anywhere, and a bar 680 pixels
+Lumen is Vyre's command bar on the Mac. Press Control twice, anywhere, and a bar 680 pixels
 wide opens over whatever app you are in, where Spotlight would. One box does two jobs: it finds
 local things (apps, settings, files, contacts, sums) the way Spotlight does, and it sends words
 to your assistant, an agent or a running session. It also holds the list of what is waiting on
-you: permission questions from sessions and drafts held at the Gate. The vyred on your Mac runs
-it (a module with role `local`). Local search keeps working when vyred or your box is down.
+you: permission questions from sessions and drafts held at the Gate. The Vyre on your Mac runs
+it. Local search keeps working when Vyre or your box is down.
 
 ::: demo capsule
-Type in the Capsule and it finds your threads, projects and agents, and offers to ask your assistant about the rest.
+Type in Lumen and it finds your threads, projects and agents, and offers to ask your assistant about the rest.
 :::
 
 ## Install it
@@ -27,12 +27,20 @@ Type in the Capsule and it finds your threads, projects and agents, and offers t
    vyre capsule install
    ```
 
-   The Capsule is a native Mac app, built here from the npm package with Apple's Command Line
+   Lumen is a native Mac app, built here from the npm package with Apple's Command Line
    Tools (`xcode-select --install` if they are missing). Nothing is downloaded. It builds into
    `~/.vyre/capsule/Vyre.app`, once, in under a minute, and again whenever the package brings a
    new version of its source. It never uses `/Applications` or sudo. The first time, it offers to
-   make a local signing identity ("Vyre Local") in your login keychain, so macOS keeps the
-   Capsule's permissions across rebuilds; say no and it is signed ad hoc.
+   make a local signing identity ("Vyre Local") in your login keychain; say no and it is signed
+   ad hoc.
+
+   > [!NOTE] Lumen 0.2 is self-signed, not notarized
+   > Lumen is built on your Mac and signed by you, not by Apple, so it carries no Developer ID
+   > and no notarization. That is why nothing is downloaded and Gatekeeper never sees it. The
+   > cost: macOS can ask for Input Monitoring, Accessibility and the other permissions again
+   > after each update, because a rebuilt app can look like a new app to macOS. The "Vyre Local"
+   > identity is meant to keep the grants, but it has not been proven on a real Mac yet, so
+   > expect the prompts. An Apple Developer ID build comes later.
 
 2. Open it:
 
@@ -41,32 +49,34 @@ Type in the Capsule and it finds your threads, projects and agents, and offers t
    ```
 
    ```output
-     Capsule open · ⌥Space, or Control twice once it is allowed · ~/.vyre/capsule/Vyre.app
+     Lumen open · ⌥Space, or Control twice once it is allowed · ~/.vyre/capsule/Vyre.app
    ```
 
-   `vyre capsule` builds the app first if it is missing or out of date, and starts vyred first if
+   `vyre capsule` builds the app first if it is missing or out of date, and starts Vyre first if
    it is not running. `vyre up` on a Mac also opens the
-   Capsule when it is installed; `vyre up --no-capsule` starts vyred without it.
+   Lumen when it is installed; `vyre up --no-capsule` starts Vyre without it.
 
 3. Allow double-Control (next section). Until then, Option-Space opens it.
 
-The Capsule lives in the menu bar. Click its mark for a menu that says whether anything is
-waiting on you, whether double-Control works, and whether vyred is running.
+Lumen lives in the menu bar as "Vyre Lumen". Click its mark for a small panel that shows who you
+are, whether Vyre is running (with a **Start Vyre** button when it is not), how your box is
+reached, and buttons to open Lumen, turn on Control twice and quit.
 
 ## Allow double-Control
 
 The double-Control listener needs Input Monitoring, and macOS grants it to `Vyre.app`. Option-Space
 needs no permission, so it always works.
 
-1. Click the Capsule's mark in the menu bar. If it reads "Control twice opens it", you are done.
-2. If it reads "Double-Control is off", open System Settings, Privacy and Security, Input
-   Monitoring, and turn on Vyre.
-3. Press Control twice. The Capsule opens with the caret in the box.
+1. Click Lumen's mark in the menu bar. If the panel offers **Turn on Control twice**, press it,
+   or open System Settings, Privacy and Security, Input Monitoring, and turn on Vyre.
+2. Press Control twice. Lumen opens with the caret in the box.
+
+When Control twice is off, Lumen says so in plain words and names the key that still opens it.
 
 Only two bare taps of Control within 450 ms count, so Control-C and Control-arrow keep working.
 
 > [!SNAG] Double-Control stopped working after a rebuild
-> A Capsule signed ad hoc is a new identity to macOS after each rebuild. Turn Vyre off and on
+> A build of Lumen signed ad hoc is a new identity to macOS after each rebuild. Turn Vyre off and on
 > again under Input Monitoring. With the "Vyre Local" signing identity (offered the first time
 > you run `vyre capsule`), grants survive rebuilds.
 
@@ -80,7 +90,7 @@ Type in the box without `@`. One list ranks:
 - a definition: `define ledger`;
 - files and folders, through Spotlight's index (`mdfind`), and up to three files from your box
   once a box is paired;
-- your agents, projects and threads, from vyred;
+- your agents, projects and threads, from Vyre;
 - logins from the [Vault](vault.md) (see below);
 - clipboard history: type `clipboard`, `clip` or `paste`. Enter puts the item back on the
   clipboard; you paste it with Command-V. Items that look like secrets are never kept, and a
@@ -117,7 +127,7 @@ memory is drawn in gold, with its source.
 
 ## Ask about your screen
 
-Type `ask about my screen` and the Capsule reads the window in front once, shows what it read in
+Type `ask about my screen` and Lumen reads the window in front once, shows what it read in
 the side panel, and starts your question with "About <window>:". Words that point at the screen,
 like `summarize this` or `what's this error`, or text you selected in the app in front, go with a
 chip that says what will be sent ("with your screen: Safari · ..."). Press the chip's x, or `⌘⌫`,
@@ -129,10 +139,10 @@ to leave it off. Nothing about the screen is sent without the chip on show, and 
 Type `@` to name one. It completes agents, projects and threads:
 
 - `@juno what is left on the intake form?` asks the agent juno, in its current thread
-  (`agents.ask`). If your words match one of juno's other threads, "Sends to" offers that one
+  . If your words match one of juno's other threads, "Sends to" offers that one
   too.
-- `@harlow-intake run the tests` types into that session as you (`threads.send`). While you type
-  you hold the session's keyboard (its lease). If another surface holds it, the Capsule says who,
+- `@harlow-intake run the tests` types into that session as you. While you type
+  you hold the session's keyboard (its lease). If another surface holds it, Lumen says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.
 
@@ -147,24 +157,24 @@ watch the intake thread and tell me
 
 The first sends "run the tests" to the session as you, then watches it. A watch sends a macOS
 notification when that thread finishes, stops or asks something, and keeps a short report in the
-Capsule until you read it. `tell me when the intake thread is done` also sets a watch.
+Lumen until you read it. `tell me when the intake thread is done` also sets a watch.
 
 ## Answer what is waiting on you
 
 When a session asks permission or the Gate holds a draft, the menu-bar mark turns to the Beacon
-colour. The Capsule does not open itself for this and never takes your keyboard: you open it when
+colour. Lumen does not open itself for this and never takes your keyboard: you open it when
 you choose.
 
-1. Open the Capsule and press the up arrow in the empty box to reach the waiting list.
+1. Open Lumen and press the up arrow in the empty box to reach the waiting list.
 2. Pick the item:
    - **A permission question**: Allow or Deny. Command-Enter allows.
    - **A held draft** (an email, for example): To, Subject and body read as text and become
-     editable when you click them. Command-Enter sends exactly what is on screen, through
-     `gate.approve`. Discard drops it. Escape leaves a field.
+     editable when you click them. Command-Enter sends exactly what is on screen.
+     Discard drops it. Escape leaves a field.
 
 ## Open Glass
 
-For an agent that has a computer, the Capsule offers "Open Glass", which opens that agent's
+For an agent that has a computer, Lumen offers "Open Glass", which opens that agent's
 screen in the Deck in your browser. Type `glass` to list what you can open, `glass juno` for one
 agent, or `glass box` for the box's files. See [Glass](glass.md).
 
@@ -176,30 +186,30 @@ agent, or `glass box` for the box's files. See [Glass](glass.md).
 
 | Key | Does |
 | --- | --- |
-| Control, Control, or Option-Space | open or close the Capsule |
+| Control, Control, or Option-Space | open or close Lumen |
 | Enter | open the top match, or send to the "Sends to" destination |
 | Tab | send to the "Sends to" destination, whatever the top match is |
 | Down arrow | move down the list, or choose another destination |
 | Up arrow, in an empty box | the waiting list |
 | Right arrow or Command-K | more actions on a Vault row |
 | Command-Enter | send a held draft, allow an ask, or take a session's keyboard |
-| Escape | hide the Capsule and give the keyboard back to the app behind |
+| Escape | hide Lumen and give the keyboard back to the app behind |
 
-## When vyred or the box is down
+## When Vyre or the box is down
 
-When vyred on your Mac is not running, everything that came from it is cleared from the Capsule
+When Vyre on your Mac is not running, everything that came from it is cleared from Lumen
 and it says so. Apps, settings, files, sums and the clipboard keep working. When your box is out
 of reach, box features say the box is not reachable; they never hang.
 
-## Start it with vyred
+## Start it with Vyre
 
-Add a `capsule` key to `~/.vyre/config.json`, then restart vyred (`vyre down`, then `vyre up`):
+Add a `capsule` key to `~/.vyre/config.json`, then restart Vyre (`vyre down`, then `vyre up`):
 
 ```json
 { "capsule": { "autostart": true } }
 ```
 
-vyred then runs `vyre capsule --hidden` each time it starts, which builds the Capsule if needed
+Vyre then runs `vyre capsule --hidden` each time it starts, which builds Lumen if needed
 and starts it hidden in the menu bar.
 
 ## What it will not do
@@ -214,7 +224,7 @@ and starts it hidden in the menu bar.
 
 ## Build from source
 
-For work on the Capsule itself. The source is Swift, in `local/capsule/native`:
+For work on Lumen itself. The source is Swift, in `local/capsule/native`:
 
 ```sh
 sh local/capsule/native/build.sh test   # compile with Tests/ and run them

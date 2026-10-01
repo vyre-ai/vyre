@@ -31,7 +31,9 @@ async function boot(t, vault = { keystore: "file", ssh: { socket: "ssh/agent.soc
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault }));
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.use"] }, needs: { vault: ["per-item"] } }, PROBE);
   const lines = [];
-  const d = await start({ presence: present, root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  // The probe stands in for one of Vyre's own modules using the built in only vault.fetch
+  // (needs.vault, ADR 0047), so the home's modules folder loads as first party. Test only.
+  const d = await start({ presence: present, root, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const handle = /** @type {any} */ (d.registry).modules.get("vault").handle;
   return { root, d, lines, handle, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
@@ -253,7 +255,8 @@ test("vault tools: the ssh agent signs for vault keys after approval; private ke
   const lease = (await cli("vault.ssh.approve", { id: waiting[0].id })).data.lease;
   assert.equal(lease.host, "unbound");
   assert.equal((await cli("vault.ssh.approvals")).data.leases.length, 1);
-  assert.equal((await mcp("vault.ssh.forget", {})).data.ended, 1, "taking access away needs no one");
+  assert.equal((await mcp("vault.ssh.forget", {})).error.code, "denied", "forgetting an approval is the person's own (reach person)");
+  assert.equal((await cli("vault.ssh.forget", {})).data.ended, 1, "the person's own call ends the approvals");
   assert.ok(b.d.events.since(0, { limit: 1000 }).some(e => e.type === "vault.ssh-approved"));
 
   // The production default, without a stub, refuses and logs that approval is needed.

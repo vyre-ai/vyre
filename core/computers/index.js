@@ -15,7 +15,7 @@
 // computers.endpoint, which is internal (modules only): the hands need the token to reach
 // computerd, and they hold it in memory, never in a result they pass on.
 
-import { Pool, MIGRATIONS, NO_DRIVER, LIMITS } from "./pool.js";
+import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
@@ -118,6 +118,8 @@ export default {
           sweeping = false;
         }
         schedule();
+    // The runtime tells us when a computer dies (docker events through the proxy); the sweep is only the backstop.
+    const stopDeaths = pool.watchDeaths();
       }, busy() ? sweepMs : idleSweepMs);
       timer.unref();
     };
@@ -203,9 +205,11 @@ export default {
       async (i, { caller }) => pool.view(await resolve(i, caller)));
 
     tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when every screen is held.",
-      obj({ agent: str, thread: str, why: str }), async (i, { caller }) => {
+      obj({ agent: str, thread: str, why: str }), async (i, { caller, thread: live }) => {
         if (!driver) throw new Error(NO_DRIVER);
-        return pool.checkout(await resolve(i, caller), { thread: i.thread, why: i.why });
+        // A model's thread is the verified one the harness gives the call, never a thread id it names in its input.
+        const thread = agentClaim(caller) ? live : i.thread;
+        return pool.checkout(await resolve(i, caller), { thread, why: i.why });
       });
 
     tool("computers.release", "Let go of an agent's screen. The computer freezes a little later.", obj({ agent: str }),
@@ -269,6 +273,10 @@ export default {
         const surface = await ownSurface(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         await pool.allowed(agent);
+        // A computer that died on its own is not started behind the person's back by opening its screen.
+        await pool.verifyAlive(agent).catch(() => false);
+        if (pool.died.has(agent) && (pool.row(agent) || {}).state !== "running") throw Object.assign(new Error(STOPPED), { code: "stopped" });
+        if (pool.unknown.has(agent)) throw Object.assign(new Error(UNKNOWN), { code: "unavailable" });
         const ticket = pool.ticket(agent, surface, { slow: i.slow === true });
         const { w, h } = pool.size(agent);
         return { ticket, path: `/v1/streams/computers/glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };
@@ -446,6 +454,7 @@ export default {
     return {
       pool, keyboard, shield, fills, driver, sweep,
       async stop() {
+        stopDeaths();
         if (timer) clearTimeout(timer);
         keyboard.stop();
         shield.stop();

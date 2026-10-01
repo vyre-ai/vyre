@@ -1,0 +1,5 @@
+/* The "using #name" line (cards/vault-used.js): quieter than the confirmation line, no fill, no rule. Bone tokens only. */
+.cv-using { display: flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 14px; color: var(--label); font-size: 12px; line-height: 16px; }
+.cv-using-ico { display: inline-flex; flex: none; }
+.cv-using-line b { font-weight: 600; color: var(--text-2); }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) { .cv-using { font-size: 14px; line-height: 20px; min-height: 32px; } }

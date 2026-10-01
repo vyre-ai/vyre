@@ -39,6 +39,8 @@
 // report to the lead for what needs checking once the box is up.
 
 import { createServer } from "node:http";
+import net from "node:net";
+import { createGate } from "./gate.js";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -309,6 +311,9 @@ function freezeAgent(on) {
   catch (e) { console.error(`computerd: could not ${on ? "stop" : "continue"} the agent's processes: ${/** @type {any} */ (e).code || e}`); return false; }
 }
 
+// ---- who may connect: vyred, and nothing else on the network (gate.js) ---------------------
+const gate = createGate();
+
 /** Constant-time token comparison; hashing first hides the length too. */
 function sameToken(given, expected) {
   if (typeof given !== "string" || typeof expected !== "string" || !expected) return false;
@@ -336,6 +341,9 @@ function run(cmd, args, { input, timeout = 15_000, binary = false } = {}) {
       if (code !== 0) return reject(new Error(stderr || `${cmd} exited ${code}`));
       resolve(binary ? stdout : stdout.toString("utf8"));
     });
+    // A command that exits before it reads its input closes the pipe (EPIPE); its exit code above reports the failure, so the write error
+    // must not reach the process as an uncaught exception.
+    child.stdin.on("error", () => {});
     if (input !== undefined) child.stdin.end(input);
     else child.stdin.end();
   });
@@ -597,6 +605,8 @@ function cdpUpgrade(req, socket, head) {
   const token = url.searchParams.get("token") || "";
   // Identity comes only from which credential this token is (identifyClient), never from
   // anything else on this URL -- there is no agentName param here to trust or distrust, by design.
+  // The same address rule as the plain routes: a CDP token from an address that is neither loopback nor vyred's gets nothing.
+  if (!gate.known(req.socket.remoteAddress)) { gate.failed(req.socket.remoteAddress); socket.destroy(); return; }
   const id = identifyClient(token);
   if (!id) return refuse("401 Unauthorized");
   const { kind } = id;
@@ -667,6 +677,15 @@ const server = createServer(async (req, res) => {
     // opens /cdp/json/version (and the upgrade) and nothing else, same as before.
     const isOwner = sameToken(bearer, TOKEN);
     const cdpId = isVersion ? identifyClient(bearer) : null;
+    // Only the owner's token moves the pin. A CDP client's token is an agent's (in shared mode, one per member), so whoever holds
+    // it from another place must not pull the pin away from vyred: from an address that is not known it gets nothing.
+    if (isOwner) gate.pin(req.socket.remoteAddress);
+    else if (!gate.known(req.socket.remoteAddress)) {
+      // Not vyred, and not this computer: no answer at all, not even a 401 (gate.js).
+      gate.failed(req.socket.remoteAddress);
+      req.socket.destroy();
+      return;
+    }
     // For isVersion, kind comes from cdpId alone (identifyClient), even when isOwner is also
     // true: in legacy/non-shared mode identifyClient already answers "agent" for the owner token
     // too (agent and owner are the same secret there), so this changes nothing for today's
@@ -678,6 +697,7 @@ const server = createServer(async (req, res) => {
     // was valid; every other route stays isOwner-only, exactly as before.
     if (isVersion ? !cdpId : !isOwner) return send(401, { error: { message: "missing or wrong bearer token" } });
 
+    if (req.method === "GET" && pathname === "/ping") return send(200, { ok: true });
     if (pathname.startsWith("/fs/")) return files(req, res, url);
     if (req.method === "POST" && pathname === "/shield") {
       const body = await readBody(req);
@@ -772,9 +792,26 @@ const server = createServer(async (req, res) => {
 // since a plain WebSocket cannot set a header.
 server.on("upgrade", (req, socket, head) => cdpUpgrade(req, socket, head));
 
+server.on("connection", sock => { if (gate.blocked(sock.remoteAddress)) sock.destroy(); });
+setInterval(() => gate.prune(), 60_000).unref();
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`computerd listening on :${PORT}`);
 });
+
+// The screen. Xvnc listens on a unix socket only the vyre uid can open (VNC_SOCKET), so nothing in the agent's or the
+// browser's uid can reach it, and this gate answers on 5900 for vyred alone, with the same address rule as above.
+const VNC_SOCKET = process.env.VNC_SOCKET || "";
+const VNC_PORT = Number(process.env.VNC_PORT || 5900);
+if (VNC_SOCKET) {
+  const screenGate = net.createServer(sock => {
+    if (!gate.allowedScreen(sock.remoteAddress)) { sock.destroy(); return; }
+    const up = net.connect(VNC_SOCKET);
+    sock.pipe(up); up.pipe(sock);
+    const end = () => { sock.destroy(); up.destroy(); };
+    sock.on("error", end); up.on("error", end); sock.on("close", end); up.on("close", end);
+  });
+  screenGate.listen(VNC_PORT, "0.0.0.0", () => console.log(`computerd: the screen answers on :${VNC_PORT} for vyred only`));
+}
 
 launchChrome();
 

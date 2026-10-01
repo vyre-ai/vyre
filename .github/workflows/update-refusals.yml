@@ -1,0 +1,46 @@
+# J2b (launch): the update refusals against a REAL install on a runner, twice:
+#   source:   the wrapper still reads the test overrides, so the whole matrix runs: unsigned (hand-run and automatic), another signer,
+#             a signature over other bytes, a tampered signed file, a downgrade, the floor, and a correctly signed update as the control.
+#   stripped: the RELEASE build of the wrapper (scripts/strip-wrapper.mjs): it names no override, a root run refuses to start with any
+#             override set, a hostile .env image changes nothing, and a hand-run update ignores every override.
+name: update-refusals
+on:
+  workflow_dispatch:
+  push:
+    paths: ["box/vyre", "box/Dockerfile", "box/compose.yml", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "scripts/install-box.sh", "scripts/matrix/j2-update-refusals.sh", ".github/workflows/update-refusals.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: update-refusals-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  refusals:
+    name: refusals-${{ matrix.mode }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [source, stripped]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate
+        env:
+          VYRE_TEST_UNSTRIPPED_WRAPPER: ${{ matrix.mode == 'source' && '1' || '' }}
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          sh scripts/build-site.sh
+          if [ "${{ matrix.mode }}" = stripped ]; then ! grep -q VYRE_RELEASE_KEY site/box/vyre; else grep -q VYRE_RELEASE_KEY site/box/vyre; fi
+      - name: J2b, the update refusals (${{ matrix.mode }})
+        env:
+          J2B_MODE: ${{ matrix.mode }}
+        run: bash scripts/matrix/j2-update-refusals.sh site/box results/update-refusals-${{ matrix.mode }}
+      - name: Diagnostics
+        if: failure()
+        run: tail -30 results/update-refusals-${{ matrix.mode }}/install.log results/update-refusals-${{ matrix.mode }}/updater.log 2>/dev/null; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "results-update-refusals-${{ matrix.mode }}", path: results, retention-days: 14 }

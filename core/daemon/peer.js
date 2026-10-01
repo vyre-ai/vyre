@@ -13,6 +13,7 @@
 // a terminal, shares them.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, execFileSync, spawnSync } from "node:child_process";
 import { claudeCommand } from "../switchboard/sessions.js";
@@ -84,9 +85,16 @@ export function readPeerPid(socket, seam = {}) {
   if (!script) return Promise.resolve(null);
   // The fd number, not the Socket: given a Socket, Node wraps its handle for the child and closes
   // it when the child exits, which resets the person's keep-alive connection.
-  const fd = /** @type {any} */ (socket)._handle && /** @type {any} */ (socket)._handle.fd;
-  if (!Number.isInteger(fd) || fd < 0) return Promise.resolve(null);
+  const fdOf = () => { const f = /** @type {any} */ (socket)._handle && /** @type {any} */ (socket)._handle.fd; return Number.isInteger(f) && f >= 0 ? f : -1; };
+  if (socket.destroyed || fdOf() < 0) return Promise.resolve(null);
+  // A peer that connects, sends and exits closes vyred's end: the fd number is then free for any
+  // other descriptor (the helper's own stdout pipe, whose other end is vyred itself), and a helper
+  // handed that number reports the wrong process, once in 200 runs under load (30 Sep). So the fd
+  // is read afresh for every attempt, no helper starts on a closed socket, and an answer read from
+  // a socket that closed meanwhile is thrown away: it is not the peer's.
   const once = () => new Promise(resolve => {
+    const fd = fdOf();
+    if (socket.destroyed || fd < 0) return resolve(null);
     let out = "";
     const child = spawn(seam.bin || PERL_BIN, seam.args || ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd], env: {} });
     const timer = setTimeout(() => child.kill("SIGKILL"), PEER_TIMEOUT);
@@ -96,13 +104,13 @@ export function readPeerPid(socket, seam = {}) {
       clearTimeout(timer);
       nonBlocking(socket);
       const pid = Number(out.trim());
-      resolve(code === 0 && Number.isInteger(pid) && pid > 0 ? pid : null);
+      resolve(code === 0 && !socket.destroyed && fdOf() === fd && Number.isInteger(pid) && pid > 0 ? pid : null);
     });
   });
   return (async () => {
     for (let n = 0; n < PEER_ATTEMPTS; n++) {
-      // Every attempt asks the SAME connection (the fd captured above) again -- never a pid found
-      // some other way -- so a retry can only confirm or fail to confirm this one peer, not drift.
+      // Every attempt asks the SAME connection again -- never a pid found some other way -- so a
+      // retry can only confirm or fail to confirm this one peer, not drift.
       const pid = await once();
       if (pid != null) return pid;
     }
@@ -116,51 +124,75 @@ export function readPeerPid(socket, seam = {}) {
  * costs one process however deep it goes.
  * pgid and sid (Linux) say which process group and session the process runs in: an orphan keeps
  * them when its parent ends, so a thread spawned as its own group still owns what it left behind.
- * @returns {(pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null}
+ * @param {{ fresh?: boolean, platform?: string, read?: () => Map<number, any>, cache?: { at: number, rows: Map<number, any> | null } }} [o] `fresh` skips the shared snapshot; `read` and `cache` are test seams for the macOS read
+ * @returns {(pid: number) => { ppid: number, args: string, pgid?: number, sid?: number, uid?: number, start?: number } | null}
  */
-export function processTable() {
-  if (process.platform === "linux") return pid => {
+export function processTable({ fresh = false, platform = process.platform, read = readMacRows, cache = macCache } = {}) {
+  if (platform === "linux") return pid => {
     try {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
       // The command name is in parentheses and may hold spaces; the parent pid follows the state.
       const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
       const ppid = Number(f[1]);
       const args = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean).join(" ");
-      return Number.isInteger(ppid) ? { ppid, args, pgid: Number(f[2]), sid: Number(f[3]) } : null;
+      // uid: the owner of /proc/<pid>; start: seconds since boot (clock ticks are 100 a second).
+      const uid = fs.statSync(`/proc/${pid}`).uid;
+      return Number.isInteger(ppid) ? { ppid, args, pgid: Number(f[2]), sid: Number(f[3]), uid, start: Number(f[19]) / 100 } : null;
     } catch { return null; }
   };
   // The reviewer's LOW, 28 Sep: this bulk read blocks vyred's whole event loop while it runs, and
   // every connection needing an ancestry check (a fresh insideClaude()) triggers its own by
-  // default. A full async rewrite of insideClaude/ancestry/loginOf/tmuxClients (all synchronous by
-  // design today, and used that way in several places -- atTerminal's tmux-client loop calls
-  // insideClaude() directly inside a plain `for`, not awaited) is real scope on its own, not
-  // something to fold into this fix unverified (this Mac-only path cannot be tested on this Linux
-  // testbox at all). Narrower mitigation that does not touch the interface: cache the table
-  // briefly, so a burst of connections (several panes waking at once, a run of quick CLI calls)
-  // shares one blocking read instead of one each. Shrinks the frequency of the block; does not
-  // remove it. Flagged to the lead as a partial answer, not the fix asked for.
+  // default. Narrower mitigation that does not touch the interface: share one snapshot for a
+  // quarter second, so a burst of connections costs one read. It shrinks the frequency of the
+  // block; it does not remove it.
+  //
+  // A snapshot that does not list a pid is never taken as "nobody" (reviewer-2, 30 Sep: a process
+  // forked inside the window is not in it, so a forged "cli" label under a claude was believed, 20
+  // of 20 on a Mac). A miss on a shared snapshot reads the table again, once; a walk that asks for
+  // `fresh` starts from a new read. Only a pid missing from a read taken after the caller
+  // connected is really gone.
   const now = Date.now();
-  if (macTable && now - macTable.at < MAC_TABLE_TTL) return pid => /** @type {any} */ (macTable).rows.get(pid) || null;
-  /** @type {Map<number, { ppid: number, args: string, pgid: number }>} */
+  /** @type {Map<number, any>} */
+  let rows;
+  let refreshed;
+  if (!fresh && cache.rows && now - cache.at < MAC_TABLE_TTL) { rows = cache.rows; refreshed = false; }
+  else {
+    rows = read(); refreshed = true;
+    // Only a real answer is cached: an empty table is a failed read, never "nobody above".
+    if (rows.size) { cache.at = now; cache.rows = rows; }
+  }
+  return pid => {
+    const hit = rows.get(pid);
+    if (hit || refreshed) return hit || null;
+    refreshed = true;
+    const again = read();
+    if (again.size) { rows = again; cache.at = Date.now(); cache.rows = again; }
+    return rows.get(pid) || null;
+  };
+}
+
+/** One `ps -A` read of the process table (macOS). Empty when the read failed twice. @returns {Map<number, { ppid: number, args: string, pgid: number, uid: number, start: number }>} */
+function readMacRows() {
+  /** @type {Map<number, { ppid: number, args: string, pgid: number, uid: number, start: number }>} */
   const rows = new Map();
   // A busy box can starve this single bulk read past a short timeout (the same rc.2 find as
   // readPeerPid's), and coming back empty reads as "nobody above" -- unknown, refused -- for the
   // real person's own CLI too. One retry, same as the peer read, before accepting empty.
   for (let n = 0; n < PEER_ATTEMPTS && rows.size === 0; n++) {
     try {
-      for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,pgid=,args="], { encoding: "utf8", timeout: PEER_TIMEOUT, maxBuffer: 16 << 20 }).split("\n")) {
-        const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-        if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] });
+      // lstart is five words ("Sun Sep 27 10:28:26 2026"); uid and start let the walk check that
+      // every link is the person's own and started after its parent.
+      for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,pgid=,uid=,lstart=,args="], { encoding: "utf8", timeout: PEER_TIMEOUT, maxBuffer: 16 << 20 }).split("\n")) {
+        const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+\S+\s+\d+)\s+(.*)$/.exec(line);
+        if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), pgid: Number(m[3]), uid: Number(m[4]), start: Date.parse(m[5]) / 1000, args: m[6] });
       }
     } catch {}
   }
-  // Only a real answer is cached: an empty table is a failed read, never "nobody above".
-  if (rows.size) macTable = { at: now, rows };
-  return pid => rows.get(pid) || null;
+  return rows;
 }
 
-/** @type {{ at: number, rows: Map<number, any> } | null} */
-let macTable = null;
+/** The macOS snapshot shared for MAC_TABLE_TTL. @type {{ at: number, rows: Map<number, any> | null }} */
+const macCache = { at: 0, rows: null };
 const MAC_TABLE_TTL = 250;
 
 /**
@@ -169,6 +201,7 @@ const MAC_TABLE_TTL = 250;
  * "nobody above".
  * @param {number} pid @param {(pid: number) => { ppid: number, args: string } | null} look
  * @param {(pid: number) => boolean} [stop] a pid to stop at, counted as complete
+ * @returns {{ chain: { pid: number, args: string }[], complete: boolean, docker?: boolean }} `docker`: the walk ended at a process entered from outside a container (parent 0 or itself), the one gap that is not an unreadable link
  */
 export function ancestry(pid, look, stop = () => false) {
   const chain = [];
@@ -179,7 +212,7 @@ export function ancestry(pid, look, stop = () => false) {
     if (!p) return { chain, complete: false };
     chain.push({ pid: cur, args: p.args });
     // In a container, a process entered from outside (docker exec) has parent 0.
-    if (p.ppid === cur) return { chain, complete: false };
+    if (p.ppid === cur) return { chain, complete: false, docker: true };
     cur = p.ppid;
   }
   return { chain, complete: false };
@@ -243,8 +276,15 @@ export function processUid(pid) {
  * fallback as everything else not on this list (Ghostty, iTerm2, VS Code's terminal, Warp, tmux,
  * screen, ssh -- named servers, never a flat refusal: see insideClaude's `server` case below).
  */
-const TRUSTED_PATHS = new Set(["/usr/bin/login", "/bin/login",
-  "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"]);
+/**
+ * The system's own login: root-owned, and what a terminal app runs to hand the person a shell. Not
+ * on macOS: there login is setuid and skips authentication for the caller's own name, so any
+ * same-uid process can run `/usr/bin/login -pfl $USER <cmd>` and put a root-owned login in its own
+ * chain, at the top or in the middle (reviewer-2's probe on a real Mac, 30 Sep). There the trusted top
+ * is the SIP-protected Terminal binary alone. On Linux `login -f` needs root, so it holds.
+ */
+const LOGIN_PATHS = process.platform === "darwin" ? new Set() : new Set(["/usr/bin/login", "/bin/login"]);
+const TRUSTED_PATHS = new Set([...LOGIN_PATHS, "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal"]);
 
 /**
  * Every component from `/` down to the file itself must be root-owned and not group- or
@@ -279,66 +319,143 @@ function trustedLeader(p) {
 }
 
 /**
- * Does this caller's process run inside a Claude session? Any ancestor that is a `claude`, or one
- * of `threads` (the processes vyred runs threads in), counts, so a model's shell is caught
- * whether it runs straight under claude, under a shell it started, or in a tmux or ssh it opened.
- * A person's shell under tmux or sshd has no claude above it. vyred's own process and its
- * ancestors are not the caller's. Unknown when the chain cannot be read to the top.
+ * Agent hosts by name, a fallback deny list only (the positive anchor is the security): argv[0] or
+ * argv[1] with this basename. Never a directory name.
+ */
+const AGENT_HOSTS = /^(claude|codex|gemini|grok|opencode|cursor-agent|aider|goose)$/;
+/** @param {string} args */
+function agentHost(args) {
+  const [a0 = "", a1 = ""] = String(args).trim().split(/\s+/);
+  return [a0, a1].some(a => a && AGENT_HOSTS.test(path.basename(a)));
+}
+
+/**
+ * Test hosting only: a test starts vyred inside its own process and runs the person's client as
+ * that process's child (or in it). With this on, reaching vyred's own process or one of its
+ * ancestors ends the walk as it always did. Shipped code never turns it on: `setPeerHosting` is
+ * called by test/helpers.js, and a vyred a test starts as a child process (`vyre up` in a temp
+ * home) takes it from VYRE_TEST_HOSTED only under node's test runner (NODE_TEST_CONTEXT) and with
+ * a live parent that is not init, launchd or systemd, and only over a home that is not ~/.vyre.
+ * @type {boolean | null}
+ */
+let hostingSet = null;
+/** @param {boolean | null} on */
+export function setPeerHosting(on) { hostingSet = on; }
+export function peerHosting() {
+  if (hostingSet !== null) return hostingSet;
+  if (process.env.VYRE_TEST_HOSTED !== "1" || !process.env.NODE_TEST_CONTEXT || !(process.ppid > 1)) return false;
+  // Only a vyred over a temp home: the person's daemon runs over ~/.vyre, whatever its environment.
+  const home = process.env.VYRE_HOME;
+  if (!home || path.resolve(home) === path.resolve(os.homedir(), ".vyre")) return false;
+  const parent = processTable({ fresh: true })(process.ppid);
+  return Boolean(parent && !/(^|\/)(systemd|launchd|init)(\s|$)/.test(parent.args));
+}
+const hosted = peerHosting;
+
+/** A link that cannot be relied on: no command line (an exited, unreaped process shows "(node)" in ps, nothing in /proc). @param {{ args: string }} p */
+const blank = p => !p.args || /^\(.*\)$/.test(p.args);
+
+/**
+ * Is this chain (peer first, top last) one the walk can rely on? Every link has a command line,
+ * is vyred's uid or root's (login, sshd's privileged half), and started no earlier than its
+ * parent did (a pid a new process reused shows as a child older than its parent; one second of
+ * slack for the clock the macOS listing gives).
+ * @param {{ pid: number, args: string }[]} chain @param {(pid: number) => any} look
+ */
+function readable(chain, look) {
+  const me = typeof process.getuid === "function" ? process.getuid() : null;
+  for (let i = 0; i < chain.length; i++) {
+    const row = look(chain[i].pid);
+    if (blank(chain[i])) return false;
+    // Root is fine anywhere: `login` and sshd's privileged half sit in the middle of a real login's chain, and a model cannot make a root process. Any other uid is another user's.
+    if (row && Number.isInteger(row.uid) && me !== null && row.uid !== me && row.uid !== 0) return false;
+    const up = i + 1 < chain.length ? look(chain[i + 1].pid) : row && row.ppid > 1 ? look(row.ppid) : null;
+    if (row && up && Number.isFinite(row.start) && Number.isFinite(up.start) && row.start < up.start - 1) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether the process on a socket is the person's, on positive proof only. It is when every link
+ * up to the top is readable (a real command line, vyred's uid, no child older than its parent),
+ * none is an agent host (claude and the rest by name) or a thread vyred runs, and the top is a
+ * trusted leader by the kernel's word (a root-owned login or Terminal) or a strictly shared
+ * ancestor of vyred that itself passed all of this. Anything else is a model: unreadable, which
+ * the caller takes as one, never cached. A named server (tmux, ssh, an app's terminal) stays
+ * `unknown` with the server named, for the person to prove once. Reaching init proves nothing: a
+ * model that daemonizes gets there through readable links too. A person's own cron or launchd job
+ * that calls vyre reads as a model, which is accepted.
  * @param {number} pid
- * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, self?: number }} [o]
- * @returns {{ inside: boolean, by?: number, unknown?: boolean, server?: { exe: string, pid: number, started: string } }}
+ * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number, uid?: number, start?: number } | null, exe?: (pid: number) => string | null, started?: (pid: number) => string | null, uid?: (pid: number) => number | null, self?: number }} [o]
+ * @returns {{ inside: boolean, by?: number, unknown?: boolean, unreadable?: boolean, server?: { exe: string, pid: number, started: string } }}
  */
 export function insideClaude(pid, { threads = [], look = processTable(), exe = exePath, started = defaultStarted, uid = processUid, self = process.pid } = {}) {
+  const bad = { inside: false, unknown: true, unreadable: true };
   // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
   // an orphan's parent becomes init, but its group and session stay the thread's.
   const own = look(pid);
   if (own) for (const g of [own.pgid, own.sid]) if (g && g > 1 && g !== process.pid && threads.includes(g)) return { inside: true, by: g };
-  const mine = new Set(ancestry(self, look).chain.map(p => p.pid));
-  const { chain, complete } = ancestry(pid, look, p => mine.has(p));
-  for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };
-  if (!complete) return { inside: false, unknown: true };
+
+  // What the walk may end at besides the top: vyred's own ancestors, when vyred was started from a
+  // terminal (its own chain passes every check and tops out at a trusted leader). Never vyred
+  // itself, and never a launchd-started vyred's: production vyred does not spawn the person's CLI,
+  // so a descendant of vyred is an MCP child or a worker, a model's.
+  const mineChain = ancestry(self, look);
+  const testHosted = hosted();
+  /** @type {Set<number>} */
+  let shared = new Set();
+  if (testHosted) shared = new Set(mineChain.chain.map(p => p.pid));
+  else if (mineChain.complete && readable(mineChain.chain, look)
+    && !mineChain.chain.some(p => agentHost(p.args) || claudeCommand(p.args) || threads.includes(p.pid))) {
+    const t = mineChain.chain[mineChain.chain.length - 1];
+    const trow = t ? look(t.pid) : null;
+    if (t && trow && trow.ppid <= 1 && trow.pgid === t.pid && trustedLeader(exe(t.pid))) shared = new Set(mineChain.chain.slice(1).map(p => p.pid));
+  }
+  const { chain, complete, docker } = ancestry(pid, look, p => shared.has(p));
+  for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args) || agentHost(p.args)) return { inside: true, by: p.pid };
+  if (!testHosted && chain.some(p => p.pid === self)) return { inside: true, by: self };
+  // A root-owned /usr/bin/login in the chain is the system's own hand-off of a terminal to the person
+  // (Terminal.app, iTerm2 and console logins all run it): a model cannot make a root process, and
+  // nothing but a login the person opened runs under one. It anchors the chain, whatever app hosts it,
+  // as long as every link below it is readable.
+  for (let i = 0; i < chain.length; i++) {
+    const row = look(chain[i].pid);
+    if (row && row.uid === 0 && LOGIN_PATHS.has(exe(chain[i].pid) || "") && rootOwnedPath(exe(chain[i].pid) || "")) {
+      return readable(chain.slice(0, i + 1), look) ? { inside: false } : bad;
+    }
+  }
+  // A link that cannot be read (a pid missing from a fresh table, a peer that already exited, an
+  // empty or timed-out `ps`, an exited process not yet reaped) is `unreadable`: a model's. Only a
+  // process entered from outside a container (docker exec) says nothing about who is above.
+  if (!complete) return docker ? { inside: false, unknown: true } : bad;
+  if (!readable(chain, look)) return bad;
+  // Ended at a shared ancestor of vyred: every link between was checked above.
+  if (shared.size) {
+    if (!chain.length) return { inside: false };
+    const last = look(chain[chain.length - 1].pid);
+    if (last && shared.has(last.ppid)) return { inside: false };
+  }
   // The top of the chain, whose parent is init. An app, a terminal, sshd or a tmux server that
   // launchd, init or setsid started leads its own process group. One that does not was started
   // in a shell's group and outlived it (`nohup .. &`): whose shell that was, nobody can say now.
   const top = chain.length ? chain[chain.length - 1] : null;
   const row = top ? look(top.pid) : null;
-  if (row && row.ppid <= 1 && row.pgid && row.pgid !== top.pid) return { inside: false, unknown: true };
-  // `setsid -f <cmd>` (util-linux), or a plain fork that calls setsid() itself, produces exactly
-  // this shape too: ppid 1, its own session and group, nothing above it to blame -- and it is
-  // indistinguishable BY ANCESTRY ALONE from a real terminal, sshd or tmux server that launchd or
-  // init started directly. A controlling terminal is not proof either: `setsid -f script -qfc ..`
-  // or a python `pty.spawn` hands the detached leader a FRESH, real-looking tty it made up on the
-  // spot (the reviewer's own reproduction, 28 Sep, broke the first version of this fix, which
-  // checked exactly that). What ancestry alone CAN still say: which binary the kernel actually
-  // loaded for this leader (exePath, never argv) -- so this judges that against a short allowlist
-  // of what actually hosts a login, not whether a tty exists.
-  if (row && row.ppid <= 1 && row.pgid === top.pid) {
+  if (!top || !row) return bad;
+  if (row.ppid <= 1 && row.pgid && row.pgid !== top.pid) return bad;
+  if (row.ppid <= 1 && row.pgid === top.pid) {
     const p = exe(top.pid);
+    // The one allowlist (TRUSTED_PATHS): the kernel's own word about which binary runs. Everything
+    // else with this shape (tmux, screen, ssh's sshd, Ghostty, iTerm2, VS Code, Warp, an unreadable
+    // root daemon, a setsid'd model) is named as a server for the person to prove once, its exe,
+    // pid and start time never a bare pid; a model-started one always has its own start time, so
+    // it can never inherit trust proved for the person's real one. An exe that cannot be read at
+    // a uid other than 0 is not offered: a model's.
     if (trustedLeader(p)) return { inside: false };
-    // exePath can come back null not because there is nothing to read, but because it needs the
-    // SAME uid or ptrace access, which vyred does not have onto a more privileged process --
-    // found running for real over ssh (28 Sep): the box's own sshd LISTENER (root) is exactly
-    // this ambiguous shape, and vyred (its own, non-root uid on the box) cannot read root's
-    // /proc/<pid>/exe. The reviewer's HOLD, 28 Sep: uid 0 alone is not enough to trust it outright
-    // -- root daemons that run USER-SCHEDULED jobs have this exact same shape (cron: ppid 1, its
-    // own session/group, uid 0, unreadable exe from vyred's own uid; a model runs `crontab -`
-    // with a job that calls vyre, and its chain tops out at cron). So an unreadable exe, even at
-    // uid 0, is never trusted outright -- it is named as a server (below) like anything else the
-    // allowlist does not know, keyed generically ("uid0", since there is no real exe path to
-    // name) so the person proves it once per server, the same as tmux, screen or ssh.
     const at = p ? started(top.pid) : (uid(top.pid) === 0 ? started(top.pid) : null);
-    // Everything else with this shape (tmux, screen, ssh's sshd, Ghostty, iTerm2's server, the
-    // VS Code or Cursor terminal, Warp, an unreadable root daemon, or a setsid'd model) is named
-    // as a server rather than folded into a flat refusal, per the lead's decision, 28 Sep: nobody
-    // with a real terminal the allowlist does not happen to know about gets locked out. The
-    // caller can offer the person one presence proof for THIS specific leader (its exe, pid and
-    // start time -- never a bare pid, which can be recycled, and never a different process: a
-    // model-started one always has its own pid and start time, so it can never inherit trust
-    // proved for the person's real one).
     if (at) return { inside: false, unknown: true, server: { exe: p || "uid0", pid: top.pid, started: at } };
-    return { inside: false, unknown: true };
+    return bad;
   }
-  return { inside: false };
+  return bad;
 }
 
 /** @param {number} pid @returns {string|null} */
@@ -549,4 +666,32 @@ function environ(pid) {
 /** @param {string} socket @param {string[]} args */
 function runTmux(socket, args) {
   return execFileSync(process.env.VYRE_TMUX_BIN || "tmux", ["-S", socket, ...args], { encoding: "utf8", timeout: 2000 });
+}
+
+/**
+ * Who a plain model caller (the person's own Claude Code through Vyre's MCP, no verified thread) is, from the kernel: the nearest claude ancestor
+ * of the socket's peer, its start time, and its working folder. `session` is "<pid>:<start>", stable for the
+ * life of that process and never reused by another; `cwd` is where the MCP server (and so the session) runs. Either is null where the OS will not say.
+ * @param {number} pid @param {(pid: number) => any} [look] @param {NodeJS.Platform} [platform]
+ * @returns {{ session: string|null, cwd: string|null }}
+ */
+export function peerIdentity(pid, look = processTable(), platform = process.platform) {
+  const base = a => String(a || "").trim().split(/\s+/)[0].split("/").pop();
+  // The claude process's own folder, never the peer's: a model's shell can `cd` anywhere before it calls. No claude above the peer: nothing is verified.
+  let target = 0;
+  try { for (const c of ancestry(pid, look).chain) if (base(c.args) === "claude") { target = c.pid; break; } } catch { /* none */ }
+  if (!target) return { session: null, cwd: null };
+  let cwd = null, start = null;
+  try {
+    if (platform === "linux") {
+      cwd = fs.readlinkSync(`/proc/${target}/cwd`);
+      const st = fs.readFileSync(`/proc/${target}/stat`, "utf8");
+      start = st.slice(st.lastIndexOf(")") + 2).split(" ")[19] || null;
+    } else if (platform === "darwin") {
+      const out = execFileSync("/usr/sbin/lsof", ["-a", "-d", "cwd", "-p", String(target), "-Fn"], { encoding: "utf8", timeout: 2000 });
+      cwd = (out.split("\n").find(l => l.startsWith("n")) || "").slice(1) || null;
+      start = execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(target)], { encoding: "utf8", timeout: 2000 }).trim() || null;
+    }
+  } catch { /* unreadable: null */ }
+  return { session: start ? `${target}:${start}` : null, cwd };
 }

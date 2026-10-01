@@ -43,6 +43,7 @@ extension CapsuleModel {
     /// Called by search() on every change of the words, plain search only.
     func scheduleAuto(_ q: Query, token t: Int) {
         autoTask?.cancel()
+        if q.text == prefilled { return }
         let key = Self.autoKey(q.text)
         // The answer on screen was for other words: typing on lets it go.
         if let k = autoKey, k != key { dropAuto() }
@@ -96,6 +97,7 @@ extension CapsuleModel {
         }
         replySub?.cancel(); replySub = nil
         reply = nil; asked = nil; askedMemory = nil; autoKey = nil
+        iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
     }
 
     /// A finished answer: kept for the conversation and the cache.
@@ -270,7 +272,10 @@ extension CapsuleModel {
         guard !words.isEmpty, vyred.has("voice.speak") else { return }
         let socket = vyred.socket
         Task { @MainActor in
-            let r = await vyred.call("voice.speak", ["text": words], presence: false)
+            // `reply: true` has vyred make the written reply speakable (markdown to words, code and tables dropped,
+            // a link said as "a link", cut at a sentence) before it is spoken. Only a turn that came from the mic
+            // is spoken; a typed question gets text only. speak_off and no_key are silent.
+            let r = await vyred.call("voice.speak", ["text": words, "reply": true], presence: false)
             guard let d = r.data as? [String: Any], let url = VJ.nonEmpty(d["url"]) else { return }
             let got = await withCheckedContinuation { (k: CheckedContinuation<Data?, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async {
@@ -302,7 +307,7 @@ extension CapsuleModel {
 
     /// What a computer-use session is told, after the user's words.
     nonisolated static let computerUseBrief = """
-    You were started from the Vyre Capsule to do this on the user's Mac. Use the hands.* tools \
+    You were started from Vyre Lumen to do this on the user's Mac. Use the hands.* tools \
     (observe, find, act, commit) and screen.* to see and act; every action is shown on screen and \
     the user can stop it with Esc. Anything that sends, posts, pays or deletes goes through the \
     Gate and waits for the user's Touch ID: do not try to get around it. Say in one line what you \

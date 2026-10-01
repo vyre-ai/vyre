@@ -1,6 +1,6 @@
 ---
 title: Your first hour
-summary: A 20-minute first run of Vyre, in order. Install on the Mac, sign in to Claude, pair your phone, ask the Capsule, send one email, let Vyre use the Mac, and make the Deck your own colour.
+summary: A first run of Vyre, in order. Set up your server, sign in to Claude, open Vyre on your phone, put the Lumen on your Mac and ask it, send one email, and make the Deck your own colour.
 audience: users
 owner: docs
 status: draft
@@ -8,66 +8,66 @@ status: draft
 
 # Your first hour
 
-Twenty minutes, eight steps, each one small enough to check before the next. You need a Mac,
-your phone, a Claude subscription (or an Anthropic API key), and a Tailscale account. If a step
-stops, [troubleshooting](../get-started/troubleshooting.md) has the fix, and `vyre doctor` says
-what is wrong in under two seconds.
+Eight steps, each one small enough to check before the next. You need a Linux server you can open
+a terminal on (or a Mac that stays on), your Mac, your phone, a Claude, ChatGPT or Grok account,
+and a Tailscale account. If a step stops, [troubleshooting](../get-started/troubleshooting.md) has
+the fix, and `vyre doctor` says what is wrong in under two seconds.
 
 Use your own details throughout. Nothing here needs example data.
 
-## 1. Install on the Mac (3 minutes)
+## 1. Set up your server (about 15 minutes)
 
-```sh
-npm install -g https://vyre.run/box/vyre.tgz
-vyre up
-```
+Open <https://vyre.run/setup>, choose where Vyre will live, and paste the one line it shows into
+a terminal on that server. The page watches the install, checks four words with you, helps you
+claim an address such as `alex.vyre.run`, and connects Tailscale. [Install](../get-started/install.md)
+walks every screen.
 
-`vyre up` asks where Vyre should run. Pick a server you reach over SSH if you have one, so Vyre
-keeps working while the Mac sleeps, or this Mac to try it first. Then the browser opens for
-onboarding: you, Claude Code, Tailscale, your address, your passkey, your history, your devices.
-[Install](../get-started/install.md) walks every screen.
+**Check:** the page says **You're in** at your own address, and `vyre status` on the server says
+Vyre is running.
 
-**Check:** `vyre status` says vyred is running.
+## 2. Sign in to your AI (2 minutes)
 
-## 2. Sign in to Claude (2 minutes)
-
-In onboarding's **Claude Code** step, choose **Your Claude subscription**, then **Sign in with
-Claude**. A browser tab asks you to approve; paste the code it shows back into onboarding. The
-token goes straight into the vault, sealed on the box: you never copy it into a terminal or a
-file. An Anthropic API key is the other choice on the same screen.
+On setup's **Sign in to your AI** screen, press **Sign in with Claude** (or ChatGPT or Grok). A
+page on the provider asks you to approve, and the page shows a code to enter or a box to paste the
+code the provider gives you. The token goes straight into the vault, sealed on your server: you
+never copy it into a terminal or a file.
 
 Skipped it? Deck **Settings**, **Claude Code**, **Re-connect** brings the same step back.
 
-> [!GAP]
-> Setting up every key from one "needs a credential" flow in the vault (ADR 0028) comes with the
-> vault connections work. Until then, Claude signs in here, and other keys through their own
-> screens.
-
 **Check:** Deck **Settings**, **Claude Code** shows you as signed in.
 
-## 3. Pair your phone (4 minutes)
+## 3. Open Vyre on your phone (4 minutes)
 
-1. Install Tailscale on the phone and sign in with the same account as the Mac.
-2. Scan the QR code on onboarding's **Your devices** step, or open your box's address with `/now`
-   at the end.
+1. Install Tailscale on the phone and sign in with the same account as your computer.
+2. Open your address with `/now` at the end, for example `https://alex.vyre.run/now`, in Safari
+   (iPhone) or Chrome (Android).
 3. Add it to the home screen: on an iPhone, Share, then **Add to Home Screen**; on Android, the
    browser menu, then **Install app**.
 4. Open it from the icon and turn on notifications when Now offers them.
 
-If the box runs on a server, your Mac also asks to pair. The phone's Now shows "A Mac wants to
-pair" with a code: type the code the Mac printed, press **Approve**, and confirm with Face ID.
-A Mac can't approve itself, which is why the phone comes first
-([known gaps](../known-gaps.md)).
+Step 4 pairs your Mac with the server. The phone's Now then shows "A Mac wants to pair" with a
+code: type the code the Mac printed, press **Approve**, and confirm with Face ID. A Mac can't
+approve itself, which is why the phone comes first ([known gaps](../known-gaps.md)).
 
-**Check:** on the Mac, `vyre link` says "linked to" and names your box.
+**Check:** on the Mac, once step 4 is done, `vyre link` says "linked to" and names your server.
 
-## 4. Ask the Capsule (3 minutes)
+## 4. Put Lumen on your Mac and ask it (5 minutes)
+
+On the Mac, install the `vyre` command and pair it with your server:
+
+```sh
+npm install -g https://vyre.run/box/vyre.tgz
+vyre up --connect https://alex.vyre.run
+```
+
+Approve the pairing on your phone, as step 3 says. `vyre up` then builds Lumen on your Mac and
+opens it. To build it yourself, or if it did not open:
 
 ```sh
 vyre capsule
 ```
 
-The first run builds the Capsule on your Mac and opens it. Allow Input Monitoring when macOS asks
+Allow Input Monitoring when macOS asks
 ([Allow double-Control](capsule.md#allow-double-control)), then press Control twice anywhere.
 
 Ask something about your own recent work, in your own words, and press Return. The reply comes
@@ -81,15 +81,11 @@ vyre memory ask "what did I work on yesterday" --sources
 
 It prints the answer, how sure it is, and the lines from your sessions it rests on.
 
-> [!GAP]
-> Answers that appear on their own when you pause, and Vyre IQ's answers with sources right in
-> the Capsule (ADR 0034), arrive with the next Capsule and memory releases.
-
 ## 5. Send one email (3 minutes)
 
 1. Deck **Settings**, **Connections**, **Add Google account**, **Sign in with Google**. Pick your
    account and allow what it asks. (From a terminal: `vyre connect add google <name> --sign-in`.)
-2. In the Capsule or in Chat, ask your assistant to email you a one-line note, to your own
+2. In Lumen or in Chat, ask your assistant to email you a one-line note, to your own
    address.
 3. The email does not go. It waits at the Gate: Now shows it with the address it leaves from, the
    To line, the subject and the words. Change anything you like; editing asks for nothing.
@@ -101,10 +97,7 @@ It prints the answer, how sure it is, and the lines from your sessions it rests 
 
 ## 6. Let Vyre use the Mac (2 minutes)
 
-> [!GAP]
-> "do …" is in the next Capsule release. If your Capsule has it, try this step; if not, skip it.
-
-In the Capsule, type `do` and a small task on this Mac, like opening an app you use every day,
+In Lumen, type `do` and a small task on this Mac, like opening an app you use every day,
 and press Return. The first time, macOS asks for Accessibility and Screen Recording for Vyre:
 allow both in System Settings, Privacy and Security. A pill shows while Vyre drives, each step on
 screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes still waits for you.
@@ -114,10 +107,6 @@ screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes sti
 Open the Deck (your box's address, or the phone icon) and go to **Settings**. Every section has
 its own link, so `/settings#devices` jumps straight to your devices. Look at **Your devices**,
 **Notifications** (quiet hours) and **Security** (your passkeys).
-
-> [!GAP]
-> The settings hub (ADR 0035) puts every setting in one place, at account or project level, the
-> same in the Deck, on the phone and from the terminal. It lands with the native-core release.
 
 ## 8. Change a colour (2 minutes)
 
@@ -132,10 +121,6 @@ the Deck. For example, a different accent in the dark theme:
 
 A value that is not a plain colour is dropped, so a typo never breaks the Deck.
 [Change the colours](deck.md#change-the-colours) lists the names you can set.
-
-> [!GAP]
-> With the settings hub, colours, fonts and spacing become `appearance.tokens`, checked for
-> contrast before they are saved, and every surface follows the change live.
 
 ## When you are done
 

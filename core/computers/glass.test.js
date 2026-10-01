@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import crypto from "node:crypto";
 import { Glass, Pacer } from "./glass.js";
+import { STOPPED } from "./pool.js";
 import { encodeClientFrame } from "./ws.js";
 import { fakeXvnc } from "../../test/fixtures/fake-xvnc.js";
 
@@ -396,4 +397,35 @@ test("glass: a close reason is cut to the 123 bytes a close frame allows, never 
   const len = out[1] & 0x7f;
   assert.ok(len <= 125);
   assert.equal(out.subarray(4, 2 + len).toString("utf8"), "é".repeat(61));
+});
+
+test("glass: when the screen's connection drops because the computer died, the stream closes with 4001 and plain words, and the pool is told", async () => {
+  const c = await connected({ canType: () => false });
+  const asked = [];
+  c.pool.verifyAlive = async agent => { asked.push(agent); return true; };
+  const chunks = [];
+  c.sock.on("data", d => chunks.push(d));
+  const closed = new Promise(r => c.sock.once("close", r));
+  c.xvnc.crash();
+  await closed;
+  await c.xvnc.close();
+  assert.deepEqual(asked, ["kit"]);
+  const frame = Buffer.concat(chunks);
+  assert.equal(frame[0], 0x88, "a final close frame");
+  assert.equal(frame.readUInt16BE(2), 4001);
+  assert.equal(frame.subarray(4, 2 + (frame[1] & 0x7f)).toString("utf8"), STOPPED);
+  await new Promise(r => c.upgradeServer.close(r));
+});
+
+test("glass: a screen that drops while the computer is still running ends the stream without the stopped message", async () => {
+  const c = await connected({ canType: () => false });
+  c.pool.verifyAlive = async () => false;
+  const chunks = [];
+  c.sock.on("data", d => chunks.push(d));
+  const closed = new Promise(r => c.sock.once("close", r));
+  c.xvnc.crash();
+  await closed;
+  await c.xvnc.close();
+  assert.ok(!Buffer.concat(chunks).includes(Buffer.from(STOPPED)));
+  await new Promise(r => c.upgradeServer.close(r));
 });

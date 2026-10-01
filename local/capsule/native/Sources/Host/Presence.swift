@@ -114,7 +114,7 @@ final class KeychainKeyStore: PresenceKeyStore {
     func save(_ handle: Data) -> Bool {
         delete()
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Self.service,
-                                kSecAttrAccount as String: account, kSecAttrLabel as String: "Vyre Capsule presence key",
+                                kSecAttrAccount as String: account, kSecAttrLabel as String: "Vyre Lumen presence key",
                                 kSecValueData as String: handle]
         return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
     }
@@ -201,19 +201,19 @@ public final class CapsulePresence {
     }
 
     /// The key behind `handle`, unlocked with `context` -- an already-authenticated LAContext
-    /// satisfies the Secure Enclave's biometryCurrentSet with no second prompt; an
+    /// satisfies the Secure Enclave's userPresence with no second prompt; an
     /// unauthenticated one raises the system Touch ID sheet in its place. nil for a missing,
     /// foreign, or pre-Secure-Enclave (Ed25519, wrong byte shape) handle.
     private func loadPrivate(context: LAContext) -> CapsuleSigningKey? {
         guard let handle = store.loadHandle() else { return nil }
-        return try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: handle, authenticationContext: context)
+        return Self.signingKey(handle: handle, context: context)
     }
 
     /// The header for one call, signed with the key after the person proved it in the panel.
     func proof(tool: String, input: [String: Any], summary: String? = nil) async -> Result<String, VyredFailure> {
         guard dialogsAllowed() else { return .failure(VyredFailure("Proving you are here is off under tests.")) }
         if enrolled == nil, let why = await enroll() { return .failure(VyredFailure(why)) }
-        guard let key = enrolled else { return .failure(VyredFailure("The Capsule's key is not enrolled.")) }
+        guard let key = enrolled else { return .failure(VyredFailure("Lumen's key is not enrolled.")) }
         let context = makeContext()
         context.localizedCancelTitle = "Not now"
         // The reviewer's nit on a4e3e171: one Touch ID must never be usable for a third signature.
@@ -237,7 +237,7 @@ public final class CapsulePresence {
         store.delete()
         if let why = await enroll() { return .failure(VyredFailure(why)) }
         guard let key2 = enrolled, let priv2 = loadPrivate(context: context), let header2 = Self.header(tool: tool, input: input, key: priv2, keyId: key2.id, ts: now()) else {
-            return .failure(VyredFailure("The Capsule's key could not be made on this Mac. Remove it in Settings and enroll again."))
+            return .failure(VyredFailure("Lumen's key could not be made on this Mac. Remove it in Settings and enroll again."))
         }
         // Best-effort cleanup, never blocking this call's result: drop the dead row so
         // presence_keys does not pile up one entry per broken key (the reviewer's LOW, 28 Sep).
@@ -267,33 +267,53 @@ public final class CapsulePresence {
         String("\(tool) \(PresenceCanonical.encode(input))".prefix(160))
     }
 
-    /// Make the key in this Mac's Secure Enclave (P-256, alg -7) behind a live Touch ID on every
-    /// use (kSecAccessControlBiometryCurrentSet -- invalidated too if the enrolled fingerprints
-    /// change, so a stolen unlocked Mac still cannot sign with someone else's finger), keep its
-    /// opaque handle, and enroll the public half with vyred, which shows its own Touch ID dialog
-    /// for this one call. Returns why not, or nil when enrolled.
-    func enroll() async -> String? {
-        guard SecureEnclave.isAvailable else { return "This Mac has no Secure Enclave, so the Capsule cannot make a presence key." }
-        // biometryCurrentSet demands a live fingerprint on every single use; a key made without
-        // one enrolled would never sign again (e2e2's ask, 28 Sep: never offer the capsule method
-        // at all on a Mac with no Touch ID, rather than make a key doomed to fail every proof).
-        guard makeContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
-            return "This Mac has no Touch ID enrolled, so the Capsule cannot prove you are here. Use a passkey or a paired phone instead."
+    /// Make the Capsule's key (makeDeviceKey: the Secure Enclave with user presence, Touch ID or the
+    /// Mac's password, or a software key on a Mac with no enclave), keep its opaque handle, and
+    /// enroll the public half with vyred, which shows its own Touch ID dialog for this one call.
+    /// A Mac with no fingerprint reader is fine. Returns why not, or nil when enrolled.
+    func enroll() async -> String? { await enroll(client: vyred, header: "touchid") }
+
+    /// For tests: whether this Mac has a Secure Enclave.
+    var hasSecureEnclave: () -> Bool = { SecureEnclave.isAvailable }
+
+    /// A software key's handle starts with this; a Secure Enclave handle is the enclave's own bytes.
+    static let softwareTag = Data("SW1:".utf8)
+
+    /// The key for this Mac. In the Secure Enclave when there is one, with `.userPresence`: Touch ID
+    /// where the Mac has it, the Mac's password where it does not (a Mac mini often has no reader),
+    /// enforced by the enclave on every use. Without an enclave, a software P-256 key kept in the
+    /// keychain; there the Capsule's own check (Touch ID or the Mac's password, in the panel) is
+    /// what stands before every signature, since the key itself cannot be made to ask.
+    nonisolated static func makeDeviceKey(secureEnclave: Bool) -> (handle: Data, der: Data)? {
+        if secureEnclave {
+            var err: Unmanaged<CFError>?
+            guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .userPresence], &err),
+                  let key = try? SecureEnclave.P256.Signing.PrivateKey(accessControl: access) else { return nil }
+            return (key.dataRepresentation, key.publicKey.derRepresentation)
         }
-        var cfError: Unmanaged<CFError>?
-        guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .biometryCurrentSet], &cfError) else {
-            return "The Capsule could not set up a Touch ID key on this Mac."
+        let key = P256.Signing.PrivateKey()
+        return (softwareTag + key.rawRepresentation, key.publicKey.derRepresentation)
+    }
+
+    /// The key behind a stored handle, either kind. nil for one that is neither.
+    nonisolated static func signingKey(handle: Data, context: LAContext) -> CapsuleSigningKey? {
+        if handle.starts(with: softwareTag) { return try? P256.Signing.PrivateKey(rawRepresentation: handle.dropFirst(softwareTag.count)) }
+        return try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: handle, authenticationContext: context)
+    }
+
+    /// The same, sent to `client` with `header` as x-vyre-presence: vyre-core's socket with the
+    /// installer's one-time code (Host/CoreEnroll.swift), or vyred with Touch ID.
+    func enroll(client: VyredClient, header: String) async -> String? {
+        guard let made = Self.makeDeviceKey(secureEnclave: hasSecureEnclave()) else {
+            return "Lumen could not make a key on this Mac."
         }
-        guard let key = try? SecureEnclave.P256.Signing.PrivateKey(accessControl: access) else {
-            return "The Capsule could not make a Secure Enclave key on this Mac."
-        }
-        guard store.save(key.dataRepresentation) else { return "The Capsule could not keep its key in your keychain." }
-        let pub = PresenceCanonical.b64url(key.publicKey.derRepresentation)
-        let r = await vyred.call("presence.enroll", ["kind": "capsule", "name": "Capsule on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
-                                 timeout: 120, headers: ["x-vyre-presence": "touchid"])
+        guard store.save(made.handle) else { return "Lumen could not keep its key in your keychain." }
+        let pub = PresenceCanonical.b64url(made.der)
+        let r = await client.call("presence.enroll", ["kind": "capsule", "name": "Lumen on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
+                                 timeout: 120, headers: ["x-vyre-presence": header])
         guard let d = r.data as? [String: Any], let id = VJ.nonEmpty(d["id"]) else {
             store.delete()
-            return Bridge.explain(r).map { "The Capsule's key was not enrolled: \($0)" } ?? "The Capsule's key was not enrolled."
+            return Bridge.explain(r).map { "Lumen's key was not enrolled: \($0)" } ?? "Lumen's key was not enrolled."
         }
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? JSONEncoder().encode(Enrolled(id: id, publicKey: pub)) { try? data.write(to: file, options: .atomic) }

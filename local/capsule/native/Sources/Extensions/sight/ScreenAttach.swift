@@ -172,7 +172,7 @@ enum ScreenAttach {
     /// The block appended to the words. Empty for a blind place (which never gets a chip).
     static func body(_ s: ScreenSnapshot) -> String {
         guard s.blind == nil else { return "" }
-        var lines = ["[Screen context, shared by the user from the Capsule]"]
+        var lines = ["[Screen context, shared by the user from Lumen]"]
         if !s.app.isEmpty { lines.append("App: \(s.app)") }
         let title = s.window.trimmingCharacters(in: .whitespacesAndNewlines)
         if !title.isEmpty { lines.append("Window: \(title)") }

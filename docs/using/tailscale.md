@@ -10,7 +10,7 @@ status: draft
 
 Your box is not on the public internet. It is on your tailnet, the private network Tailscale
 makes between your own devices, and every device you use Vyre from joins that tailnet. There is
-no Vyre password: when a device connects, vyred asks Tailscale who is on the other end
+no Vyre password: when a device connects, Vyre asks Tailscale who is on the other end
 (`tailscale whois` of the connection's source address) and serves only the box's owner, one
 Tailscale login. Why it works this way is in [ADR 0002](../adr/0002-network-and-identity.md);
 how the pieces fit is in [Tailnet](../concepts/tailnet.md). New to Tailscale? See
@@ -18,19 +18,18 @@ how the pieces fit is in [Tailnet](../concepts/tailnet.md). New to Tailscale? Se
 
 ## Know your box's address
 
-The box's Tailscale name is `vyre` (a second box is `vyre-2`). With MagicDNS, which Tailscale
-turns on by default, its address is:
+Setup at <https://vyre.run/setup> ends with the address you claimed, such as
+`https://alex.vyre.run`, and optionally a domain of your own. `vyre name` prints it. The address
+points at your box's Tailscale address, so it opens only on devices on your tailnet.
+
+If you chose Tailscale's own name instead, the box's Tailscale name is `vyre` (a second box is
+`vyre-2`) and, with MagicDNS, which Tailscale turns on by default, its address is:
 
 ```
 https://vyre.<tailnet>.ts.net
 ```
 
-for example `https://vyre.tail1234.ts.net`. The certificate comes from `tailscale cert`. `vyre up`
-prints the address once onboarding is done, and so does:
-
-```
-vyre name
-```
+for example `https://vyre.tail1234.ts.net`. The certificate comes from `tailscale cert`.
 
 ### If the address has no certificate
 
@@ -67,7 +66,7 @@ npm install -g https://vyre.run/box/vyre.tgz
 vyre up
 ```
 
-`vyre up` looks for your box on the tailnet: the online peers that answer as a Vyre box. One
+(Node 22.5 or newer.) `vyre up` looks for your box on the tailnet: the online peers that answer as a Vyre box. One
 answer is your box. Several, and it lists them and asks. None, and it asks where Vyre should run.
 If you know the address:
 
@@ -92,10 +91,7 @@ Then the Mac pairs with the box:
      ● linked to https://vyre.tail1234.ts.net
    ```
 
-> [!GAP]
-> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
-> (or another device on your tailnet) with your passkey. See
-> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+Approving a pairing takes your passkey: Touch ID on this Mac, or on your phone.
 
 The first connection pins the box's Tailscale node, so a different machine answering at the same
 name later is refused. `vyre link unpair` forgets the box on the Mac, or a Mac on the box
@@ -113,7 +109,7 @@ TS_AUTHKEY=tskey-auth-...
 ```
 
 Make the key untagged. An untagged key signs the node in as the person who made it, which is
-what lets vyred name an owner.
+what lets Vyre name an owner.
 
 ## When a device cannot connect
 

@@ -31,6 +31,7 @@
 //   POST   /containers/{id}/exec            exec create, never privileged, never another user
 //   POST   /exec/{id}/start                 exec start, checked through the exec's own container
 //   GET    /volumes/{name}                  volume inspect, the volume's labels are a computer's
+//   GET    /events?since=                   a stream of die/oom/kill/stop events of this box's computers only
 //   PUT    /containers/{id}/archive?path=   the computer's secrets file, and nothing else: path
 //                                            /var/lib/vyre, a tar that is exactly .boot (policy.js)
 // No Upgrade: docker.js never attaches, so a hijacked stdin stream is refused outright.
@@ -41,6 +42,7 @@ import crypto from "node:crypto";
 const MAX_BODY = 256 * 1024;
 // A list of every computer on the box; far more than any real one, and bounded all the same.
 const MAX_LIST = 16 * 1024 * 1024;
+const MAX_EVENT_STREAMS = 4;
 const NAME = "[A-Za-z0-9][A-Za-z0-9_.-]{0,127}";
 const HOP = new Set(["connection", "keep-alive", "proxy-connection", "proxy-authenticate", "proxy-authorization",
   "te", "trailer", "transfer-encoding", "upgrade", "content-length"]);
@@ -61,6 +63,9 @@ const ROUTES = [
   ["POST", new RegExp(`^/exec/(${NAME})/start$`), "execStart", [], true],
   ["GET", new RegExp(`^/volumes/(${NAME})$`), "volume", [], false],
   ["PUT", new RegExp(`^/containers/(${NAME})/archive$`), "seed", ["path"], true],
+  // The Engine's event stream, for "this computer stopped" without polling. Only since= is the caller's; the type, the
+  // events and the label filter are forced here (a container's die, oom, kill and stop, for this box's computers).
+  ["GET", /^\/events$/, "events", ["since"], false],
 ];
 
 class Refusal extends Error {
@@ -190,6 +195,8 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
     return given.length === bearerBuf.length && crypto.timingSafeEqual(given, bearerBuf);
   };
   const prefix = config.labelPrefix;
+  /** Each /events caller holds a connection to the Engine open; only a few at once. */
+  let eventStreams = 0;
 
   /** Is this label set, as the Engine reports it, one of this box's computers? */
   const computer = labels => {
@@ -336,6 +343,32 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, b
       const boot = policy.allowBootTar(buf);
       const agentTokens = typeof policy.allowAgentTokensTar === "function" ? policy.allowAgentTokensTar(buf) : { ok: false, why: "this policy has no agent-tokens file to allow" };
       if (!boot.ok && !agentTokens.ok) refuse(`archive: ${boot.why}`);
+    }
+
+    if (name === "events") {
+      if (eventStreams >= MAX_EVENT_STREAMS) refuse(`at most ${MAX_EVENT_STREAMS} event streams at once`, 429);
+      eventStreams++;
+      let counted = true;
+      const done = () => { if (counted) { counted = false; eventStreams--; } };
+      res.on("close", done);
+      const since = q.get("since");
+      if (since !== null && !/^\d{1,12}(\.\d{1,9})?$/.test(since)) refuse("since is a unix time in seconds", 400);
+      const ev = new URLSearchParams({ filters: JSON.stringify({ type: ["container"], event: ["die", "oom", "kill", "stop"], label: [`${prefix}.managed=true`, "run.vyre=1"] }) });
+      if (since !== null) ev.set("since", since);
+      // Streamed, not buffered: an event carries the container's id, its labels and an exit code, never its environment, and
+      // the label filter keeps every other container's events out. The stream ends when the caller does.
+      await new Promise(resolve => {
+        const up = http.request({ socketPath: socket, method: "GET", path: `${ver}/events?${ev}`, headers: { host: "docker" } }, r => {
+          res.writeHead(r.statusCode || 502, { "content-type": "application/json" });
+          r.pipe(res);
+          r.on("end", () => { res.end(); resolve(undefined); });
+          r.on("error", () => { res.destroy(); resolve(undefined); });
+        });
+        up.on("error", e => { if (!res.headersSent) send(res, 502, { message: `vyre docker proxy: the Engine: ${e.message}` }); else res.destroy(); resolve(undefined); });
+        res.on("close", () => { up.destroy(); resolve(undefined); });
+        up.end();
+      });
+      return;
     }
 
     if (name === "list") {

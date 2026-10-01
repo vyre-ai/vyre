@@ -26,6 +26,8 @@ import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from 
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
+import { watchTrustAsks } from "../js/trust-ask.js";
+import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -37,12 +39,15 @@ const SECTIONS = [
   ["devices", "Your devices"],
   ["server", "Server"],
   ["history", "History and memory"],
+  ["spend", "Spend"],
+  ["permissions", "Standing permissions"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
   ["security", "Security"],
   ["modules", "Modules"],
   ["appearance", "Appearance"],
   ["machine", "This machine"],
+  ["data", "Update, export and uninstall"],
 ];
 
 /** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same.
@@ -132,9 +137,13 @@ export default async function settings(ctx) {
       const after = jumpSel.querySelector(`option[value="claude"]`);
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
-    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx),
+    import("./settings-spend.js").then(m => m.drawSpend(body.spend, ctx)).catch(e => put(body.spend, empty("Spend did not load.", e))),
+    import("./settings-permissions.js").then(m => m.drawPermissions(body.permissions, ctx)).catch(e => put(body.permissions, empty("Permissions did not load.", e))),
+    drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
+    import("./settings-data.js").then(m => m.drawData(body.data, ctx)).catch(e => put(body.data, empty("Update, export and uninstall did not load.", e))),
   ];
   // A push notification's path is a query (?section=lessons, a plain fetchable link), not a hash.
   // ?key=<key> goes to one of the registry's settings and highlights it.
@@ -224,7 +233,7 @@ async function drawYou(el) {
 async function drawAssistant(el, ctx) {
   const r = await attempt("agents.list");
   if (!ctx.alive()) return;
-  if (r.error) { put(el, empty("The assistant is kept by the switchboard.", r.error)); return; }
+  if (r.error) { put(el, empty("The assistant could not be read from the box.", r.error)); return; }
   const a = (Array.isArray(r.data) ? r.data : r.data?.agents || []).find(x => x.kind === "assistant");
   if (!a) { put(el, h("div", { class: "empty" }, "There is no assistant yet. The setup makes one."), foot(toOnboard("you"))); return; }
   const show = () => put(el, h("div", { class: "rows" },
@@ -356,7 +365,7 @@ const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "
  * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, its own access, and who the
  * tailnet policy lets reach them. The check runs on demand, and a drive.exposed event (after any
  * share) shows its findings here too, with any shared folder that holds secrets. Sharing stays
- * with the owner's terminal and the Capsule; switching a share between read only and read and
+ * with the owner's terminal and Lumen; switching a share between read only and read and
  * write is the owner's own act (files.drive.access, no proof), offered only where the box has it.
  */
 function drawShares(el, ctx) {
@@ -512,7 +521,7 @@ function drawEgress(el) {
     const side = d.sidecar || {};
     if (!d.enabled) return row("Glass egress", onOff(false),
       faint("Some sites refuse a datacenter address. The sites you list leave an agent's Chrome through your own Mac instead."),
-      cmd(`vyre call --tty computers.egress.set '{"enabled":true,"sites":["portal.northwind.example"]}'`));
+      cmd(`vyre call --tty computers.egress.set '{"enabled":true,"sites":["example.com"]}'`));
     return row("Glass egress", h("span", null, sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet"),
       sites.length ? h("div", { class: "set-tags" }, sites.map(x => h("span", { class: "tag" }, String(x)))) : null,
       side.answers ? faint("The egress sidecar answers.")
@@ -599,12 +608,22 @@ function winkCard(status, ctx) {
   });
 }
 
+/** "Add a Windows PC" (deck/js/add-pc-card.js): the code the PC's app shows, as words or a QR, has the box register its own ticket. Same gate as Wink. */
+function addPcCard(status, ctx) {
+  if (!canRelayJoin(status).allowed) return null;
+  return buildAddPcCard({ attempt, cleanup: ctx.cleanup, alive: ctx.alive });
+}
+
 /** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
 async function drawDevices(el, ctx) {
+  // A browser asking for full access (tailnet's device.trust-asked): its key first, its name as its own claim.
+  const asks = h("div");
+  ctx.cleanup?.(watchTrustAsks(card => put(asks, card)));
   const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
   if (!ctx.alive()) return;
   if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
   const wink = winkCard(st.data, ctx);
+  const addPc = addPcCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
   const paired = Array.isArray(macs.data) ? macs.data : [];
   const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
@@ -624,7 +643,9 @@ async function drawDevices(el, ctx) {
     rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
   }
   put(el,
+    asks,
     wink,
+    addPc,
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
     // Wink is the primary path now (relay.allowed); this link is the Advanced fallback the
@@ -1177,12 +1198,12 @@ const STATE = { running: "running", failed: "failed", invalid: "failed", off: "d
 
 async function drawModules(el) {
   const list = await modules();
-  if (!list.length) { put(el, h("div", { class: "empty" }, "vyred did not list its modules.", h("span", { class: "code" }, "It may not be running. Start it with vyre up."))); return; }
+  if (!list.length) { put(el, h("div", { class: "empty" }, "The box did not list its modules.", h("span", { class: "code" }, "It may not be running. Start it with vyre up."))); return; }
   const order = { failed: 0, starting: 1, running: 2, disabled: 3 };
   const rows = [...list].sort((a, b) => (order[STATE[a.state] || "disabled"] - order[STATE[b.state] || "disabled"]) || a.name.localeCompare(b.name));
   const bad = rows.filter(m => STATE[m.state] === "failed").length;
   put(el,
-    note(`${plural(rows.filter(m => m.state === "running").length, "module")} running${bad ? `, ${bad} failed` : ""}. A module that fails is turned off and reported here; it never stops vyred.`),
+    note(`${plural(rows.filter(m => m.state === "running").length, "module")} running${bad ? `, ${bad} failed` : ""}. A module that fails is turned off and reported here; it never stops the box.`),
     h("table", { class: "set-table" },
       h("thead", null, h("tr", null, h("th", { class: "lbl", scope: "col" }, "Module"), h("th", { class: "lbl", scope: "col" }, "Version"), h("th", { class: "lbl", scope: "col" }, "State"))),
       h("tbody", null, rows.map(m => {
@@ -1223,7 +1244,7 @@ function drawAppearance(el) {
 
 async function drawMachine(el) {
   const r = await attempt("system.info");
-  if (r.error) { put(el, empty("vyred did not say what it runs on.", r.error)); return; }
+  if (r.error) { put(el, empty("The box did not say what it runs on.", r.error)); return; }
   const s = r.data || {};
   put(el, h("div", { class: "rows" },
     row("Host", mono(s.host || "")),

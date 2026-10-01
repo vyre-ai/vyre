@@ -10,16 +10,17 @@ status: draft
 
 Small labels in three kinds. A **tag** states a fact on a row ("Claude", "orders", "Update
 ready"). A **filter chip** narrows a list and toggles on and off ("All", "About you", "Harlow
-Legal"). A **source chip** says where a setting's value comes from (Project, Account, Claude Code
-file). Drawn on "Memory, phone and desktop", "Vault, phone and desktop", "Planner, phone and
-desktop", "States, every list, every size" and "Settings · account and project scopes". The
-session mode and provider chips are their own component (mode-chip).
+Legal") or grants a surface on the Connections card. A **source chip** says where a setting's
+value comes from (Project, Account, Claude Code file). Drawn on "Memory, phone and desktop",
+"Vault, phone and desktop", "Planner, phone and desktop", "States, every list, every size",
+"Settings · account and project scopes" and the Connections board. The session mode and provider
+chips are their own component (mode-chip).
 
 | Surface | Implementing file | Status |
 |---|---|---|
 | Deck | `deck/css/deck.css` `.chip` `.tag` (main); `deck/views/settings-keys.js` source labels (work/native-core) | partial |
 | App | inline badge in `apps/app/app/devices.tsx` (work/mobile) | partial |
-| Capsule | inline in `local/capsule/native/Sources/UI/CapsuleView.swift`; `chipView` in `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
+| Lumen | inline in `local/capsule/native/Sources/UI/CapsuleView.swift`; `chipView` in `Extensions/sight/SessionPanel.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -39,8 +40,22 @@ the setting's value, before the control.
 | Kind | Interactive | Words |
 |---|---|---|
 | Tag | No | A kind, a label, a provider, a short state ("Update ready", "Recommended") |
-| Filter chip | Yes, toggles | "All", a kind with its count, a project, a person |
+| Filter chip | Yes, toggles | "All", a kind with its count, a project, a person, a surface |
 | Source chip | Claude Code file only (opens the file) | Project, Account, Claude Code file |
+
+**A surface grant** (the Connections card, card.md) is a filter chip, not a new kind: one chip per
+surface the connection can be used from: Lumen, Chat, Agents, Phone, the vault's real surfaces,
+never a made-up list. Leading icon the surface's own glyph, On meaning granted and Off meaning
+not. This is the one place a filter chip's state is not a view filter but a real write.
+
+Revoking (On to Off) is always one tap: no confirm, no proof, the same bar draft-card.md sets for
+an in-place field edit. Granting (Off to On) is one tap too, except Agents: handing a credential
+to an autonomous session is a vault write (the no-nag rule's own line: presence for vault
+secrets, pairing and send/post/pay), so the Agents chip asks for Touch ID or a passkey before it
+turns on, the same proof credential-sheet.md's Connect step uses. While a grant to Lumen, Chat
+or Phone can still be seen turning on, the chip shows the undo toast (toast.md, 4 s) instead of
+an in-place undo, since a grant is consequential enough to want the "Undo" word on screen, not
+just "tap it again". A refused proof leaves the Agents chip Off with no error, nothing granted.
 
 The source chip shows **only when the value is not the default**. Project beats Account beats
 the default. There is no "Default" chip and no "Not set" chip: a default value shows no chip.
@@ -59,12 +74,19 @@ Filter chip:
 - **Off.** Border `--rule-strong`, ink `--text-2`.
 - **Hover** (pointer). Fill `--hover`, ink `--text`.
 - **On.** Border `--focus`, fill `--signal-wash`, ink `--text`; the count steps up to
-  `--text-2`. Selection is lime, never violet.
+  `--text-2`. Selection is bone, never violet.
 - **Focus.** 2 px outline `--focus`, offset 2.
+- **On Deep glass** (Lumen 0.2). No wash: a wash lifts the chip text to 3.98:1 over the brightest
+  wallpaper. The chip is the glass itself with a 1 px `--rule-strong` border and ink `--text` (4.5:1
+  or better over every sampled wallpaper, held by `core/config/palette.test.js`); On is a 2 px
+  border. Focus on glass is two-tone: a 2 px `--text` ring inside the 2 px `--focus` ring.
 - **Disabled** (no items of that kind). Border `--rule`, ink `--label`; still visible, not
   clickable.
 - **Loading.** Chips draw at once from cache; counts fill in without the chip changing width
   (reserve two digits).
+- **Asking** (the Agents grant chip only, Off to On). The system Touch ID or Face ID prompt shows
+  at once on tap; the chip does not change state until it resolves. Confirmed: On, with the undo
+  toast. Refused: stays Off, nothing shown but the system's own cancel.
 
 Tags have no states. The source chip "Claude Code file" shows its path on hover or focus
 (desktop) and an "Open file" action on the row.
@@ -100,9 +122,15 @@ mono, never a coloured tag.
 - [ ] Deck: `.chip` is 26 tall with radius `--r-1` and ink `--text`, no on state; use 28, round,
   `--text-2`, and `.chip-on`.
 - [ ] Deck: `.tag` is mono 11 with a `--rule-strong` border; use sans 12 on a `--hover` fill.
+  Confirmed live in chat's session header (`.cv-project`, `deck/chat/chat.css`): the thread's
+  project ("harlow-legal") is correctly a Tag, not a new kind: it just inherits this gap.
 - [ ] Deck (work/native-core): source labels include "Default" and "Not set"; show no chip for a
   default value, and add the "Claude Code file" chip.
 - [ ] App: the devices badge is bordered with radius chip; no filter chips, no source chip.
-- [ ] Capsule: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter
+- [ ] Lumen: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter
   shapes and neutral ink.
 - [ ] System: the boards draw tags with radius 5; the token is `--radius-chip` (4).
+
+native-core
+- [ ] The Connections card's grant chips are not built; toggling one needs `vault.connections.update
+      {id, grants}` or equivalent (vault's call to name). See card.md's Connections card.

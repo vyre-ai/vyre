@@ -1,0 +1,32 @@
+# J1 on its own, while it is built (e2e2). Push to work/e2e2-j1 or dispatch it.
+name: matrix-j1
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/e2e2-j1"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-j1-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  j1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The site, as vyre.run serves it
+        run: sh scripts/build-site.sh
+      - name: J1, install and onboarding through the setup page
+        run: sh scripts/matrix/j1.sh results
+      - name: Diagnostics
+        if: failure()
+        run: |
+          tail -30 results/j1/install.log 2>/dev/null; cat results/services.err 2>/dev/null | tail -20
+          docker ps -a; docker logs --tail 60 vyre-vyre-1 2>&1 || docker compose -f /srv/vyre/compose.yml logs --tail 60 vyre 2>&1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j1, path: results, retention-days: 14 }

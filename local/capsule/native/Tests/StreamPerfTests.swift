@@ -85,7 +85,7 @@ func burstyStream(thread: String = "t1", turn: String = "t1:1") -> [(Double, Str
     model.asked = "summarize the menu"
     model.reply = Reply(thread: "t1")
     paintNow()
-    pump(50)
+    settle(pc)
     let startFrames = pc.frameChanges
     let events = burstyStream()
     let t0 = Date()

@@ -1,0 +1,20 @@
+{
+ "about": "Model reads for scripts/eval-said.js, keyed by dev row id. These few are hand-written, plausible reads, not recorded; `node scripts/eval-said.js --record` replaces them with a real fast model's.",
+ "version": "said-1",
+ "model": "hand-written",
+ "reads": {
+  "ask-001": "```json\n{\"intents\":[{\"kind\":\"send\",\"channel\":\"email\",\"to\":[\"Priya\"],\"what\":\"Harlow Legal contract; Thursday works\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}\n```",
+  "ask-006": "{\"intents\":[{\"kind\":\"send\",\"channel\":null,\"to\":[\"Priya\"],\"what\":\"Thursday works\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "ask-039": "{\"intents\":[{\"kind\":\"pay\",\"channel\":null,\"to\":[\"Northwind Bakery\"],\"what\":\"cake order\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":180,\"currency\":\"USD\",\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "ask-048": "{\"intents\":[{\"kind\":\"send\",\"channel\":\"sms\",\"to\":[\"Jordan\"],\"what\":\"running late\",\"when\":{\"at\":\"2026-10-02T08:00:00-07:00\",\"window_minutes\":30},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "ask-056": "{\"intents\":[{\"kind\":\"pay\",\"channel\":null,\"to\":[\"Northwind Bakery\"],\"what\":\"invoices\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":true,\"limits\":{\"amount_max\":200,\"currency\":\"USD\",\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "ask-064": "{\"intents\":[{\"kind\":\"change\",\"channel\":null,\"to\":[\"morning digest\"],\"what\":\"turn off the morning digest\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "non_ask-080": "{\"intents\":[]}",
+  "non_ask-083": "There is nothing to do yet.\n{\"intents\":[]}",
+  "conditional-126": "{\"intents\":[]}",
+  "mixed-151": "{\"intents\":[{\"kind\":\"post\",\"channel\":\"slack\",\"to\":[\"#bakery\"],\"what\":\"the menu\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "quoted-165": "{\"intents\":[]}",
+  "quoted-213": "{\"intents\":[{\"kind\":\"send\",\"channel\":null,\"to\":[\"Priya\"],\"what\":\"we will look at it Monday\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}",
+  "quoted-217": "{\"intents\":[{\"kind\":\"post\",\"channel\":\"slack\",\"to\":[\"#launch\"],\"what\":\"shipping Friday\",\"when\":{\"at\":null,\"window_minutes\":null},\"standing\":false,\"limits\":{\"amount_max\":null,\"currency\":null,\"count\":null,\"until\":null},\"reply_to_current\":false}]}"
+ }
+}

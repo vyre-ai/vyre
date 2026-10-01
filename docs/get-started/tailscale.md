@@ -8,11 +8,17 @@ status: stable
 
 # Tailscale, from zero
 
-Vyre reaches your box over Tailscale, and only over Tailscale. This page starts before you have
-an account and ends with every device on one private network, the box at an HTTPS address such
-as `https://vyre.tail1234.ts.net`, and a check that it all works. After that come the optional
+Vyre reaches your server over Tailscale, and only over Tailscale, so setup needs it. This page
+starts before you have an account and ends with every device on one private network, the server
+at an HTTPS address such as `https://alex.vyre.run` (or `https://vyre.tail1234.ts.net`, if you
+set up from your Mac over SSH), and a check that it all works. After that come the optional
 Tailscale features Vyre can use. Each of those is off until you turn it on, and you can skip all
 of them.
+
+The setup page at vyre.run/setup does the server's side for you: its Tailscale step shows
+Tailscale's sign-in link, and the server joins your tailnet when you sign in. What you do
+yourself is the account, the apps on your computer and phone, and, for the `ts.net` address only,
+two switches in the admin console.
 
 > [!TIP] Useful links
 > - Downloads: [all platforms](https://tailscale.com/download), [Mac](https://tailscale.com/download/mac), [iPhone](https://tailscale.com/download/ios), [Android](https://tailscale.com/download/android), [Linux](https://tailscale.com/download/linux)
@@ -35,7 +41,7 @@ Tailscale also names each device. With MagicDNS on, the box is `vyre.tail1234.ts
 > [!WHY] Why does Vyre use Tailscale?
 > Two reasons. First, your box never opens a port to the internet: it answers only on its
 > tailnet address, so nobody off your tailnet can even find the Deck. Second, Tailscale tells
-> Vyre who is calling. For every connection, vyred asks `tailscale whois` about the address it
+> Vyre who is calling. For every connection, Vyre asks `tailscale whois` about the address it
 > came from, and serves it only when the answer is the box's owner, one Tailscale login. That is
 > why Vyre has no password and no login screen. The decision is [ADR 0002](../adr/0002-network-and-identity.md);
 > how it works is [The tailnet](../concepts/tailnet.md).
@@ -99,13 +105,17 @@ Android runs one VPN at a time. If you use another VPN app, starting it turns Ta
 ::: tab The server
 You do not install Tailscale on the box yourself. Vyre's box runs its own tailscaled in a
 container (the `tailscale` service in `box/compose.yml`, named `vyre` on your tailnet), and
-onboarding signs it in:
+setup signs it in:
 
-1. In onboarding, step 3 **Put this machine on your tailnet**, press **Connect**.
-2. Tailscale's sign-in opens in a new tab. Sign in with the same identity as your Mac.
-3. The rows tick, and the step names the machine and its tailnet address. Press **Continue**.
+1. At vyre.run/setup, on the **Connect your server to Tailscale** screen, press
+   **Connect my server**.
+2. Press the link to Tailscale's sign-in page, and sign in with the same identity as your
+   computer.
+3. The page notices when the server joins, says which tailnet it joined and as whom, and
+   publishes your address. Press **Continue**.
 
-The whole step is in [Onboarding, step 3](onboarding.md#3-tailscale). To sign a headless box in
+The whole step is in [Install, step 6](install.md#6-connect-tailscale). On the SSH path, the same
+step is [Onboarding, step 3](onboarding.md#3-tailscale). To sign a headless box in
 without a browser, put `TS_AUTHKEY=tskey-auth-...` in `/srv/vyre/.env` before the first
 `vyre up`; see [Tailscale](../using/tailscale.md).
 
@@ -141,12 +151,14 @@ On the box, `vyre owner` prints the login it serves.
 
 ## 4. Turn on MagicDNS
 
-MagicDNS lets your devices find the box by name. Tailnets made since October 2022 have it on
-already; check anyway.
+MagicDNS lets your devices find the box by its `ts.net` name. Tailnets made since October 2022 have
+it on already; check anyway. A `<you>.vyre.run` address is looked up in public DNS, which points
+it at your server's tailnet address, so it does not depend on MagicDNS, but the device still has
+to be on your tailnet.
 
 1. Open [DNS](https://login.tailscale.com/admin/dns) in the admin console.
 2. Near the top, find your **Tailnet DNS name**, for example `tail1234.ts.net`. Note it: your
-   box's address is `https://vyre.` followed by it.
+   box's `ts.net` address is `https://vyre.` followed by it.
 3. Find **MagicDNS**. If a button reads **Enable MagicDNS**, press it. If it offers to disable
    MagicDNS, it is already on.
 
@@ -154,6 +166,10 @@ On each device, leave Tailscale's own DNS setting on (on the Mac it is **Use Tai
 settings** in the app's settings). Without it the device cannot resolve `ts.net` names.
 
 ## 5. Turn on HTTPS certificates
+
+You need this step only for a `ts.net` address, which is what the SSH path gives you. A
+`<you>.vyre.run` address from vyre.run/setup gets its certificate from Vyre's own name service,
+not from Tailscale, so skip to step 6.
 
 HTTPS is off for new tailnets. Without it the box cannot get a certificate for its `ts.net`
 name, and onboarding stops at step 4 with "HTTPS certificates are off for your tailnet".
@@ -167,7 +183,7 @@ name, and onboarding stops at step 4 with "HTTPS certificates are off for your t
 5. Back in onboarding, press **Check again**. From a terminal on the box, `vyre name ts.net`
    retries.
 
-MagicDNS must be on first. vyred then gets the certificate with `tailscale cert` and renews it
+MagicDNS must be on first. Vyre then gets the certificate with `tailscale cert` and renews it
 itself, 30 days before it expires.
 
 > [!WHY] Why are machine names public, and does it matter?
@@ -207,9 +223,9 @@ pong from vyre (100.64.0.5) via 192.0.2.10:41641 in 23ms
 `via` and an address means a direct connection. `via DERP(fra)` means Tailscale relays the
 traffic through one of its servers: it works, a little slower.
 
-Last, open `https://vyre.tail1234.ts.net` (with your tailnet name) in a browser on the Mac, and
-on the phone. The Deck opens, with no certificate warning. `vyre name` prints the address if you
-are unsure of it.
+Last, open your address (`https://alex.vyre.run`, or `https://vyre.tail1234.ts.net` with your
+tailnet name) in a browser on the Mac, and on the phone. The Deck opens, with no certificate
+warning. `vyre name` prints the address if you are unsure of it.
 
 ## When something is wrong
 
@@ -254,7 +270,7 @@ On a tailnet your employer runs, you may not be an admin. Then you cannot turn o
 HTTPS, approve devices, add tags, or edit the policy, and the default policy may not let your
 devices reach the box at all. Ask the admin for:
 
-- MagicDNS and HTTPS certificates on.
+- MagicDNS on, and HTTPS certificates too if you use a `ts.net` address.
 - Your devices and the box approved.
 - A rule that lets your own devices reach your own devices on port 443, for example:
 
@@ -326,7 +342,7 @@ Optional, off by default. Vyre support: built, read-only unless you make one sha
 
 VyreDrive (built on Tailscale's Taildrive) puts the box's folders on your Mac. The box shares only
 named folders (`projects` and `glass-files` by default, config
-`files.drive.shares`), and your Mac mounts them at `~/Vyre/Box/<share>` so Finder and the Capsule
+`files.drive.shares`), and your Mac mounts them at `~/Vyre/Box/<share>` so Finder and Lumen
 open box files in place. Taildrive is in alpha at Tailscale.
 
 1. Add to the policy:
@@ -370,7 +386,7 @@ open box files in place. Taildrive is in alpha at Tailscale.
    ```
 
 To edit box files from Finder: `"access": "rw"` in the grant, then make that one share
-read-write, from the box's terminal, the Capsule or your paired Mac. It asks for no proof, since
+read-write, from the box's terminal, Lumen or your paired Mac. It asks for no proof, since
 the share already exists; an agent or a guest is refused:
 
 ```sh
@@ -408,7 +424,7 @@ Optional, off by default. Vyre support: built.
    vyre send ~/Downloads/northwind-invoice.pdf
    ```
 
-   From the Capsule, option-return on a file row sends it. From a phone, use the Share menu,
+   From Lumen, option-return on a file row sends it. From a phone, use the Share menu,
    choose Tailscale, then `vyre`.
 
 Files land in the box's inbox, `/work/inbox` (the `inbox` setting under `files` in the box's config moves it). Vyre announces each one as
@@ -533,7 +549,7 @@ revoked or expired pass stays refused whatever the policy says.
    ```
 
 2. In the box's config, set `"vault": { "relay": { "identity": "whois", "grants": "require" } }`
-   and restart vyred.
+   and restart Vyre.
 3. Check with `vyre call vault.grants.status`: it shows, per holder, whether the policy covers
    their passes.
 
@@ -610,7 +626,7 @@ and announced as `hook.received` for a watcher to pick up.
    ```
 
 2. On the box, turn hooks on, store the sender's signing secret, open a route, and publish it
-   with Funnel on port 8443 (vyred holds 443):
+   with Funnel on port 8443 (Vyre holds 443):
 
    ```sh
    vyre hooks on

@@ -191,8 +191,11 @@ test("glass: open never fails for link.health, whether it errors or is slow to a
 test("glass: the manifest's tools and events are the ones it registers", async t => {
   const s = await boot(t);
   const manifest = JSON.parse(fs.readFileSync(path.join(CORE, "glass", "module.json"), "utf8"));
-  const mine = s.registry.listTools().map(x => x.name).filter(n => n.startsWith("glass."));
-  assert.deepEqual(mine.sort(), [...manifest.does.tools].sort());
+  // The person's own surface sees every tool; an agent sees only the ones whose reach is anyone.
+  const mine = s.registry.listTools("cli").map(x => x.name).filter(n => n.startsWith("glass."));
+  assert.deepEqual(mine.sort(), manifest.does.tools.map(x => x.name).sort());
+  const agents = s.registry.listTools("mcp").map(x => x.name).filter(n => n.startsWith("glass."));
+  assert.deepEqual(agents.sort(), manifest.does.tools.filter(x => x.reach === "anyone").map(x => x.name).sort());
   assert.deepEqual(manifest.roles, ["box"]);
   assert.deepEqual(manifest.requires, []);
   assert.ok(s.registry.routes.has("/v1/glass/raw") && s.registry.routes.has("/v1/glass/put"));
@@ -244,7 +247,7 @@ test("glass: an agent caller cannot name a person's surface", async t => {
     ["glass.take", { target: "computer:kit", surface: "phone:pocket" }],
     ["glass.release", { target: "computer:kit", surface: "phone:pocket" }]])) {
     const r = await s.kit(tool, input);
-    assert.match(r.error?.message || "", /an agent cannot act as a person's screen/, tool);
+    assert.match(r.error?.message || "", /an agent cannot act as a person's screen|not available to mcp callers/, tool);
   }
   assert.equal(s.computers.calls.filter(c => /watch|takeover|giveback/.test(c.tool)).length, 0, "nothing reached computers");
 });
@@ -490,6 +493,22 @@ test("glass: an agent reaches only its own computer's files, never the box or an
   assert.match((await s.kit("glass.files.download", { target: "box", path: "files/docs/readme.md" })).error.message, /only its own computer/);
 });
 
+test("glass: through every files tool, in every spelling an agent can arrive as, only its own computer can be the target", async t => {
+  const s = await boot(t);
+  const calls = { "glass.files.list": {}, "glass.files.stat": { path: "a" }, "glass.files.preview": { path: "a" }, "glass.files.download": { path: "a" },
+    "glass.files.upload": { dir: "home", name: "a", size: 1 }, "glass.files.move": { from: "a", to: "b" }, "glass.files.mkdir": { path: "a" }, "glass.files.trash": { path: "a" } };
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "cli:agent:kit", "mcp:thread:t1 agent:kit"]) {
+    for (const [tool, input] of Object.entries(calls)) {
+      for (const target of ["computer:pax", "computer:kit2", "computer:ki", "box"]) {
+        const r = await s.registry.call(tool, { ...input, target }, caller);
+        assert.ok(r.error && /only its own computer/.test(r.error.message), `${caller} ${tool} ${target}: ${r.error ? r.error.message : "it was allowed"}`);
+      }
+    }
+  }
+  // A person's screen is not so limited.
+  assert.equal((await s.cli("glass.files.list", { target: "computer:pax" })).error, undefined);
+});
+
 test("glass: a private key is refused by its content, whatever its name, on the way out and on the way in", async t => {
   const s = await boot(t);
   // Split so the repository hygiene scan does not take the fixture for a real key.
@@ -547,5 +566,5 @@ test("glass: taking and handing back the keyboard need no passkey, private or no
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
   assert.equal((await s.deck("glass.take", { target: "computer:kit", surface: "deck:laptop", private: true })).data.private, true, "sign in privately follows the same rule");
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
-  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /an agent cannot act as a person's screen/);
+  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /an agent cannot act as a person's screen|not available to mcp callers/);
 });

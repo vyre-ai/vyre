@@ -9,13 +9,13 @@ status: stable
 # Learning
 
 Vyre learns from how you correct it, and enforces what it learned. A lesson that only sits in
-memory is advice. A Vyre lesson with a check is code that the Harness's hooks run before a tool
+memory is advice. A Vyre lesson with a check is code that hooks in Vyre's Claude Code plugin run before a tool
 call and before a turn ends, so a model cannot forget it. Learning works in four steps: it hears
 **signals**, turns them into **lessons** you accept, **enforces** them, and **escalates** a
 lesson that keeps being broken.
 
 Anything that makes Vyre stricter is free. Anything that makes it looser needs you, from your
-own terminal, Deck or Capsule.
+own terminal, Deck or Lumen.
 
 ## Signals: what Vyre hears
 
@@ -47,7 +47,7 @@ quota: one job at a time, never while one of your threads is working. The result
 proposal.
 
 > [!SNAG] `vyre learn signals` shows jobs "waiting for a model"
-> Distilling needs the Switchboard, which runs Claude Code for Vyre. Without it the jobs wait.
+> Distilling needs Vyre's own session runner, which runs Claude Code for Vyre. Without it the jobs wait.
 > Write the lesson yourself instead: `vyre learn add "<what Claude should always or never do>"`.
 
 Nothing becomes a lesson unseen. When Claude proposes one in a thread, answer with a plain yes to
@@ -58,11 +58,11 @@ vyre learn                     # active lessons with their counts, then proposed
 vyre learn show 7
 vyre learn accept 7
 vyre learn retire 7            # retire an active lesson, or decline a proposed one
-vyre learn add "never use the section-sign character in docs"
+vyre learn add "never write em dashes in docs"
 ```
 
 Accepting and retiring are yours: they ask nothing more. Claude and agents are refused, and
-the Harness stops Claude's shell from running them. A proposed lesson looks like this in
+the plugin stops Claude's shell from running them. A proposed lesson looks like this in
 `vyre learn`:
 
 ```output
@@ -73,8 +73,8 @@ the Harness stops Claude's shell from running them. A proposed lesson looks like
 ```
 
 - **Deck**: **Memory**, then the **Lessons** tab (`/memory?tab=lessons`), in four groups:
-  Proposed, Active, Retired, and Proposed skills. Accept, Retire and Relax ask for your passkey.
-- **Capsule**: a proposed lesson shows as a row to accept or decline.
+  Proposed, Active, Retired, and Proposed skills. Relax, and a skill's Install and Dismiss, ask for your passkey; with no passkey the row shows the terminal command instead.
+- **Lumen**: a proposed lesson shows as a row to accept or decline.
 - **Claude**: `/vyre lessons` lists them. Claude can add a lesson (`learn.add`) and tighten one
   (`learn.edit`), and never accepts, retires or loosens one.
 
@@ -91,8 +91,8 @@ A lesson with a check becomes code:
 - A lesson **without** a check is a reminder: it is added to the brief and to the prompt whenever
   its `when` matches, every time.
 
-Lessons keep working when vyred is down: the hooks fall back to a snapshot of your accepted
-lessons, and what happened offline is counted when vyred starts again.
+Lessons keep working when Vyre is down: the hooks fall back to a snapshot of your accepted
+lessons, and what happened offline is counted when Vyre starts again.
 
 ## Escalation
 
@@ -106,7 +106,7 @@ up one level:
 | `block` | a tool call is denied |
 
 A lesson you pinned, or one at the cap you set, does not move. Nothing weakens on its own: a
-lesson quiet for 60 days goes dormant (out of the brief, its check still running), and an `ask`
+lesson that has caught nothing, been broken and been repeated in no turn of the last 60 days, across at least 200 turns in its scope, goes dormant (out of the brief, its check still running), and an `ask`
 lesson you allowed every time proposes a demotion for you to decide.
 
 ```
@@ -137,7 +137,7 @@ Installing and retiring a skill need presence.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Capsule | Claude |
+| Task | Terminal | Deck | Lumen | Claude |
 | --- | --- | --- | --- | --- |
 | List lessons | `vyre learn` | Memory, Lessons tab | | `/vyre lessons`, `learn.lessons` |
 | Add a lesson | `vyre learn add` | | | `/vyre remember`, `learn.add` |
@@ -153,7 +153,7 @@ Installing and retiring a skill need presence.
   `learn.accept`, open only to your own surfaces.
 - Weaken a lesson on its own.
 - Let a command edit its way around the hooks: writes to the lessons snapshot, the database, the
-  Harness's hooks or the Claude Code settings that load them are asked every time.
+  plugin's hooks or the Claude Code settings that load them are asked every time.
 
 ## Next
 

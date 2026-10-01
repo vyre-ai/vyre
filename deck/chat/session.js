@@ -38,7 +38,7 @@
 // (core/caps.js): that control turns off and says "Needs the sessions update".
 //
 // Asks and questions are inline at the tail and in Needs at once; answering either resolves the
-// other, and one answered on another screen says where ("Answered from the Capsule · 14:31"). Keys
+// other, and one answered on another screen says where ("Answered from Lumen · 14:31"). Keys
 // go to the card that has focus, or the newest open one, whenever focus is not in a text field:
 // A allows once, D denies, Enter, Esc, arrows, space and 1-9 as the cards define. Keys are heard
 // only while this page is on screen.
@@ -67,16 +67,22 @@ import { planCard } from "./plan-card.js";
 import { isPlanAsk } from "./core/plan.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
+import { askCardFor, defaultOpen } from "./cards/index.js";
+import { welcomeRow, loadWelcome } from "./cards/land.js";
+import { charterChanged, agentMade } from "./cards/charter-changed.js";
+import { vaultUsed } from "./cards/vault-used.js";
+import { spendCapped } from "./cards/spend-capped.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
-import { threadAvatar, readTeammates, readProjects } from "../js/avatars.js";
+import { threadAvatar, readTeammates, readProjects, isTeammate } from "../js/avatars.js";
 import { threadHref } from "./lib/routes.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
+import { undoSheet } from "./undo-sheet.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
@@ -113,7 +119,7 @@ const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", cod
 // its bug (asking/waiting swapped for a person); dropped per sessions' 6e2f8a71/28a8b4f8.
 const BUSY = new Set(["starting", "working", "asking"]);
 /** Where an answer came from, as the card says it. */
-const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule", cli: "the terminal", local: "the terminal", phone: "your phone",
+const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "Lumen", cli: "the terminal", local: "the terminal", phone: "your phone",
   mobile: "your phone", pwa: "your phone", needs: "Needs", deck: "the Deck", chat: "the Deck", glass: "Glass" });
 
 /**
@@ -207,6 +213,7 @@ export function mountSession(container, opts) {
     name: () => agentName(),
     project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
+    onUndo: () => openUndo(),
     // "/find [words]" (native-core/commands.js): the existing Find page already queries
     // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
     onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
@@ -261,12 +268,16 @@ export function mountSession(container, opts) {
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
   let me = /** @type {string|null} */ (null);
   let replaying = false, booted = false;
+  /** The assistant's first message (cards/land.js), only in its own thread and only while nothing was said. */
+  let welcomeEl = /** @type {any} */ (null);
   const early = /** @type {any[]} */ ([]);
   const agentName = () => labelFor({ role: "assistant", agent: record.current?.agent }, names);
   /** Who the replies are from, as an avatar (js/avatars.js threadAvatar): the project's tile, a chat's draft tile, an agent, a teammate or the assistant. */
   const whoAv = (size = 24, cls = "av-agent msg-av cv-av") => threadAvatar({ agent: record.current?.agent, project: record.current?.project || opts.project || null, thread },
     { size, cls, title: agentName() });
-  const headFor = ts => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv());
+  const headFor = (ts, prov = null) => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv(), prov);
+  /** Who wrote a run, from its first reply that says: provider and model as the box tagged the event, else nothing. */
+  const provOf = (/** @type {any} */ r) => { for (const k of r.type === "run" ? r.keys : [r.key]) { const it = /** @type {any} */ (S.byKey.get(k)); if (it?.provider) return { provider: it.provider, model: it.model || null }; } return null; };
   /** This page is the one on screen, and the tab is visible. */
   const visible = () => {
     try { if (typeof document !== "undefined" && document.visibilityState === "hidden") return false; } catch {}
@@ -283,7 +294,7 @@ export function mountSession(container, opts) {
     // Everything at once: one round trip from a phone, not three. A paired Mac's session is only
     // ever a transcript the box asks the Mac for (recall.transcript, source "mac").
     const [r, t, nm] = await Promise.all([
-      opts.recorded || isMac(where) ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
+      opts.recorded || isMac(where) ? { error: { message: "not a live session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
       readTail(),
       readNames(attempt),
       readTeammates(attempt),
@@ -295,7 +306,7 @@ export function mountSession(container, opts) {
       const rec = record.current || {};
       const st = rec.canonical_status || rec.state;
       if (st) S.state = st;
-      for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose"])) if (rec[k]) S[k] = String(rec[k]);
+      for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose", "effort"])) if (rec[k]) S[k] = String(rec[k]);
       if (typeof rec.mode === "string") S.mode = rec.mode;
       if (Array.isArray(rec.modes)) S.modes = rec.modes.map(String);
       if (typeof rec.thinking === "boolean") S.thinking = rec.thinking;
@@ -419,6 +430,8 @@ export function mountSession(container, opts) {
     const chip = chipText();
     const ctx = contextLabel(S.usage);
     const proj = projectName();
+    // Media cards ask "which project is this saved in" by reading this off the session around them.
+    if (proj) container.setAttribute("data-project", proj); else container.removeAttribute("data-project");
     checkSight();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
@@ -625,6 +638,37 @@ export function mountSession(container, opts) {
     rewind.el.setAttribute("tabindex", "-1");
     rewind.el.focus?.();
   }
+  /** "Use in <model>" on a media card: address that model for ONE turn, never switching the session. The composer is filled with
+   * "@<provider> #<item>" and the person sends when ready; the item is copied into the session's folder when that turn starts, by the box. */
+  function useMedia(/** @type {{ id: string, title: string, provider: string, name: string }} */ d) {
+    if (!switchboard()) return;
+    const cur = composer.value().trim();
+    composer.setText(`@${d.name}${cur ? " " + cur : ""} `);
+    composer.tag({ kind: "artifact", id: d.id, name: d.title });
+  }
+  container.addEventListener("deck:media-use", e => { e.stopPropagation(); useMedia(/** @type {any} */ (e).detail); });
+
+  /** /undo: this session's own changes, over github.session.history/undo/redo. The session is the folder it works in, under its project's .sessions. */
+  async function openUndo() {
+    if (rewind || !switchboard()) return;
+    const project = record.current?.project || opts.project || null;
+    const cwd = String(sessionCwd() || "");
+    const at = cwd.lastIndexOf("/.sessions/");
+    const session = at >= 0 ? cwd.slice(at + "/.sessions/".length).split("/")[0] : "";
+    const sheet = undoSheet({
+      load: () => project && session ? attempt("github.session.history", { project, session }) : Promise.resolve({ error: { message: "This session is not working in a project folder of its own." } }),
+      undo: to => attempt("github.session.undo", { project, session, ...(to ? { to } : {}) }),
+      redo: n => attempt("github.session.redo", { project, session, ...(n ? { n } : {}) }),
+      onClose: closeRewind,
+      say: e => e?.missing ? NEEDS_UPDATE : String(e?.message || e?.code || "That did not work."),
+    });
+    rewind = /** @type {any} */ ({ el: sheet.el, key: () => false, refresh() {}, restore: () => "conversation" });
+    rewindScrim.hidden = false; rewindBox.hidden = false;
+    put(rewindBox, sheet.el);
+    sheet.el.setAttribute("tabindex", "-1");
+    sheet.el.focus?.();
+    await sheet.load();
+  }
   function closeRewind() {
     rewind = null;
     rewindScrim.hidden = true;
@@ -726,7 +770,7 @@ export function mountSession(container, opts) {
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
         done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it),
-        ...(it.reply !== undefined ? { reply: it.reply } : {}), ...(it.images ? { images: it.images } : {}) };
+        ...(it.reply !== undefined ? { reply: it.reply } : {}), ...(it.images ? { images: it.images } : {}), ...(it.render ? { render: it.render } : {}) };
       // A turn the transcript has not closed is still going only while the session is busy and
       // nothing was said after it (a message sent now closes the one before, even unread yet).
       // auth: only an api-key turn is really billed by the number; a subscription runs on the
@@ -737,7 +781,7 @@ export function mountSession(container, opts) {
     }
   }
   /** What a row shows, so a patch that changed nothing visible does nothing. */
-  const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch, it.reply]
+  const sig = it => JSON.stringify(it.kind === "tool" ? [it.status, it.summary, it.output, it.input, it.duration_ms, it.error, it.patch, it.reply, it.render]
     : it.kind === "ask" ? [it.state, it.decision, it.answers] : asBlock(it) || it);
 
   /** "Thinking · 8 s": until the next row began, when that is known. `i`: where it is in the items, when the caller knows. */
@@ -774,6 +818,7 @@ export function mountSession(container, opts) {
       case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard({ ...asBlock(it), project: record.current?.project || opts.project || null }) : toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
+      case "plan": return planEl(it);
       case "ask": return askEl(it);
       case "steer": return steerEl(it);
       case "shell": return shellEl(it);
@@ -792,6 +837,16 @@ export function mountSession(container, opts) {
     const nel = makeEl(it);
     nel._sig = s;
     return nel;
+  }
+
+  /** The agent's own checklist, as it stands: "Plan · 2 of 5 done", each step marked done, running or waiting. */
+  function planEl(it) {
+    const done = it.items.filter(x => x.status === "done").length;
+    return h("div", { class: "cv-row cv-plan", role: "group", "aria-label": `Plan, ${done} of ${it.items.length} done` },
+      h("div", { class: "cv-plan-head" }, h("span", { class: "lbl" }, "Plan"), h("span", { class: "cv-plan-n" }, `${done} of ${it.items.length} done`)),
+      h("ol", { class: "cv-plan-list" }, it.items.map(x => h("li", { class: "cv-plan-step", "data-status": x.status, "aria-label": `${x.text}, ${x.status === "done" ? "done" : x.status === "running" ? "in progress" : "not started"}` },
+        h("span", { class: "cv-plan-mark", "aria-hidden": "true" }, x.status === "done" ? icon("check", 12) : null),
+        h("span", { class: "cv-plan-text" }, x.text)))));
   }
 
   /** Where typed words joined a running turn: "Steered at step 2 · 14:32", or "Steering" until it reads them. */
@@ -831,7 +886,7 @@ export function mountSession(container, opts) {
   }
   function askEl(it) {
     const full = askData(it.ask, it);
-    const el = /** @type {any} */ (isPlanAsk(full) ? planCard(full, { thread }) : full.kind === "question" ? questionCard(full) : askCard(full));
+    const el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : full.kind === "question" ? questionCard(full) : askCard(full)));
     el._ask = full;
     cards.set(it.ask, el);
     settleAsk(el, it);
@@ -884,7 +939,7 @@ export function mountSession(container, opts) {
   }
   const dayRule = d => h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" }));
   const sideOfItem = it => it.kind === "user" ? "user" : it.kind === "turn" ? "turn"
-    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" ? null : "assistant";
+    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" || it.kind === "plan" ? null : "assistant";
 
   /** A fold row for a run of tool calls. */
   function runEl(r) {
@@ -979,7 +1034,7 @@ export function mountSession(container, opts) {
         day(at);
         const rk = r.key;
         usedHeads.add(rk);
-        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at); headEls.set(rk, hd); } return hd; } });
+        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at, provOf(r)); headEls.set(rk, hd); } else if (!hd.querySelector?.(".pmark")) hd.setProv?.(provOf(r)); return hd; } });
       }
       if (side) prevSide = side;
       if (r.type === "run") {
@@ -1210,6 +1265,7 @@ export function mountSession(container, opts) {
       if (from > 0) timeline.append(earlierTurns(from));
       if (!t.data.turns.length) timeline.append(h("div", { class: "empty th-wait" }, "Nothing was said in this session yet."));
       appendTurns(t.data.turns);
+      if (!t.data.turns.length) void showWelcome();
       booted = true;
       for (const e of early.splice(0)) onLive(e);
       toBottom();
@@ -1220,11 +1276,49 @@ export function mountSession(container, opts) {
     timeline.replaceChildren();
     for (const e of r.data.events) onEvent(e, false);
     for (const a of r.data.asks) upsertAsk(a);
+    if (!r.data.events.length) void showWelcome();
+    void charterNotice(null);
     booted = true;
     for (const e of early.splice(0)) onLive(e);
     toBottom();
     seek();
     fetchMemory();
+  }
+  /** The assistant's welcome, at the top of its own empty thread. It stays at the top of the thread,
+   * and is redrawn when a setup step finishes (its card leaves). Nothing here is an error: no welcome, no row. */
+  async function showWelcome() {
+    if (welcomeEl || !isAssistant({ agent: record.current?.agent }, names)) return;
+    const w = await loadWelcome();
+    if (!w || welcomeEl || !timeline.isConnected) return;
+    welcomeEl = welcomeRow(w, { open: defaultOpen });
+    timeline.querySelector?.(".th-wait")?.remove?.();
+    timeline.prepend(welcomeEl);
+  }
+  /** "Charter changed by <agent>" in a teammate's own thread: a quiet notice with the diff and a one-tap Revert, once per version
+   * and never for the person's own edit. `ev` is the teammate.charter-changed payload, or null to read the latest on open. */
+  let charterShown = 0;
+  async function charterNotice(/** @type {any} */ ev) {
+    const agent = record.current?.agent;
+    if (!agent || !isTeammate(agent)) return;
+    let d = ev;
+    if (!d) {
+      const r = await attempt("team.charter.history", { teammate: agent, limit: 2 });
+      const v = r.data?.versions || [];
+      if (r.error || !v.length || Date.now() - Number(v[0].at) > 864e5) return;
+      d = { agent, version: v[0].version, previous: v[1]?.version ?? null, by: v[0].by, note: v[0].note, at: v[0].at };
+    }
+    if (d.agent !== agent || !agentMade(d.by) || Number(d.version) <= charterShown || !timeline.isConnected) return;
+    const key = `vyre.charter.seen:${agent}`;
+    try { if (Number(localStorage.getItem(key)) >= Number(d.version)) return; } catch { /* no storage: show it */ }
+    charterShown = Number(d.version);
+    const row = charterChanged(d, { onDismiss: () => { try { localStorage.setItem(key, String(d.version)); } catch { /* not kept */ } } });
+    timeline.append(row);
+    if (stick.stuck) toBottom();
+  }
+  async function refreshWelcome() {
+    if (!welcomeEl) return;
+    const w = await loadWelcome();
+    if (w && welcomeEl) welcomeEl.update(w);
   }
   /** "Show earlier" (the older read): the turns before `upto`, read and put above what is on screen. */
   function earlierTurns(/** @type {number} */ upto) {
@@ -1348,7 +1442,7 @@ export function mountSession(container, opts) {
     const full = { ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
-    el = /** @type {any} */ (isPlanAsk(full) ? planCard(full, { thread }) : a.kind === "question" ? questionCard(full) : askCard(full));
+    el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : a.kind === "question" ? questionCard(full) : askCard(full)));
     el._ask = full;
     cards.set(a.id, el);
     timeline.append(el);
@@ -1590,6 +1684,22 @@ export function mountSession(container, opts) {
     on("lease.changed", onLive),
     // memory.curated carries no thread: refetch this open thread and let the id dedup filter it.
     on("memory.curated", () => fetchMemory()),
+    on("onboard.stepped", () => { void refreshWelcome(); }),
+    on("teammate.charter-changed", e => { void charterNotice(e.payload); }),
+    // The thread this provider's daily cap paused: the box's line and a Raise it, right where the thread stopped.
+    on("spend.capped", e => {
+      const p = e.payload || {};
+      if ((p.thread || e.thread) !== thread || !timeline.isConnected) return;
+      timeline.append(spendCapped({ ...p, at: e.at }));
+      if (stick.stuck) toBottom();
+    }),
+    // A use of a vault item this thread was granted: a quiet "using #name" line, the name and host only, never the value.
+    on("vault.used", e => {
+      const p = e.payload || {};
+      if ((p.thread || e.thread) !== thread || !p.name || !timeline.isConnected) return;
+      timeline.append(vaultUsed({ name: String(p.name), host: p.host ? String(p.host) : null, at: p.at ?? e.at }));
+      if (stick.stuck) toBottom();
+    }),
     // Filed into a project (projects.add-threads, or made into one): the project's tile from now on.
     on("thread.picked", e => { if ((e.payload?.thread || e.thread) === thread) void refile(e.payload?.project); }),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),
@@ -1620,6 +1730,7 @@ export function mountSession(container, opts) {
     if (rawTimer) clearTimeout(rawTimer);
     if (tickTimer) clearTimeout(tickTimer);
     for (const el of els.values()) el.stop?.();
+    welcomeEl?.stop?.();
   };
 }
 

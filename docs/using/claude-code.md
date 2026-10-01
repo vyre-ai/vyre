@@ -8,10 +8,10 @@ status: stable
 
 # Vyre in Claude Code
 
-Every thread Vyre starts already runs with Vyre's hooks and tools. The Vyre plugin brings the same
-to a `claude` you start yourself, in any terminal: the security floor, your memory and lessons,
-and every Vyre tool. It is the Harness (`harness/` in the Vyre repository), installed from the
-`vyre` marketplace. The decision behind it is [ADR 0020](../adr/0020-claude-code-plugin.md).
+Every Claude thread Vyre starts on your server already runs with Vyre's hooks and tools. The Vyre
+plugin brings the same to a `claude` you start yourself, in any terminal, on your Mac or on the
+server: Vyre's safety rules, your memory and lessons, and every Vyre tool. It is installed from
+the `vyre` marketplace (`harness/` in the Vyre repository). The decision behind it is [ADR 0020](../adr/0020-claude-code-plugin.md).
 
 ## Install the plugin
 
@@ -29,7 +29,7 @@ claude plugin marketplace add vyre-ai/vyre && claude plugin install vyre@vyre
 ```
 
 New sessions load it. The plugin runs the code of the Vyre installed on your machine, so it
-always matches the vyred it talks to.
+always matches the Vyre it talks to.
 
 ## What you get
 
@@ -39,11 +39,12 @@ always matches the vyred it talks to.
 | --- | --- |
 | A session starts | Adds the brief: this folder's project and what it knows. |
 | You send a prompt | Adds what memory has on it. |
-| Before each tool call | Applies the [security floor](../concepts/floor.md) and your checked [lessons](learning.md). |
-| After a file edit or a shell command | Notes the files the session changed. |
+| Before each tool call | Applies Vyre's [safety rules](../concepts/floor.md) and your checked [lessons](learning.md). |
+| After a file edit, a shell command or a subagent | Notes the files the session changed. |
+| After a tool call fails | Tells Vyre it failed, with the first 200 characters of the error, so lessons can use it. |
 | At the end of a turn | Checks your lessons against what the turn did. |
 
-**The `vyre` MCP server**, with every Vyre tool: the tools of every module vyred runs, and every
+**The `vyre` MCP server**, with every Vyre tool: the tools of everything Vyre runs, and every
 [connector](connectors.md) tool you may use. See the [tools reference](../reference/tools.md).
 
 **Skills** Claude reaches for on its own: `write-a-watcher` (something to watch over time),
@@ -60,7 +61,7 @@ earlier decision).
 | `/vyre recall <query>` | Searches your past sessions. |
 | `/vyre project` | This folder's project brief. |
 | `/vyre todo <text>` | Adds a todo. With no text, lists your open todos. |
-| `/vyre remind <when> <text>` | Sets a reminder, for example `/vyre remind 6pm call Harlow Legal`, "tomorrow 9am" or "in 20 minutes". The [planner](planner.md) reads the time and says when it will ring. With no time, Claude asks for one. The reminder arrives by push, the Capsule and the Deck, not in the Claude session. |
+| `/vyre remind <when> <text>` | Sets a reminder, for example `/vyre remind 6pm call Harlow Legal`, "tomorrow 9am" or "in 20 minutes". The [planner](planner.md) reads the time and says when it will ring. With no time, Claude asks for one. The reminder arrives by push, Lumen and the Deck, not in the Claude session. |
 | `/vyre agenda` | Today: what is on, then your todos, overdue ones too. `/vyre agenda tomorrow` shows another day. |
 | `/vyre remember <fact>` | Saves a fact about you or your work to [memory](memory.md), for every future session. A session scoped to some projects can't teach personal facts; Claude offers a lesson instead. |
 | `/vyre lesson <rule>` | Makes a lesson, and says whether hooks check it or it is a reminder. |
@@ -68,7 +69,7 @@ earlier decision).
 | `/vyre statusline` | Tells you how to put Vyre's line under every session. |
 
 > [!SNAG] A `/vyre` command says a tool is missing
-> vyred, or the module that owns the tool, is not running. Run `vyre up`, then `vyre modules` to
+> Vyre, or the part of it that owns the tool, is not running. Run `vyre up`, then `vyre modules` to
 > see which module failed and why.
 
 ## Without Vyre on the machine
@@ -93,8 +94,8 @@ doing:
 vyre · 2 need you · box ok · juno idle
 ```
 
-The line is empty while vyred is not running, and the box part appears only once this Mac is
-paired with a box.
+The line is empty while Vyre is not running, and the box part appears only once this Mac is
+paired with your server.
 
 1. In your own terminal, run:
 
@@ -121,9 +122,13 @@ with `--json`.
 
 ## Threads Vyre starts
 
-The threads Vyre starts (from the Deck, Chat, the Capsule, an agent, `vyre start` or
+The Claude threads Vyre starts (from the Deck, Chat, Lumen, an agent, `vyre start` or
 `vyre resume`) load the same plugin from Vyre's own copy with `--plugin-dir`. For that session it
 replaces the installed plugin, so the hooks never run twice.
+
+Codex and Grok threads Vyre starts do not run Claude Code, so they have no hooks and no plugin.
+They reach Vyre's tools through Vyre's own tool server, and Vyre checks each call there, and a
+tool that needs a person still needs one.
 
 ## Uninstall
 
@@ -142,7 +147,7 @@ Take the status line out separately with `vyre statusline uninstall`.
 ## What it will not do
 
 - It never edits your Claude Code settings. Only `vyre statusline install` does, after asking.
-- It does not bypass vyred's rules. A tool that needs a person (a Gate approval, a vault reveal)
+- It does not bypass Vyre's rules. A tool that needs a person (a Gate approval, a vault reveal)
   still needs one when Claude calls it.
 - `/vyre lessons` never accepts, retires or loosens a lesson for you. Use
   `vyre learn accept|retire|level <id>` in your own terminal.

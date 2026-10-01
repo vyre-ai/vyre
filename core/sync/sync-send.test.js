@@ -58,10 +58,13 @@ test("sync.send: a device's own file reaches the box over the real link, chunked
 
   // A person's own surface can never call it directly, and neither can an unrelated home module:
   // only core/sync itself or core/import (e2e's review — "module" alone was too wide).
-  for (const caller of ["cli", "deck", "mcp", "module:some-home-module"]) {
-    const denied = await s.macCall("sync.send", { files: [], mode: "once" }, caller, { firstParty: true });
-    assert.equal(denied.error?.code, "denied", caller);
+  // The tool is reach "modules", so a surface or an agent sees no such tool; a module that is not import is denied by its own check.
+  for (const caller of ["cli", "deck", "mcp"]) {
+    const hidden = await s.macCall("sync.send", { files: [], mode: "once" }, caller, { firstParty: true });
+    assert.equal(hidden.error?.code, "no_such_tool", caller);
   }
+  const denied = await s.macCall("sync.send", { files: [], mode: "once" }, "module:some-home-module", { firstParty: true });
+  assert.equal(denied.error?.code, "denied", "module:some-home-module");
   // What used to be checked here — a bare "module:import" with no meta.firstParty passed — is no
   // longer a spoof to test: af11226d moved meta.firstParty into the kernel itself (every call,
   // not only ctx.call's own wrapper), computed from the loader's real firstParty(dir) rule on
@@ -99,7 +102,7 @@ test("sync.send: a home-installed module cannot pass as core/import by naming it
   // can ever produce a "module:" caller at all (reviewer's independent read of bf13d8fc) — naming
   // itself "import" to see whether the label alone, unearned, is enough.
   const homeMods = path.join(home, "home-mods");
-  writeModule(homeMods, "import", { roles: ["local"], does: { tools: ["import.spoof"] } },
+  writeModule(homeMods, "import", { roles: ["local"], does: { tools: ["import.spoof"] }, needs: { tools: ["sync.send"] } },
     `export default { async start(ctx) {
       ctx.tool("import.spoof", { input: { type: "object", properties: {} },
         run: async () => ctx.call("sync.send", { files: [], mode: "once" }) });
@@ -115,7 +118,9 @@ test("sync.send: a home-installed module cannot pass as core/import by naming it
   assert.equal(reg.modules.get("import").state, "running", reg.modules.get("import").error);
   const r = await reg.call("import.spoof", {}, "cli");
   assert.ok(!r.error, JSON.stringify(r.error)); // import.spoof itself runs fine; it is what it calls that is refused
-  assert.equal(r.data.error?.code, "denied", JSON.stringify(r.data));
+  // Refused by the loader's default-deny before sync's own check (ADR 0047, reviews/platform.md H4):
+  // a module in a home reaches only tools that declare their reach, and sync.send declares none.
+  assert.equal(r.data.error?.code, "not_declared", JSON.stringify(r.data));
 });
 
 test("sync.send: with the switch off, nothing is sent", async t => {
@@ -214,4 +219,30 @@ test("sync.send: a file from a project the approved plan left out is refused, en
   // directly, the box refuses it: enforcement is not merely advisory reporting.
   const direct = await s.boxCall("sync.upload.start", { path: "projects/left-out/s1.jsonl", bytes: 14, hash: hash("left out text") }, "tailnet:owner", { peer: { stableId: "nMAC" } });
   assert.equal(direct.error?.code, "excluded");
+});
+
+test("sync.send: the import staging folder counts only as a real private directory of Vyre's own, never as a link planted before it exists (reviewer-2)", async t => {
+  const s = await pair(t, { router: true });
+  await s.boxCall("sync.consent", { machine: "test-mac", on: true }, "cli");
+  fakeSessions(s.macRoot);
+  const elsewhere = path.join(s.macWork, "elsewhere");
+  fs.mkdirSync(elsewhere);
+  const file = path.join(elsewhere, "a.jsonl");
+  fs.writeFileSync(file, "hi");
+  const send = () => s.macCall("sync.send", { files: [{ path: file, rel: "a.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
+  const stage = path.join(s.macRoot, ".import-stage");
+  // A link where the folder will be: whatever it points at is not readable through it.
+  fs.symlinkSync(elsewhere, stage);
+  assert.equal((await send()).data.failed, 1, "a link is not the staging folder");
+  fs.rmSync(stage);
+  // A real folder that is open to others is refused too.
+  fs.mkdirSync(stage, { mode: 0o777 }); fs.chmodSync(stage, 0o777);
+  const inside = path.join(stage, "b.jsonl");
+  fs.writeFileSync(inside, "hi");
+  const r = await s.macCall("sync.send", { files: [{ path: inside, rel: "b.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
+  assert.equal(r.data.failed, 1, "an open folder is not trusted");
+  // Private, real, this account's: accepted.
+  fs.chmodSync(stage, 0o700);
+  const ok = await s.macCall("sync.send", { files: [{ path: inside, rel: "b.jsonl", bytes: 2, hash: hash("hi") }], mode: "once" }, "module:import", { firstParty: true });
+  assert.equal(ok.data.sent, 1, JSON.stringify(ok));
 });

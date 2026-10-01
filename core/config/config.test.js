@@ -1,4 +1,5 @@
 // @ts-check
+import { isOwnerOnly } from "../../lib/owner-only.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -6,6 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import * as config from "./index.js";
 import { tempHome } from "../../test/helpers.js";
+
+// A Windows device has no unix sockets and uses backslash paths; these assert POSIX strings.
+const POSIX_ONLY = process.platform === "win32" ? "POSIX paths and unix sockets (a Windows device uses a named pipe)" : false;
+
 
 test("config: a fresh install has no config file and still loads", t => {
   const root = tempHome(t);
@@ -71,7 +76,7 @@ test("config: with no config.json, machine defaults the same way role's OS guess
   const root = tempHome(t);
   const c = config.load(root);
   assert.ok(["solo", "server", "device"].includes(c.machine));
-  assert.equal(c.machine, process.platform === "darwin" ? "solo" : "server");
+  assert.equal(c.machine, process.platform === "darwin" ? "solo" : process.platform === "win32" ? "device" : "server");
 });
 
 // Reviewer's HOLD on 80fd866e, 28 Sep: a fresh (or existing, unconfigured) Mac must behave
@@ -128,10 +133,11 @@ test("config: ensure creates private folders", t => {
   const root = tempHome(t);
   const p = config.ensure(root);
   for (const dir of [p.vault, p.modules, p.watchers, p.logs]) assert.ok(fs.statSync(dir).isDirectory());
-  assert.equal(fs.statSync(p.vault).mode & 0o777, 0o700, "the vault folder is readable by other users");
+  if (process.platform === "win32") assert.ok(isOwnerOnly(p.root), "the home folder is open to other users");
+  else assert.equal(fs.statSync(p.vault).mode & 0o777, 0o700, "the vault folder is readable by other users");
 });
 
-test("config: a home too long for a unix socket puts the socket in a private per-user folder", t => {
+test("config: a home too long for a unix socket puts the socket in a private per-user folder", { skip: POSIX_ONLY }, t => {
   const root = path.join(tempHome(t), "x".repeat(120));
   const p = config.ensure(root);
   assert.ok(Buffer.byteLength(p.socket) <= 100, p.socket);
@@ -139,6 +145,70 @@ test("config: a home too long for a unix socket puts the socket in a private per
   assert.notEqual(config.paths(root + "y").socket, p.socket, "two homes never share a socket");
   const st = fs.statSync(path.dirname(p.socket));
   assert.equal(st.mode & 0o777, 0o700);
+});
+
+// Windows socket (ADR 0037's LOW, security review): win32's socketPath is a literal named pipe
+// name, never a filesystem path (a bound socket *file* would be an NTFS reparse point, which
+// needs SeCreateSymbolicLinkPrivilege - proven missing on windows-latest CI, and unlikely on a
+// real person's account either; a named pipe needs no privilege and gets a current-user-only
+// security descriptor from Node by default). No folder, so nothing here to mkdir or ACL.
+
+test("config: on win32, the socket is a named pipe, never a filesystem path", t => {
+  const root = tempHome(t);
+  const p1 = config.socketPath(root, { platform: "win32" });
+  // socketPath makes the home it is asked about (for its pipe-token), so this sibling is ours to remove.
+  t.after(() => fs.rmSync(root + "y", { recursive: true, force: true }));
+  const p2 = config.socketPath(root + "y", { platform: "win32" });
+  assert.match(p1, /^\\\\\.\\pipe\\vyre-/);
+  assert.notEqual(p1, p2, "two homes never share a pipe name");
+  assert.equal(p1, config.socketPath(root, { platform: "win32" }), "the same home always hashes to the same pipe name");
+});
+
+// Squatting (reviewer, ADR 0037's Windows LOW, section 7a point 2): the name is never derivable
+// from `root` alone, so another local account cannot compute it just by guessing the home path.
+
+test("config: the win32 pipe name is not derivable from root alone; two different processes reading the same home agree", t => {
+  const root = tempHome(t);
+  const name = config.socketPath(root, { platform: "win32" });
+  const hashOnly = /^\\\\\.\\pipe\\vyre-[0-9a-f]{16}-/.exec(name);
+  assert.ok(hashOnly, "the hash prefix is still there, for readability, not as the secret");
+  const token = name.slice(hashOnly[0].length);
+  assert.match(token, /^[0-9a-f]{32}$/, "a 16-byte random token, hex-encoded");
+  // A "fresh process" is just a fresh call after the token file already exists on disk; nothing
+  // here is cached in memory across the two socketPath calls beyond the token file itself.
+  assert.equal(config.socketPath(root, { platform: "win32" }), name, "persisted, not re-rolled each call");
+  assert.ok(fs.existsSync(path.join(root, "pipe-token")), "the token lives beside config.json, inside the home, never a shared folder");
+});
+
+test("config: processes starting at once on one home agree on the win32 pipe token", async t => {
+  const root = path.join(tempHome(t), "race");
+  const code = `import("${new URL("./index.js", import.meta.url).href}").then(c => console.log(c.socketPath(process.argv[1], { platform: "win32" })))`;
+  const { spawn } = await import("node:child_process");
+  const run = () => new Promise((resolve, reject) => {
+    const p = spawn(process.execPath, ["-e", code, root], { stdio: ["ignore", "pipe", "inherit"] });
+    let out = ""; p.stdout.on("data", d => out += d); p.on("error", reject); p.on("close", () => resolve(out.trim()));
+  });
+  const names = await Promise.all(Array.from({ length: 8 }, run));
+  assert.equal(new Set(names).size, 1, `one pipe name, got ${[...new Set(names)].join(" and ")}`);
+  assert.match(names[0], /^\\\\\.\\pipe\\vyre-/);
+});
+
+test("config: an empty pipe-token left by a writer that died is replaced, not fatal", t => {
+  const root = tempHome(t);
+  const f = path.join(root, "pipe-token");
+  fs.writeFileSync(f, "");
+  const old = new Date(Date.now() - 60_000);
+  fs.utimesSync(f, old, old);
+  const name = config.socketPath(root, { platform: "win32" });
+  assert.match(name, /-[0-9a-f]{32}$/);
+  assert.equal(config.socketPath(root, { platform: "win32" }), name, "and it is stable afterwards");
+});
+
+test("config: two different homes never share a win32 pipe token, even with colliding hash prefixes forced", t => {
+  const a = config.socketPath(tempHome(t), { platform: "win32" });
+  const b = config.socketPath(tempHome(t), { platform: "win32" });
+  const tokenOf = (/** @type {string} */ n) => n.slice(n.lastIndexOf("-") + 1);
+  assert.notEqual(tokenOf(a), tokenOf(b));
 });
 
 test("config: save merges one level deep, removes nulls and writes 0600", t => {
@@ -151,7 +221,8 @@ test("config: save merges one level deep, removes nulls and writes 0600", t => {
   assert.equal(c.network.address, "https://alex.vyre.run");
   assert.equal(c.network.port, undefined);
   assert.equal(c.network.tailscale, false, "defaults are still merged under what was saved");
-  assert.equal(fs.statSync(config.paths(root).config).mode & 0o777, 0o600);
+  if (process.platform === "win32") assert.ok(isOwnerOnly(config.paths(root).config), "the config file is open to other users");
+  else assert.equal(fs.statSync(config.paths(root).config).mode & 0o777, 0o600);
   assert.ok(!("role" in JSON.parse(fs.readFileSync(config.paths(root).config, "utf8"))), "defaults were written to the file");
 });
 
@@ -191,7 +262,7 @@ function withEnv(vars, fn) {
   try { return fn(); } finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 }
 
-test("config: a new box with a work folder keeps projects in it; an existing one only once its homes moved; a Mac never", t => {
+test("config: a new box with a work folder keeps projects in it; an existing one only once its homes moved; a Mac never", { skip: POSIX_ONLY }, t => {
   const root = tempHome(t);
   const work = path.join(root, "work");
   const oldDir = path.join(root, "home", "Vyre", "projects");

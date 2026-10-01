@@ -84,20 +84,20 @@ final class VyredSocketStream: VyredStream, @unchecked Sendable {
     static func open(socket: String, path: String, timeout: TimeInterval = 5,
                      onMessage: @escaping @Sendable ([String: Any]) -> Void, onClose: @escaping @Sendable () -> Void) -> Result<VyredStream, VyredStreamFailure> {
         let fd = VySock.connect(socket)
-        guard fd >= 0 else { return .failure(VyredStreamFailure(code: "unreachable", message: "vyred is not running. Start Vyre: Return on an empty Capsule.")) }
+        guard fd >= 0 else { return .failure(VyredStreamFailure(code: "unreachable", message: "Vyre is not running. Start Vyre: Return on an empty Lumen.")) }
         let deadline = Date().addingTimeInterval(timeout)
         var raw = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, 16, &raw)
         let key = Data(raw).base64EncodedString()
         let req = "GET \(path) HTTP/1.1\r\nHost: vyred\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: \(key)\r\nSec-WebSocket-Version: 13\r\nx-vyre-caller: capsule\r\n\r\n"
-        guard VySock.writeAll(fd, Data(req.utf8), deadline: deadline) else { Darwin.close(fd); return .failure(VyredStreamFailure(code: "unreachable", message: "vyred did not take the stream")) }
+        guard VySock.writeAll(fd, Data(req.utf8), deadline: deadline) else { Darwin.close(fd); return .failure(VyredStreamFailure(code: "unreachable", message: "Vyre did not take the stream")) }
         var got = Data()
         let sep = Data("\r\n\r\n".utf8)
         var chunk = [UInt8](repeating: 0, count: 4096)
         while got.range(of: sep) == nil {
-            guard VySock.waitFor(fd, Int16(POLLIN), deadline: deadline) else { Darwin.close(fd); return .failure(VyredStreamFailure(code: "timeout", message: "vyred did not answer the stream in time")) }
+            guard VySock.waitFor(fd, Int16(POLLIN), deadline: deadline) else { Darwin.close(fd); return .failure(VyredStreamFailure(code: "timeout", message: "Vyre did not answer the stream in time")) }
             let n = Darwin.read(fd, &chunk, chunk.count)
-            if n <= 0 { Darwin.close(fd); return .failure(VyredStreamFailure(code: "refused", message: "vyred closed the stream before it opened")) }
+            if n <= 0 { Darwin.close(fd); return .failure(VyredStreamFailure(code: "refused", message: "Vyre closed the stream before it opened")) }
             got.append(contentsOf: chunk[0..<n])
         }
         let r = got.range(of: sep)!
@@ -107,10 +107,10 @@ final class VyredSocketStream: VyredStream, @unchecked Sendable {
         let status = lines.first.flatMap { $0.split(separator: " ").dropFirst().first }.flatMap { Int($0) } ?? 0
         guard status == 101 else {
             Darwin.close(fd)
-            var message = "vyred refused the stream (\(status))"
+            var message = "Vyre refused the stream (\(status))"
             if let obj = try? JSONSerialization.jsonObject(with: rest) as? [String: Any],
                let e = obj["error"] as? [String: Any], let m = e["message"] as? String { message = m }
-            if status == 404 { return .failure(VyredStreamFailure(code: "not_found", message: "vyred has no stream at \(path)")) }
+            if status == 404 { return .failure(VyredStreamFailure(code: "not_found", message: "Vyre has no stream at \(path)")) }
             return .failure(VyredStreamFailure(code: "refused", message: message))
         }
         let accept = lines.dropFirst().first { $0.lowercased().hasPrefix("sec-websocket-accept:") }

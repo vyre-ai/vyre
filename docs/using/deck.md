@@ -13,8 +13,8 @@ The Deck is Vyre's web app. Your box serves it at its own address, usually
 separate login, because Tailscale says who is on the other end (see [Tailscale](tailscale.md)).
 It shows what needs you, what is running, your projects, agents, memory and vault, and every
 setting the onboarding made or skipped. The same pages work on a phone, and it installs as an app
-there (see [Mobile](mobile.md)). The Deck reads and writes only through vyred's API, so it never
-disagrees with the terminal or the [Capsule](capsule.md). On a box with a paired Mac, it also lists
+there (see [Mobile](mobile.md)). The Deck reads and writes only through Vyre's API, so it never
+disagrees with the terminal or the [Lumen](capsule.md). On a box with a paired Mac, it also lists
 the Mac's projects and sessions, read from the Mac as you look (see
 [Your Mac's sessions on the box](#your-macs-sessions-on-the-box)).
 
@@ -39,19 +39,22 @@ device signed in as anyone else gets `403 not_owner` ("This Vyre serves only its
 
 ## What is on each view
 
-The rail on the left holds the views. On a phone, a tab bar holds Now, Projects, Chat, Find and
-Agents; your initials at the top open Settings.
+The rail on the left holds the views. On a phone there is no rail: three pages, Now, Chats and
+Agents, sit under a header you swipe across, and your initial at the top opens a Places sheet with
+the rest (see [Mobile](mobile.md)).
 
 | View | Path | What it shows |
 | --- | --- | --- |
 | Now | `/now` | what needs you (held drafts, permission questions), what is running, recent projects, and what memory learned today |
-| Projects | `/projects` | every project, its threads, and each thread's live output with a box to type into |
-| Memory | `/memory` | what memory holds, with its sources; see [Memory](memory.md) |
-| Agents | `/agents` | each agent, what it is doing, its threads, usage and computer |
 | Chat | `/chat` | sessions as conversations; see [Chat](chat.md) |
+| Agents | `/agents` | each agent, what it is doing, its threads, usage and computer |
+| Projects | `/projects` | every project, its threads, and each thread's live output with a box to type into |
+| Planner | `/planner` | today's agenda, the next alarms, open todos and notes; see [Planner](planner.md) |
+| Memory | `/memory` | what memory holds, with its sources; see [Memory](memory.md) |
 | Vault | `/vault` | credentials, never their values; see [Vault](vault.md) |
-| Settings | `/settings` | setup, network, notifications, passkeys, modules, appearance |
-| Find | `/find` | one box for sessions, files, agents, memory and projects, and for asking your assistant (a tab on the phone) |
+| Drive | `/files` | the folders your box shares as Vyre Drive, to browse and preview |
+| Settings | `/settings` | setup, connections, network, devices, spend, notifications, passkeys, modules, appearance |
+| Find | `/find` | one box for sessions, files, agents, memory and projects, and for asking your assistant (the phone's Lumen) |
 | Ask | `/ask` | talk to your assistant or any agent (open it by its path) |
 
 A view whose module is not running says which module is missing instead of failing.
@@ -132,10 +135,12 @@ onboarding at that step. `vyre index` does the history step from a terminal.
 Beside each step is the command that does the same from a terminal: `vyre up` (it picks up at
 the first step not finished) or, for history, `vyre index`.
 
-Other sections: You and your address, The assistant, Claude Code, Connections, Network, Your
-devices, History and memory, Lessons, Notifications (see
-[Mobile](mobile.md#turn-on-notifications)), Security (add a passkey), Modules, Appearance and This
-machine. `/settings#devices` or `/settings?section=devices` jumps to a section.
+Other sections: You and your address, The assistant, Claude Code, Connections (MCP servers,
+Google and GitHub accounts; see [Connectors](connectors.md)), Network, Your devices, Server,
+History and memory, Spend (today's spend per provider and its daily cap; see
+[Box care](box-care.md#cap-what-it-spends)), Standing permissions, Lessons, Notifications (see
+[Mobile](mobile.md#turn-on-notifications)), Security (add a passkey), Modules, Appearance, This
+machine, and Update, export and uninstall. `/settings#devices` or `/settings?section=devices` jumps to a section.
 
 **Your devices** lists your devices on the tailnet as Tailscale reports them, phones and tablets
 first, each Online or Offline. The Mac paired with this box says "Paired with this box". A phone
@@ -186,7 +191,7 @@ Passkey added.
 
 A code works only where it was made. The box never takes a terminal as proof, so on the box
 `vyre presence code` stops and asks for a passkey; a code from your Mac enrolls a passkey on the
-Mac's own vyred, not the box's.
+Mac's own Vyre, not the box's.
 
 > [!SNAG] "This browser cannot create or use a passkey."
 > The browser must reach the Deck at its real address over your tailnet, in Safari or Chrome. A
