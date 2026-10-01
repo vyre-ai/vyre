@@ -64,6 +64,66 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - said: `teamIntents` also records `team.add:<project>/<role>` for "add a researcher teammate to this project" or "make me a growth teammate": the role is the word before "teammate" (lowercase, digits, dashes), the project is the thread's, a role already live in the project, a bare "a new teammate" and the reserved "integrator" record nothing. Same rules as the other team intents.
 - said: `watchersIntents` (one file, watchers' recorder with the hash rule) records act_out intents (channel "watchers") for "watch my inbox" (`watchers.preset:<project>/<kind>`) and "turn on the inbox watcher" or "turn it on" (`watchers.create:<project>/<name>@<hash>`). The hash is the one in the card the person was shown, taken by the caller from the card results already in the thread, never a fresh card or list. "Turn it on" binds only to a card shown in the last two assistant turns (`shownTurnsAgo` 0 or 1); a named watcher is not limited by age. Plain asks only, 15 minutes, one use; no match or an ambiguous one records nothing. `test/said-watchers.test.js` runs the real registry asked gate: said after the card the assistant's create succeeds once; an agent-written watcher with no words, a changed hash (even after the folder was edited), another watcher or thread, or a lapsed yes is refused.
 - assistant and planner: every tool now says its reach. The eight assistant tools and the planner tools an agent may use (add, list, get, ringing, update, done, snooze, dismiss, delete, agenda, upcoming, calendar sync and create, parse) are "anyone", written deliberately: each limits its caller in code (the assistant tools to the person and the assistant; the planner to an agent's own items, with calendar invites held at the Gate). planner.settings is "person".
+- Generated media in Drive's own browse: a project's folder lists a virtual `Generated` folder with the images,
+  video and audio models made for it (from `artifacts.list`, read in chunks through `artifacts.media.read`), under
+  the project's own grant, merged with a real folder of that name when there is one. Nothing is copied or stored
+  by Drive. Taildrive mounts (Finder) cannot show it; `artifacts.media.copy` is the way to a real file there.
+- Only the person lifts a pause: `computers.resume` is reach person (an agent may still pause its own hands). An
+  agent's `computers.checkout` takes its thread from the verified call, never from its input, and `computers.list`
+  shows an ordinary agent only its own computer.
+- Computers and Glass say their reach on purpose. `computers.handback.set`, `computers.member.*`,
+  `computers.egress.*`, `computers.tailnet.*` and `computers.handback.status` are the person's alone (an agent,
+  the assistant and a module are refused); the tools that scope an agent to its own computer through `resolve`
+  stay open to anyone with that guard, and the internal ones (endpoint, helper, may-act, shield, fill, node.agent,
+  stats) are for modules. `glass.targets`, `open`, `close`, `take` and `release` are the person's; `glass.files.*`
+  stays open to an agent but only on its own computer, now tested for every files tool and every way an agent's
+  caller can be spelled.
+- Computers: the screen's address gate is strict (nobody but vyred's pinned address or loopback, and nobody at all
+  before a pin). computerd answers an address it does not know with no bytes unless the request carries a valid
+  token, which proves it is vyred and re-pins that address, so a vyred that came back at a new address is let in
+  without restarting the computer; an address that keeps failing is closed on at the connection. The loopback
+  assumption (nothing in a computer forwards remote traffic to loopback) is written down in `computerd/gate.js` and
+  checked by `image/loopback.test.js` and J7 step 7.5c.
+- Computers: the address gate got its own module and tests (`computerd/gate.js`). NET_RAW joins the capabilities a
+  computer may never be given, with a policy test that a computer is made with every capability dropped, only
+  SETUID and SETGID back, and no-new-privileges. When vyred starts, a running computer that closes on its address
+  (vyred was recreated at a new one) is restarted so it pins the new address. J7 prints the agent's CapBnd and
+  CapEff, checks no sudo or setuid path, and tries a raw and a packet socket (7.5).
+- Computers can no longer reach each other's screen or computerd. Every computer shares one Docker network, and
+  the J7 matrix step 7.4 showed one computer's agent could dial another's ports 5900 and 7000. Xvnc now listens
+  on a unix socket only the vyre uid can open, computerd answers on 5900 and forwards to it, and both of its
+  ports close any connection that is not from vyred's address once vyred has shown the computer's token (the
+  pool does this right after a start and before a screen is opened: `GET /ping`, `pool.pin`). The restricted
+  proxy caps `/events` at four streams, a non-stream answer from it triggers a check of every running computer,
+  the sweep's backstop runs at 55 s so a tick of drift cannot skip a minute, and when the runtime cannot be
+  asked a computer reads "unknown" ("Can't check this computer right now.") and never "running".
+- Computers: a computer that dies (killed, out of memory, crashed) is marked stopped as soon as the container
+  runtime says so. The docker driver watches the Engine's die/oom/kill/stop events through a new `GET /events`
+  route on the restricted proxy (type, events and labels forced to this box's computers; only since= is the
+  caller's), reconnects with since= and checks every running computer once after a gap. The sweep only
+  backstops it, once a minute (SPEC principle 8). The checkout is released, computer.stopped is emitted, Glass
+  closes the stream with "This computer stopped. Start it again?" (4001 with the reason, so the Deck shows it
+  and stops retrying), and `computers.watch` refuses a ticket for a computer that died, with the same words,
+  until it is started again (`pool.verifyAlive`, `pool.watchDeaths`, `pool.died`).
+- Computers: the pool's readiness check dials computerd's port, not the screen's. Every unauthenticated
+  connection to Xvnc counts toward its host blacklist, and enough of them made Glass's first connection
+  fail with "does not speak RFB 3.8"; the image also raises Xvnc's BlacklistThreshold to 50 (found by
+  the J7 matrix run on a GitHub runner).
+#### install-box.sh: --print-link wrote an empty .env, so compose pulled an unpublished image
+
+- In `--print-link` mode `say` writes to stderr, and the .env block was built with `say`, so
+  `/srv/vyre/.env` came out empty (its lines went to the terminal). Compose then ran compose.yml
+  alone and tried to pull ghcr.io/vyre-ai/vyre:latest, which is not published: "denied", and the
+  install stopped. The block uses printf now. Found by e2e2's matrix on a fresh hosted runner;
+  test/install-box-look.test.js covers it.
+
+#### matrix: the real-device rehearsal matrix on GitHub-hosted runners (e2e2, 0.2)
+
+- `.github/workflows/matrix.yml` builds the box files, runs rc-smoke on x64 and arm64 runners,
+  installs a box on a fresh runner with the real installer (`scripts/matrix/box-up.sh`) and runs
+  J0 (the onboarding page loads, no errors, no sample-world names, a screenshot) in Chrome.
+  `scripts/matrix/report.mjs` folds every device's results into results.json and a results page.
+  Nothing runs on the test server, which is now the user's real server.
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
 
 - test: the reach suite is tighter. A callers list counts as a limit only when it names neither mcp nor harness (82 tools whose list admits a model are labelled and must declare a reach); `reach: "anyone"` needs a reason in test/reach-anyone.json, and a mutating-verb tool needs a reason that names a guard; reach-module-calls now covers local and lib and fails on a computed tool name outside test/reach-computed-calls.json; reach-dump keeps both roles and a tool the box and local define differently needs a line in test/reach-roles.json. link.pair, link.unpair, link.signout, presence.person.revoke, projects.move and projects.watchers.add and remove are reach person; projects.access.revoke and projects.add-workspace stay anyone because the agents, github and sync modules call them.
@@ -336,6 +396,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The project Team tab turns a duty on or off through teammates' `team.duties.enable` and `team.duties.disable` (a click on a person's surface is the asking), not `team.duties.update`.
 
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
+
 
 - eval (iq): the real-use memory test, on Vyre's own sessions only (the user approved it, 1 Oct 2026). `scripts/real-use-extract.mjs` reads Claude Code transcripts whose cwd is under a folder and writes a scrubbed corpus: it keeps only the person's typed turns, teammate messages and assistant text (meta messages such as CLAUDE.md and the memory index, system reminders, tool results and thinking are dropped first), redacts with recall's rules and the vault's shapes plus emails, addresses, home paths, the owner's handle and session temp paths, drops a session that names a client or a private matter more than twice and replaces a passing mention with [client]. `scripts/eval-realuse.mjs` generates about 50 specific-fact questions from that corpus (each expected string must appear verbatim in its session, in at most two sessions, and not in the question), then runs four arms on one model, none, a simulated Claude auto memory, Vyre's memory.ask and the full context, scored by the expected strings, under a hard spend cap (REALUSE_CAP_USD, default $5) and the key's own usage before and after. eval-bar gains a `real` world read from a file. The corpus is data a caller holds and is never part of the repository. Tests: `scripts/real-use-extract.test.js`, `scripts/lib/realuse.test.js`. The `memory-realuse` workflow (environment `eval`, runs on the test box's own runner) reads the corpus from the fixed folder on the test box, so it never leaves the test box; it uploads only a results table and a list of session ids, dates and sizes, and wipes the corpus, questions, replies and ledger when a run ends (`step: gen` keeps them so the questions can be read on the test box first).
 - grok: the meter spike's "Internal error" on OpenRouter was a retired model id. `x-ai/grok-code-fast-1` is no longer on OpenRouter (its list now has grok-4.x and `x-ai/grok-build-0.1`), OpenRouter answers a retired id with a 400, and Grok Build shows that as "Internal error" on every turn while session/new still succeeds: reproduced against the real Grok CLI with an endpoint that rejects the model (the retired-model case fails every turn, the title request's own unknown model, `grok-4.6`, does not). The proofs use `x-ai/grok-build-0.1`, and `scripts/lib/eval-openrouter.js` `modelListed()` asks OpenRouter's public model list first, so a retired slug stops the run with its name instead of "Internal error" and spends nothing.

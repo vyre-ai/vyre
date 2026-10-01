@@ -4,10 +4,20 @@
   "roles": ["box"],
   "requires": [],
   "does": { "tools": [
-    "glass.targets", "glass.open", "glass.close", "glass.take", "glass.release",
-    "glass.files.list", "glass.files.stat", "glass.files.preview", "glass.files.download",
-    "glass.files.upload", "glass.files.move", "glass.files.mkdir", "glass.files.trash"
-  ] },
+      {"name": "glass.targets", "reach": "person"},
+      {"name": "glass.open", "reach": "person"},
+      {"name": "glass.close", "reach": "person"},
+      {"name": "glass.take", "reach": "person"},
+      {"name": "glass.release", "reach": "person"},
+      {"name": "glass.files.list", "reach": "anyone"},
+      {"name": "glass.files.stat", "reach": "anyone"},
+      {"name": "glass.files.preview", "reach": "anyone"},
+      {"name": "glass.files.download", "reach": "anyone"},
+      {"name": "glass.files.upload", "reach": "anyone"},
+      {"name": "glass.files.move", "reach": "anyone"},
+      {"name": "glass.files.mkdir", "reach": "anyone"},
+      {"name": "glass.files.trash", "reach": "anyone"}
+    ] },
   "watches": { "emits": [
     "glass.opened", "glass.closed", "glass.taken", "glass.released",
     "file.uploaded", "file.moved", "file.trashed", "file.created"

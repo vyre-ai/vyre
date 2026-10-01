@@ -109,7 +109,9 @@ const isEmptyObj = v => v && typeof v === "object" && !Array.isArray(v) && Objec
  * run as a normal user); computers.capAdd exists for whatever a future box finds it genuinely
  * needs, and none of these is ever going to be that.
  */
-const FORBIDDEN_CAPS = new Set(["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]);
+// NET_RAW is here because a computer that can open raw or packet sockets can forge another address on the shared network,
+// and computerd's address gate (computerd/gate.js) rests on that not being possible.
+const FORBIDDEN_CAPS = new Set(["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "NET_RAW", "DAC_READ_SEARCH", "SYS_RAWIO"]);
 
 /**
  * What every computer gets, whatever computers.capAdd says: the image starts as root only to

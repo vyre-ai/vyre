@@ -323,19 +323,85 @@ test("pool: a computer that exits on boot fails the checkout with the reason, an
   assert.equal(pool.view("kit").state, "running");
 });
 
-test("pool: a checkout waits for the screen to answer, and gives up after bootMs", async t => {
+test("pool: a checkout waits for computerd to answer, never dials the screen's own port, and gives up after bootMs", async t => {
   let answers = 0;
   const seen = /** @type {number[]} */ ([]);
   const { pool } = setup(t, { config: { bootMs: 5_000 } });
-  // The screen answers on its third look; computerd's port answers at once, but is asked only after the screen.
-  pool.probe = async (_host, port) => { seen.push(port); return port === 5900 ? ++answers >= 3 : true; };
+  // computerd (7000) starts after Xvnc, so it answering means the screen is up. Every unauthenticated connection to Xvnc
+  // counts toward its host blacklist, so 5900 is not probed while there is a computerd to ask.
+  pool.probe = async (_host, port) => { seen.push(port); return port === 7000 ? ++answers >= 3 : true; };
   await pool.checkout("kit");
-  assert.equal(answers, 3, "probed until the screen answered");
-  assert.ok(seen.includes(7000), "computerd's own port is waited for too, so a hands call right after a checkout is not refused");
-  assert.ok(seen.lastIndexOf(7000) > seen.lastIndexOf(5900) - 1 && seen.indexOf(7000) > seen.indexOf(5900), "and only after the screen");
+  assert.equal(answers, 3, "probed until computerd answered");
+  assert.ok(!seen.includes(5900), "the screen's own port is never dialled by the readiness check");
   pool.probe = async () => false;
   pool.opts.bootMs = 100;
   await assert.rejects(pool.checkout("pax"), /pax's computer started but its screen did not answer within 0 s/);
+});
+
+test("pool: a computer that dies under its checkout is marked stopped at the next sweep, with the event and its viewers released", async t => {
+  const { pool, driver, types } = setup(t);
+  await pool.checkout("kit");
+  await pool.viewer("kit", 1);
+  assert.equal(pool.view("kit").state, "running");
+  [...driver.containers.values()][0].state = "exited";
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.ok(types().includes("computer.stopped"));
+  assert.ok(pool.died.has("kit"));
+  assert.equal(pool.vnc("kit"), null, "nothing dials a dead computer's screen");
+  assert.equal(pool.checkouts.has("kit"), false);
+  // Asking again says nothing new: it is already stopped.
+  assert.equal(await pool.verifyAlive("kit"), false);
+  // The next checkout starts it, and it is no longer "died".
+  await pool.checkout("kit");
+  assert.equal(pool.view("kit").state, "running");
+  assert.equal(pool.died.has("kit"), false);
+});
+
+test("pool: the runtime's event stream reports a death at once, without a sweep", async t => {
+  const { pool, driver, types } = setup(t);
+  t.after(pool.watchDeaths());
+  await pool.checkout("kit");
+  await pool.checkout("pax");
+  driver.die("kit");
+  for (let i = 0; i < 20 && pool.view("kit").state === "running"; i++) await new Promise(r => setImmediate(r));
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.ok(types().includes("computer.stopped"));
+  assert.equal(pool.view("pax").state, "running", "only the computer that died");
+});
+
+test("pool: a computer's own stop is not read as a death", async t => {
+  const { pool, driver, events } = setup(t);
+  t.after(pool.watchDeaths());
+  await pool.checkout("kit");
+  await pool.stop("kit");
+  for (const w of driver.watchers) w({ id: [...driver.containers.values()][0].id, agent: "kit", action: "die", exitCode: 0, at: 1 });
+  await new Promise(r => setImmediate(r));
+  assert.equal(pool.view("kit").state, "stopped");
+  assert.equal(pool.died.has("kit"), false);
+  assert.equal(events.filter(e => e.type === "computer.stopped").length, 1, "one stopped event, from stop() itself");
+});
+
+test("pool: the sweep's own look at running computers is a backstop, at most once a minute", async t => {
+  const { pool, driver, clock } = setup(t);
+  await pool.checkout("kit");
+  await pool.sweep();
+  [...driver.containers.values()][0].state = "exited"; // a death the stream never reported
+  clock.t += 5_000;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "running", "not looked at again within a minute");
+  clock.t += 60_000;
+  await pool.sweep();
+  assert.equal(pool.view("kit").state, "stopped");
+});
+
+test("pool: verifyAlive leaves a running computer alone, and a missing container goes back to none", async t => {
+  const { pool, driver } = setup(t);
+  await pool.checkout("kit");
+  assert.equal(await pool.verifyAlive("kit"), false);
+  driver.containers.clear();
+  assert.equal(await pool.verifyAlive("kit"), true);
+  assert.equal(pool.view("kit").state, "none");
 });
 
 test("pool: a computer that died while idle freezes to stopped, not a stuck running", async t => {
@@ -680,4 +746,31 @@ test("pool: a failed addAgent for an ALREADY-existing member restores its previo
   const after = pool.members("browser-abc123")[0];
   assert.equal(after.agent_name, before.agent_name, "the rename from the failed call stuck anyway");
   assert.equal(after.generation, before.generation, "the failed call's generation bump stuck anyway");
+});
+
+test("pool: when the runtime cannot be asked, the computer reads unknown, never running, until a check succeeds", async t => {
+  const { pool, driver } = setup(t);
+  await pool.checkout("kit");
+  const real = driver.inspect.bind(driver);
+  driver.inspect = async () => { throw new Error("the Engine is not answering"); };
+  assert.equal(await pool.verifyAlive("kit"), false, "not dead either");
+  assert.equal(pool.view("kit").state, "unknown");
+  assert.equal(pool.died.has("kit"), false);
+  driver.inspect = real;
+  assert.equal(await pool.verifyAlive("kit"), false);
+  assert.equal(pool.view("kit").state, "running");
+});
+
+test("pool: after a vyred start, every running computer is shown the token once, so it pins this vyred's address", async t => {
+  const { pool } = setup(t);
+  await pool.checkout("kit");
+  await pool.checkout("pax");
+  pool.probe = async () => true;
+  const pinned = [];
+  pool.pin = async agent => { pinned.push(agent); };
+  await pool.reconcile();
+  assert.deepEqual(pinned.sort(), ["kit", "pax"]);
+  pool.pin = async () => { throw new Error("computerd is not listening yet"); };
+  await pool.reconcile(); // a failure is not a restart, and not an error
+  assert.equal(pool.view("kit").state, "running");
 });
