@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The macOS wall is `(deny default)` with Apple's BSD baseline (`bsd.sb`) and only what node needs:
+  exec of the node binary and nothing else, reads of the watcher's folder, node and its parents'
+  names, no writes (but /dev/null), no signals to others, no network. A child cannot run pbpaste,
+  open, osascript or any other program, and cannot list the keychains or ~/Library. Its probe now
+  tries each of those (reviewer-2). Every test that spawns a child or listens skips on a Mac unless
+  GITHUB_ACTIONS is true (`lib/sandbox/test-host.js`), not on a bare CI=1.
+
 - The box's wall for watchers: a `spawner` candidate for `lib/sandbox/wall.js`, used when a spawner
   socket exists and its client has `spawnAsWatcher` (launch's pool-uid wall). A launched child cannot
   read the person's folders, so the watcher's files are handed to it over its channel and written
