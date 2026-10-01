@@ -11,7 +11,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const clip = (/** @type {any} */ v) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : undefined);
+// Bidi controls, zero-width and other invisible format characters are dropped: an email or org must show as it is, never reordered or hidden.
+const INVISIBLE = /[\u0000-\u001f\u007f-\u009f\u00ad\u034f\u061c\u115f\u1160\u17b4\u17b5\u180b-\u180f\u200b-\u200f\u202a-\u202e\u2060-\u206f\u3164\ufe00-\ufe0f\ufeff\uffa0\ufff9-\ufffb]/g;
+const clip = (/** @type {any} */ v) => { const t = typeof v === "string" ? v.replace(INVISIBLE, "").trim() : ""; return t ? t.slice(0, 200) : undefined; };
 
 /** @param {string} file */
 function json(file) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; } }

@@ -288,7 +288,7 @@ export default {
         const rows = await Promise.all(listed.map(async a => (a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a)));
         // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
         const seesItems = !meta || !meta.agent || /** @type {any} */ (meta).agentKind === "assistant";
-        return seesItems ? rows : rows.map(({ vault_item, ...r }) => r);
+        return seesItems ? rows : rows.map(({ vault_item, identity, ...r }) => r);
       });
 
     /** The project the request came from: the calling session's own thread's project, or null. @param {any} meta */

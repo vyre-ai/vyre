@@ -2976,7 +2976,14 @@ export default {
     // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
     tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",
       { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" } } },
-      async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
+      async (i, meta) => {
+        // A live headless thread of Vyre's has its own verified socket; only that thread's own claude process may bind its id (anything else would get that thread's key).
+        const rec = sb.record(String(i.session));
+        const own = rec ? /** @type {any} */ (sb.db.prepare("SELECT pid FROM threads_runs WHERE id = ?").get(String(i.session))) : null;
+        const itsOwn = Boolean(own && own.pid && sb.sessions.claudeOf(Number(i.pid)) === Number(own.pid)); // the thread's own claude process binding itself
+        if (rec && sb.live.has(String(i.session)) && (meta || {}).thread !== String(i.session) && !itsOwn) throw Object.assign(new Error("that session is a live Vyre thread; it is bound only through its own socket"), { code: "denied" });
+        return sb.sessions.bind(i.session, i.pid);
+      }, ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).

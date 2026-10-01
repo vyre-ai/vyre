@@ -615,8 +615,9 @@ test("compaction: a teammate's own SessionStart (source compact) gets its notes 
   const db = openStore(paths(root).db);
   const thread = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
   db.close();
-  await tool("threads.bind", { session: thread, pid: launch.pid }, "harness");
-  await tool("harness.brief", { session: thread, source: "compact" }, "harness"); // the SessionStart hook itself
+  const bound = await tool("threads.bind", { session: thread, pid: launch.pid }, "harness");
+  // The SessionStart hook itself, carrying the session's key as a real hook does, so vyred verifies whose it is (an unverified brief says nothing about a known thread).
+  await tool("harness.brief", { session: thread, source: "compact" }, "harness", { session: { id: thread, key: bound.key } });
   const posted = await until(async () => {
     const got = await tool("threads.get", { thread });
     return got.events.find(e => (e.type === "thread.queued" || e.type === "thread.sent") && e.payload.kind === "compact-reinject");

@@ -34,3 +34,9 @@ test("identity: unreadable, unknown provider or garbage is null (the card says a
   fs.writeFileSync(path.join(home, ".codex", "auth.json"), JSON.stringify({ tokens: { id_token: "x.y.z" } }));
   assert.equal(readIdentity("codex", home), null);
 });
+
+test("identity: bidi and zero-width characters never reach the card", t => {
+  const home = tempHome(t);
+  fs.writeFileSync(path.join(home, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "da\u202ena@example.com\u200b", organizationName: "\u2066Harlow\u200d Legal\ufeff" } }));
+  assert.deepEqual(readIdentity("claude", home), { email: "dana@example.com", org: "Harlow Legal" });
+});

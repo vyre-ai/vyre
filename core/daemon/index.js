@@ -738,11 +738,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       const caller_pid = await peerPid(req.socket).catch(() => null);
       if (!caller_pid) { try { /** @type {any} */ (registry).deps.log("daemon: threads.bind from a peer the OS cannot name; only the tool's own claude check applies"); } catch { /* no log */ } }
       if (caller_pid) {
-        const look = processTable();
-        const mine = ancestry(caller_pid, look).chain.map(c => c.pid);
-        // The caller's own process or one above it (a hook under its claude), or one the caller itself started (a launcher binding its child).
-        const below = () => ancestry(Number(input.pid), look).chain.some(c => c.pid === caller_pid);
-        if (!mine.includes(Number(input.pid)) && !below()) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process, not another's" } });
+        const mine = ancestry(caller_pid, processTable()).chain.map(c => c.pid);
+        let ok = mine.includes(Number(input.pid)); // the caller's own process or one above it: a hook under its claude
+        if (!ok) {
+          // Or a process vyred itself started (a headless thread's claude), for a session id nothing is bound to yet.
+          const [pids, origin] = await Promise.all([registry.call("threads.pids", {}, "module:vyred"), registry.call("threads.origin", { session: String(input.session || "") }, "module:vyred")]);
+          ok = Boolean(pids.data && Array.isArray(pids.data.pids) && pids.data.pids.includes(Number(input.pid)) && origin.data && !origin.data.bound);
+        }
+        if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(security): a SessionStart brief announces thread.started only for a verified caller (the hook's own session through its socket or key, or a person or module); an unverified mcp or harness caller gets just the warning. threads.bind accepts the caller's own process or one above it, or a process vyred itself started for a session id nothing is bound to; a live Vyre thread's id is bound only through its own socket or by that thread's own process. accounts.list shows identity (email, org) only to those who see vault item names, stripped of bidi and zero-width characters. Claude is recognised by argv0 basename (`claude`) alone: a claude started as `node cli.js` has no kernel-read folder or session, so a plain mcp caller from it fails closed (handles only what vyred can prove).
+
 - feat(sessions): accounts.list shows who a signed-in login account is signed in as (identity: email and org), read from the non-secret identity the provider's own login left (Claude's oauthAccount, the email claim in Codex's id_token), run as the account's own uid on a box. No token is ever returned; unreadable is null and the card says "account not identified".
 
 - fix(sessions): an account a non-person started stays pending after its sign-in, whoever completed it, until the person confirms it with one tap on their own surface (bind with confirm; a login only after its sign-in finished). accounts.list says needs: sign-in or confirm, and a key's card carries the vault item it points at.

@@ -110,7 +110,10 @@ export default {
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
       run: async ({ cwd, session, source, project, projects, headless }, meta) => {
         await own(meta, session, { brief: true });
-        if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
+        // thread.started is said only for the hook's own verified session; an unverified caller gets just the warning below.
+        const mine = Boolean(meta && typeof meta.thread === "string" && meta.thread === session);
+        const verified = mine || !/^(?:mcp|harness)(?::|$)/.test(String((meta || {}).caller || ""));
+        if (session && verified) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
         const warning = session && !headless ? await secondWriter(session) : "";
         const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");
         // Projects decides which project this is: from the folder first, then from the session's
