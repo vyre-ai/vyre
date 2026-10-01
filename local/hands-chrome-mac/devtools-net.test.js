@@ -351,10 +351,11 @@ test("egress guard fails CLOSED: a request judged blocked is never continued, wh
     await new Promise(r => setTimeout(r, 0));
     const continued = k.sent.filter(s => s.method === "Fetch.continueRequest" && s.params.requestId === `evil${n}`);
     assert.equal(continued.length, 0, `never continued (run ${n}, failFail ${failFail}, failFulfill ${failFulfill})`);
+    const atPause = failCalls;
     const out = await eg.stop();
     assert.equal(out.length, 1);
     assert.equal(!!out[0].leaked, failFail && failFulfill, "marked leaked only when the request could not be stopped by any means");
-    if (failFail) assert.equal(failCalls, 2, "failRequest was tried twice before the fulfilled 403");
+    if (failFail) assert.equal(atPause, 2, "failRequest was tried twice before the fulfilled 403");
   }
 });
 
@@ -653,4 +654,42 @@ test("egress guard: a frame that claims a service worker controller (page JS) an
   assert.deepEqual(/** @type {any} */ (a.k.ctx).dnr.rules.at(-1).allowOrigins, ["https://app.example"], "narrowed to the first party");
   await eg.stop();
   await assert.rejects(egressGuard((await mk(0)).k.ctx, 1), /could not be confirmed live/);
+});
+
+test("egress guard: a request whose failRequest never took is tried again just before Fetch goes off, and reported stopped if the retry took", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  let mode = "fail";
+  k.respond["Fetch.failRequest"] = () => { if (mode === "fail") throw new Error("busy"); return {}; };
+  k.respond["Fetch.fulfillRequest"] = () => { if (mode === "fail") throw new Error("busy"); return {}; };
+  k.push(1, "Fetch.requestPaused", { requestId: "evil", resourceType: "XHR", request: { url: "https://attacker.example/c", method: "GET", headers: {} } });
+  await new Promise(r => setTimeout(r, 30));
+  mode = "ok";
+  const before = k.calls("Fetch.failRequest").length;
+  const out = await eg.stop();
+  assert.ok(k.calls("Fetch.failRequest").length > before, "tried again at stop");
+  assert.ok(out.length && out.every((/** @type {any} */ o) => !o.leaked), "the retry took, so it is not reported as possibly sent");
+});
+
+test("egress guard: the service worker state comes from an ISOLATED world when there is one: a page that claims a controller it lacks is not covered, one it hides is", async () => {
+  const mk = async (/** @type {number} */ pageClaim, /** @type {boolean|undefined} */ truth) => {
+    const w = await guardedWorld(async () => {}, { blindProbe: true });
+    w.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+    /** @type {any} */ (w.k.ctx).dnr.tested = true;
+    w.k.respond["Page.createIsolatedWorld"] = () => (truth === undefined ? {} : { executionContextId: 7 });
+    w.k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+      if (p.contextId === 7) return { result: { value: truth } };
+      const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+      if (!m) return { result: { value: [] } };
+      w.k.push(1, "Fetch.requestPaused", { requestId: "px" + m[1], resourceType: "Fetch", request: { url: "https://app.example/__vyre_probe_" + m[1], method: "GET", headers: {} } });
+      return { result: { value: 1 + pageClaim } };
+    };
+    return w;
+  };
+  await assert.rejects(egressGuard((await mk(1, false)).k.ctx, 1), /could not be confirmed live/, "the page claims, the browser says no");
+  const eg = await egressGuard((await mk(0, true)).k.ctx, 1);
+  await eg.stop();
+  const fb = await egressGuard((await mk(1, undefined)).k.ctx, 1);
+  await fb.stop();
 });

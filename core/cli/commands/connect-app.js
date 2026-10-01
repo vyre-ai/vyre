@@ -39,10 +39,11 @@ export async function apps(args) {
 export async function addApp(preset, args) {
   if (!preset || preset.startsWith("-")) return usage("vyre connect add app <preset>", "vyre connect apps lists them");
   let f;
-  try { f = flags(args, { string: ["label", "mode", "client", "name"], boolean: ["replace"] }); } catch (e) { return oops(/** @type {Error} */ (e).message); }
+  try { f = flags(args, { string: ["label", "mode", "client", "name"], list: ["project", "agent"], boolean: ["replace"] }); } catch (e) { return oops(/** @type {Error} */ (e).message); }
   if (f._.length) return oops(`unexpected ${f._[0]}`);
   const ask = { preset, ...(f.label ? { label: f.label } : {}), ...(f.name ? { name: f.name } : {}), ...(f.mode ? { mode: f.mode } : {}),
-    ...(f.client ? { client: f.client } : {}), ...(f.replace ? { replace: true } : {}) };
+    ...(f.client ? { client: f.client } : {}), ...(f.replace ? { replace: true } : {}),
+    ...(f.project.length || f.agent.length ? { scope: { projects: f.project.length ? f.project : "*", agents: f.agent.length ? f.agent : "*" } } : {}) };
 
   let r = await call("connectors.connect", ask, { timeout: 60_000 });
   if (r.error) return fail(r);

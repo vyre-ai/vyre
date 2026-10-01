@@ -157,3 +157,21 @@ test("replacing a calendar credential's key keeps its readers, so the next-meeti
   // a module cannot replace the key (and so cannot reset the readers)
   await assert.rejects(m.v.put({ name: "microsoft", kind: "api-credential", fields: { secret: fake("x") } }, "module:connectors"), /config|your own surfaces/);
 });
+
+test("changing a credential's scope by putting the rebuilt config with no secret keeps the stored key and the readers", async t => {
+  const m = await mk(t);
+  const read = () => m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/calendarView" }, "module:connectors");
+  assert.equal((await read()).status, 200);
+  const scoped = { ...CONFIG, scope: { projects: "*", agents: ["kit"] } };
+  await m.v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify(scoped) } }, "cli");
+  assert.equal((await read()).status, 200, "the reader still reads its calendar, with the old key");
+  assert.match(m.net.last.authorization, /^Bearer fixture-secret-/, "the stored key was carried over");
+  // back to no scope: the readers and the key are still there
+  await m.v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify(CONFIG) } }, "cli");
+  assert.equal((await read()).status, 200);
+  await assert.rejects(m.ask({ method: "GET", url: "https://graph.microsoft.com/v1.0/me/messages" }, "module:connectors"), /may only read/);
+  // widening where the key goes is not a scope change: new hosts need the key again
+  await assert.rejects(m.v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify({ ...CONFIG, hosts: ["graph.microsoft.com", "elsewhere.example.test"] }) } }, "cli"), /secret|needs/i);
+  // and a module cannot do any of it
+  await assert.rejects(m.v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify(scoped) } }, "module:connectors"), /your own surfaces|config/);
+});

@@ -160,10 +160,12 @@ export async function runBar(opts = {}) {
   const name = opts.world || "open";
   const w = WORLDS[name];
   if (!w) throw new Error(`no world called ${name} (${Object.keys(WORLDS).join(", ")})`);
-  const { world, gold, asks, sealed } = w();
+  const { world, gold, asks: asksDefault, sealed } = w();
+  const asks = opts.asks || asksDefault;
   if (opts.explain && sealed) throw new Error("--explain never runs on a sealed world");
   const bar = JSON.parse(fs.readFileSync(BAR_FILE, "utf8"));
   let questions = gold.questions;
+  if (opts.classes) questions = questions.filter(q => opts.classes.includes(q.class));
   if (opts.only) questions = CLASSES.flatMap(c => questions.filter(q => q.class === c).slice(0, opts.only));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-eval-bar-"));
   const realNow = Date.now;
@@ -178,7 +180,7 @@ export async function runBar(opts = {}) {
     const t0 = performance.now();
     await embedAll(db, embedder);
     const embedMs = performance.now() - t0;
-    mem = await startBar(db, { me: world.ME, embedder, dense, fixture: reachFixture(world), iqRunner: opts.record ? recorder(dir) : null });
+    mem = await startBar(db, { me: world.ME, embedder, dense, fixture: reachFixture(world), iqRunner: opts.runner || (opts.record ? recorder(dir) : null) });
     // The kept replies, replayed. A reply kept under another prompt version is not used.
     let kept = 0;
     if (fs.existsSync(asks)) {
