@@ -957,3 +957,6 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .msg-prov:empty { display: none; }
 .cv-head .msg-av-wrap { margin-right: 4px; }
 .cv-head .msg-av-wrap .msg-av { margin-right: 0; }
+.composer-answer { gap: 6px; padding-left: 6px; }
+.composer-answer-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.composer-answer:disabled { opacity: 1; cursor: default; }

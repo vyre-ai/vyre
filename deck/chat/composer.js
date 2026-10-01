@@ -56,6 +56,8 @@ import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { markMade, nearRole } from "./core/made.js";
 import { listMenu, keysLine } from "./pickers.js";
+import { answerRows, chipWord } from "./core/answer-with.js";
+import { providerMark, providerName } from "../js/provider-mark.js";
 import { pasteTracker, NOT_TYPED } from "./core/paste-spans.js";
 import { tagPicker } from "./tag-picker.js";
 import { voiceStatus, listen as listenVoice } from "./core/voice.js";
@@ -276,14 +278,20 @@ export function mountComposer(opts) {
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
     // Called on every keystroke: rebuilt only when something it shows changed.
     const vts = tagUI.chips();
-    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
+    const sig = JSON.stringify([vts.map(t => t.name), kind, busy, queueToggle, scope, s.mode, s.model, s.thinking, s.provider, answers.map(a => [a.provider, a.account, a.now]),
       ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
     if (sig === chipSig) return;
     chipSig = sig;
     const chip = (/** @type {string} */ cls, /** @type {string} */ tool, /** @type {string} */ title, /** @type {() => void} */ fn, /** @type {any[]} */ ...kids) =>
       h("button", { class: "btn btn-ghost btn-sm composer-chip " + cls, type: "button", disabled: off(tool), title: off(tool) ? NEEDS_UPDATE : title, onclick: fn }, ...kids);
     const label = kindLabel(kind);
+    // Who answers: the badge and name, with a chevron and a menu only when there is more than one account to choose.
+    const who = s.provider ? chipWord(answers, s.provider, providerName(s.provider)) : "";
+    const choosable = answers.length > 1;
     put(chips,
+      s.provider && !machine ? h("button", { class: "btn btn-ghost btn-sm composer-chip composer-answer", type: "button", disabled: !choosable || off("threads.switch"),
+        title: choosable ? "Answer with another account" : "The account that answers", "aria-label": `Answered by ${who}`, "aria-haspopup": choosable ? "menu" : null, onclick: () => openAnswerWith() },
+        providerMark(s.provider, 18), h("span", { class: "composer-answer-name" }, who), choosable ? icon("chevron", 16) : null) : null,
       chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
       chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
@@ -331,6 +339,39 @@ export function mountComposer(opts) {
     if (typeof d.thinking === "boolean") s.thinking = d.thinking;
     patch(["@session"]);
   }
+
+  // ---- who answers (model-picker.md) ----------------------------------------------------------
+
+  /** The accounts that can answer, from providers.list: read once now and again when the menu opens. */
+  let answers = /** @type {import("./core/answer-with.js").AnswerRow[]} */ ([]);
+  async function loadAnswers() {
+    const r = await attempt("providers.list", {});
+    if (r.error) return false;
+    const s = /** @type {any} */ (S) || {};
+    answers = answerRows(r.data, { provider: s.provider, account: s.account });
+    drawChips();
+    return true;
+  }
+  async function openAnswerWith() {
+    if (!rich() || answers.length < 2) return;
+    const ok = await loadAnswers();
+    menu.setKind("answer");
+    menu.open(ok ? answers.map(a => ({ key: a.provider + ":" + (a.account || ""), value: a, render: () => [
+      providerMark(a.provider, 22), h("span", { class: "cv-menu-name" }, a.label), a.sub ? h("span", { class: "cv-menu-desc" }, a.sub) : null,
+      a.now ? h("span", { class: "cv-menu-badge" }, "now") : null] })) : [],
+    row => pickAnswer(row.value), "Answer with", keysLine(["↑↓", "move"], ["⏎", "choose"], ["Esc", "close"]));
+  }
+  /** Change who answers from the next turn, in this same session: its memory and files go with it (threads.switch). The box leaves the one switch line. */
+  async function pickAnswer(/** @type {import("./core/answer-with.js").AnswerRow} */ a) {
+    menu.close();
+    if (a.now) { ta.focus(); return; }
+    const r = await CAPS.use("threads.switch", () => attempt("threads.switch", { thread, provider: a.provider, ...(a.account ? { account: a.account } : {}) }));
+    if (r.error) say(r.missing ? NEEDS_UPDATE : r.error.code === "busy" ? "A turn is running. Stop it or wait for it to end, then choose again." : "Could not switch: " + (r.error.message || r.error.code));
+    else await loadAnswers();
+    ta.focus();
+  }
+  // Only a session that can switch has anything to choose from; the composer in a test or a recorded view has no session state.
+  if (S) loadAnswers();
 
   async function openModels() {
     if (!rich()) return;

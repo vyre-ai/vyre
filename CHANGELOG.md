@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: "Answer with" chip in the composer
+
+- A chip at the left of the composer's bar shows who answers: the provider's badge and its name (or the account's label when that provider has several). With more than one signed-in account it has a chevron and opens a menu, "Answer with", of the accounts that can answer (`providers.list`: signed in, Claude counts with none), each with its plan and up to three models and the current one marked "now". Choosing another asks the box to continue the same thread on it (`threads.switch`): same session, memory and files, no new session, the avatar unchanged. A refusal while a turn runs says "A turn is running. Stop it or wait for it to end, then choose again." With one account the chip says who answers and does nothing. The switch line in the thread is the box's. Models for Codex and Grok and an account's plan appear when sessions' init carries them.
+
 #### chat: the frame runs script only when told to
 
 - `artifactFrame` gives `allow-scripts` only when `interactive` is exactly true; absent, false or anything else is an empty sandbox. On a box that does not say, only a page or an app is read as interactive, so an unknown kind runs no script (reviewer-2's note on 9d87f92b3).
