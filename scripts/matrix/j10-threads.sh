@@ -19,6 +19,8 @@ sudo mkdir -p $DIR && sudo chown "$(id -u):$(id -g)" $DIR
 cat >$DIR/compose.e2e.yml <<YML
 services:
   vyre:
+    environment:
+      - VYRE_CLAUDE_BIN=/usr/local/bin/claude
     volumes:
       - $T/claude:/usr/local/bin/claude:ro
       - $T/fake-claude.mjs:/opt/matrix/fake-claude.mjs:ro
@@ -31,15 +33,15 @@ vyre status 2>&1 | grep -q 'vyred running' && rec 10.0-install ok || { rec 10.0-
 vyre call threads.list '{}' >/dev/null 2>&1; rec 10.0b-fake-claude-in-box ok "$(docker compose -f $DIR/compose.yml exec -T vyre claude --version 2>&1 | head -1)"
 call() { vyre call "$@" 2>&1; }
 # 10.1 the person starts a thread
-S=$(call threads.start '{"cwd":"/work","prompt":"hello from the matrix","surface":"deck"}'); echo "$S" >"$OUT/start.json"
+S=$(call threads.start '{"agent":"worker-a","cwd":"/work","prompt":"hello from the matrix","surface":"deck"}'); echo "$S" >"$OUT/start.json"
 ID=$(printf '%s' "$S" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log((j.data||j).id||(j.data||j).thread||"")}catch{console.log("")}})')
 [ -n "$ID" ] && rec 10.1-person-starts-thread ok "$ID" || { rec 10.1-person-starts-thread false "$(printf %s "$S" | head -c 300)"; ID=""; }
 wait_reply() { # wait until the thread's text contains $2, up to 60 s
   for i in $(seq 1 30); do call threads.get "{\"thread\":\"$1\"}" >"$OUT/get-$3.json"; grep -q "$2" "$OUT/get-$3.json" && return 0; sleep 2; done; return 1; }
 if [ -n "$ID" ]; then
-  wait_reply "$ID" "hello from the matrix" first && rec 10.2-agent-answers ok || rec 10.2-agent-answers false "no reply: $(head -c 300 "$OUT/get-first.json")"
+  wait_reply "$ID" "hello from the matrix" first && [ "$(grep -c "hello from the matrix" "$OUT/get-first.json")" -ge 2 ] && ! grep -q "Not logged in" "$OUT/get-first.json" && rec 10.2-agent-answers ok || rec 10.2-agent-answers false "no reply: $(head -c 300 "$OUT/get-first.json")"
   # a second thread the person starts, so "another agent's thread" exists
-  S2=$(call threads.start '{"cwd":"/work","prompt":"second thread","surface":"deck"}')
+  S2=$(call threads.start '{"agent":"worker-b","cwd":"/work","prompt":"second thread","surface":"deck"}')
   ID2=$(printf '%s' "$S2" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log((j.data||j).id||(j.data||j).thread||"")}catch{console.log("")}})')
   [ -n "$ID2" ] && rec 10.2b-person-starts-second-thread ok "$ID2" || rec 10.2b-person-starts-second-thread false "$(printf %s "$S2" | head -c 200)"
   # 10.3 an agent inside the thread calls tools as a plain agent caller (what the MCP server does). Reach is
@@ -59,6 +61,24 @@ if [ -n "$ID" ]; then
   call threads.list '{}' | grep -q "$ID2" && rec 10.3g-person-lists-threads ok || rec 10.3g-person-lists-threads false "the person's list lacks the second thread"
   # the thread survived every refused call
   call threads.list '{}' | grep -q "$ID" && rec 10.3h-refusals-changed-nothing ok || rec 10.3h-refusals-changed-nothing false "the first thread vanished"
+  # 10.7 the assistant can do what a plain agent cannot: start, list, stop and delete
+  SA=$(call threads.start '{"agent":"asst","agent_kind":"assistant","cwd":"/work","prompt":"hi from the assistant","surface":"deck"}')
+  IDA=$(printf '%s' "$SA" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log((j.data||j).id||(j.data||j).thread||"")}catch{console.log("")}})')
+  if [ -z "$IDA" ]; then rec 10.7-assistant-thread-starts false "$(printf %s "$SA" | head -c 300)"; else
+    rec 10.7-assistant-thread-starts ok "$IDA"
+    count() { call threads.list '{}' | grep -o '"id": *"[0-9a-f-]\{36\}"' | sort -u | wc -l | tr -d ' '; }
+    asst_call() { n=$(printf '%s' "$1" | tr . -); call threads.send "{\"thread\":\"$IDA\",\"text\":\"vyre $2\"}" >/dev/null; sleep 12; call threads.get "{\"thread\":\"$IDA\"}" >"$OUT/get-$n.json"; }
+    before=$(count)
+    asst_call 10.7a "threads.start {\"cwd\":\"/work\",\"prompt\":\"child by the assistant\"}"
+    after=$(count)
+    [ "$after" -gt "$before" ] && ! grep -q "only the assistant can" "$OUT/get-10-7a.json" && rec 10.7a-assistant-starts-thread ok "$before to $after threads" || rec 10.7a-assistant-starts-thread false "threads $before to $after; $(grep -o 'only the assistant[^"]*' "$OUT/get-10-7a.json" | head -1)"
+    asst_call 10.7b "threads.list {}"
+    grep -q "$ID2" "$OUT/get-10-7b.json" && ! grep -q "only the assistant can" "$OUT/get-10-7b.json" && rec 10.7b-assistant-lists-threads ok || rec 10.7b-assistant-lists-threads false "the assistant's list does not show the other thread, or it was refused"
+    asst_call 10.7c "threads.stop {\"thread\":\"$ID2\"}"
+    ! grep -q "only the assistant can" "$OUT/get-10-7c.json" && grep -q "stop" "$OUT/get-10-7c.json" && rec 10.7c-assistant-stops-thread ok || rec 10.7c-assistant-stops-thread false "refused or no answer: $(grep -o 'only the assistant[^"]*\|Not logged in[^"]*' "$OUT/get-10-7c.json" | head -1)"
+    asst_call 10.7d "threads.delete {\"thread\":\"$ID2\"}"
+    call threads.list '{}' | grep -q "$ID2" && rec 10.7d-assistant-deletes-thread false "the other thread is still listed" || rec 10.7d-assistant-deletes-thread ok
+  fi
   call threads.stop "{\"thread\":\"$ID\"}" >"$OUT/stop.json"; grep -qi '"error"' "$OUT/stop.json" && rec 10.4-person-stops-thread false "$(head -c 200 "$OUT/stop.json")" || rec 10.4-person-stops-thread ok
   call threads.delete "{\"thread\":\"$ID\"}" >"$OUT/delete.json"; grep -qi '"error"' "$OUT/delete.json" && rec 10.5-person-deletes-thread false "$(head -c 200 "$OUT/delete.json")" || rec 10.5-person-deletes-thread ok
   call threads.list '{}' | grep -q "$ID" && rec 10.6-deleted-thread-gone false "still listed" || rec 10.6-deleted-thread-gone ok
