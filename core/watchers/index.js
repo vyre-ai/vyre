@@ -13,7 +13,7 @@ import { ShownLog } from "./shown.js";
 import { scopeFor } from "./scope.js";
 import { PRESET_KINDS } from "./presets.js";
 import * as folderMod from "./folder.js";
-import { isPerson } from "../../lib/caller.js";
+import { isAgent, isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS } from "./runtime.js";
@@ -91,7 +91,7 @@ export default {
         const { caller } = meta;
         // A dry run on a hook.received hands the watcher a webhook's body, which an agent may
         // not read (hooks.delivery refuses agents); the watcher's logs and items would show it.
-        if (event && /(?:^|[\s:])agent:/.test(String(caller || ""))) throw new Error("a dry run on a real event is the owner's; an agent dry-runs without event");
+        if (event && isAgent(caller)) throw new Error("a dry run on a real event is the owner's; an agent dry-runs without event");
         await mustSee(meta, name);
         return rt.test(name, { since, event });
       },
