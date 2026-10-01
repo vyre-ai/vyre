@@ -795,14 +795,14 @@ server.listen(PORT, "0.0.0.0", () => {
 const VNC_SOCKET = process.env.VNC_SOCKET || "";
 const VNC_PORT = Number(process.env.VNC_PORT || 5900);
 if (VNC_SOCKET) {
-  const gate = net.createServer(sock => {
+  const screenGate = net.createServer(sock => {
     if (!gate.allowedScreen(sock.remoteAddress)) { sock.destroy(); return; }
     const up = net.connect(VNC_SOCKET);
     sock.pipe(up); up.pipe(sock);
     const end = () => { sock.destroy(); up.destroy(); };
     sock.on("error", end); up.on("error", end); sock.on("close", end); up.on("close", end);
   });
-  gate.listen(VNC_PORT, "0.0.0.0", () => console.log(`computerd: the screen answers on :${VNC_PORT} for vyred only`));
+  screenGate.listen(VNC_PORT, "0.0.0.0", () => console.log(`computerd: the screen answers on :${VNC_PORT} for vyred only`));
 }
 
 launchChrome();
