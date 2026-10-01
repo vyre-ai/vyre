@@ -579,71 +579,6 @@
    "module": "google",
    "default": "limited by callers in code"
   },
-  "hands-desktop.act": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.apps": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.screenshot": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands-desktop.tree": {
-   "module": "hands-desktop",
-   "default": "open to any caller"
-  },
-  "hands.act": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.commit": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.find": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.grant.add": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.grant.list": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.grant.remove": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.indicator": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.observe": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
-  "hands.pause": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.release": {
-   "module": "hands",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "hands.resume": {
-   "module": "hands",
-   "default": "limited by callers in code"
-  },
-  "hands.stop": {
-   "module": "hands",
-   "default": "open to any caller"
-  },
   "harness.brief": {
    "module": "harness",
    "default": "open to any caller"
@@ -1693,14 +1628,6 @@
    "module": "releases",
    "default": "limited by callers in code"
   },
-  "screen.context": {
-   "module": "screen",
-   "default": "limited by callers in code"
-  },
-  "screen.shot": {
-   "module": "screen",
-   "default": "limited by callers in code"
-  },
   "sessions.accounts.add": {
    "module": "sessions",
    "default": "open to any caller"
@@ -1878,38 +1805,6 @@
    "module": "settings",
    "default": "limited by callers in code",
    "internal": true
-  },
-  "sideview.close": {
-   "module": "sideview",
-   "default": "limited by callers in code"
-  },
-  "sideview.open": {
-   "module": "sideview",
-   "default": "limited by callers in code"
-  },
-  "sideview.status": {
-   "module": "sideview",
-   "default": "limited by callers in code"
-  },
-  "sight.frame": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.now": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.steps": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.targets": {
-   "module": "sight",
-   "default": "limited by callers in code"
-  },
-  "sight.watch": {
-   "module": "sight",
-   "default": "limited by callers in code"
   },
   "spend.check": {
    "module": "spend",
@@ -2104,22 +1999,6 @@
   "team.status": {
    "module": "team",
    "default": "open to any caller"
-  },
-  "term.attach": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.close": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.list": {
-   "module": "term",
-   "default": "limited by callers in code"
-  },
-  "term.open": {
-   "module": "term",
-   "default": "limited by callers in code"
   },
   "threads.answer": {
    "module": "threads",
@@ -2909,22 +2788,6 @@
   "vitals.watch": {
    "module": "vitals",
    "default": "open to any caller"
-  },
-  "voice.listen": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.settings": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.speak": {
-   "module": "voice",
-   "default": "limited by callers in code"
-  },
-  "voice.status": {
-   "module": "voice",
-   "default": "limited by callers in code"
   },
   "waiting.count": {
    "module": "waiting",
