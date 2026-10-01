@@ -70,13 +70,13 @@ export const HUMAN_ONLY = new Set([
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update", "agents.resume",
-  // A teammate is made by a person (ADR 0031 section 4); a session or another teammate never can.
+  // team.add is no longer here: it is reach "asked" (a session may add a teammate only when the person's own
+  // words asked, matched by lib/said/team.js), which a PERSON_ONLY entry would refuse before the gate ran.
   // The rest of core/team's "a person may also..." branches (an explicit project, reading every
   // project's teammates, checking or cancelling a request that is not the caller's own, editing a
   // teammate's notes) trust the same caller label, and were first fixed here per-tool (e2e
   // review, HIGH 1, f8cbc882); the lead moved that fix into the daemon instead, for every tool at
   // once, so it is not repeated per module (2026-09-28). See core/daemon/index.js.
-  "team.add",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "files.receive", "projects.move",
   // Who watches a project's Needs without running a session in it: the owner's own list to edit.
   "projects.watchers.add", "projects.watchers.remove",

@@ -1,0 +1,165 @@
+{
+ "_comment": "PERSON_ONLY (core/presence) is enforced by the daemon socket-peer check and the harness floor, not by the registry, so every such tool must also say reach person in its manifest. Each line is a tool that does not yet. The owner sets reach person and deletes the line, or replaces pending with the reason module callers need it (reach person admits only the persons surfaces and devices). test/reach-person-only.test.js fails on a PERSON_ONLY tool that is neither reach person nor listed, and on a stale line.",
+ "tools": {
+  "agents.create": {
+   "module": "agents",
+   "why": "pending"
+  },
+  "agents.delete": {
+   "module": "agents",
+   "why": "pending"
+  },
+  "agents.resume": {
+   "module": "agents",
+   "why": "pending"
+  },
+  "agents.update": {
+   "module": "agents",
+   "why": "pending"
+  },
+  "capsule.report": {
+   "module": "capsule",
+   "why": "pending"
+  },
+  "computers.giveback": {
+   "module": "computers",
+   "why": "the assistant is an mcp caller and the owner's way to these from chat (computers ownSurface exempts it); reach person admits only the person's surfaces and devices, so it would lose them. Agents are refused in code (ownSurface) and the presence floor still applies."
+  },
+  "computers.takeover": {
+   "module": "computers",
+   "why": "the assistant is an mcp caller and the owner's way to these from chat (computers ownSurface exempts it); reach person admits only the person's surfaces and devices, so it would lose them. Agents are refused in code (ownSurface) and the presence floor still applies."
+  },
+  "files.drive.access": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.drive.mount": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.drive.open": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.drive.unmount": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.receive": {
+   "module": "files",
+   "why": "pending"
+  },
+  "files.send": {
+   "module": "files",
+   "why": "pending"
+  },
+  "gate.reject": {
+   "module": "gate",
+   "why": "pending"
+  },
+  "gate.revise": {
+   "module": "gate",
+   "why": "pending"
+  },
+  "goals.accept": {
+   "module": "goals",
+   "why": "pending"
+  },
+  "learn.accept": {
+   "module": "learn",
+   "why": "pending"
+  },
+  "learn.relax": {
+   "module": "learn",
+   "why": "pending"
+  },
+  "learn.retire": {
+   "module": "learn",
+   "why": "pending"
+  },
+  "memory.correct": {
+   "module": "memory",
+   "why": "pending"
+  },
+  "memory.merge": {
+   "module": "memory",
+   "why": "pending"
+  },
+  "memory.split": {
+   "module": "memory",
+   "why": "pending"
+  },
+  "onboard.machine": {
+   "module": "onboard",
+   "why": "pending"
+  },
+  "projects.access.revoke": {
+   "module": "projects",
+   "why": "the agents module revokes an agent's grant when its project list shrinks (module:agents), and presence calls it; reach person admits no module. The callers list in code keeps agents and models out."
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "why": "core/github and core/sync attach a folder to a project as modules; reach person admits no module. The callers list in code keeps agents and models out."
+  },
+  "sessions.limits.set": {
+   "module": "sessions",
+   "why": "pending"
+  },
+  "sessions.mode.set": {
+   "module": "sessions",
+   "why": "pending"
+  },
+  "sessions.models.set": {
+   "module": "sessions",
+   "why": "pending"
+  },
+  "sessions.prompt.revert": {
+   "module": "sessions",
+   "why": "pending"
+  },
+  "sessions.prompt.set": {
+   "module": "sessions",
+   "why": "pending"
+  },
+  "sessions.usage.resume": {
+   "module": "sessions",
+   "why": "pending"
+  },
+  "settings.reset": {
+   "module": "settings",
+   "why": "pending"
+  },
+  "settings.set": {
+   "module": "settings",
+   "why": "pending"
+  },
+  "threads.answer": {
+   "module": "threads",
+   "why": "pending"
+  },
+  "threads.mode": {
+   "module": "threads",
+   "why": "pending"
+  },
+  "threads.remember": {
+   "module": "threads",
+   "why": "pending"
+  },
+  "threads.shell": {
+   "module": "threads",
+   "why": "pending"
+  },
+  "vault.device.join": {
+   "module": "vault",
+   "why": "pending"
+  },
+  "vault.device.revoke": {
+   "module": "vault",
+   "why": "pending"
+  },
+  "vault.vaults.create": {
+   "module": "vault",
+   "why": "pending"
+  }
+ }
+}
