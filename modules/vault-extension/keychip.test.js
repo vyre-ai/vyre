@@ -202,12 +202,15 @@ function pageWith(fields, answers = {}) {
   };
   const chrome = { runtime: { id: ID, lastError: undefined, sendMessage: (m, cb) => { sent.push(plain(m)); setTimeout(() => cb(replies[m.type](m)), 0); } } };
   class MutationObserver { observe() {} }
+  // The chip refuses a tap in its first 400 ms on screen; this clock runs a second per reading so a test is not made to wait.
+  let ticks = 0;
+  const FastDate = Object.assign(function () {}, { now: () => Date.now() + 1000 * ticks++ });
   const timers = (fn, ms) => { delays.push(ms); return ms >= 1000 ? 0 : setTimeout(fn, 0); };
   const win = { location: { hostname: "console.example.com" }, document, chrome, HTMLInputElement, HTMLTextAreaElement, Element: El, MutationObserver, getSelection: () => ({ toString: () => "", anchorNode: null }),
-    setTimeout: timers, clearTimeout, Date, console };
+    setTimeout: timers, clearTimeout, Date: FastDate, console };
   vm.createContext(win);
   const self = vm.runInContext("globalThis", win);
-  win.window = self; win.top = self; win.vyreKeyChipMinMs = 0;
+  win.window = self; win.top = self; 
   vm.runInContext(read("keyfind.js"), win);
   vm.runInContext(read("keychip.js"), win);
   const shown = () => { const h = hosts.find(x => x.isConnected); return h ? h.shadow.all() : []; };
