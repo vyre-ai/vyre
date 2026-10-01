@@ -761,19 +761,16 @@ test("pool: when the runtime cannot be asked, the computer reads unknown, never 
   assert.equal(pool.view("kit").state, "running");
 });
 
-test("pool: after a vyred start, a computer that closes on this vyred's address is restarted; one that is just not listening yet is left", async t => {
-  const { pool, driver } = setup(t);
+test("pool: after a vyred start, every running computer is shown the token once, so it pins this vyred's address", async t => {
+  const { pool } = setup(t);
   await pool.checkout("kit");
+  await pool.checkout("pax");
   pool.probe = async () => true;
-  const first = [...driver.containers.keys()][0];
-  const failWith = code => { pool.pin = async () => { throw Object.assign(new Error("fetch failed"), { cause: { code } }); }; };
-  failWith("ECONNREFUSED");
+  const pinned = [];
+  pool.pin = async agent => { pinned.push(agent); };
   await pool.reconcile();
-  assert.deepEqual([...driver.containers.keys()], [first], "not listening yet: left alone");
-  failWith("ECONNRESET");
-  await pool.reconcile();
-  const after = [...driver.containers.keys()];
-  assert.equal(after.length, 1);
-  assert.notEqual(after[0], first, "closed on us: made again on the same home");
+  assert.deepEqual(pinned.sort(), ["kit", "pax"]);
+  pool.pin = async () => { throw new Error("computerd is not listening yet"); };
+  await pool.reconcile(); // a failure is not a restart, and not an error
   assert.equal(pool.view("kit").state, "running");
 });

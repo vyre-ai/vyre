@@ -313,8 +313,6 @@ function freezeAgent(on) {
 
 // ---- who may connect: vyred, and nothing else on the network (gate.js) ---------------------
 const gate = createGate();
-const peerAllowed = addr => gate.allowed(addr);
-const pinPeer = addr => gate.pin(addr);
 
 /** Constant-time token comparison; hashing first hides the length too. */
 function sameToken(given, expected) {
@@ -674,7 +672,13 @@ const server = createServer(async (req, res) => {
     // opens /cdp/json/version (and the upgrade) and nothing else, same as before.
     const isOwner = sameToken(bearer, TOKEN);
     const cdpId = isVersion ? identifyClient(bearer) : null;
-    if (isOwner || cdpId) pinPeer(req.socket.remoteAddress);
+    if (isOwner || cdpId) gate.pin(req.socket.remoteAddress);
+    else if (!gate.known(req.socket.remoteAddress)) {
+      // Not vyred, and not this computer: no answer at all, not even a 401 (gate.js).
+      gate.failed(req.socket.remoteAddress);
+      req.socket.destroy();
+      return;
+    }
     // For isVersion, kind comes from cdpId alone (identifyClient), even when isOwner is also
     // true: in legacy/non-shared mode identifyClient already answers "agent" for the owner token
     // too (agent and owner are the same secret there), so this changes nothing for today's
@@ -781,7 +785,7 @@ const server = createServer(async (req, res) => {
 // since a plain WebSocket cannot set a header.
 server.on("upgrade", (req, socket, head) => cdpUpgrade(req, socket, head));
 
-server.on("connection", sock => { if (!peerAllowed(sock.remoteAddress)) sock.destroy(); });
+server.on("connection", sock => { if (gate.blocked(sock.remoteAddress)) sock.destroy(); });
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`computerd listening on :${PORT}`);
 });
@@ -792,7 +796,7 @@ const VNC_SOCKET = process.env.VNC_SOCKET || "";
 const VNC_PORT = Number(process.env.VNC_PORT || 5900);
 if (VNC_SOCKET) {
   const gate = net.createServer(sock => {
-    if (!peerAllowed(sock.remoteAddress)) { sock.destroy(); return; }
+    if (!gate.allowedScreen(sock.remoteAddress)) { sock.destroy(); return; }
     const up = net.connect(VNC_SOCKET);
     sock.pipe(up); up.pipe(sock);
     const end = () => { sock.destroy(); up.destroy(); };

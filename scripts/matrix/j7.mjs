@@ -46,6 +46,9 @@ else r.step("7.5a-agent-has-no-capabilities", caps.every(l => l.ok), { why: caps
 const forge = lines.filter(l => l.tag === "4i");
 if (!forge.length) r.step("7.5b-agent-cannot-forge-an-address", "skip", { why: "the proof stopped before this step" });
 else r.step("7.5b-agent-cannot-forge-an-address", forge.every(l => l.ok), { why: forge.map(l => l.text).join("; ").slice(0, 400) });
+const loop = lines.filter(l => l.tag === "4j");
+if (!loop.length) r.step("7.5c-nothing-forwards-to-loopback", "skip", { why: "the proof stopped before this step" });
+else r.step("7.5c-nothing-forwards-to-loopback", loop.every(l => l.ok), { why: loop.map(l => l.text).join("; ").slice(0, 300) });
 const kill = lines.filter(l => l.tag === "4f");
 for (const [i, step] of ["7.3a-killed-computer-reported-stopped", "7.3b-glass-says-so-plainly", "7.3c-nothing-left-running"].entries()) {
   const l = kill[i];

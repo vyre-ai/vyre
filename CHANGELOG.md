@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Computers: the screen's address gate is strict (nobody but vyred's pinned address or loopback, and nobody at all
+  before a pin). computerd answers an address it does not know with no bytes unless the request carries a valid
+  token, which proves it is vyred and re-pins that address, so a vyred that came back at a new address is let in
+  without restarting the computer; an address that keeps failing is closed on at the connection. The loopback
+  assumption (nothing in a computer forwards remote traffic to loopback) is written down in `computerd/gate.js` and
+  checked by `image/loopback.test.js` and J7 step 7.5c.
 - Computers: the address gate got its own module and tests (`computerd/gate.js`). NET_RAW joins the capabilities a
   computer may never be given, with a policy test that a computer is made with every capability dropped, only
   SETUID and SETGID back, and no-new-privileges. When vyred starts, a running computer that closes on its address

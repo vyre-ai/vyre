@@ -5,34 +5,46 @@ import http from "node:http";
 import net from "node:net";
 import { createGate, plainAddr } from "./gate.js";
 
-test("gate: before the first token anyone may connect; after, only the pinned address and loopback", () => {
+test("gate: the screen's gate is strict, with no opening before a pin", () => {
   const g = createGate();
-  assert.equal(g.allowed("172.18.0.9"), true, "before the pin: anything may connect (and only gets a 401)");
+  assert.equal(g.allowedScreen("172.18.0.9"), false, "before any pin: another computer cannot try the screen's password");
+  assert.equal(g.allowedScreen("127.0.0.1"), true, "this computer's own processes");
   g.pin("::ffff:172.18.0.2");
   assert.equal(g.pinned, "172.18.0.2");
-  assert.equal(g.allowed("172.18.0.2"), true);
-  assert.equal(g.allowed("::ffff:172.18.0.2"), true);
-  assert.equal(g.allowed("172.18.0.9"), false, "another computer is refused");
-  assert.equal(g.allowed("127.0.0.1"), true, "the computer's own processes");
-  assert.equal(g.allowed("::1"), true);
-  // vyred comes back at another address and shows the token: it is let in again, and the old one is not.
-  g.pin("172.18.0.7");
-  assert.equal(g.allowed("172.18.0.7"), true);
-  assert.equal(g.allowed("172.18.0.2"), false);
-  // Loopback never pins; a pin needs an address that is not this computer's own.
-  g.pin("127.0.0.1");
+  assert.equal(g.allowedScreen("172.18.0.2"), true);
+  assert.equal(g.allowedScreen("::ffff:172.18.0.2"), true);
+  assert.equal(g.allowedScreen("172.18.0.9"), false);
+  g.pin("172.18.0.7"); // vyred came back at another address and showed the token
+  assert.equal(g.allowedScreen("172.18.0.7"), true);
+  assert.equal(g.allowedScreen("172.18.0.2"), false);
+  g.pin("127.0.0.1"); // loopback never pins
   assert.equal(g.pinned, "172.18.0.7");
   assert.equal(plainAddr(undefined), "");
 });
 
-/** A server wired the way computerd wires it: the gate at the connection, then a bearer check that answers 401. */
+test("gate: an address that keeps failing is closed on at the connection, and a known address never is", () => {
+  let t = 1000;
+  const g = createGate({ now: () => t });
+  for (let i = 0; i < 19; i++) g.failed("172.18.0.9");
+  assert.equal(g.blocked("172.18.0.9"), false);
+  g.failed("172.18.0.9");
+  assert.equal(g.blocked("172.18.0.9"), true);
+  t += 61_000;
+  assert.equal(g.blocked("172.18.0.9"), false, "a minute later it may try again");
+  for (let i = 0; i < 30; i++) g.failed("172.18.0.2");
+  g.pin("172.18.0.2");
+  assert.equal(g.blocked("172.18.0.2"), false, "vyred's own address is never blocked");
+});
+
+/** A server wired the way computerd wires it: any address connects, a valid token proves vyred and pins, anyone else unknown is closed on. */
 async function serve(t, gate) {
   const server = http.createServer((req, res) => {
     const ok = req.headers.authorization === "Bearer token";
     if (ok) gate.pin(req.socket.remoteAddress);
+    else if (!gate.known(req.socket.remoteAddress)) { gate.failed(req.socket.remoteAddress); req.socket.destroy(); return; }
     res.writeHead(ok ? 200 : 401).end();
   });
-  server.on("connection", s => { if (!gate.allowed(s.remoteAddress)) s.destroy(); });
+  server.on("connection", s => { if (gate.blocked(s.remoteAddress)) s.destroy(); });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
   t.after(() => server.close());
   return /** @type {import("node:net").AddressInfo} */ (server.address()).port;
@@ -51,18 +63,19 @@ function ask(port, from, bearer) {
   });
 }
 
-test("gate: a connection from another computer gets nothing beyond a 401 before the pin, and nothing at all after it", async t => {
+test("gate: computerd answers nobody it does not know, except a valid token, which pins; vyred at a new address is let in without a restart", async t => {
   const gate = createGate();
   const port = await serve(t, gate);
   const other = await ask(port, "127.0.0.2", "");
   if (other === "unavailable") return t.skip("this machine has no 127.0.0.2 to connect from");
-  assert.equal(other, "HTTP/1.0 401 Unauthorized", "before the pin: a 401 and nothing else");
-  assert.equal(await ask(port, "127.0.0.2", "wrong"), "HTTP/1.0 401 Unauthorized", "a wrong token neither pins nor opens anything");
+  assert.equal(other, "", "an address that shows no token gets no bytes, not even a 401");
+  assert.equal(await ask(port, "127.0.0.2", "wrong"), "", "a wrong token neither pins nor opens anything");
   assert.equal(gate.pinned, null);
-  // vyred (here 127.0.0.3 stands for its address) shows the token: pinned.
-  assert.equal(await ask(port, "127.0.0.3", "token"), "HTTP/1.0 200 OK");
+  assert.equal(await ask(port, "127.0.0.3", "token"), "HTTP/1.0 200 OK", "the token proves vyred: served, and pinned");
   assert.equal(gate.pinned, "127.0.0.3");
-  assert.equal(await ask(port, "127.0.0.2", ""), "", "after the pin: the other computer is closed on, no bytes");
-  assert.equal(await ask(port, "127.0.0.2", "token-guess"), "");
-  assert.equal(await ask(port, "127.0.0.3", ""), "HTTP/1.0 401 Unauthorized", "vyred's address is still met by the token check, the second wall");
+  assert.equal(await ask(port, "127.0.0.2", "token-guess"), "", "after the pin another computer still gets nothing");
+  assert.equal(await ask(port, "127.0.0.3", ""), "HTTP/1.0 401 Unauthorized", "vyred's address meets the token check, the second wall");
+  assert.equal(await ask(port, "127.0.0.4", "token"), "HTTP/1.0 200 OK", "vyred came back at another address: the token re-pins it, no restart");
+  assert.equal(gate.pinned, "127.0.0.4");
+  assert.equal(await ask(port, "127.0.0.3", ""), "", "and the old address is now just another peer");
 });

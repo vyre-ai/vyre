@@ -274,6 +274,15 @@ try {
     note(sudo.length === 0, "4h no sudo, doas or pkexec for the agent uid", sudo.join(",") || "none");
     const suid = asAgentC("find / -xdev -type f -perm -4000 2>/dev/null | head -20").split("\n").filter(Boolean);
     console.log("setuid files in the image (inert under no-new-privileges): " + (suid.join(" ") || "none"));
+    // 4j (7.5c). The gate lets loopback in, which holds only while nothing in the computer forwards remote traffic to it.
+    const procs = shOk(["exec", CONTAINER, "sh", "-c", "ps -eo comm= | sort -u"]).split("\n").map(x => x.trim()).filter(Boolean);
+    const FORWARDERS = /^(tailscaled?|socat|redir|rinetd|haproxy|nginx|ncat|nc|netcat|sshd|dropbear|stunnel|gost|3proxy|squid|microsocks)$/;
+    const fwd = procs.filter(x => FORWARDERS.test(x));
+    const tcp = shOk(["exec", CONTAINER, "sh", "-c", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"]).split("\n");
+    const listen = tcp.map(l => l.trim().split(/\s+/)).filter(f => f[3] === "0A").map(f => { const [ip, port] = f[1].split(":"); return { loopback: /^(0100007F|00000000000000000000000001000000)$/.test(ip), port: parseInt(port, 16) }; });
+    const open = [...new Set(listen.filter(x => !x.loopback).map(x => x.port))].sort((a, b) => a - b);
+    console.log("--- processes in the computer: " + procs.join(" ") + "\n--- listening: non-loopback " + open.join(",") + "; loopback " + [...new Set(listen.filter(x => x.loopback).map(x => x.port))].join(","));
+    note(fwd.length === 0 && open.every(p => p === 5900 || p === 7000), "4j nothing in the computer forwards remote traffic to loopback (no tailscaled, socat, proxy or sshd), and only 5900 and 7000 listen beyond it", { forwarders: fwd, open });
     // 4i (7.5). Forging a source address needs a raw or packet socket (ARP poisoning needs a packet socket); both need
     // CAP_NET_RAW, which no computer has.
     const forge = asAgentC(`python3 - <<'PY'
