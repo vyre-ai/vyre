@@ -1,0 +1,341 @@
+{
+ "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
+ "tools": {
+  "artifacts.archive": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.create": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.delete": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.diff": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.export": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.get": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.list": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.move": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.public.status": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.restore": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.search": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.share": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.undelete": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.unshare": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.update": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.versions": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "events.catalog": {
+   "module": "events",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "github.accounts": {
+   "module": "github",
+   "reason": "read-only: names, logins and avatars of connected accounts, never a token; callers list is the person's surfaces plus first-party modules (checked in code)"
+  },
+  "github.mentions.resolve": {
+   "module": "github",
+   "reason": "read-only: one repo, PR or issue as context, marked outside text; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+  },
+  "github.mentions.search": {
+   "module": "github",
+   "reason": "read-only: repo, PR and issue names and short hints; callers are the person's surfaces and first-party modules named in code (checkModuleCaller), no model"
+  },
+  "github.project.issue.get": {
+   "module": "github",
+   "reason": "read-only: one issue with comments marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.issue.list": {
+   "module": "github",
+   "reason": "read-only: a repo's issues, titles marked outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.local-init": {
+   "module": "github",
+   "reason": "guard: callers list (person, agents, first-party projects/sessions/threads) and a project-grant check (inGrant); only a folder with no history becomes a repo, secret-looking files stay out of the first commit, nothing is overwritten"
+  },
+  "github.project.of": {
+   "module": "github",
+   "reason": "read-only: which account and repo a project came from; callers are the person's surfaces and first-party sessions and threads (checkModuleCaller)"
+  },
+  "github.project.pr.comments": {
+   "module": "github",
+   "reason": "read-only: a PR's comments marked person or outside; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.project.pr.get": {
+   "module": "github",
+   "reason": "read-only: one PR shaped for the review card; the project-grant check (inGrant) bounds an agent to its granted projects; text from others is marked outside"
+  },
+  "github.project.pr.status": {
+   "module": "github",
+   "reason": "read-only: checks, reviews and a ready verdict, no text from others; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.repos": {
+   "module": "github",
+   "reason": "read-only: the repos an account can see; callers are the person's surfaces and module:sessions only (checkModuleCaller)"
+  },
+  "github.session.history": {
+   "module": "github",
+   "reason": "read-only: a session's own commits and uncommitted count; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.push": {
+   "module": "github",
+   "reason": "guard: pushes only the session's own vyre/<id> branch, by explicit refspec, never forced, to the project's recorded repo from a throwaway repo that reads none of the project's git config; the outgoing commits are secret-scanned and allow_secret counts only for a person or a call the person's words asked for; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.redo": {
+   "module": "github",
+   "reason": "guard: restores only what github.session.undo saved for that session, refused when the branch moved on; never touches the default branch or a remote; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "github.session.undo": {
+   "module": "github",
+   "reason": "guard: acts only on the session's own worktree and branch; nothing is deleted (the tip and unsaved work are kept under a ref and github.session.redo restores them); never touches the default branch or a remote; the project-grant check (inGrant) bounds an agent to its granted projects"
+  },
+  "link.call": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.events": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.find": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.health": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.hello": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.macs": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pair.approve": {
+   "module": "link",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "link.pair.poll": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.pair.request": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.peers": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pending": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.reply": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.serve": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.signin": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.status": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.capsule.pin": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.code": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.enroll": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.keys": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.person.sessions": {
+   "module": "presence",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "presence.person.start": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.remove": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.session.close": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.session.open": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.check": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.access.grant": {
+   "module": "projects",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.list": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.migrate": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.revoke": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.archive": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.catalog": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.context": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.create": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.history": {
+   "module": "projects",
+   "reason": "read-only; callers in code: capsule, cli, deck, local, mcp"
+  },
+  "projects.list": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.of": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.rename": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.threads": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "releases.cert": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, deck, local, tailnet"
+  },
+  "releases.sign": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, local, module"
+  },
+  "sync.consent": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete.import": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.scan": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.upload.cancel": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.chunk": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.finish": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.plan": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.start": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "undo.list": {
+   "module": "undo",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "undo.run": {
+   "module": "undo",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  }
+ }
+}
