@@ -127,6 +127,22 @@ tray glyph) adds four transitive crates to app/Cargo.lock: image 0.25.10, moxcms
 byteorder-lite 0.1.0. Each lock entry carries a checksum, and the build is --locked with no other lock
 change. The tray theme is read with RegGetValueW (windows-sys Win32_System_Registry), no `reg.exe` process.
 
+**Real Windows 11 pass (2026-10-01, Win11 Enterprise 24H2 evaluation VM on the testbox, scripts/testbox-win11):**
+PASS: install-windows.ps1 against a local release (SHA-256 check, silent NSIS install to %LOCALAPPDATA%\Vyre,
+ONLOGON task registered, interactive only); `--selftest` (DPAPI round trip 262-byte blob, taskbar theme read,
+both tray icons decode, System32 path); the app launches with the Lumen icon in the title bar, taskbar and
+desktop shortcut, tray icon registered (tooltip "Vyre Lumen", HKCU NotifyIconSettings); first-run page renders;
+"Pair from my other device" runs begin_pair over IPC and shows the QR and the 13 words; Drive `net use` against a
+WebDAV server at \\100.100.100.100@8080\... maps with no prompt, lists, reads a file, copies a 40 MB file; a 60 MB
+file fails with "The file size exceeds the limit allowed and cannot be saved" and copies after setting
+FileSizeLimitInBytes and restarting WebClient (the doc claim holds); no reg.exe process, 9 MB resident.
+FOUND AND FIXED: (1) the first-run window was 480x360 and clipped the pairing code: now 520x760; (2) the Copy
+button's clear() read the clipboard back, which raised "wants to see text and images copied to the clipboard":
+removed. NOT A PRODUCT BUG: a blank white window with no GPU (VM only; WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--disable-gpu
+fixes it). NOT TESTED (needs a box to pair with): the confirm window, finish_pair, the hidden link window and its
+tray "Open Vyre Drive", the real update download, toasts, the global hotkey (needs real key events), the
+Windows Hello flows.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in

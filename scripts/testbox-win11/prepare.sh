@@ -16,6 +16,16 @@ if ! command -v qemu-system-x86_64 >/dev/null || ! command -v swtpm >/dev/null |
   sudo DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-system-x86 qemu-utils ovmf swtpm swtpm-tools xorriso
 fi
 
+# swtpm runs under an AppArmor profile that would deny its state and log under /srv/vyre-test.
+grep -qs "/srv/vyre-test/win11" /etc/apparmor.d/local/usr.bin.swtpm 2>/dev/null || {
+  echo "/srv/vyre-test/win11/** rwk," | sudo tee -a /etc/apparmor.d/local/usr.bin.swtpm >/dev/null
+  sudo apparmor_parser -r /etc/apparmor.d/usr.bin.swtpm || true
+}
+# wsgidav for the Drive net-use test, and sshpass for g.sh
+command -v sshpass >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y sshpass python3-venv >/dev/null
+[ -x "$ROOT/venv/bin/wsgidav" ] || { python3 -m venv "$ROOT/venv" && "$ROOT/venv/bin/pip" install -q wsgidav cheroot; }
+
+mkdir -p "$ROOT/share/release"; [ -s "$ROOT/share/release/OpenSSH-Win64.zip" ] || curl -sL --fail -o "$ROOT/share/release/OpenSSH-Win64.zip" https://github.com/PowerShell/Win32-OpenSSH/releases/latest/download/OpenSSH-Win64.zip
 [ -s "$ROOT/iso/win11.iso" ] || { curl -L --fail -o "$ROOT/iso/win11.iso.part" "$ISO_URL" && mv "$ROOT/iso/win11.iso.part" "$ROOT/iso/win11.iso"; }
 [ -s "$ROOT/iso/virtio-win.iso" ] || { curl -L --fail -o "$ROOT/iso/virtio-win.iso.part" "$VIRTIO_URL" && mv "$ROOT/iso/virtio-win.iso.part" "$ROOT/iso/virtio-win.iso"; }
 
@@ -29,5 +39,5 @@ xorriso -as mkisofs -quiet -J -r -V UNATTEND -o "$ROOT/iso/unattend.iso" "$ROOT/
 
 [ -f "$ROOT/disk.qcow2" ] || qemu-img create -f qcow2 "$ROOT/disk.qcow2" 64G
 cp -n /usr/share/OVMF/OVMF_VARS_4M.fd "$ROOT/OVMF_VARS.fd" 2>/dev/null || cp -n /usr/share/OVMF/OVMF_VARS_4M.ms.fd "$ROOT/OVMF_VARS.fd"
-cp "$here/start.sh" "$here/stop.sh" "$here/swap.sh" "$ROOT/"; chmod +x "$ROOT/start.sh" "$ROOT/stop.sh" "$ROOT/swap.sh"
+cp "$here/start.sh" "$here/stop.sh" "$here/swap.sh" "$here/g.sh" "$here/type.py" "$ROOT/"; chmod +x "$ROOT/start.sh" "$ROOT/stop.sh" "$ROOT/swap.sh" "$ROOT/g.sh"
 echo "ready: $ROOT (start with: sh $ROOT/start.sh install   then   sh $ROOT/start.sh)"

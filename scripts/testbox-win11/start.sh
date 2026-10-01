@@ -18,6 +18,9 @@ sudo setfacl -m "u:$(id -un):rw" /dev/kvm
 if systemctl --user is-active --quiet vyre-win11.service; then echo "already running"; exit 0; fi
 [ "$avail" -gt $((MEM + 1024)) ] || { echo "only ${avail} MB available, need $((MEM + 1024)); drop a runner or lower VM_MEM" >&2; exit 1; }
 
+# The guest fetches OpenSSH and the release files from here (it reaches the host at 10.0.2.2).
+systemctl --user is-active --quiet win11-rel.service || systemd-run --user --unit=win11-rel --collect --quiet nice -n 15 python3 -m http.server 8099 --bind 127.0.0.1 -d "$ROOT/share/release"
+
 # A TPM 2.0 needs its state made once (endorsement key and certs) before swtpm will start.
 [ -e "$ROOT/tpm/tpm2-00.permall" ] || swtpm_setup --tpm2 --tpmstate "$ROOT/tpm" --createek --lock-nvram --overwrite >"$ROOT/logs/swtpm-setup.log" 2>&1
 
@@ -34,7 +37,7 @@ if [ "${1:-}" = install ]; then
 fi
 
 # shellcheck disable=SC2086
-systemd-run --user --unit=vyre-win11 --collect --quiet -p OOMScoreAdjust=800 nice -n 10 \
+systemd-run --user --unit=vyre-win11 --collect --quiet -p OOMScoreAdjust=800 nice -n "${VM_NICE:-0}" \
   qemu-system-x86_64 -name vyre-win11 -machine q35,accel=kvm -cpu host -smp "$CPUS" -m "$MEM" \
   -drive if=pflash,format=raw,readonly=on,file="$CODE" -drive if=pflash,format=raw,file="$ROOT/OVMF_VARS.fd" \
   -chardev socket,id=chrtpm,path="$ROOT/run/swtpm.sock" -tpmdev emulator,id=tpm0,chardev=chrtpm -device tpm-tis,tpmdev=tpm0 \

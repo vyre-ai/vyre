@@ -112,8 +112,8 @@ fn show_first_run(app: &AppHandle) {
     }
     let _ = WebviewWindowBuilder::new(app, "first-run", WebviewUrl::App("first-run.html".into()))
         .title(APP_NAME)
-        .inner_size(480.0, 360.0)
-        .resizable(false)
+        // Tall enough for the pairing code (QR, 13 words, buttons) without scrolling much.
+        .inner_size(520.0, 760.0)
         .build();
 }
 
