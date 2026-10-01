@@ -62,6 +62,9 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   // artifacts.media.read. A real folder named Generated, if the project has one, is shown together with them.
   const MEDIA_EXT = { png: "png", jpeg: "jpg", webp: "webp", gif: "gif", mp4: "mp4", webm: "webm", mp3: "mp3", wav: "wav", ogg: "ogg", m4a: "m4a" };
   const GENERATED = "Generated";
+  /** artifacts keeps the type and size of a media item under `media` (and, for some callers, at the top); read either. */
+  const mimeOf = a => String(a.mime || (a.media && a.media.mime) || "");
+  const bytesOf = a => Number(a.bytes ?? (a.media && a.media.bytes) ?? 0);
   const realOf = p => { try { return fs.realpathSync(p); } catch { return null; } };
 
   /** The slug of the project whose home is this folder, or null. */
@@ -91,7 +94,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     rows.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
     const used = new Set();
     return rows.map(a => {
-      const ext = MEDIA_EXT[String(a.format || "").toLowerCase()] || String(a.mime || "").split("/")[1] || "bin";
+      const ext = MEDIA_EXT[String(a.format || "").toLowerCase()] || mimeOf(a).split("/")[1] || "bin";
       const base = String(a.title || a.id).replace(/[\\/:*?"<>|\0\r\n]+/g, "-").replace(/^\.+/, "").trim().slice(0, 80) || String(a.id).slice(0, 8);
       let name = `${base}.${ext}`;
       if (used.has(name.toLowerCase())) name = `${base} (${String(a.id).slice(0, 6)}).${ext}`;
@@ -145,7 +148,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
           let name = m.name;
           if (have.has(name.toLowerCase())) name = name.replace(/(\.[^.]+)$/, ` (${String(m.a.id).slice(0, 6)})$1`);
           have.add(name.toLowerCase());
-          entries.push({ name, dir: false, kind: String(m.a.kind || "file"), mime: String(m.a.mime || ""), size: Number(m.a.bytes || 0), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id) });
+          entries.push({ name, dir: false, kind: String(m.a.kind || "file"), mime: mimeOf(m.a), size: bytesOf(m.a), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id) });
         }
         entries.sort((a, b) => a.name.localeCompare(b.name));
         const page = entries.slice(offset, offset + limit);
@@ -186,7 +189,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
         const r = await ctx.call("artifacts.media.read", { id: m.a.id, offset: off, length: len });
         if (r.error) throw refuse("not available", "not_available");
         const d = r.data || {};
-        return { share, path: "/" + String(rel).replace(/^\/+/, ""), kind: String(m.a.kind || "file"), mime: String(d.mime || m.a.mime || ""), size: Number(d.size || m.a.bytes || 0),
+        return { share, path: "/" + String(rel).replace(/^\/+/, ""), kind: String(m.a.kind || "file"), mime: String(d.mime || mimeOf(m.a)), size: Number(d.size || bytesOf(m.a)),
           mtime: String(m.a.created_at || ""), offset: Number(d.offset ?? off), length: Number(d.length || 0), base64: String(d.bytes_b64 || ""), done: d.eof === true, virtual: true, artifact: String(m.a.id) };
       }
       const { safe } = await resolve(share, rel, meta, { file: true });
