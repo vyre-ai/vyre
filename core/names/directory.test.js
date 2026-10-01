@@ -147,7 +147,7 @@ test("names.claim once on the tailnet: the address, the certificate through dire
   assert.equal(again.recoveryCode, null, "no second code");
   await a.svc.wait();
   assert.equal(a.svc.status().phase, "serving", a.svc.status().why || "");
-  assert.deepEqual(h.dns.at("alex.vyre.run").map(r => [r.type, r.content]), [["A", "100.101.1.2"], ["AAAA", "fd7a:115c:a1e0:ab12:4843:cd96:6265:f9d0"]]);
+  assert.deepEqual(h.dns.at("alex.vyre.run").map(r => [r.type, r.content]), [["A", "100.101.1.2"]], "the IPv6 address is not published: rebind filters drop it");
   assert.deepEqual(a.state.issued, [{ name: "alex.vyre.run", txtWhileIssuing: 1 }]);
   assert.equal(h.dns.at("_acme-challenge.alex.vyre.run").length, 0, "cleared afterwards");
   assert.deepEqual(kinds(a.emitted), ["name.claimed", "certificate.issued"]);
