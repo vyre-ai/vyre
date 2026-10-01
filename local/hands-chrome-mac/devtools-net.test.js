@@ -351,10 +351,11 @@ test("egress guard fails CLOSED: a request judged blocked is never continued, wh
     await new Promise(r => setTimeout(r, 0));
     const continued = k.sent.filter(s => s.method === "Fetch.continueRequest" && s.params.requestId === `evil${n}`);
     assert.equal(continued.length, 0, `never continued (run ${n}, failFail ${failFail}, failFulfill ${failFulfill})`);
+    const atPause = failCalls;
     const out = await eg.stop();
     assert.equal(out.length, 1);
     assert.equal(!!out[0].leaked, failFail && failFulfill, "marked leaked only when the request could not be stopped by any means");
-    if (failFail) assert.equal(failCalls, 2, "failRequest was tried twice before the fulfilled 403");
+    if (failFail) assert.equal(atPause, 2, "failRequest was tried twice before the fulfilled 403");
   }
 });
 
@@ -382,8 +383,8 @@ test("egress guard: children start PAUSED while it is up; Fetch goes on BEFORE a
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-F2") throw new Error("Timed out"); return {}; };
   k.push(1, "Target.attachedToTarget", { sessionId: "S-F2", waitingForDebugger: true, targetInfo: { targetId: "F2", type: "iframe", url: "https://b.example/x" } });
   await new Promise(r => setTimeout(r, 5));
-  const f2 = k.sent.filter(s => s.session === "S-F2").map(s => s.method === "Runtime.evaluate" ? "eval:" + s.params.expression : s.method);
-  assert.ok(f2.indexOf("eval:location.replace('about:blank')") >= 0 && f2.indexOf("Runtime.runIfWaitingForDebugger") > f2.indexOf("eval:location.replace('about:blank')"), "an unguarded child is emptied while it waits, and only then resumed: " + f2.join());
+  const f2 = k.sent.filter(s => s.session === "S-F2").map(s => s.method === "Page.navigate" ? "nav:" + s.params.url : s.method);
+  assert.ok(f2.indexOf("nav:about:blank") >= 0 && f2.indexOf("Runtime.runIfWaitingForDebugger") > f2.indexOf("nav:about:blank"), "an unguarded child is sent to a blank page while it waits, and only then resumed: " + f2.join());
   assert.ok(k.sent.some(s => s.method === "Runtime.terminateExecution"), "the script is stopped");
   const out = await eg.stop();
   assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.stopped && /could not be guarded/.test(o.origin)), "the result says it was stopped");
@@ -398,6 +399,7 @@ test("egress guard: an unguardable child that cannot be emptied stays paused and
   const eg = await egressGuard(k.ctx, 1);
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X" || session === "S-W") throw new Error("'Fetch.enable' wasn't found"); return {}; };
   k.respond["Runtime.evaluate"] = (/** @type {any} */ p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X" && /location\.replace/.test(String(p.expression))) throw new Error("no"); return { result: { value: [] } }; };
+  k.respond["Page.navigate"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X") throw new Error("no"); return {}; };
   // a FRAME answering "no Fetch domain" is not a worker: it fails the guard, and with the evaluate refused it stays paused
   k.push(1, "Target.attachedToTarget", { sessionId: "S-X", waitingForDebugger: true, targetInfo: { targetId: "X", type: "iframe", url: "https://b.example/x" } });
   await new Promise(r => setTimeout(r, 10));
@@ -447,8 +449,8 @@ test("egress guard: what the guard blocked never becomes allowed by being observ
 
 
 /** A world with a page on app.example that has talked to api.example (and, optionally, more), then a guard. */
-async function guardedWorld(extra = async (/** @type {any} */ _k) => {}) {
-  const k = makeCtx({ active: 1 });
+async function guardedWorld(extra = async (/** @type {any} */ _k) => {}, opts = {}) {
+  const k = makeCtx({ active: 1, ...opts });
   k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
   await net.ops["net.start"]({ tab: 1 }, k.ctx);
   const seen = (/** @type {string} */ id, /** @type {string} */ url) => { k.push(1, "Network.requestWillBeSent", { requestId: id, type: "XHR", documentURL: "https://app.example/w", request: { url, method: "GET", headers: {} } }); k.push(1, "Network.responseReceived", { requestId: id, type: "XHR", response: { url, status: 200, headers: {}, mimeType: "application/json" } }); };
@@ -575,4 +577,119 @@ test("egress guard: a worker target has no Fetch domain in Chrome; that one erro
   assert.equal(k.sent.some(s => s.method === "Runtime.terminateExecution"), false, "the script is not stopped for it");
   const out = await eg.stop();
   assert.equal(out.some((/** @type {any} */ o) => o.method === "GUARD"), false);
+});
+
+/** A page a service worker controls: the XHR probe is paused, the Image probe is answered by the worker (the browser says so in Network.responseReceived) and never paused. */
+function swPage(/** @type {any} */ k) {
+  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+    const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+    if (m) {
+      const url = "https://app.example/__vyre_probe_" + m[1];
+      k.push(1, "Fetch.requestPaused", { requestId: "px" + m[1], resourceType: "Fetch", request: { url, method: "GET", headers: {} } });
+      k.push(1, "Network.requestWillBeSent", { requestId: "pi" + m[1], type: "Image", request: { url, method: "GET", headers: {} } });
+      k.push(1, "Network.responseReceived", { requestId: "pi" + m[1], type: "Image", response: { url, status: 200, headers: {}, mimeType: "text/plain", fromServiceWorker: true } });
+      return { result: { value: 1 } };
+    }
+    return { result: { value: [] } };
+  };
+}
+
+test("egress guard: a service-worker-controlled frame (the BROWSER says so) is covered by the DNR rules narrowed to the first party, and is refused where the rules cannot be tested", async () => {
+  const a = await guardedWorld(async () => {}, { blindProbe: true });
+  swPage(a.k);
+  a.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  await assert.rejects(egressGuard(a.k.ctx, 1), /cannot test the network rules/, "an untested browser is refused on a SW page");
+  const b = await guardedWorld(async () => {}, { blindProbe: true });
+  swPage(b.k);
+  b.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  /** @type {any} */ (b.k.ctx).dnr.tested = true;
+  const eg = await egressGuard(b.k.ctx, 1);
+  const rules = /** @type {any} */ (b.k.ctx).dnr.rules;
+  assert.ok(rules.length >= 2, "the wide rule, then the narrowed one");
+  assert.deepEqual(rules[rules.length - 1].allowOrigins, ["https://app.example"], "first party only");
+  assert.deepEqual(eg.allowed, ["https://app.example"]);
+  await eg.stop();
+  // a page that merely CLAIMS a service worker (nothing from the browser) is not covered
+  const c = await guardedWorld(async () => {}, { blindProbe: true });
+  c.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  c.k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => { const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || "")); if (m) return { result: { value: 1, sw: true } }; return { result: { value: [] } }; };
+  await assert.rejects(egressGuard(c.k.ctx, 1), /could not be confirmed live/);
+});
+
+test("egress guard: a probe the BROWSER reports blocked by the page's CSP (Network.loadingFailed blockedReason csp) counts as covered; a page event or a different reason does not", async () => {
+  const run = async (/** @type {string} */ reason) => {
+    const { k } = await guardedWorld(async () => {}, { blindProbe: true });
+    k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+    k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+      const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+      if (!m) return { result: { value: [] } };
+      for (const type of ["Image", "XHR"]) {
+        k.push(1, "Network.requestWillBeSent", { requestId: "c" + type + m[1], type, request: { url: "https://app.example/__vyre_probe_" + m[1], method: "GET", headers: {} } });
+        k.push(1, "Network.loadingFailed", { requestId: "c" + type + m[1], type, errorText: "net::ERR_BLOCKED_BY_CSP", blockedReason: reason });
+      }
+      return { result: { value: 1 } };
+    };
+    return egressGuard(k.ctx, 1);
+  };
+  const eg = await run("csp");
+  await eg.stop();
+  await assert.rejects(run("inspector"), /could not be confirmed live/);
+});
+
+test("egress guard: a frame that claims a service worker controller (page JS) and whose probe is not fully paused gets the narrowed rules; with nothing claimed it is refused", async () => {
+  const mk = async (/** @type {number} */ claim) => {
+    const w = await guardedWorld(async () => {}, { blindProbe: true });
+    w.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+    /** @type {any} */ (w.k.ctx).dnr.tested = true;
+    w.k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+      const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+      if (!m) return { result: { value: [] } };
+      w.k.push(1, "Fetch.requestPaused", { requestId: "px" + m[1], resourceType: "Fetch", request: { url: "https://app.example/__vyre_probe_" + m[1], method: "GET", headers: {} } });
+      return { result: { value: 1 + claim } };
+    };
+    return w;
+  };
+  const a = await mk(1);
+  const eg = await egressGuard(a.k.ctx, 1);
+  assert.deepEqual(/** @type {any} */ (a.k.ctx).dnr.rules.at(-1).allowOrigins, ["https://app.example"], "narrowed to the first party");
+  await eg.stop();
+  await assert.rejects(egressGuard((await mk(0)).k.ctx, 1), /could not be confirmed live/);
+});
+
+test("egress guard: a request whose failRequest never took is tried again just before Fetch goes off, and reported stopped if the retry took", async () => {
+  const k = makeCtx({ active: 1 });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  let mode = "fail";
+  k.respond["Fetch.failRequest"] = () => { if (mode === "fail") throw new Error("busy"); return {}; };
+  k.respond["Fetch.fulfillRequest"] = () => { if (mode === "fail") throw new Error("busy"); return {}; };
+  k.push(1, "Fetch.requestPaused", { requestId: "evil", resourceType: "XHR", request: { url: "https://attacker.example/c", method: "GET", headers: {} } });
+  await new Promise(r => setTimeout(r, 30));
+  mode = "ok";
+  const before = k.calls("Fetch.failRequest").length;
+  const out = await eg.stop();
+  assert.ok(k.calls("Fetch.failRequest").length > before, "tried again at stop");
+  assert.ok(out.length && out.every((/** @type {any} */ o) => !o.leaked), "the retry took, so it is not reported as possibly sent");
+});
+
+test("egress guard: the service worker state comes from an ISOLATED world when there is one: a page that claims a controller it lacks is not covered, one it hides is", async () => {
+  const mk = async (/** @type {number} */ pageClaim, /** @type {boolean|undefined} */ truth) => {
+    const w = await guardedWorld(async () => {}, { blindProbe: true });
+    w.k.ctx.frames = { list: async () => [{ index: 0, frameId: "TOP", how: "top", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+    /** @type {any} */ (w.k.ctx).dnr.tested = true;
+    w.k.respond["Page.createIsolatedWorld"] = () => (truth === undefined ? {} : { executionContextId: 7 });
+    w.k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => {
+      if (p.contextId === 7) return { result: { value: truth } };
+      const m = /__vyre_probe_([a-z0-9]+_\d+)/.exec(String(p.expression || ""));
+      if (!m) return { result: { value: [] } };
+      w.k.push(1, "Fetch.requestPaused", { requestId: "px" + m[1], resourceType: "Fetch", request: { url: "https://app.example/__vyre_probe_" + m[1], method: "GET", headers: {} } });
+      return { result: { value: 1 + pageClaim } };
+    };
+    return w;
+  };
+  await assert.rejects(egressGuard((await mk(1, false)).k.ctx, 1), /could not be confirmed live/, "the page claims, the browser says no");
+  const eg = await egressGuard((await mk(0, true)).k.ctx, 1);
+  await eg.stop();
+  const fb = await egressGuard((await mk(1, undefined)).k.ctx, 1);
+  await fb.stop();
 });

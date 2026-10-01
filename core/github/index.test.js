@@ -67,6 +67,8 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
         mcpRows.push(input); return { data: { name: input.name } };
       }
       if (toolName === "mcp.remove") { const i = mcpRows.findIndex(r => r.name === input.name); if (i >= 0) mcpRows.splice(i, 1); return { data: { removed: i >= 0 } }; }
+      if (toolName === "vault.list") return { data: { items: [] } };
+      if (toolName === "vault.put") return { data: { name: input.name } };
       if (toolName === "mcp.test") return { data: { ok: true } };
       if (toolName === "vault.grant") return { data: { grant: { status: "active" } } };
       if (toolName === "projects.list") return { data: { projects: rows } };
@@ -92,7 +94,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
     if (!def) return { error: { code: "no_such_tool" } };
     if (def.callers && !def.callers.some(c => caller === c || caller.startsWith(c + ":"))) return { error: { code: "denied" } };
     if (def.internal && !caller.startsWith("module:")) return { error: { code: "no_such_tool" } };
-    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: "*" } : {}) }) }; }
+    try { return { data: await def.run(input, { caller, firstParty, ...(asked ? { asked: true } : {}), ...(door ? { door: true } : {}), ...(granted === "omit" ? {} : granted !== undefined ? { granted } : /(?:^|[\s:])agent:\S/.test(caller) ? { granted: [] } : {}) }) }; }
     catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code, message: err.message, ...(err.detail ? { detail: err.detail } : {}) } }; }
   };
   return { db, events, calls, as, ctx, mcpRows };
@@ -421,7 +423,7 @@ test("github.session.push: validates before ever touching git - no primary repo,
   const deniedModule = await w.as("module:someone-else")("github.session.push", { project: "harlow", session: "s1" });
   assert.equal(deniedModule.error.code, "denied");
 
-  const viaAgent = await w.as("mcp:agent:kit")("github.session.push", { project: "harlow", session: "s1" });
+  const viaAgent = await w.as("mcp:agent:kit", { granted: "*" })("github.session.push", { project: "harlow", session: "s1" });
   assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity");
 });
 
@@ -456,7 +458,7 @@ test("github.session.push: an agent cannot lift the secret scan with allow_secre
   fs.writeFileSync(path.join(wt.data.path, "keys.env"), "AWS_KEY=" + "AKIA" + "ABCDEFGHIJKLMNOP\n");
   execFileSync("git", ["-C", wt.data.path, "add", "keys.env"]);
   execFileSync("git", ["-C", wt.data.path, "commit", "-q", "-m", "oops"]);
-  const agent = await w.as("mcp:agent:kit")("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
+  const agent = await w.as("mcp:agent:kit", { granted: "*" })("github.session.push", { project: "harlow", session: "s2", allow_secret: true });
   assert.equal(agent.error.code, "secret_found", "an agent's allow_secret alone changes nothing");
   // (The two allowed cases would go on to a real push to github.com, so the override itself is
   // proven at the git level, git.test.js, against an unreachable address.)
@@ -520,7 +522,7 @@ test("github.project.pr.get: shapes the PR for the review card; outsiders are ma
 
 test("github.project.pr.status: checks, reviewers' latest review and one ready verdict; an agent may read it", async t => {
   const w = await prWorld(t);
-  const r = await w.as("mcp:agent:kit")("github.project.pr.status", { project: "app", pr: 7 });
+  const r = await w.as("mcp:agent:kit", { granted: "*" })("github.project.pr.status", { project: "app", pr: 7 });
   assert.equal(r.error, undefined);
   assert.deepEqual([r.data.state, r.data.draft, r.data.branch], ["open", false, { from: "vyre/s1", to: "main" }]);
   assert.deepEqual(r.data.checks_summary, { passed: 1, failed: 1, running: 1, pending: 0 });
@@ -533,7 +535,7 @@ test("github.project.pr.status: checks, reviewers' latest review and one ready v
 
 test("github.project.pr.comments: conversation, inline and review bodies, oldest first, marked person or outside; read only", async t => {
   const w = await prWorld(t);
-  const r = await w.as("mcp:agent:kit")("github.project.pr.comments", { project: "app", pr: 7 });
+  const r = await w.as("mcp:agent:kit", { granted: "*" })("github.project.pr.comments", { project: "app", pr: 7 });
   assert.equal(r.data.outside, true);
   assert.deepEqual([...new Set(r.data.comments.map(c => c.kind))].sort(), ["inline", "review"]);
   assert.ok(r.data.comments.some(c => c.kind === "review" && c.text === "no, because" && c.by === "outside"));
@@ -543,7 +545,7 @@ test("github.project.pr.comments: conversation, inline and review bodies, oldest
 
 test("github.project.issue.list / .get: issues without pull requests, search with q, one issue with comments marked person or outside; a PR number is refused", async t => {
   const w = await prWorld(t);
-  const ag = w.as("mcp:agent:kit");
+  const ag = w.as("mcp:agent:kit", { granted: "*" });
   const list = await ag("github.project.issue.list", { project: "app" });
   assert.deepEqual(list.data.issues.map(i => [i.number, i.labels, i.comments]), [[3, ["bug"], 2]]);
   assert.equal(list.data.outside, true);
@@ -608,10 +610,12 @@ test("an agent's project grant bounds which projects it may name: a project outs
     }
   }
   assert.equal(w.log.length, before, "nothing reached GitHub for a project outside the grant");
-  for (const granted of ["*", ["app"], ["x", "app"], ["*"], undefined]) {
+  for (const granted of ["*", ["app"], ["x", "app"], ["*"]]) {
     assert.notEqual((await w.as("mcp:agent:kit", { granted })("github.project.pr.status", { project: "app", pr: 7 })).error?.code, "not_found", JSON.stringify(granted));
   }
   assert.equal((await w.as("deck")("github.project.pr.status", { project: "app", pr: 7 })).error, undefined, "the person has no grant to check");
+  // the harness gives a named agent [] (what the real daemon gives one with nothing stored), never "*"
+  assert.equal((await w.as("mcp:agent:kit")("github.project.pr.status", { project: "app", pr: 7 })).error.code, "not_found", "an agent with nothing granted reaches no project");
   // a claimed agent whose grant is missing (a failed lookup) is denied, not let in
   for (const [tool, input] of calls) assert.equal((await w.as("mcp:agent:kit", { granted: "omit" })(tool, input)).error.code, "not_found", `${tool} for a claimed agent with no grant`);
   assert.equal((await w.as("mcp", { granted: "omit" })("github.project.pr.status", { project: "app", pr: 7 })).error, undefined, "an unnamed mcp caller is the person's own session");
@@ -636,7 +640,7 @@ test("github.project.pr.merge: GitHub's refusal is reported as refused; the tool
   const w = await prWorld(t, { mergeStatus: 405 });
   const r = await w.as("deck")("github.project.pr.merge", { project: "app", pr: 7 });
   assert.equal(r.error.code, "refused");
-  const ok = await w.as("mcp:agent:kit", { asked: true })("github.project.pr.review", { project: "app", pr: 7, event: "APPROVE" });
+  const ok = await w.as("mcp:agent:kit", { asked: true, granted: "*" })("github.project.pr.review", { project: "app", pr: 7, event: "APPROVE" });
   assert.equal(ok.data.id, 9, "an asked agent call reaches GitHub");
 });
 
@@ -668,7 +672,7 @@ test("github.project.local-init: an empty or plain folder becomes a repo whose s
   assert.equal(w.events.at(-1).type, "github.local-init");
   const wt = await w.as("module:sessions", { firstParty: true })("github.session.worktree", { project: "plain", session: "s1" });
   assert.equal(fs.existsSync(path.join(wt.data.path, "notes.md")), true);
-  const again = await w.as("mcp:agent:kit")("github.project.local-init", { project: "plain" });
+  const again = await w.as("mcp:agent:kit", { granted: "*" })("github.project.local-init", { project: "plain" });
   assert.equal(again.data.already, true);
   // a folder inside the repo just made is not its own repo
   const sub = path.join(dir, "sub"); fs.mkdirSync(sub);
@@ -811,6 +815,25 @@ test("github.mentions.search / .resolve: the # picker lists repos, open PRs and 
   assert.equal((await w.as("deck")("github.mentions.resolve", { id: "repo:nobody/nothing" })).error.code, "not_found");
   assert.equal((await w.as("module:evil", { firstParty: true })("github.mentions.search", { q: "x" })).error.code, "denied");
   assert.ok(log.every(l => l.auth === "Bearer test-token"), "only the connected account's token, never anything else");
+});
+
+test("github.connect with a pasted token: checked with GitHub, saved under the account's vault item (granted to github only), listed without the token, hosted MCP added; an agent may not connect", async t => {
+  const w = await world(t);
+  const tok = "github_pat_11ABCDEFG0abcdefghijkl_mnopqrstuvwxyz0123456789ABCDEFGH";
+  withFetch(t, async (url, opts = {}) => {
+    assert.equal(opts.headers.authorization, `Bearer ${tok}`);
+    return { ok: true, status: 200, json: async () => ({ login: "sam", avatar_url: null }) };
+  });
+  const r = await w.as("deck")("github.connect", { name: "work", token: tok });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.connected, r.data.login], [true, "sam"]);
+  assert.equal(r.data.repos, null, "the count is a courtesy: absent when the repo call gives nothing usable");
+  const put = w.calls.find(c => c.tool === "vault.put");
+  assert.deepEqual([put.input.name, put.input.fields, put.input.grants], ["github-work", { token: tok }, ["github"]]);
+  assert.deepEqual((await w.as("deck")("github.accounts", {})).data, [{ name: "work", login: "sam", avatar_url: null }]);
+  assert.equal(JSON.stringify((await w.as("deck")("github.accounts", {})).data).includes(tok), false);
+  assert.equal(w.mcpRows[0].auth.item, "github-work", "the hosted MCP row follows the account");
+  assert.equal((await w.as("mcp:agent:kit")("github.connect", { name: "evil", token: tok })).error.code, "denied");
 });
 
 test("github.mcp.sync / github.remove: each connected account gets GitHub's hosted MCP row (bound item, no file writes), a second account a distinct name, sync is idempotent, and removing the account removes its row", async t => {

@@ -17,7 +17,7 @@
 // Views never touch the shell; they reach vyred only through js/api.js.
 
 import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
-import { attempt, on, onResume, fromFixtures, fixturesOn, canProve } from "./api.js";
+import { attempt, on, onResume, fromFixtures, fixturesOn, canProve, onDeviceRemoved } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
@@ -29,6 +29,7 @@ import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
 import { offerEnroll } from "./enroll-grant.js";
+import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
@@ -794,6 +795,8 @@ window.addEventListener("deck:navigate", route);
 // Just paired by scanning the Wink ring: the box's own address opens with a one-time grant in the
 // fragment, and this phone makes its Face ID key now (js/enroll-grant.js).
 offerEnroll({ enroll: enrollPasskey, canProve }).catch(() => {});
+// A paired browser the owner removed from Settings > Devices wipes what it kept of the box (js/wipe.js).
+watchRemoval({ on, attempt, onDeviceRemoved, root: document.body });
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
   // A tap on anyone's avatar plays its small hop (js/avatars.js), one listener for the page.

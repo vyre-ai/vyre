@@ -145,7 +145,7 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/js/avatars.js", "/js/build-check.js", "/js/platform.js", "/chat/lib/opened-here.js", "/js/github-repo-picker.js", "/vendor/vyrecode/identity.js", "/vendor/vyrecode/creature.js", "/vendor/vyrecode/characters.js", "/vendor/vyrecode/project.js", "/vendor/vyrecode/vyrecode2.js",
   "/vendor/vyrecode/geometry.js", "/vyrecode/payload.js", "/vyrecode/rs.js", "/lib/avatar-seed/index.js",
   "/views/now.js", "/css/views/now.css", "/views/quick.js", "/views/settings-spend.js", "/css/views/quick.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
-  "/views/find.js", "/views/artifact.js", "/css/views/find.css", "/views/files.js", "/css/views/files.css", "/js/drive-browse.js", "/js/enroll-grant.js", "/js/memory-ask.js", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
+  "/views/find.js", "/views/artifact.js", "/css/views/find.css", "/views/files.js", "/css/views/files.css", "/js/drive-browse.js", "/js/enroll-grant.js", "/js/wipe.js", "/js/memory-ask.js", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
   "/chat/index.js", "/chat/session.js", "/chat/composer.js", "/chat/nav.js", "/chat/ask-item.js", "/chat/gate-item.js",
   "/chat/presence.js", "/chat/chat.css", "/chat/lib/routes.js", "/chat/lib/sessions.js", "/chat/lib/markdown.js",
   "/chat/lib/highlight.js", "/chat/lib/diff.js", "/chat/blocks.js", "/chat/question.js", "/chat/lib/blocks.js", "/chat/lib/names.js",

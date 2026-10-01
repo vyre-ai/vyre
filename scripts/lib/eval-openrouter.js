@@ -101,7 +101,7 @@ export function openrouterOnce(o) {
   if (!o.key) throw new Error("OPENROUTER_EVAL_KEY is not set");
   const doFetch = o.fetch || fetch;
   const every = o.refreshEvery ?? 20;
-  return async ({ system, prompt, model }) => {
+  return async ({ system, prompt, model, maxTokens }) => {
     // A key base read once goes stale: something else can spend on the same key mid-run. Re-read it every N calls, and stop when it cannot be read.
     if (o.budget.keyBase != null && every > 0 && o.budget.calls > 0 && o.budget.calls % every === 0 && o.budget.refreshedAt !== o.budget.calls) {
       try { const u = await keyUsage({ key: o.key, fetch: doFetch, ...(o.keyEndpoint ? { endpoint: o.keyEndpoint } : {}) }); o.budget.setKeyBase(u.usage); o.budget.run = 0; o.budget.refreshedAt = o.budget.calls; }
@@ -111,7 +111,7 @@ export function openrouterOnce(o) {
     const res = await doFetch(o.endpoint || ENDPOINT, {
       method: "POST",
       headers: { authorization: `Bearer ${o.key}`, "content-type": "application/json" },
-      body: JSON.stringify({ model: o.model || model, usage: { include: true }, temperature: 0,
+      body: JSON.stringify({ model: o.model || model, usage: { include: true }, temperature: 0, ...(maxTokens ? { max_tokens: maxTokens } : {}),
         messages: [{ role: "system", content: system }, { role: "user", content: prompt }] }),
     });
     let j;

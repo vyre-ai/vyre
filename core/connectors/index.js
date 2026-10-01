@@ -44,6 +44,7 @@ export default {
         const list = data(await ctx.call("mcp.servers", {}));
         return (Array.isArray(list) ? list : list.servers || []).find(s => s.name === name) || null;
       },
+      updateServer: async input => { data(await ctx.call("mcp.update", input)); },
       removeServer: async name => { data(await ctx.call("mcp.remove", { name })); },
       // An api-credential is made only from a person's own surface, so this is relayed as the person who asked.
       putCredential: async (name, { config, secret, description }, as) => {
@@ -76,8 +77,8 @@ export default {
     });
 
     ctx.tool("connectors.connect", {
-      description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
-      input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
+      description: "Connect an app from the catalog. { preset, label? } starts the sign-in. It answers { step: \"open\", id, url }: open the address in a browser and the sign-in finishes when the vendor sends the browser back (connectors.connect.finish takes the address for a browser on another device). Or { step: \"needs\", needs: \"token\" | \"client\", ... }: ask the person for a token (pass it as `token`, with `extra` for any extra fields) or for their own OAuth app: the answer carries a `guide` (steps and links, with a prefilled app link where the vendor has one) and the two `fields` to ask for; pass them as `app` { client_id, client_secret }, or name a vault item holding them as `client`. `scope` { projects, agents } is who may use it, the shape a server carries; left out, a server is open to every project and agent and a credential (Microsoft, personal Google) is for you and the assistant only. `label` makes a second account of the same app. `mode` picks oauth or token when both exist.",
+      input: obj({ preset: str, label: str, name: str, mode: { type: "string", enum: ["oauth", "token"] }, client: str, scope: { type: "object" }, app: { type: "object" }, token: str, extra: { type: "object" }, replace: { type: "boolean" } }, ["preset"]),
       callers: PEOPLE,
       run: (input, meta) => conn.start(input, { person: true, as: String(meta && meta.caller || "") }),
     });
@@ -94,6 +95,19 @@ export default {
       input: obj({ id: str }, ["id"]),
       callers: PEOPLE,
       run: input => conn.cancel(input),
+    });
+
+    ctx.tool("connectors.scope", {
+      description: "Change who may use a connection: { name, scope } where scope is { projects: \"*\" | [ids], agents: \"*\" | [names] }, or null for the default (a hub server open to every project and agent, an api credential for you and the assistant only). Rewrites the hub row or the credential's config; the credential's stored sign-in is kept.",
+      input: obj({ name: str, scope: { type: ["object", "null"] } }, ["name"]),
+      callers: PEOPLE,
+      run: (input, meta) => {
+        // Widening who may use a connection is the person's act: the registry already limits `callers`, and this says it again
+        // where it matters, so no change to the list above can let a model, an agent's thread or a module in.
+        const who = String(meta && meta.caller || "");
+        if (!PEOPLE.includes(who)) throw fail("only you change who may use a connection, from your own screen", "denied");
+        return conn.setScope(input, { as: who });
+      },
     });
 
     ctx.tool("connectors.disconnect", {

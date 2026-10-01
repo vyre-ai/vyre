@@ -10,6 +10,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { open } from "../store/index.js";
@@ -343,4 +345,48 @@ test("api-credential: replacing only the key keeps its hosts and endpoints; a mo
   assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { secret: "fixture-secret-222222222" } })).error);
   // Only a person's surface may replace the key.
   for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-secret-555555555" } }, who)).error, who);
+});
+
+test("env scan: a person's surface lists the .env files in given folders by count and kind; a model cannot, and a relative root is ignored", async t => {
+  const { reg, cli } = await daemon(t);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-envscan-tool-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const value = `sk-ant-api03-${crypto.randomBytes(24).toString("base64url")}`;
+  fs.writeFileSync(path.join(dir, ".env"), `PORT=3000\nANTHROPIC_API_KEY=${value}\n`);
+  const r = await cli("vault.env.scan", { roots: [dir, "relative/dir"] });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.equal(r.data.files.length, 1);
+  assert.ok(!JSON.stringify(r).includes(value), "never a value");
+  for (const who of ["mcp", "mcp:agent:kit", "module:watchers"]) assert.ok((await reg("vault.env.scan", { roots: [dir] }, who)).error, who);
+});
+
+test("matchIntent: a plain setting or revoke ask lapses after 15 minutes; a composite setting key matches whole and exactly", () => {
+  const key = "setting:chat.model=\"sonnet\"@project:harlow";
+  const it = kind => intent({ kind, to: [kind === "setting" ? key : "s_abc123"], standing: false });
+  const at = 16 * 60_000;
+  assert.deepEqual(matchIntent({ kind: "setting", to: [key], at: T0 + 1000 }, [it("setting")], ["t-1"]), { id: "s_1" });
+  assert.equal(matchIntent({ kind: "setting", to: [key.replace("sonnet", "opus")], at: T0 + 1000 }, [it("setting")], ["t-1"]), null, "another value");
+  assert.equal(matchIntent({ kind: "setting", to: [key.replace("harlow", "northwind")], at: T0 + 1000 }, [it("setting")], ["t-1"]), null, "another project");
+  assert.equal(matchIntent({ kind: "setting", to: [key], at: T0 + at }, [it("setting")], ["t-1"]), null, "said 16 minutes ago");
+  assert.equal(matchIntent({ kind: "revoke", to: ["s_abc123"], at: T0 + at }, [it("revoke")], ["t-1"]), null, "a revoke ask lapses too");
+  assert.deepEqual(matchIntent({ kind: "setting", to: [key], at: T0 + at }, [{ ...it("setting"), standing: true }], []), { id: "s_1" }, "a standing one does not lapse");
+});
+
+test("api-credential: a person's put with a new config and no secret keeps the stored secret; a new name with no secret is still refused", async t => {
+  const { reg, cli } = await daemon(t);
+  const config = extra => JSON.stringify({ auth: { type: "bearer" }, hosts: ["graph.example.test"], ...extra });
+  assert.equal((await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({}), secret: "fixture-secret-000000000" } })).error, undefined);
+  // Change who may use it, without the secret.
+  const moved = await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ scope: { projects: ["project-a"], agents: "*" } }) } });
+  assert.equal(moved.error, undefined, JSON.stringify(moved));
+  // The secret survived: a read as the person still builds the request (it fails only at the network, never for a missing secret).
+  const r = await cli("vault.request", { credential: "ms-graph", method: "GET", url: "https://elsewhere.example.test/x" });
+  assert.match(String(r.error && r.error.message), /host/i, "the config carried its hosts and the secret was still there");
+  // A config that points the key at another host, or changes how it is sent, needs the key again.
+  assert.match((await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ hosts: ["evil.example.test"] }) } })).error.message, /give the key again/);
+  assert.match((await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer", header: "x-api-key" }, hosts: ["graph.example.test"] }) } })).error.message, /give the key again/);
+  // A name that does not exist, with a config and no secret and no auth.item, is refused for lacking a secret.
+  assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { config: config({}) } })).error);
+  // A module, watcher, agent or model still cannot rewrite the config of an existing credential.
+  for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config: config({ scope: { projects: "*", agents: "*" } }) } }, who)).error, who);
 });

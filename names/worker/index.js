@@ -4,7 +4,7 @@
 // Object holds every name, so a claim, a limit and a recovery can never race.
 //
 //   POST   /v1/names/claim           {name}                bind a name to the caller's route for good
-//   POST   /v1/names/point           {name, ip}            A or AAAA, tailnet addresses only
+//   POST   /v1/names/point           {name, ip}            A record, tailnet IPv4 (100.64.0.0/10) only
 //   POST   /v1/names/acme            {name, token}         _acme-challenge.<name> TXT, or {own:true, token}
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
 //   POST   /v1/names/recover         {name, code, next}    a 72-hour pending rebind to the caller's route
@@ -493,10 +493,17 @@ export class Directory {
     const rec = await this.owned(b, a);
     const t = tailnetIp(b.ip);
     if (!t) throw err(400, "not_tailnet", "only tailnet addresses (100.64.0.0/10, fd7a:115c:a1e0::/48) can be published");
+    // IPv4 only: a rebind-filtering resolver (Pi-hole, dnsmasq --stop-dns-rebind) drops an fd7a:: AAAA answer, so a name
+    // that carried one would need a router setting the person cannot be asked to change. The A record always passes.
+    if (t.type !== "A") throw err(400, "ipv4_only", "only the IPv4 tailnet address (100.64.0.0/10) is published for a name");
     await this.count("point", a.route, LIMITS.pointPerRoute);
     const dns = dnsFor(this.env);
-    await dns.point(`${rec.name}.${dns.zone}`, t.type, t.ip);
-    rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { ...rec.ips, [t.type]: t.ip };
+    const fq = `${rec.name}.${dns.zone}`;
+    await dns.point(fq, t.type, t.ip);
+    // A name that was pointed before this rule may still carry an AAAA: it goes, so a rebind-filtering resolver has nothing to drop
+    // and the own-zone availability check never reads a stale AAAA as someone else's. Best effort: the sweep clears it too.
+    await dns.clear(fq, "AAAA").catch(() => {});
+    rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { [t.type]: t.ip };
     await this.save(rec);
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, type: t.type, ip: t.ip };
   }
