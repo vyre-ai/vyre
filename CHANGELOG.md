@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### honesty pass: stub onboarding steps removed, and a guard for settings with no reader
+
+- The old onboarding (`deck/onboard/onboard.js`) no longer has the screens that did nothing: Your secrets, Agent computers (a choice that saved nowhere) and Vyre Drive (a disabled preview) are gone, and Connect accounts drops its "Coming soon" note and points at Settings, Connections. The ending screen no longer lists or hints at them. Agent computers and Drive live in Settings.
+- `test/settings-have-readers.test.js` looks for a reader of every setting a module declares (the key, its tail, or its camelCase tail, outside tests). 15 settings have none today and sit on a shrinking `DEAD` list by owner: `sessions.*` (fallback_model, send_while_busy, tool_detail, max_turns, output_style, box_teammates, box_subagents), `vault.lock_*` (idle, max, on_sleep, on_screen_lock), `computers.handback_minutes`, `learn.distill_daily` and `update.auto_install`. An owner wires the reader or removes the setting, then deletes the line.
+
 #### connections: an entry with no scope is "not recorded", not the default
 
 - A connected entry that carries no `scope` key at all (a box from before scopes) reads "Scope not recorded" instead of "Just you and the assistant", since the hub reads such a row as open to all. Only an explicit `scope: null` from the box reads as the default.
