@@ -3414,7 +3414,7 @@ Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with co
   - `env` object
   - `headers` object
   - `idle` integer
-  - `scope` object
+  - `scope` object or null
   - `tools` object
   - `url` string
   - `vars` object
@@ -3506,7 +3506,7 @@ Change an MCP server: any field of mcp.add. A new command, url or credential sto
   - `env` object
   - `headers` object
   - `idle` integer
-  - `scope` object
+  - `scope` object or null
   - `tools` object
   - `transport` one of "stdio", "http", "sse"
   - `url` string
@@ -4090,7 +4090,7 @@ Claim <name>.vyre.run for this box for good, then point it at the tailnet addres
 
 - Input:
   - `name` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.claim-code`
 
@@ -4104,7 +4104,7 @@ A one-time link for a tagged box: the first tailnet login to open it becomes the
 Start `tailscale up`. Returns the sign-in link to open, or nothing when already signed in.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.domain.check`
 
@@ -4120,14 +4120,14 @@ Serve this box at your own domain: after names.domain.check passes, get its cert
 
 - Input:
   - `domain` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.fallback`
 
 Serve at the tailnet's own ts.net name with a `tailscale cert` certificate instead of a vyre.run name.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.owner`
 
@@ -4135,7 +4135,7 @@ Set the one Tailscale login this box serves.
 
 - Input:
   - `login` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.recover`
 
@@ -4144,7 +4144,7 @@ Take this box's name back with its recovery code after a reinstall. A 72-hour pe
 - Input:
   - `code` string, required
   - `name` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 - Needs a person present.
 
 ### `names.recover.code`
@@ -4161,7 +4161,7 @@ names.recover for a new install's setup channel, where the recovery code is the 
 Remove this box's vyre.run record and stop serving on the tailnet.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.status`
 

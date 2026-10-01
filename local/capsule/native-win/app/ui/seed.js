@@ -40,11 +40,9 @@ export async function showSeed(root, seedB64u) {
   qr.append(qrSvg(seedQrText(seed)));
   const copy = document.createElement("button");
   copy.textContent = "Copy the words";
-  // For a Deck open on this same PC: paste them there. The clipboard is emptied when this ends.
+  // For a Deck open on this same PC: paste them there. Nothing reads the clipboard back (that would
+  // raise a permission prompt), so the words stay there; the code itself dies in 5 minutes.
   copy.addEventListener("click", () => navigator.clipboard.writeText(words.join(" ")).then(() => { copy.textContent = "Copied"; }, () => {}));
   root.append(qr, grid, copy);
-  return async function clear() {
-    root.replaceChildren();
-    try { if ((await navigator.clipboard.readText()) === words.join(" ")) await navigator.clipboard.writeText(""); } catch { /* no clipboard access: nothing to clear */ }
-  };
+  return function clear() { root.replaceChildren(); };
 }
