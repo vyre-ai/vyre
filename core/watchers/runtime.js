@@ -187,7 +187,7 @@ export class Runtime {
       ...(project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
       schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), needs: spec.needs, count: res.items.length,
       alreadyFiled: res.items.filter(i => filed.get(name, i.id)).length,
-      items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed, networkIsolated: res.isolated === true,
+      items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed, networkIsolated: res.isolated === true, wall: res.wall || null,
       ...(res.items.length ? {} : { note: "no items. That can be right (nothing new matches), or the filter or the parsing is wrong; the logs show what it saw" }),
     };
   }
@@ -515,6 +515,13 @@ export class Runtime {
   }
 
   failed(name, r, trigger, res, started) {
+    if (res.unisolated) {
+      // Not the watcher's failure and not retried in a hurry: nothing ran, the machine cannot keep it off the network.
+      this.db.prepare("UPDATE watchers_watchers SET last_run = ?, last_error = ?, next_at = ? WHERE name = ?").run(started, res.error, this.now() + 3_600_000, name);
+      this.record(name, trigger, res, 0, 0);
+      this.d.emit("watcher.failed", { name, error: res.error.slice(0, 300), failures: Number(r.failures || 0), paused: false }, { project: r.project });
+      return;
+    }
     const failures = Number(r.failures || 0) + 1;
     const pause = failures >= MAX_FAILURES;
     const next = pause ? null : this.now() + BACKOFF_MS[Math.min(failures - 1, BACKOFF_MS.length - 1)];
@@ -526,7 +533,7 @@ export class Runtime {
 
   /** Run in a child and check the items; a bad item is the run's error. */
   async exec(dir, spec, since, hook) {
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, viaRequest: spec.net ? async (url, init) => {
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, viaRequest: spec.net ? async (url, init) => {
         const rule = spec.net[url.hostname];
         if (!rule || !rule.credential) return undefined;
         const method = String((init && init.method) || "GET").toUpperCase();

@@ -11,7 +11,10 @@ let asked = 0;
 /** @type {Map<number, { resolve: (v: any) => void, reject: (e: Error) => void }>} */
 const waiting = new Map();
 
-const send = msg => new Promise(resolve => process.send?.(msg, () => resolve(undefined)));
+// Lines of JSON to the parent on stdout, and from it on stdin. Anything else the watcher writes to
+// stdout or stderr is its log, never a message.
+const writeOut = process.stdout.write.bind(process.stdout);
+const send = msg => new Promise(resolve => { writeOut(JSON.stringify(msg) + "\n", () => resolve(undefined)); });
 const text = a => a.map(x => typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })()).join(" ");
 
 // console.* from a watcher is its log, not vyred's stdout.
@@ -38,7 +41,10 @@ const ask = prompt => new Promise((resolve, reject) => {
   send({ t: "ask", id, prompt: String(prompt) });
 });
 
-process.on("message", async (/** @type {any} */ msg) => {
+process.stdout.write = chunk => { String(chunk).split("\n").filter(Boolean).forEach(l => { send({ t: "log", line: l }); }); return true; };
+process.stderr.write = chunk => { String(chunk).split("\n").filter(Boolean).forEach(l => { send({ t: "log", line: l }); }); return true; };
+
+const onMessage = async (/** @type {any} */ msg) => {
   if (msg.t === "ask") {
     const w = waiting.get(msg.id);
     waiting.delete(msg.id);
@@ -78,4 +84,15 @@ process.on("message", async (/** @type {any} */ msg) => {
     await send({ t: "error", message: String(err && err.message || err) });
   }
   process.exit(0);
+};
+
+let inbox = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", chunk => {
+  inbox += chunk;
+  for (let i = inbox.indexOf("\n"); i >= 0; i = inbox.indexOf("\n")) {
+    const one = inbox.slice(0, i); inbox = inbox.slice(i + 1);
+    let m; try { m = JSON.parse(one); } catch { continue; }
+    onMessage(m);
+  }
 });

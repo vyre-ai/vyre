@@ -6,7 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
-import { testHooks } from "../../lib/sandbox/index.js";
+import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+testHooks.wall = OPEN_WALL;   // these tests are not about the wall; wall.test.js and isolation.test.js are
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";

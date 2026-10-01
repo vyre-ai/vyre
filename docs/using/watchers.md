@@ -68,7 +68,7 @@ export default async function watch({ since, emit, log, hook }) {
 ```
 
 Each run happens in a child process with no environment variables, read access to its own folder
-only, and no writes or child processes. It has no network of its own: `fetch` is run by Vyre, GET and HEAD only, to the public hosts listed under `net`. Every item needs a stable `id`,
+only, and no writes or child processes. It has no network of its own: it runs inside a wall (a network namespace on Linux, a sandbox profile on a Mac) so it cannot open a socket, and `fetch` is run by Vyre, GET and HEAD only, to the public hosts listed under `net`. If a machine cannot build that wall, no watcher runs there and Vyre says why. Every item needs a stable `id`,
 so a repeat is never filed twice.
 
 ## Ask a model for a judgment

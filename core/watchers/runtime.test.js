@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { EventEmitter } from "node:events";
 import http from "node:http";
-import { testHooks } from "../../lib/sandbox/index.js";
+import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+testHooks.wall = OPEN_WALL;   // these tests are not about the wall; wall.test.js and isolation.test.js are
 import path from "node:path";
 import { open } from "../store/index.js";
 import { migrate } from "../store/index.js";
@@ -27,7 +28,7 @@ function setup(t, { vault = {}, ask, spend, request } = {}) {
   const clock = { now: new Date("2026-03-02T10:07:00").getTime() };
   const events = [], taught = [], fetched = [];
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {}, ask, spend, request, netOptions: () => testHooks.net,
+    db, dir, now: () => clock.now, log: () => {}, ask, spend, request, netOptions: () => testHooks.net, wall: () => testHooks.wall,
     emit: (type, payload) => events.push({ type, ...payload }),
     call: async tool => tool === "projects.list"
       ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: HOME_FOLDERS[0], workspaces: HOME_FOLDERS }] } }
@@ -655,4 +656,26 @@ test("watchers: the feed preset reads a public feed through the mediated fetch, 
   for (const url of ["ftp://x.example/feed", "https://user:pw@x.example/feed", "https://127.0.0.1/feed", "https://x.example:8443/feed", "not a url"]) {
     await assert.rejects(rt.createPreset({ kind: "feed", project: "harlow-legal", url, label: "bad" + url.length }), /url is/);
   }
+});
+
+test("watchers: with no wall a watcher is never run, says why in words, and is not paused or counted as failing", async t => {
+  const { rt, dir, write, clock } = setup(t);
+  write("harlow-invoices", FROM_FILE);
+  feed(dir, "harlow-invoices", { items: [{ id: "a1" }] });
+  testHooks.wall = null;
+  t.after(() => { testHooks.wall = OPEN_WALL; });
+  const r = await rt.test("harlow-invoices");
+  assert.equal(r.ok, false);
+  assert.match(r.error, /watchers cannot run on this machine: it has no way to keep a watcher off the network/);
+  testHooks.wall = OPEN_WALL;
+  await rt.test("harlow-invoices");
+  await rt.create("harlow-invoices");
+  await rt.settle();
+  testHooks.wall = null;
+  clock.now = new Date("2026-03-02T10:15:00").getTime();
+  rt.tick(); await rt.settle();
+  const row = rt.row("harlow-invoices");
+  assert.match(row.last_error, /cannot run on this machine/);
+  assert.equal(row.failures, 0, "an isolation problem is not the watcher's failure");
+  assert.equal(row.paused, 0);
 });

@@ -10,11 +10,11 @@
 // response, the log lines and the error before any is kept. An item that carries one fails the run:
 // an item is filed into a project and taught to Memory, and a credential must never end up in either.
 
-import { fork } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { mediatedFetch, sandboxIdentity } from "../../lib/sandbox/index.js";
+import { mediatedFetch, sandboxIdentity, getWall } from "../../lib/sandbox/index.js";
 
 const RUNNER = fileURLToPath(new URL("./runner.js", import.meta.url));
 // The permission model is `--permission` from Node 22.13 and 23.5, and `--experimental-permission`
@@ -37,7 +37,17 @@ export const LIMITS = { asks: 20, askChars: 8000, askReply: 4000, items: 1000, i
  *   askFn?: ((prompt: string) => Promise<string>)|null, viaRequest?: ((url: URL, init: any) => Promise<any>)|null, netOptions?: object, identity?: ReturnType<typeof sandboxIdentity> }} opts
  * @returns {Promise<Result>}
  */
-export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, viaRequest = null, netOptions = {}, identity = sandboxIdentity() }) {
+export async function runOnce(opts) {
+  // Fail closed: no wall that keeps a child off the network means no watcher runs, said in words.
+  const found = opts.wall === undefined ? await getWall() : { wall: opts.wall, why: opts.wall ? opts.wall.why : "no wall" };
+  if (!found.wall) {
+    return { items: [], logs: [], cursor: null, ms: 0, sandboxed: false, isolated: false, wall: null, unisolated: true,
+      error: `watchers cannot run on this machine: it has no way to keep a watcher off the network (${found.why}). Nothing was run.` };
+  }
+  return runIn(found.wall, opts);
+}
+
+function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, viaRequest = null, netOptions = {}, identity = sandboxIdentity() }) {
   const started = Date.now();
   const real = fs.realpathSync(dir);
   const runner = fs.realpathSync(RUNNER);
@@ -53,9 +63,23 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
   };
 
   return new Promise(resolve => {
-    const child = fork(runner, [], { execArgv, env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["ignore", "pipe", "pipe", "ipc"], serialization: "json" });
+    // The child talks to its parent in lines of JSON on stdin and stdout, so any launcher that gives
+    // a child pipes can start it, inside the wall.
+    const { cmd, args } = wall.wrap([process.execPath, ...execArgv, runner]);
+    const child = spawn(cmd, args, { env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["pipe", "pipe", "pipe"] });
+    const send = obj => { if (child.stdin && child.stdin.writable) child.stdin.write(JSON.stringify(obj) + "\n"); };
+    child.stdin?.on("error", () => {});
+    let line = "";
+    child.stdout?.on("data", c => {
+      line += c;
+      for (let i = line.indexOf("\n"); i >= 0; i = line.indexOf("\n")) {
+        const one = line.slice(0, i); line = line.slice(i + 1);
+        let m; try { m = JSON.parse(one); } catch { logLine(one); continue; }
+        child.emit("message", m);
+      }
+      if (line.length > 16_000_000) { fail("sent a message that was too large"); child.kill("SIGKILL"); }
+    });
     let stderr = "";
-    child.stdout?.on("data", c => String(c).split("\n").filter(Boolean).forEach(logLine));
     child.stderr?.on("data", c => { stderr = (stderr + c).slice(-4000); });
     const fail = msg => { if (!error) error = scrub(msg); };
     const timer = setTimeout(() => { fail(`took longer than ${Math.round(timeoutMs / 1000)}s and was stopped`); child.kill("SIGKILL"); }, timeoutMs);
@@ -70,9 +94,9 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
         items.push(m.item);
       } else if (m.t === "vault") {
         // A raw credential never enters the child: it could send it to any host or use it to write.
-        child.connected && child.send({ t: "vault", id: m.id, error: "a watcher does not handle credentials; declare the host under net in watcher.json with its vault item, and Vyre attaches it to that host's requests" });
+        send({ t: "vault", id: m.id, error: "a watcher does not handle credentials; declare the host under net in watcher.json with its vault item, and Vyre attaches it to that host's requests" });
       } else if (m.t === "ask") {
-        const reply = body => child.connected && child.send({ t: "ask", id: m.id, ...body });
+        const reply = body => send({ t: "ask", id: m.id, ...body });
         try {
           if (!askFn) throw new Error("this watcher did not declare ask in watcher.json, like { \"ask\": { \"dailyUsd\": 0.25 } }");
           if (++asks > LIMITS.asks) throw new Error(`ask is limited to ${LIMITS.asks} calls in one run`);
@@ -83,7 +107,7 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
         } catch (e) { reply({ error: /** @type {Error} */ (e).message }); }
       } else if (m.t === "fetch") {
         // The child has no network of its own; this is its only way out (lib/sandbox/fetch.js).
-        const reply = body => child.connected && child.send({ t: "fetch", id: m.id, ...body });
+        const reply = body => send({ t: "fetch", id: m.id, ...body });
         try {
           const url = new URL(String(m.url));
           if (!hosts || !hosts.length) throw new Error("this watcher declares no hosts; list each host it reads under net in watcher.json, like { \"api.example.com\": {} }");
@@ -110,9 +134,9 @@ export function runOnce({ dir, needs, since, hook = null, timeoutMs, fetch, sign
       if (!error && released.some(v => v && items.some(i => JSON.stringify(i).includes(v)))) {
         fail("an item carried a value from the vault; emit links and ids, never credentials");
       }
-      resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED, isolated: identity.isolated });
+      resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED, isolated: true, wall: wall.kind });
     });
-    child.send({ t: "run", entry: pathToFileURL(path.join(real, "watch.js")).href, since: since ?? null, hook });
+    send({ t: "run", entry: pathToFileURL(path.join(real, "watch.js")).href, since: since ?? null, hook });
   });
 }
 

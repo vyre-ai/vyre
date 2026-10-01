@@ -1,7 +1,9 @@
-# Real uids, as root: a watcher's sandbox uid cannot open a socket (loopback, a tailnet-range
-# address, the internet), and every scripted refusal holds against real children
-# (core/watchers/isolation.test.js; plan IM1 and done-check 8). Skipped by the normal suite, which
-# never runs as root.
+# The wall that keeps a watcher off the network, against the real product (a real vyred, no test
+# hook): a watcher's raw socket to loopback, a tailnet-range address and the internet is blocked,
+# and the scripted refusals hold (core/watchers/isolation.test.js; plan IM1 and done-check 8).
+#   linux-userns   unprivileged user namespaces allowed: the netns wall must be chosen
+#   linux-stock    stock Ubuntu 24.04, which restricts them: if no wall works, watchers must refuse
+#   macos          sandbox-exec must be chosen
 name: watchers-isolation
 on:
   workflow_dispatch:
@@ -11,14 +13,32 @@ on:
 permissions:
   contents: read
 jobs:
-  isolation:
-    runs-on: ubuntu-latest
+  wall:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-userns, os: ubuntu-latest, userns: "1", expect: netns }
+          - { name: linux-stock, os: ubuntu-latest, userns: "", expect: "" }
+          - { name: macos, os: macos-latest, userns: "", expect: sandbox-exec }
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # The sandbox uid must be able to reach the checkout's runner.js and its own folder.
-      - run: sudo chmod o+x /home/runner /home/runner/work "$GITHUB_WORKSPACE/.." "$GITHUB_WORKSPACE"
-      - run: sudo env "PATH=$PATH" node --test core/watchers/isolation.test.js
+      - name: allow unprivileged user namespaces
+        if: matrix.userns == '1'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: a loopback alias in the tailnet range
+        if: runner.os == 'Linux'
+        run: sudo ip addr add 100.100.100.100/32 dev lo
+      - run: npm ci --omit=dev || npm install --omit=dev --no-audit --no-fund
+      - name: the wall, as an ordinary user
+        env:
+          VYRE_WALL_CHECK: "1"
+          VYRE_EXPECT_WALL: ${{ matrix.expect }}
+          VYRE_TEST_TAILNET_ADDR: ${{ runner.os == 'Linux' && '100.100.100.100' || '' }}
+        run: node --test --test-reporter=spec core/watchers/isolation.test.js

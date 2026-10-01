@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The wall: a watcher child now runs with no way to open a socket. `lib/sandbox/wall.js` picks, and
+  probes for real (a child must fail to connect to a listener the parent holds), a Linux network
+  namespace (`unshare --user --map-root-user --net`, or plain `--net` as root) or a macOS
+  `sandbox-exec` profile that denies the network. No root and no install. If no wall passes, a
+  watcher does not run: the error says the machine cannot keep a watcher off the network, the
+  watcher is not counted as failing or paused, and it is tried again in an hour. The child talks to
+  its parent in lines of JSON on stdin and stdout (not fork's channel), so any launcher works.
+  Dry runs report `wall`. `core/watchers/isolation.test.js` and the `watchers-isolation` workflow
+  prove it on Linux and macOS runners against a real vyred.
+
 - Presets for a repo (`kind: "repo"`: issues and pull requests of an owner/name, with or without a
   GitHub credential), a Slack channel (`kind: "slack"`: new messages, by channel id) and a public
   feed (`kind: "feed"`: RSS, Atom or JSON feed, with a conditional request so an unchanged feed
