@@ -572,6 +572,14 @@ fn main() {
             });
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("vyre app");
+        .build(tauri::generate_context!())
+        .expect("vyre app")
+        .run(|_app, event| {
+            // A tray app keeps running with no window open: closing the last window (finishing pairing closes
+            // the first-run page before the panel exists) asks to exit with no code, and that is refused.
+            // Quit from the tray exits with a code and goes through.
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() { api.prevent_exit(); }
+            }
+        });
 }
