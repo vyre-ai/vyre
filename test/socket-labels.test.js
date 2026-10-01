@@ -22,7 +22,9 @@ function call(socket, tool, label, input = {}) {
   });
 }
 
-const LABELS = ["module", "Module", "MODULE", "module ", " module", "module:", "module:x", "module:vyred", "modules", "internal", "hook", "onboard", "link:box", "tailnet:alex@example.com", "device:abcdefghijklmnop", "anonymous", "vyred", "system", "core", "kernel", "root", "unknown", "harness", "mcp"];
+/** Claim-carrying spellings: kept for route() to refuse or to rewrite to a nameless session, never a person, never a module. */
+const CLAIMS = ["module agent:x", "module:agent:x", "module thread:x", "hook thread:x", "hook agent:x", "tailnet thread:x", "onboard thread:x", "link thread:x", "device thread:x", "cli:agent:x", "cli thread:x", "mcp thread:x", "CLI:AGENT:x"];
+const LABELS = ["module", "Module", "MODULE", "module ", " module", "module:", "module:x", "module:vyred", "modules", "internal", "hook", "onboard", "link:box", "tailnet:alex@example.com", "device:abcdefghijklmnop", "anonymous", "vyred", "system", "core", "kernel", "root", "unknown", "harness", "mcp", "agent", "service"];
 
 test("no odd socket label runs as a module: not a presence skip, not a module-only tool, not a callers list that names module", async t => {
   const root = tempHome(t);
@@ -31,7 +33,7 @@ test("no odd socket label runs as a module: not a presence skip, not a module-on
   t.after(() => d.stop());
   const socket = d.paths.socket;
   const tools = [["presence.remove", { id: "x" }], ["sync.send", { files: [], mode: "once" }], ["projects.reach", { caller: "cli" }], ["projects.access.clear", { agent: "kit" }]];
-  for (const label of LABELS) {
+  for (const label of [...LABELS, ...CLAIMS]) {
     for (const [tool, input] of tools) {
       const r = await call(socket, tool, label, input);
       // Refused before the tool ran: a bad_input, an internal error or a 200 would mean the tool was reached.

@@ -6,7 +6,7 @@
 // no terminal needed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { asTaken } from "../core/daemon/index.js";
+import { asTaken, trustedServers } from "../core/daemon/index.js";
 import { setSocketTrust, socketTrust } from "../core/daemon/peer.js";
 import "./helpers.js";
 
@@ -56,3 +56,21 @@ test("labels that are not a person's are untouched, and the label mode keeps the
   try { assert.equal((await asTaken("cli", {}, registry(), undefined, deps())).caller, "cli", "tests host vyred without a terminal"); }
   finally { setSocketTrust(was); }
 });
+
+test("under a server the person proved (VS Code, iTerm2) only a peer with its own pty in the foreground keeps the label", () => strict(async () => {
+  const server = { exe: "/Applications/Visual Studio Code.app/Contents/MacOS/Electron", pid: 700, started: "t7" };
+  trustedServers.set(`${server.exe}:${server.pid}:${server.started}`, true);
+  try {
+    const under = over => deps({ insideClaude: () => ({ inside: false, unknown: true, server }), ...over });
+    // The person's own vyre in an integrated terminal: a pty, in its foreground group.
+    const term = under({ tty: () => "ttys002", foreground: () => ({ pgid: 812, tpgid: 812 }) });
+    assert.deepEqual(await asTaken("cli", {}, registry(), undefined, term), { caller: "cli", model: false });
+    // An extension host child, a task or Copilot, Cline, Continue: no pty at all.
+    const ext = under({ tty: () => null, foreground: () => ({ pgid: 900, tpgid: 0 }) });
+    const r = await asTaken("cli", {}, registry(), undefined, ext);
+    assert.deepEqual([r.caller, r.unproven], ["cli", true], "the proof prompt path stays open for a person's tool; route() caps everything else");
+    // A pty but a background group: not the person's foreground command.
+    const bg = under({ tty: () => "ttys002", foreground: () => ({ pgid: 901, tpgid: 812 }) });
+    assert.equal((await asTaken("local", {}, registry(), undefined, bg)).unproven, true);
+  } finally { trustedServers.delete(`${server.exe}:${server.pid}:${server.started}`); }
+}));

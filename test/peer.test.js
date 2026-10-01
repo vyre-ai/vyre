@@ -757,9 +757,13 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
     const sig = sign("sha256", Buffer.from(`vyre-presence-v1\nsession.trust\n${inputHash(server)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
     return `device key=${keyId} ts=${ts} nonce=${nonce} sig=${sig}`;
   };
-  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
+  const curlArgs = (tool, input, presenceProof) => ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
     "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(presenceProof ? ["-H", `x-vyre-presence: ${presenceProof}`] : []),
-    "-d", JSON.stringify(input)], { encoding: "utf8" }));
+    "-d", JSON.stringify(input)];
+  // A trusted server vouches for its terminals only, so the person's calls run on a pty in the foreground (script), as `ssh -t` gives.
+  const q = a => `'${String(a).replace(/'/g, `'\\''`)}'`;
+  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("script", ["-qec", `curl ${curlArgs(tool, input, presenceProof).map(q).join(" ")}`, "/dev/null"], { encoding: "utf8" }).trim());
+  const noPty = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", curlArgs(tool, input, presenceProof), { encoding: "utf8" }));
   const names = () => call("agents.list", {}).data.map(a => a.name);
 
   const bare = call("agents.create", { name: "kit" });
@@ -775,6 +779,12 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
 
   const proved = call("agents.create", { name: "juno" }, proof(bare.error.server));
   assert.equal(proved.error, undefined, JSON.stringify(proved));
+  // Once proved, a peer under that leader with no pty in the foreground is refused, and told how to fix it.
+  const headless = noPty("agents.create", { name: "ghost" });
+  assert.equal(headless.error?.code, "denied", JSON.stringify(headless));
+  assert.match(headless.error.message, /ssh -t/);
+  assert.ok(!names().includes("ghost"));
+
   const again = call("agents.create", { name: "kit" });
   assert.equal(again.error, undefined, JSON.stringify(again));
   assert.ok(names().includes("juno") && names().includes("kit") && !names().includes("nova"));

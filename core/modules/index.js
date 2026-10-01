@@ -1056,7 +1056,9 @@ export class Registry {
     if (!door && String(caller).startsWith("module:")) {
       const from = this.modules.get(String(caller).slice(7));
       // A module's own tools are its own business, in either form.
-      if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules")) {
+      // A tool whose code limits `callers` keeps that limit for an added module: declaring "anyone" is for what the manifest alone says, and a
+      // list that names "module" means Vyre's own modules (reach sweep, vault, 2 Oct 2026).
+      if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules" || (def.reach !== "person" && Array.isArray(def.callers)))) {
         return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
       }
     }
