@@ -679,3 +679,33 @@ test("watchers: with no wall a watcher is never run, says why in words, and is n
   assert.equal(row.failures, 0, "an isolation problem is not the watcher's failure");
   assert.equal(row.paused, 0);
 });
+
+test("watchers: under the machine's real wall a watcher still runs, reads its folder, and gets nothing else", async t => {
+  const { getWall } = await import("../../lib/sandbox/index.js");
+  const found = await getWall();
+  if (!found.wall) return t.skip(`no wall here: ${found.why}`);
+  const { rt, dir, write } = setup(t);
+  testHooks.wall = undefined;                       // the real wall, found by probing
+  t.after(() => { testHooks.wall = OPEN_WALL; });
+  const home = process.env.HOME || "/root";
+  write("walled", `import fs from "node:fs";
+    import net from "node:net";
+    export default async function watch({ emit, log }) {
+      console.log("to the log, not the channel");
+      const seen = {};
+      seen.folder = fs.readFileSync(new URL("./watcher.json", import.meta.url), "utf8").length > 0;
+      try { fs.readdirSync(${JSON.stringify(home)}); seen.home = "read"; } catch (e) { seen.home = "blocked"; }
+      seen.net = await new Promise(res => { const s = net.connect(9, "127.0.0.1"); s.on("connect", () => res("connected")); s.on("error", () => res("blocked")); setTimeout(() => res("blocked"), 2000); });
+      emit({ id: "w", title: JSON.stringify(seen) });
+    }`);
+  const r = await rt.test("walled");
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(JSON.parse(r.items[0].title), { folder: true, home: "blocked", net: "blocked" });
+  assert.ok(r.logs.some(l => /to the log, not the channel/.test(l)));
+  assert.equal(r.wall, found.wall.kind);
+
+  // Something forged onto the channel fails the run, instead of being believed.
+  write("forger", `import fs from "node:fs";
+    export default async function watch() { fs.writeSync(1, "not json\\n"); await new Promise(r => setTimeout(r, 200)); }`);
+  assert.match((await rt.test("forger")).error, /not a message/);
+});

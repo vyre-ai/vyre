@@ -23,7 +23,7 @@ const [major, minor] = process.versions.node.split(".").map(Number);
 const FLAG = major > 23 || (major === 23 && minor >= 5) || (major === 22 && minor >= 13) ? "--permission" : "--experimental-permission";
 export const SANDBOXED = major >= 22;
 
-export const LIMITS = { asks: 20, askChars: 8000, askReply: 4000, items: 1000, itemBytes: 4000, logLines: 200, lineChars: 500 };
+export const LIMITS = { channelBytes: 64_000_000, channelLine: 1_000_000, asks: 20, askChars: 8000, askReply: 4000, items: 1000, itemBytes: 4000, logLines: 200, lineChars: 500 };
 
 /**
  * @typedef {{ items: any[], logs: string[], cursor: any, error: string|null, ms: number, sandboxed: boolean }} Result
@@ -65,22 +65,34 @@ function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal,
   return new Promise(resolve => {
     // The child talks to its parent in lines of JSON on stdin and stdout, so any launcher that gives
     // a child pipes can start it, inside the wall.
-    const { cmd, args } = wall.wrap([process.execPath, ...execArgv, runner]);
+    const nodeBin = fs.realpathSync(process.execPath);
+    const { cmd, args } = wall.wrap([process.execPath, ...execArgv, runner], { ro: [real, runner, nodeBin, path.dirname(nodeBin)], cwd: real });
     const child = spawn(cmd, args, { env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["pipe", "pipe", "pipe"] });
     const send = obj => { if (child.stdin && child.stdin.writable) child.stdin.write(JSON.stringify(obj) + "\n"); };
     child.stdin?.on("error", () => {});
-    let line = "";
+    // The channel carries messages and nothing else: a line over 1 MB, a total over 64 MB, or a line
+    // that is not a message fails the run. The child's console and log() go to stderr, not here.
+    let line = "", total = 0;
     child.stdout?.on("data", c => {
-      line += c;
+      total += c.length; line += c;
+      if (total > LIMITS.channelBytes) { fail("sent more than the channel allows"); child.kill("SIGKILL"); return; }
       for (let i = line.indexOf("\n"); i >= 0; i = line.indexOf("\n")) {
         const one = line.slice(0, i); line = line.slice(i + 1);
-        let m; try { m = JSON.parse(one); } catch { logLine(one); continue; }
+        let m; try { m = JSON.parse(one); } catch { fail("wrote something to its channel that is not a message"); child.kill("SIGKILL"); return; }
+        if (!m || typeof m !== "object" || Array.isArray(m)) { fail("wrote something to its channel that is not a message"); child.kill("SIGKILL"); return; }
         child.emit("message", m);
       }
-      if (line.length > 16_000_000) { fail("sent a message that was too large"); child.kill("SIGKILL"); }
+      if (line.length > LIMITS.channelLine) { fail("sent a message over the 1 MB line limit"); child.kill("SIGKILL"); }
     });
     let stderr = "";
-    child.stderr?.on("data", c => { stderr = (stderr + c).slice(-4000); });
+    let errLine = "", errTotal = 0;
+    child.stderr?.on("data", c => {
+      stderr = (stderr + c).slice(-4000);
+      errTotal += c.length; errLine += c;
+      for (let i = errLine.indexOf("\n"); i >= 0; i = errLine.indexOf("\n")) { const one = errLine.slice(0, i); errLine = errLine.slice(i + 1); if (one) logLine(one); }
+      if (errLine.length > 100_000) errLine = "";
+      if (errTotal > 4_000_000) { fail("wrote too much to its log"); child.kill("SIGKILL"); }
+    });
     const fail = msg => { if (!error) error = scrub(msg); };
     const timer = setTimeout(() => { fail(`took longer than ${Math.round(timeoutMs / 1000)}s and was stopped`); child.kill("SIGKILL"); }, timeoutMs);
     const abort = () => { fail("stopped because vyred is stopping"); child.kill("SIGKILL"); };
@@ -88,8 +100,7 @@ function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal,
 
     child.on("message", async (/** @type {any} */ m) => {
       if (!m || typeof m !== "object") return;
-      if (m.t === "log") logLine(m.line);
-      else if (m.t === "emit") {
+      if (m.t === "emit") {
         if (items.length >= LIMITS.items) { fail(`emitted more than ${LIMITS.items} items in one run; fetch only what is new since \`since\``); child.kill("SIGKILL"); return; }
         items.push(m.item);
       } else if (m.t === "vault") {

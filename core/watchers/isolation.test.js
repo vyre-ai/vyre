@@ -2,10 +2,11 @@
 // IM1 and the scripted refusals for watchers (plan done-check 8), against the real product: a real
 // vyred in a temp home, the real wall (no test hook), real watcher children. It runs on a hosted
 // runner (Linux and macOS) from .github/workflows/watchers-isolation.yml, never on the person's Mac.
-// Skipped unless VYRE_WALL_CHECK=1.
+// Skipped unless VYRE_WALL_CHECK=1. VYRE_EXPECT_HINT is a regex the refusal must match when there is no wall
+// (the fix, in words).
 //
-// The wall is whatever the machine gives (lib/sandbox/wall.js): netns on Linux, sandbox-exec on a
-// Mac. VYRE_EXPECT_WALL says which one this job must get: netns, sandbox-exec, or none (then a
+// The wall is whatever the machine gives (lib/sandbox/wall.js): bwrap on Linux, sandbox-exec on a
+// Mac. VYRE_EXPECT_WALL says which one this job must get: bwrap, sandbox-exec, or none (then a
 // watcher must refuse to run, in words, and run nothing). With none set, the test reports which
 // wall it found and holds either answer to its rules.
 
@@ -13,6 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
@@ -72,12 +74,17 @@ test("watchers isolation: the real wall holds against real children, or no watch
     const refused = (await call("watchers.test", { name: "none" }, { root })).data;
     assert.equal(refused.ok, false);
     assert.match(refused.error, /watchers cannot run on this machine: it has no way to keep a watcher off the network/);
+    if (process.env.VYRE_EXPECT_HINT) assert.match(refused.error, new RegExp(process.env.VYRE_EXPECT_HINT), "the refusal does not carry the fix");
     return;
   }
 
   assert.match(await verdict("rawnet", connect("127.0.0.1", loPort)), /^blocked/, "a watcher opened its own socket to a loopback service");
   if (tn) assert.match(await verdict("tailnet", connect(TAILNET, /** @type {any} */ (tn.address()).port)), /^blocked/, "a watcher opened a socket to a tailnet-range address");
   assert.match(await verdict("internet", connect("1.1.1.1", 443)), /^blocked/, "a watcher opened a socket to the internet");
+  // The same user's other doors: vyred's own socket (a same-user caller is treated as local) and vyred itself.
+  assert.match(await verdict("vyredsock", `return await new Promise(res => { const s = net.connect(${JSON.stringify(p.socket)}); s.on("connect", () => res("connected")); s.on("error", e => res("blocked:" + e.code)); setTimeout(() => res("blocked:TIMEOUT"), 3000); })`), /^blocked/, "a watcher reached vyred's socket by path");
+  assert.match(await verdict("signal", `process.kill(${process.pid}, 0); return "signalled"`), /^blocked/, "a watcher could signal vyred");
+  assert.match(await verdict("homelist", `return fs.readdirSync(${JSON.stringify(os.homedir())}).join()`), /^blocked/, "a watcher listed the person's home directory");
   assert.match(await verdict("bearer", `return fs.readFileSync(${JSON.stringify(bearer)}, "utf8")`), /^blocked/, "a watcher read a file outside its folder");
   assert.match(await verdict("post", `await fetch("https://example.com/", { method: "POST", body: "x" }); return "sent"`, { net: { "example.com": {} } }), /GET and HEAD/, "a watcher wrote through the mediated fetch");
   assert.match(await verdict("undeclared", `await fetch("https://other.example.org/"); return "read"`, { net: { "example.com": {} } }), /declared hosts/, "a watcher read a host it did not declare");

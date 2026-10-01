@@ -1,9 +1,12 @@
-# The wall that keeps a watcher off the network, against the real product (a real vyred, no test
-# hook): a watcher's raw socket to loopback, a tailnet-range address and the internet is blocked,
-# and the scripted refusals hold (core/watchers/isolation.test.js; plan IM1 and done-check 8).
-#   linux-userns   unprivileged user namespaces allowed: the netns wall must be chosen
-#   linux-stock    stock Ubuntu 24.04, which restricts them: if no wall works, watchers must refuse
-#   macos          sandbox-exec must be chosen
+# The wall that keeps a watcher off the network, out of the person's home and away from other
+# processes, against the real product (a real vyred, no test hook): raw sockets to loopback, a
+# tailnet-range address and the internet, vyred's own unix socket by path, a signal to vyred, and the
+# home directory are all refused, and the scripted refusals hold (core/watchers/isolation.test.js;
+# plan IM1 and done-check 8). The Linux cases walk Ubuntu's user-namespace restriction:
+#   linux-nobwrap       no bubblewrap: no wall, and the refusal says to install it
+#   linux-restricted    bubblewrap, restriction on, no profile: no wall, and the refusal names the fix
+#   linux-profile       the installer's own wallSteps() (its AppArmor profile): the bwrap wall
+#   macos               sandbox-exec
 name: watchers-isolation
 on:
   workflow_dispatch:
@@ -18,20 +21,31 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: linux-userns, os: ubuntu-latest, userns: "1", expect: netns }
-          - { name: linux-stock, os: ubuntu-latest, userns: "", expect: "" }
-          - { name: macos, os: macos-latest, userns: "", expect: sandbox-exec }
+          - { name: linux-nobwrap, os: ubuntu-latest, mode: nobwrap, expect: none, hint: "install bubblewrap" }
+          - { name: linux-restricted, os: ubuntu-latest, mode: restricted, expect: "", hint: "" }
+          - { name: linux-profile, os: ubuntu-latest, mode: profile, expect: bwrap, hint: "" }
+          - { name: macos, os: macos-latest, mode: mac, expect: sandbox-exec, hint: "" }
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: allow unprivileged user namespaces
-        if: matrix.userns == '1'
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: no bubblewrap
+        if: matrix.mode == 'nobwrap'
+        run: sudo apt-get remove -y bubblewrap || true
+      - name: bubblewrap, with the restriction on and no profile
+        if: matrix.mode == 'restricted' || matrix.mode == 'profile'
+        run: |
+          sudo apt-get install -y bubblewrap apparmor-utils
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          sudo rm -f /etc/apparmor.d/bwrap /etc/apparmor.d/bwrap-userns-restrict /etc/apparmor.d/vyre-bwrap
+          sudo aa-remove-unknown || true
+      - name: the installer's wall steps (what vyre up --system runs as root)
+        if: matrix.mode == 'profile'
+        run: sudo env "PATH=$PATH" node --input-type=module -e 'import { wallSteps } from "./lib/sandbox/index.js"; import * as s from "./core/names/system.js"; const steps = wallSteps(); console.log(JSON.stringify(steps.map(x => x.do + " " + (x.path || (x.argv || []).join(" "))))); if (!steps.some(x => x.do === "write")) throw new Error("the installer wrote no profile"); await s.apply(steps, { out: console.log });'
       - name: a loopback alias in the tailnet range
         if: runner.os == 'Linux'
         run: sudo ip addr add 100.100.100.100/32 dev lo
@@ -40,5 +54,11 @@ jobs:
         env:
           VYRE_WALL_CHECK: "1"
           VYRE_EXPECT_WALL: ${{ matrix.expect }}
+          VYRE_EXPECT_HINT: ${{ matrix.hint }}
           VYRE_TEST_TAILNET_ADDR: ${{ runner.os == 'Linux' && '100.100.100.100' || '' }}
         run: node --test --test-reporter=spec core/watchers/isolation.test.js
+      - name: uninstall removes the profile
+        if: matrix.mode == 'profile'
+        run: |
+          sudo env "PATH=$PATH" node --input-type=module -e 'import { wallUninstallSteps } from "./lib/sandbox/index.js"; import * as s from "./core/names/system.js"; await s.apply(wallUninstallSteps(), { out: console.log });'
+          test ! -e /etc/apparmor.d/vyre-bwrap

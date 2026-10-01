@@ -94,7 +94,7 @@ WantedBy=multi-user.target
  *   systemd: boolean, etc?: string }} o
  * @returns {Step[]}
  */
-export function installPlan({ user, group, home, node, pkg, port = 443, device = "tailscale0", hasUnit = {}, tailscale, systemd, etc = ETC }) {
+export function installPlan({ user, group, home, node, pkg, port = 443, device = "tailscale0", hasUnit = {}, tailscale, systemd, etc = ETC, wall = [] }) {
   if (!systemd) {
     return [{ do: "note", text: "systemd is required for a system install (no /run/systemd/system here). "
       + "Under another supervisor, run `vyre daemon` as the box owner (not root), with VYRE_HOME set, and restart it when it exits." }];
@@ -102,6 +102,8 @@ export function installPlan({ user, group, home, node, pkg, port = 443, device =
   const u = units({ user, group, home, node, pkg, port, device });
   /** @type {Step[]} */
   const steps = [{ do: "mkdir", path: path.join(home, ".vyre"), mode: 0o700, owner: `${user}:${group}` }];
+  // The wall watchers run behind (lib/sandbox/apparmor.js): bubblewrap and, where Ubuntu restricts user namespaces, its profile.
+  steps.push(...wall);
   const serviceChanged = hasUnit.service !== u["vyre.service"];
   const socketChanged = hasUnit.socket !== u["vyre.socket"];
   if (serviceChanged) steps.push({ do: "write", path: path.join(etc, "vyre.service"), content: u["vyre.service"], mode: 0o644 });
@@ -133,7 +135,7 @@ export function installPlan({ user, group, home, node, pkg, port = 443, device =
  * @param {{ purge?: boolean, home: string, etc?: string }} o
  * @returns {Step[]}
  */
-export function uninstallPlan({ purge = false, home, etc = ETC }) {
+export function uninstallPlan({ purge = false, home, etc = ETC, wall = [] }) {
   if (!SAFE_PATH.test(String(home)) || home === "/") throw new Error(`home "${home}" is not a home folder`);
   /** @type {Step[]} */
   const steps = [
@@ -142,6 +144,7 @@ export function uninstallPlan({ purge = false, home, etc = ETC }) {
     { do: "remove", path: path.join(etc, "vyre.service") },
     { do: "remove", path: path.join(etc, "vyre.socket") },
     { do: "run", argv: ["systemctl", "daemon-reload"], why: "forget the removed units", optional: true },
+    ...wall,
   ];
   if (purge) {
     steps.push({ do: "note", text: `purge: ${path.join(home, ".vyre")} is deleted, and the vault goes with it. Nothing in it can be recovered afterwards.` });

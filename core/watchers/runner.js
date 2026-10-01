@@ -11,14 +11,17 @@ let asked = 0;
 /** @type {Map<number, { resolve: (v: any) => void, reject: (e: Error) => void }>} */
 const waiting = new Map();
 
-// Lines of JSON to the parent on stdout, and from it on stdin. Anything else the watcher writes to
-// stdout or stderr is its log, never a message.
+// Lines of JSON to the parent on stdout, and from it on stdin: that channel carries messages and
+// nothing else. Whatever the watcher prints (console, log(), stray writes) goes to stderr, which
+// the parent reads as the watcher's log.
 const writeOut = process.stdout.write.bind(process.stdout);
+const writeErr = process.stderr.write.bind(process.stderr);
 const send = msg => new Promise(resolve => { writeOut(JSON.stringify(msg) + "\n", () => resolve(undefined)); });
+const toLog = line => { writeErr(String(line) + "\n"); };
 const text = a => a.map(x => typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })()).join(" ");
 
 // console.* from a watcher is its log, not vyred's stdout.
-for (const k of ["log", "info", "warn", "error", "debug"]) console[k] = (...a) => { send({ t: "log", line: text(a) }); };
+for (const k of ["log", "info", "warn", "error", "debug"]) console[k] = (...a) => { toLog(text(a)); };
 
 // The child has no network of its own. fetch(url, { method?, headers? }) asks the parent, which
 // resolves the name, refuses non-public addresses and runs a GET or HEAD. It answers a small
@@ -41,8 +44,8 @@ const ask = prompt => new Promise((resolve, reject) => {
   send({ t: "ask", id, prompt: String(prompt) });
 });
 
-process.stdout.write = chunk => { String(chunk).split("\n").filter(Boolean).forEach(l => { send({ t: "log", line: l }); }); return true; };
-process.stderr.write = chunk => { String(chunk).split("\n").filter(Boolean).forEach(l => { send({ t: "log", line: l }); }); return true; };
+process.stdout.write = chunk => { String(chunk).split("\n").filter(Boolean).forEach(toLog); return true; };
+process.stderr.write = chunk => { String(chunk).split("\n").filter(Boolean).forEach(l => writeErr(l + "\n")); return true; };
 
 const onMessage = async (/** @type {any} */ msg) => {
   if (msg.t === "ask") {
@@ -76,7 +79,7 @@ const onMessage = async (/** @type {any} */ msg) => {
       }),
     };
     const emit = item => { send({ t: "emit", item }); };
-    const log = (...a) => { send({ t: "log", line: text(a) }); };
+    const log = (...a) => { toLog(text(a)); };
     const cursor = await watch({ vault, since: msg.since ?? null, emit, log, hook: msg.hook ?? null, ask });
     await send({ t: "done", cursor: cursor === undefined ? null : cursor });
   } catch (e) {
