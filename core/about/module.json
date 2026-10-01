@@ -4,7 +4,7 @@
   "description": "A few lines on who the user is, cached for every Claude Code session to start with.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "about.text", "reach": "anyone" }] },
+  "does": { "tools": ["about.text"] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
   "needs": {},

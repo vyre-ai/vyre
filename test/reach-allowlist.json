@@ -1,6 +1,10 @@
 {
  "_comment": "Every tool whose manifest entry has no explicit reach (2026-10-01, stage). Each owner shrinks this by writing { name, reach } in module.json and deleting the line here. test/reach-explicit.test.js fails on a tool not listed that has no reach, and on a line that is stale. \"anyone\" is fine when written deliberately.",
  "tools": {
+  "about.text": {
+   "module": "about",
+   "default": "limited by callers in code"
+  },
   "agents.ask": {
    "module": "agents",
    "default": "open to any caller"
