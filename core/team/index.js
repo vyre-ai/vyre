@@ -786,14 +786,11 @@ export default {
       input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string" },
         brief: { type: "string" }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
-      // The person's act, and their agent's on their behalf (charter: agents can do everything the
-      // person can): a session in that project. Never a teammate, never a bare mcp call with no session.
-      // TODO(P17): for a non-person caller (the assistant included), also require the person's own words asked for it (vault.said.match).
-      callers: ["cli", "local", "deck", "capsule", "mcp"],
+      // The person's own (ADR 0031 section 4, and the daemon's PERSON_ONLY floor: a session's own socket refuses it outright). The Deck's
+      // @role create and the CLI are the person's surfaces; a model that thinks a teammate is needed asks the person to make one.
+      callers: ["cli", "local", "deck", "capsule"],
       run: async (i, meta = {}) => {
-        if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
-        if (!isPerson(meta.caller) && !isAssistant(meta) && !(SLUG.test(String(i.project || "")) && await inProject(meta, i.project)))
-          throw Object.assign(new Error("team.add is for a person, or a session in that project"), { code: "denied" });
+        if (!isPerson(meta.caller)) throw Object.assign(new Error("a teammate is made by a person; ask them to add one"), { code: "denied" });
         if (!SLUG.test(String(i.project || ""))) throw new Error("project must be a project slug");
         if (!NAME.test(i.role)) throw new Error("a role is lowercase letters, digits and dashes");
         if (i.role === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate`), { code: "denied" });

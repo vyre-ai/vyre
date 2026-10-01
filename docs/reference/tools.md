@@ -6056,7 +6056,7 @@ Add a teammate to a project: a role (how sessions address it, e.g. "design"), a 
   - `isolation` one of "worktree", "folder", "none"
   - `model` string
   - `tools` list of string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `team.ask`
 

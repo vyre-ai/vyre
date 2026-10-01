@@ -185,10 +185,6 @@
    "module": "settings",
    "why": "pending"
   },
-  "team.add": {
-   "module": "team",
-   "why": "a session in the project may add a teammate on the person's request (@role creates one on first use, with Undo on the handoff card); the project check is in code and a teammate is refused"
-  },
   "term.attach": {
    "module": "term",
    "why": "pending"

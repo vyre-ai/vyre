@@ -106,17 +106,16 @@ test("team.add makes a teammate; team.list shows it asleep with an empty queue",
   assert.equal(row.state, "asleep");
 });
 
-test("team.add: a bare mcp caller with no session is refused; a session in the project may add, another project's may not", async t => {
+test("team.add is the person's (ADR 0031 section 4): a bare mcp caller, a session and an agent are refused, the person's surface adds", async t => {
   const { tool, root, project, launches } = await boot(t);
-  const r = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
-  assert.ok(r.error);
-  assert.equal(r.error.code, "denied");
-  const other = await tool("projects.create", { name: "Northwind Bakery" });
+  const bare = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", timeout: 20_000 });
+  assert.ok(bare.error);
   const { session } = await realSession(root, tool, launches, project.slug);
-  const ok = await tool("team.add", { project: project.slug, role: "design" }, "mcp", { session });
-  assert.equal(ok.role, "design");
-  const no = await call("team.add", { project: other.slug, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
-  assert.equal(no.error.code, "denied");
+  const viaSession = await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp", session, timeout: 20_000 });
+  assert.ok(viaSession.error, "a session never makes a teammate");
+  assert.ok((await call("team.add", { project: project.slug, role: "design" }, { root, caller: "mcp:agent:kit", timeout: 20_000 })).error);
+  assert.equal((await tool("team.list", { project: project.slug })).length, 0);
+  assert.equal((await tool("team.add", { project: project.slug, role: "design" })).role, "design");
 });
 
 test("a request runs, the teammate closes it with team.done, and the result comes back", async t => {
