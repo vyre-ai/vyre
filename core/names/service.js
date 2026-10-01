@@ -217,9 +217,9 @@ export function names(deps) {
       const ip = v4(s);
       if (!ip || !s.tun) { state.phase = "named"; state.why = "connect Tailscale, then claim again to publish the address"; return; }
       await /** @type {NonNullable<typeof dir>} */ (dir).point(name, ip);
-      // The tailnet's IPv6 address is best effort: a box with no fd7a address just has no AAAA.
-      const six = v6(s);
-      if (six) await /** @type {NonNullable<typeof dir>} */ (dir).point(name, six).catch(e => ctx.log("names: AAAA not published: " + /** @type {Error} */ (e).message));
+      // IPv4 only: a resolver that filters DNS rebinding (Pi-hole, dnsmasq with --stop-dns-rebind, many routers) drops an
+      // fd7a:: AAAA answer, so the name would need a router setting the person cannot be asked to change. The 100.64/10 A
+      // record always passes, and the tailnet carries IPv4 everywhere (T2b and T2c on the matrix).
       state.phase = "certificate";
       const got = await deps.issue({ names: [fqdn], dns: await acmeDns() });
       deps.certs.save(ctx.paths.certs, fqdn, got);

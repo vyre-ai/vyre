@@ -138,7 +138,7 @@ test("limits: 5 claims per address a day, then a global ceiling", async t => {
   assert.equal((await boxOf(w).post("/v1/names/claim", { name: "name-hx" }, { ip: "192.0.2.1" })).status, 200);
 });
 
-test("point: a tailnet A record, then AAAA, and never anything else", async t => {
+test("point: a tailnet A record, never an AAAA, and never anything else", async t => {
   const w = world(t), a = boxOf(w);
   data(await a.post("/v1/names/claim", { name: "alex" }));
   const p = data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.2" }));
@@ -149,8 +149,9 @@ test("point: a tailnet A record, then AAAA, and never anything else", async t =>
   // a new address updates the one record
   data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.9" }));
   assert.deepEqual(w.dns.at("alex.vyre.run", "A").map(r => r.content), ["100.101.1.9"]);
-  data(await a.post("/v1/names/point", { name: "alex", ip: "fd7a:115c:a1e0:ab12:4843:cd96:6265:f9d0" }));
-  assert.equal(w.dns.at("alex.vyre.run", "AAAA").length, 1);
+  // The tailnet's IPv6 address is refused: a resolver that filters rebinds drops it (T2b), and IPv4 always works.
+  assert.equal(code(await a.post("/v1/names/point", { name: "alex", ip: "fd7a:115c:a1e0:ab12:4843:cd96:6265:f9d0" })), "ipv4_only");
+  assert.equal(w.dns.at("alex.vyre.run", "AAAA").length, 0);
   const before = w.dns.records.length;
   for (const ip of ["8.8.8.8", "10.0.0.5", "192.168.1.1", "100.128.0.1", "::ffff:100.64.0.1", "127.0.0.1", "fd00::1", "", 5, null, "100.64.0.1/32"]) {
     const r = await a.post("/v1/names/point", { name: "alex", ip });
