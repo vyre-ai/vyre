@@ -16,6 +16,9 @@
 //     for its own page only; which page is the browser's word (sender), never the message's.
 //   - Cards and addresses are not tied to a site: inline.js and the popup may list them anywhere
 //     and fill one into their own page's top frame (cards.js), again for the sender's origin.
+//   - keychip.js (on by default once paired and allowed on pages) may raise a Save chip for an API
+//     key its page shows, and save or undo it for its own page only. The worker holds the origin
+//     each chip was raised on and vyred refuses a save from any other (fill-key.js).
 //   - passkey-bridge.js (on by default once paired and allowed on pages) may ask for this site's
 //     passkey names, a new passkey or a sign-in, from any frame. The origin vyred signs for is
 //     the frame's, from the sender; a framed request says so (crossOrigin, topOrigin from the
@@ -289,6 +292,7 @@ async function syncPasskeys() {
       catch { await ext.scripting.registerContentScripts(passkeyScripts(false)); }
     }
   } catch { /* a browser that will not register them: passkeys stay the browser's own */ }
+  await syncKeyChip();
   return { passkeys: await passkeysOn(), wanted, supported };
 }
 
@@ -346,6 +350,84 @@ async function passkey(msg, frame) {
   return r;
 }
 
+// ---- vault capability: API keys a page shows (keyfind.js, keychip.js) ----------------------
+// A self-contained block. It joins the rest of this file at five places, all searchable by
+// KEY_TYPES, keys( or syncKeyChip(: INLINE_TYPES, inline()'s default case, route()'s keychip-*
+// cases, the tail of syncPasskeys, and the tab cleanup just below. The page-side script finds a key locally and asks here to raise a chip;
+// only a fingerprint crosses before the person taps Save. This worker remembers which origin each
+// chip was raised on and sends that with the save, so vyred can refuse a save from any other page.
+
+const KEYCHIP_ID = "vyre-keychip";
+const KEYCHIP_JS = ["keyfind.js", "keychip.js"];
+const KEY_TYPES = ["key-raise", "key-save", "key-undo", "key-dismiss"];
+const KEY_RAISED_MS = 10 * 60_000;
+const KEY_UNDO_MS = 30_000;
+/** Per tab: fingerprints already offered, chips waiting for Save (origin), and the last save (for Undo). Memory only. @type {Map<number, any>} */
+const keyTabs = new Map();
+
+const keyTab = (/** @type {number} */ id) => {
+  let t = keyTabs.get(id);
+  if (!t) { t = { offered: new Set(), raised: new Map(), saved: null }; keyTabs.set(id, t); }
+  return t;
+};
+
+/** The person's choice; on unless they turned it off. */
+async function keychipWanted() { return (await ext.storage.local.get(["keychip"])).keychip !== false; }
+
+async function keychipOn() {
+  try { return (await ext.scripting.getRegisteredContentScripts({ ids: [KEYCHIP_ID] })).length > 0; } catch { return false; }
+}
+
+/** Register keychip.js when it should run (paired, wanted, allowed on pages), else unregister it. Never throws. */
+async function syncKeyChip() {
+  try {
+    const s = await settings();
+    const want = Boolean(s.token) && (await keychipWanted()) && (await ext.permissions.contains({ origins: PAGES }));
+    const on = await keychipOn();
+    if (on && !want) await ext.scripting.unregisterContentScripts({ ids: [KEYCHIP_ID] });
+    else if (want && !on) await ext.scripting.registerContentScripts([{ id: KEYCHIP_ID, matches: PAGES, js: KEYCHIP_JS, runAt: "document_idle", allFrames: false, persistAcrossSessions: true }]);
+  } catch { /* a browser that will not register it: no key offers */ }
+  return { keychip: await keychipOn() };
+}
+
+/** @param {any} msg @param {{ id: number, origin: string }} page */
+async function keys(msg, page) {
+  const t = keyTab(page.id);
+  const fp = typeof msg.fp === "string" && /^[a-z0-9]{1,16}$/.test(msg.fp) ? msg.fp : null;
+  switch (msg.type) {
+    case "key-raise": {
+      // Offered once per tab, and only while unlocked: a locked Vyre cannot save it anyway.
+      if (!fp || t.offered.has(fp) || !(await getSession()) || !(await keychipWanted())) return { data: { raise: false } };
+      if (t.offered.size > 200) t.offered.clear();
+      t.offered.add(fp);
+      t.raised.set(fp, { origin: page.origin, at: Date.now() });
+      return { data: { raise: true } };
+    }
+    case "key-save": {
+      const rec = fp ? t.raised.get(fp) : null;
+      if (fp) t.raised.delete(fp);
+      if (!rec || Date.now() - rec.at > KEY_RAISED_MS) return { error: { code: "expired", message: "this offer has expired" } };
+      if (typeof msg.value !== "string" || msg.value.length < 8 || msg.value.length > 8192) return { error: { code: "bad_input", message: "nothing to save" } };
+      const label = typeof msg.label === "string" ? msg.label.slice(0, 60) : "";
+      const r = await api("POST", "save-key", { url: page.origin, raisedOn: rec.origin, value: msg.value, label, generic: Boolean(msg.generic) }, { session: true });
+      if (r.error) return r;
+      t.saved = { name: String(r.data.name), at: Date.now(), made: r.data.created !== false };
+      return { data: { name: r.data.name, created: r.data.created !== false, connected: typeof r.data.connected === "string" ? r.data.connected : null } };
+    }
+    case "key-undo": {
+      const s = t.saved;
+      if (!s || !s.made || s.name !== msg.name || Date.now() - s.at > KEY_UNDO_MS) return { error: { code: "expired", message: "nothing to undo any more" } };
+      t.saved = null;
+      const r = await api("POST", "save-key", { url: page.origin, undo: s.name }, { session: true });
+      return r.error ? r : { data: { removed: true } };
+    }
+    case "key-dismiss": if (fp) t.raised.delete(fp); return { data: { dismissed: true } };
+    default: return { error: { code: "bad_message", message: "unknown request" } };
+  }
+}
+
+ext.tabs.onRemoved.addListener(id => { keyTabs.delete(id); });
+
 /** @param {any} msg @param {{ id: number, origin: string }} page */
 async function inline(msg, page) {
   switch (msg.type) {
@@ -384,7 +466,7 @@ async function inline(msg, page) {
     }
     case "inline-card-fill": return cardInto(page, "card", String(msg.name || ""));
     case "inline-address-fill": return cardInto(page, "address", String(msg.name || ""));
-    default: return { error: { code: "bad_message", message: "unknown request" } };
+    default: return KEY_TYPES.includes(msg.type) ? keys(msg, page) : { error: { code: "bad_message", message: "unknown request" } };
   }
 }
 
@@ -457,6 +539,14 @@ async function route(msg) {
       return r.passkeys ? { data: r } : { error: { code: "unsupported", message: r.supported ? "the browser would not load the passkey scripts" : "passkeys need Firefox 128 or later" } };
     }
     case "passkeys-disable": await ext.storage.local.set({ passkeys: false }); return { data: await syncPasskeys() };
+    case "keychip-state": return { data: await syncKeyChip() };
+    case "keychip-enable": {
+      if (!(await ext.permissions.contains({ origins: PAGES }))) return { error: { code: "no_permission", message: "the browser did not allow the key offer on pages" } };
+      await ext.storage.local.set({ keychip: true });
+      const r = await syncKeyChip();
+      return r.keychip ? { data: r } : { error: { code: "unsupported", message: "the browser would not load the key offer" } };
+    }
+    case "keychip-disable": await ext.storage.local.set({ keychip: false }); return { data: await syncKeyChip() };
     case "forget": {
       await setSession(null);
       await ext.storage.local.remove(["device", "token", "deviceName"]);
@@ -468,7 +558,7 @@ async function route(msg) {
 }
 
 const INLINE_TYPES = ["inline-match", "inline-fill", "inline-otp", "inline-offer-save", "inline-pending", "inline-save", "inline-dismiss",
-  "inline-cards", "inline-card-fill", "inline-address-fill"];
+  "inline-cards", "inline-card-fill", "inline-address-fill", ...KEY_TYPES];
 
 ext.runtime.onMessage.addListener((msg, sender, reply) => {
   const failed = () => reply({ error: { code: "internal", message: "the extension failed" } });

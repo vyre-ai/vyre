@@ -17,7 +17,7 @@ the composer, like Claude Code".
 |---|---|---|
 | Deck | `deck/css/deck.css` `.input` `.sw` `.seg` `.search` (main); `deck/chat/chat.css` `.cv-chk` `.cv-radio` (work/chat) | partial |
 | App | the text input in `apps/app/src/session/Composer.tsx` only (work/mobile) | partial |
-| Capsule | SwiftUI `TextField` and `TextEditor` in `local/capsule/native/Sources/UI/CapsuleView.swift`, `UI/AgentDeskView.swift` (work/capsule-pro) | partial |
+| Lumen | SwiftUI `TextField` and `TextEditor` in `local/capsule/native/Sources/UI/CapsuleView.swift`, `UI/AgentDeskView.swift` (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -123,9 +123,9 @@ exclamation mark.
 - [ ] Deck: `.seg` has a `--rule` border and 26 segments with `aria-pressed`; use the `--hover`
   container, 28 segments and radiogroup semantics.
 - [ ] Deck: no stepper or select component (native `select.input` in settings); two checkboxes
-  (`.cv-chk` on is lime, the design is `--text`).
+  (`.cv-chk` on is bone, the design is `--text`).
 - [ ] Deck: `.search` is 420 wide on `--panel` with a `--rule` border; use the field.
 - [ ] App: only the composer's text input exists (16 px); build the other eight at touch sizes.
-- [ ] Capsule: system `TextField` and `TextEditor` styling; no toggles, segments or steppers.
+- [ ] Lumen: system `TextField` and `TextEditor` styling; no toggles, segments or steppers.
 - [ ] System: the stepper is drawn twice (a `--hover` fill in Settings, a `--rule-strong` outline
   in Project settings); this spec takes the fill.

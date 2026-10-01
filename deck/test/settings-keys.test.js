@@ -565,3 +565,13 @@ test("settings keys: without the settings module, one section says so", async ()
   assert.deepEqual(out.groups, []);
   assert.match(text(el), /These settings are kept by the settings module\..*The settings module is not running/);
 });
+
+test("settings keys: a key its module marks hidden (the spend caps) is not drawn in the generic groups", async () => {
+  const hiddenKey = { key: "spend.claude.daily_usd", module: "spend", group: "sessions", label: "Claude daily cap", type: "int", default: 5, levels: ["account"], apply: "live", owner: "V", hidden: true };
+  SCHEMA.keys.push(hiddenKey); BY.set(hiddenKey.key, hiddenKey);
+  try {
+    const { el } = await render();
+    assert.equal(rowOf(el, "spend.claude.daily_usd"), null);
+    assert.ok(rowOf(el, "sessions.output_style"), "the other keys in that group still draw");
+  } finally { SCHEMA.keys.pop(); BY.delete(hiddenKey.key); }
+});

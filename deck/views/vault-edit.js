@@ -270,3 +270,46 @@ export function editPane(app, panel, what, focus) {
   if (focus) (editing ? title : nameIn).focus({ preventScroll: true });
   if (!vc.has("vault.update")) put(status, "This vyred has no vault.update yet, so the Deck cannot save items.");
 }
+
+/**
+ * Replace the key of an API credential: one hidden box. Its hosts, endpoints and readers stay as
+ * the person wrote them, because vault.put carries the stored config over when only the key is given.
+ * @param {any} app @param {HTMLElement} panel @param {string} name @param {boolean} focus
+ */
+export function replaceKeyPane(app, panel, name, focus) {
+  const { vc, ctx } = app;
+  app.onPane(() => clearSecrets(panel));
+  ctx.cleanup(() => clearSecrets(panel));
+  const status = h("p", { class: "vt-status", role: "status" });
+  const keyIn = secretInput("The new key", "vt-e-key");
+  const title = h("h2", { class: "vt-ptitle", tabindex: "-1", id: "vt-panel-h" }, `Replace the key for ${name}`);
+  panel.setAttribute("aria-labelledby", "vt-panel-h");
+  async function save(/** @type {Event} */ e) {
+    e.preventDefault();
+    const secret = keyIn.value;
+    if (!secret) return put(status, "Paste the new key.");
+    const btn = /** @type {HTMLButtonElement} */ (form.querySelector("button[type=submit]"));
+    btn.disabled = true;
+    const r = await vc.call("vault.put", { name, kind: "api-credential", fields: { secret } });
+    btn.disabled = false;
+    keyIn.value = "";
+    if (!ctx.alive()) return;
+    if (r.error) return put(status, r.error.code === "presence_refused" || r.error.code === "cancelled" ? "Not saved. Nothing was sent." : errText({ ...r.error, tool: "vault.put" }));
+    toast({ text: `Replaced the key for ${name}. Its hosts and what it may do stay as they were.` });
+    await app.load();
+    app.open({ mode: "item", name });
+  }
+  const form = h("form", { class: "vt-form", autocomplete: "off", onsubmit: save },
+    field("New key", keyIn, "Sealed when you save, and never shown again. Everything else about this credential stays as it is."),
+    h("div", { class: "vt-form-acts" },
+      h("button", { type: "submit", class: "btn btn-primary" }, icon("lock", 14), "Replace the key"),
+      h("button", { type: "button", class: "btn btn-ghost", onclick: () => app.open({ mode: "item", name }) }, "Cancel")),
+    status);
+  put(panel,
+    h("div", { class: "vt-ptop" },
+      h("button", { type: "button", class: "btn btn-ghost vt-back", onclick: app.close }, icon("back", 14), "Vault"),
+      h("span", { class: "lbl" }, "Key"),
+      h("button", { type: "button", class: "ibtn vt-closex", "aria-label": "Close panel", onclick: app.close }, icon("close", 13))),
+    title, form);
+  if (focus) keyIn.focus({ preventScroll: true });
+}

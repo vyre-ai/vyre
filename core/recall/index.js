@@ -39,6 +39,7 @@ import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
+import { within } from "../../lib/within.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -93,6 +94,8 @@ export default {
     const indexer = new Indexer(db, {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       log: ctx.log,
+      // Who started a session under an account's folder comes from the Switchboard's record, never the transcript.
+      origin: async session => { const r = await ctx.call("threads.origin", { session }); return r && r.data ? r.data : null; },
       // Each new vector goes straight into the dense index, so a pass never forces a rebuild.
       // A rewrite moves the generation, and the index rebuilds itself on the next search.
       onVector: item => dense.add(item),
@@ -557,7 +560,7 @@ export default {
       clearTimeout(soon.get(id));
       soon.set(id, setTimeout(() => {
         soon.delete(id);
-        chain = chain.then(() => { if (!stopped) indexer.session(folders(), id); }).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+        chain = chain.then(() => (stopped ? null : indexer.session(folders(), id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
     const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
@@ -580,7 +583,7 @@ export default {
         await chain;
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
-        if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]);
+        if (vec.loading) await within(vec.loading.catch(() => null), 5000);
         const e = /** @type {any} */ (vec.embedder);
         if (e && typeof e.close === "function") e.close();
       },

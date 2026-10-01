@@ -17,7 +17,7 @@ runs it (the design workflow).
 |---|---|---|
 | Deck (web, PWA) | `deck/css/tokens.css` | custom properties: roles, `--radius-*`, `--size-*`/`--line-*`, `--space-0` to `--space-9`, `--control-*`, `--motion-*`, `--ease`, `--float`, `--popover`, `--sans`, `--mono` |
 | App (Expo) | `apps/app/src/theme/tokens.ts` | `tokens.color.dark.text2`, `tokens.type.phone.read`, `attention(scheme, alt)` |
-| Capsule (Swift) | `local/capsule/native/Sources/UI/Tokens.generated.swift` | `Tokens.dark.text2`, `Tokens.Radius.card`, `Tokens.Control.touch`, `Tokens.monoSizes` |
+| Lumen (Swift) | `local/capsule/native/Sources/UI/Tokens.generated.swift` | `Tokens.dark.text2`, `Tokens.Radius.card`, `Tokens.Control.touch`, `Tokens.monoSizes` |
 
 The generator writes a surface only when its folder exists in the tree.
 
@@ -41,7 +41,7 @@ surface's own file, fails the design check (cohesion, ADR 0036).
 - **Controls**: 28 and 32 on the desktop, 44 and 54 on touch. Nothing a finger taps is under 44.
 - **Motion**: tap 120 ms, panel 220, sheet 280, text reveal 150, hold 600, undo 4000, ease
   (0.25, 0.1, 0.25, 1). Reduced motion stops shine, spin and slides; state changes still show.
-- **Shadow**: `float` for sheets and the Capsule, `popover` for menus. Nothing else casts a shadow.
+- **Shadow**: `float` for sheets and Lumen, `popover` for menus. Nothing else casts a shadow.
 - **Status**: the order needs you, failed, running, unread, done, each with a mark, a colour role and
   a word. The keys are a contract (see [status-mark](components/status-mark.md)).
 

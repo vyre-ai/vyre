@@ -30,6 +30,7 @@ import { registryRules } from "../harness/rules.js";
 // edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
+import { within } from "../../lib/within.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -157,7 +158,9 @@ async function startLocked(opts, root, p, release) {
     catch { socket.destroy(); }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
-  fs.chmodSync(p.socket, 0o600);
+  // No POSIX mode on win32: the socket is a named pipe (core/config/index.js's socketPath),
+  // which Node already restricts to this user by default; there is no file for chmod to touch.
+  if (process.platform !== "win32") fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
   log(`vyred ${VERSION} up · role ${cfg.role} · ${registry.status().filter(m => m.state === "running").length} modules`);
 
@@ -167,7 +170,7 @@ async function startLocked(opts, root, p, release) {
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
-    if (inflight.size) await Promise.race([Promise.allSettled([...inflight]), new Promise(r => setTimeout(r, DRAIN_MS).unref())]);
+    if (inflight.size) await within(Promise.allSettled([...inflight]), DRAIN_MS);
     for (const end of streams) end();
     for (const s of upgraded) s.destroy();
     // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
@@ -706,7 +709,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
     // pid: only vyred's router can hand a tool this (a module's ctx.call carries no meta).
     const signed = socket && name === "presence.capsule.pin" ? await signedBy(req.socket) : undefined;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // A caller that asks for application/x-ndjson gets the tool's live draft on this connection only:
+    // one {"draft":...} line per update, then {"result":...}. No draft function for anyone else, and
+    // a draft is never an event. Only the router sets this; a module's ctx.call carries no meta.
+    const ndjson = /application\/x-ndjson/.test(String(req.headers.accept || "")) && typeof res.writeHead === "function";
+    let live = false;
+    const draft = ndjson ? d => {
+      if (res.writableEnded || res.destroyed) return;
+      if (!live) { live = true; res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" }); }
+      res.write(JSON.stringify({ draft: d }) + "\n");
+    } : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
@@ -721,6 +734,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : ["no_such_tool", "not_found"].includes(result.error.code) ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
       : result.error.code === "idempotency_conflict" ? 409 : 500;
+    if (live) { res.end(JSON.stringify({ result }) + "\n"); return; }
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey
@@ -780,13 +794,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
   // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
   // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
-  // Only these seven files - client.js's own browser-safe closure (checked by hand: channel.js,
-  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) - nothing else in relay/client/
+  // Only these nine files - client.js's own browser-safe closure (checked by hand: channel.js,
+  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which deck/js/add-pc-card.js
+  // (Settings, Add a Windows PC) imports - nothing else in relay/client/
   // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
   // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
   // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
   // through a real vyred the way a phone does.
-  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
+  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
@@ -895,6 +910,8 @@ function serveDeck(res, pathname, cfg) {
   // the directory happens to carry its own index.html: a bare 404 there would be surprising, since
   // nothing about the URL said "this is a module", only that a browser asked for a page.
   let wantsShell = false;
+  // The release's signed files (deck/sw.js verifyShell): a missing one is a plain 404, never the shell.
+  if (/^\/release\/(SHA256SUMS|SHA256SUMS\.sig|shell\.json)$/.test(pathname) && !fs.existsSync(file)) return send(res, 404, { error: { code: "not_found", message: pathname } });
   try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); wantsShell = true; } }
   catch { file = shell; wantsShell = true; }
   let buf;

@@ -13,9 +13,9 @@
     body { margin: 0; background: #0E0D0C; }
     .lbl { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
     .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
-    .copy { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #0E0D0C; background: #C6F36B; border: none; border-radius: 6px; padding: 12px 16px; cursor: pointer; }
-    .copy:hover { background: #D4F88A; }
-    .copy:focus-visible { outline: 2px solid #C6F36B; outline-offset: 3px; }
+    .copy { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: #0E0D0C; background: #F1EEE6; border: none; border-radius: 6px; padding: 12px 16px; cursor: pointer; }
+    .copy:hover { background: #FFFFFF; }
+    .copy:focus-visible { outline: 2px solid #F1EEE6; outline-offset: 3px; }
     .line { font-size: 22px; line-height: 30px; font-weight: 500; letter-spacing: -0.01em; color: #F1EEE6; text-wrap: pretty; }
   </style>
 </helmet>
@@ -26,7 +26,7 @@
     <div style="display: flex; flex-direction: column; gap: 28px;">
       <div class="mono" style="display: flex; align-items: baseline; gap: 24px; font-size: 60px; line-height: 68px; font-weight: 500; letter-spacing: -0.03em; white-space: nowrap;">
         <span style="color: #6B665D;">$</span>
-        <span>npm install -g <span style="color: #C6F36B;">vyre</span></span>
+        <span>npm install -g <span style="color: #F1EEE6;">vyre</span></span>
       </div>
       <div style="display: flex; align-items: center; gap: 24px; padding-top: 20px; border-top: 1px solid #2B2926;">
         <button class="copy" type="button" onClick="{{ copy }}" aria-label="Copy install command">{{ copyLabel }}</button>

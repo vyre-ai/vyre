@@ -108,7 +108,7 @@ follows is the settled design (app-design, sha 83434944 on work/app-design,
 `docs/design/system/components/avatar.md` and `tool-row.md`), not a proposal.
 
 **No per-teammate colour, anywhere in the Deck, the App or the Capsule.** The product's colour
-economy is closed: lime for action/focus/running/selection, violet for Needs you (teal the one
+economy is closed: bone for action/focus/running/selection, violet for Needs you (teal the one
 alternative), no other hue, and devices/hosts already don't get one
 (`docs/design/one-app/README.md`'s System section). A teammate is that same kind of entity, not
 a person, so a role-hashed accent (disc, border, dot, ANSI square) was the first crack in a rule
@@ -157,7 +157,7 @@ Distinct instead means three things, none of them colour:
 - **The one colour exception: the CLI.** `vyre team` and `vyre team ask <role>` may colour a
   teammate's name with a role-hashed ANSI 256 colour, but only from a small fixed set (about 8,
   pre-picked and AA-tested), never an arbitrary hash-to-hue, so a teammate's colour can never
-  land near lime or violet and misread as a status signal. Text-only (never a fill), degrades
+  land near bone or violet and misread as a status signal. Text-only (never a fill), degrades
   under `NO_COLOR`, the same convention terminal tools like `git log --graph` already use, and it
   never touches the Deck/App/Capsule's colour economy. The palette values land with whoever
   builds the CLI side; the rule (fixed set, name-only, never a fill) is settled now.

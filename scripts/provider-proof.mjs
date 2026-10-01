@@ -17,10 +17,20 @@ import { acpProvider } from "../core/sessions/drivers/acp.js";
 import { codexProvider } from "../core/sessions/drivers/codex.js";
 import { grokProvider } from "../core/sessions/drivers/grok.js";
 import { rules } from "../core/harness/rules.js";
+import { keyUsage, START_LIMIT_USD } from "./lib/eval-openrouter.js";
 
 const which = process.argv[2];
 const key = process.env.OPENROUTER_API_KEY || "";
 if (!["codex", "grok"].includes(String(which)) || !key) { console.error("usage: OPENROUTER_API_KEY=... node scripts/provider-proof.mjs codex|grok"); process.exit(2); }
+
+// The key is shared with the evaluation's recording: read its own usage first and refuse to start at $14 or more, or when it cannot be read
+// (nothing is sent to a model). The usage is printed before and after; the key never is.
+let usageBefore = 0;
+try {
+  usageBefore = (await keyUsage({ key })).usage;
+  console.log(`provider-proof: key usage before: $${usageBefore.toFixed(4)}`);
+  if (usageBefore >= START_LIMIT_USD) { console.error(`provider-proof: refusing to start: the key has already spent $${usageBefore.toFixed(4)} (a run starts only below $${START_LIMIT_USD})`); process.exit(3); }
+} catch (e) { console.error(`provider-proof: ${/** @type {Error} */ (e).message}; nothing was sent to a model.`); process.exit(3); }
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "proof-home-"));
 const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "proof-work-"));
@@ -70,4 +80,5 @@ try {
 } catch (e) { check(false, `no exception (${String(/** @type {Error} */ (e).message).replaceAll(key, "[key]")})`); }
 finally { try { await proc.stop(3000); } catch {} }
 console.log(results.join("\n"));
+try { const u = (await keyUsage({ key })).usage; console.log(`provider-proof: key usage after: $${u.toFixed(4)} (this run $${(u - usageBefore).toFixed(4)})`); } catch { console.log("provider-proof: key usage after: unavailable"); }
 process.exit(results.every(r => r.startsWith("PASS")) ? 0 : 1);

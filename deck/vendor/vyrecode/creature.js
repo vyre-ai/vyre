@@ -5,7 +5,7 @@
 // people's assistants never match even if the people's own avatars happen to.
 const PASTELS = ["#F6B8C8", "#B8D9F0", "#C9E8B8", "#F0D48A", "#F0C9A0", "#8AD9C4", "#F0A88A"];
 // (a separate palette from agents'/users' own arrays - deliberately, so a creature never reads as
-// "an agent in a different pose" purely by colour coincidence; swept clean of lime/violet below)
+// "an agent in a different pose" purely by colour coincidence; swept clean of violet below)
 
 function hashSeed(seed) {
   let h = 2166136261;

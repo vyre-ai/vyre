@@ -26,6 +26,7 @@ import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from 
 import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, allReady, mergeEvent, destinationName, forgetGate } from "../js/server-rows.js";
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
+import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -37,12 +38,14 @@ const SECTIONS = [
   ["devices", "Your devices"],
   ["server", "Server"],
   ["history", "History and memory"],
+  ["spend", "Spend"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
   ["security", "Security"],
   ["modules", "Modules"],
   ["appearance", "Appearance"],
   ["machine", "This machine"],
+  ["data", "Update, export and uninstall"],
 ];
 
 /** The onboarding's steps (deck/onboard/onboard.js), each with the command that does the same.
@@ -132,9 +135,12 @@ export default async function settings(ctx) {
       const after = jumpSel.querySelector(`option[value="claude"]`);
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
-    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx),
+    import("./settings-spend.js").then(m => m.drawSpend(body.spend, ctx)).catch(e => put(body.spend, empty("Spend did not load.", e))),
+    drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
+    import("./settings-data.js").then(m => m.drawData(body.data, ctx)).catch(e => put(body.data, empty("Update, export and uninstall did not load.", e))),
   ];
   // A push notification's path is a query (?section=lessons, a plain fetchable link), not a hash.
   // ?key=<key> goes to one of the registry's settings and highlights it.
@@ -356,7 +362,7 @@ const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "
  * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, its own access, and who the
  * tailnet policy lets reach them. The check runs on demand, and a drive.exposed event (after any
  * share) shows its findings here too, with any shared folder that holds secrets. Sharing stays
- * with the owner's terminal and the Capsule; switching a share between read only and read and
+ * with the owner's terminal and Lumen; switching a share between read only and read and
  * write is the owner's own act (files.drive.access, no proof), offered only where the box has it.
  */
 function drawShares(el, ctx) {
@@ -599,12 +605,19 @@ function winkCard(status, ctx) {
   });
 }
 
+/** "Add a Windows PC" (deck/js/add-pc-card.js): the code the PC's app shows, as words or a QR, has the box register its own ticket. Same gate as Wink. */
+function addPcCard(status, ctx) {
+  if (!canRelayJoin(status).allowed) return null;
+  return buildAddPcCard({ attempt, cleanup: ctx.cleanup, alive: ctx.alive });
+}
+
 /** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
 async function drawDevices(el, ctx) {
   const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
   if (!ctx.alive()) return;
   if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
   const wink = winkCard(st.data, ctx);
+  const addPc = addPcCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
   const paired = Array.isArray(macs.data) ? macs.data : [];
   const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
@@ -625,6 +638,7 @@ async function drawDevices(el, ctx) {
   }
   put(el,
     wink,
+    addPc,
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
     // Wink is the primary path now (relay.allowed); this link is the Advanced fallback the

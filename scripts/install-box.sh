@@ -12,7 +12,19 @@
 #
 # Environment: VYRE_DIR (default /srv/vyre), VYRE_BOX_URL (default https://vyre.run/box/),
 # VYRE_IMAGE (default ghcr.io/vyre-ai/vyre:latest), VYRE_BUILD=tgz to build from vyre.tgz even
-# when the image can be pulled.
+# when the image can be pulled, and VYRE_CODE: the setup code the browser shows, for the
+# install line `curl -fsSL https://vyre.run/i | VYRE_CODE=... sh` (the variable goes on sh, the reader
+# of the script: on curl it would never reach it, and sudo drops it, so run it as yourself). The code is never a command-line
+# argument (a process list shows arguments); without one, and on a terminal, it is asked for and
+# Enter skips it. It goes only into $VYRE_DIR/vyre.env (0600) as VYRE_SETUP_CODE (VYRE_CODE stays the host-side pipe), which the box reads once
+# at start, and is never printed. With a code, each step is also sent, sealed under a key only the
+# browser's setup page can derive from the code, to the relay's progress mailbox (VYRE_RELAY, default
+# https://relay.vyre.run) so the page shows the install as it happens. That needs curl and openssl; without
+# them the terminal is the only place it shows.
+#
+# A release that carries image digests (release.json) is pulled by digest, after cosign has verified
+# the signature against this repo's release workflow, with cosign itself run from a container pinned
+# by digest below. A failed check stops the install; there is no switch to skip it.
 #
 # Every downloaded file is checked against SHA256SUMS from the same place, and a file without a
 # line there, or with a different hash, stops the install.
@@ -43,12 +55,24 @@ BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
 WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
 TUN=${VYRE_TUN:-/dev/net/tun}
 DOCKER_SOCK=${VYRE_DOCKER_SOCK:-/var/run/docker.sock}
+# The cosign that checks our images, pinned by digest so a moved tag cannot swap it. The identity
+# is the release workflow of this repo on a version tag, and nothing else.
+COSIGN_IMAGE=${VYRE_COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign@sha256:b03690aa52bfe94054187142fba24dc54137650682810633901767d8a3e15b31}
+COSIGN_ID='^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
+COSIGN_ISSUER=https://token.actions.githubusercontent.com
+CODE=""
+MBX=0
+MBXT=""
+MBX_SEQ=0
+RELAY_HTTP=${VYRE_RELAY:-https://relay.vyre.run}
+BOX_REF=""
+COMPUTER_REF=""
 # A line only our wrapper carries, so we never replace or remove someone else's vyre.
 MARK="vyre on a Docker box"
 
 # In --print-link mode stdout carries only the machine-readable lines, so the talk goes to stderr.
 say() { if [ "$LINK_ONLY" = 1 ]; then printf '%s\n' "$*" >&2; else printf '%s\n' "$*"; fi; }
-die() { printf 'vyre: %s\n' "$*" >&2; exit 1; }
+die() { printf 'vyre: %s\n' "$*" >&2; mbx_send "stopped: $*"; exit 1; }
 
 # The look. Colour and Unicode only on a terminal, with NO_COLOR and CI unset and TERM not dumb;
 # plain ASCII otherwise, so a CI log reads cleanly. Set once in main() by pick_look. The words are
@@ -104,10 +128,11 @@ step() {
   STEP=$((STEP + 1))
   [ "$STEP" = 1 ] || say ""
   say "${ASH}[$STEP/$STEPS]$RESET $BOLD$1$RESET"
+  mbx_send "[$STEP/$STEPS] $1"
 }
 
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
-done_step() { say "  $SIGNAL$OK$RESET $1"; }
+done_step() { say "  $SIGNAL$OK$RESET $1"; mbx_send "done: $1"; }
 
 # WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
 # pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
@@ -147,8 +172,12 @@ finish() {
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
-      say "  Next: open the link above. If it came with an ssh -L line,"
-      say "  run that on your own computer first, then open the link there."
+      if [ -n "$CODE" ]; then
+        say "  Done. Back to your browser."
+      else
+        say "  Next: open the link above. If it came with an ssh -L line,"
+        say "  run that on your own computer first, then open the link there."
+      fi
     fi
   fi
   say ""
@@ -199,7 +228,8 @@ ask() {
   case "$answer" in y|Y|yes|YES|Yes) return 0 ;; *) return 1 ;; esac
 }
 
-cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; return 0; }
+cleanup() { [ -n "$TMP" ] && rm -rf "$TMP"; [ -n "$MBXT" ] && rm -rf "$MBXT"; return 0; }
+
 
 # The person who owns the stack folder: whoever ran sudo, or you.
 pick_owner() {
@@ -297,9 +327,9 @@ get_sums() {
 # get NAME: download a box file into TMP and check it against its line in SHA256SUMS.
 get() {
   mkdir -p "$TMP/$(dirname "$1")"
-  fetch "$1" "$TMP/$1"
   want=$(awk -v p="$1" '$2 == p || $2 == "*" p { print $1; exit }' "$TMP/SHA256SUMS")
   [ -n "$want" ] || die "SHA256SUMS has no line for $1"
+  fetch "$1" "$TMP/$1" || die "could not download $BASE$1"
   got=$(sha256 "$TMP/$1")
   [ "$got" = "$want" ] || die "checksum mismatch for $BASE$1 (want $want, got $got)"
 }
@@ -311,6 +341,9 @@ pick_build() {
   if [ "${VYRE_BUILD:-}" = tgz ]; then
     TGZ=1
     say "building the image from vyre.tgz (VYRE_BUILD=tgz)"
+  elif [ -n "$BOX_REF" ]; then
+    # A release that names its image by digest is pulled by that digest, never built or pulled by tag.
+    :
   elif ! dk_quiet manifest inspect "$IMAGE" >/dev/null 2>&1; then
     TGZ=1
     say "cannot pull $IMAGE; building it from vyre.tgz instead"
@@ -369,15 +402,26 @@ write_stack() {
   else
     TMP=$(mktemp -d)
     files="compose.yml compose.build.yml vyre.env.example vyre"
-    [ "$TGZ" = 1 ] && files="$files vyre.tgz"
     if [ "$DRY" = 1 ]; then
+      pick_build
+      [ "$TGZ" = 1 ] && files="$files vyre.tgz"
       say "would download: $BASE""SHA256SUMS"
       for f in $files; do say "would download and verify: $BASE$f"; done
+      say "would read release.json and, when it names image digests, check each with cosign and pull it by digest"
       done_step "nothing downloaded (dry run)"
     else
       get_sums
-      for f in $files; do get "$f"; done
+      if awk '$2 == "release.json" || $2 == "*release.json" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS"; then
+        get release.json
+      fi
+      # compose.yml first: read_release checks it pins the digests release.json names.
+      get compose.yml
+      read_release
+      pick_build
+      [ "$TGZ" = 1 ] && files="$files vyre.tgz"
+      for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
       done_step "every file matches SHA256SUMS"
+      verify_images
     fi
     step "Laying out $DIR"
     say "the stack goes in $DIR, owned by $OWNER"
@@ -454,6 +498,12 @@ install_wrapper() {
   fi
   [ -d "$(dirname "$WRAPPER")" ] || priv mkdir -p "$(dirname "$WRAPPER")"
   priv install -m 0755 "$WRAPPER_SRC" "$WRAPPER"
+  # Updates asked for from Vyre's own Settings: the two folders the stack mounts and a root path unit that runs the signed
+  # `vyre update` when vyred drops its request (box/vyre, `vyre updater`). No systemd, or a wrapper somewhere else (a test):
+  # nothing is written, and an update is the `vyre update` command.
+  if [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ]; then
+    priv env "VYRE_DIR=$DIR" "$WRAPPER" updater install || say "note: could not set up updates from Settings; vyre update still works"
+  fi
 }
 
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the
@@ -472,7 +522,215 @@ start() {
   fi
 }
 
+# ---- the progress mailbox (tailnet plan 3.6b, N6) ----
+# b64u: base64url on stdin, no padding.
+b64u() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+# mbx_derive TAG: sha256("TAG\n" || the code's 16-byte secret), raw, as core/relay/wire.js setupDerive.
+mbx_derive() { { printf '%s\n' "$1"; cat "$MBXT/secret.bin"; } | openssl dgst -sha256 -binary; }
+hexof() { od -An -tx1 | tr -d ' \n'; }
+
+# mbx_post JSON: one POST to the relay mailbox, the body on stdin so nothing secret rides in argv.
+# Prints the HTTP status, or 000 when the relay cannot be reached.
+mbx_post() {
+  printf '%s' "$1" | curl -sS -o /dev/null -w '%{http_code}' --max-time 6 -X POST -H 'content-type: application/json' \
+    --data-binary @- "$(printf '%s' "${RELAY_HTTP%/}" | sed 's|^ws|http|')/v1/setup/mbx" 2>/dev/null || printf '000'
+}
+
+# mbx_pads KEYHEX: the two HMAC pads for a 32-byte key (zero-padded to the 64-byte block): key xor 0x36 and key xor 0x5c,
+# as raw bytes in ipad.bin and opad.bin. Plain sh arithmetic and printf, so it runs on dash, bash and a Mac's sh alike.
+mbx_pads() {
+  : >"$MBXT/ipad.bin"; : >"$MBXT/opad.bin"
+  i=0
+  while [ "$i" -lt 64 ]; do
+    b=$(printf '%s' "$1" | cut -c$((i * 2 + 1))-$((i * 2 + 2)))
+    v=0
+    [ -z "$b" ] || v=$((0x$b))
+    # shellcheck disable=SC2059 # octal escapes are the point
+    printf "\\$(printf '%03o' $((v ^ 54)))" >>"$MBXT/ipad.bin"
+    # shellcheck disable=SC2059
+    printf "\\$(printf '%03o' $((v ^ 92)))" >>"$MBXT/opad.bin"
+    i=$((i + 1))
+  done
+}
+
+# mbx_init: derive the mailbox keys from the code and open the mailbox. Quiet when curl or openssl
+# is missing, or the relay cannot be reached: the terminal still shows everything.
+mbx_init() {
+  [ -n "$CODE" ] || return 0
+  command -v curl >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 || return 0
+  MBXT=$(mktemp -d) || return 0
+  chmod 700 "$MBXT"
+  printf '%s=' "$CODE" | tr '_-' '/+' | { base64 -d 2>/dev/null || base64 -D 2>/dev/null; } >"$MBXT/code.bin" || { MBXT=""; return 0; }
+  [ "$(wc -c <"$MBXT/code.bin" | tr -d ' ')" = 32 ] || return 0
+  head -c 16 "$MBXT/code.bin" >"$MBXT/secret.bin"
+  tail -c 16 "$MBXT/code.bin" >"$MBXT/fp.bin"
+  MBX_LOC=$(mbx_derive vyre-pair-loc | b64u)
+  MBX_FP=$(b64u <"$MBXT/fp.bin")
+  MBX_WTOK=$(mbx_derive vyre-setup-mbx-w | b64u)
+  MBX_ENC=$(mbx_derive vyre-setup-mbx-enc | hexof)
+  MBX_MAC=$(mbx_derive vyre-setup-mbx-mac | hexof)
+  mbx_pads "$MBX_MAC"
+  # The first write creates the mailbox and fixes who may write to it; a 409 means another server used
+  # this code first, and nothing here may go on to look like the page's server.
+  body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK")
+  case "$(mbx_post "$body")" in
+    200) MBX=1 ;;
+    409) printf 'vyre: Another server already used this code. Your browser is not connected to this server. Start again at https://vyre.run/setup.\n' >&2; exit 1 ;;
+    *) MBX=0 ;;
+  esac
+}
+
+# mbx_send TEXT: one plain line for the browser: AES-256-CTR under the mailbox key, its HMAC over the
+# line's position, the IV and the ciphertext (core/relay/wire.js mbxSeal). Never blocks the install.
+mbx_send() {
+  [ "$MBX" = 1 ] || return 0
+  text=$(printf '%s' "$1" | tr -d '\000-\037' | cut -c1-900)
+  openssl rand 16 >"$MBXT/iv.bin" 2>/dev/null || return 0
+  printf '%s' "$text" | openssl enc -aes-256-ctr -K "$MBX_ENC" -iv "$(hexof <"$MBXT/iv.bin")" >"$MBXT/ct.bin" 2>/dev/null || return 0
+  b1=$((MBX_SEQ / 16777216 % 256)); b2=$((MBX_SEQ / 65536 % 256)); b3=$((MBX_SEQ / 256 % 256)); b4=$((MBX_SEQ % 256))
+  # shellcheck disable=SC2059 # the octal escapes are the point
+  printf "\\$(printf '%03o' "$b1")\\$(printf '%03o' "$b2")\\$(printf '%03o' "$b3")\\$(printf '%03o' "$b4")" >"$MBXT/seq.bin"
+  # HMAC-SHA256 by hand from plain sha256, which every openssl has (LibreSSL on a Mac has no `dgst -mac`).
+  { cat "$MBXT/ipad.bin" "$MBXT/seq.bin" "$MBXT/iv.bin" "$MBXT/ct.bin" | openssl dgst -sha256 -binary >"$MBXT/inner.bin"; } 2>/dev/null || return 0
+  cat "$MBXT/opad.bin" "$MBXT/inner.bin" | openssl dgst -sha256 -binary >"$MBXT/mac.bin" 2>/dev/null || return 0
+  line=$(cat "$MBXT/iv.bin" "$MBXT/ct.bin" "$MBXT/mac.bin" | b64u)
+  body=$(printf '{"loc":"%s","fp":"%s","wtok":"%s","line":"%s"}' "$MBX_LOC" "$MBX_FP" "$MBX_WTOK" "$line")
+  if [ "$(mbx_post "$body")" = 200 ]; then MBX_SEQ=$((MBX_SEQ + 1)); fi
+  return 0
+}
+
+# show_words: the four check words the box computed for this code, on the terminal only. The page shows
+# the same four from its own side; they match only if this box is the one the page is talking to, so they
+# never go through the relay mailbox. Best effort: a box that is slow to answer just leaves them out.
+show_words() {
+  [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  n=0
+  while [ "$n" -lt 20 ]; do
+    out=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
+    words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
+    if [ -n "$words" ]; then say "  Check words: $BOLD$words$RESET"; say "  They should match the four on your screen."; return 0; fi
+    n=$((n + 1)); sleep 1
+  done
+}
+
+# intake_code: the setup code, from VYRE_CODE or asked for on a terminal (hidden, Enter skips it).
+# Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
+intake_code() {
+  CODE=${VYRE_CODE:-}
+  unset VYRE_CODE
+  [ "$UNINSTALL" = 1 ] && { CODE=""; return 0; }
+  if [ -z "$CODE" ] && [ "$DRY" = 0 ] && [ "$YES" = 0 ] && [ "$LINK_ONLY" = 0 ] && (: </dev/tty) 2>/dev/null; then
+    printf '%sPaste the setup code from your browser (Enter to skip): %s' "$BEACON" "$RESET" >/dev/tty
+    stty -echo </dev/tty 2>/dev/null || true
+    read -r CODE </dev/tty || CODE=""
+    stty echo </dev/tty 2>/dev/null || true
+    printf '\n' >/dev/tty
+  fi
+  [ -n "$CODE" ] || return 0
+  printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
+    || die "that setup code does not look right. Copy the install line from your browser again."
+}
+
+# write_code: VYRE_SETUP_CODE into DIR/vyre.env (0600), which the vyre service already reads, with the time it
+# was written so `vyre` can remove both lines once the hour is over (the box reads the code once, at
+# start, and never keeps it). The rest of the file is kept as it is, and put installs from a temp file
+# so the code is never an argument.
+write_code() {
+  [ -n "$CODE" ] || return 0
+  if [ "$DRY" = 1 ]; then say "would put the setup code in $DIR/vyre.env (0600); it is never shown"; return 0; fi
+  TMP=${TMP:-$(mktemp -d)}
+  : >"$TMP/vyre.env"
+  if [ -e "$DIR/vyre.env" ]; then
+    # shellcheck disable=SC2024
+    if [ -r "$DIR/vyre.env" ] || [ -z "$SUDO" ]; then grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$DIR/vyre.env" >"$TMP/vyre.env" || true
+    else sudo cat "$DIR/vyre.env" | grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' >"$TMP/vyre.env" || true
+    fi
+  fi
+  chmod 600 "$TMP/vyre.env"
+  printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
+  put "$TMP/vyre.env" "$DIR/vyre.env" 0600
+}
+
+# one_install: an install that is already running here is updated, never replaced.
+one_install() {
+  [ -f "$DIR/compose.yml" ] || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  up=$(dk_quiet compose -p vyre ps -q 2>/dev/null | head -n 1 || true)
+  [ -n "$up" ] || return 0
+  say "Vyre is already running in $DIR, so this installer leaves it alone."
+  say "  Update it:    vyre update"
+  say "  Start over:   vyre uninstall, then run this line again"
+  exit 0
+}
+
+# docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
+# specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
+docker_flavor() {
+  command -v docker >/dev/null 2>&1 || return 0
+  case "$(command -v docker)" in
+    /snap/*|*/snap/bin/*) die "this Docker came from snap, which cannot give the Tailscale container a TUN device. Install Docker Engine from docker.com instead: curl -fsSL https://get.docker.com | sh" ;;
+  esac
+  if docker --version 2>/dev/null | grep -qi podman; then
+    die "this is Podman answering as docker. Vyre needs Docker Engine with Compose v2: curl -fsSL https://get.docker.com | sh"
+  fi
+  if dk_quiet info --format '{{.SecurityOptions}}' 2>/dev/null | grep -qi rootless; then
+    die "this Docker runs rootless, which cannot run the Tailscale container's network. Install the regular Docker Engine: curl -fsSL https://get.docker.com | sh"
+  fi
+}
+
+# read_release: the image digests release.json names (its SHA256SUMS line already matched), and a
+# check that the released compose.yml pins the same ones.
+read_release() {
+  # Fail closed: a release that names no image digests cannot be checked, so it does not install
+  # (VYRE_BUILD=tgz builds from the verified vyre.tgz instead and never pulls an image).
+  if [ ! -f "$TMP/release.json" ]; then
+    [ "${VYRE_BUILD:-}" = tgz ] && return 0
+    die "this release has no release.json in its SHA256SUMS, so its image cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
+  fi
+  j=$(tr -d '\n' <"$TMP/release.json")
+  BOX_REF=$(printf '%s' "$j" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  COMPUTER_REF=$(printf '%s' "$j" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  if [ -z "$BOX_REF" ] && [ "${VYRE_BUILD:-}" != tgz ]; then
+    die "release.json names no image digest for the box, so it cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
+  fi
+  # Every image the compose file starts is pinned by digest, so an edit cannot slip in a moving tag.
+  if [ -n "$BOX_REF" ]; then
+    unpinned=$(sed -n 's/^ *image: *//p' "$TMP/compose.yml" | grep -v '@sha256:[0-9a-f]\{64\}' || true)
+    [ -z "$unpinned" ] || die "compose.yml starts an image that is not pinned by digest ($(printf '%s' "$unpinned" | head -n 1)). Nothing was installed."
+  fi
+  for ref in $BOX_REF $COMPUTER_REF; do
+    printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' \
+      || die "release.json names an image that is not a ghcr.io/vyre-ai digest"
+    grep -qF "$ref" "$TMP/compose.yml" || die "compose.yml does not pin $ref, which release.json names"
+  done
+}
+
+# verify_images: each named image is signed by our release workflow, then the box image is
+# pulled by digest. Fail closed, and never skippable.
+verify_images() {
+  [ -n "$BOX_REF" ] || return 0
+  say "checking the image signature"
+  for ref in $BOX_REF $COMPUTER_REF; do
+    if ! dk docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" \
+      --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$TMP/cosign.err"; then
+      sed 's/^/  /' "$TMP/cosign.err" >&2
+      die "cosign could not verify $ref against Vyre's release workflow. Nothing was installed."
+    fi
+  done
+  dk docker pull -q "$BOX_REF" >/dev/null
+  done_step "signed by Vyre's release workflow, and pulled by digest"
+}
+
 uninstall() {
+  # The wrapper is the one uninstall (box/vyre): it lists every volume and asks once. --purge asks
+  # (or deletes with --yes); plain --uninstall keeps the data.
+  if [ -f "$DIR/compose.yml" ] && [ -e "$WRAPPER" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
+    flag=--keep-data
+    if [ "$PURGE" = 1 ]; then flag=""; [ "$YES" = 0 ] || flag=--delete-data; fi
+    # shellcheck disable=SC2086 # flag is one option or nothing
+    dk env "VYRE_DIR=$DIR" "VYRE_WRAPPER=$WRAPPER" "$WRAPPER" uninstall $flag
+    return 0
+  fi
   if [ -f "$DIR/compose.yml" ]; then
     # $1 expands in the inner shell, which is the point.
     # shellcheck disable=SC2016
@@ -509,7 +767,20 @@ dk_quiet() {
   if [ -n "$DOCKER_SUDO" ]; then sudo docker "$@"; else docker "$@"; fi
 }
 
+# mac_server "$@": on a Mac the same line installs the Mac as the server: the script for it comes from the release site,
+# is checked against SHA256SUMS like every file here, and runs with the same arguments and VYRE_CODE still in its environment.
+mac_server() {
+  case "$BASE" in */) ;; *) BASE="$BASE/" ;; esac
+  TMP=$(mktemp -d)
+  trap cleanup EXIT
+  get_sums
+  get install-mac-server.sh
+  sh "$TMP/install-mac-server.sh" "$@"
+  return $?
+}
+
 main() {
+  if [ "$(uname -s)" = Darwin ]; then mac_server "$@"; exit $?; fi
   while [ $# -gt 0 ]; do
     case "$1" in
       --dry-run) DRY=1 ;;
@@ -519,6 +790,7 @@ main() {
       --print-link) LINK_ONLY=1 ;;
       --uninstall) UNINSTALL=1 ;;
       --purge) PURGE=1 ;;
+      --code|--code=*) die "the setup code is never a command-line argument, since a process list shows arguments. Set VYRE_CODE for sh instead: curl -fsSL https://vyre.run/i | VYRE_CODE=... sh" ;;
       -h|--help) sed -n '2,14p' "$0" 2>/dev/null || true; exit 0 ;;
       *) die "unknown option $1" ;;
     esac
@@ -528,11 +800,7 @@ main() {
 
   case "$(uname -s)" in
     Linux) ;;
-    Darwin)
-      say "This installer is for a Linux server. On a Mac, Vyre installs with npm:"
-      say "  npm install -g https://vyre.run/box/vyre.tgz && vyre up"
-      exit 0 ;;
-    *) die "this installer is for Linux boxes; on a Mac: npm install -g https://vyre.run/box/vyre.tgz && vyre up" ;;
+    *) die "this installer is for a Linux server, or a Mac (which runs install-mac-server.sh from the same site)" ;;
   esac
 
   if [ "$(id -u)" != 0 ]; then
@@ -547,6 +815,8 @@ main() {
   trap cleanup EXIT
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
+  intake_code
+  [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
   if [ "$UNINSTALL" = 1 ]; then
@@ -561,13 +831,15 @@ main() {
   pick_owner
   need_docker
   need_tun
-  pick_build
+  docker_flavor
+  one_install
   if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
   else done_step "Docker would be installed first (dry run)"
   fi
   if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
   write_stack
   write_env
+  write_code
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
   step "Installing the vyre command"
   install_wrapper
@@ -578,6 +850,7 @@ main() {
     step "Starting Vyre"
     start
     if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else done_step "Vyre is up"; fi
+    show_words
   fi
   finish
 }

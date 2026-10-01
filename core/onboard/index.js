@@ -650,6 +650,9 @@ export default {
         const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
+        // The setup session (tailnet's relay.setup.*) stays alive through the claims, the phone's after the computer's, and
+        // ends here. Absent before the setup session lands, and when none is live: neither is an error.
+        await tryCall("relay.setup.end", { reason: "finished" });
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
         return { ...s, url: s.address, passkeyUrl: HANDS_CODE.has(String(caller)) && (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };

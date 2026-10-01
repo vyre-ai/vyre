@@ -161,6 +161,20 @@ export async function makeAgents(root) {
 }
 
 /**
+ * One site Vyre for Chrome learned, for the Sites tab (the sample is deck/test/site-sample.js). The store's test clock (honoured only
+ * under the test flag and only in a temp home) puts the misses on earlier days; the clock file is removed after, so what the
+ * screenshot shows is on real time.
+ * @param {string} root @param {string} clockFile
+ */
+export async function makeSites(root, clockFile) {
+  const { call } = await import("../../core/daemon/client.js");
+  const { seedSites } = await import("./site-sample.js");
+  const cli = (/** @type {string} */ tool, /** @type {any} */ input) => call(tool, input, { root, caller: "cli" }).then(r => { if (r.error) console.error(`world: ${tool}: ${r.error.message}`); return r.data; });
+  await seedSites({ cli, at: ms => fs.writeFileSync(clockFile, new Date(ms).toISOString()), now: Date.now() });
+  try { fs.rmSync(clockFile, { force: true }); } catch {}
+}
+
+/**
  * The two items held at the Gate, as gate.request inputs. request() only holds; nothing is sent.
  * @param {string[]} threads the corpus thread ids, in order
  */
@@ -194,12 +208,17 @@ async function main() {
   const { socketPath } = await import("../../core/config/index.js");
   const sock = socketPath(root);
   await seedVault(w);
+  // The Sites tab's sample: the store's test clock (temp home, test flag) lets the seed put misses on earlier days; makeSites removes it.
+  const clockFile = path.join(root, "site-clock");
+  env.VYRE_CHROME_TEST = "1"; env.VYRE_SITE_TEST_CLOCK = clockFile;
+  fs.writeFileSync(clockFile, new Date().toISOString());
   const daemon = await startVyred(root, env);
 
   // Let the first Recall pass land so the catalogue and search see the corpus.
   await new Promise(r => setTimeout(r, 1500));
   await makeProjects(w);
   await makeAgents(root);
+  await makeSites(root, clockFile);
 
   const server = http.createServer((req, res) => {
     const up = http.request({ socketPath: sock, path: req.url, method: req.method, headers: req.headers }, r => {

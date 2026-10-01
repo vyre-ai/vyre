@@ -380,6 +380,57 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   - Tested on testbox (temp `HOME`, never locally): see the commit for the numbers. Sending to
     reviewer and integrator, then pausing.
 
+## Done (2026-09-30, 0.2 build wave 1: client id swap, github.session.push, any-repo worktrees)
+- 0.2 charter shipped (new phase, different rules from 0.1.1 - see team/0.2/CHARTER.md and
+  team/RULES.md's 0.2 additions: testbox and the user's other real machines are OFF LIMITS now;
+  tests run in temp homes or on GitHub Actions runners only; land only via the integrator
+  onto stage/0.2, which doesn't exist yet). Planning (team/0.2/plans/github.md, two revisions) and
+  a full red-team (team/0.2/reviews/github.md) both landed before this build wave; verdict CLEARED
+  FOR BUILD, two MEDIUM (N1, N2) to close before build steps 8-9 (the hosted-MCP allowlist and
+  pr.open, not started yet - see Next).
+- Lead rulings (CHAT.md, 30 Sep): (1) GitHub sign-in defaults to the short-code device flow under
+  GitHub CLI's own public client id - "the user asked for GitHub's own managed app", least
+  friction. Disconnect never revokes the app-wide grant (would sign the person's own real gh out
+  everywhere). A pasted fine-grained PAT is the visible alternative. (2) Quiet local git history
+  for a plain (non-GitHub) project moved to teammates (they own projects generally); github keeps
+  only what's actually GitHub-specific.
+- **Sign-in swap** (`core/github/connect.js`, `index.js`): client id is now
+  `178c6fc778ccc68e1d6a` (GitHub CLI's own, declared safe to embed in their own source - verified
+  by research before use, not assumed). `revoke()`/`REVOKE_URI` deleted entirely from connect.js
+  (no secret to call that endpoint with, and per the lead's ruling we never try anyway).
+  `github.remove` now only ever deletes Vyre's own local vault item and account row.
+- **New `github.session.push {project, session, allow_secret?}`** (closes reviewer's H0a: no push
+  path existed before, which would have meant a token reaching the agent's own shell to push by
+  hand). Built on `gitWithAskpass` (fd-3 token only, same isolation `cloneRepo` already has). New
+  `git.js` pieces: `scanOutgoing` (a small local secret-pattern scanner over the branch-vs-default
+  diff: AWS keys, GitHub tokens, Slack tokens, private-key blocks, generic SECRET/API_KEY/
+  PASSWORD-shaped assignments; refuses with file+line on a hit, `allow_secret: true` is the
+  person's own override, no presence needed per the review's own fix) and `pushSession` (explicit
+  refspec `refs/heads/vyre/<session>:refs/heads/vyre/<session>`, never `--force`, reports rather
+  than overwrites a non-fast-forward remote). The account used for the push is always the one
+  recorded on the project's own `github_projects` row, never read from `.git/config` (closes M7's
+  worst case). People and MCP/agent callers both (new `PEOPLE_AND_AGENTS` group, distinct from the
+  existing `PEOPLE_AND_MODULES` which is about cross-module calls, not model-reachability) - agent
+  parity, no Gate-holding on push itself (the review's own fix list didn't ask for that here,
+  only the credential isolation and the safety checks above).
+- **Worktrees generalized to any git repo** (charter: "projects work with or without GitHub").
+  New `git.js` `defaultBranchOf(repoDir)` (prefers `origin/HEAD`, falls back to whatever's
+  checked out for a repo with no remote). `github.session.worktree`/`.cleanup` gained a `repoOf()`
+  helper: uses the `github_projects` row when one exists (unchanged behavior), otherwise reads
+  the project's own folder directly via `folderGitState`+`defaultBranchOf`. A project whose folder
+  isn't a repo at all still answers `null`, exactly as before - giving it one is teammates' job
+  now (local-init moved there per the lead's ruling above), not this module's.
+- Tests: `git.test.js` +8 (defaultBranchOf, scanOutgoing, pushSession x3), `index.test.js` +6
+  (any-repo worktree, not-a-repo-answers-null, push validation, push secret-block), `connect.
+  test.js`'s revoke test removed (nothing left to test - the function's gone). 45 tests total
+  (43 pass, 2 opt-in live tests unaffected, still skipped by default). Run locally in isolated
+  temp dirs, per 0.2's "temp homes or GitHub runners" rule - not on testbox or the user's real server.
+  `index.live.test.js`'s comments/skip messages updated from "testbox" to "GitHub Actions
+  runner" throughout, matching the new rule (it still can't run here regardless - real network,
+  real git, belongs in CI, never the Mac).
+- Committed 3623113a on work/github. Not yet merged main (826 commits ahead of this branch's
+  fork point); land only via the integrator onto stage/0.2 once it exists, per the lead's GO.
+
 ## Doing
 - reviewer CLEARED work/github through acfcefd2 (both 3a72ea7f..84e76681 and the stdin fix).
   The credential.interactive LOW is WITHDRAWN (reviewer agreed the evidence was right); the lead
@@ -407,29 +458,42 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   form at all, so that one keeps the short name. 29/29 on testbox including a new ignored-file
   test. Sent to reviewer.
 
-## Next
-1. Send `sessions` the actual gitWithAskpass diff (lib/git-safe.js + lib/git-safe-askpass.test.js)
-   now that it's built and tested, for their review as a new-file diff, per their ask.
-2. Send `reviewer` and `integrator` this sha (detect, add-repo, repos paging) per the lead's ask.
-3. Send `launch` the final tool contract (below, under Changed contracts): `github.repos` paging,
-   `github.project.detect` (per workspace), `github.project.add-repo`. No link/unlink, ever -
-   don't build a link-proposal/confirm UI.
-4. Once sessions builds the start/end hook: verify `github.session.worktree`/`.cleanup` end to
-   end from a real session (needs sessions' side to exist first).
-5. 0.1.2 design-only items (not started): PRs from chat, issues as goals, per-project git
-   settings, Touch ID on big moves, the GitHub App replacing the OAuth App's broad `repo` scope,
-   a worktree for an added (non-primary) repo.
+## Save point (2026-09-30, usage-limit restart)
+work/github rebased onto origin/work/stage-0.2 and pushed, sha 57b485b4 (was 3623113a before the
+rebase - same content, replayed on top of stage's own already-folded 0.1.1 history, one clean
+module.json conflict resolved). Sent to reviewer (msg sent, no reply yet as of this save) and to
+the lead. Nothing uncommitted; nothing else in flight. On resume: check CHAT.md/reviews/github.md
+for the reviewer's clearance on 57b485b4, and whether vault's P17 Gate-provenance name or
+mcp.connect/oauth.js status have posted (both block the Next list below).
 
-## Needs from others
-- sessions: review the gitWithAskpass diff; build the session-start/end hook once they're ready
-  (`thread.started` for start, `thread.stopped`/`.finished` for cleanup - their choice which).
-- launch: Settings, onboarding, the repo picker and "add a repo to this project" screens,
-  whenever they pick this up. Tool shapes are stable: `github.repos` (paging),
-  `github.project.detect` (per workspace, no confirm ever), `github.project.add-repo`. No link.
-- integrator: fold `lib/git-safe.js`'s `gitWithAskpass` addition (currently only in this
-  worktree, built against main's copy of the file) at the stage/0.1.1 assembly, alongside
-  whatever sessions lands. Also review/fold detect, add-repo and the repos paging (this sha).
-- reviewer: detect (per-workspace), add-repo, and the repos paging change, this sha.
+## Next (0.2)
+1. Close reviewer's N1/N2 (team/0.2/reviews/github.md's re-review) before starting build steps
+   8-9: N1, `github.connect`/`.remove` for a model caller need the Gate's own-turn provenance
+   binding (not caller-identity refusal) so a model can't swap in its own token or disconnect the
+   person's GitHub unasked - exact API TBD with vault/gate, not guessed. N2, name the same
+   provenance check for the hosted-MCP merge/file-write allowlist once it exists, and route any
+   allowed MCP file write through `scanOutgoing` too, not just `github.session.push`.
+2. Build the hosted-MCP toolset allowlist and `github.project.pr.open`/`.status`/`.comments`,
+   `github.project.issue.list`/`.get` (plans/github.md build steps 7-9) - blocked on vault's
+   `mcp.connect`/oauth.js landing for real (not confirmed built yet as of this session; check
+   team/0.2/plans/vault.md and CHAT.md before assuming it exists).
+3. Run spike 1 (DCR check for GitHub's hosted MCP) and confirm whether the PAT is the hosted-MCP
+   credential too, before building the allowlist against an assumption.
+4. Merge main into this worktree before any PR to the integrator (826 commits ahead as of this
+   session; core/github/ itself has drifted very little, but the rest of the tree has moved a
+   lot under the new module contract v1 work - check for conflicts, don't assume none).
+5. 0.2.x/deferred: a worktree for an added (non-primary) workspace repo; the GitHub App replacing
+   the device-flow's broad `repo` scope, if that's ever revisited.
+
+## Needs from others (0.2)
+- **The lead**: is there a real API yet for "this call is bound to the person's own turn" (N1/N2's
+  provenance check)? Point at it or say who to ask, so N1/N2 aren't guessed.
+- **vault**: confirm whether `mcp.connect`/oauth.js exists yet and whether GitHub's hosted MCP
+  needs a real client (spike 1) or the PAT covers it - blocks build steps 7-9 either way.
+- **sessions/teammates**: the review-comment-as-ask and issue-as-goal shapes (plans/github.md
+  section 8, unchanged since the plan) - still open, still needed before build step 10.
+- **integrator**: stage/0.2 doesn't exist yet as of this session; this branch (work/github,
+  3623113a) is ready to land once it does and once N1/N2 close.
 
 ## Changed contracts
 - `lib/git-safe.js` gains `gitWithAskpass(dir, args, { token, username?, timeout?, stdin? })`
@@ -458,3 +522,86 @@ Branch: work/github · Worktree: ../vyre-github · Owner session: github
   pasted-PAT `github` entry.
 - `core/projects/index.js`'s `MAPPING_ALLOWED` (was `SYNC_ALLOWED`) now includes `module:github`
   (federation's change, sha 624edc76).
+
+## Changed contracts (0.2, this session, 3623113a)
+- `core/github/connect.js`: `revoke()` and `REVOKE_URI` removed entirely (no export left). The
+  device-flow client id constant (in `index.js`, not exported) is now GitHub CLI's own
+  `178c6fc778ccc68e1d6a`, not a Vyre-owned app id.
+- `github.remove`'s return shape changed: was `{ removed, revoked, warning? }`, now always
+  `{ removed: true }` (or `{ removed: false }` if the account wasn't there). No more server-side
+  revoke attempt at all.
+- New tool `github.session.push {project, session, allow_secret?}` (people + `mcp`/agent
+  callers). New error codes: `not_found` (no primary repo), `no_account` (recorded account not
+  connected), `secret_found` (with `detail: { pattern, file, line }`), `non_fast_forward`.
+- `github.session.worktree`/`.cleanup`'s internal behavior changed (no input/output shape
+  change): they now resolve a project's repo via a new `repoOf()` helper that falls back to
+  reading the folder directly (`folderGitState`/`defaultBranchOf`) when there's no
+  `github_projects` row, instead of only ever working for a project `github.project`/`.add-repo`
+  cloned.
+- `core/github/git.js` gains `defaultBranchOf(repoDir)`, `scanOutgoing({ repoDir, branch,
+  defaultBranch })`, `pushSession({ repoDir, session, defaultBranch, token, allowSecret? })` (all
+  new exports, additive).
+
+## 2026-10-01 restart
+- Answered native-core's PR review and multi-file diff card field names in CHAT.md (09:10 github -> native-core): tools are github.project.pr.merge/.review keyed by {project, pr}, payload shape listed there. pr.get/.merge/.review added to the PR step (not built yet).
+- Built github.project.pr.get / .merge / .review (core/github/pr.js, REST with the project's recorded account token). Merge and review: person always runs, an agent needs meta.asked (Gate's P17 field, from said_intents) or is held with code "held". Not yet declared as object entries (outward: asked) in module.json, waiting on platform's docs tooling on the stage base. 3 new tests, 46/46 in core/github, docs suites green after docs:ref.
+- Next: pr.open + hosted-MCP allowlist once vault posts oauth.js; local-only projects (github.project.local-init); wire meta.asked to vault's confirmed field; rebase onto stage/0.2 tip before landing.
+- Lead ruling: pr.get is a read, never held (already true). Merge/review clear on meta.asked OR a standing permission ("let kit merge green PRs here"); held only when neither. That check is the Gate's, not mine: the goal is to declare outward: asked in module.json and drop core/github's own requireAsked so the registry decides. origin/work/stage-0.2 has no Gate or standing-permission code yet (grepped core/lib), so requireAsked stays as a fail-closed stopgap. Not pushing until the base has the registry and no CI run is in progress.
+- Built github.project.local-init (git.js localInit): git init -b main + starting commit minus .env/keys (excluded via .git/info/exclude, listed in left_out); existing commits untouched; nested-repo refused; people, agents, module:projects/sessions/threads. 47/47 in core/github, docs green. Next: pr.open + allowlist (vault), object-entry declarations and drop requireAsked when the Gate lands, rebase before landing.
+- Built github.session.history/.undo/.redo (git.js): undo saves the tip as refs/vyre/undone/<session>/<n> then resets the session worktree only (never main, never a remote); dirty refused; redo is ff-only. 48/48 core/github. Hook proposal to sessions posted in CHAT.md. Note: worktreeSafety checks refs/heads only, so undone commits are kept by the ref, not by the cleanup check.
+- Lead tweaks done: undo never refuses a dirty tree (commits it as a marked WIP commit, saves the tip under refs/vyre/undone, redo restores it as uncommitted); github.session.cleanup gained deleted:true for thread.deleted (keeps commits and unsaved work under the ref, removes the worktree; ignored files such as .env still stop it and go to cleanup-needed). 49/49 core/github.
+
+## 2026-10-01 resume (after the usage-limit restart)
+- Undo mid-turn: github.session.undo calls threads.interrupt-in {cwd} on the session's worktree
+  first; a refusal other than "tool missing" stops the undo. Test in index.test.js.
+- Unarchive: github.session.worktree now accepts an existing branch (checks it out as is, keeps
+  its commits) and returns an existing worktree unchanged. Test in git.test.js. Confirmed to sessions.
+- requireAsked stopgap stays until vault's Gate lands; then declare outward: asked and delete it.
+- pr.open and the hosted-MCP allowlist still wait on vault.
+- Rebased onto stage/0.2 (795a00b7) and pushed: work/github at 50ddcffb, range 795a00b7..50ddcffb (12 commits).
+  Found on the rebase: the registry allows only two-part event names, so github.session.undone made
+  vyred skip the whole module (switchboard ADR 0041 test caught it). Renamed to github.undone; added a
+  test that runs module.json through the registry's validator. 100/100 on core/github + switchboard + modules.
+
+## 2026-10-01 sign-in runs the real gh (lead ruling)
+- connect.js no longer runs the device flow under gh's client id. It spawns `gh auth login --web
+  --scopes repo --skip-ssh-key --insecure-storage` in a private folder (HOME + GH_CONFIG_DIR inside,
+  minimal env, no GH_TOKEN), parses the code and address from gh's stderr, waits for a clean exit,
+  reads `gh auth token` once, files it in the vault item github-<name>, deletes the folder.
+  Verified the real gh's output shape once (code + URL on stderr, killed at once, no account used).
+- No gh: error code gh_missing; PAT paste stays the fallback. Binary from ctx.config.gh, VYRE_GH_BIN or PATH.
+- Tests: connect.test.js rewritten against a fake gh binary (9 tests). ADR 0041 decision 2 has a revision note.
+- Needs: integrator adds gh to the box image and the Mac server installer (told). Vault agreed in CHAT.
+- reviewer-2 M1/M2 (lead rulings): pushSession pushes to https://github.com/<full_name>.git built from
+  the github_projects row (never origin/.git/config); refuses when url.*.insteadOf/pushInsteadOf
+  matches or `ls-remote --get-url` differs (remote_changed); proxy/credential-helper detours forced
+  off with -c; records origin/<branch> after a push so cleanup still sees it as on a remote.
+  allow_secret counts only for a non-model caller or meta.asked. cloneRepo left (fresh dir, no local
+  config: reviewer's LOW). Tests in git.test.js and index.test.js.
+- reviewer-2 LOW on 622904e8: gh is resolved to an absolute path (config/VYRE_GH_BIN if absolute, else /usr/bin, /usr/local/bin, /opt/homebrew/bin, /bin, else a PATH folder the user cannot write); a planted gh in a writable PATH folder is never run.
+- reviewer-2 include.path bypass + lead ruling: no more per-key config scanning. pushSession now pushes from a fresh throwaway bare repo (alternates to the project's objects, one ref, git defaults, no template), token only there, folder deleted after. Test poisons origin/pushurl/insteadOf/http.*/include.path/credential/gitProxy and asserts the temp repo has none of it.
+- pr.open built (github.project.pr.open {project, title, session|head, base?, body?, draft?}): REST POST /pulls
+  with the recorded account, head from vyre/<session> (pushed first with github.session.push) or a named
+  branch. merge/review/open now declare reach: "asked" in module.json and requireAsked is deleted: the
+  registry refuses an agent's unasked call with not_asked (core/github/registry.test.js boots a real vyred).
+  Until vault's said-match wiring lands the registry refuses every model call to them (fail closed).
+- Hosted MCP: vault's githubServer row (c78e6f9d on work/vault-next, api.githubcopilot.com/mcp/, bearer from
+  github-<login>.token). Wiring mcp.add on connect (grant the item to mcp first) waits for that to reach
+  stage; pr.status/comments/issue reads are next.
+- "#" mentions provider (lead, 1 Oct): module.json `mentions: [{kind: "github", label, search, resolve}]`, tools
+  github.mentions.search {q, kinds?} -> {results:[{kind, id, name, hint, icon}]} (repos by name, open PRs and
+  issues via /search/issues involves:<login>, across connected accounts; names only) and github.mentions.resolve
+  {id} -> {kind, id, name, url, text, outside:true, note}. ids: repo:o/n, pr:o/n#N, issue:o/n#N, strictly parsed.
+  Callers: people plus module:mentions/platform/sessions/threads (firstParty). Platform owns the field's schema
+  and the fan-out; unknown keys are ignored until it lands.
+- Hosted MCP wired (vault's githubServer row is on stage): connecting an account grants its vault item to mcp
+  and mcp.adds api.githubcopilot.com/mcp/ (bearer from github-<name>.token; row "github", later accounts
+  "github-<name>"; tools.deny create_or_update_file/push_files/delete_file, since pushes go through
+  github.session.push and its secret scan; other writes are classified outward by the hub and held at the Gate).
+  github.remove drops the row; github.mcp.sync (people) adds rows for accounts that predate this. Tests: index.test.js (fake hub) and registry.test.js (the real hub accepts the row, refuses another host).
+- Read tools built: github.project.pr.status (checks, latest reviews, ready verdict; no outside text), .pr.comments (conversation + inline + review bodies, person/outside), .issue.list (state/q/limit, PRs filtered out), .issue.get. Agents may call them; reads need no Gate. Tests in index.test.js.
+- Said-match binds the target (lead): manifest entries for pr.open/merge/review carry `target: "github.act.target"`; that internal tool (callers module:vyred/platform) answers the whole `to`: {to:["<tool>:owner/name#PR"]} for merge and review and {to:["<tool>:owner/name@branch"]} for open (lead ruling: one composite key). The registry is to pass it as-is to vault.said.match, so "merge it" about #12 never covers #40. Needs platform's `target` field; real-registry test follows when it lands.
+- For sessions' pr.* intents: github.act.target also answers module:threads; new internal github.session.pr {project, session} -> {prs:[numbers]} (open PRs whose head is vyre/<session>; callers module:sessions/threads).
+- reviewer-2 M-G3: every project tool an agent can call (pr.get/status/comments/open/merge/review, issue.list/get, session.push/history/undo/redo, local-init) checks meta.granted (the verified agent's project grant, "*" or slugs) and answers not_found for a project outside it (inGrant in index.js). act.target is asked by the registry as module:vyred, which carries no grant, so the tool itself is where the guard runs.
+- inGrant: a claimed agent (caller label with an `agent:<name>` claim) with no meta.granted is denied (not_found); the person and an unnamed mcp caller have none to check.
+- Token paste built (PLAN step 1): github.connect {name, token} -> GET /user first, then vault item github-<name> (grants github), account row, hosted MCP row; no gh; connect.js `paste`. Also fixed: the connector resolved fetch at start, so a test stand-in was bypassed; now resolved per call.

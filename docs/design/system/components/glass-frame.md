@@ -17,7 +17,7 @@ computers" and "Glass · take-over and hand-back states".
 |---|---|---|
 | Deck | `deck/glass/index.js`, `deck/glass/takeover.js`, `deck/glass/phone.js`, `deck/glass/glass.css` (main) | partial |
 | App | none in `apps/app` (work/mobile) | not built |
-| Capsule | not used ("glass kit" opens the Deck) | not used |
+| Lumen | not used ("glass kit" opens the Deck) | not used |
 
 ## Anatomy
 

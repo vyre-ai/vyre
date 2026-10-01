@@ -67,31 +67,45 @@ public struct SpotlightAsk: @unchecked Sendable {
     }
 }
 
-@MainActor
-public final class SpotlightQuery {
-    public var scopes: [Any]
+/// One Spotlight search at a time, worked entirely off the main thread. Gathering, reading up to hundreds
+/// of results and their attributes (each read is a call into the metadata server) and the timers all
+/// happen on one serial queue; the main thread only ever receives the finished rows. It used to do this
+/// on the main thread, and a three-letter word could hold a keystroke for a couple of hundred milliseconds.
+public final class SpotlightQuery: @unchecked Sendable {
+    public let scopes: [Any]
+    private let sq = DispatchQueue(label: "sh.vyre.capsule.spotlight", qos: .userInitiated)
+    private let ops = OperationQueue()
+    // Everything below is touched only on `sq`.
     private var query: NSMetadataQuery?
     private var observers: [NSObjectProtocol] = []
     private var ask: SpotlightAsk?
     private var waiter: CheckedContinuation<[SpotlightRow], Never>?
     private var generation = 0
     private var started = Date()
-    /// Whether a query object exists and is gathering. For tests of cool().
-    public var isRunning: Bool { query.map { $0.isStarted && !$0.isStopped } ?? false }
-    public var exists: Bool { query != nil }
 
-    public init(scopes: [Any] = [NSMetadataQueryUserHomeScope]) { self.scopes = scopes }
+    /// Whether a query object exists and is gathering. For tests of cool().
+    public var isRunning: Bool { sq.sync { query.map { $0.isStarted && !$0.isStopped } ?? false } }
+    public var exists: Bool { sq.sync { query != nil } }
+
+    public init(scopes: [Any] = [NSMetadataQueryUserHomeScope]) {
+        self.scopes = scopes
+        ops.underlyingQueue = sq
+        ops.maxConcurrentOperationCount = 1
+    }
 
     /// Make the query and its observers, without starting a search.
-    public func prepare() {
+    public func prepare() { sq.async { self.prepareNow() } }
+
+    private func prepareNow() {
         if query != nil { return }
         let q = NSMetadataQuery()
         q.notificationBatchingInterval = 0.03
+        // Notifications, and the query's own work, come on `sq`, not on the main thread.
+        q.operationQueue = ops
         let nc = NotificationCenter.default
         for name in [Notification.Name.NSMetadataQueryGatheringProgress, .NSMetadataQueryDidFinishGathering] {
-            observers.append(nc.addObserver(forName: name, object: q, queue: .main) { [weak self] n in
-                let done = n.name == .NSMetadataQueryDidFinishGathering
-                MainActor.assumeIsolated { self?.collect(done: done) }
+            observers.append(nc.addObserver(forName: name, object: q, queue: ops) { [weak self] n in
+                self?.collect(done: n.name == .NSMetadataQueryDidFinishGathering)
             })
         }
         query = q
@@ -99,34 +113,34 @@ public final class SpotlightQuery {
 
     /// Run one search. A newer call answers an older one with [] at once.
     public func run(_ a: SpotlightAsk) async -> [SpotlightRow] {
-        prepare()
-        guard let q = query else { return [] }
+        await withCheckedContinuation { (c: CheckedContinuation<[SpotlightRow], Never>) in
+            sq.async { self.start(a, c) }
+        }
+    }
+
+    private func start(_ a: SpotlightAsk, _ c: CheckedContinuation<[SpotlightRow], Never>) {
+        prepareNow()
+        guard let q = query else { c.resume(returning: []); return }
         finish([])
         generation += 1
         let gen = generation
         ask = a
-        return await withCheckedContinuation { (c: CheckedContinuation<[SpotlightRow], Never>) in
-            waiter = c
-            if q.isStarted && !q.isStopped { q.stop() }
-            q.searchScopes = scopes
-            q.sortDescriptors = a.sort
-            q.predicate = a.predicate
-            started = Date()
-            if !q.start() { finish([]); return }
-            if a.enough < a.limit {
-                DispatchQueue.main.asyncAfter(deadline: .now() + a.soon) { [weak self] in
-                    MainActor.assumeIsolated {
-                        guard let self, self.generation == gen, self.waiter != nil else { return }
-                        self.collect(done: false)
-                    }
-                }
+        waiter = c
+        if q.isStarted && !q.isStopped { q.stop() }
+        q.searchScopes = scopes
+        q.sortDescriptors = a.sort
+        q.predicate = a.predicate
+        started = Date()
+        if !q.start() { finish([]); return }
+        if a.enough < a.limit {
+            sq.asyncAfter(deadline: .now() + a.soon) { [weak self] in
+                guard let self, self.generation == gen, self.waiter != nil else { return }
+                self.collect(done: false)
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + a.deadline) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self, self.generation == gen, self.waiter != nil else { return }
-                    self.collect(done: true)
-                }
-            }
+        }
+        sq.asyncAfter(deadline: .now() + a.deadline) { [weak self] in
+            guard let self, self.generation == gen, self.waiter != nil else { return }
+            self.collect(done: true)
         }
     }
 
@@ -160,12 +174,14 @@ public final class SpotlightQuery {
 
     /// Stop, and let go of the query and its observers.
     public func cool() {
-        finish([])
-        generation += 1
-        query?.stop()
-        for o in observers { NotificationCenter.default.removeObserver(o) }
-        observers = []
-        query = nil
+        sq.async {
+            self.finish([])
+            self.generation += 1
+            self.query?.stop()
+            for o in self.observers { NotificationCenter.default.removeObserver(o) }
+            self.observers = []
+            self.query = nil
+        }
     }
 }
 

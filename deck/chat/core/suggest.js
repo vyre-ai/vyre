@@ -3,7 +3,7 @@
 // share it: what to ask suggest.query, which rows to show, what a pick puts in the text, and what
 // suggest.picked is told. The box ranks; this only checks what came back and applies it.
 
-/** Kinds the chat composer shows; the Capsule's own (times, accounts) are left to it. */
+/** Kinds the chat composer shows; Lumen's own (times, accounts) are left to it. */
 const SHOWN = new Set(["mention", "command", "entity", "phrase", "file"]);
 
 /**

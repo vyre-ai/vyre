@@ -113,12 +113,14 @@ test("talk: the terminal path end to end, with the key saved through the CLI and
     assert.match(text, /microphone access is not granted/);
   });
 
-  await t.test("talkLoop: an unbuilt vyre-mic says how to build it", async () => {
+  await t.test("talkLoop: an unbuilt vyre-mic says how to build it, on a Mac; elsewhere, that it's Mac-only", async () => {
     const output = new PassThrough();
     let text = "";
     output.on("data", d => { text += d; });
     assert.equal(await talkLoop({ socketPath, mic: { bin: path.join(HERE, "no-such-mic") }, input: new PassThrough(), output }), 1);
-    assert.match(text, /build\.sh/);
+    // vyre-mic is a Swift binary that can only ever be built on darwin (local/voice/build.sh);
+    // off a Mac there is nothing to build, so talkLoop says push-to-talk is Mac-only instead.
+    assert.match(text, process.platform === "darwin" ? /build\.sh/ : /macOS only/);
   });
 
   // The server side of a stream closes when its socket's close reaches vyred, a moment after the

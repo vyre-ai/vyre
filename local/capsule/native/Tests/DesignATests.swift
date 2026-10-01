@@ -167,7 +167,7 @@ let designASuite = Suite("design A") { t in
             out += [CapsuleLayout.placeholder(m), CapsuleLayout.answerTitle(m), CapsuleLayout.answerDepth(m) ?? "none"]
             return out
         }
-        t.eq(r, ["Ask Vyre, find, or run", "Vyre IQ", "quick", "deeper", "Ask a follow-up", "Message", "kit", "none"])
+        t.eq(r, ["Ask Vyre, find, or run", "Vyre Memory", "quick", "deeper", "Ask a follow-up", "Message", "kit", "none"])
     }
 
     t.test("each Design A state draws") {
