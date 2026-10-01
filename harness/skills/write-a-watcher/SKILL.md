@@ -81,7 +81,7 @@ A watcher has no network of its own and never holds a credential. `fetch(url)` i
 run by Vyre, GET and HEAD only, on ports 80 and 443, to public hosts only (never localhost, a
 private or tailnet address), and only to the hosts listed under `net`, even
 for a public source: `"net": { "hacker-news.firebaseio.com": {} }`. A redirect to another host drops
-the credential. Where vyred is not root (a Mac, a dev shell) the child runs as the same user and the firewall rule that blocks its own sockets is not there, so `fetch` is the only route we give it, not a wall; a dry run says `networkIsolated`. A `vault.fetch` call is refused. The item's `field` (a login's `password`, a
+the credential. The child also has no sockets of its own: it runs inside the machine's wall (a network namespace on Linux, a sandbox profile on a Mac), and where a machine has none, no watcher runs at all and says so; a dry run reports the `wall`. A `vault.fetch` call is refused. The item's `field` (a login's `password`, a
 card's `number`) goes in the `net` entry: `{ "vault": "billing-inbox", "field": "password" }`.
 
 When the code needs a judgment it cannot make by rule (is this relevant, which of these two), it
