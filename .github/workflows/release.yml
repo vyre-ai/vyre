@@ -201,13 +201,14 @@ jobs:
           ref: ${{ github.ref }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: 22.11.0
           cache: npm
           cache-dependency-path: apps/app/package-lock.json
       - name: Export the web app
         working-directory: apps/app
         run: |
-          npm ci --no-audit --no-fund
+          # No dependency install scripts run here: the key signs whatever this job builds, so nothing a package's postinstall does may touch it.
+          npm ci --no-audit --no-fund --ignore-scripts
           npx expo export -p web --output-dir dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
