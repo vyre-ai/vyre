@@ -37,9 +37,24 @@ test("the release build is a plain copy: byte-identical files, nothing from test
   assert.ok(!fs.existsSync(path.join(out, "chrome", "testing")), "no testing folder in the package");
 });
 
-test("the keychip's test hook cannot be set from a page: it reads only the content script's own isolated global", () => {
+test("the keychip reads no knob from its global: only its own two markers, so no test hook can be set from anywhere", () => {
   const src = fs.readFileSync(path.join(HERE, "keychip.js"), "utf8");
-  // The only knob is the minimum visible time, read from the script's own global (a page's globals are a different world). The
-  // browser run proves the real value (400 ms) applies when unset; this pins that nothing else is read from it.
-  assert.equal((src.match(/g\.vyre[A-Za-z]*/g) || []).filter(x => x !== "g.vyreKeyChip" && x !== "g.vyreKeyFind").length, 0, "no other g.vyre* knob");
+  // The 400 ms visible-time guard is a constant. The browser run (testing/chip-check.mjs) proves an early tap saves nothing at that value.
+  assert.equal((src.match(/g\.vyre[A-Za-z]*/g) || []).filter(x => x !== "g.vyreKeyChip" && x !== "g.vyreKeyFind").length, 0, "no other g.vyre* global is read");
+});
+
+test("the packaged manifest adds no permission, host or content script beyond the source manifest", t => {
+  const out = fs.mkdtempSync(path.join(SCRATCH, "vyre-extmanifest-"));
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const dirs = build(out);
+  const source = JSON.parse(fs.readFileSync(path.join(HERE, "manifest.json"), "utf8"));
+  // Only the background entry and the per-browser keys differ between the two packages.
+  const strip = m => { const { background: _b, browser_specific_settings: _s, minimum_chrome_version: _c, ...rest } = m; return rest; };
+  for (const target of /** @type {const} */ (["chrome", "firefox"])) {
+    const got = JSON.parse(fs.readFileSync(path.join(dirs[target], "manifest.json"), "utf8"));
+    assert.deepEqual(strip(got), strip(source), `${target}: the manifest differs from the source only in its background and per-browser keys`);
+    for (const key of ["permissions", "host_permissions", "optional_permissions", "optional_host_permissions", "content_scripts", "web_accessible_resources", "externally_connectable"]) {
+      assert.deepEqual(got[key], source[key], `${target}: ${key} is exactly the source's`);
+    }
+  }
 });
