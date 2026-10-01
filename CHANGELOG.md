@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the provider badge component
+
+- `providerMark(provider, size, { model })` in `deck/js/provider-mark.js`, from app-design's provider-badge spec: Claude a circle "Cl", Codex a rounded square "Cx", Grok a teardrop "Gk", anything else a circle with its first two letters. Neutral stand-ins in the provider's own shape, so colour is never the signal, behind one function so the vendors' marks can replace them in one file. It draws nothing for a turn that does not say its provider. Not placed on replies yet: that needs the provider and model on each turn from sessions.
+
 #### chat: /undo takes a session's changes back, and Put back returns them
 
 - New `/undo` in the composer opens a sheet (`deck/chat/undo-sheet.js`, drawn in the rewind sheet's box) over `github.session.history`, `.undo` and `.redo`. It lists the session's own changes, newest first; you pick the one to go back past ("take off this and N newer changes") or take off everything. Nothing is deleted, unsaved files are kept with it, and "Put back" returns it, or says why it cannot when the session has moved on. A session that is not in a project folder of its own says so. The session is the folder it works in under its project's `.sessions`.
