@@ -287,7 +287,7 @@ try {
     const FORWARDERS = /^(tailscaled?|socat|redir|rinetd|haproxy|nginx|ncat|nc|netcat|sshd|dropbear|stunnel|gost|3proxy|squid|microsocks)$/;
     const fwd = procs.filter(x => FORWARDERS.test(x));
     const tcp = shOk(["exec", CONTAINER, "sh", "-c", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null"]).split("\n");
-    const listen = tcp.map(l => l.trim().split(/\s+/)).filter(f => f[3] === "0A").map(f => { const [ip, port] = f[1].split(":"); return { loopback: /^(0100007F|00000000000000000000000001000000)$/.test(ip), port: parseInt(port, 16), inode: f[9], uid: f[7], ip }; });
+    const listen = tcp.map(l => l.trim().split(/\s+/)).filter(f => f[3] === "0A").map(f => { const [ip, port] = f[1].split(":"); return { loopback: /^[0-9A-F]{6}7F$/.test(ip) || ip === "00000000000000000000000001000000", port: parseInt(port, 16), inode: f[9], uid: f[7], ip }; });
     for (const x of listen.filter(x => !x.loopback && x.port !== 5900 && x.port !== 7000)) {
       // Who owns a listener nobody expected: the process whose descriptors hold its socket.
       // Root without capabilities cannot read other uids' descriptors, so ask as each uid the computer runs.
