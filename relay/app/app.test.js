@@ -116,6 +116,7 @@ test("worker: strict headers everywhere, immutable folders, the loader for any a
   assert.equal(await app.text(), "app");
   assert.match(String(app.headers.get("cache-control")), /immutable/);
   assert.equal((await get("/v/nothex/app.js")).status, 404);
+  assert.equal((await get("/app/assets/font.ttf")).status, 404, "the built app's files are never the loader page");
   assert.equal((await get("/sw.js")).headers.get("cache-control"), "no-cache");
   assert.equal((await get("/", { method: "POST" })).status, 405);
 });
@@ -249,6 +250,7 @@ test("service worker: /app/<path> is answered from the build the loader named, h
   await w.fire("message", { data: { type: "vyre-build", sha, manifest } });
   const ok = await ask("app.css");
   assert.equal(await ok.text(), "body{margin:0}");
+  assert.equal((await ask("_expo/static/js/web/entry-0.4.2.js")).status, 200, "expo's own path under /app/");
   assert.equal((await ask("nope.png")).status, 404, "a file the manifest does not list");
 
   // A page that names a manifest the worker cannot verify adopts nothing new.
