@@ -197,7 +197,9 @@ function runAcp(entry, known, o) {
   let modes = /** @type {{ id: string, name?: string }[]} */ ([]), mode = null, turnText = "", askN = 0, tn = 0, cancelling = false, tree = /** @type {number[]} */ ([]);
   let firstPrompt = true;
 
-  const send = obj => { if (!exited && child.stdin.writable) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); };
+  // `tap` (the proofs only): every raw JSON-RPC message, ("out" to the agent, "in" from it), to record a real agent's stream as a fixture.
+  const tap = typeof o.tap === "function" ? o.tap : null;
+  const send = obj => { if (!exited && child.stdin.writable) { if (tap) { try { tap("out", { jsonrpc: "2.0", ...obj }); } catch { /* a tap never breaks a session */ } } child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); } };
   const request = (method, params, timeoutMs = 0) => new Promise((resolve, reject) => {
     const id = ++rpcId;
     calls.set(id, { resolve, reject });
@@ -215,6 +217,7 @@ function runAcp(entry, known, o) {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
       if (!line.trim()) continue;
       let m; try { m = JSON.parse(line); } catch { continue; }
+      if (tap) { try { tap("in", m); } catch { /* a tap never breaks a session */ } }
       handle(m).catch(e => { if (m && m.id !== undefined && m.method) fail(m.id, -32603, String(e && e.message || e)); });
     }
   });
