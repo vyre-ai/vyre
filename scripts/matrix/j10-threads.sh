@@ -38,14 +38,27 @@ wait_reply() { # wait until the thread's text contains $2, up to 60 s
   for i in $(seq 1 30); do call threads.get "{\"thread\":\"$1\"}" >"$OUT/get-$3.json"; grep -q "$2" "$OUT/get-$3.json" && return 0; sleep 2; done; return 1; }
 if [ -n "$ID" ]; then
   wait_reply "$ID" "hello from the matrix" first && rec 10.2-agent-answers ok || rec 10.2-agent-answers false "no reply: $(head -c 300 "$OUT/get-first.json")"
-  # 10.3 an agent inside the thread calls tools as an agent caller (what the MCP server does)
-  for tool in 'threads.list {}' 'threads.start {"cwd":"/work","prompt":"child thread"}' 'agents.ask {"agent":"nobody","prompt":"hi"}' 'threads.stop {"thread":"none"}' 'threads.delete {"thread":"none"}'; do
-    n=$(printf '%s' "${tool%% *}" | tr . -)
-    call threads.send "{\"thread\":\"$ID\",\"text\":\"vyre $tool\"}" >/dev/null
-    sleep 8
-    call threads.get "{\"thread\":\"$ID\"}" >"$OUT/get-$n.json"
-    rec "10.3-agent-calls-${tool%% *}" observed "$(grep -o 'refus[^"]*\|not allowed[^"]*\|reach[^"]*\|"error"[^}]*\|"data"[^}]*' "$OUT/get-$n.json" | tail -2 | tr '\n' ' ')"
-  done
+  # a second thread the person starts, so "another agent's thread" exists
+  S2=$(call threads.start '{"cwd":"/work","prompt":"second thread","surface":"deck"}')
+  ID2=$(printf '%s' "$S2" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log((j.data||j).id||(j.data||j).thread||"")}catch{console.log("")}})')
+  [ -n "$ID2" ] && rec 10.2b-person-starts-second-thread ok "$ID2" || rec 10.2b-person-starts-second-thread false "$(printf %s "$S2" | head -c 200)"
+  # 10.3 an agent inside the thread calls tools as a plain agent caller (what the MCP server does). Reach is
+  # "anyone" and the in-code guard decides: a plain agent is refused each of these with these words (sessions, 1 Oct).
+  agent_call() { # agent_call STEP "tool json" "message fragment"
+    n=$(printf '%s' "$1" | tr . -)
+    call threads.send "{\"thread\":\"$ID\",\"text\":\"vyre $2\"}" >/dev/null
+    for i in $(seq 1 10); do sleep 3; call threads.get "{\"thread\":\"$ID\"}" >"$OUT/get-$n.json"; grep -q "$3" "$OUT/get-$n.json" && break; done
+    grep -q "$3" "$OUT/get-$n.json" && rec "$1" ok "refused: $3" || rec "$1" false "expected a refusal saying '$3'; thread says: $(grep -o '"text":"[^"]*vyre[^"]*"\|only the[^"]*\|"error"[^}]*' "$OUT/get-$n.json" | tail -3 | tr '\n' ' ')"; }
+  agent_call 10.3a-agent-start-refused "threads.start {\"cwd\":\"/work\",\"prompt\":\"child\"}" "only the assistant can start sessions"
+  agent_call 10.3b-agent-delete-other-refused "threads.delete {\"thread\":\"$ID2\"}" "only the assistant can delete sessions"
+  agent_call 10.3c-agent-stop-own-refused "threads.stop {\"thread\":\"$ID\"}" "only the assistant can stop sessions"
+  agent_call 10.3d-agent-stop-other-refused "threads.stop {\"thread\":\"$ID2\"}" "only the assistant can stop sessions"
+  agent_call 10.3e-agent-list-refused "threads.list {}" "only the assistant can list sessions"
+  agent_call 10.3f-agent-ask-refused "agents.ask {\"agent\":\"nobody\",\"prompt\":\"hi\"}" "only the assistant can talk to other agents"
+  # the person still can (same tools, as the person at the command line)
+  call threads.list '{}' | grep -q "$ID2" && rec 10.3g-person-lists-threads ok || rec 10.3g-person-lists-threads false "the person's list lacks the second thread"
+  # the thread survived every refused call
+  call threads.list '{}' | grep -q "$ID" && rec 10.3h-refusals-changed-nothing ok || rec 10.3h-refusals-changed-nothing false "the first thread vanished"
   call threads.stop "{\"thread\":\"$ID\"}" >"$OUT/stop.json"; grep -qi '"error"' "$OUT/stop.json" && rec 10.4-person-stops-thread false "$(head -c 200 "$OUT/stop.json")" || rec 10.4-person-stops-thread ok
   call threads.delete "{\"thread\":\"$ID\"}" >"$OUT/delete.json"; grep -qi '"error"' "$OUT/delete.json" && rec 10.5-person-deletes-thread false "$(head -c 200 "$OUT/delete.json")" || rec 10.5-person-deletes-thread ok
   call threads.list '{}' | grep -q "$ID" && rec 10.6-deleted-thread-gone false "still listed" || rec 10.6-deleted-thread-gone ok
