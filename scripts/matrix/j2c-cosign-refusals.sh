@@ -1,7 +1,8 @@
 #!/bin/bash
 # J2c: the installer's image-signature refusals against a REAL install and a REAL local TLS registry, on a throwaway CI runner only.
 #   bash scripts/matrix/j2c-cosign-refusals.sh <box-dir> <out-dir>
-# <box-dir> is the candidate as build-site.sh makes it (site/box). Part A: on a clean host, the real install-box.sh in PULLED mode
+# <box-dir> is the candidate as build-site.sh makes it with VYRE_TEST_UNSTRIPPED_WRAPPER=1 (site/box): the shipped wrapper reads no VYRE_COSIGN_IMAGE
+# or VYRE_RELEASE_KEY, so part B drives the source wrapper through those seams (the shipped one is held by strip-wrapper's own test and launch's MODE=stripped). Part A: on a clean host, the real install-box.sh in PULLED mode
 # against releases whose release.json names an image by digest (install-box.sh leaves a running install alone, so a refusal is
 # shown on a host with nothing installed, and the proof is that nothing is). Part B: `vyre update` on an installed, filled box.
 # The cases:

@@ -24,7 +24,7 @@ jobs:
       - name: The candidate
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          sh scripts/build-site.sh
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
       - name: J2c, the cosign refusals
         run: bash scripts/matrix/j2c-cosign-refusals.sh site/box results/cosign-refusals
       - name: Diagnostics
