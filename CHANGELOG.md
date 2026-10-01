@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### fix: three reds in rc-0.2's node run
+
+- The plan checklist's CSS used the raw `--signal` colour; it now uses `--text` and `--text-2` (the tokens test). `deck/chat/core/answer-with.js` had a model alias spelled in a comment, which the cohesion drift scan counts as a copy of the model list; reworded. The service worker's install list (`deck/sw.js`) now keeps `/chat/gate-lines.js`, `/js/provider-mark.js`, `/js/provider-art.js`, `/chat/undo-sheet.js` and `/chat/core/answer-with.js`, which the shell imports, so the phone shell works offline.
+
 #### test: the chat contract knows thread.plan
 
 - `test/chat-sessions-contract.test.js` listed events the Deck listens for that nothing emits by name; `thread.plan` (the plan checklist) is built by `core/switchboard/translate.js` as an event object, which that scan does not see, so it joins AHEAD_EVENTS with the reason. Found by a run of the contract tests on the test box.
