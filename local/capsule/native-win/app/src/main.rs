@@ -190,8 +190,10 @@ fn get_state(app: AppHandle, live: State<Live>) -> StateOut {
     StateOut { paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
 }
 
+// Commands that build a window are async: a synchronous command runs on the main thread, and creating a
+// webview there deadlocks on Windows (the confirm window stayed at about:blank on a real runner).
 #[tauri::command]
-fn save_pairing(app: AppHandle, address: String) -> Result<(), String> {
+async fn save_pairing(app: AppHandle, address: String) -> Result<(), String> {
     let pin = Pinned::parse(&address).ok_or("That is not a server address. Try alex.vyre.run.")?;
     let path = record_path(&app).ok_or("No place to save on this computer.")?;
     std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
@@ -336,7 +338,7 @@ fn begin_pair(live: State<Live>) -> String {
 /// The bundled page resolved the ticket for our seed and hands over what the sealed record says.
 /// Refused unless a live seed exists and no offer is already waiting.
 #[tauri::command]
-fn offer_pair(app: AppHandle, live: State<Live>, name: String, fingerprint: String, handle: Option<String>, address: Option<String>) -> Result<(), String> {
+async fn offer_pair(app: AppHandle, live: State<'_, Live>, name: String, fingerprint: String, handle: Option<String>, address: Option<String>) -> Result<(), String> {
     match live.seed.lock().unwrap().as_ref() {
         Some((_, at)) if at.elapsed() <= SEED_LIFE => {}
         _ => return Err("This pairing ran out of time. Start again.".into()),
@@ -384,7 +386,7 @@ fn pair_status(live: State<Live>) -> &'static str {
 /// The handshake finished: pin the confirmed address (with what `connect` needs to stay linked,
 /// which holds no secret), close the pairing page and open the panel.
 #[tauri::command]
-fn finish_pair(app: AppHandle, live: State<Live>, link: serde_json::Value) -> Result<(), String> {
+async fn finish_pair(app: AppHandle, live: State<'_, Live>, link: serde_json::Value) -> Result<(), String> {
     if !*live.confirmed.lock().unwrap() { return Err("The pairing was not confirmed.".into()); }
     let p = live.pending.lock().unwrap().take().ok_or("Nothing to pair.")?;
     *live.seed.lock().unwrap() = None;
