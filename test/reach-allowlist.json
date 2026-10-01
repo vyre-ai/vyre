@@ -976,7 +976,7 @@
   },
   "names.claim": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.claim-code": {
    "module": "names",
@@ -985,7 +985,7 @@
   },
   "names.connect": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.domain.check": {
    "module": "names",
@@ -993,19 +993,19 @@
   },
   "names.domain.serve": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.fallback": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.owner": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.recover": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.recover.code": {
    "module": "names",
@@ -1014,7 +1014,7 @@
   },
   "names.release": {
    "module": "names",
-   "default": "open to any caller"
+   "default": "limited by callers in code"
   },
   "names.status": {
    "module": "names",
