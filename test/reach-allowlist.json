@@ -1465,56 +1465,6 @@
    "module": "mentions",
    "default": "limited by callers in code"
   },
-  "names.check": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.claim": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.claim-code": {
-   "module": "names",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "names.connect": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.domain.check": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.domain.serve": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.fallback": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.owner": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.recover": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.recover.code": {
-   "module": "names",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "names.release": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.status": {
-   "module": "names",
-   "default": "open to any caller"
-  },
   "network.funnel.status": {
    "module": "network",
    "default": "open to any caller"
