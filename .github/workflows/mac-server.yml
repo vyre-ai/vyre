@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: [macos-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
       VYRE_NO_DIALOGS: "1"
     steps:

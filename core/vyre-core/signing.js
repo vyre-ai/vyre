@@ -23,7 +23,7 @@ const SECURITY = "/usr/bin/security";
 const CODESIGN = "/usr/bin/codesign";
 const SYSTEM_KEYCHAIN = "/Library/Keychains/System.keychain";
 
-/** @typedef {(cmd: string, args: string[], o?: { input?: string }) => string} Run */
+/** @typedef {(cmd: string, args: string[], o?: { input?: string, timeout?: number }) => string} Run */
 
 /**
  * Make the identity if it is not there. Idempotent: a folder that already holds one is left alone.
@@ -109,6 +109,6 @@ export function signApp({ app, dir, run }) {
  */
 export function removeIdentity({ dir, run }) {
   const cert = path.join(dir, "cert.pem");
-  if (fs.existsSync(cert)) { try { run(SECURITY, ["remove-trusted-cert", "-d", cert]); } catch { /* not trusted, or already gone */ } }
+  if (fs.existsSync(cert)) { try { run(SECURITY, ["remove-trusted-cert", "-d", cert], { timeout: 20_000 }); } catch { /* not trusted, already gone, or macOS would not answer in 20 s: the key goes either way, and a trusted certificate with no key is inert */ } }
   fs.rmSync(dir, { recursive: true, force: true });
 }

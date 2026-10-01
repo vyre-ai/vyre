@@ -53,11 +53,11 @@ export const RUNTIME = Object.freeze({
   installMainJs: `${RT.base}/current/core/vyre-core/install-main.js`,
 });
 
-/** @typedef {(cmd: string, args: string[], o?: { input?: string }) => string} Run */
+/** @typedef {(cmd: string, args: string[], o?: { input?: string, timeout?: number }) => string} Run */
 
 /** The default run: absolute paths only, an empty-ish environment, cwd "/". Returns stdout. */
 /** @type {Run} */
-export function defaultRun(cmd, args, { input } = {}) {
+export function defaultRun(cmd, args, { input, timeout } = {}) {
   if (!path.isAbsolute(cmd)) throw new Error(`refusing to run a relative command: ${cmd}`);
   return execFileSync(cmd, args, {
     input,
@@ -65,6 +65,7 @@ export function defaultRun(cmd, args, { input } = {}) {
     cwd: "/",
     env: { PATH: SAFE_PATH },
     stdio: [input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+    ...(timeout ? { timeout, killSignal: "SIGKILL" } : {}),
   });
 }
 
