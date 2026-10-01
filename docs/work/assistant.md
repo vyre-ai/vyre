@@ -69,3 +69,4 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 - drift test: test/said-watchers.test.js runs core/watchers/targets.js createTarget/presetTarget against the recorder's keys (needs work/watchers cc3c90c9 in the tree; merged).
 - hearActs now in lib/said/hear.js (pure; switchboard records its output). Built on sessions' b49f223c wiring. Not wired: settingIntents (needs settings.schema keys at ingress). Runner-only tests: core/sessions/sessions.test.js hearActs cases updated (project in watcher keys, team.add).
 - settingIntents wired in lib/said/hear.js (settings.schema keys at hear time); switchboard records kind it.kind and no channel for setting.
+- S1 (Codex tools): found and fixed, proof passes on the test box (23 PASS 0 FAIL); runner run pending. Details in CHANGELOG.

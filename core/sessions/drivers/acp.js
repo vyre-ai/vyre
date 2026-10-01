@@ -52,7 +52,7 @@ const MEMORY_MS = 3000;
  * refused, never listed and never entered, including a mode a later release adds: an allowlist, because a denylist of bypass
  * words let Codex's "agent-full-access" through once. An entry may narrow it (`allowModes`, intersected with this list), never widen it.
  */
-export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
+export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|workspace-write|plan|agent)$/i;
 export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|full.?access|auto.?approve|accept.?all|skip.?perm/i;
 
 /** ACP tool kind -> the Claude tool name the floor's rules know (rules.js is Claude-tool-name shaped until build step 8). */
@@ -248,6 +248,22 @@ function runAcp(entry, known, o) {
   async function permission(m) {
     const p = m.params || {};
     const tc = p.toolCall || {};
+    // MEASURED on codex-acp 2.1.0: before an MCP tool runs, Codex asks with kind "execute", NO title and NO rawInput, and says only
+    // _meta.is_mcp_tool_approval. It names neither the server nor the tool, so asking the person "run this command" with a blank command
+    // would be a lie. The session's own MCP servers are known here (mcpServers in session/new): with exactly one, the question is about
+    // one of ITS tools. Vyre's own server ("vyre") is gated by vyred itself on every call (reach, the Gate, presence), so an entry that
+    // says so (`mcpOwn`) lets that approval through at once; any other server's is put to the person, named by its server.
+    if (p._meta && p._meta.is_mcp_tool_approval === true) {
+      const servers = (Array.isArray(o.mcpServers) ? o.mcpServers : []).map(x => String((x && x.name) || ""));
+      const only = servers.length === 1 ? servers[0] : "";
+      const opts = Array.isArray(p.options) ? p.options : [];
+      const once = opts.find(x => x && x.kind === "allow_once");
+      if (entry.mcpOwn && only === "vyre" && once) { respond(m.id, { outcome: { outcome: "selected", optionId: once.optionId } }); return; }
+      const rid = `acp-perm-${++askN}`;
+      asks.set(rid, { rpc: m.id, options: opts });
+      say({ type: "control_request", request_id: rid, request: { subtype: "can_use_tool", tool_name: only ? `mcp__${only}` : "mcp", input: { note: "an MCP tool; the agent did not say which" }, tool_use_id: String(tc.toolCallId || "") } });
+      return;
+    }
     announce(tc);
     const a = askFor(tc);
     const rid = `acp-perm-${++askN}`;
@@ -352,7 +368,12 @@ function runAcp(entry, known, o) {
       const env = { ...(o.env || {}), ...Object.fromEntries((Array.isArray(p.env) ? p.env : []).filter(e => e && typeof e.name === "string" && !/^(LD_|DYLD_|NODE_OPTIONS)/.test(e.name)).map(e => [e.name, String(e.value)])) };
       for (const k of secretEnv) delete env[k];
       const t = { output: "", truncated: false, exit: /** @type {any} */ (null), waiters: /** @type {any[]} */ ([]), child: /** @type {any} */ (null), limit: Number(p.outputByteLimit) || 1_000_000 };
-      t.child = spawnSession(String(p.command), Array.isArray(p.args) ? p.args.map(String) : [], { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
+      // MEASURED on Grok Build 1.0.46: it sends the whole command line as `command` with no `args` ("/usr/bin/bash -lc 'touch x'"), which as
+      // an executable path is ENOENT. A command with spaces and no args is a command line, run by the shell the floor already judged it as.
+      const argv = Array.isArray(p.args) ? p.args.map(String) : [];
+      const line = String(p.command);
+      const [exe, args] = !argv.length && /\s/.test(line.trim()) ? ["/bin/sh", ["-c", line]] : [line, argv];
+      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
       const add = d => { t.output += d; if (t.output.length > t.limit) { t.output = t.output.slice(-t.limit); t.truncated = true; } };
       t.child.stdout.setEncoding("utf8"); t.child.stderr.setEncoding("utf8");
       t.child.stdout.on("data", add); t.child.stderr.on("data", add);
@@ -422,7 +443,7 @@ function runAcp(entry, known, o) {
     // one its own config file, which the agent can edit, chose) is moved to an ask mode, or the session does not run.
     const rawMode = String(m.currentModeId || "");
     if (rawMode && !modes.some(x => x.id === rawMode)) {
-      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
+      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|workspace-write|plan|agent)$/i;
       const to = modes.find(x => ask.test(x.id));
       let ok = false;
       if (to) { try { await request("session/set_mode", { sessionId: sid, modeId: to.id }); mode = to.id; ok = true; } catch {} }
