@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { answerRows, chipWord, accountAtStart, accountToken } from "./answer-with.js";
+import { answerRows, chipWord, accountAtStart, accountToken, isModel, chipLine, runsOn } from "./answer-with.js";
 
 const LIST = [
   { id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }, { id: "c2", label: "Work", signed_in: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "x", label: "Extra" }] },
@@ -44,4 +44,32 @@ test("@codex at the very start asks that provider for one turn; a provider with 
 test("anything else is not an account: a teammate role, a mid-sentence @, an email, an unsigned provider", () => {
   const rows = answerRows(LIST, {});
   for (const t of ["@design fix it", "ask @codex", "me@codex.com", "@grok hi", "@", "codex"]) assert.equal(accountAtStart(t, rows, NAME), null, t);
+});
+
+test("each account row carries its models for the menu, and the session's model matches by id or alias", () => {
+  const rows = answerRows(LIST, { provider: "claude" });
+  assert.deepEqual(rows[0].models.map(m => m.id), ["opus", "sonnet", "haiku", "x"]);
+  assert.deepEqual(rows[2].models, []);
+  assert.equal(isModel("claude-opus-4-5", "opus"), true);
+  assert.equal(isModel("opus", "opus"), true);
+  assert.equal(isModel("claude-sonnet-4-5", "opus"), false);
+  assert.equal(isModel(null, "opus"), false);
+});
+
+test("the chip line: who, then model and effort together", () => {
+  assert.equal(chipLine("Codex", "GPT-5", "high"), "Codex · GPT-5 high");
+  assert.equal(chipLine("Claude", "Opus", null), "Claude · Opus");
+  assert.equal(chipLine("Claude", "", "xhigh"), "Claude · extra high");
+  assert.equal(chipLine("Grok", "", null), "Grok");
+  assert.equal(answerRows(LIST, {})[0].effort, true);
+  assert.equal(answerRows(LIST, {})[2].effort, false);
+});
+
+test("a bare @claude with two accounts says which one will run (the default); a named one says its own; one account says just the provider", () => {
+  const rows = answerRows(LIST, { provider: "codex" });
+  assert.equal(runsOn("@claude hello", rows, NAME), "Claude (Personal)");
+  assert.equal(runsOn("@claude-work hello", rows, NAME), "Claude (Work)");
+  assert.equal(runsOn("@codex hello", rows, NAME), "Codex");
+  assert.equal(runsOn("hello @codex", rows, NAME), null);
+  assert.equal(runsOn("@design hi", rows, NAME), null);
 });

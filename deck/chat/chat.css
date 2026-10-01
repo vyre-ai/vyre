@@ -960,3 +960,4 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .composer-answer { gap: 6px; padding-left: 6px; }
 .composer-answer-name { font-size: 12px; font-weight: 600; color: var(--text); }
 .composer-answer:disabled { opacity: 1; cursor: default; }
+.cv-menu-sub { padding-left: 30px; font-weight: 400; }
