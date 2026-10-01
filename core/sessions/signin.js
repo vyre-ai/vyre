@@ -75,6 +75,8 @@ export class Signins {
     proc.stdout.on("data", read); proc.stderr.on("data", read);
     const end = (code, signal) => { if (f.ended) return; f.ended = true; f.exit = { code, signal }; f.ok = code === 0; try { onDone && onDone(f.ok); } catch {} this.ping(f); };
     proc.on("exit", end); proc.on("error", e => { f.text += `\n${e.message}`; end(127, null); });
+    // A sign-in nobody finishes ends at its time limit, and says so (onDone false), so the account row it created does not linger as a login that never worked.
+    setTimeout(() => { if (!f.ended) { try { f.proc.kill("SIGKILL"); } catch { /* gone */ } end(null, "SIGKILL"); } }, this.deps.ttl || TTL_MS).unref?.();
     return new Promise(resolve => { f.waiters.push(() => resolve(this.status(flow))); setTimeout(() => this.ping(f), 20_000).unref?.(); });
   }
 

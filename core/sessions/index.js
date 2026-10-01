@@ -16,10 +16,11 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +60,9 @@ CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, message
  * for the tools that only start something the person must finish (add, signin, bind), the verified assistant (lead's ruling, 1 Oct).
  * @param {any} meta @param {string} what
  */
+/** What a provider last said about itself in a session: the models its account can use and the plan it is on (a model picker's list; null until one session has run). */
+const META_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_provider_meta (provider TEXT NOT NULL, account TEXT NOT NULL DEFAULT '', models TEXT, plan TEXT, at INTEGER NOT NULL, PRIMARY KEY (provider, account))`;
+
 export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
@@ -82,8 +86,10 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION, META_MIGRATION]);
     const db = ctx.store.db;
+    // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
+    try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
     /** Does the vault hold an item by this name? null when the vault cannot say (not running, locked). Never its value. */
@@ -215,12 +221,35 @@ export default {
         get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
         set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
+    /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
+    const providerModels = provider => {
+      const r = /** @type {any} */ (db.prepare("SELECT models FROM sessions_provider_meta WHERE provider = ? AND models IS NOT NULL ORDER BY at DESC LIMIT 1").get(provider));
+      try { return r ? JSON.parse(String(r.models)) : []; } catch { return []; }
+    };
+    const accountPlan = (provider, account) => {
+      const r = /** @type {any} */ (db.prepare("SELECT plan FROM sessions_provider_meta WHERE provider = ? AND account = ?").get(provider, String(account)));
+      return r && r.plan ? String(r.plan) : null;
+    };
+    // The Switchboard tells us what a session's provider said about itself (init: models, plan), so providers.list can fill a model picker. Internal.
+    ctx.tool("sessions.providers.learn", {
+      description: "Record what a provider reported in a session: the models its account can use (id, label) and its plan. For providers.list; not a public name.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, models: { type: "array", maxItems: 200, items: { type: "object", required: ["id"], properties: { id: str, label: str } } }, plan: str } },
+      run: async i => {
+        const models = Array.isArray(i.models) && i.models.length ? JSON.stringify(i.models.map(m => ({ id: String(m.id).slice(0, 100), label: String(m.label || m.id).slice(0, 100) }))) : null;
+        const plan = typeof i.plan === "string" && i.plan.trim() ? i.plan.trim().slice(0, 60) : null;
+        if (!models && !plan) return { recorded: false };
+        const acct = String(i.account || "");
+        db.prepare(`INSERT INTO sessions_provider_meta (provider, account, models, plan, at) VALUES (?,?,?,?,?)
+          ON CONFLICT(provider, account) DO UPDATE SET models = COALESCE(excluded.models, models), plan = COALESCE(excluded.plan, plan), at = excluded.at`).run(String(i.provider), acct, models, plan, Date.now());
+        return { recorded: true };
+      },
+    });
     ctx.tool("sessions.providers.snapshot", {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
       run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
-        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
-        models: p.id === "claude" ? MODEL_ALIASES : [],
+        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
+        models: p.id === "claude" ? MODEL_ALIASES : providerModels(p.id),
         capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
     });
 
@@ -313,7 +342,10 @@ export default {
         const listed = accounts.list(i.provider ? String(i.provider) : undefined);
         // Who a signed-in login account is signed in as (the non-secret email and org its own login left), so the person's confirm of an account the
         // assistant started can tell whose it is; null reads as "account not identified".
-        const rows = await Promise.all(listed.map(async a => (a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a)));
+        const PRIVACY_ON = "Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video.";
+        const PRIVACY_OFF = "Privacy mode off: xAI keeps this account's sessions and may train on them; Grok can make video.";
+        const rows = await Promise.all(listed.map(async a0 => { const a = a0.provider === "grok" && !a0.synthetic ? { ...a0, privacy_label: a0.privacy ? PRIVACY_ON : PRIVACY_OFF, privacy_note: "Change it in Grok's /privacy settings; Vyre shows what you chose." } : a0;
+          return a.kind === "login" && !a.synthetic && a.signed_in_at != null ? { ...a, identity: await identityOf(a) } : a; }));
         // Vault item names go to people, modules and the assistant; another agent sees the accounts without them.
         const seesItems = !meta || !meta.agent || /** @type {any} */ (meta).agentKind === "assistant";
         return seesItems ? rows : rows.map(({ vault_item, identity, ...r }) => r);
@@ -389,6 +421,37 @@ export default {
         return accounts.bind({ id: i.id, project });
       });
 
+    // A file a provider left in an account's own folder (Grok Build's generated images are 0600 there), read as that account and returned as base64, for
+    // the Switchboard to hand to artifacts. Internal: only Vyre's modules call it. The read runs as the account's uid on a box.
+    const MEDIA_MAX = 20 * 1024 * 1024;
+    ctx.tool("sessions.files.read", {
+      description: "Read one regular file from inside an account's own folder, as that account (`file` is relative to the account's HOME, under a provider's own folder such as .grok or .codex, no links, at most 20 MB). Answers { size, sha256, data_b64 }. Not a public name.", internal: true,
+      input: { type: "object", required: ["account", "file"], properties: { account: str, file: str } },
+      run: async i => {
+        const a = accounts.row(String(i.account));
+        if (!a) throw Object.assign(new Error(`no account ${i.account}`), { code: "not_found" });
+        // Relative on purpose: the floor refuses any path inside Vyre's own home in a call's input, and on a Mac an account's HOME is there; the provider's
+        // own folder (.grok, .codex) is the only place a generated file is read from, and nothing else of the HOME.
+        const rel = String(i.file);
+        if (path.isAbsolute(rel) || rel.includes("\0") || rel.split("/").includes("..") || !/^\.(?:grok|codex)\//.test(rel)) throw Object.assign(new Error("file must be a path under .grok or .codex in the account's folder"), { code: "bad_input" });
+        const home = usesSpawner() && a.uid != null ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(a.uid)) : path.join(root, "accounts", String(a.id));
+        const child = spawnSession(process.execPath, [fileURLToPath(new URL("./readfile.js", import.meta.url)), home, path.join(home, rel), String(MEDIA_MAX)],
+          { cwd: home, env: { PATH: process.env.PATH, HOME: home }, ...(usesSpawner() && a.uid != null ? { account: { uid: a.uid, shared: false } } : {}) });
+        /** @type {Buffer[]} */ const chunks = [];
+        let size = 0, err = "";
+        child.stderr && child.stderr.on("data", d => { err = (err + d).slice(-300); });
+        child.stdout.on("data", d => { size += d.length; if (size <= MEDIA_MAX) chunks.push(d); });
+        const code = await new Promise(r => { child.on("close", c => r(c)); child.on("error", () => r(127)); });
+        if (code !== 0 || size > MEDIA_MAX) throw Object.assign(new Error(err.trim() || "the file could not be read"), { code: "denied" });
+        const bytes = Buffer.concat(chunks);
+        return { size, sha256: crypto.createHash("sha256").update(bytes).digest("hex"), data_b64: bytes.toString("base64") };
+      },
+    });
+    // The person's choice about whether xAI keeps this Grok account's sessions (and so whether Grok can make video). The setting itself lives on xAI's side for the
+    // account and is changed there (in Grok's own /privacy settings); this records what the person chose so Vyre says it plainly and a surface can offer the choice.
+    tool("sessions.accounts.set", "Set an account's privacy choice (Grok only): privacy true is privacy mode on, xAI does not keep the account's sessions and Grok cannot make video; false is off, xAI keeps them and may train on them, and Grok can make video. Records the choice; the setting itself is changed on xAI's side, in Grok's /privacy settings.",
+      { type: "object", required: ["account", "privacy"], properties: { account: str, privacy: { type: "boolean" } } },
+      async i => accounts.setPrivacy(String(i.account), Boolean(i.privacy)));
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
       input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str } },

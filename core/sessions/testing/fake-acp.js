@@ -43,6 +43,21 @@ async function prompt(id, blocks) {
       out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: "ok" } }] } } });
       say("Ran it.");
     } else say("I was not allowed to.");
+  } else if (t === "imagecodex") {
+    // Codex's image generation: a completed tool call whose content carries the picture (a 1x1 PNG) and the prompt it revised.
+    const tc = { toolCallId: `exec-${crypto.randomUUID().slice(0, 8)}`, kind: "other", title: "Image generation", status: "in_progress", rawInput: {} };
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", ...tc } } });
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [
+      { type: "content", content: { type: "text", text: "Revised prompt: a red circle" } },
+      { type: "content", content: { type: "image", mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", uri: "/h/.codex/generated_images/s/c.png" } }] } } });
+    say("drew it");
+  } else if (t === "exitcode") {
+    // A command that ran and exited 1: Grok's rawOutput.exit_code and Codex's _meta.terminal_exit, on two calls.
+    for (const [id, extra] of [["g1", { rawOutput: { type: "Bash", exit_code: 1 } }], ["c1", { _meta: { terminal_exit: { exit_code: 2, signal: null } } }]]) {
+      out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", toolCallId: id, kind: "execute", title: "sh", status: "in_progress", rawInput: {} } } });
+      out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: id, status: "completed", content: [{ type: "content", content: { type: "text", text: "out" } }], ...extra } } });
+    }
+    say("done");
   } else if (t === "mcpask") {
     // codex-acp 2.1.0's approval for an MCP tool: kind execute, no title, no rawInput, _meta.is_mcp_tool_approval.
     const r = await call("session/request_permission", { sessionId: session, toolCall: { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, kind: "execute", status: "pending" }, _meta: { is_mcp_tool_approval: true }, options: [
@@ -107,13 +122,16 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
     log({ authenticate: m.params && m.params.methodId, gateway: m.params && m.params._meta && m.params._meta.gateway ? { baseUrl: m.params._meta.gateway.baseUrl, headers: Object.keys(m.params._meta.gateway.headers || {}), providerName: m.params._meta.gateway.providerName } : undefined });
     if (process.env.FAKE_ACP_AUTH === "hang") return;                                   // waits for a browser sign-in
     authed = process.env.FAKE_ACP_AUTH !== "refuse";
-    return out({ id: m.id, ...(authed ? { result: {} } : { error: { code: -32000, message: process.env.FAKE_ACP_AUTH_ERR || "sign-in refused" } }) });
+    return out({ id: m.id, ...(authed ? { result: process.env.FAKE_ACP_PLAN ? { _meta: { email: "someone@example.com", subscription_tier: process.env.FAKE_ACP_PLAN } } : {} } : { error: { code: -32000, message: process.env.FAKE_ACP_AUTH_ERR || "sign-in refused" } }) });
   }
   if (m.method === "session/new" && process.env.FAKE_ACP_AUTH && !authed) return out({ id: m.id, error: { code: -32000, message: "Authentication required" } });
   if (m.method === "session/new") {
     session = "fake-" + crypto.randomUUID().slice(0, 8);
     if (store) fs.writeFileSync(path.join(store, session), m.params.cwd);
-    return out({ id: m.id, result: { sessionId: session, modes: { ...MODES, currentModeId: mode } } });
+    return out({ id: m.id, result: { sessionId: session, modes: { ...MODES, currentModeId: mode },
+      // FAKE_ACP_MODELS: Grok's models.availableModels and Codex's grouped model config option, as the real agents send them.
+      ...(process.env.FAKE_ACP_MODELS ? { models: { currentModelId: "m1", availableModels: [{ modelId: "m1", name: "Model 1", _meta: { secret: "x" } }, { modelId: "m2", name: "Model 2" }] },
+        configOptions: [{ id: "model", category: "model", options: [{ group: "g", options: [{ value: "c1", name: "Codex 1" }] }, { value: "c2", name: "Codex 2" }] }, { id: "mode", category: "mode", options: [{ value: "zz", name: "Not a model" }] }] } : {}) } });
   }
   if (m.method === "session/load") {
     if (!store || !fs.existsSync(path.join(store, m.params.sessionId))) return out({ id: m.id, error: { code: -32602, message: "no such session" } });

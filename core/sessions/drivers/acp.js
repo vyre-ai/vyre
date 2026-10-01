@@ -155,6 +155,46 @@ export function acpProvider(entry) {
 }
 
 /** @param {any} entry @param {any} known @param {any} o */
+/** The models an agent offers a session, id and name only: Grok's models.availableModels, Codex's model config option (flat or grouped). @param {any} r a session/new or session/load result */
+export function modelsOf(r) {
+  /** @type {{ id: string, label: string }[]} */ const out = [];
+  const add = (id, label) => { if (typeof id === "string" && id && out.length < 200 && !out.some(x => x.id === id)) out.push({ id: id.slice(0, 120), label: String(label || id).slice(0, 120) }); };
+  for (const x of (r && r.models && Array.isArray(r.models.availableModels) ? r.models.availableModels : [])) add(x && x.modelId, x && x.name);
+  for (const c of (r && Array.isArray(r.configOptions) ? r.configOptions : [])) {
+    if (!c || (c.category !== "model" && c.id !== "model")) continue;
+    for (const g of Array.isArray(c.options) ? c.options : []) for (const x of (g && Array.isArray(g.options) ? g.options : [g])) add(x && (x.value ?? x.id), x && x.name);
+  }
+  return out;
+}
+
+/**
+ * Generated media a finished tool call carries, for the Switchboard to save as artifacts: an image or audio content block (Codex's image generation puts
+ * the bytes in the stream, with the prompt it revised), or, from Grok's image generation, the path of a file the agent wrote in the account's own folder
+ * (nothing of the image is in the stream). Only the shape is read; the file is read later, as the account, by sessions.files.read.
+ * @param {any} u a tool_call_update with a final status @param {string} [earlierPrompt] the prompt an earlier update of the same call carried
+ * @returns {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]}
+ */
+export function mediaOf(u, earlierPrompt) {
+  const out = [];
+  const items = Array.isArray(u && u.content) ? u.content : [];
+  const said = items.map(c => c && c.content && c.content.type === "text" ? String(c.content.text || "") : "").find(t => /^Revised prompt:/i.test(t));
+  const prompt = said ? said.replace(/^Revised prompt:\s*/i, "").slice(0, 2000) : (u && u.rawInput && typeof u.rawInput.prompt === "string" ? u.rawInput.prompt.slice(0, 2000) : earlierPrompt);
+  // A picture in a tool result is generated media only when the tool says it generated it (Codex: the revised prompt, a saved path); an image a tool merely READ
+  // (Grok's read_file returns file contents as an image block) is the model's input, not something to save.
+  const ro = u && u.rawOutput;
+  const generated = Boolean(said || (ro && (ro.savedPath || ro.revisedPrompt))) && !(ro && ro.type === "ReadFile") && !(u && u.kind === "read");
+  for (const c of generated ? items : []) {
+    const x = c && c.content;
+    if (x && (x.type === "image" || x.type === "audio") && typeof x.data === "string" && /^(?:image|audio)\/[a-z0-9.+-]+$/i.test(String(x.mimeType || "")) && x.data.length < 28_000_000) out.push({ mime: String(x.mimeType).toLowerCase(), data_b64: x.data, source: "content-block", ...(prompt ? { prompt } : {}) });
+  }
+  // A file the agent wrote in the account's own folder (Grok: image_gen, reference_to_video): its path is all the stream holds.
+  if (ro && typeof ro.path === "string" && /^(?:images|videos|media|audio)$/.test(String(ro.session_folder || ""))) {
+    const i = ro.path.indexOf("/.grok/");
+    if (i >= 0) out.push({ file: ro.path.slice(i + 1), source: "file", ...(prompt ? { prompt } : {}) });
+  }
+  return out.slice(0, 4);
+}
+
 function runAcp(entry, known, o) {
   const floor = o.floor || entry.floor || null;
   const args = typeof entry.args === "function" ? entry.args(o) : entry.args || [];
@@ -182,6 +222,14 @@ function runAcp(entry, known, o) {
   /** @type {any[]} */ const queue = [];
   let modes = /** @type {{ id: string, name?: string }[]} */ ([]), mode = null, turnText = "", askN = 0, tn = 0, cancelling = false, tree = /** @type {number[]} */ ([]);
   let firstPrompt = true;
+  /** The plan the account is on (Grok's subscription_tier from authenticate, Codex's status update): a name only, never an email. */
+  let plan = "";
+  /** @param {any} r an authenticate result or a status update's params */
+  const planFrom = r => {
+    const c = [r && r._meta && r._meta.subscription_tier, r && r.plan, r && r.planType, r && r.plan_type, r && r.subscription_tier].find(x => typeof x === "string" && x.trim());
+    if (c && !plan) plan = String(c).trim().slice(0, 60);
+    return plan;
+  };
 
   const send = obj => { if (!exited && child.stdin.writable) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...obj }) + "\n"); };
   const request = (method, params, timeoutMs = 0) => new Promise((resolve, reject) => {
@@ -189,7 +237,7 @@ function runAcp(entry, known, o) {
     calls.set(id, { resolve, reject });
     send({ id, method, params });
     if (timeoutMs > 0) setTimeout(() => { if (calls.delete(id)) reject(Object.assign(new Error(`${method} did not answer in ${Math.round(timeoutMs / 1000)} s`), { code: "timeout" })); }, timeoutMs).unref?.();
-  });
+  }).then(r => { if (method === "authenticate") planFrom(r); return r; });
   const respond = (id, result) => send({ id, result });
   const fail = (id, code, message) => send({ id, error: { code, message } });
 
@@ -224,6 +272,8 @@ function runAcp(entry, known, o) {
       if (m.error) c.reject(Object.assign(new Error(String(m.error.message || "agent error")), { code: m.error.code })); else c.resolve(m.result || {});
       return;
     }
+    // The account's plan, when the agent says it after the session started (Codex's _auth/status_update): said once as its own message.
+    if (typeof m.method === "string" && /status_update$/.test(m.method) && !plan && planFrom(m.params)) { say({ type: "system", subtype: "plan", plan }); return; }
     if (m.method === "session/update") return update(m.params && m.params.update || {});
     if (m.method === "session/request_permission") return permission(m);
     if (m.method === "fs/read_text_file") return fsRead(m);
@@ -261,6 +311,8 @@ function runAcp(entry, known, o) {
 
   function update(u) {
     const kind = u.sessionUpdate;
+    // A generation tool says its prompt on an earlier update than the one that finishes it: keep it by call id for the media's provenance.
+    if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
     if (kind === "agent_message_chunk") {
       const t = text(u.content);
       if (t) { turnText += t; say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
@@ -288,9 +340,17 @@ function runAcp(entry, known, o) {
   let mcpDenied = false;
   /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
   let projectConfig = false;
+  /** @type {Map<string, string>} */ const toolPrompts = new Map();
+  /** A command's exit code as data: Grok's rawOutput.exit_code, Codex's _meta.terminal_exit. Null when the call was no command or has none. @param {any} u */
+  function exitCodeOf(u) {
+    const c = [u && u.rawOutput && u.rawOutput.exit_code, u && u._meta && u._meta.terminal_exit && (u._meta.terminal_exit.exit_code ?? u._meta.terminal_exit.exitCode)].find(x => typeof x === "number" && Number.isInteger(x));
+    return c === undefined ? null : c;
+  }
   function toolDone(u) {
-    const body = Array.isArray(u.content) ? u.content.map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
-    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body }] } });
+    // An image or audio block is media, saved by the Switchboard; its bytes are never part of the text a model or a card reads.
+    const body = Array.isArray(u.content) ? u.content.filter(c => !(c && c.content && (c.content.type === "image" || c.content.type === "audio"))).map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
+    const media = mediaOf(u, toolPrompts.get(String(u.toolCallId)));
+    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body, ...(exitCodeOf(u) !== null ? { exit_code: exitCodeOf(u) } : {}), ...(media.length ? { vyre_media: media } : {}) }] } });
   }
 
   /** A permission question: to the person as can_use_tool; the answer picks an allow_once or reject_once option. */
@@ -537,7 +597,8 @@ function runAcp(entry, known, o) {
     }
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
-    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded });
+    const offered = modelsOf(r);
+    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded, ...(offered.length ? { models: offered } : {}), ...(plan ? { plan } : {}) });
     pump();
   }
   open().catch(e => { err = scrub(String(e && e.message || e)); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });

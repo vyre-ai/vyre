@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { projectCodexConfig, seedTampered, acpProvider, askFor } from "./acp.js";
+import { projectCodexConfig, seedTampered, acpProvider, askFor, mediaOf, modelsOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -587,4 +587,71 @@ test("seedFiles: a symlinked folder or file on the way is refused or replaced, a
   assert.equal(fs.readFileSync(path.join(target, "victim"), "utf8"), "keep", "the link target is untouched");
   assert.equal(fs.lstatSync(path.join(home, ".codex", "config.toml")).isSymbolicLink(), false);
   assert.equal(fs.readFileSync(path.join(home, ".codex", "config.toml"), "utf8"), "d\n");
+});
+
+test("mediaOf: Codex's image content block keeps its bytes and revised prompt, Grok's ImageGen result names the file under .grok, anything else is none", () => {
+  const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+  const codex = { sessionUpdate: "tool_call_update", status: "completed", content: [{ type: "content", content: { type: "text", text: "Revised prompt: a red circle" } }, { type: "content", content: { type: "image", data: png, mimeType: "image/png", uri: "/h/.codex/generated_images/s/c.png" } }] };
+  assert.deepEqual(mediaOf(codex), [{ mime: "image/png", data_b64: png, source: "content-block", prompt: "a red circle" }]);
+  const grok = { sessionUpdate: "tool_call_update", status: "completed", rawInput: { variant: "ImageGen", prompt: "a heron" }, rawOutput: { type: "ImageGen", path: "/home/acct/2001/.grok/sessions/%2Fw/abc/images/1.jpg", filename: "1.jpg", session_folder: "images" } };
+  assert.deepEqual(mediaOf(grok), [{ file: ".grok/sessions/%2Fw/abc/images/1.jpg", source: "file", prompt: "a heron" }]);
+  assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "image", data: png, mimeType: "text/html" } }] }), [], "not an image type");
+  assert.deepEqual(mediaOf({ rawOutput: { type: "ImageGen", path: "/etc/passwd", session_folder: "images" } }), [], "not under .grok");
+  assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "text", text: "hi" } }] }), []);
+});
+
+test("acp: a tool call that finishes with a picture reaches the Switchboard as a tool_result with vyre_media, and the bytes are not in its text", async t => {
+  const w = world(t);
+  const s = open(w);
+  await s.say("imagecodex");
+  const res = s.got.find(m => m.type === "user" && m.message.content.some(b => b.type === "tool_result" && b.vyre_media));
+  assert.ok(res, "a tool_result carried the media");
+  const b = res.message.content.find(x => x.vyre_media);
+  assert.equal(b.vyre_media[0].mime, "image/png");
+  assert.equal(b.vyre_media[0].prompt, "a red circle");
+  assert.ok(!String(b.content).includes("iVBOR"), "the bytes are not the text a model or a card reads");
+  await s.proc.stop(500);
+});
+
+test("mediaOf over the real Grok video capture: exactly the video file is media, and the pictures the model only read are not", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "real", "media", "grok-video");
+  const lines = fs.readFileSync(path.join(dir, "stream.ndjson"), "utf8").trim().split("\n").map(l => JSON.parse(l));
+  const found = [], prompts = new Map();
+  let readImages = 0;
+  for (const l of lines) {
+    const u = l.msg && l.msg.params && l.msg.params.update;
+    if (u && u.rawInput && u.rawInput.prompt && u.toolCallId) prompts.set(u.toolCallId, u.rawInput.prompt);
+    if (!u || u.sessionUpdate !== "tool_call_update" || !(u.status === "completed" || u.status === "failed")) continue;
+    if ((u.content || []).some(c => c && c.content && c.content.type === "image")) readImages++;
+    const p = u.rawInput && u.rawInput.prompt; if (p) prompts.set(u.toolCallId, p);
+    found.push(...mediaOf(u, prompts.get(u.toolCallId)));
+  }
+  assert.ok(readImages >= 2, "the capture has pictures the model read back");
+  assert.equal(found.length, 1);
+  assert.match(found[0].file, /^\.grok\/sessions\/[^/]+\/[^/]+\/videos\/1\.mp4$/);
+  assert.equal(found[0].source, "file");
+  assert.match(found[0].prompt, /red circle/);
+  const mp4 = fs.readFileSync(path.join(dir, "video.mp4"));
+  assert.equal(mp4.subarray(4, 8).toString("latin1"), "ftyp", "the captured video is a real mp4");
+  assert.ok(mp4.length < 20 * 1024 * 1024);
+});
+
+test("acp: the init message carries the models the agent offers (id and label only) and the plan its sign-in named, never an email", async t => {
+  const w = world(t, { authMethod: methods => methods.find(m => m.id === "chat-gpt")?.id || null });
+  const s = open(w, { env: { ...w.env, FAKE_ACP_AUTH: "ok", FAKE_ACP_MODELS: "1", FAKE_ACP_PLAN: "SuperGrok" } });
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.deepEqual(init.models, [{ id: "m1", label: "Model 1" }, { id: "m2", label: "Model 2" }, { id: "c1", label: "Codex 1" }, { id: "c2", label: "Codex 2" }]);
+  assert.equal(init.plan, "SuperGrok");
+  assert.ok(!JSON.stringify(init).includes("someone@example.com"));
+  assert.deepEqual(modelsOf({}), []);
+  await s.proc.stop(500);
+});
+
+test("acp: a command's exit code arrives as data on the tool result, from Grok's rawOutput and Codex's terminal_exit", async t => {
+  const w = world(t);
+  const s = open(w);
+  await s.say("exitcode");
+  const done = s.got.filter(m => m.type === "user").flatMap(m => m.message.content).filter(b => b.type === "tool_result");
+  assert.deepEqual(done.map(b => [b.tool_use_id, b.exit_code, b.is_error]), [["g1", 1, false], ["c1", 2, false]]);
+  await s.proc.stop(500);
 });

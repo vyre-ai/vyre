@@ -408,7 +408,7 @@ export class Switchboard {
     // turn on another account, reads right line by line, and a card draws the model's own icon. A notice (Vyre's own line) has none.
     if (REPLY_EVENTS.has(type) && payload && !payload.notice && payload.message !== "vyre") {
       const who = this.speaker(thread);
-      payload = { ...payload, ...(payload.provider === undefined ? { provider: who.provider } : {}), ...(payload.model === undefined ? { model: who.model } : {}) };
+      payload = { ...payload, ...(payload.provider === undefined ? { provider: who.provider } : {}), ...(payload.model === undefined ? { model: who.model } : {}), ...(payload.account === undefined ? { account: who.account } : {}) };
     }
     // What a one-turn provider said, kept to hand back to the session's own provider when the turn ends.
     const once = this.once.get(thread);
@@ -428,7 +428,7 @@ export class Switchboard {
   speaker(thread) {
     const st = this.live.get(thread);
     const rec = this.record(thread);
-    return { provider: (st && st.launch && st.launch.provider) || (rec && rec.provider) || "claude", model: modelName((st && st.model) || (rec && rec.model)) };
+    return { provider: (st && st.launch && st.launch.provider) || (rec && rec.provider) || "claude", model: modelName((st && st.model) || (rec && rec.model)), account: (rec && rec.account) || null };
   }
 
   emitRaw(type, payload, thread, project) {
@@ -523,6 +523,35 @@ export class Switchboard {
   }
 
   /**
+   * Generated media a provider's tool call returned (an image or audio block with its bytes, or a file Grok left in the account's folder) is saved as an
+   * artifact of the thread (artifacts.media.register, which keeps the bytes and the provenance). A file is read as the account by sessions.files.read.
+   * Quiet when artifacts is not here; a failure says so once in the thread, never breaks the turn.
+   * @param {string} id @param {any} rec @param {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]} media
+   */
+  async saveMedia(id, rec, media) {
+    const MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4" };
+    for (const m of media.slice(0, 4)) {
+      try {
+        let data = m.data_b64, mime = m.mime;
+        if (!data && m.file) {
+          if (!rec.account) continue;
+          const r = await this.deps.call("sessions.files.read", { account: rec.account, file: m.file });
+          if (r.error) throw new Error(r.error.message || r.error.code);
+          data = r.data.data_b64;
+          mime = mime || MIME[String(m.file).split(".").pop().toLowerCase()];
+        }
+        if (!data || !mime) continue;
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}) });
+        if (r.error && r.error.code === "no_such_tool") return;
+        if (r.error) throw new Error(r.error.message || r.error.code);
+      } catch (e) {
+        this.emit("thread.text", { message: "vyre", text: `Could not save a generated file as an artifact: ${String(/** @type {Error} */ (e).message).slice(0, 160)}`, done: true, notice: true }, id, rec.project);
+        return;
+      }
+    }
+  }
+
+  /**
    * A GitHub session's commit identity and hooks are its environment (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_* names and emails, and one
    * GIT_CONFIG_* entry for the hooks folder), put in the session process on every launch AND resume. {} when the project has no repo, git is older than
    * 2.31, or github is not here. Only those keys, only strings.
@@ -597,7 +626,8 @@ export class Switchboard {
       }
       const purpose = purposeOf(o, w.project);
       // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
-      if (!o.model) {
+      // The models table is Claude's (aliases like opus); another provider's model is the one it reports, so none is recorded until then.
+      if (!o.model && provider === "claude") {
         const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
@@ -853,7 +883,8 @@ export class Switchboard {
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
     // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
-    // is appended after it, never over it.
+    // is appended after it, never over it. github's hook wrappers unset GIT_CONFIG_COUNT, KEY_0 and VALUE_0 when they run in another repo, which clears any entries the
+    // person's own environment carried for that hook run only (nothing outside the hook), so appending at KEY_<n> stays correct.
     if (o.gitEnv) {
       const { GIT_CONFIG_COUNT: n, GIT_CONFIG_KEY_0: k, GIT_CONFIG_VALUE_0: v, ...ident } = o.gitEnv;
       Object.assign(env, ident);
@@ -939,6 +970,8 @@ export class Switchboard {
     const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
+    if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
+    if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
     if (t.model) { st.model = t.model; this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" }); }
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
@@ -2756,10 +2789,8 @@ export default {
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
-        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # and @ tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too. An account chip (kind account, id codex or codex:<account>) is the same as provider and account." },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str } }, description: "The # and @ tags the composer picked ({kind, id}), from a person's own surface only; a #Name in the text that is exactly one thing is tagged too. An account chip (kind account, id codex, or codex:<account> when a provider has several) runs this one turn on that provider: it gets the session's memory and files, the reply names it, and the session stays on its own provider. A person's surface only. Refused in plain words, with no fallback, when that account is signed out or out of usage." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the text the person pasted (an email, a ticket): a #Name inside one tags nothing, since someone else wrote it; only a picked chip does." },
-        provider: { type: "string", description: "Run this one turn on another provider (codex, grok, openrouter, claude): it gets the session's memory and files, the reply names it, and the session stays on its own provider. A person's surface only. Refused in plain words, with no fallback, when that account is signed out or out of usage." },
-        account: { type: "string", description: "Which of the provider's accounts, with provider." },
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
@@ -2777,11 +2808,11 @@ export default {
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey)) : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
-        // One turn on another provider: a person's choice (their account's usage), by input or by an @ account chip; refused before anything is said.
+        // One turn on another provider: a person's choice (their account's usage), by an @ account chip; refused before anything is said.
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
-        const over = i.provider ? { provider: String(i.provider), account: i.account ? String(i.account) : null } : cp ? { provider: cp, account: ca.length ? ca.join(":") : null } : null;
+        const over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null } : null;
         if (over && !queuesFor(caller)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
