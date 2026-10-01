@@ -104,6 +104,7 @@ for (const hibernateEveryEvent of [false, true]) {
     const ready = await b.s.json();
     assert.equal(ready.t, "ready");
     assert.deepEqual(ready.waiting, []);
+    assert.deepEqual(ready.features, ["registered"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
 
     const dev = sock(rt, `/v1/device?route=${b.route}`);
     await dev.open();
