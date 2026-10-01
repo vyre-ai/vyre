@@ -58,10 +58,13 @@ test("sync.send: a device's own file reaches the box over the real link, chunked
 
   // A person's own surface can never call it directly, and neither can an unrelated home module:
   // only core/sync itself or core/import (e2e's review — "module" alone was too wide).
-  for (const caller of ["cli", "deck", "mcp", "module:some-home-module"]) {
-    const denied = await s.macCall("sync.send", { files: [], mode: "once" }, caller, { firstParty: true });
-    assert.equal(denied.error?.code, "denied", caller);
+  // The tool is reach "modules", so a surface or an agent sees no such tool; a module that is not import is denied by its own check.
+  for (const caller of ["cli", "deck", "mcp"]) {
+    const hidden = await s.macCall("sync.send", { files: [], mode: "once" }, caller, { firstParty: true });
+    assert.equal(hidden.error?.code, "no_such_tool", caller);
   }
+  const denied = await s.macCall("sync.send", { files: [], mode: "once" }, "module:some-home-module", { firstParty: true });
+  assert.equal(denied.error?.code, "denied", "module:some-home-module");
   // What used to be checked here — a bare "module:import" with no meta.firstParty passed — is no
   // longer a spoof to test: af11226d moved meta.firstParty into the kernel itself (every call,
   // not only ctx.call's own wrapper), computed from the loader's real firstParty(dir) rule on
