@@ -55,7 +55,7 @@ export function groupsOf(d) {
   for (const p of list) {
     if (!p || typeof p.id !== "string" || !p.label) continue;
     const row = { id: p.id, label: String(p.label), group: String(p.group || "Other"), who: p.who ? String(p.who) : "", note: p.note ? String(p.note) : "", setup: String(p.setup || "none"),
-      via: p.via ? String(p.via) : "", connected: (Array.isArray(p.connected) ? p.connected : []).filter((/** @type {any} */ c) => c && c.name).map((/** @type {any} */ c) => ({ name: String(c.name), mode: c.mode ? String(c.mode) : "", label: c.label ? String(c.label) : "", scope: "scope" in c ? (c.scope && typeof c.scope === "object" ? c.scope : null) : undefined })) };
+      via: p.via ? String(p.via) : "", connected: (Array.isArray(p.connected) ? p.connected : []).filter((/** @type {any} */ c) => c && c.name).map((/** @type {any} */ c) => ({ name: String(c.name), mode: c.mode ? String(c.mode) : "", label: c.label ? String(c.label) : "", scope: "scope" in c ? (c.scope === null ? null : c.scope && typeof c.scope === "object" && !Array.isArray(c.scope) ? c.scope : undefined) : undefined })) };
     (by.get(row.group) || by.set(row.group, []).get(row.group))?.push(row);
   }
   return [...by].map(([group, presets]) => ({ group, presets }));

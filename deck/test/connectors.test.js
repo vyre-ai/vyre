@@ -205,3 +205,12 @@ test("a connection's scope in words: the default, everything it granted before, 
   const m = await mount({ "connectors.catalog": cat });
   assert.equal(text($(row(m.el, "linear"), "[data-scope-line=linear]")), "All projects, every agent");
 });
+
+test("a scope that is present but malformed (a string, an array) reads Scope not recorded, never the default", () => {
+  const g = scope => groupsOf({ presets: [{ id: "x", label: "X", group: "G", setup: "none", connected: [{ name: "x", scope }] }] })[0].presets[0].connected[0].scope;
+  assert.equal(g(null), null);
+  assert.equal(g("all"), undefined);
+  assert.equal(g(["a"]), undefined);
+  assert.deepEqual(g({ projects: "*", agents: "*" }), { projects: "*", agents: "*" });
+  assert.equal(scopeLine(g("all")), "Scope not recorded");
+});
