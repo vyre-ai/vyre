@@ -25,27 +25,7 @@ import { Runtime, MIGRATIONS } from "./runtime.js";
  */
 const TICK_MS = 60_000;
 
-/** The wall is probed once per vyred. @type {Promise<any>|null} */
-let cachedWall = null;
-
 const str = { type: "string" };
-
-/** Deleting, running or resuming a watcher on demand is the person's (reach person); a duty is managed by the teammates module through watchers.duty.*, or by the person. */
-function owned(name, caller) {
-  if (DUTY_NAME.test(String(name))) return dutyCaller(caller);
-  if (!isPerson(caller)) throw Object.assign(new Error("deleting, running or resuming a watcher is the person's; an agent asks them"), { code: "denied" });
-}
-
-/** The duty tools act on duties only. */
-function dutyName(name) {
-  if (!DUTY_NAME.test(String(name))) throw Object.assign(new Error("watchers.duty.* acts on a teammate's duty (a name starting duty-)"), { code: "bad_input" });
-}
-
-/** Duties are made and changed by teammates' module, for a person who turned them on, or by the person. */
-function dutyCaller(caller) {
-  if (caller === "module:team" || isPerson(caller)) return;
-  throw Object.assign(new Error("a duty is created and changed by the teammates module or the person, not by an agent or a model session"), { code: "denied" });
-}
 const named = { type: "object", required: ["name"], properties: { name: str } };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -57,15 +37,7 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
-      ask: async (prompt, o) => {
-        // threads.quick, no tools (internal, module-only). Its cost reaches core/spend on its own, from the quick session's thread.finished.
-        const r = await ctx.call("threads.quick", { purpose: "helper", prompt: String(prompt), timeout_ms: 30_000 });
-        if (r.error || !r.data || r.data.ok === false) throw new Error((r.error && r.error.message) || "no model answered");
-        return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0, provider: r.data.provider };
-      },
-      request: async input => { const r = await ctx.call("vault.request", input); if (r.error) throw new Error(r.error.message || r.error.code || "the vault refused the request"); return r.data; },
-      spend: { check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; } },
-      log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}), wall: () => (process.env.NODE_TEST_CONTEXT ? testHooks.wall : undefined), findWall: () => (cachedWall ||= findWall()), forgetWall: () => { cachedWall = null; },
+      log: ctx.log,
       listen: (type, fn) => ctx.events.on(type, fn),
     });
     rt.subscribe();
@@ -97,40 +69,7 @@ export default {
       },
     });
     ctx.tool("watchers.create", {
-      description: "Turn on a watcher exactly as it was last dry-run (pass the card's hash). Runs once now, then on its schedule. For a model it runs only when the person's own words asked for it, after they have seen the card.",
-      input: { type: "object", required: ["name"], properties: { name: str, hash: str } },
-      run: async (i) => rt.create(i.name, { hash: i.hash || null }),
-    });
-
-    // A teammate's standing duty is a watcher the teammates module manages for a person who turned it on (CHAT 09:21).
-    // Its own tools, reach modules, so a model's "asked" gate on watchers.create never stands in a teammate's way.
-    ctx.tool("watchers.duty.create", {
-      description: "Create and turn on a teammate's standing duty: name duty-<role>-<id>, project, owner {kind: teammate, teammate}, when (an event like thread.finished, a schedule like daily 07:00, or push gmail), instruction, act. The teammates module's call, for a duty a person turned on.",
-      input: { type: "object", required: ["name", "project", "owner", "when", "instruction"], properties: { name: str, project: str, owner: { type: "object" }, when: str, instruction: str, act: { type: "boolean" } } },
-      run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.createDuty(i); },
-    });
-    ctx.tool("watchers.duty.update", {
-      description: "Change a teammate's duty: when, instruction or act. It keeps its cursor and stays on or paused as it was. The teammates module's call.",
-      input: { type: "object", required: ["name"], properties: { name: str, when: str, instruction: str, act: { type: "boolean" } } },
-      run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.updateDuty(i); },
-    });
-    ctx.tool("watchers.duty.delete", { description: "Stop and forget a teammate's duty; its folder goes and its filed items stay. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.remove(name); } });
-    ctx.tool("watchers.duty.run", { description: "Run a teammate's turned-on duty now and return what happened. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.run(name); } });
-    ctx.tool("watchers.duty.resume", { description: "Resume a paused duty of a teammate that a person turned on. The teammates module's call.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.resume(name, { hash: hash || null }); } });
-    ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
-    ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
-    // What an asked call acts on, for the registry's gate (reach asked, target): the keys lib/said/watchers.js records.
-    ctx.tool("watchers.create.target", { description: "For the gate: the key watchers.create acts on, watchers.create:<project>/<name>@<hash> of the code now in the folder; no hash or a different hash answers nothing.", input: { type: "object" },
-      run: async call => createTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
-    ctx.tool("watchers.preset.target", { description: "For the gate: the key watchers.preset acts on, watchers.preset:<project>/<kind>.", input: { type: "object" }, run: async call => presetTarget(call) });
-    // The cards a thread was shown, with the hash each carried when shown (never recomputed), for the assistant's recorder.
-    ctx.tool("watchers.shown", { description: "The watcher cards shown in a thread, with the hash each card carried when it was shown: { project, kinds, watchers: [{ name, hash, title, state, project, at }] }. Answered from a record made when watchers.card or watchers.preset served the card, never from the folder now. The sessions module's call.", input: { type: "object", required: ["thread"], properties: { thread: str } },
-      run: async ({ thread }) => {
-        const watchers = shown.list(thread);
-        return { project: watchers.length ? watchers[watchers.length - 1].project : null, kinds: PRESET_KINDS, watchers };
-      } });
-    ctx.tool("watchers.card", {
-      description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
+      description: "Turn on a watcher exactly as it was last dry-run. Runs once now, then on its schedule. Only after the user has seen the dry run's items and agreed.",
       input: named,
       run: async ({ name }, meta = {}) => { await mustSee(meta, name); const c = rt.card(name); remember(meta, c); return c; },
     });

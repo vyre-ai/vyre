@@ -62,8 +62,6 @@ export const ALLOW = {
     why: "onboarding reserves the name and starts the tailnet listener in-process" },
   "core/recall -> core/transcripts": { files: ["core/transcripts/index.js"], next: "lib",
     why: "transcripts is the one reader of Claude Code's files, a library with no feature state" },
-  "core/watchers -> core/spawner": { files: ["core/spawner/client.js"], next: "lib",
-    why: "the box's watcher wall is the root spawner's (spawnAsWatcher); until the client is a lib the wall candidate loads it, and only when a spawner socket exists" },
   "core/sessions -> core/spawner": { files: ["core/spawner/client.js"], next: "ctx.call",
     why: "sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0" },
   "core/sessions -> core/switchboard": { files: ["core/switchboard/runner.js"], next: "ctx.call",

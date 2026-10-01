@@ -79,7 +79,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
-| [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 6 | capsule, cli, deck |
+| [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
 ## about
 
@@ -781,8 +781,8 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 - Folder: `core/watchers`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#watchers)
-- Emits: [6 events](events.md#watchers)
+- Tools: [8](tools.md#watchers)
+- Emits: [5 events](events.md#watchers)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-watcher`
 - Teaches memory: `watcher.item`

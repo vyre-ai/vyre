@@ -44,23 +44,14 @@ fits; "watch X and file it into this project" leaves nothing open.
    `"on": "hook.received"` with `"where": { "route": "<route name>" }`; the watcher then runs once
    per verified delivery on that route.
 
-## Check for a preset first
-
-For mail, a calendar, a GitHub repo, a Slack channel or a public feed, do not write code: call
-`watchers_preset` with `kind` (`mail`, `calendar`, `repo`, `slack` or `feed`), the project and the
-few fields it names. It writes the watcher off with a card; show the card, and after the person
-agrees, turn it on with `watchers_create {name, hash}`. Anything else is a custom watcher, below.
-
 ## 2. Credentials come from the Vault, by name, granted to this one watcher
 
 Never put a key, token or password in the watcher, in `watcher.json`, in a command line or in
-your reply. A public source needs no credential, but still names its host under `net` (see below). Otherwise:
+your reply. A public source needs nothing: leave `needs` out. Otherwise:
 
 1. `vault_list` (names only) to find the item. If it is missing, tell the user the exact name to
    add with `vyre vault put <name>` and stop there. Never ask them to paste a value.
-2. For an HTTP API, name the host and the item under `net` in `watcher.json`; Vyre attaches the
-   credential to requests for that host and no other, and your code never sees it. `needs` no
-   longer exists.
+2. List the item's name under `needs` in `watcher.json`.
 3. Before the dry run, give the user the exact command that lets this one watcher use it, and
    wait for them to run it:
 
@@ -77,25 +68,9 @@ your reply. A public source needs no credential, but still names its host under 
 4. Until they have run it, the dry run fails with "<item> is not granted to watchers/<name>".
    That is expected, not a bug in the watcher: remind them of the command, then dry-run again.
 
-A watcher has no network of its own and never holds a credential. `fetch(url)` in `watch.js` is
-run by Vyre, GET and HEAD only, on ports 80 and 443, to public hosts only (never localhost, a
-private or tailnet address), and only to the hosts listed under `net`, even
-for a public source: `"net": { "hacker-news.firebaseio.com": {} }`. A redirect to another host drops
-the credential. The child also has no sockets of its own: it runs inside the machine's wall (bubblewrap on Linux, a sandbox profile on a Mac), and where a machine has none, no watcher runs at all and says so; a dry run reports the `wall`. A `vault.fetch` call is refused. The item's `field` (a login's `password`, a
-card's `number`) goes in the `net` entry: `{ "vault": "billing-inbox", "field": "password" }`.
-
-When the code needs a judgment it cannot make by rule (is this relevant, which of these two), it
-may `await ask(prompt)`: a model answers in text, with no tools, inside a daily budget you declare
-in `watcher.json`: `"ask": { "dailyUsd": 0.25 }` (at most 5). At most 20 asks and 8000 characters
-a prompt per run. Text you fetched goes in the prompt as data; the answer is advice to your own
-code, and never decides a send. Prefer a plain rule when one works, since an ask costs money.
-
-Add a `summary` to `watcher.json` so the card can say what the watcher does in plain words:
-`"summary": { "when": "Every 15 minutes", "check": "Is it an invoice?", "do": "Files each invoice into Harlow Legal" }`
-(`check` is optional; one sentence each). Before asking the user to turn it on, call `watchers_card`
-and show what it returns. The lines about what it reads, whether it can act and what it costs are
-worked out by Vyre from the folder, not from your summary, so keep the summary honest: it is shown
-next to them. Pass the card's `hash` to `watchers_create` so the tap turns on exactly that code.
+In `watch.js`, `await vault.fetch("<item>")` returns the value (`value`, a login's `password`, a
+card's `number`, a note's `text`). Pass `{ field: "username" }` for another field; an env set
+always needs a field. You never see or handle the value yourself.
 
 ## 3. Write two files in the watchers folder
 
@@ -112,7 +87,7 @@ moves with `VYRE_HOME`, so never guess it. Name the watcher `<project>-<thing>`,
   "name": "harlow-invoices",
   "project": "harlow-legal",
   "schedule": "*/15 * * * *",
-  "net": { "mail.example": { "vault": "billing-inbox", "header": "Authorization", "scheme": "Bearer" } },
+  "needs": ["billing-inbox"],
   "emits": "invoice.seen"
 }
 ```
@@ -124,8 +99,11 @@ moves with `VYRE_HOME`, so never guess it. Name the watcher `<project>-<thing>`,
 
 ```js
 // Watches the billing inbox for new invoices and files each one into Harlow Legal.
-export default async function watch({ since, emit, log }) {
-  const res = await fetch(`https://mail.example/api/messages?after=${since ?? 0}`);   // Vyre adds the credential
+export default async function watch({ vault, since, emit, log }) {
+  const token = await vault.fetch("billing-inbox");        // the runtime releases it; never log it
+  const res = await fetch(`https://mail.example/api/messages?after=${since ?? 0}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
   if (!res.ok) throw new Error(`inbox answered ${res.status}`);   // the runtime retries with backoff
   for (const m of await res.json()) {
     if (!/invoice/i.test(m.subject)) continue;

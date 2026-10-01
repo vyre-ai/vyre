@@ -613,16 +613,20 @@ export default {
       // Sealed under the ticket's own "enc" key: the relay holds ciphertext only (wire.js).
       const record = ticketSeal(rawTicket, JSON.stringify({ v: 1, name: boxName(), handle: boxHandle(), address: addressOrigin(), identity: identityFingerprint(), relay: settings().url, route: route(), box: k().box.pub.toString("base64url"), exp }));
       const mac = ticketMac(rawTicket, record);
+      let confirmed = false;
       if (link) {
         // The relay's own answer: 200, or 409 when another registration holds this locator (first writer
         // wins there, and a contested locator resolves to nobody). A ticket the app chose itself could
         // collide, so a refusal is a failure here, never a ticket that quietly does not work.
         const status = await link.registerTicket({ loc: ticketDerive("loc", rawTicket).toString("base64url"), record, mac: mac.toString("base64url"), exp });
         if (status === 409) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("conflict", "the relay already holds a ticket with that seed; choose a new one"); }
-        if (connected && status !== 200) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("unavailable", "the relay did not confirm the ticket; try again"); }
+        // No answer from a relay that never says it answers (the deployed Worker predates the "registered" reply, 30 Sep) is an older relay: it
+        // stored the ticket all the same, so it is returned unconfirmed. From a relay that advertises the reply, silence is a failure.
+        if (connected && status !== 200 && (status !== null || link.acknowledges())) { pendingTickets.delete(sha(secret).toString("hex")); throw fail("unavailable", status === null ? "the relay did not confirm the ticket; try again" : `the relay refused the ticket (${status}); try again`); }
+        confirmed = status === 200;
       }
       // A ticket the app chose is the app's own secret: not echoed back.
-      return seed ? { expiresAt: exp, connected } : { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected };
+      return seed ? { expiresAt: exp, connected, confirmed } : { ticket: rawTicket.toString("base64url"), expiresAt: exp, connected, confirmed };
     };
 
     ctx.tool("relay.pair.ticket", {
