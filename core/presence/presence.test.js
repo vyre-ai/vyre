@@ -566,7 +566,7 @@ test("presence: every tool on the floor's list is one a shipped module declares"
   // manifests are the whole set.
   const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const declared = new Set(discover(["core", "local", "modules"].map(d => path.join(repo, d)))
-    .flatMap(m => (m.manifest && m.manifest.does && m.manifest.does.tools) || []));
+    .flatMap(m => ((m.manifest && m.manifest.does && m.manifest.does.tools) || []).map(t => (typeof t === "string" ? t : t.name))));
   assert.ok(declared.has("gate.approve") && declared.size > 50, "the manifests were found");
   // Held ahead of the tool on purpose, so it is human-only from its first day (core/vault/prove.js
   // lists it too). Anything else unregistered is a typo.

@@ -1,0 +1,160 @@
+{
+ "_comment": "Files that call a tool through ctx.call or use with a computed name. Each runs as a module caller, so the callee's reach must allow modules; the owner reviews and lowers the count or documents it. test/reach-module-calls.test.js fails on a new one.",
+ "files": {
+  "core/about/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/agents/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/assistant/index.js": {
+   "count": 5,
+   "owner": "module's own team",
+   "note": "reviewed by the assistant: every computed call runs as module:assistant and names a read tool of another owner (agents.list, waiting.count and waiting.list, memory.facts and memory.digest, context.now, modules.capabilities, mcp.servers, link.macs, push.devices, team.list, providers.list, threads.list, sessions.prompt.history, undo.list, onboard.status), plus agents.rollover (the one write, whose own code admits module:assistant). Each is dropped when it refuses, so a callee that closes to modules degrades the answer and never errors it."
+  },
+  "core/gate/index.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/glass/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/google/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/harness/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/learn/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/link/mac.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/mail/index.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/mcp/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/memory/index.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/mentions/index.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/names/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/onboard/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/settings/index.js": {
+   "count": 4,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/sight/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/statusline/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/suggest/index.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/team/index.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/tips/index.js": {
+   "count": 3,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/undo/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/vault/index.js": {
+   "count": 3,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/vault/tools/connections.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/waiting/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "local/apps/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "local/capsule/views.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "local/hands-chrome-mac/extension/caps/batch.js": {
+   "count": 2,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "local/hands-chrome-mac/extension/lib/ctx.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "local/screen-mac/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "local/sideview/index.js": {
+   "count": 1,
+   "owner": "module's own team",
+   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  }
+ }
+}

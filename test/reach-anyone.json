@@ -1,0 +1,393 @@
+{
+ "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
+ "tools": {
+  "artifacts.archive": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.create": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.delete": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.diff": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.export": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.get": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.list": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.move": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.public.status": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.restore": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.search": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.share": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.undelete": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.unshare": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.update": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.versions": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "assistant.brief": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.capabilities": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.daily": {
+   "module": "assistant",
+   "reason": "guard: in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent; it rolls the assistant's own daily thread and nothing else, deferred while the assistant is working"
+  },
+  "assistant.glance": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.log": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.patterns": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.prompt.diff": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.welcome": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "events.catalog": {
+   "module": "events",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.call": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.events": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.find": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.health": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.hello": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.macs": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pair.approve": {
+   "module": "link",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "link.pair.poll": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.pair.request": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.peers": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pending": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.reply": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.serve": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.signin": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.status": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "planner.add": {
+   "module": "planner",
+   "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
+  },
+  "planner.agenda": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.calendar.create": {
+   "module": "planner",
+   "reason": "guard: an agent may only ask for an invite; attendees mean invites, which hold at the Gate for the person (returns held); its own planner event is the agent's own item"
+  },
+  "planner.calendar.sync": {
+   "module": "planner",
+   "reason": "read-only toward the person's calendars: it copies connected Google calendars into the planner's own copy"
+  },
+  "planner.delete": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.dismiss": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.done": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.get": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.list": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.parse": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.ringing": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.snooze": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.upcoming": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.update": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "presence.capsule.pin": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.code": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.enroll": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.keys": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.person.sessions": {
+   "module": "presence",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "presence.person.start": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.remove": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.session.close": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.session.open": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.check": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.access.grant": {
+   "module": "projects",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.list": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.migrate": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.revoke": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.archive": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.catalog": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.context": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.create": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.history": {
+   "module": "projects",
+   "reason": "read-only; callers in code: capsule, cli, deck, local, mcp"
+  },
+  "projects.list": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.of": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.rename": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.threads": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "releases.cert": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, deck, local, tailnet"
+  },
+  "releases.sign": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, local, module"
+  },
+  "sync.consent": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete.import": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.scan": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.upload.cancel": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.chunk": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.finish": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.plan": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.start": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "undo.list": {
+   "module": "undo",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "undo.run": {
+   "module": "undo",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "watchers.card": {
+   "module": "watchers",
+   "reason": "read-only: the card is worked out from the folder, no network, no model"
+  },
+  "watchers.items": {
+   "module": "watchers",
+   "reason": "read-only: items watchers have filed, scoped by project"
+  },
+  "watchers.list": {
+   "module": "watchers",
+   "reason": "read-only"
+  },
+  "watchers.logs": {
+   "module": "watchers",
+   "reason": "read-only: a watcher's recent runs"
+  },
+  "watchers.pause": {
+   "module": "watchers",
+   "reason": "guard: stops a watcher only; it never starts anything (an agent cannot undo a person's pause: watchers.resume is the person's)"
+  },
+  "watchers.test": {
+   "module": "watchers",
+   "reason": "guard: a dry run files nothing; an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
+  }
+ }
+}
