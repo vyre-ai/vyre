@@ -38,7 +38,10 @@ function Cdp($page, $expr) {
     if ($s -match '"id":1[,}]') { $res = $s }
   }
   $ws.Dispose()
-  if ($res) { ($res | ConvertFrom-Json).result.result.value } else { $null }
+  if (-not $res) { Say "cdp: no answer for: $expr"; return $null }
+  $j = $res | ConvertFrom-Json
+  if ($j.result.exceptionDetails -or $j.error) { Say ("cdp: error for '{0}': {1}" -f $expr, ($res.Substring(0, [Math]::Min(300, $res.Length)))) }
+  $j.result.result.value
 }
 function WaitPage($pat, $secs) { $end = (Get-Date).AddSeconds($secs); while ((Get-Date) -lt $end) { $p = PageLike $pat; if ($p) { return $p }; Start-Sleep 2 }; return $null }
 
@@ -116,16 +119,22 @@ if ($first) {
   if (-not $confirm) { Say ("first-run page state: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
   Result "confirm-window" ($null -ne $confirm) $(if ($confirm) { "appeared" } else { "no confirm window in 120 s" })
   if ($confirm) {
-    Start-Sleep 3
-    $detail = Cdp $confirm "document.getElementById('title').textContent + ' | ' + document.getElementById('detail').textContent"
+    $detail = $null
+    for ($i = 0; $i -lt 20 -and -not $detail; $i++) { Start-Sleep 2; $d = Cdp $confirm "document.getElementById('detail').textContent"; if ($d) { $detail = (Cdp $confirm "document.getElementById('title').textContent") + " | " + $d } }
     Say "confirm shows: $detail"
     Result "confirm-shows-host" ($detail -match "vyre-lab.invalid" -and $detail -match "not on vyre.run") $detail
     Shot "03-confirm"
-    Cdp $confirm "document.getElementById('yes').click(); 1" | Out-Null
+    # Press Pair; if the window is still there a few seconds later, press again (the click can land before the page is ready).
+    for ($i = 0; $i -lt 6; $i++) {
+      Cdp $confirm "document.getElementById('yes').click(); 'clicked'" | Out-Null
+      Start-Sleep 5
+      if (-not (PageLike "*confirm.html*")) { Say "confirm window closed after the click"; break }
+    }
     # finish_pair writes the record with the link
     $rec = "$env:APPDATA\run.vyre.app\pairing.json"
     $end = (Get-Date).AddSeconds(150); $paired = $false
     while ((Get-Date) -lt $end -and -not $paired) { Start-Sleep 3; if (Test-Path $rec) { $j = Get-Content $rec -Raw | ConvertFrom-Json; if ($j.link) { $paired = $true } } }
+    if (-not $paired) { Say ("first-run page state after Pair: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
     Result "finish-pair" $paired $(if ($paired) { "pinned $($j.address), link route $($j.link.route.Substring(0,6))..., device $($j.link.device)" } else { "no pairing record with a link" })
     Shot "04-after-pair"
 
