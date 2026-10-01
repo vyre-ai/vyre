@@ -13,6 +13,10 @@ import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
+import { testHooks, OPEN_WALL } from "../../../lib/sandbox/index.js";
+// These tests are about the flow around a watcher (the CLI, a hook delivery, a duty), not the wall, and a hosted
+// runner has no bubblewrap profile: use the test seam. Production still fails closed (lib/sandbox/wall.js).
+testHooks.wall = OPEN_WALL;
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 

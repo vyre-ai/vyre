@@ -23,6 +23,10 @@ import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { execFileSync } from "node:child_process";
 import { worktreePath, branchOf, repoRoot, ensureWorktree, currentBranch } from "./git.js";
+import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+// These tests are about the flow around a watcher (the CLI, a hook delivery, a duty), not the wall, and a hosted
+// runner has no bubblewrap profile: use the test seam. Production still fails closed (lib/sandbox/wall.js).
+testHooks.wall = OPEN_WALL;
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
