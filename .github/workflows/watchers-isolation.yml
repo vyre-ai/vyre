@@ -67,6 +67,12 @@ jobs:
         env:
           VYRE_EXPECT_WALL: ${{ matrix.expect }}
         run: node scripts/check-wall-installed.mjs
+      - name: a duty end to end (the teammates module's test, through the real wall)
+        if: matrix.mode == 'profile' || matrix.mode == 'mac'
+        env:
+          VYRE_WALL_CHECK: "1"
+        run: |
+          if [ -f core/team/duties-wall.test.js ]; then node --test --test-reporter=spec core/team/duties-wall.test.js; else echo "core/team/duties-wall.test.js is not on this branch yet"; fi
       - name: the product's own uninstall (sudo vyre uninstall --system) removes the profile
         if: matrix.mode == 'profile'
         run: |
