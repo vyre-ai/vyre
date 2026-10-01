@@ -92,20 +92,24 @@ export default {
      * Person, module and link callers are not hooks and pass.
      * @param {any} meta @param {any} session
      */
-    const own = async (meta, session) => {
+    const own = async (meta, session, { brief = false } = {}) => {
       const m = meta || {};
       if (!/^(?:mcp|harness)(?::|$)/.test(String(m.caller || "")) || session === undefined || session === null || session === "") return;
       const refuse = () => { throw Object.assign(new Error("a hook names only its own session"), { code: "denied" }); };
       if (typeof m.thread === "string" && m.thread) { if (String(session) !== m.thread) refuse(); return; }
-      const o = await ask("threads.origin", { session: String(session) });
-      if (o && o.known) refuse();
+      // No verified thread. The SessionStart brief only informs (a terminal resuming a live headless thread is warned), so it may name any session.
+      // Anything else may not name a session that has its own verified channel: a live headless thread of Vyre's (its socket) or a bound terminal
+      // session (its key). A terminal session that is neither has no way to be verified, and keeps working.
+      if (brief) return;
+      const [claimed, o] = await Promise.all([ask("threads.claimed", { session: String(session) }), ask("threads.origin", { session: String(session) })]);
+      if ((claimed && claimed.headless) || (o && o.bound)) refuse();
     };
 
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
       run: async ({ cwd, session, source, project, projects, headless }, meta) => {
-        await own(meta, session);
+        await own(meta, session, { brief: true });
         if (session) ctx.events.emit("thread.started", { session, cwd: cwd || null, source: source || null });
         const warning = session && !headless ? await secondWriter(session) : "";
         const withWarning = (/** @type {string} */ t) => [warning, t].filter(Boolean).join("\n\n");

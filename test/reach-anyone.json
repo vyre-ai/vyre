@@ -127,27 +127,27 @@
   },
   "harness.brief": {
    "module": "harness",
-   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
+   "reason": "own-session check (own(), core/harness): a verified hook names only its own session; an unverified SessionStart brief only informs (it warns a terminal resuming a live headless thread), so it may name any session; it reads and says, never drains"
   },
   "harness.enrich": {
    "module": "harness",
-   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
   },
   "harness.learn": {
    "module": "harness",
-   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
   },
   "harness.rules": {
    "module": "harness",
-   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
   },
   "harness.stop": {
    "module": "harness",
-   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
   },
   "harness.touched": {
    "module": "harness",
-   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
   },
   "hooks.delivery": {
    "module": "hooks",

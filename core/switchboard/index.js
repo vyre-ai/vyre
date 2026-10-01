@@ -2960,7 +2960,7 @@ export default {
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
         // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
         const bound = Boolean(sb.sessions.boundPid(String(i.session)));
-        return { session: String(i.session), known: Boolean(rec) || bound, human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+        return { session: String(i.session), known: Boolean(rec), bound, human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
     });
     ctx.tool("threads.lineage", {
