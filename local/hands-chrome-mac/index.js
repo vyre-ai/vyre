@@ -272,6 +272,8 @@ export default {
         if (process.env.VYRE_CHROME_TEST) trust.diag = true;
         // The DNR layer alone, for measuring it: honoured only under the test flag AND when this profile's folder is under the OS temp directory (like the site store's test clock).
         if (process.env.VYRE_CHROME_TEST && process.env.VYRE_CHROME_TEST_NOFETCH === "1" && inTempDir(process.env.VYRE_CHROME_HOME)) trust.noFetch = true;
+        // Test only, same two conditions: while a file named test-failenable exists in the temp profile, Fetch.enable fails on every FRAME the guard meets (to see what the guard does with a child it cannot reach).
+        if (process.env.VYRE_CHROME_TEST && inTempDir(process.env.VYRE_CHROME_HOME) && fs.existsSync(path.join(String(process.env.VYRE_CHROME_HOME), "test-failenable"))) trust.failEnable = true;
         syncSiteConfig();
         const summary = summarize(op, input);
         /** @type {any} */

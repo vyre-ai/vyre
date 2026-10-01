@@ -383,6 +383,32 @@ async function main() {
         return { controlled, sw: "harmless eval ran, exfil held", csp: "harmless eval ran, exfil held" };
       });
 
+      // ---------------------------------------------------------------- (f3) a frame the guard cannot reach is emptied, not released
+      // Test hook (honoured only under the test flag in this temp profile): while the file exists, Fetch.enable fails on every FRAME. A script then makes a cross-site iframe whose page sends a
+      // request the moment it runs. The guard must empty that frame while it still waits (about:blank) and the fresh origin must see nothing.
+      await stage("neutralize_unguardable_frame", async () => {
+        if (NOFETCH) return { skipped: "no Fetch layer in this run, nothing to force to fail" };
+        await fresh();
+        const flag = path.join(data, "test-failenable");
+        const before = (await state()).collected.length;
+        fs.writeFileSync(flag, "1");
+        let r = /** @type {any} */ ({});
+        try {
+          const target = `${fixture.site("fresh")}/collect?d=neutral`;
+          r = await step("eval makes a cross-site iframe whose page sends a request as it runs (Fetch.enable forced to fail on frames)", () => mcp.call("chrome_eval", { tab, expression: `(async () => { const f = document.createElement('iframe'); f.src = ${JSON.stringify(`${fixture.site("widgets")}/beacon-page?to=${target}`)}; document.body.appendChild(f); await new Promise(r => setTimeout(r, 2500)); return 1; })()` }).catch((/** @type {any} */ e) => ({ error: String(e && e.message || e) })));
+        } finally { try { fs.rmSync(flag, { force: true }); } catch { /* */ } }
+        await sleep(800);
+        const got = (await state()).collected.slice(before);
+        const rows = await step("chrome_frames list after", () => mcp.call("chrome_frames", { action: "list", tab }));
+        const list = Array.isArray(rows) ? rows : (rows.frames || []);
+        try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] NEUTRALIZE GUARD " + JSON.stringify({ neutralized: nl.lastGuard?.neutralized, leftPaused: nl.lastGuard?.leftPaused, failed: nl.lastGuard?.failed, enableErrors: nl.lastGuard?.enableErrors, attached: nl.lastGuard?.attached })); } catch { /* diag only */ }
+        console.log("[frames-suite] NEUTRALIZE " + JSON.stringify({ held: r.held, error: String(r.error || "").slice(0, 120), server: got.length, beaconFrames: list.filter((/** @type {any} */ f) => /beacon-page/.test(String(f.url || ""))).map((/** @type {any} */ f) => f.url), blankFrames: list.filter((/** @type {any} */ f) => /^about:blank/.test(String(f.url || ""))).length }));
+        need(got.length === 0, "guard.neutralize", `a frame the guard could not reach ran its page and sent ${got.length} request(s) to the fresh origin: ${short(got)}`);
+        // The frames list can keep a stale row for the replaced document; what matters is that the fresh origin saw nothing and the frame was sent to a blank page.
+        need(list.some((/** @type {any} */ f) => /^about:blank/.test(String(f.url || ""))), "guard.neutralize", `no frame was sent to about:blank: ${short(list.map((/** @type {any} */ f) => f.url), 400)}`);
+        return { heldOrStopped: r.held === true || !!r.error, serverSaw: got.length };
+      });
+
       // ---------------------------------------------------------------- (g) network and API learning belong to the iframe
       await stage("net_and_api", async () => {
         await step("chrome_net start", () => mcp.call("chrome_net", { action: "start", tab }));

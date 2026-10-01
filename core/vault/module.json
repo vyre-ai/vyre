@@ -121,6 +121,7 @@
       "vault.said.match",
       "vault.said.add",
       "vault.items.names",
+      "vault.env.scan",
       "vault.mention.search",
       "vault.mention.resolve",
       "vault.use.check",

@@ -208,12 +208,20 @@ export default {
     };
 
     /** Start the agent's thread, or bring its current one back, with its credentials and scope. */
-    const launch = async (a, { prompt, resume } = {}) => {
+    const launch = async (a, { prompt, resume, job, project } = {}) => {
       const creds = await credentials(a);
-      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a), scope: await scope(a),
+      // The assistant starts each thread knowing what works on this install right now (a quoted block, never instructions).
+      let caps = "";
+      if (a.kind === "assistant") {
+        const c = await ctx.call("assistant.capabilities", { prompt: true }).catch(() => null);
+        if (c && !c.error && c.data && typeof c.data.text === "string") caps = "\n\n" + c.data.text;
+      }
+      const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a) + caps, scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
-        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}) };
+        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}), ...(job ? { purpose: "job", once: true } : {}) };
+      // A scheduled job is a side thread: it runs as the agent (credentials, scope, preamble) but never replaces the agent's own current thread.
+      if (job) return use("threads.launch", { ...input, ...(project ? { project } : await workdir(a)), name: a.name });
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
       db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
@@ -405,6 +413,19 @@ export default {
         if (st.doing === "working" || st.doing === "waiting on your answer") throw Object.assign(new Error(`${a.name} is ${st.doing}; roll the thread when it is idle`), { code: "busy" });
         const t = await launch(a, i.seed ? { prompt: i.seed } : {});
         return { agent: a.name, thread: t.id, previous: a.thread };
+      },
+    });
+
+    ctx.tool("agents.job", {
+      description: "Run one scheduled job as an agent: a side thread with the agent's own credentials, project scope and preamble, leaving its current thread alone. For the planner; a job in a project the agent no longer reaches is refused.",
+      internal: true, callers: ["module"],
+      input: { type: "object", required: ["agent", "prompt"], properties: { agent: { type: "string" }, prompt: { type: "string" }, project: { type: "string" } } },
+      run: async (i, { caller }) => {
+        if (String(caller || "") !== "module:planner") throw Object.assign(new Error("only the planner runs an agent's jobs"), { code: "denied" });
+        const a = must(i.agent);
+        if (i.project && a.projects !== "*" && !a.projects.includes(i.project)) throw Object.assign(new Error(`${a.name} has no access to ${i.project}`), { code: "denied" });
+        const t = await launch(a, { prompt: i.prompt, job: true, project: i.project });
+        return { agent: a.name, thread: t.id };
       },
     });
 
