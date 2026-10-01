@@ -3413,7 +3413,7 @@ Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with co
   - `env` object
   - `headers` object
   - `idle` integer
-  - `scope` object
+  - `scope` object or null
   - `tools` object
   - `url` string
   - `vars` object
@@ -3505,7 +3505,7 @@ Change an MCP server: any field of mcp.add. A new command, url or credential sto
   - `env` object
   - `headers` object
   - `idle` integer
-  - `scope` object
+  - `scope` object or null
   - `tools` object
   - `transport` one of "stdio", "http", "sse"
   - `url` string
@@ -6718,6 +6718,7 @@ One question to a purpose's warm session (a lean one already started, so no star
   - `prompt` string, required
   - `purpose` one of "memory", "planner", "learn", "helper", "job", required
   - `model` string
+  - `spend_purpose` string: Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under "<your module>:<word>" (spend.summary), never under another module's name; absent, under the session's own purpose.
   - `stream` boolean: Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole.
   - `system` string
   - `timeout_ms` integer
