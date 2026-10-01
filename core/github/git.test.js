@@ -152,6 +152,38 @@ test("worktreeAdd: on git 2.31+ a session's identity and hooks are its ENVIRONME
   assert.equal(fs.existsSync(hooksDir), false, "the session's hooks folder goes with its worktree");
 });
 
+test("worktreeAdd: the session's hooks path applies to every git command it runs, so the hooks act only for their own repo: in another repo that repo's own hooks run (a failing pre-commit still fails), none of this repo's do, and no trailer lands there", async t => {
+  _setGitVersion(null);
+  const repoA = makeClonedRepo(t);
+  repoHooks(repoA);
+  const wA = await worktreeAdd({ repoDir: repoA, session: "multi1", defaultBranch: "main", identity: IDENT });
+  // Another repo B, with hooks of its own: a pre-commit that fails and a prepare-commit-msg that leaves a mark.
+  const repoB = makeClonedRepo(t);
+  const hooksB = path.join(repoB, ".git", "hooks");
+  fs.mkdirSync(hooksB, { recursive: true });
+  fs.writeFileSync(path.join(hooksB, "pre-commit"), "#!/bin/sh\necho B-pre-commit-says-no >&2\nexit 1\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(hooksB, "prepare-commit-msg"), `#!/bin/sh\nprintf '\\nB-Hook: ran\\n' >> "$1"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(repoB, "b.md"), "x\n");
+  asSession(repoB, ["add", "b.md"], wA.env);
+  assert.throws(() => execFileSync("git", ["commit", "-q", "-m", "in B"], { cwd: repoB, encoding: "utf8", stdio: "pipe", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, ...wA.env } }), /B-pre-commit-says-no|pre-commit/, "B's own failing pre-commit still blocks the commit");
+  assert.equal(fs.existsSync(path.join(repoA, "pre-commit-ran")), false, "A's hooks did not run for B");
+  // let B's pre-commit pass: B's own prepare-commit-msg runs, A's trailer does not land in B
+  fs.writeFileSync(path.join(hooksB, "pre-commit"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  asSession(repoB, ["-c", "user.email=b@example.com", "-c", "user.name=b", "commit", "-q", "-m", "in B"], wA.env);
+  const msgB = asSession(repoB, ["log", "-1", "--format=%B"]);
+  assert.match(msgB, /B-Hook: ran/);
+  assert.doesNotMatch(msgB, /Vyre-Session/);
+  assert.doesNotMatch(msgB, /Orig-Hook/);
+  // and A's own commits still get everything
+  fs.writeFileSync(path.join(wA.path, "a.md"), "x\n");
+  asSession(wA.path, ["add", "a.md"], wA.env);
+  asSession(wA.path, ["commit", "-q", "-m", "in A"], wA.env);
+  const msgA = asSession(wA.path, ["log", "-1", "--format=%B"]);
+  assert.match(msgA, /^Vyre-Session: multi1$/m);
+  assert.match(msgA, /Orig-Hook: ran/);
+  assert.ok(fs.existsSync(path.join(repoA, "pre-commit-ran")));
+});
+
 test("worktreeAdd: on a git older than 2.31 the same identity and hooks are per-worktree config instead, and no env is returned", async t => {
   _setGitVersion([2, 30]);
   t.after(() => _setGitVersion(null));

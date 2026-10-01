@@ -206,18 +206,36 @@ async function buildSessionHooks({ repoDir, id, trailer }) {
   const hooksDir = path.join(commonDir, "vyre-hooks", id);
   fs.rmSync(hooksDir, { recursive: true, force: true });
   fs.mkdirSync(hooksDir, { recursive: true });
+  let real = commonDir;
+  try { real = fs.realpathSync(commonDir); } catch { /* keep the path as given */ }
+  // The session's environment names this folder as core.hooksPath for EVERY git command it runs,
+  // in any repo (reviewer-2). So each hook first asks which repo it is running for: this one runs
+  // the person's own hook (and the trailer); any other repo gets ITS effective hooks folder instead,
+  // with the session's override unset, and nothing of this repo's.
+  const guard = name => `#!/bin/sh
+# Vyre session hooks for ${id}. They act only for the repo they were made for; any other repo runs its own hooks.
+here=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
+here=$(cd "$here" 2>/dev/null && pwd -P)
+if [ "$here" != ${quoted(real)} ]; then
+  unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+  dir=$(git config --type=path --get core.hooksPath 2>/dev/null)
+  [ -n "$dir" ] || dir="$here/hooks"
+  case "$dir" in /*) ;; *) dir="$PWD/$dir" ;; esac
+  other="$dir/${name}"
+  if [ -x "$other" ]; then exec "$other" "$@"; fi
+  exit 0
+fi
+`;
   try {
     for (const name of fs.readdirSync(own)) {
       if (name.endsWith(".sample") || (trailer && name === "prepare-commit-msg")) continue;
       const orig = path.join(own, name);
       try { if (!fs.statSync(orig).isFile()) continue; } catch { continue; }
-      fs.writeFileSync(path.join(hooksDir, name), `#!/bin/sh\nexec ${quoted(orig)} "$@"\n`, { mode: 0o755 });
+      fs.writeFileSync(path.join(hooksDir, name), `${guard(name)}exec ${quoted(orig)} "$@"\n`, { mode: 0o755 });
     }
   } catch { /* the repo has no hooks folder */ }
   if (trailer) {
-    const hook = `#!/bin/sh
-# Written by Vyre for session ${id}: stamps each commit with the session that made it, then runs the repo's own prepare-commit-msg if it has one.
-git interpret-trailers --in-place --if-exists doNothing --where end --trailer ${quoted(`Vyre-Session: ${id}`)} "$1" 2>/dev/null || true
+    const hook = `${guard("prepare-commit-msg")}git interpret-trailers --in-place --if-exists doNothing --where end --trailer ${quoted(`Vyre-Session: ${id}`)} "$1" 2>/dev/null || true
 orig=${quoted(path.join(own, "prepare-commit-msg"))}
 if [ -x "$orig" ]; then exec "$orig" "$@"; fi
 exit 0
@@ -231,6 +249,8 @@ exit 0
  * What a session's commits say about who made them (PLAN M3, reviewer N4): the connected account's
  * own name and email when one is known, and (unless turned off) a `Vyre-Session: <id>` trailer on
  * every commit, so the person can audit which session wrote what.
+ *
+ * Identity and trailer are an audit aid, not a seal: a model can unset GIT_* in its own shell.
  *
  * On git 2.31 and later this is the session's ENVIRONMENT and no repo config is written:
  * GIT_AUTHOR_* and GIT_COMMITTER_* for the identity, and GIT_CONFIG_COUNT/KEY/VALUE for the session's
