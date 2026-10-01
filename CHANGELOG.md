@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- redteam: runner refusals for launch's findings (`test/redteam/launch.test.js`: staging overrides on production and lookalike hosts, claim token host shapes and cross-name/route verification) and a named-pipe or folder as the update request in `test/box-update.test.js` (dropped without blocking, nothing runs). Tests only.
 - vyre uninstall now removes the update units (e2e2's J8): `vyre updater remove` asks for root when the units' folder is not the person's to write, as install does, and when that fails it says the units are still on the server and how to remove them, instead of swallowing the error and printing "Vyre is off this server". The wrapper stays while the units do. Root is handed only a wrapper that is root's and not writable by others (reviewer-2's LOW); otherwise the manual command is printed.
 - import-real: the two CLIs are pinned, checkout keeps no credentials, and each child gets only PATH, its throwaway HOME and the mock variables (reviewer-2's LOWs).
 - import-real: `scripts/import-real-check.mjs` and a `import-real` workflow run the real Codex CLI once in a throwaway CODEX_HOME against a local mock of its Responses API, then list, place and convert the rollout file it wrote with the import's own reader and Claude Code the same way against a mock Messages API (`scripts/import-real-claude-check.mjs`), the import's scan reading the transcript it wrote (ubuntu and macOS runners; no account, no key, never a person's ~/.codex).
