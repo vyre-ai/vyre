@@ -20,6 +20,15 @@ restated here as part of the one chat-components contract. New 30 Sep.
 | App | none | not built |
 | Lumen | none | not built |
 
+## Frame and content (user rule, 1 Oct 2026)
+
+Vyre's frame (this card, the panel's version bar, the buttons, the empty and error states) uses Vyre's
+tokens. What is inside an artifact (a deck's theme, a chart's colours and fonts, a diagram's palette, a
+page's layout and brand) belongs to the agent that made it, is drawn as given, and can be restyled in a
+later version. The renderers' own look (artifact-renderers.html) is the default for whatever the agent
+leaves unspecified; it never restricts what an agent may make. Safety limits (no scripts, no links, no
+remote fetches, the sandbox for pages) are separate from design and stay.
+
 ## Anatomy: chat card
 
 A compact row-card, height 56, padding 10 12, radius `--radius-card` (12), fill `--panel`, 1 px
