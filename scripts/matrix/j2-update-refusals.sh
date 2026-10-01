@@ -81,9 +81,13 @@ V0=$(tr -d ' \r\n' <"$BOX/VERSION")
 serve "$BOX" 18080
 if VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
 else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
+wdir() { docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null; }
 vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
 seen && mem && rec 2-seed ok || rec 2-seed false "seed not readable"
+# 2b where the installer's own first `up` ran compose from: recorded as it is (the installer runs it as the person when they are in the docker
+#    group, so this is the stack folder; root's copies exist only once the updater is installed, which is the next step)
+rec 2b-first-up-working-dir ok "compose ran from $(wdir)"
 # 3 the update folders and root unit exist as on a real server; the path unit is switched off so only this script asks
 sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
 vyre updater status 2>&1 | grep -q installed && rec 3-updater ok || rec 3-updater false "$(tail -3 "$OUT/updater.log")"
@@ -150,6 +154,8 @@ mk old 0.0.1-e2e.1 good; offer old; ask $PORT "$GOODPUB"; refused 6-downgrade 'n
 sudo sed -i '/^  vyre:$/a\    privileged: true' "$DIR/compose.yml"
 mk new 9.9.9-e2e.1 good; offer new; ask $PORT "$GOODPUB"; ready; v=$(hv); s=$(statusf)
 priv=$(docker inspect -f '{{.HostConfig.Privileged}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null)
+wd=$(wdir)
+[ "$wd" = "$ST/private/run" ] && rec 7c-root-update-ran-from-root-copy ok "working_dir $wd" || rec 7c-root-update-ran-from-root-copy false "working_dir '$wd', want $ST/private/run"
 [ "$priv" = false ] && rec 7b-edited-compose-not-run ok "the running vyre container is not privileged" || rec 7b-edited-compose-not-run false "privileged='$priv'"
 if [ $rc -eq 0 ] && [ "$v" = "9.9.9-e2e.1" ] && seen && mem && printf '%s' "$s" | grep -q '"state":"ok"'; then rec 7-signed-update ok "$V0 to $v"
 else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; fi
