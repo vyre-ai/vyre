@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
+  it could never pass): `lib/said/watchers.js` `watchersIntents` records `watchers.preset:<project>/
+  <kind>` for "watch my inbox" (mail, calendar, repo, slack, feed) and `watchers.create:<project>/
+  <name>@<hash>` for "turn it on" (the one watcher waiting) or "turn on the mail watcher", pinned to
+  the hash the card showed. `watchers.create` and `watchers.preset` carry a target
+  (`watchers.create.target`, `watchers.preset.target`, reach modules) that tie a call to those keys;
+  a call with a hash the person did not see, a folder edited since, or no words at all is refused.
+  `watchers.list` rows now carry `hash` and `title`, which is what the recorder's `where` needs.
+
 - Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
   is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
   watcher on only when the person's own words asked for it, after the card; `watchers.resume`,

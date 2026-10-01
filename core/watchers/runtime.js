@@ -153,7 +153,7 @@ export class Runtime {
         : f.hash !== r.hash ? "changed" : r.paused ? "paused" : "on";
       const schedule = f.spec?.schedule || r?.schedule || null;
       const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule) : null;
-      out.push({ name, state, project: f.spec?.project || r?.project || null, schedule, every,
+      out.push({ name, state, hash: f.hash || null, title: f.spec?.summary?.do || null, project: f.spec?.project || r?.project || null, schedule, every,
         next: on && !r.paused && r.next_at ? new Date(r.next_at).toISOString() : null,
         lastRun: r?.last_run ? new Date(r.last_run).toISOString() : null, lastError: r?.last_error || null, failures: r?.failures || 0,
         pausedWhy: r?.paused ? r.paused_why : null, items: Number(count.get(name)?.n || 0), problems: f.problems });

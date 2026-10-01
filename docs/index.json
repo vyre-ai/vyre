@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":335,"tool":836,"event":335,"config":240,"env":182,"screen":19,"concept":43},
+  "counts": {"command":335,"tool":838,"event":335,"config":240,"env":182,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1977,6 +1977,7 @@
     {"kind":"event","name":"watcher.resumed","definedIn":"core/watchers/runtime.js","page":"reference/events.md#watchers","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.card","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherscard","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.create","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherscreate","module":"watchers","mentions":[{"page":"using/watchers.md","line":31,"anchor":"ask-for-a-watcher"},{"page":"using/watchers.md","line":33,"anchor":"ask-for-a-watcher"},{"page":"using/watchers.md","line":149,"anchor":"which-surface-does-what"},{"page":"using/watchers.md","line":205,"anchor":"what-it-will-not-do"},{"page":"architecture/spec.md","line":226,"anchor":"51-the-manifest-five-verbs"},{"page":"architecture/spec.md","line":415,"anchor":"76-watchers--workstream"}]},
+    {"kind":"tool","name":"watchers.create.target","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherscreatetarget","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.delete","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersdelete","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.duty.create","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersdutycreate","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.duty.delete","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersdutydelete","module":"watchers","mentions":[]},
@@ -1989,6 +1990,7 @@
     {"kind":"tool","name":"watchers.logs","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherslogs","module":"watchers","mentions":[{"page":"using/watchers.md","line":152,"anchor":"which-surface-does-what"},{"page":"architecture/spec.md","line":415,"anchor":"76-watchers--workstream"}]},
     {"kind":"tool","name":"watchers.pause","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherspause","module":"watchers","mentions":[{"page":"using/watchers.md","line":151,"anchor":"which-surface-does-what"},{"page":"architecture/spec.md","line":226,"anchor":"51-the-manifest-five-verbs"},{"page":"architecture/spec.md","line":415,"anchor":"76-watchers--workstream"}]},
     {"kind":"tool","name":"watchers.preset","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherspreset","module":"watchers","mentions":[{"page":"using/watchers.md","line":172,"anchor":"important-mail-into-memory"},{"page":"using/watchers.md","line":182,"anchor":"presets-for-common-sources"}]},
+    {"kind":"tool","name":"watchers.preset.target","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherspresettarget","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.resume","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersresume","module":"watchers","mentions":[{"page":"using/watchers.md","line":151,"anchor":"which-surface-does-what"}]},
     {"kind":"tool","name":"watchers.run","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersrun","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.test","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherstest","module":"watchers","mentions":[{"page":"using/watchers.md","line":29,"anchor":"ask-for-a-watcher"},{"page":"using/watchers.md","line":148,"anchor":"which-surface-does-what"},{"page":"architecture/spec.md","line":415,"anchor":"76-watchers--workstream"}]},

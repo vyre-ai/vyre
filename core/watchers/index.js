@@ -8,6 +8,8 @@
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
 import { findWall } from "./spawner-wall.js";
+import { createTarget, presetTarget } from "./targets.js";
+import * as folderMod from "./folder.js";
 import { isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
@@ -103,6 +105,10 @@ export default {
     ctx.tool("watchers.duty.resume", { description: "Resume a paused duty of a teammate that a person turned on. The teammates module's call.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.resume(name, { hash: hash || null }); } });
     ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
     ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
+    // What an asked call acts on, for the registry's gate (reach asked, target): the keys lib/said/watchers.js records.
+    ctx.tool("watchers.create.target", { description: "For the gate: the key watchers.create acts on, tied to the code the card showed.", input: { type: "object" },
+      run: async call => createTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
+    ctx.tool("watchers.preset.target", { description: "For the gate: the key watchers.preset acts on.", input: { type: "object" }, run: async call => presetTarget(call) });
     ctx.tool("watchers.card", {
       description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
       input: named,
