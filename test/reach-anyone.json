@@ -276,6 +276,30 @@
   "undo.run": {
    "module": "undo",
    "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "watchers.card": {
+   "module": "watchers",
+   "reason": "read-only: what a card shows, computed from the folder; records only what the calling thread was shown"
+  },
+  "watchers.items": {
+   "module": "watchers",
+   "reason": "read-only, scoped by project (projectArg): what a watcher filed into a project"
+  },
+  "watchers.list": {
+   "module": "watchers",
+   "reason": "read-only: lists watchers and their state, no secrets"
+  },
+  "watchers.logs": {
+   "module": "watchers",
+   "reason": "read-only: a watcher's own run log, scrubbed of credential values before it is kept"
+  },
+  "watchers.pause": {
+   "module": "watchers",
+   "reason": "stopping is the safe direction and is all it does: the guard is that resume is reach person and checks the card hash, so an agent can stop a watcher but never restart one"
+  },
+  "watchers.test": {
+   "module": "watchers",
+   "reason": "a dry run inside the wall that files nothing; the caller check refuses an agent's dry run on a real event; turning it on stays the asked watchers.create"
   }
  }
 }
