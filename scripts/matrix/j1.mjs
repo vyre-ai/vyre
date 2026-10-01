@@ -88,6 +88,15 @@ try {
   }
   r.step("1.3b-terminal-words", Boolean(words.words), { why: words.words ? undefined : "the terminal printed no four check words" });
 
+  if (process.env.J1_HOSTILE) {
+    // Someone else's server used the same code first, so the mailbox holds lines this page cannot trust. Safe is: the
+    // page stops with a plain "Start again" and never offers the other server's words. (A holder of the code can stop
+    // a setup this way; they cannot become the server.)
+    const seen = await page.waitText(/Setup stopped|Found your server/i, 90000);
+    const stopped = /Setup stopped/i.test(seen) && /Start again/i.test(seen);
+    r.step("1.4h-hostile-box-stops-the-page", stopped, { shot: await shot("setup-hostile"), why: stopped ? "plain Start again, no words offered" : "the page showed: " + seen.replace(/\s+/g, " ").slice(0, 160) });
+    throw Object.assign(new Error("done"), { expected: true });
+  }
   // 1.4 the page finds the box
   const found = await sees(/Found your server/i, 90000);
   r.step("1.4-page-found-box", found, { shot: await shot("setup-found") });
