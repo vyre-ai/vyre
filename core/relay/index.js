@@ -486,7 +486,7 @@ export default {
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
         // When this browser asked to be trusted and is still waiting: what a surface reloaded later needs to show the ask again.
-        ...(withAsk && d.trust_asked && !d.trusted ? { trustAsked: d.trust_asked } : {}) } : {}) });
+        ...(withAsk && d.trust_asked && !d.trusted ? { trustAsked: d.trust_asked, fingerprint: keyFingerprint(Buffer.from(d.pub, "base64url")) } : {}) } : {}) });
 
     /** Remove a device: close its channels, drop its presence key, tell every surface. */
     function forget(id, why) {
