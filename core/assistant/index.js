@@ -15,6 +15,7 @@
 import { glance } from "./glance.js";
 import { capabilities, render } from "./manifest.js";
 import { welcomeOf } from "./welcome.js";
+import { handoffPush } from "./handoff.js";
 
 const STATE_KEY = "last_digest_day";
 const DAILY_DAY = "daily_day";
@@ -252,6 +253,20 @@ export default {
       }
     });
 
-    return { async stop() { stopped = true; off(); } };
+    // One notification per handoff the assistant started: its teammate's request ended.
+    const offHand = ctx.events.on("summon.finished", async e => {
+      try {
+        const p = e && e.payload;
+        if (!p || !p.reply_to) return;
+        const [t, l] = await Promise.all([ctx.call("threads.get", { thread: p.reply_to, limit: 1 }), ctx.call("agents.list", {})]);
+        const agent = t.data && t.data.thread && t.data.thread.agent;
+        const list = Array.isArray(l.data) ? l.data : [];
+        const mine = Boolean(agent && list.some(a => a && a.kind === "assistant" && a.name === agent));
+        const push = handoffPush(p, mine);
+        if (push) ctx.events.emit("push.proactive", push);
+      } catch (err) { ctx.log(`assistant: handoff notice failed: ${/** @type {Error} */ (err).message}`); }
+    });
+
+    return { async stop() { stopped = true; off(); offHand(); } };
   },
 };

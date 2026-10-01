@@ -523,6 +523,23 @@ test("vyre updater install: writes a path unit watching vyred's request file and
   assert.ok(!fs.existsSync(path.join(b.U, "status", "ready")));
 });
 
+test("vyre updater remove: units a person cannot write are removed through sudo, and when that fails the command says plainly they remain", { skip: process.getuid() === 0 }, async t => {
+  const b = await box(t, { releases: [] });
+  const units = path.join(b.DIR, "units");
+  fs.mkdirSync(units);
+  fs.writeFileSync(path.join(units, "vyre-update.path"), "x");
+  fs.writeFileSync(path.join(units, "vyre-update.service"), "x");
+  fs.chmodSync(units, 0o555);
+  fs.writeFileSync(path.join(b.FAKE, "bin", "sudo"), `#!/bin/sh\necho "$@" >>"$FAKE/sudo"\nexit 1\n`, { mode: 0o755 });
+  let r;
+  try { r = /** @type {any} */ (await b.run(["updater", "remove"], { VYRE_SYSTEMD_DIR: units })); } finally { fs.chmodSync(units, 0o755); }
+  assert.notEqual(r.code, 0, `a failed removal is not a success: ${r.out}`);
+  assert.match(r.out, /still on this server/, r.out);
+  assert.match(r.out, /sudo .* updater remove/);
+  assert.match(fs.readFileSync(path.join(b.FAKE, "sudo"), "utf8"), /updater remove/, "it asked for root");
+  assert.ok(fs.existsSync(path.join(units, "vyre-update.path")), "nothing was claimed removed");
+});
+
 test("compose: vyred gets only its own request folder (writable) and the state folder read-only", () => {
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/request:\/run\/vyre-update\n/);
   assert.match(COMPOSE, /- \$\{VYRE_UPDATE_ROOT:-\/var\/lib\/vyre-update\}\/status:\/run\/vyre-update-state:ro\n/);

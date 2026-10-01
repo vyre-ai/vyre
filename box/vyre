@@ -671,6 +671,13 @@ updater() {
       say "updates can be asked for from Vyre: $un.path watches $UPD_REQ/request"
       ;;
     remove)
+      # The units and the ready file are root's: a person's uninstall asks for root, as install does, and says so when it cannot.
+      if [ "$(id -u)" != 0 ] && [ ! -w "$units" ]; then
+        { [ -f "$units/$un.path" ] || [ -f "$units/$un.service" ]; } || return 0
+        if [ -t 0 ]; then sudo "$WRAPPER" updater remove; else sudo -n "$WRAPPER" updater remove; fi && return 0
+        echo "vyre: the update units $un.path and $un.service are still on this server; remove them with: sudo $WRAPPER updater remove" >&2
+        return 1
+      fi
       rm -f "$UPD_STATE/ready"
       systemctl disable --now "$un.path" >/dev/null 2>&1 || true
       rm -f "$units/$un.path" "$units/$un.service"
@@ -806,8 +813,8 @@ uninstall() {
   else
     say "your data is kept: a fresh install picks up where this left off"
   fi
-  updater remove >/dev/null 2>&1 || true
-  if [ -e "$WRAPPER" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
+  updater remove || say "The update units are still on this server (see above); the wrapper stays so you can remove them with: sudo $WRAPPER updater remove"
+  if [ -e "$WRAPPER" ] && [ ! -f "${VYRE_SYSTEMD_DIR:-/etc/systemd/system}/${VYRE_UPDATER_NAME:-vyre-update}.path" ] && grep -q "$MARK" "$WRAPPER" 2>/dev/null; then rm -f "$WRAPPER" 2>/dev/null || sudo rm -f "$WRAPPER"; fi
   say "Vyre is off this server. $DIR stays with its .env; remove it with: sudo rm -rf $DIR"
   say "One thing is left in your own hands: this server still shows in your Tailscale machines list. Remove it there."
 }

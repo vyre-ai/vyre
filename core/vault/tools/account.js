@@ -1,7 +1,7 @@
 // @ts-check
 // account: the password that opens the personal vault (ADR 0006 decision 1). Creating one
 // makes the Secret Key, which is returned once, to a person at a terminal or a local surface,
-// for the recovery kit. Unlocking needs the password and presence; locking never does.
+// for the recovery kit. Unlocking needs the password (which is its own proof) or Touch ID; locking never does.
 
 import { presence } from "./presence.js";
 
@@ -28,7 +28,11 @@ export function register({ vault, tool }) {
       if (input.method !== "touchid" && typeof input.password !== "string") throw new Error("give the password, or method touchid");
       return vault.unlockAccount(input, caller);
     },
-    presence("Unlock your personal vault", ({ method }) => method === "touchid" ? "Unlock your personal vault with Touch ID" : "Unlock your personal vault"));
+    // The vault password IS the proof when it is given: asking the person to prove presence as well meant two prompts (the Mac login,
+    // then the vault password) on a Mac with no Touch ID reader. The factors are the same as before: nothing opens without the password
+    // and this Mac's own Secret Key. Touch ID unlock has no password in it, so its presence proof stays.
+    presence("Unlock your personal vault", ({ method }) => method === "touchid" ? "Unlock your personal vault with Touch ID" : "Unlock your personal vault",
+      { when: (/** @type {any} */ input) => Boolean(input) && (input.method === "touchid" || typeof input.password !== "string") }));
 
   tool("vault.account.enroll-touchid", PEOPLE, "Turn on Touch ID unlock of your personal vault on this Mac. Needs your password once.",
     obj({ password }, ["password"]), (input, { caller }) => vault.enrollTouchId(input, caller),
