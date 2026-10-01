@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix: the apps env runner guards its stdin error listener (`typeof child.stdin.on === "function"`), so a test double without `.on` no longer throws.
+
 - eval: the relevant-p95 measurement (scripts/eval-memory.js) takes the best p95 of five warm rounds, and up to fifteen when the best is still within half of the bar, so a loaded CI runner's spikes (Node 24 under load) can no longer fail a 5 ms bound the code meets by 35 times (p95 is 0.13 ms), while a real regression slows every round and still fails. The bar is unchanged.
 #### A test never boots a vyred on the person's Mac
 
