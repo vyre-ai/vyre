@@ -9,8 +9,8 @@
 #
 # Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
 # the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
-# N-M5), VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default
-# https://github.com/vyre-ai/vyre/releases/latest/download).
+# N-M5), VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default: the newest
+# stable vX.Y.Z GitHub release that carries VyreSetup.exe).
 #
 #   -Uninstall     stop the app, remove the tray/autostart/protocol-key registration and the
 #                  install dir (reviewer W-M5/N-L3: also revokes this device's session on the box
@@ -141,7 +141,19 @@ if ($DryRun) {
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
 $releaseBase = $env:VYRE_RELEASE_BASE
-if (-not $releaseBase) { $releaseBase = "https://github.com/vyre-ai/vyre/releases/latest/download" }
+if (-not $releaseBase) {
+    # GitHub's "latest" release is often an Android one with no Windows files, and the REST API answers 403 to a
+    # shared address after 60 calls an hour. So read the public releases feed, take the newest plain vX.Y.Z tag,
+    # and use it only if it carries the installer and its checksums.
+    $feed = (Invoke-WebRequest "https://github.com/vyre-ai/vyre/releases.atom" -UseBasicParsing).Content
+    $tag = [regex]::Matches($feed, '/releases/tag/(v\d+\.\d+\.\d+)(?=["<&])') | ForEach-Object { $_.Groups[1].Value } |
+        Sort-Object { [version]($_.TrimStart('v')) } -Descending -Unique | Select-Object -First 1
+    if (-not $tag) { throw "No release found." }
+    $releaseBase = "https://github.com/vyre-ai/vyre/releases/download/$tag"
+    foreach ($f in "VyreSetup.exe", "SHA256SUMS") {
+        try { Invoke-WebRequest "$releaseBase/$f" -Method Head -UseBasicParsing | Out-Null } catch { throw "No Windows release has been published yet ($tag has no $f)." }
+    }
+}
 
 $exe = Get-VerifiedInstaller -ReleaseBase $releaseBase -Dest $InstallDir
 # Run the installer quietly (per-user, no elevation), then start the installed app.
