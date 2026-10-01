@@ -63,5 +63,16 @@ theme; native-core's deck/js/provider-mark.js already has that shape, so this is
 
 ## Data
 
-The badge reads `provider` and `model` from the turn (sessions' per-turn record). Until a turn carries
-them it draws no badge, never a guess.
+Every `thread.turn`, `thread.text`, `thread.thinking`, `thread.usage` and `thread.finished` event carries
+`payload.provider` ("claude", "codex", "grok", "openrouter"), `payload.model` (the string the provider
+reported, null until its init, for example "grok-4.7" or "gpt-6.1-sol[low]") and `payload.account` (an id);
+`thread.tool` carries `provider` too (sessions, 1 Oct). The badge needs `provider`; the meta line reads
+"Provider, model, time".
+
+- The model string is shown exactly as reported, never prettified or guessed; while it is null the meta
+  line shows the provider alone ("Codex, 9 s") and fills in the model when it arrives, without moving the
+  text.
+- Usage and cost appear in the meta line only when the provider reports real numbers. Zeros or missing
+  usage are never shown as "0 tokens" (Codex and Grok report none over ACP today): the line simply omits
+  them, and the cost line for media turns appears only when the number is known.
+- A turn with no `provider` draws no badge, never a guess.
