@@ -111,7 +111,8 @@ test("artifacts: kinds, formats, dashboards and limits are checked", async t => 
   const svg = await ok("artifacts.create", { kind: "diagram", format: "svg", title: "Flow", content: "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>" });
   const ex = await ok("artifacts.export", { id: svg.id, as: "page" });
   assert.ok(!ex.body.includes("<script>"), "an SVG is only ever an image");
-  assert.match(ex.body, /<img class="svg"/);
+  assert.match(ex.body, /<img alt="Flow"/);
+  assert.match(ex.body, /Vyre removed a script from this SVG/, "the page says what was removed");
 });
 
 test("artifacts: the private view is served at an opaque origin, to the person only", async t => {
@@ -188,7 +189,7 @@ test("artifacts: public links, served by a separate process, pinned to a version
   const { port } = await shareServer(t, home);
   const a = await ok("artifacts.create", { project: "harlow-legal", kind: "report", title: "Intake report, October", content: "# Intake\n\nNew matters: 46." });
   assert.equal((await call("artifacts.share", { id: a.id })).error.code, "public_off");
-  assert.equal((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_asked", "an agent turns public links on only when asked");
+  assert.notEqual((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "an agent never turns public links on, only the person does");
   const on = await ok("artifacts.public.set", { on: true });
   assert.equal(on.available, true);
   // The registry holds an outward call from anyone but the person (held_unavailable until the Gate
@@ -389,6 +390,8 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   assert.equal((await juno("artifacts.versions", { id: far.id })).error, undefined);
   assert.equal((await juno("artifacts.get", { id: near.id })).error.code, "not_found", "exactly that item");
   assert.equal((await juno("artifacts.update", { id: far.id, content: "changed" })).error.code, "not_found", "read only");
+  assert.equal((await juno("artifacts.move", { id: far.id, project: "harlow-legal" })).error.code, "not_found", "a read grant never moves, archives, shares or deletes it");
+  for (const tool of ["artifacts.archive", "artifacts.delete", "artifacts.share", "artifacts.export"]) assert.notEqual((await juno(tool, { id: far.id })).error, undefined, tool);
   assert.equal((await juno("artifacts.get", { id: far.id }, "t9")).error.code, "not_found", "only that thread");
   assert.equal((await juno("artifacts.search", { q: "Lease" })).data?.length ?? 0, 0, "search stays in scope");
   await assert.rejects(asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "mentions"), /only Vyre's session and assistant/, "the mentions core forwards the caller, it does not record");
@@ -400,4 +403,20 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   await asVyre("artifacts.mention.resolve", { id: far.id, thread: "t1" });
   await ok("artifacts.delete", { id: far.id });
   assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found");
+});
+
+test("artifacts: an interactive artifact is flagged, and a frame that loads twice is recorded in its activity by the person's surfaces only", async t => {
+  const { ok, call } = await boot(t);
+  const page = await ok("artifacts.create", { kind: "app", title: "Counter", content: "<!doctype html><p>hi</p>" });
+  const doc = await ok("artifacts.create", { kind: "doc", content: "# Notes" });
+  assert.equal(page.interactive, true, "a page or an app runs its own code");
+  assert.equal(doc.interactive, false, "a document runs none");
+  assert.deepEqual(await ok("artifacts.activity", { id: page.id }), []);
+  assert.equal((await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away", host: "Example.com" })).host, "example.com");
+  await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away" });
+  const act = await ok("artifacts.activity", { id: page.id });
+  assert.deepEqual(act.map(a => [a.kind, a.host]), [["navigated-away", null], ["navigated-away", "example.com"]]);
+  assert.equal((await call("artifacts.activity.log", { id: doc.id, kind: "navigated-away" })).error.code, "bad_input", "a document runs no code to navigate");
+  assert.equal((await call("artifacts.activity.log", { id: page.id, kind: "navigated-away" }, "mcp:agent:juno", { thread: "t1" })).error !== undefined, true, "a model never writes the person's activity log");
+  assert.equal((await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away", host: "bad host;x" })).host, null, "a host is a hostname or nothing");
 });

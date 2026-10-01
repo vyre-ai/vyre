@@ -931,7 +931,7 @@ rollback() {
 # get listed by name, so the screen never hides one.
 vol_says() {
   case "$1" in
-    *vyre-home) echo "your vault, memory, settings and this server's sign-ins" ;;
+    *vyre-home) echo "your vault, memory, settings, artifacts and this server's sign-ins" ;;
     *vyre-work) echo "your projects and files (/work)" ;;
     *vyre-agent-home) echo "your agents' own sign-in state and transcripts" ;;
     *vyre-accounts) echo "each AI account's sign-in" ;;

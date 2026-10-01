@@ -23,10 +23,15 @@
       { "name": "artifacts.share", "summary": "make a public link to an artifact", "reach": "anyone", "outward": "post" },
       { "name": "artifacts.unshare", "summary": "stop a public link", "reach": "anyone" },
       { "name": "artifacts.public.status", "summary": "whether public links are on", "reach": "anyone" },
-      { "name": "artifacts.public.set", "summary": "turn public links on or off", "reach": "asked" },
+      { "name": "artifacts.public.set", "summary": "turn public links on or off", "reach": "person" },
       { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
       { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "person" },
       { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },
+      { "name": "artifacts.activity.log", "summary": "record that an interactive artifact navigated away", "reach": "person" },
+      { "name": "artifacts.activity", "summary": "what an interactive artifact has done: navigated away", "reach": "anyone" },
+      { "name": "artifacts.media.register", "summary": "keep an image, video or sound a provider made, with its prompt and session", "reach": "modules" },
+      { "name": "artifacts.media.read", "summary": "the bytes of a media artifact, in chunks, for Vyre's own surfaces", "reach": "anyone" },
+      { "name": "artifacts.media.copy", "summary": "put a media artifact in your own folder so you can open the file", "reach": "anyone" },
       { "name": "artifacts.capture.register", "summary": "catch files a session saves in its artifacts folder", "reach": "modules" }
     ],
     "commands": [

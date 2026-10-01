@@ -41,17 +41,21 @@
    "module": "agents",
    "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
+  "artifacts.activity": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
+  },
   "artifacts.archive": {
    "module": "artifacts",
-   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
   },
   "artifacts.create": {
    "module": "artifacts",
-   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
+   "reason": "own-scope check: target() puts an agent's artifact only in its own project (or its own space); the maker is recorded from the call, never the input; content is secret-scanned only for a share"
   },
   "artifacts.delete": {
    "module": "artifacts",
-   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; a delete keeps 30 days to undo"
   },
   "artifacts.diff": {
    "module": "artifacts",
@@ -59,7 +63,7 @@
   },
   "artifacts.export": {
    "module": "artifacts",
-   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; export only reads: it returns the file to the caller and changes nothing"
   },
   "artifacts.get": {
    "module": "artifacts",
@@ -69,9 +73,17 @@
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
+  "artifacts.media.copy": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() with the read option (own project or a # tag) on the artifact, and the file is copied only into the caller's own registered artifacts folder (the folder must still be the registered one); it never writes anywhere else and never changes the artifact"
+  },
+  "artifacts.media.read": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag), and the tool refuses any caller that is not the person or a first-party module"
+  },
   "artifacts.move": {
    "module": "artifacts",
-   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; an agent may move only into its own project"
   },
   "artifacts.public.status": {
    "module": "artifacts",
@@ -79,7 +91,7 @@
   },
   "artifacts.restore": {
    "module": "artifacts",
-   "reason": "own-scope check via reach()/target(): restoring writes a new version of an artifact the caller may reach, never an overwrite"
+   "reason": "own-scope check: reach() runs on the artifact's own project for the caller; restore only writes a NEW version from an old one in that same artifact, so nothing is lost and nothing leaves the project; the version is marked untrusted when an agent makes it"
   },
   "artifacts.search": {
    "module": "artifacts",
@@ -87,19 +99,19 @@
   },
   "artifacts.share": {
    "module": "artifacts",
-   "reason": "outward post: held at the Gate; an agent call that the person did not ask for is refused fail-closed (the PL-M2 stopgap, core/artifacts); own-scope check via reach()/target()"
+   "reason": "the Gate's outward post hold (module.json declares outward post, so an agent's or a module's call is held for the person), plus the fail-closed stopgap in the tool: artifacts.share refuses anyone but the person unless the Gate's own mark (meta.gate) is on the call; a share also refuses when public links are off or the content looks like it holds a secret"
   },
   "artifacts.undelete": {
    "module": "artifacts",
-   "reason": "own-scope check via reach()/target(): the caller must reach the artifact it brings back"
+   "reason": "own-scope check: reach(id, meta, {deleted: true}) runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made); undelete only brings back what the same scope deleted, within the 30 day window"
   },
   "artifacts.unshare": {
    "module": "artifacts",
-   "reason": "own-scope check via reach()/target(): takes a public link down, the safe direction"
+   "reason": "own-scope check: reach() runs on the artifact's own project for the caller; it only stops a link (never publishes anything), so it is never held, and anyone who can reach the artifact can withdraw it"
   },
   "artifacts.update": {
    "module": "artifacts",
-   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
+   "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"
   },
   "artifacts.versions": {
    "module": "artifacts",

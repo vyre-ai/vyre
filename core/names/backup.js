@@ -37,7 +37,21 @@ export function inspect(buf) {
 export { isSealed, isStream };
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
-export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names"];
+export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names", "data"];
+
+/**
+ * Files under `data` that mean something only to a running process and so stay out: the artifacts
+ * share server's own state file (its pid and port). Everything else under data is the person's,
+ * artifacts and their versions included (PLAN.md AR8).
+ */
+const DATA_SKIP = new Set([".server.json"]);
+
+/**
+ * The folders under `data` a backup carries, named one by one so a module added later cannot ride
+ * into a backup unannounced (reviewer-2 LOW). A module that keeps the person's data under `data`
+ * adds its folder here.
+ */
+export const DATA_PARTS = ["artifacts"];
 
 /**
  * Vault item names a provider sign-in lives under. Kept as a plain local constant, not an
@@ -63,10 +77,10 @@ function run(argv, opts = {}) {
 }
 
 /** Copy a folder, keeping only files and folders: sockets mean nothing later, and restore refuses links. */
-function copyTree(from, to) {
+function copyTree(from, to, skip = /** @type {Set<string> | null} */ (null)) {
   fs.cpSync(from, to, {
     recursive: true, preserveTimestamps: true,
-    filter: src => { const st = fs.lstatSync(src); return st.isFile() || st.isDirectory(); },
+    filter: src => { if (skip && skip.has(path.basename(src))) return false; const st = fs.lstatSync(src); return st.isFile() || st.isDirectory(); },
   });
 }
 
@@ -274,6 +288,10 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
           copyTree(src, path.join(staging, name));
           for (const id of excludedIds) fs.rmSync(path.join(staging, name, "items", id + ".json"), { force: true });
         } else if (st.isFile()) fs.copyFileSync(src, path.join(staging, name));
+        else if (name === "data" && st.isDirectory()) {
+          for (const part of DATA_PARTS) if (fs.existsSync(path.join(src, part))) copyTree(path.join(src, part), path.join(staging, "data", part), DATA_SKIP);
+          if (!fs.existsSync(path.join(staging, "data"))) continue;
+        }
         else if (st.isDirectory()) copyTree(src, path.join(staging, name));
         else continue;
         included.push(name);
@@ -342,7 +360,9 @@ export function checkEntries(list) {
     const e = raw.replace(/^\.\//, "").replace(/\/$/, "");
     if (raw.startsWith("/") || raw.split("/").includes("..")) { bad.push(raw); continue; }
     if (e === "" || e === ".") continue;
-    if (!INCLUDE.includes(e.split("/")[0])) bad.push(raw);
+    const [top, second] = e.split("/");
+    if (!INCLUDE.includes(top)) bad.push(raw);
+    else if (top === "data" && second !== undefined && !DATA_PARTS.includes(second)) bad.push(raw);
   }
   if (bad.length) throw new Error(`refusing a backup with unsafe entries: ${bad.slice(0, 5).join(", ")}`);
 }
@@ -391,6 +411,23 @@ async function restoreV1({ root, file, passphrase }) {
       const src = path.join(staging, name);
       if (!fs.existsSync(src)) continue;
       const dst = path.join(root, name);
+      if (name === "data") {
+        // Only the named parts are replaced; anything else under data on this box is left alone.
+        for (const part of DATA_PARTS) {
+          if (!fs.existsSync(path.join(src, part))) continue;
+          fs.mkdirSync(dst, { recursive: true });
+          // Swap, don't delete first: the old folder moves aside, the new one goes in, and only then is the
+          // old one removed, so a rename that fails leaves the person's artifacts where they were.
+          const live = path.join(dst, part), aside = path.join(dst, `.${part}.old-${process.pid}`);
+          const had = fs.existsSync(live);
+          if (had) fs.renameSync(live, aside);
+          try { fs.renameSync(path.join(src, part), live); }
+          catch (e) { if (had) fs.renameSync(aside, live); throw e; }
+          if (had) fs.rmSync(aside, { recursive: true, force: true });
+        }
+        restored.push(name);
+        continue;
+      }
       fs.rmSync(dst, { recursive: true, force: true });
       // A WAL left from the old store would be replayed onto the restored one and corrupt it.
       if (name === "vyre.db") for (const x of ["-wal", "-shm"]) fs.rmSync(dst + x, { force: true });
@@ -531,6 +568,23 @@ async function restoreV2({ root, file, passphrase, force, workTo, skipProjects, 
       const src = path.join(staging, name);
       if (!fs.existsSync(src)) continue;
       const dst = path.join(root, name);
+      if (name === "data") {
+        // Only the named parts are replaced; anything else under data on this box is left alone.
+        for (const part of DATA_PARTS) {
+          if (!fs.existsSync(path.join(src, part))) continue;
+          fs.mkdirSync(dst, { recursive: true });
+          // Swap, don't delete first: the old folder moves aside, the new one goes in, and only then is the
+          // old one removed, so a rename that fails leaves the person's artifacts where they were.
+          const live = path.join(dst, part), aside = path.join(dst, `.${part}.old-${process.pid}`);
+          const had = fs.existsSync(live);
+          if (had) fs.renameSync(live, aside);
+          try { fs.renameSync(path.join(src, part), live); }
+          catch (e) { if (had) fs.renameSync(aside, live); throw e; }
+          if (had) fs.rmSync(aside, { recursive: true, force: true });
+        }
+        restored.push(name);
+        continue;
+      }
       fs.rmSync(dst, { recursive: true, force: true });
       // A WAL left from the old store would be replayed onto the restored one and corrupt it.
       if (name === "vyre.db") for (const x of ["-wal", "-shm"]) fs.rmSync(dst + x, { force: true });

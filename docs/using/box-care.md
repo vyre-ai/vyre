@@ -332,6 +332,14 @@ vyre up
 Without `--force`, restore refuses to replace a store the box already has. It also refuses an
 archive with paths outside the known folders, or with links in it.
 
+The backup carries the artifacts your agents made (`data/artifacts`: every version, a dashboard's
+data, a deck's images, and the archive and 30-day undo state). A restore swaps them in by moving the
+box's current artifacts folder aside first and deleting it only once the new one is in place, so a
+failed restore keeps what was there. If the power fails between those two steps, a folder named
+`.artifacts.old-<number>` is left under `data/`; it is safe to delete once you have checked that
+your artifacts are there. Public links come back as they were when the backup was made: a link that
+was on then is on again.
+
 A `vyre box backup` file holds the three volumes as folders (`vyre-home/`, `vyre-work/`,
 `tailscale-state/`). To put it on a server that has no Vyre volumes yet, install without starting,
 create the volumes the way Compose would, unpack into them, then start:

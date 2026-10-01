@@ -70,6 +70,43 @@ export function openStore(root) {
       });
     },
 
+    /**
+     * Keep one media file beside a small manifest, in the artifact's own folder. The bytes are not put in git
+     * (a git copy of a video would double its size for no history: media is one version); the manifest, which
+     * names the file and its sha256, is the one commit. `fill` writes the bytes to the open descriptor and
+     * returns {bytes, sha256}.
+     * @param {string} project @param {string} id @param {string} name @param {(fd: number) => Promise<{ bytes: number, sha256: string }>} fill
+     * @param {(measured: { bytes: number, sha256: string }) => Record<string, any>} manifest @param {string} message
+     */
+    writeMedia: (project, id, name, fill, manifest, message) => {
+      const dir = repo(project, id);
+      if (!FILE.test(name)) throw bad(`bad file name ${name}`);
+      return serial(dir, async () => {
+        if (!fs.existsSync(path.join(dir, ".git"))) {
+          fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+          await git(dir, ["init", "-q", "-b", "main"]);
+        }
+        const tmp = path.join(dir, `.media-${process.pid}.tmp`);
+        const fd = fs.openSync(tmp, "wx", 0o600);
+        let measured;
+        try { measured = await fill(fd); } catch (e) { fs.closeSync(fd); fs.rmSync(tmp, { force: true }); throw e; }
+        fs.closeSync(fd);
+        for (const e of fs.readdirSync(dir)) if (e !== ".git" && e !== path.basename(tmp)) fs.rmSync(path.join(dir, e), { recursive: true, force: true });
+        fs.renameSync(tmp, path.join(dir, name));
+        fs.writeFileSync(path.join(dir, ".gitignore"), "media.*\n", { mode: 0o600 });
+        fs.writeFileSync(path.join(dir, "media.json"), JSON.stringify({ file: name, ...manifest(measured), bytes: measured.bytes, sha256: measured.sha256 }, null, 2), { mode: 0o600 });
+        await git(dir, ["add", "-A"]);
+        await git(dir, ["commit", "-q", "--allow-empty", "-m", message]);
+        return (await git(dir, ["rev-parse", "HEAD"])).trim();
+      });
+    },
+
+    /** Where an artifact's media file is on disk (only the latest version has bytes). @param {string} project @param {string} id @param {string} name */
+    mediaPath: (project, id, name) => {
+      if (!FILE.test(name)) throw bad(`bad file name ${name}`);
+      return path.join(repo(project, id), name);
+    },
+
     /** The artifact's files at a version. @param {string} project @param {string} id @param {string} sha
      * @returns {Promise<Record<string,string>>} */
     read: async (project, id, sha) => {
