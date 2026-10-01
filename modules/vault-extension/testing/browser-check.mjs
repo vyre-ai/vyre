@@ -213,7 +213,10 @@ async function main() {
     const sw2 = list.find((/** @type {any} */ t) => t.type === "service_worker" && t.url === `chrome-extension://${extId}/background.js`);
     const bg2 = await attach(sw2.webSocketDebuggerUrl);
     cleanup.push(() => bg2.close());
-    const synced = await bg2.run(`try { await syncKeyChip(); return "ok"; } catch (e) { return "syncKeyChip: " + e.message; }`);
+    // The worker registers the chip only where the person granted "all sites" in the popup, which needs a real click. A DevTools-driven run
+    // cannot answer that prompt, so the answer is given here (the grant check only); the browser still injects only where it really holds host
+    // access, and 127.0.0.1 is one of those. A person's own install is not touched.
+    const synced = await bg2.run(`try { ext.permissions.contains = async () => true; const r = await syncKeyChip(); return r.keychip ? "ok" : "the chip scripts did not register"; } catch (e) { return "syncKeyChip: " + e.message; }`);
     if (synced !== "ok") throw new Error(String(synced));
     const keyTarget = await (await fetch(`${base}/json/new?${encodeURIComponent(pageUrl + "keys")}`, { method: "PUT" })).json();
     const keyPage = await attach(keyTarget.webSocketDebuggerUrl);
