@@ -131,7 +131,7 @@
   },
   "files.drive.list": {
    "module": "files",
-   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; read-only"
+   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
   },
   "files.drive.local": {
    "module": "files",
@@ -143,7 +143,7 @@
   },
   "files.drive.read": {
    "module": "files",
-   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; read-only"
+   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
   },
   "files.drive.search": {
    "module": "files",

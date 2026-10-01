@@ -83,6 +83,9 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
  * The project's generated media, newest first, each with the name it is shown under. The asker's right to the project is
  * decided before this runs (generated() goes through resolve() on the project's folder, the same grant), and artifacts' own
  * scope for a project is that project's grant, so listing as this module for the one project loses nothing.
+ * ASSUMPTION (0.2.0, individual-only): inside a project every item is visible to everyone who reaches the project; there is no
+ * private item within a project. Only real project slugs are listed, never the person's own space (project null). Per-item
+ * privacy, and forwarding the asker to artifacts, come with Spaces (0.2.5); then this must call as the asker.
  */
   async function mediaOf(slug, meta) {
     const rows = [];
