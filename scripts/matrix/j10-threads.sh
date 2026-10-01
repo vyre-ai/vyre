@@ -14,7 +14,7 @@ rec() { ok=$2; case "$ok" in ok) ok=true;; observed) ok='"observed"';; *) ok=fal
 T=$RUNNER_TEMP/j10; mkdir -p "$T"
 cp scripts/../core/switchboard/testing/fake-claude.js "$T/fake-claude.cjs.js" 2>/dev/null || cp core/switchboard/testing/fake-claude.js "$T/fake-claude.js"
 mv "$T/fake-claude.cjs.js" "$T/fake-claude.js" 2>/dev/null
-printf '#!/bin/sh\nFAKE_CLAUDE_LOG=/tmp/fake-claude.log exec node /opt/matrix/fake-claude.mjs "$@"\n' >"$T/claude"; cp "$T/fake-claude.js" "$T/fake-claude.mjs"; chmod 755 "$T/claude" "$T/fake-claude.mjs"
+printf '#!/bin/sh\nFAKE_CLAUDE_LOG=/tmp/fake-claude.log exec node /opt/vyre/core/switchboard/testing/fake-claude.js "$@"\n' >"$T/claude"; cp "$T/fake-claude.js" "$T/fake-claude.mjs"; chmod 755 "$T/claude" "$T/fake-claude.mjs"
 sudo mkdir -p $DIR && sudo chown "$(id -u):$(id -g)" $DIR
 cat >$DIR/compose.e2e.yml <<YML
 services:
@@ -23,7 +23,7 @@ services:
       - VYRE_CLAUDE_BIN=/usr/local/bin/claude
     volumes:
       - $T/claude:/usr/local/bin/claude:ro
-      - $T/fake-claude.mjs:/opt/matrix/fake-claude.mjs:ro
+      - $T/fake-claude.js:/opt/vyre/core/switchboard/testing/fake-claude.js:ro
 YML
 python3 -m http.server 18080 --bind 127.0.0.1 --directory "$BOX" >/dev/null 2>&1 & SRV=$!
 for i in $(seq 1 50); do curl -fs http://127.0.0.1:18080/SHA256SUMS >/dev/null && break; sleep 0.2; done
@@ -32,6 +32,7 @@ i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [
 vyre status 2>&1 | grep -q 'vyred running' && rec 10.0-install ok || { rec 10.0-install false "$(tail -4 "$OUT/install.log")"; exit 1; }
 vyre call threads.list '{}' >/dev/null 2>&1; rec 10.0b-fake-claude-in-box ok "$(docker compose -f $DIR/compose.yml exec -T vyre claude --version 2>&1 | head -1)"
 call() { vyre call "$@" 2>&1; }
+send_json() { node -e 'console.log(JSON.stringify({ thread: process.argv[1], text: process.argv[2], surface: "deck" }))' "$1" "$2"; }
 # 10.1 the person starts a thread
 S=$(call threads.start '{"agent":"worker-a","cwd":"/work","prompt":"hello from the matrix","surface":"deck"}'); echo "$S" >"$OUT/start.json"
 ID=$(printf '%s' "$S" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);console.log((j.data||j).id||(j.data||j).thread||"")}catch{console.log("")}})')
@@ -48,7 +49,7 @@ if [ -n "$ID" ]; then
   # "anyone" and the in-code guard decides: a plain agent is refused each of these with these words (sessions, 1 Oct).
   agent_call() { # agent_call STEP "tool json" "message fragment"
     n=$(printf '%s' "$1" | tr . -)
-    call threads.send "{\"thread\":\"$ID\",\"text\":\"vyre $2\",\"surface\":\"deck\"}" >"$OUT/send-$n.json"
+    call threads.send "$(send_json "$ID" "vyre $2")" >"$OUT/send-$n.json"
     for i in $(seq 1 10); do sleep 3; call threads.get "{\"thread\":\"$ID\"}" >"$OUT/get-$n.json"; grep -q "$3" "$OUT/get-$n.json" && break; done
     grep -q "$3" "$OUT/get-$n.json" && rec "$1" ok "refused: $3" || rec "$1" false "expected a refusal saying '$3'; send said: $(head -c 200 "$OUT/send-$n.json" | tr '\n' ' ')"; }
   agent_call 10.3a-agent-start-refused "threads.start {\"cwd\":\"/work\",\"prompt\":\"child\"}" "only the assistant can start sessions"
@@ -67,7 +68,7 @@ if [ -n "$ID" ]; then
   if [ -z "$IDA" ]; then rec 10.7-assistant-thread-starts false "$(printf %s "$SA" | head -c 300)"; else
     rec 10.7-assistant-thread-starts ok "$IDA"
     count() { call threads.list '{}' | grep -o '"id": *"[0-9a-f-]\{36\}"' | sort -u | wc -l | tr -d ' '; }
-    asst_call() { n=$(printf '%s' "$1" | tr . -); call threads.send "{\"thread\":\"$IDA\",\"text\":\"vyre $2\",\"surface\":\"deck\"}" >"$OUT/send-$n.json"; sleep 12; call threads.get "{\"thread\":\"$IDA\"}" >"$OUT/get-$n.json"; }
+    asst_call() { n=$(printf '%s' "$1" | tr . -); call threads.send "$(send_json "$IDA" "vyre $2")" >"$OUT/send-$n.json"; sleep 12; call threads.get "{\"thread\":\"$IDA\"}" >"$OUT/get-$n.json"; }
     before=$(count)
     asst_call 10.7a "threads.start {\"cwd\":\"/work\",\"prompt\":\"child by the assistant\"}"
     after=$(count)
