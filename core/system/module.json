@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "system.info", "reach": "anyone" }, { "name": "system.echo", "reach": "anyone" }] },
+  "does": { "tools": ["system.info", "system.echo"] },
   "watches": { "emits": ["system.started"] },
   "shows": { "cli": ["info"] },
   "needs": {},
