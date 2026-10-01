@@ -148,7 +148,8 @@ async function enableSession(ctx, t, session) {
     // A dedicated worker's target has no Fetch domain in Chrome ("'Fetch.enable' wasn't found", measured in a real Chrome 154): its requests are covered by the declarativeNetRequest rules
     // alone (measured: a Blob worker's fetch is blocked with Fetch off). Only that error is tolerated, and only here; any other failure still leaves the child paused and the script stopped.
     if (t.fetchOn && t.fetchPats) {
-      try { await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session); }
+      try {
+        { const egF = /** @type {any} */ (t).egress; if (egF && egF.failEnable && /^(iframe|page)$/.test(String(t.sessionTypes?.get(session) || ""))) throw new Error("test: forced Fetch.enable failure"); } await ctx.cdp.send(t.tab, "Fetch.enable", { patterns: t.fetchPats.map(urlPattern => ({ urlPattern, requestStage: "Request" })) }, session); }
       catch (e) { if (!/'Fetch\.enable' wasn't found/.test(String(e && /** @type {any} */ (e).message || e)) || !WORKER_TYPES.test(String(t.sessionTypes?.get(session) || ""))) throw e; const eg = /** @type {any} */ (t).egress; if (eg) eg.noFetchTargets = (eg.noFetchTargets || 0) + 1; }
     }
     await ctx.cdp.send(t.tab, "Network.enable", NETWORK_ARGS, session);
@@ -212,7 +213,9 @@ const docOrigin = u => { try { const o = new URL(String(u)).origin; return o ===
 async function neutralize(ctx, t, sessionId, type, eg) {
   const expression = WORKER_TYPES.test(type) ? "self.close()" : "location.replace('about:blank')";
   try {
-    await ctx.cdp.send(t.tab, "Runtime.evaluate", { expression, returnByValue: true }, sessionId);
+    // A frame that waits for the debugger has no execution context yet (measured: Runtime.evaluate fails on it), so it is sent to a blank page with Page.navigate; a worker gets self.close().
+    if (WORKER_TYPES.test(type)) await ctx.cdp.send(t.tab, "Runtime.evaluate", { expression, returnByValue: true }, sessionId);
+    else { try { await ctx.cdp.send(t.tab, "Page.navigate", { url: "about:blank" }, sessionId); } catch { await ctx.cdp.send(t.tab, "Runtime.evaluate", { expression, returnByValue: true }, sessionId); } }
     eg.neutralized = (eg.neutralized || 0) + 1;
     try { await ctx.cdp.send(t.tab, "Runtime.runIfWaitingForDebugger", {}, sessionId); } catch { /* gone */ }
   } catch {
@@ -612,6 +615,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   const eg = t.egress || (t.egress = { depth: 0, allowed: new Set(), blocked: [] });
   // TEST ONLY (the host sets it under the test flag in a temp profile): the DNR layer alone, to measure it without Fetch. Never on in a real profile.
   if (opts && opts.noFetch === true) eg.noFetch = true;
+  if (opts && opts.failEnable === true) eg.failEnable = true; // TEST ONLY, see index.js
   /** Origins this guard has ever judged blocked on this tab: they can never become "allowed" by being observed. @type {Set<string>} */
   const denied = /** @type {any} */ (t).denied || (/** @type {any} */ (t).denied = new Set());
   /** Where each allowed origin came from, for the diagnostics of a leak. @type {Record<string, string>} */

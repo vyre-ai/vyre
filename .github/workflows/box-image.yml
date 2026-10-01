@@ -13,7 +13,7 @@ permissions:
   contents: read
 concurrency:
   group: box-image-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   detect:
     runs-on: ubuntu-latest

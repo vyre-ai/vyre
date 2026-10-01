@@ -139,3 +139,25 @@ test("presence: unlocking the vault with its password asks once; Touch ID, or no
   assert.equal(needs({}), true, "no password, no shortcut");
   assert.equal(needs(undefined), true, "a listing of tools counts as asking");
 });
+
+test("account tools: five wrong passwords in a row slow every try, a right one resets, and a refused try is not tested (reviewer-2)", async t => {
+  const { run } = await recorded(t);
+  const pw = `fixture-pw-${crypto.randomBytes(12).toString("hex")}`;
+  await run("vault.account.create", { password: pw });
+  await run("vault.account.lock", {}, "mcp");
+  t.mock.timers.enable({ apis: ["Date"], now: 1_800_000_000_000 });
+  const wrong = () => run("vault.account.unlock", { password: "fixture-wrong-password" });
+  for (let i = 0; i < 4; i++) await assert.rejects(wrong(), /does not open/);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "four wrong do not slow the right one");
+  await run("vault.account.lock", {}, "mcp");
+  for (let i = 0; i < 5; i++) await assert.rejects(wrong(), /does not open/);
+  await assert.rejects(run("vault.account.unlock", { password: pw }), /too many wrong passwords in a row · try again in 30 seconds/, "the sixth try is refused, even the right password");
+  t.mock.timers.tick(31_000);
+  await assert.rejects(wrong(), /does not open/, "after the wait a wrong try counts again and doubles the wait");
+  await assert.rejects(run("vault.account.unlock", { password: pw }), /try again in 60 seconds/);
+  t.mock.timers.tick(61_000);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "the right password after the wait");
+  await run("vault.account.lock", {}, "mcp");
+  await assert.rejects(wrong(), /does not open/);
+  assert.equal((await run("vault.account.unlock", { password: pw })).unlocked, true, "the count was reset by the success");
+});

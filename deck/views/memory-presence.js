@@ -55,7 +55,7 @@ export function b64uDecode(s) {
  * @param {{ challenge: string, rpId: string, allowCredentials?: { type?: string, id: string }[], userVerification?: string, timeout?: number }} w
  */
 export function publicKeyOptions(w) {
-  if (!w || typeof w.challenge !== "string" || typeof w.rpId !== "string") throw new Error("vyred sent no WebAuthn options");
+  if (!w || typeof w.challenge !== "string" || typeof w.rpId !== "string") throw new Error("The box sent no passkey options");
   return {
     challenge: b64uDecode(w.challenge),
     rpId: w.rpId,
@@ -80,7 +80,7 @@ export function passkeyHeader(challenge, cred) {
   return "passkey " + Object.entries(f).map(([k, v]) => `${k}=${v}`).join(" ");
 }
 
-const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learning" };
+const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learning" }; // internal-word: the module id, compared in code and never drawn
 
 /** An error shaped like api.js's ApiError, so a view handles both alike. */
 export class ToolError extends Error {
@@ -117,7 +117,7 @@ async function post(f, path, body, extra = {}) {
   try {
     res = await f(path, { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...extra }, body: JSON.stringify(body) });
     b = await res.json().catch(() => null);
-  } catch { return { error: { code: "offline", message: "vyred did not answer" } }; }
+  } catch { return { error: { code: "offline", message: "The box did not answer" } }; }
   if (b && "data" in b && !b.error) return { data: b.data };
   return { error: { code: b?.error?.code || "http_" + res.status, message: b?.error?.message || res.statusText || "", methods: b?.error?.methods } };
 }
@@ -191,7 +191,7 @@ export async function withPresence(tool, input = {}, o = {}) {
     };
 
     async function start() {
-      sheet.show({ state: "working", summary, text: "Asking vyred for a challenge.", cancel: () => cancel() });
+      sheet.show({ state: "working", summary, text: "Asking the box for a passkey challenge.", cancel: () => cancel() });
       const c = await post(f, "/v1/presence/challenge", { tool, input, method: "passkey" });
       if (done) return;
       if (c.error) {
@@ -200,7 +200,7 @@ export async function withPresence(tool, input = {}, o = {}) {
           noPasskey().catch(reject);
           return;
         }
-        return fail("refused", c.error.message || "vyred would not start a passkey challenge.");
+        return fail("refused", c.error.message || "The box would not start a passkey challenge.");
       }
       ch = c.data;
       let opts;
