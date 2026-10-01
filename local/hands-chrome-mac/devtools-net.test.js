@@ -756,3 +756,17 @@ test("egress guard, clock-free: a request whose initiator stack names the call's
   await new Promise(r => setTimeout(r, 30));
   assert.ok(!k.calls("Fetch.failRequest").some(c => c.params.requestId === "p-t5"), "after the page navigates the old scripts are gone");
 });
+
+test("egress guard: every new document made while it is up gets the worker refusal before any script of it runs, and it is removed again at stop", async () => {
+  const k = makeCtx({ active: 1 });
+  k.respond["Page.addScriptToEvaluateOnNewDocument"] = () => ({ identifier: "nd-1" });
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  const added = k.calls("Page.addScriptToEvaluateOnNewDocument");
+  assert.equal(added.length, 1);
+  assert.match(added[0].params.source, /Worker/);
+  assert.match(added[0].params.source, /SharedWorker/);
+  assert.equal(k.calls("Page.removeScriptToEvaluateOnNewDocument").length, 0, "still up while the script runs");
+  await eg.stop();
+  assert.deepEqual(k.calls("Page.removeScriptToEvaluateOnNewDocument").map(c => c.params.identifier), ["nd-1"]);
+});

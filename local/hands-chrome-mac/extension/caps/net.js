@@ -539,6 +539,9 @@ async function stopRequest(send, id, reason) {
 
 /** The pseudo-guard for a request judged after the call returned, or null when the request is not the script's. @param {any} t @param {any} p @param {string|undefined} session */
 /** A command that must not hold the call: it answers within `ms` or is given up on (the answer, if it comes, is ignored). @param {any} promise @param {number} ms */
+/** Run first in every document made while a guard is up (see egressGuard). */
+const NO_WORKERS_SRC = `(() => { const no = function () { throw new Error("Vyre held this: a script may not start a worker"); }; for (const k of ["Worker", "SharedWorker"]) { try { Object.defineProperty(window, k, { value: no, configurable: false, writable: false }); } catch (e) {} } try { if (navigator.serviceWorker) navigator.serviceWorker.register = no; } catch (e) {} })();`;
+
 const bounded = (promise, ms = 500) => Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(res => setTimeout(res, ms))]);
 
 async function stickyJudge(t, p, session) {
@@ -744,6 +747,9 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   }
   // From here on the script runs: a frame or worker that attaches now was made by it (or by the page while it ran).
   eg.live = true;
+  // A same-origin frame the script makes starts with a window of its own that the page shim never saw: its Worker would be an unguarded route out. Every new document made while the guard is up
+  // gets the same refusal before any script of it runs (removed again at stop). Not used in the test-only DNR-alone mode.
+  if (!eg.noFetch && eg.depth === 1) { try { const nd = await bounded(ctx.cdp.send(tab, "Page.addScriptToEvaluateOnNewDocument", { source: NO_WORKERS_SRC })); eg.newDoc = nd && nd.identifier; } catch { /* the shim and the closing of a worker at return remain */ } }
   let done = false;
   return {
     // "partial" when the browser-level rule could not be set: only the plain-form page shim stands for WebSockets and beacons.
@@ -763,6 +769,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
         await bounded(ctx.cdp.send(tab, "Target.getTargetInfo", {}));
         await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "1", returnByValue: true }));
         await new Promise(r => setTimeout(r, 0));
+        if (eg.newDoc) await bounded(ctx.cdp.send(tab, "Page.removeScriptToEvaluateOnNewDocument", { identifier: eg.newDoc }));
       }
       // A request judged blocked whose failRequest never took is tried once more now, while Fetch is still on: once it is off the request would be released to the network.
       for (const sr of (eg.stuck || []).splice(0)) {
@@ -787,7 +794,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
           for (const [k, v] of (eg.kidSessions || [])) {
             if (!t.sessions.has(k)) continue;
             // Chrome has no Fetch interception on a dedicated worker, and the browser rules cannot tell a worker's request from the page's: a worker the script made does not outlive the call.
-            if (/worker/.test(String(v))) { eg.closedWorkers = (eg.closedWorkers || 0) + 1; await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "self.close()", returnByValue: true }, k)); }
+            if (/worker/.test(String(v))) { eg.closedWorkers = (eg.closedWorkers || 0) + 1; await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "self.close()", returnByValue: true }, k)); t.sessions.delete(k); }
             else kids.set(k, v);
           }
           /** @type {any} */ (t).sticky = { tag: /** @type {any} */ (t).evalTag, allowed: new Set(eg.allowed), first: new Set(eg.first), kids, hosts: (eg.dnrArgs && eg.dnrArgs.initiatorHosts) || (prev ? prev.hosts : []) };
@@ -850,7 +857,7 @@ async function syncFetch(ctx, t) {
   /** @type {string[]} */ const failed = [];
   // A worker that was already running when the guard went up is the page's own and cannot be reached by the script (new ones are refused by the shim and paused at birth).
   const workerSessions = new Set((typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : []).filter((/** @type {any} */ c) => /worker/.test(String(c.type))).map((/** @type {any} */ c) => c.sessionId));
-  await Promise.all(kids.map(k => Promise.resolve(send("Fetch.enable", arg, k)).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e)) && !workerSessions.has(k)) failed.push(k); })));
+  await Promise.all(kids.map(k => Promise.race([Promise.resolve(send("Fetch.enable", arg, k)), new Promise((_, rej) => setTimeout(() => rej(new Error("timed out")), 1500))]).catch((/** @type {any} */ e) => { if (!/not found|no session|closed|detached|gone|target/i.test(String(e && e.message || e)) && !workerSessions.has(k)) failed.push(k); })));
   return failed;
 }
 
