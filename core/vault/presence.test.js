@@ -50,7 +50,7 @@ test("presence: every value-out or access-giving tool declares it, with a summar
   // vault.release is internal (modules only) and exempt; everything else registered is listed above.
   const known = new Set([...NEEDS_PRESENCE, ...NO_PRESENCE, "vault.release", "vault.generate", "vault.match", "vault.relay",
     // P17 and vault-routed API access: internal tools other modules call, and a request the Gate holds when nothing the person said covers it.
-    "vault.said.record", "vault.said.add", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send",
+    "vault.said.record", "vault.said.add", "vault.env.scan", "vault.items.names", "vault.mention.search", "vault.mention.resolve", "vault.use.check", "vault.use.note", "vault.said.match", "vault.said.list", "vault.said.revoke", "vault.request", "vault.api.send",
     // Connectors stores a finished sign-in in an oauth api-credential: internal (only module:connectors, and only from the token endpoint the person's own config names), it takes tokens in and gives nothing out, and it runs right after the sign-in the person just did, so it asks for no presence.
     "vault.credential.tokens"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
@@ -125,4 +125,17 @@ test("presence: reveal, copy and totp take the floor's session proof, except for
     assert.equal(s({}), false);
   }
   for (const n of ["vault.inject", "vault.fill.native", "vault.resolve"]) assert.ok(!tools.get(n).presence.session, `${n} never rides a session`);
+});
+
+test("presence: unlocking the vault with its password asks once; Touch ID, or no password at all, still asks for presence", async t => {
+  const { tools } = await recorded(t);
+  const { Presence } = await import("../presence/index.js");
+  const def = tools.get("vault.account.unlock");
+  const needs = input => Presence.prototype.required.call({}, "vault.account.unlock", def, input);
+  assert.equal(needs({ password: "fixture-password-000000" }), false, "the vault password is the proof");
+  assert.equal(needs({ method: "password", password: "fixture-password-000000" }), false);
+  assert.equal(needs({ method: "touchid" }), true, "Touch ID keeps its presence proof");
+  assert.equal(needs({ method: "touchid", password: "fixture-password-000000" }), true);
+  assert.equal(needs({}), true, "no password, no shortcut");
+  assert.equal(needs(undefined), true, "a listing of tools counts as asking");
 });

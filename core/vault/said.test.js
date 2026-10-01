@@ -10,6 +10,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { open } from "../store/index.js";
@@ -343,4 +345,17 @@ test("api-credential: replacing only the key keeps its hosts and endpoints; a mo
   assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { secret: "fixture-secret-222222222" } })).error);
   // Only a person's surface may replace the key.
   for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-secret-555555555" } }, who)).error, who);
+});
+
+test("env scan: a person's surface lists the .env files in given folders by count and kind; a model cannot, and a relative root is ignored", async t => {
+  const { reg, cli } = await daemon(t);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-envscan-tool-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const value = `sk-ant-api03-${crypto.randomBytes(24).toString("base64url")}`;
+  fs.writeFileSync(path.join(dir, ".env"), `PORT=3000\nANTHROPIC_API_KEY=${value}\n`);
+  const r = await cli("vault.env.scan", { roots: [dir, "relative/dir"] });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.equal(r.data.files.length, 1);
+  assert.ok(!JSON.stringify(r).includes(value), "never a value");
+  for (const who of ["mcp", "mcp:agent:kit", "module:watchers"]) assert.ok((await reg("vault.env.scan", { roots: [dir] }, who)).error, who);
 });
