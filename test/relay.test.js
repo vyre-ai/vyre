@@ -233,6 +233,47 @@ test("relay: an event stream stays open and delivers events through the channel"
   s.reset("done");
 });
 
+test("relay: an untrusted browser asks to be trusted once, about itself only, and the owner's relay.devices.trust is the approval", async t => {
+  const { d } = await world(t);
+  const asked = [];
+  d.events.on("device.trust-asked", e => asked.push(e.payload || e.data || e));
+  const p = await phone(await firstPairing(d));
+  await p.signIn(d);
+  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
+  // The limited browser can reach it (the web deny list does not hold it back) and no presence is needed to ask.
+  const first = await web.call("relay.devices.ask-trust");
+  assert.equal(first.status, 200, JSON.stringify(first));
+  assert.deepEqual([first.data.asked, first.data.already], [true, false]);
+  assert.equal(asked.length, 1);
+  // A reloaded Deck can show the ask again: the list carries when it asked, to the owner's surfaces only.
+  const listed = (await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device);
+  assert.ok(listed.trustAsked > 0 && listed.trustAsked <= Date.now(), JSON.stringify(listed));
+  assert.equal((await web.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "a limited browser does not see who is waiting");
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === p.reply.device).trustAsked, undefined, "an app device has none");
+  assert.deepEqual([asked[0].id, asked[0].name], [web.reply.device, "Harlow Legal laptop"]);
+  assert.match(asked[0].fingerprint, /^[a-z2-7]{4} [a-z2-7]{4}$/);
+  // Again says so and tells nobody twice.
+  const second = await web.call("relay.devices.ask-trust");
+  assert.deepEqual([second.data.asked, second.data.already], [true, true]);
+  assert.equal(asked.length, 1, "once");
+  // An app device has no limits to lift; a person's own surface is not a browser asking about itself.
+  assert.equal((await p.call("relay.devices.ask-trust")).error.code, "bad_input");
+  const cli = await d.registry.call("relay.devices.ask-trust", {}, "cli");
+  assert.equal(cli.error.code, "denied");
+  // Approval is the owner's, with presence; then the browser is trusted and asking again only says so.
+  assert.equal((await web.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 404, "it cannot approve itself");
+  assert.equal((await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 200);
+  const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
+  assert.deepEqual([(await again.call("relay.devices.ask-trust")).data.trusted], [true]);
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).trustAsked, undefined, "trusted: no longer waiting");
+  // Taking trust back lets it ask afresh.
+  assert.equal((await p.call("relay.devices.trust", { id: web.reply.device, trusted: false }, P)).status, 200);
+  const back = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
+  assert.equal((await back.call("relay.devices.ask-trust")).data.already, false);
+  assert.equal(asked.length, 2);
+});
+
 test("relay: a browser from the web app is a web device, limited until trusted from another device", async t => {
   const { d } = await world(t);
   const seen = [];
