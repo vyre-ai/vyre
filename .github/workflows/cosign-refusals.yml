@@ -1,0 +1,23 @@
+# The installer's image check against real images on a local registry (launch): the pinned cosign container, the release workflow's
+# identity, refused for an unsigned image and for another signer; a moved tag does not move the pinned digest.
+name: cosign-refusals
+on:
+  workflow_dispatch:
+  push:
+    paths: ["scripts/cosign-refusals-proof.sh", "scripts/install-box.sh", ".github/workflows/cosign-refusals.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: cosign-refusals-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  cosign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image refusals
+        run: bash scripts/cosign-refusals-proof.sh results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-cosign, path: results, retention-days: 14 }

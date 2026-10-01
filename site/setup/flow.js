@@ -36,7 +36,7 @@ export function suggestName(text) {
 }
 
 /**
- * @typedef {{ stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
+ * @typedef {{ machine: "linux"|"mac", stage: "start"|"install"|"found"|"named"|"tailscale"|"ai"|"devices"|"claim"|"done"|"stopped", installLine: string, code: string, lines: string[],
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
@@ -55,7 +55,7 @@ export function suggestName(text) {
  */
 
 /**
- * @param {{ client: SetupClient, relay: string, connect?: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<BoxChannel>, installUrl?: string, random?: (n: number) => Uint8Array,
+ * @param {{ client: SetupClient, relay: string, pinRelay?: boolean, connect?: (o: { offer: any, key: any, secret: Uint8Array }) => Promise<BoxChannel>, installUrl?: string, random?: (n: number) => Uint8Array,
  *   now?: () => number, sleep?: (ms: number) => Promise<void>, pollMs?: number, debounceMs?: number, signinHosts?: string[]|null, signClaim?: (o: { privateKey: any, route: string, challenge: string, host: string }) => Promise<string>, onChange?: (s: FlowState) => void }} o
  */
 export function createFlow(o) {
@@ -72,7 +72,7 @@ export function createFlow(o) {
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -91,8 +91,10 @@ export function createFlow(o) {
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
 
-  async function begin() {
+  /** @param {"linux"|"mac"} [machine] where Vyre will live; left out, the last choice stands (Start again keeps it). */
+  async function begin(machine) {
     const mine = ++run;
+    if (machine === "linux" || machine === "mac") state = { ...state, machine };
     let key, secret, code;
     // A browser with no X25519 would only fail later, at the connection, with a message about the server.
     if (o.supported && !(await Promise.resolve(o.supported()).catch(() => false))) return fail("browser");
@@ -176,6 +178,12 @@ export function createFlow(o) {
   /** Open the page's own connection to the server it found, then offer a first name. */
   async function openBox(mine, offer, key, secret, boxName) {
     if (!o.connect) return;
+    // The page talks to the box only through the relay it was built for. An offer naming any other host (a private address or a name that
+    // resolves to one) would make the browser ask for Local Network Access and hang on its prompt; it is refused before anything connects.
+    if (o.pinRelay) {
+      const hostOf = u => { try { return new URL(String(u).replace(/^ws/, "http")).host; } catch { return null; } };
+      if (hostOf(offer.relay) === null || hostOf(offer.relay) !== hostOf(o.relay)) { set({ channel: "failed", error: { code: "connect", message: MESSAGES.connect } }); return; }
+    }
     set({ channel: "connecting" });
     let c;
     try { c = await o.connect({ offer, key, secret }); } catch { if (mine === run) set({ channel: "failed", error: { code: "connect", message: MESSAGES.connect } }); return; }

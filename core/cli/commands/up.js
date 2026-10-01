@@ -683,6 +683,12 @@ export default [
       }
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
       else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
+      // The recovery code is the answer to this one call, never in a status or a log: print it here or it is lost.
+      if (tool === "names.claim" && d.recoveryCode) {
+        out("");
+        out(`  Recovery code: ${bold(String(d.recoveryCode))}`);
+        out("  Store it somewhere safe now (a password manager). It is shown once and cannot be shown again; with it you can take this name back after a reinstall.");
+      }
       return 0;
     },
   },

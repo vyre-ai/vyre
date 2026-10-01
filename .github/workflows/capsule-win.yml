@@ -33,7 +33,7 @@ jobs:
       run:
         working-directory: local/capsule/native-win
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       # A full commit sha of the action (its 1.98.1 branch), with the toolchain named, not a movable tag.
       - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
         with:
@@ -73,7 +73,7 @@ jobs:
           exe=$(ls app/target/release/bundle/nsis/Vyre_*_x64-setup.exe | head -1)
           [ "$(basename "$exe")" = "Vyre_${VERSION}_x64-setup.exe" ] || { echo "unexpected installer name: $exe"; exit 1; }
           mkdir -p ../../../out && cp "$exe" ../../../out/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: app-windows-${{ github.sha }}
           path: out/Vyre_*_x64-setup.exe

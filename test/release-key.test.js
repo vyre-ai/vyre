@@ -11,10 +11,11 @@ import { fileURLToPath } from "node:url";
 import { keyProblems, PLACEHOLDER } from "../scripts/check-release-key.mjs";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const tree = (/** @type {import("node:test").TestContext} */ t, /** @type {string} */ relKey, /** @type {string} */ scriptKey) => {
+const tree = (/** @type {import("node:test").TestContext} */ t, /** @type {string} */ relKey, /** @type {string} */ scriptKey, /** @type {string} */ boxKey = relKey) => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-key-"));
   t.after(() => fs.rmSync(d, { recursive: true, force: true }));
-  fs.mkdirSync(path.join(d, "core", "vyre-core"), { recursive: true }); fs.mkdirSync(path.join(d, "scripts"));
+  fs.mkdirSync(path.join(d, "core", "vyre-core"), { recursive: true }); fs.mkdirSync(path.join(d, "scripts")); fs.mkdirSync(path.join(d, "box"));
+  fs.writeFileSync(path.join(d, "box", "vyre"), `RELEASE_KEY=\${VYRE_RELEASE_KEY:-${boxKey}}\n`);
   fs.writeFileSync(path.join(d, "core", "vyre-core", "release.js"), `export const RELEASE_KEY = "${relKey}";\n`);
   fs.writeFileSync(path.join(d, "scripts", "install-mac-server.sh"), `RELEASE_KEY=${scriptKey}\n`);
   return d;
@@ -45,4 +46,11 @@ test("release key: a dry run may pass the placeholder, out loud", t => {
 
 test("release key: this checkout's two keys agree", () => {
   assert.deepEqual(keyProblems(REPO), [], "the real key is pinned in both places");
+});
+
+test("release key: a box wrapper that pins another key than release.js is refused (no box would accept the release)", t => {
+  const a = "MCowBQYDK2VwAyEA" + "B".repeat(43) + "=", b = "MCowBQYDK2VwAyEA" + "C".repeat(43) + "=";
+  const r = run(tree(t, a, a, b));
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /box\/vyre differs/);
 });

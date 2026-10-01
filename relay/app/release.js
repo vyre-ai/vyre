@@ -40,22 +40,48 @@ export function readTree(dir) {
   return out;
 }
 
-/** The entry scripts and styles the build's index.html loads, in order. */
-export function entriesOf(html, files) {
+/**
+ * The entry scripts and styles the build's index.html loads, in order, as the keys of `files`. An export
+ * built with a base URL (apps/app sets experiments.baseUrl "/app") writes `/app/_expo/static/js/...` in its
+ * index.html while the files are keyed `_expo/static/js/...`: leading folders are stripped until the path is
+ * one of the build's own files.
+ */
+export function entriesOf(html, files, base = "") {
   const out = [];
-  for (const m of String(html).matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="\/?([^"?#]+)"/g)) if (m[1] in files && /\.(m?js|css)$/.test(m[1])) out.push(m[1]);
+  const prefix = String(base || "").replace(/^\/+|\/+$/g, "");
+  for (const m of String(html).matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="\/?([^"?#]+)"/g)) {
+    let p = m[1];
+    // The configured base URL first (apps/app/app.json experiments.baseUrl); then, for an export whose base is not known, leading folders.
+    if (prefix && p.startsWith(prefix + "/")) p = p.slice(prefix.length + 1);
+    else while (!(p in files) && p.includes("/")) p = p.slice(p.indexOf("/") + 1);
+    if (p in files && /\.(m?js|css)$/.test(p) && !out.includes(p)) out.push(p);
+  }
   return out;
 }
 
-/** @param {string} file */
+/**
+ * The raw 32-byte Ed25519 seed of a key given as a file of those bytes, or as a PKCS8 PEM (the release
+ * environment's secret, which a workflow passes in an environment variable and never writes to disk).
+ * @param {string} fileOrPem @returns {Buffer}
+ */
+export function rawKey(fileOrPem) {
+  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(fileOrPem)) {
+    const k = crypto.createPrivateKey(fileOrPem);
+    if (k.asymmetricKeyType !== "ed25519") throw new Error("the key is not an Ed25519 key");
+    return Buffer.from(k.export({ format: "der", type: "pkcs8" }).subarray(-32));
+  }
+  const raw = fs.readFileSync(fileOrPem);
+  if (raw.length !== 32) throw new Error(`${fileOrPem} is not a raw 32-byte Ed25519 key`);
+  return raw;
+}
+
+/** @param {string} file a path, or a PKCS8 PEM */
 export function loadKey(file) {
-  const raw = fs.readFileSync(file);
-  if (raw.length !== 32) throw new Error(`${file} is not a raw 32-byte Ed25519 key`);
-  return crypto.webcrypto.subtle.importKey("pkcs8", Buffer.concat([PKCS8, raw]), { name: "Ed25519" }, false, ["sign"]);
+  return crypto.webcrypto.subtle.importKey("pkcs8", Buffer.concat([PKCS8, rawKey(file)]), { name: "Ed25519" }, false, ["sign"]);
 }
 
 /** @param {string} file @returns {Uint8Array} */
-export const publicOf = file => new Uint8Array(crypto.createPublicKey(crypto.createPrivateKey({ key: Buffer.concat([PKCS8, fs.readFileSync(file)]), format: "der", type: "pkcs8" }))
+export const publicOf = file => new Uint8Array(crypto.createPublicKey(crypto.createPrivateKey({ key: Buffer.concat([PKCS8, rawKey(file)]), format: "der", type: "pkcs8" }))
   .export({ format: "der", type: "spki" }).subarray(-32));
 
 /** @param {string} file */
@@ -80,11 +106,12 @@ async function sealed(files, dir, o) {
 
 /**
  * The app's build into <out>/v/<sha>/. Returns what releases.json lists.
- * @param {{ dist: string, release: string, key: string, out: string, created?: number }} o
+ * @param {{ dist: string, release: string, key: string, out: string, created?: number, base?: string }} o
+ *   `base` is the base URL the export was built with (apps/app/app.json experiments.baseUrl), stripped from index.html's paths.
  */
 export async function build(o) {
   const files = readTree(o.dist);
-  const entry = entriesOf(files["index.html"] ? Buffer.from(files["index.html"]).toString() : "", files);
+  const entry = entriesOf(files["index.html"] ? Buffer.from(files["index.html"]).toString() : "", files, o.base);
   if (!entry.length) throw new Error(`${o.dist}/index.html loads no local script`);
   const tmp = path.join(o.out, `.v-${process.pid}`);
   fs.rmSync(tmp, { recursive: true, force: true });

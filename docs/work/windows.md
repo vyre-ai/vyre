@@ -194,10 +194,10 @@ app.
 **Lead's GO (2026-09-30)**: build, not just plan. In progress this session:
 - `scripts/install-windows.ps1` - first draft of the signed-install/update chain (reviewer's
   W-B1, the one BLOCKER on the plan). CLM/AppLocker detection (W-M2) and the SHA-256 check
-  against a published SHA256SUMS are real logic; the minisign verification step deliberately
-  **throws** (fails closed) because no minisign keypair, SignPath application, or protected
-  GitHub environment custodian exists yet (integrator's decision, still open in CHAT.md) - do NOT
-  point this at a real release until that's resolved. Autostart uses `schtasks`, matching the
+  against a published SHA256SUMS are real logic. (Superseded 2026-10-01: there is NO minisign. The release is signed once, with the Ed25519
+  SHA256SUMS.sig that every updater verifies against the pinned release key held in the protected `release` environment, plus a keyless
+  cosign blob; release.yml no longer has a minisign step, key or public key, and nothing here should wire one back. The installer verifies
+  SHA256SUMS.sig the way lib/release-sig.js does: base64 Ed25519 over "vyre-release-sums\n" + the exact SHA256SUMS bytes.) Autostart uses `schtasks`, matching the
   0.1.2 Windows Solo design already in this doc's "Next" section below. Uninstall is only
   partial (removes the scheduled task and install dir; the box-session-revoke and
   protocol-key/Start-menu cleanup are TODO, flagged in the script itself).
@@ -231,15 +231,14 @@ app.
      connection with no local vyred (proposed a DPAPI device token) - blocks section 9's design,
      not just its build.
   2. capsule-sight: the extension's ID and the exact native-messaging stdio message shape.
-  3. integrator: who custodies the minisign/updater signing key (blocks `install-windows.ps1`'s
-     `Verify-Minisign` from ever being implemented for real - it fails closed until this lands).
+  3. (closed 2026-10-01) the signing key is the one Ed25519 release key in the `release` environment; no minisign. The installer verifies
+     SHA256SUMS.sig with the pinned public key.
   4. native-core: pairing on the WebView2 passkey spike (6.1) - not yet scheduled/run.
 - **Immediate next steps, in order**: (a) once native-core answers, run the 6.1 WebView2 passkey
   spike together - this gates presence and pairing, the single biggest remaining unknown; (b)
   scaffold the real `src-tauri/` app (window, the two-WebView-context IPC split from plans/
-  windows.md section 3, tray, `capabilities.json`) - not started, no files exist yet; (c) once
-  integrator names a key custodian, implement `Verify-Minisign` for real in
-  `scripts/install-windows.ps1`; (d) once capsule-sight/vault answer question 1 above, start the
+  windows.md section 3, tray, `capabilities.json`) - not started, no files exist yet; (c) implement the
+  SHA256SUMS.sig (Ed25519, pinned key) check in `scripts/install-windows.ps1`, not minisign; (d) once capsule-sight/vault answer question 1 above, start the
   Chrome native-messaging host (section 9 of the plan).
 
 ## Done
