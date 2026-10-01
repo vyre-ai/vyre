@@ -76,10 +76,19 @@ export function openVault({ db, dataDir, log = () => {}, emit = () => {}, testKd
     },
 
     /**
-     * @param {any} input @param {{ verified: boolean, by: string }} how
+     * @param {any} input @param {{ verified: boolean, by: string, module?: string }} how
      *   verified: the put came with a proof core checked (then it may overwrite).
+     *   module: a first-party module vyred vouched for (the registry's word, advisory here like a release's):
+     *   the item is marked as that module's own (origin `module:<name>`), and it may not replace an item
+     *   that is not already its own.
      */
     put: async (input, how) => {
+      if (how.module) {
+        const mine = `module:${how.module}`;
+        const have = /** @type {any} */ (vault.row(String(input.name || "")));
+        if (have && have.origin !== mine) throw fail(`${input.name} was not made by ${how.module}, so ${how.module} cannot replace it`, "denied");
+        input = { ...input, origin: mine };
+      }
       const old = Boolean(vault.row(String(input.name || "")));
       if (old && !how.verified) throw fail(`${input.name} exists; changing it needs your proof`, "presence_required");
       // An unverified put costs nothing to send, so a model could fill core's db with them.
@@ -99,6 +108,24 @@ export function openVault({ db, dataDir, log = () => {}, emit = () => {}, testKd
       const mod = String(input.module || "");
       if (!/^[a-z][a-z0-9-]{0,63}$/.test(mod)) throw fail("module must be a module name");
       return vault.release({ name: input.name, field: input.field, watcher: input.watcher || "" }, `module:${mod}`);
+    },
+
+    /**
+     * A first-party module deletes an item it made itself, with no proof: the person's own action in that
+     * module is the proof. The item's recorded origin must be exactly `module:<name>`; a person's item or
+     * another module's is refused, never deleted. The module name is vyred's word (the registry vouches for
+     * it), as with release: a same-uid caller could claim one, and the most that buys is deleting an item
+     * that module made, which the person can put again; no value is ever shown.
+     * @param {{ name: string }} input @param {string} module @param {string} by
+     */
+    deleteOwn: async (input, module, by) => {
+      if (!/^[a-z][a-z0-9-]{0,63}$/.test(module)) throw fail("module must be a module name");
+      const have = /** @type {any} */ (vault.row(String(input.name || "")));
+      if (!have) throw fail(`no item named ${input.name}`);
+      if (have.origin !== `module:${module}`) throw fail(`${input.name} was not made by ${module}, so ${module} cannot delete it`, "denied");
+      const r = vault.remove({ name: input.name }, `module:${module} (${by})`);
+      trust.drop(input.name);
+      return r;
     },
 
     revoke: async (input, by) => vault.revoke({ name: input.name, module: input.module, watcher: input.watcher }, by),

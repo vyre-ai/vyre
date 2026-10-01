@@ -135,3 +135,21 @@ test("vyre-core forward: after core restarts (its count back at 0), vyred follow
   assert.deepEqual(seen.slice(0, 2), ["a", "b"]);
   assert.deepEqual(calls.slice(0, 3), [0, 9, 0]);
 });
+
+test("vyre-core forward: only the registry's module name reaches core with a put or a delete; a person's surface cannot ask for the no-proof path", async () => {
+  const tools = new Map();
+  const sent = [];
+  const ctx = { tool: (n, d) => tools.set(n, d), log: () => {}, events: null };
+  startForwarder(ctx, { call: async (tool, body, header) => { sent.push({ tool, body, header }); return { data: { ok: true } }; } });
+  const run = (tool, input, caller, coreProof) => tools.get(tool).run(input, { caller, coreProof });
+  await run("vault.delete", { name: "gh-token" }, "module:ghub");
+  await run("vault.put", { name: "gh-token", value: "v" }, "module:ghub");
+  // A module that puts a `module` of its own in the input is overridden by the registry's word.
+  await run("vault.delete", { name: "x", module: "other" }, "module:ghub");
+  // A person's surface, an agent and a CLI cannot name a module.
+  await run("vault.delete", { name: "persons-key", module: "ghub" }, "local", "PROOF");
+  await run("vault.put", { name: "persons-key", module: "ghub", value: "v" }, "cli");
+  assert.deepEqual(sent.map(s => s.body.module), ["ghub", "ghub", "ghub", undefined, undefined]);
+  assert.ok(sent.every(s => !("module" in s.body) || /^[a-z]+$/.test(s.body.module)));
+  assert.equal(sent[3].header, "PROOF", "a person's proof still goes through untouched");
+});

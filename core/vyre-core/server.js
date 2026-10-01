@@ -299,7 +299,15 @@ export async function startCore(o) {
       if (vaults.read[tool]) return send(res, 200, { data: await vaults.read[tool](input) });
       if (tool === "vault.release") return send(res, 200, { data: await vaults.release(input) });
       if (tool === "vault.revoke") return send(res, 200, { data: await vaults.revoke(input, who) });
+      // A first-party module's own item (vyred names the module): no proof, and only its own.
+      const moduleOf = typeof input.module === "string" ? input.module : null;
+      if (tool === "vault.delete" && moduleOf) {
+        const { module: _m, ...rest } = input;
+        return send(res, 200, { data: await vaults.deleteOwn(rest, moduleOf, who) });
+      }
       if (tool === "vault.put") {
+        const { module: _m, ...rest } = input;
+        if (moduleOf) return send(res, 200, { data: await vaults.put(rest, { verified: false, by: `module:${moduleOf} via ${who}`, module: moduleOf }) });
         if (header === undefined) return send(res, 200, { data: await vaults.put(input, { verified: false, by: `unverified:${who}` }) });
         const p = await prove(tool, input, header);
         if (!p.ok) return refused(p);

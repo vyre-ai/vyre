@@ -112,3 +112,33 @@ test("vyre-core vault: unverified puts are capped per peer, so nothing can fill 
   // The person's own verified put is never capped.
   assert.ok(!(await call("vault.put", { name: "mine", kind: "secret", fields: { value: "y" } }, { proved: true })).error);
 });
+
+test("vyre-core vault: a first-party module deletes the item it made, with no proof, and nothing else", async t => {
+  const { call } = await core(t);
+  // A person's item, another module's, and the module's own.
+  assert.ok(!(await call("vault.put", { name: "persons-key", kind: "secret", fields: { value: "p" } }, { proved: true })).error);
+  assert.ok(!(await call("vault.put", { name: "other-token", kind: "secret", fields: { value: "o" }, module: "other" })).error);
+  assert.ok(!(await call("vault.put", { name: "gh-token", kind: "secret", fields: { value: "g" }, module: "ghub" })).error);
+  const has = async name => Boolean((await call("vault.list", {})).data.items.find(i => i.name === name));
+  // Refusals: never deleted. A person's item, another module's, a missing item.
+  for (const [name, re] of [["persons-key", /not made by ghub/], ["other-token", /not made by ghub/], ["no-such", /no item named/]]) {
+    const r = await call("vault.delete", { name, module: "ghub" });
+    assert.match(r.error.message, re, name);
+  }
+  assert.ok(await has("persons-key") && await has("other-token") && await has("gh-token"), "nothing was deleted by a refusal");
+  // Its own goes, with no proof.
+  const own = await call("vault.delete", { name: "gh-token", module: "ghub" });
+  assert.ok(!own.error, JSON.stringify(own.error));
+  assert.equal(await has("gh-token"), false);
+  assert.ok(await has("persons-key") && await has("other-token"));
+  // Without a module name a delete still needs the person's proof.
+  assert.equal((await call("vault.delete", { name: "persons-key" })).status, 401);
+  assert.ok(!(await call("vault.delete", { name: "persons-key" }, { proved: true })).error);
+  // A module may not replace an item that is not its own, and a module-origin item stays unverified.
+  assert.equal((await call("vault.put", { name: "other-token", kind: "secret", fields: { value: "swapped" }, module: "ghub" })).error.code, "denied");
+  const mine = await call("vault.put", { name: "gh-token", kind: "secret", fields: { value: "g2" }, module: "ghub" });
+  assert.equal(mine.data.unverified, true);
+  // An item whose origin was never a module is not any module's: a plain unverified put has none.
+  assert.ok(!(await call("vault.put", { name: "plain", kind: "secret", fields: { value: "x" } })).error);
+  assert.match((await call("vault.delete", { name: "plain", module: "ghub" })).error.message, /not made by ghub/);
+});

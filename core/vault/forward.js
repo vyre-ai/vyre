@@ -44,6 +44,13 @@ export function startForwarder(ctx, link) {
           if (!m) throw fail("only modules may ask the vault for a value", "denied");
           body = { name: input.name, field: input.field, watcher: input.watcher, module: m[1] };
         }
+        // A module's own put or delete names the module the registry vouched for; for anyone else a `module`
+        // in the input is dropped, so a person's surface can never ask for the no-proof path.
+        if (tool === "vault.put" || tool === "vault.delete") {
+          const { module: _drop, ...clean } = input || {};
+          const m = /^module:([a-z][a-z0-9-]*)$/.exec(String(meta.caller || ""));
+          body = m ? { ...clean, module: m[1] } : clean;
+        }
         const r = await link.call(tool, body, proved ? meta.coreProof : undefined);
         if (r.error) throw fail(r.error.message || "vyre-core refused", r.error.code || "failed");
         return r.data;
