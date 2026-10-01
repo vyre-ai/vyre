@@ -1,43 +1,51 @@
 # Vyre
 
-> Vyre is an open-source, self-hosted home for Claude Code agents. Agents run on a server you
-> own, keep working when your laptop is closed, and answer from your Mac (Option-Space, the
-> Capsule) or your phone (phone.vyre.run).
+> Vyre is an open-source, self-hosted home for your AI agents. Agents run on a server you own,
+> keep working when your laptop is closed, and answer from your Mac (Option-Space, Vyre Lumen),
+> your phone (the web app on your Home Screen) or Windows (a Windows app).
 
 ## What it is
-Vyre is a Claude Code plugin plus one small daemon. It does not fork or wrap Claude Code.
+One small daemon plus apps around it. It runs Claude (through the Agent SDK), Codex and Grok
+(through ACP) and OpenRouter from your own subscriptions. A session belongs to Vyre, not to a model:
+you pick the model for each session, or add @codex or @grok to one message, and the session keeps its
+memory and files.
 
 ## What runs where
-- Vyre runs on a Linux server you control.
-- The Deck (the web app) is served from your own address, `<you>.vyre.run`.
-- The Mac Capsule is a small always-on helper on your Mac; press Option-Space to reach it.
-- Your Mac reaches your server over Tailscale, which you install and sign in to yourself; Vyre
-  never changes your Mac's Tailscale settings. A Linux or Windows desktop you pair joins the
-  tailnet on its own; Macs join that way starting in 0.1.2.
+- Vyre runs on a server you control: a Linux machine with Docker, or a Mac that stays on.
+- The Deck (the web app) is served from your own address, `<you>.vyre.run` or your own domain.
+- Vyre Lumen is the Mac app; press Option-Space to reach it. There is a Windows app too (a tray icon
+  and an Alt-Space panel).
+- Your devices reach your server over Tailscale, which is required (the free plan is enough).
 
-## Install
-On the Linux server:
+## Set up
+Open https://vyre.run/setup. It gives you one line to paste on your server, then walks you through
+naming your server, signing in to your AI, connecting Tailscale and adding your phone.
+
+On a Linux server the line is:
 ```
 curl -fsSL https://vyre.run/install.sh | sh
-vyre up
 ```
-On your Mac, with Tailscale installed and signed in:
+On your Mac, with Tailscale installed and signed in (Node 22.5 or newer):
 ```
 npm install -g https://vyre.run/box/vyre.tgz
 vyre up
 vyre capsule install
 ```
+`vyre capsule install` builds Vyre Lumen on your Mac; nothing is downloaded for it.
 
 ## Cost
-Vyre itself is free and open source. You pay Anthropic for Claude the same way you would running
-Claude Code directly.
+Vyre itself is free and open source. You pay your AI providers the way you do today.
 
 ## Data
-Prompts go to Anthropic's API through Claude Code, the same as running Claude Code directly.
-Keys, memory and sessions stay on your server. vyre.run holds your name's DNS record and runs
-the relay (relay.vyre.run). A phone paired by scanning reaches your server through that relay,
-end-to-end encrypted: the relay can see that your phone and server talk, and when, but never
-what's said or your keys.
+Prompts go to the provider you choose. Keys, memory and sessions stay on your server, and the server
+publishes no port to the internet. vyre.run holds your name's DNS record and runs the relay
+(relay.vyre.run), which carries setup progress and phone pairing end to end encrypted: it can see that a
+server and a device talk, and when, but never what is said or your keys.
+
+## Not in 0.2.0
+0.2.1: Touch ID prompts for terminal commands that need them, a Safari fix for interactive artifacts,
+Chrome API routing and parallel tabs, "give it to two" and per-provider blocks. 0.2.5: Spaces
+(team spaces and sharing), memory rollover, putting idle sessions to sleep.
 
 ## License
 Apache 2.0.

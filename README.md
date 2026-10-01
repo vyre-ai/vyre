@@ -12,7 +12,8 @@ Vyre is an open-source, self-hosted home for your AI agents. They run on a serve
 Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model for each session, or add @codex or @grok to ask another one for a single message. Your keys stay in an encrypted vault on your server, and anything that sends a message, posts or pays waits for your Touch ID or Face ID.
 
 <picture>
-  <img src="docs/images/readme/capsule-ask.png" alt="Vyre Lumen's command bar answering &quot;what is on the Northwind Bakery menu&quot; from a past session, with that session linked below the answer" width="600">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-now.dark.png">
+  <img src="docs/using/shots/deck-now.png" alt="The Deck's Now page: what needs you, and which agents are working, for the Harlow Legal and Northwind Bakery projects" width="640">
 </picture>
 
 ## Set up
@@ -37,9 +38,6 @@ Prefer the terminal on a Linux server? The setup page's line is `curl -fsSL http
 
 Press Option-Space in any app. Ask a question, send work to one of your agents, or run a `vyre` command. Answers show which past session they came from, and Lumen knows which project you are working in.
 
-<picture>
-  <img src="docs/images/readme/capsule-chip.png" alt="Vyre Lumen's project chip: 'Ask Vyre, find, or run' with the current project, Northwind Bakery, shown at the top right" width="420">
-</picture>
 
 ## On your phone
 
@@ -67,8 +65,8 @@ There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, 
 - **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it. Pairing a device, revealing a secret, and anything that sends, posts or pays waits for Touch ID or Face ID. A spend cap limits what agents can spend.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/deck-chat.dark.png">
-  <img src="docs/images/readme/deck-chat.png" alt="The Deck showing the Weekly planning thread in the Harlow Legal project: your avatar and Vyre's reply avatar in the thread, the Harlow Legal project name and its members above" width="640">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-chat.dark.png">
+  <img src="docs/using/shots/deck-chat.png" alt="The Deck showing a session in the Harlow Legal project, with the thread and each reply's author" width="640">
 </picture>
 
 ## Updates

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The README, the vyre.run landing page, the start page, llms.txt and the 404 page now describe 0.2.0 (Vyre Lumen, setup at vyre.run/setup, your own Claude, Codex, Grok and OpenRouter accounts, the Windows app, and what is not in 0.2.0). The README now uses the current Deck screenshots; the two Vyre Lumen pictures are retired until they are retaken on a Mac.
 - Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line. Your own global git hooks still run in a session. To leave the `Vyre-Session` line out of commits, set `github.session_trailer` to false in Vyre's config. On git 2.31 and later no git config is written into the repo for this: the session's identity and hooks are its environment.
 - Push: the settings.loosened notice cannot be switched off: push.settings refuses kinds.notice and a stored false is ignored. With no push device, the Deck's settings.changed row is the only trace of a loosening.
 
