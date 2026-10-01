@@ -1071,7 +1071,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).error, undefined, "the person adds directly");
   });
 
-  test(`${driver}: a model session cannot stop, delete or read another project's thread, may stop a child it started, a plain mcp caller never mutates, and the verified assistant still can`, { skip }, async t => {
+  test(`${driver}: a model session cannot stop, delete or read another project's thread, may stop a child it started, a plain mcp caller starts threads and handles only those it started (never delete or rewind), and the verified assistant still can`, { skip }, async t => {
     const w = await boot(t, { driver });
     for (const [name, dir] of [["Harlow Legal", "harlow"], ["Northwind Bakery", "northwind"]]) assert.equal((await w.tool("projects.create", { name, home: path.join(w.work, dir) })).error, undefined);
     const mk = async o => { const th = (await w.tool("threads.start", { prompt: "hello", surface: "deck", ...o })).data; await w.finished(th.id); return th.id; };
@@ -1093,9 +1093,20 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(child.id);
     assert.equal((await as(a1, "threads.stop", { thread: child.id })).error, undefined, "a child it started");
     // A plain mcp caller with no verified thread or agent never mutates.
-    for (const [tool, input] of [["threads.stop", { thread: a2 }], ["threads.delete", { thread: a2 }], ["threads.start", { cwd: w.work, prompt: "x" }], ["threads.send", { thread: a2, text: "x" }]]) {
-      assert.equal((await w.d.registry.call(tool, input, "mcp", {})).error?.code, "denied", `${tool} from a plain mcp caller`);
+    // (the person's own Claude Code through the MCP, no verified thread): it may start threads and stop, archive or send into those it started, never
+    // delete or rewind, and never touch another's.
+    for (const [tool, input] of [["threads.stop", { thread: a2 }], ["threads.archive", { thread: a2 }], ["threads.delete", { thread: a2 }], ["threads.rewind", { thread: a2, uuid: "x" }], ["threads.send", { thread: a2, text: "x" }]]) {
+      assert.equal((await w.d.registry.call(tool, input, "mcp", {})).error?.code, "denied", `${tool} from a plain mcp caller on another's thread`);
     }
+    const mine = await w.d.registry.call("threads.start", { cwd: w.work, prompt: "hello", starter: "mcp" }, "mcp", {});
+    assert.equal(mine.error, undefined, "a plain mcp caller starts threads");
+    await w.finished(mine.data.id);
+    assert.equal((await w.tool("threads.get", { thread: mine.data.id })).data.thread.starter, "mcp");
+    const forged = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", starter: "mcp" })).data;
+    assert.equal((await w.tool("threads.get", { thread: forged.id })).data.thread.starter, null, "a claimed starter is dropped; only vyred sets it");
+    assert.equal((await w.d.registry.call("threads.send", { thread: mine.data.id, text: "again" }, "mcp", {})).error, undefined, "into a thread it started");
+    assert.equal((await w.d.registry.call("threads.delete", { thread: mine.data.id }, "mcp", {})).error?.code, "denied", "never delete, even its own");
+    assert.equal((await w.d.registry.call("threads.stop", { thread: mine.data.id }, "mcp", {})).error, undefined, "stop one it started");
     // The verified assistant (meta.agent from vyred), and the person, are not narrowed.
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
     assert.equal((await w.d.registry.call("threads.get", { thread: b1 }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined);

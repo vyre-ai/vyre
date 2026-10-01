@@ -392,7 +392,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, archived: r.archived_at || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, starter: optsOf(r).starter || null, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -550,6 +550,8 @@ export class Switchboard {
       // The thread this one was started for (a teammate's or sub-agent's), so a person's words in the parent
       // count for it (threads.lineage). Only what vyred verified: never an id read from a model's input.
       if (o.parent && this.record(String(o.parent))) kept.parent = String(o.parent);
+      // A plain mcp caller (the person's own Claude Code through Vyre's MCP, no verified thread or agent) started it: only vyred sets this.
+      if (o.starter === "mcp") kept.starter = "mcp";
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
@@ -2389,12 +2391,19 @@ export default {
      * session (reviewer-2 and the lead, 1 Oct).
      * @param {any} meta @param {string|undefined} target a thread id @param {boolean} mutating
      */
-    const sessionMay = (meta, target, mutating) => {
+    const sessionMay = (meta, target, mutating, tool = "") => {
       const m = meta || {};
       const caller = String(m.caller || "");
       if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
       if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
-      if (typeof m.thread !== "string" || !m.thread) return !mutating;
+      if (typeof m.thread !== "string" || !m.thread) {
+        // The person's own Claude Code through Vyre's MCP, no verified thread: like a session. It starts threads and stops, archives or sends
+        // into the threads it started; never deletes or rewinds, and never touches another's. (Its folder is not verified, so reads are not narrowed.)
+        if (!mutating || tool === "threads.start") return true;
+        if (tool === "threads.delete" || tool === "threads.rewind") return false;
+        const t = typeof target === "string" ? sb.record(target) : null;
+        return !t ? true : t.starter === "mcp";
+      }
       if (typeof target !== "string" || !target || target === m.thread) return true;
       const t = sb.record(target);
       if (!t) return true; // unknown: the tool's own not-found answers
@@ -2408,7 +2417,7 @@ export default {
     const SESSION_READS = new Set(["threads.fork", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
       ? async (i, meta, ...rest) => {
-        if (!sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name))) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
+        if (!sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name), name)) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
         return run(i, meta, ...rest);
       }
       : run;
@@ -2425,7 +2434,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty }) => {
+      async (i, { caller, thread, firstParty, agent }) => {
         guard(caller, "start sessions");
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -2433,9 +2442,10 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, ...rest } = i;
+        const { mentions, pasted, starter: _claimed, ...rest } = i;
+        const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
-        return sb.launch({ ...rest, parent, surface: surfaceOf(i, caller) }, person);
+        return sb.launch({ ...rest, parent, ...(plain ? { starter: "mcp" } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -2931,7 +2941,9 @@ export default {
       run: async i => {
         const rec = sb.record(String(i.session));
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
-        return { session: String(i.session), known: Boolean(rec), human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+        // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
+        const bound = Boolean(sb.sessions.boundPid(String(i.session)));
+        return { session: String(i.session), known: Boolean(rec) || bound, human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
     });
     ctx.tool("threads.lineage", {

@@ -729,6 +729,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // cannot bind another running claude's pid and so take its key. Where the OS cannot say who is calling, the tool's own claudeOf check stands.
     if (socket && name === "threads.bind" && input && Number.isInteger(Number(input.pid))) {
       const caller_pid = await peerPid(req.socket).catch(() => null);
+      if (!caller_pid) { try { /** @type {any} */ (registry).deps.log("daemon: threads.bind from a peer the OS cannot name; only the tool's own claude check applies"); } catch { /* no log */ } }
       if (caller_pid) {
         const mine = ancestry(caller_pid, processTable()).chain.map(c => c.pid);
         if (!mine.includes(Number(input.pid))) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process, not another's" } });
