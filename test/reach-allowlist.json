@@ -228,10 +228,6 @@
    "module": "chrome",
    "default": "open to any caller"
   },
-  "commands.list": {
-   "module": "commands",
-   "default": "open to any caller"
-  },
   "computers.checkout": {
    "module": "computers",
    "default": "open to any caller"
