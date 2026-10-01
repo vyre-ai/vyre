@@ -244,10 +244,44 @@ try {
   const bc = spawnSync("node", ["scripts/computers-proof/browser-checks.mjs", ep.data.url, ep.data.token, CONTAINER], { cwd: here, env, encoding: "utf8", timeout: 240_000 });
   console.log((bc.stdout || "").split("\n").filter(l => /^(PASS|FAIL)/.test(l)).map(l => "  " + l.replace(ep.data.token, "[token]").slice(0, 200)).join("\n"));
   check(bc.status === 0, "3 browser-checks (file://, chrome://, download folder)", { exit: bc.status });
+
+  // ---- 4f. the computer dies mid-task (PROOF_KILL=1, the matrix's J7 step 7.3) ----------------
+  // Kill the container the way a crash would. The pool's monitor must notice, say stopped, and Glass must answer
+  // with a named refusal, not hang; nothing may be left running.
+  if (process.env.PROOF_KILL === "1") {
+    // Findings here are recorded and the run goes on, so one stale answer does not hide the next check.
+    const note = (ok, name, evidence) => { results.push({ ok, name }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`); if (!ok) failed = true; };
+    sh(["kill", CONTAINER]);
+    let st = null;
+    for (let i = 0; i < 90; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
+    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 90 s, not running", { state: st });
+    const w = await person("computers.watch", { agent: AGENT, surface: "deck:laptop" });
+    let said = w.error ? String(w.error.message) : "";
+    if (!w.error) {
+      // A ticket was handed out: what does the stream do? It must end, with a reason a person can read.
+      try { const ws = await wsConnect(socketPath, w.data.path); viewers.push(ws); const rfb = new RfbClient(ws); await rfb.handshake(); said = "the stream opened on a dead computer"; }
+      catch (e) { said = "ticket given, then the stream ended: " + String(e.message).slice(0, 120); }
+    }
+    note(Boolean(w.error) && /\S/.test(said), "4f Glass refuses a killed computer with a plain message (no ticket for a dead computer)", said || "no message");
+    const up = shOk(["ps", "--filter", `name=${CONTAINER}`, "--format", "{{.Status}}"]);
+    note(!/^Up/.test(up), "4f no running container is left", up || "(none)");
+  }
 } catch (e) {
   exitCode = 1;
   if (!/^step failed/.test(e.message)) console.log(`FAIL error: ${e.stack || e.message}`);
   console.log("--- last vyred log lines\n" + logs.slice(-15).join("\n"));
+  // What the computer itself says, for a failure seen on a runner that cannot be reached by hand.
+  console.log("--- container log (tail)\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-6000));
+  console.log("--- processes\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -30"]).slice(-3000));
+  {
+    // The same read the Glass proxy does, from the host: what does the container's VNC port say first?
+    const ip = shOk(["inspect", "-f", "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}", CONTAINER]).trim();
+    const net = await import("node:net");
+    const got = await new Promise(res => { const b = []; const c = net.connect(5900, ip); const t = setTimeout(() => { c.destroy(); res("timeout, got " + Buffer.concat(b).toString("latin1").length + " bytes"); }, 4000); c.on("data", d => { b.push(d); if (Buffer.concat(b).length >= 12) { clearTimeout(t); c.destroy(); res(JSON.stringify(Buffer.concat(b).subarray(0, 12).toString("latin1"))); } }); c.on("error", e => { clearTimeout(t); res("error " + e.message); }); });
+    console.log("--- host read of " + ip + ":5900 first 12 bytes: " + got);
+  }
+  console.log("--- vnc package\n" + shOk(["exec", CONTAINER, "sh", "-c", "dpkg -l 'tigervnc*' 2>&1 | tail -4; Xvnc -version 2>&1 | head -5"]).slice(-900));
+  console.log("--- first bytes of the VNC port\n" + shOk(["exec", CONTAINER, "sh", "-c", "for p in 5900 5901; do echo port $p; (timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/'$p'; head -c 16 <&3 | od -c | head -3') 2>&1; done; ss -ltn 2>&1 | head -10; ls -la /var/lib/vyre/.vnc 2>&1 | head"]).slice(-800));
   // For debugging a failure by hand: keep the computer up for PROOF_HOLD seconds.
   if (Number(process.env.PROOF_HOLD) > 0) { console.log(`HOLDING ${process.env.PROOF_HOLD} s`); await sleep(Number(process.env.PROOF_HOLD) * 1000); }
 } finally {
