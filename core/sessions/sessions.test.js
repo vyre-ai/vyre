@@ -1209,6 +1209,24 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.files.read", { account: acct.id, file: rel, to: path.join(dest, "p.jpg") })).error.code, "no_such_tool", "a person cannot call it");
   });
 
+  test(`${driver}: providers.list shows the models and plan a provider's account last reported, learned from a session's init, and no more than id and label`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const acct = (await w.tool("sessions.accounts.add", { provider: "codex", label: "Codex", kind: "login" })).data;
+    const before = (await w.tool("providers.list", {})).data.find(p => p.id === "codex");
+    assert.deepEqual(before.models, []);
+    assert.equal(before.accounts.find(a => a.id === acct.id).plan, null);
+    const learn = (input, caller = "module:vyred") => w.d.registry.call("sessions.providers.learn", input, caller);
+    assert.equal((await learn({ provider: "codex", account: acct.id, models: [{ id: "gpt-6.1-sol", label: "GPT 6.1 Sol", secret: "no" }, { id: "gpt-6.1-mini" }], plan: "ChatGPT Plus" })).error, undefined);
+    const after = (await w.tool("providers.list", {})).data.find(p => p.id === "codex");
+    assert.deepEqual(after.models, [{ id: "gpt-6.1-sol", label: "GPT 6.1 Sol" }, { id: "gpt-6.1-mini", label: "gpt-6.1-mini" }]);
+    assert.equal(after.accounts.find(a => a.id === acct.id).plan, "ChatGPT Plus");
+    assert.equal((await w.tool("sessions.providers.learn", { provider: "codex", plan: "x" })).error.code, "no_such_tool", "modules only");
+    assert.equal((await learn({ provider: "codex", account: acct.id, plan: "ChatGPT Pro" })).error, undefined);
+    const again = (await w.tool("providers.list", {})).data.find(p => p.id === "codex");
+    assert.equal(again.models.length, 2, "a later report with no models keeps the last list");
+    assert.equal(again.accounts.find(a => a.id === acct.id).plan, "ChatGPT Pro");
+  });
+
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
     const w = await boot(t, { driver });
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet

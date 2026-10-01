@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, message
  * for the tools that only start something the person must finish (add, signin, bind), the verified assistant (lead's ruling, 1 Oct).
  * @param {any} meta @param {string} what
  */
+/** What a provider last said about itself in a session: the models its account can use and the plan it is on (a model picker's list; null until one session has run). */
+const META_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_provider_meta (provider TEXT NOT NULL, account TEXT NOT NULL DEFAULT '', models TEXT, plan TEXT, at INTEGER NOT NULL, PRIMARY KEY (provider, account))`;
+
 export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
@@ -84,7 +87,7 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION, META_MIGRATION]);
     const db = ctx.store.db;
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
@@ -217,12 +220,35 @@ export default {
         get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
         set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
+    /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
+    const providerModels = provider => {
+      const r = /** @type {any} */ (db.prepare("SELECT models FROM sessions_provider_meta WHERE provider = ? AND models IS NOT NULL ORDER BY at DESC LIMIT 1").get(provider));
+      try { return r ? JSON.parse(String(r.models)) : []; } catch { return []; }
+    };
+    const accountPlan = (provider, account) => {
+      const r = /** @type {any} */ (db.prepare("SELECT plan FROM sessions_provider_meta WHERE provider = ? AND account = ?").get(provider, String(account)));
+      return r && r.plan ? String(r.plan) : null;
+    };
+    // The Switchboard tells us what a session's provider said about itself (init: models, plan), so providers.list can fill a model picker. Internal.
+    ctx.tool("sessions.providers.learn", {
+      description: "Record what a provider reported in a session: the models its account can use (id, label) and its plan. For providers.list; not a public name.", internal: true,
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, models: { type: "array", maxItems: 200, items: { type: "object", required: ["id"], properties: { id: str, label: str } } }, plan: str } },
+      run: async i => {
+        const models = Array.isArray(i.models) && i.models.length ? JSON.stringify(i.models.map(m => ({ id: String(m.id).slice(0, 100), label: String(m.label || m.id).slice(0, 100) }))) : null;
+        const plan = typeof i.plan === "string" && i.plan.trim() ? i.plan.trim().slice(0, 60) : null;
+        if (!models && !plan) return { recorded: false };
+        const acct = String(i.account || "");
+        db.prepare(`INSERT INTO sessions_provider_meta (provider, account, models, plan, at) VALUES (?,?,?,?,?)
+          ON CONFLICT(provider, account) DO UPDATE SET models = COALESCE(excluded.models, models), plan = COALESCE(excluded.plan, plan), at = excluded.at`).run(String(i.provider), acct, models, plan, Date.now());
+        return { recorded: true };
+      },
+    });
     ctx.tool("sessions.providers.snapshot", {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
       run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
-        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
-        models: p.id === "claude" ? MODEL_ALIASES : [],
+        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
+        models: p.id === "claude" ? MODEL_ALIASES : providerModels(p.id),
         capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
     });
 

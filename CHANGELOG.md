@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(sessions): providers.list shows the models a Codex or Grok account can use and each account's plan, learned from the init message of a session (sessions.providers.learn, internal; the ACP driver adds `models` and `plan` to its init). A later report with no models keeps the last list.
+
 - feat(sessions): sessions.files.read (internal): a regular file under .grok or .codex in an account's own folder is read as that account (its uid on a box; no links, inside the HOME, 100 MB cap) and written where a module says, so a generated image a provider leaves as an owner-only file can be saved as an artifact. The provider study is in team/0.2/study-providers.md.
 
 - feat(threads): every thread.turn, thread.text, thread.thinking, thread.usage and thread.finished event carries provider, model and account (model is what the provider reported, null until it has); a non-Claude thread no longer records Claude's alias ("opus") as its model. A sign-in nobody finishes ends at its time limit and reports failure, so the account row it created is removed; accounts.list says needs: sign-in for a login that never signed in. scripts/proof-box.mjs: a vyred for the real-account runs on the test box with a test presence verifier.

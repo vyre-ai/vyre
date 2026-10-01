@@ -157,6 +157,7 @@ export function planItems(list) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
+   *   providerMeta?: { models?: { id: string, label?: string }[], plan?: string },
    *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[], reasoning?: string, task?: any,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
@@ -165,6 +166,8 @@ export function translate(m) {
   if (m.type === "system" && m.subtype === "init") {
     out.session = m.session_id;
     out.model = m.model || null;
+    // What a provider says about itself at init (ACP drivers): the models its account can use and its plan, for the model picker.
+    if (Array.isArray(m.models) || typeof m.plan === "string") out.providerMeta = { ...(Array.isArray(m.models) ? { models: m.models.filter(x => x && typeof x.id === "string").slice(0, 200) } : {}), ...(typeof m.plan === "string" ? { plan: m.plan } : {}) };
     // The slash commands this session offers (built in, the user's, the project's, plugins'), for a composer's menu.
     if (Array.isArray(m.slash_commands)) out.commands = m.slash_commands.map(String);
     return out;

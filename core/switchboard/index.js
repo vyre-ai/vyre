@@ -897,6 +897,7 @@ export class Switchboard {
     const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
+    if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
