@@ -335,7 +335,8 @@ tests in `the prototype's bin/test/t-recall-append.cjs`, `t-session-names.cjs` a
   `node --test` Recall drops folders inside the real `~/.claude` anyway.
 
 ## Changed contracts
-- No schema change: `core/recall/schema.js` is untouched.
+- 2026-10-01 (assistant, turn metadata): recall_turns gains `provider` and `model` as UNINDEXED columns after `text` (the table is rebuilt, rowids and snippet column 4 kept; older rows read as provider claude, model null). TurnRow and the indexer's addTurn take both.
+- Earlier: no schema change: `core/recall/schema.js` was untouched.
 - `recall.search` input also takes `per_session` (max hits from one session; default 3, 0 means
   no cap). Hits carry exactly the ten documented fields; `score` is higher-is-better, in [0,1].
   `snippet` marks matched words with « and ».

@@ -648,6 +648,10 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   assert.equal(r1.sent, false);
   assert.equal(r1.open_elsewhere, true);
   assert.match(r1.note, /written \ds ago.*Only one keyboard/);
+  // A one-turn ask on another provider is refused for it too, before anything is said.
+  const ask = await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule", mentions: [{ kind: "account", id: "codex" }] }, "capsule");
+  assert.equal(ask.error.code, "open_elsewhere", JSON.stringify(ask));
+  assert.match(ask.error.message, /open somewhere else.*Nothing was sent, and the turn did not move to another provider\./);
   const q1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" }, "capsule")).data;
   assert.deepEqual([q1.sent, q1.queued, q1.name, q1.note], [false, true, "Intake form", "Intake form is busy in your terminal. I'll hand it your message when this turn ends."]);
 
@@ -1455,4 +1459,17 @@ test("spend cap, through the real daemon: at the cap the person's own agents.ask
     const r = await tool("threads.send", { thread: id, text: `from ${who}` }, who);
     assert.notEqual(r.error && r.error.code, "spend_capped", `${who}: ${JSON.stringify(r.error)}`);
   }
+});
+
+test("switchedLine: what carries over is said plainly, per kind of move", async () => {
+  const { switchedLine, modelName, providerName } = await import("./index.js");
+  const caps = { rewind: true, steering: true, questions: true, interrupt: true, transcripts: true };
+  assert.equal(switchedLine({ from: "claude", to: "grok", had: true, fromCaps: caps, toCaps: caps }), "Switched to Grok. It has this session's memory and files.");
+  assert.equal(switchedLine({ from: "claude", to: "codex", had: false }), "Switched to Codex. It has this session's memory and files. It starts from what was said so far, not from Claude's own working notes.");
+  assert.match(switchedLine({ from: "claude", to: "grok", had: true, reason: "limit" }), /^Claude's limit was reached\. Switched to Grok\./);
+  assert.match(switchedLine({ from: "claude", to: "grok", had: true, fromCaps: caps, toCaps: { streaming: true } }), /Grok cannot do these here: going back to an earlier turn, .*opening its transcript in a terminal\.$/);
+  assert.equal(switchedLine({ from: "claude", to: "grok", had: false, reason: "once" }), "This turn runs on Grok. It has this session's memory and files. The session stays on Claude.");
+  assert.equal(switchedLine({ from: "grok", to: "claude", had: true, reason: "back" }), "Back on Claude. It has this session's memory and files, and what Grok said this turn.");
+  assert.equal(modelName("claude-opus-4-1[high]"), "claude-opus-4-1");
+  assert.equal(providerName("openrouter"), "OpenRouter");
 });

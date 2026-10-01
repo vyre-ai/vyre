@@ -46,7 +46,20 @@ export const MIGRATIONS = [
 
   CREATE TABLE recall_meta (k TEXT PRIMARY KEY, v TEXT);
   `,
+  // Which provider and model said a turn (a session is a group chat of accounts): two more UNINDEXED columns, AFTER text so that
+  // snippet(recall_turns, 4, ...) still means the text. FTS5 cannot add a column, so the table is rebuilt with every row kept under
+  // the same rowid (the dense index and the curator point at rowids). Every turn indexed so far came from a Claude Code transcript.
+  `
+  CREATE VIRTUAL TABLE recall_turns_next USING fts5(
+    session UNINDEXED, seq UNINDEXED, role UNINDEXED, ts UNINDEXED, text, provider UNINDEXED, model UNINDEXED,
+    tokenize='porter unicode61'
+  );
+  INSERT INTO recall_turns_next (rowid, session, seq, role, ts, text, provider, model)
+    SELECT rowid, session, seq, role, ts, text, 'claude', NULL FROM recall_turns;
+  DROP TABLE recall_turns;
+  ALTER TABLE recall_turns_next RENAME TO recall_turns;
+  `,
 ];
 
 /** @typedef {{ id: string, file: string, cwd: string|null, name: string|null, title: string|null, started: number, ended: number, turns: number, human: number, parent: string|null }} SessionRow */
-/** @typedef {{ session: string, seq: number, role: "user"|"assistant", ts: number, text: string }} TurnRow */
+/** @typedef {{ session: string, seq: number, role: "user"|"assistant", ts: number, text: string, provider: string|null, model: string|null }} TurnRow */

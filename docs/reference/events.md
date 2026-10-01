@@ -512,7 +512,7 @@ Listens for: `link.unpaired`
 | `thread.limit` | built in a variable before the emit; see the source |
 | `thread.mentioned` | `mentions`, `uuid` |
 | `thread.plan` | built in a variable before the emit; see the source |
-| `thread.provider` | `account`, `from`, `reason`, `to` |
+| `thread.provider` | `account`, `from`, `model`, `reason`, `text`, `to`; sometimes `once` |
 | `thread.queued` | `queued`, `surface`, `text`, `uuid`; sometimes `edited`, `images`, `kind`, `request` |
 | `thread.remembered` | `file`, `scope` |
 | `thread.rewound` | `restore`, `uuid`; sometimes `at`, `files` |

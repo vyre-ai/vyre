@@ -5,20 +5,6 @@
    "module": "about",
    "default": "limited by callers in code"
   },
-  "agents.job": {
-   "module": "agents",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "agents.scope": {
-   "module": "agents",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "agents.update": {
-   "module": "agents",
-   "default": "callers admit a model"
-  },
   "appearance.check": {
    "module": "appearance",
    "default": "open to any caller"
@@ -631,22 +617,6 @@
    "module": "glass",
    "default": "open to any caller"
   },
-  "goals.get": {
-   "module": "goals",
-   "default": "callers admit a model"
-  },
-  "goals.list": {
-   "module": "goals",
-   "default": "callers admit a model"
-  },
-  "goals.milestone-done": {
-   "module": "goals",
-   "default": "callers admit a model"
-  },
-  "goals.set": {
-   "module": "goals",
-   "default": "callers admit a model"
-  },
   "google.release": {
    "module": "google",
    "default": "internal or hook in code",
@@ -1090,6 +1060,62 @@
    "module": "onboard",
    "default": "open to any caller"
   },
+  "planner.add": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.agenda": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.calendar.create": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.calendar.sync": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.delete": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.dismiss": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.done": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.get": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.list": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.parse": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.ringing": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.snooze": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.upcoming": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
+  "planner.update": {
+   "module": "planner",
+   "default": "callers admit a model"
+  },
   "projects.access.revoke": {
    "module": "projects",
    "default": "limited by callers in code"
@@ -1226,46 +1252,6 @@
   "screen.shot": {
    "module": "screen",
    "default": "callers admit a model"
-  },
-  "sessions.accounts.resolve": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.mode.resolve": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.models.resolve": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.prompt.compose": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.providers.snapshot": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.routes.next": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.slots": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "sessions.usage.report": {
-   "module": "sessions",
-   "default": "internal or hook in code",
-   "internal": true
   },
   "settings.changes": {
    "module": "settings",
@@ -1511,100 +1497,6 @@
    "module": "term",
    "default": "limited by callers in code"
   },
-  "threads.bind": {
-   "module": "threads",
-   "default": "callers admit a model"
-  },
-  "threads.busy": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.claimed": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.contend": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.halt": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.history": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.inbox": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.interrupt-in": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.launch": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.lineage": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.live": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.notice": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.origin": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.pids": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.post": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.quick": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.replied": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.usage": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "threads.vouch": {
-   "module": "threads",
-   "default": "internal or hook in code",
-   "internal": true
-  },
   "tips.dismiss": {
    "module": "tips",
    "default": "limited by callers in code"
@@ -1823,6 +1715,11 @@
   "waiting.list": {
    "module": "waiting",
    "default": "limited by callers in code"
+  },
+  "watchers.hook": {
+   "module": "watchers",
+   "default": "internal or hook in code",
+   "hook": true
   }
  }
 }

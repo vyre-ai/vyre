@@ -119,6 +119,17 @@ export function seedTampered(home, seed) {
   return false;
 }
 /**
+ * The model that answered a turn, as the agent says it on the prompt response: Grok Build `_meta.modelId`, Codex
+ * `_meta.quota.model_usage[0].model` (the base id: the session's own id carries an effort suffix). Null when it says nothing.
+ * @param {any} r @returns {string|null}
+ */
+export function promptModel(r) {
+  const m = r && r._meta && typeof r._meta === "object" ? r._meta : {};
+  const q = m.quota && Array.isArray(m.quota.model_usage) && m.quota.model_usage[0] && m.quota.model_usage[0].model;
+  const id = typeof m.modelId === "string" && m.modelId ? m.modelId : typeof q === "string" && q ? q : null;
+  return id ? id.slice(0, 80) : null;
+}
+/**
  * What a turn used, from the session/prompt RESPONSE, shaped as the Switchboard reads Claude's usage (input_tokens without the cached part,
  * output_tokens, cache_read_input_tokens, cache_creation_input_tokens), so agents.usage and a budget work for every provider.
  * MEASURED: neither Codex nor Grok sends a usage_update for tokens. Codex puts the standard ACP `usage` on the response
@@ -169,6 +180,18 @@ export function acpProvider(entry) {
 }
 
 /** @param {any} entry @param {any} known @param {any} o */
+/** The models an agent offers a session, id and name only: Grok's models.availableModels, Codex's model config option (flat or grouped). @param {any} r a session/new or session/load result */
+export function modelsOf(r) {
+  /** @type {{ id: string, label: string }[]} */ const out = [];
+  const add = (id, label) => { if (typeof id === "string" && id && out.length < 200 && !out.some(x => x.id === id)) out.push({ id: id.slice(0, 120), label: String(label || id).slice(0, 120) }); };
+  for (const x of (r && r.models && Array.isArray(r.models.availableModels) ? r.models.availableModels : [])) add(x && x.modelId, x && x.name);
+  for (const c of (r && Array.isArray(r.configOptions) ? r.configOptions : [])) {
+    if (!c || (c.category !== "model" && c.id !== "model")) continue;
+    for (const g of Array.isArray(c.options) ? c.options : []) for (const x of (g && Array.isArray(g.options) ? g.options : [g])) add(x && (x.value ?? x.id), x && x.name);
+  }
+  return out;
+}
+
 /**
  * Generated media a finished tool call carries, for the Switchboard to save as artifacts: an image or audio content block (Codex's image generation puts
  * the bytes in the stream, with the prompt it revised), or, from Grok's image generation, the path of a file the agent wrote in the account's own folder
@@ -224,6 +247,14 @@ function runAcp(entry, known, o) {
   /** @type {any[]} */ const queue = [];
   let modes = /** @type {{ id: string, name?: string }[]} */ ([]), mode = null, turnText = "", askN = 0, tn = 0, cancelling = false, tree = /** @type {number[]} */ ([]);
   let firstPrompt = true;
+  /** The plan the account is on (Grok's subscription_tier from authenticate, Codex's status update): a name only, never an email. */
+  let plan = "";
+  /** @param {any} r an authenticate result or a status update's params */
+  const planFrom = r => {
+    const c = [r && r._meta && r._meta.subscription_tier, r && r.plan, r && r.planType, r && r.plan_type, r && r.subscription_tier].find(x => typeof x === "string" && x.trim());
+    if (c && !plan) plan = String(c).trim().slice(0, 60);
+    return plan;
+  };
 
   // `tap` (the proofs only): every raw JSON-RPC message, ("out" to the agent, "in" from it), to record a real agent's stream as a fixture.
   const tap = typeof o.tap === "function" ? o.tap : null;
@@ -233,7 +264,7 @@ function runAcp(entry, known, o) {
     calls.set(id, { resolve, reject });
     send({ id, method, params });
     if (timeoutMs > 0) setTimeout(() => { if (calls.delete(id)) reject(Object.assign(new Error(`${method} did not answer in ${Math.round(timeoutMs / 1000)} s`), { code: "timeout" })); }, timeoutMs).unref?.();
-  });
+  }).then(r => { if (method === "authenticate") planFrom(r); return r; });
   const respond = (id, result) => send({ id, result });
   const fail = (id, code, message) => send({ id, error: { code, message } });
 
@@ -269,6 +300,8 @@ function runAcp(entry, known, o) {
       if (m.error) c.reject(Object.assign(new Error(String(m.error.message || "agent error")), { code: m.error.code })); else c.resolve(m.result || {});
       return;
     }
+    // The account's plan, when the agent says it after the session started (Codex's _auth/status_update): said once as its own message.
+    if (typeof m.method === "string" && /status_update$/.test(m.method) && !plan && planFrom(m.params)) { say({ type: "system", subtype: "plan", plan }); return; }
     if (m.method === "session/update") return update(m.params && m.params.update || {});
     if (m.method === "session/request_permission") return permission(m);
     if (m.method === "fs/read_text_file") return fsRead(m);
@@ -336,11 +369,16 @@ function runAcp(entry, known, o) {
   /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
   let projectConfig = false;
   /** @type {Map<string, string>} */ const toolPrompts = new Map();
+  /** A command's exit code as data: Grok's rawOutput.exit_code, Codex's _meta.terminal_exit. Null when the call was no command or has none. @param {any} u */
+  function exitCodeOf(u) {
+    const c = [u && u.rawOutput && u.rawOutput.exit_code, u && u._meta && u._meta.terminal_exit && (u._meta.terminal_exit.exit_code ?? u._meta.terminal_exit.exitCode)].find(x => typeof x === "number" && Number.isInteger(x));
+    return c === undefined ? null : c;
+  }
   function toolDone(u) {
     // An image or audio block is media, saved by the Switchboard; its bytes are never part of the text a model or a card reads.
     const body = Array.isArray(u.content) ? u.content.filter(c => !(c && c.content && (c.content.type === "image" || c.content.type === "audio"))).map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
     const media = mediaOf(u, toolPrompts.get(String(u.toolCallId)));
-    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body, ...(media.length ? { vyre_media: media } : {}) }] } });
+    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body, ...(exitCodeOf(u) !== null ? { exit_code: exitCodeOf(u) } : {}), ...(media.length ? { vyre_media: media } : {}) }] } });
   }
 
   /** A permission question: to the person as can_use_tool; the answer picks an allow_once or reject_once option. */
@@ -370,6 +408,24 @@ function runAcp(entry, known, o) {
       }
       return;
     }
+    // MEASURED on codex-acp 2.1.0 in plan collaboration mode: the plan is a permission question of kind "switch_mode" ("Implement this plan?",
+    // rawInput.plan, options implement_plan / revise_plan), never a `plan` update. It is drawn as the question it is: the plan text with two
+    // buttons, Implement and Revise, through the same question ask Claude's own plan approval uses (AskUserQuestion), and answered back
+    // as the matching option. Anything else with a switch_mode kind and no plan text is an ordinary ask.
+    if (tc.kind === "switch_mode" && tc.rawInput && typeof tc.rawInput.plan === "string" && tc.rawInput.plan.trim()) {
+      const opts = Array.isArray(p.options) ? p.options : [];
+      const yes = opts.find(x => x && x.kind === "allow_once"), no = opts.find(x => x && x.kind === "reject_once");
+      if (yes && no) {
+        const question = String(tc.title || "Implement this plan?").slice(0, 200);
+        const rid = `acp-perm-${++askN}`;
+        asks.set(rid, { rpc: m.id, options: opts, plan: { question, yes: yes.optionId, no: no.optionId } });
+        say({ type: "control_request", request_id: rid, request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", tool_use_id: String(tc.toolCallId || ""), input: { questions: [{
+          question, header: "Plan", multiSelect: false,
+          options: [{ label: "Implement", description: "Leave plan mode and carry it out", preview: String(tc.rawInput.plan) },
+            { label: "Revise", description: "Stay in plan mode; say what to change in your next message" }] }] } } });
+        return;
+      }
+    }
     announce(tc);
     const a = askFor(tc);
     const rid = `acp-perm-${++askN}`;
@@ -382,7 +438,9 @@ function runAcp(entry, known, o) {
     const a = asks.get(r.request_id); if (!a) return;
     asks.delete(r.request_id);
     const body = r.response || {};
-    const want = body.behavior === "allow" ? "allow_once" : "reject_once";
+    // A plan question: the person's choice of button is the label under the question's own text; declining it, or any other word, is Revise.
+    const chosen = a.plan && body.behavior === "allow" && body.updatedInput && body.updatedInput.answers ? body.updatedInput.answers[a.plan.question] : null;
+    const want = a.plan ? (chosen === "Implement" ? "allow_once" : "reject_once") : body.behavior === "allow" ? "allow_once" : "reject_once";
     const opt = a.options.find(x => x && x.kind === want);
     respond(a.rpc, { outcome: opt ? { outcome: "selected", optionId: opt.optionId } : { outcome: "cancelled" } });
   }
@@ -567,7 +625,8 @@ function runAcp(entry, known, o) {
     }
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
-    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded });
+    const offered = modelsOf(r);
+    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded, ...(offered.length ? { models: offered } : {}), ...(plan ? { plan } : {}) });
     pump();
   }
   open().catch(e => { err = scrub(String(e && e.message || e)); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });
@@ -590,7 +649,7 @@ function runAcp(entry, known, o) {
       if (turnText) say({ type: "assistant", message: { id: `acp-turn-${Date.now()}`, content: [{ type: "text", text: turnText }] } });
       const bad = r && r.error;
       say({ type: "result", subtype: bad ? "error" : "success", is_error: Boolean(bad), result: bad ? String(r.error.message || r.error) : turnText,
-        stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: { ...(usage || {}), ...(bad ? {} : promptTokens(r)) } });
+        stop_reason: r && r.stopReason || null, total_cost_usd: usage && usage.cost || 0, usage: { ...(usage || {}), ...(bad ? {} : promptTokens(r)) }, ...(!bad && promptModel(r) ? { model: promptModel(r) } : {}) });
       busy = false; pump();
     });
   }
