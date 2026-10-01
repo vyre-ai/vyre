@@ -68,3 +68,4 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 - lib/said/watchers.js: one file (watchers' recorder merged with the hash rule): watchersIntents(text, {project, kinds, watchers:[{name,hash,title?,state}]}); keys watchers.preset:<project>/<kind> and watchers.create:<project>/<name>@<hash>; hashes from the cards shown in the thread.
 - drift test: test/said-watchers.test.js runs core/watchers/targets.js createTarget/presetTarget against the recorder's keys (needs work/watchers cc3c90c9 in the tree; merged).
 - hearActs now in lib/said/hear.js (pure; switchboard records its output). Built on sessions' b49f223c wiring. Not wired: settingIntents (needs settings.schema keys at ingress). Runner-only tests: core/sessions/sessions.test.js hearActs cases updated (project in watcher keys, team.add).
+- settingIntents wired in lib/said/hear.js (settings.schema keys at hear time); switchboard records kind it.kind and no channel for setting.

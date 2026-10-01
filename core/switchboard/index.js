@@ -1374,7 +1374,7 @@ export class Switchboard {
     const turnsSince = at => Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_turns WHERE thread = ? AND at >= ?").get(id, at)).n) || 0;
     const intents = await heardActs({ text, pasted, project, thread: id, call: (tool, input) => this.deps.call(tool, input), turnsSince }).catch(() => []);
     for (const it of intents) {
-      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: it.kind || "act_out", channel: it.channel || "github", to: it.to, what: it.what, standing: false,
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: it.kind || "act_out", ...(it.channel === null ? {} : { channel: it.channel || "github" }), to: it.to, what: it.what, standing: false,
         ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
   }
