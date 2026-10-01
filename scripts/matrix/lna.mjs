@@ -21,7 +21,7 @@ try {
   const ver = String(await page.evaluate("navigator.userAgent")).match(/(Chrome|Edg|Version)\/[\d.]+/)?.[0] || "unknown";
   r.step("0-browser", true, { why: ver });
   // (a) fetch: what a script on the page does when it asks the local server
-  await page.evaluate(`window.__a = "pending"; fetch(${JSON.stringify(local + "/ping")}, { mode: "cors" }).then(x => x.text()).then(t => window.__a = "ok:" + t).catch(e => window.__a = "blocked:" + e.message)`);
+  await page.evaluate(`(() => { window.__a = "pending"; fetch(${JSON.stringify(local + "/ping")}, { mode: "cors" }).then(x => x.text()).then(t => { window.__a = "ok:" + t; }).catch(e => { window.__a = "blocked:" + e.message; }); return 1; })()`);
   await sleep(12000);
   const a = String(await page.evaluate("window.__a"));
   r.step("1-fetch-to-local", a.startsWith("ok") ? "ok" : "skip", { why: `fetch: ${a} (pending after 12 s means the browser is waiting on a permission prompt)`, shot: r.saveShot("fetch", 1, await page.shot()) });
