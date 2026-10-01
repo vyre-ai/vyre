@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### memory: Sites polish
+
+- A family with no name reads as its id plus "family" (never the raw `family:` key), and says "A group of sites" when no member sites are known, instead of "Family of 0 sites". The tab keeps to the Lessons tab's 920 px so Forget and the chevron sit next to the content.
+
 #### memory: the Sites tab
 
 - `/memory?tab=sites` (`deck/views/memory-sites.js`), shaped to app-design's `team/0.2/sites-list.html`: the sites Vyre for Chrome learned (`memory.site.list`), each with its host, a "Family of N sites" and "N used to work" chip, counts and a chevron that opens the detail (`memory.site.detail`: Flows, Controls, API calls, Notes, Frames; never a selector or a value). Forget never asks first, because every Forget is undoable for a day: a site (`memory.site.forget {key}`) or a row (`{key, part, id}`) leaves "Forgot X. Undo" in its place, and Undo is `memory.site.restore` with the same arguments (answers `{restored: 1 | 0}`). Forget all and forgetting a family each ask once. The Undo lives on the box: the list answer's `forgotten` entries (`{kind: "site" | "row", key, name, part?, id?, label?, at, expires_at}`, last 24 hours) are listed, with an Undo each, in one collapsed "Recently forgotten (N)" row at the bottom, so they are quiet and still reachable on any device and after a reload; nothing is kept in the browser. A forget made on this screen leaves "Forgot X. Undo  Dismiss" in its place, and Dismiss clears it on this screen. Wrong? on a row is Forget with the same Undo, no confirmation. Wrong? on an answer stays the ordinary `memory.correct` and `memory.uncorrect` path. Built against iq's work/iq-s2 deb59e28.
