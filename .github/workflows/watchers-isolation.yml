@@ -39,10 +39,10 @@ jobs:
       - name: bubblewrap, with the restriction on and no profile
         if: matrix.mode == 'restricted' || matrix.mode == 'profile'
         run: |
-          sudo apt-get install -y bubblewrap apparmor-utils
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
           sudo rm -f /etc/apparmor.d/bwrap /etc/apparmor.d/bwrap-userns-restrict /etc/apparmor.d/vyre-bwrap
-          sudo aa-remove-unknown || true
       - name: the installer's wall steps (what vyre up --system runs as root)
         if: matrix.mode == 'profile'
         run: |
@@ -67,6 +67,10 @@ jobs:
           VYRE_EXPECT_HINT: ${{ matrix.hint }}
           VYRE_TEST_TAILNET_ADDR: ${{ runner.os == 'Linux' && '100.100.100.100' || '' }}
         run: node --test --test-reporter=spec core/watchers/isolation.test.js
+      - name: the wall against the installed package (pack, install, daemon, watcher, probe, uninstall)
+        env:
+          VYRE_EXPECT_WALL: ${{ matrix.expect }}
+        run: node scripts/check-wall-installed.mjs
       - name: uninstall removes the profile
         if: matrix.mode == 'profile'
         run: |

@@ -681,6 +681,7 @@ test("watchers: with no wall a watcher is never run, says why in words, and is n
 });
 
 test("watchers: under the machine's real wall a watcher still runs, reads its folder, and gets nothing else", async t => {
+  if (process.platform === "darwin" && !process.env.CI) return t.skip("the wall probe listens on sockets; it runs on a runner, not on the person's Mac");
   const { getWall } = await import("../../lib/sandbox/index.js");
   const found = await getWall();
   if (!found.wall) return t.skip(`no wall here: ${found.why}`);
