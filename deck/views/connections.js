@@ -30,8 +30,8 @@
 // or github.connect-failed arrives. No tab to catch, no address to paste, so its waiting panel is
 // simpler than Google's: the code, a copy button, an "Open GitHub" link, and how long the code
 // lasts. Nothing here ticks or polls; GitHub's own expiry ends the flow with github.connect-failed
-// when the person runs out of time. github.remove revokes at GitHub first, so a failed revoke
-// still says so.
+// when the person runs out of time. github.remove only removes Vyre's own vault item and account row; it never
+// revokes the token at GitHub (the card says so and where to do it).
 
 import { h, put, empty } from "../js/dom.js";
 import { icon } from "../js/icons.js";
@@ -587,8 +587,9 @@ export async function drawConnections(el, ctx, deps = {}) {
         h("span", { class: "mono cn-name" }, a.name), h("span", { class: "muted" }, a.login)),
       st.confirming === `github:${a.name}`
         ? h("div", { class: "set-actions cn-confirm" },
-          h("span", { class: "small" }, `Disconnect ${a.name}? This removes the account from Vyre. To also cancel access at GitHub, open `,
-            h("a", { href: "https://github.com/settings/applications", target: "_blank", rel: "noopener noreferrer" }, "github.com/settings/applications"), "."),
+          h("span", { class: "small" }, `Disconnect ${a.name}? This removes its token from your vault and the account from Vyre. It does not revoke the token at GitHub. To do that, delete it at `,
+            h("a", { href: "https://github.com/settings/applications", target: "_blank", rel: "noopener noreferrer" }, "github.com/settings/applications"), " (signed in with GitHub) or ",
+            h("a", { href: "https://github.com/settings/tokens", target: "_blank", rel: "noopener noreferrer" }, "github.com/settings/tokens"), " (a token you pasted)."),
           h("button", { type: "button", class: "btn btn-sm", "data-act": "remove-yes", onclick: async () => {
             const r = await attempt("github.remove", { name: a.name });
             if (!ctx.alive()) return;
