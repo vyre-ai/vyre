@@ -78,7 +78,7 @@ const ext = (/** @type {string} */ sockPath, /** @type {any} */ over = {}) => fa
 });
 
 test("module: the manifest is valid and every tool it declares is registered", async t => {
-  assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"))), []);
+  assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")), { firstParty: true }), []);
   const { reg, connect } = await rig(t);
   assert.equal(reg.status().find((/** @type {any} */ m) => m.name === "chrome")?.state, "running");
   const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ t) => (typeof t === "string" ? t : t.name)).filter((/** @type {string} */ n) => n !== "chrome.release");
