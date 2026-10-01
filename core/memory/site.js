@@ -167,7 +167,7 @@ export function register(ctx, { denied }) {
         key = familyKey(id);
       }
       // A value the bridge already redacted ("[redacted:key:40]") means the observation held a secret: refuse it whole, as the browser's own
-      // check does, rather than store a selector that is only the marker.
+      // check does, rather than store a selector that is only the marker. A page whose own text contains the literal "[redacted:" is refused whole too, which is acceptable (reviewer-2).
       if (/\[redacted:/.test(JSON.stringify(i.patch || {}))) { event(key, "refused", "redacted", null); return { accepted: false, refused: [{ path: "", why: "secret shape" }] }; }
       // Notes are the person's own words: only a person's surface may write one, never Chrome's bridge.
       const clean = sanitize({ ...(i.patch && typeof i.patch === "object" ? i.patch : {}), key }, { now: now(), notes: isPerson(caller), known: knownIds(load(key)) });
