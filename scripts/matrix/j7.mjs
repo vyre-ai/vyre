@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { recorder } from "./lib/results.mjs";
 
 if (!process.env.CI) { console.error("j7: runs on a CI runner only (CI is unset)"); process.exit(2); }
@@ -18,9 +18,20 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), "j7-"));
 const r = recorder(out, "J7", "linux-docker");
 
 const t0 = Date.now();
-const run = spawnSync("sh", ["scripts/computers-proof/run.sh", work, "47111"], { env: { ...process.env, PROOF_KILL: "1", PROOF_ISOLATION: "1", KEEP_IMAGE: "0" }, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, timeout: 25 * 60_000 });
-const log = (run.stdout || "") + (run.stderr || "");
-fs.writeFileSync(path.join(out, "j7-proof.log"), log);
+// The proof's output goes to a file as it is written, and the whole process group is killed after 14 minutes, so a hang still
+// leaves a log to read (it once ran to the job's own timeout and left nothing).
+const logFile = path.join(out, "j7-proof.log");
+const fd = fs.openSync(logFile, "w");
+const child = spawn("sh", ["scripts/computers-proof/run.sh", work, "47111"], { env: { ...process.env, PROOF_KILL: "1", PROOF_ISOLATION: "1", KEEP_IMAGE: "0" }, stdio: ["ignore", fd, fd], detached: true });
+let timedOut = false;
+const killer = setTimeout(() => { timedOut = true; try { process.kill(-/** @type {number} */ (child.pid), "SIGKILL"); } catch { /* gone */ } }, 14 * 60_000);
+const code = await new Promise(res => child.on("close", c => res(c)));
+clearTimeout(killer);
+fs.closeSync(fd);
+// run.sh's trap removes the proof's containers on a normal exit; after a kill, do it here.
+if (timedOut) spawnSync("sh", ["-c", "for c in $(docker ps -aq --filter name=csproof-); do docker rm -f $c >/dev/null 2>&1; done"]);
+const run = { status: timedOut ? 124 : code };
+const log = fs.readFileSync(logFile, "utf8");
 const lines = log.split("\n").map(l => /^(PASS|FAIL) (\S+) (.*)$/.exec(l)).filter(Boolean).map(m => ({ ok: m[1] === "PASS", tag: m[2], text: m[3] }));
 const prefix = p => lines.filter(l => l.tag === p || l.tag.startsWith(p));
 const fold = (step, tags, why) => {
@@ -58,5 +69,5 @@ for (const [i, step] of ["7.3a-killed-computer-reported-stopped", "7.3b-glass-sa
 const left = spawnSync("docker", ["ps", "-a", "--filter", "name=csproof-", "--format", "{{.Names}}"], { encoding: "utf8" }).stdout.trim();
 r.step("7.3d-no-leftover-containers", left === "", { why: left ? `left behind: ${left.replace(/\n/g, ", ")}` : "the proof's cleanup removed every container" });
 r.step("7.6-windows-uia", "skip", { why: "not in 0.2 (rehearsal J7.6)" });
-r.step("7.run", run.status === 0, { ms: Date.now() - t0, why: run.status === 0 ? undefined : `proof exit ${run.status}` });
+r.step("7.run", run.status === 0, { ms: Date.now() - t0, why: run.status === 0 ? undefined : run.status === 124 ? "the proof hung and was killed after 14 minutes; see j7-proof.log" : `proof exit ${run.status}` });
 process.exit(r.failed ? 1 : 0);
