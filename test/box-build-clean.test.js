@@ -49,7 +49,8 @@ function harness(t, { text, env = {}, root = false, body, envFile = "" }) {
   fs.writeFileSync(path.join(BIN, "docker"), `#!/bin/sh\necho "docker $*" >>"${calls}"\n# an image that says yes to everything\ncase "$*" in *node*) echo signed ;; esac\nexit 0\n`, { mode: 0o755 });
   if (root) fs.writeFileSync(path.join(BIN, "id"), `#!/bin/sh\ncase "$1" in -u) echo 0 ;; -un) echo root ;; *) /usr/bin/id "$@" ;; esac\n`, { mode: 0o755 });
   // The constant /var/lib/vyre-update is a test folder only for this run, so the stack file a root run reads can be shown.
-  const prepared = text.slice(0, text.indexOf('case "${1:-}" in\n  up)')).split("/var/lib/vyre-update").join(UP) + `\n${body}\n`;
+  // (The release wrapper fixes PATH to the system folders; the harness points that one line at its own fake binaries.)
+  const prepared = text.slice(0, text.indexOf('case "${1:-}" in\n  up)')).split("/var/lib/vyre-update").join(UP).split("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin").join(`PATH=${BIN}:/usr/bin:/bin`) + `\n${body}\n`;
   const file = path.join(base, "vyre");
   fs.writeFileSync(file, prepared);
   if (root) fs.writeFileSync(path.join(UP, "stack"), `${DIR}\n`);
@@ -196,4 +197,30 @@ test("release signature: the box verifies the shared vector with the host's open
   // The release build's pinned key is not the vector's: the same vector is refused there.
   fs.writeFileSync(path.join(dir, "SUMS"), VECTOR.sums); fs.writeFileSync(path.join(dir, "SIG"), VECTOR.sig + "\n");
   assert.equal(harness(t, { text: BUILT, env: { VYRE_RELEASE_KEY: VECTOR.key }, body: `sig_ok "${dir}/SUMS" "${dir}/SIG" && echo signed || echo bad` }).run().stdout.trim(), "bad");
+});
+
+test("hostile environment, root run: PATH is fixed and DOCKER_*, COMPOSE_*, BASH_ENV and ENV are unset, so a fake docker daemon or context cannot answer the cosign check", t => {
+  const evil = { PATH: "/tmp/evilbin:/usr/bin:/bin", DOCKER_HOST: "tcp://127.0.0.1:1", DOCKER_CONTEXT: "evil", DOCKER_CONFIG: "/tmp/evil-docker", DOCKER_TLS_VERIFY: "0", DOCKER_CERT_PATH: "/tmp/evil",
+    COMPOSE_FILE: "/tmp/evil.yml", COMPOSE_PROFILES: "all", COMPOSE_PROJECT_NAME: "evil", BASH_ENV: "/tmp/evil.sh", ENV: "/tmp/evil.sh", CDPATH: "/tmp" };
+  const body = `echo "PATH=$PATH"; for v in DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_TLS_VERIFY DOCKER_CERT_PATH COMPOSE_FILE COMPOSE_PROFILES COMPOSE_PROJECT_NAME BASH_ENV ENV CDPATH; do eval "echo $v=\\\${$v-UNSET}"; done`;
+  const root = harness(t, { text: BUILT, root: true, env: evil, body }).run().stdout;
+  assert.match(root, /^PATH=.*:\/usr\/bin:\/bin$/m);
+  assert.ok(!root.includes("evilbin"), `a root run does not keep the caller's PATH: ${root}`);
+  for (const v of ["DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "COMPOSE_FILE", "COMPOSE_PROFILES", "COMPOSE_PROJECT_NAME", "BASH_ENV", "ENV", "CDPATH"]) assert.match(root, new RegExp(`^${v}=UNSET$`, "m"), v);
+  // A person's run keeps their own settings (a remote docker is theirs to choose), with the system folders first.
+  const person = harness(t, { text: BUILT, root: false, env: evil, body }).run().stdout;
+  assert.match(person, /^DOCKER_HOST=tcp:\/\/127\.0\.0\.1:1$/m);
+  assert.match(person, new RegExp("^PATH=" + "[^\\n]*:/tmp/evilbin:/usr/bin:/bin$", "m"), "the system folders come first, theirs after");
+  // The source (unstripped) is for tests: it does none of this.
+  assert.match(harness(t, { text: SOURCE, root: true, env: evil, body }).run().stdout, /^DOCKER_HOST=tcp:/m);
+});
+
+test("root run: no function a root run executes calls `docker compose` directly, so every compose call goes through the one that names root's files", () => {
+  const body = name => { const a = SOURCE.indexOf(`\n${name}() {`); assert.ok(a >= 0, name); const b = SOURCE.indexOf("\n}\n", a); return SOURCE.slice(a, b); };
+  for (const fn of ["update", "update_from_request", "publish_release", "roll_back", "backup_db", "restore_db", "android", "ready", "save_box", "put_box", "sync_run", "prepare_run", "verify_release_images", "unpack_src", "image"]) {
+    assert.ok(!/docker compose/.test(body(fn).replace(/#.*$/gm, "")), `${fn} calls docker compose directly`);
+  }
+  // The one function that does, names every file explicitly in a root run.
+  const c = body("compose");
+  assert.ok(/--project-directory "\$RUN" --project-name vyre --env-file "\$RUN\/compose\.env" -f "\$RUN\/compose\.yml"/.test(c));
 });

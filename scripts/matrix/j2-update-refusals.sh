@@ -88,6 +88,20 @@ seen && mem && rec 2-seed ok || rec 2-seed false "seed not readable"
 sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
 vyre updater status 2>&1 | grep -q installed && rec 3-updater ok || rec 3-updater false "$(tail -3 "$OUT/updater.log")"
 
+# H1/H2 (both modes): root never interprets what a person can write as compose configuration. An override file and a COMPOSE_FILE in .env are
+# refused before anything is fetched, whatever else is set, and the box is exactly as it was.
+rootreq() { sudo sh -c "printf 'update\\n' >$ST/request/request"; out=$(sudo "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; ready; }
+printf 'services:\n  vyre:\n    privileged: true\n' | sudo tee "$DIR/compose.override.yml" >/dev/null
+rootreq; hv_now=$(hv)
+if [ $rc -ne 0 ] && [ "$hv_now" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -q 'does not read override files' && printf '%s' "$(statusf)" | grep -q '"state":"failed"'; then rec H1-override-file-refused ok "$(printf %s "$out" | tail -1)"
+else rec H1-override-file-refused false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -2)"; fi
+sudo rm -f "$DIR/compose.override.yml"
+printf 'COMPOSE_FILE=/tmp/evil.yml\n' | sudo tee -a "$DIR/.env" >/dev/null
+rootreq; hv_now=$(hv)
+if [ $rc -ne 0 ] && [ "$hv_now" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -q 'COMPOSE_FILE is set in'; then rec H2-compose-file-in-env-refused ok "$(printf %s "$out" | tail -1)"
+else rec H2-compose-file-in-env-refused false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -2)"; fi
+sudo sed -i '/^COMPOSE_FILE=\/tmp\/evil.yml$/d' "$DIR/.env"
+
 if [ "$MODE" = stripped ]; then
   # S1 the shipped wrapper is the release build: it names none of the test overrides
   if grep -qE 'VYRE_(RELEASE_KEY|COSIGN_IMAGE|BOX_URL|RELEASES_API|RELEASES_REPO|UPDATE_ROOT|ROOT_UID|CHAIN_TOP|WRAPPER|UPDATE_WAIT|UPDATE_MIN_GAP|SYSTEMD_DIR|UPDATER_NAME|CONTAINER_HOME)' "$(command -v vyre)"; then rec S1-wrapper-clean false "the installed wrapper still names an override"; else rec S1-wrapper-clean ok "$(grep -c '' "$(command -v vyre)") lines"; fi
@@ -130,8 +144,12 @@ mk tamper 9.9.9-e2e.1 tamper; offer tamper; ask $PORT "$GOODPUB"; refused 5d-sig
 mk good 9.9.9-e2e.1 good; offer good; ask $PORT ""; refused 5e-pinned-key-default 'does not match|not signed'
 # 6 downgrade: a correctly signed release older than what the box runs
 mk old 0.0.1-e2e.1 good; offer old; ask $PORT "$GOODPUB"; refused 6-downgrade 'never goes back'
-# 7 positive control: the same signed release, newer, installs and keeps the data
+# 7 positive control: the same signed release, newer, installs and keeps the data. The person's compose.yml is edited first to make the
+#   vyre service privileged; root runs from its own verified copy, so the container that comes up is not.
+sudo sed -i '/^  vyre:$/a\    privileged: true' "$DIR/compose.yml"
 mk new 9.9.9-e2e.1 good; offer new; ask $PORT "$GOODPUB"; ready; v=$(hv); s=$(statusf)
+priv=$(docker inspect -f '{{.HostConfig.Privileged}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null)
+[ "$priv" = false ] && rec 7b-edited-compose-not-run ok "the running vyre container is not privileged" || rec 7b-edited-compose-not-run false "privileged='$priv'"
 if [ $rc -eq 0 ] && [ "$v" = "9.9.9-e2e.1" ] && seen && mem && printf '%s' "$s" | grep -q '"state":"ok"'; then rec 7-signed-update ok "$V0 to $v"
 else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; fi
 # 8 now the floor is 9.9.9: the candidate's own, validly signed version is an old release and is refused

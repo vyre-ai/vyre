@@ -24,6 +24,18 @@ export function strip(src) {
   };
   const key = pin("VYRE_RELEASE_KEY"), cosign = pin("VYRE_COSIGN_IMAGE");
   const constants = `# >>> release constants: the test overrides of the source are cut out of this build (scripts/strip-wrapper.mjs)
+# A fixed PATH, so a docker (or sed, or id) a person's PATH names first is never the one this wrapper runs; a root run gets nothing else: the
+# environment variables that point docker at another daemon, another config or another context, every compose setting, and the shell's startup
+# hooks are unset. A person's run keeps their own PATH after the system folders.
+ORIG_PATH=$PATH
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+if [ "$(id -u)" = 0 ]; then
+  unset DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_BUILDKIT BASH_ENV ENV CDPATH
+  for v in $(env | sed -n 's/^\\(COMPOSE_[A-Za-z0-9_]*\\)=.*/\\1/p'); do unset "$v"; done
+else
+  PATH="$PATH:$ORIG_PATH"
+fi
+export PATH
 UPD_ROOT=/var/lib/vyre-update
 RELEASE_KEY=${key}
 COSIGN_IMAGE=${cosign}
