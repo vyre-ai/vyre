@@ -43,7 +43,7 @@ export function duties({ db, call, emit }) {
     return t;
   };
   const start = async d => {
-    await watchers("watchers.create", { name: d.watcher, project: d.project, owner: { kind: "teammate", teammate: d.teammate },
+    await watchers("watchers.duty.create", { name: d.watcher, project: d.project, owner: { kind: "teammate", teammate: d.teammate },
       when: d.trigger, instruction: d.instruction, act: d.act });
     db.prepare("UPDATE team_duties SET started = 1 WHERE id = ?").run(d.id);
   };
@@ -70,11 +70,11 @@ export function duties({ db, call, emit }) {
         instruction: patch.instruction === undefined ? d.instruction : clean(patch.instruction, INSTRUCTION_MAX, "an instruction"),
         act: patch.act === undefined ? d.act : Boolean(patch.act), enabled: patch.enabled === undefined ? d.enabled : Boolean(patch.enabled) };
       const edited = next.trigger !== d.trigger || next.instruction !== d.instruction || next.act !== d.act;
-      if (d.started && edited) await watchers("watchers.update", { name: d.watcher, when: next.trigger, instruction: next.instruction, act: next.act });
+      if (d.started && edited) await watchers("watchers.duty.update", { name: d.watcher, when: next.trigger, instruction: next.instruction, act: next.act });
       db.prepare("UPDATE team_duties SET trigger = ?, instruction = ?, act = ? WHERE id = ?").run(next.trigger, next.instruction, next.act ? 1 : 0, id);
       if (next.enabled !== d.enabled) {
         const after = { ...d, ...next };
-        if (next.enabled) { if (d.started) await watchers("watchers.resume", { name: d.watcher }); else await start(after); }
+        if (next.enabled) { if (d.started) await watchers("watchers.duty.resume", { name: d.watcher }); else await start(after); }
         else if (d.started) await watchers("watchers.pause", { name: d.watcher });
         db.prepare("UPDATE team_duties SET enabled = ? WHERE id = ?").run(next.enabled ? 1 : 0, id);
       }
@@ -84,7 +84,7 @@ export function duties({ db, call, emit }) {
     },
     async remove(id) {
       const d = must(id);
-      if (d.started) await watchers("watchers.delete", { name: d.watcher }, { tolerate: ["not_found"] });
+      if (d.started) await watchers("watchers.duty.delete", { name: d.watcher }, { tolerate: ["not_found"] });
       db.prepare("DELETE FROM team_duties WHERE id = ?").run(id);
       changed(d, "deleted");
       return { id, deleted: true };
@@ -92,7 +92,7 @@ export function duties({ db, call, emit }) {
     async runNow(id) {
       const d = must(id);
       if (!d.enabled || !d.started) throw bad("this duty is off; turn it on first", "denied");
-      return watchers("watchers.run", { name: d.watcher });
+      return watchers("watchers.duty.run", { name: d.watcher });
     },
     /**
      * What this teammate's duties filed since its last request: watchers files one item per firing and team.notes refuses module

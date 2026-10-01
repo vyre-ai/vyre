@@ -23,6 +23,7 @@ import { json, emit, fail, failTool, usage, viewing, openInBrowser } from "../ki
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
+import { wallSteps, wallUninstallSteps } from "../../../lib/sandbox/index.js";
 import { backup, restore, estimate, planRestore, isStream, inspect as inspectSealed } from "../../names/backup.js";
 import { hiddenPrompt } from "../../vault/cli-io.js";
 import * as tailnet from "../tailnet.js";
@@ -545,7 +546,7 @@ async function upSystem(flags) {
   try { acct = account(user); } catch (e) { out(beacon(`  no such account: ${user}`)); return 1; }
   const seen = system.detect();
   const steps = system.installPlan({ user, group: acct.group, home: acct.home, node: process.execPath, pkg: REPO,
-    hasUnit: seen.units, tailscale: seen.tailscale, systemd: seen.systemd });
+    hasUnit: seen.units, tailscale: seen.tailscale, systemd: seen.systemd, wall: wallSteps() });
   if (dryRun) out(dim("  dry run: nothing will change"));
   try { await system.apply(steps, { dryRun, out: l => out("  " + l) }); }
   catch (e) { out(beacon("  stopped: ") + /** @type {Error} */ (e).message); return 1; }
@@ -567,7 +568,7 @@ export default [
       const user = String(flags.user || process.env.SUDO_USER || os.userInfo().username);
       let home = os.homedir();
       try { home = account(user).home; } catch {}
-      await system.apply(system.uninstallPlan({ purge: Boolean(flags.purge), home }), { dryRun, out: l => out("  " + l) });
+      await system.apply(system.uninstallPlan({ purge: Boolean(flags.purge), home, wall: process.platform === "linux" ? wallUninstallSteps() : [] }), { dryRun, out: l => out("  " + l) });
       return 0;
     },
   },
