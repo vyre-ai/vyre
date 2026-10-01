@@ -28,3 +28,7 @@ The order matters: nothing is served before the release is signed, and everythin
 8. **Announce** only after steps 5 to 7 pass.
 
 Naming (Lumen, Vyre Memory) waits for its own clearance before it goes on vyre.run.
+
+## What the released compose.yml must look like (pulled boxes)
+
+A box that pulls its image checks the release before it pulls (`vyre update` in box/vyre, and install-box.sh). The release job must therefore write the released `compose.yml` with every `image:` line as the literal `image: <name>@sha256:<64 hex>`: no `${VYRE_IMAGE:-...}` variable, no tag, no trailing comment. `release.json` names the box image (and the computer image) by the same digest under `images`, and cosign signs each digest with the release workflow's identity. The wrapper installed on a server is the release build of box/vyre (scripts/strip-wrapper.mjs, run by build-site.sh): `release-check.sh` fails if it still names a test override, and `release.sh` refuses `VYRE_TEST_UNSTRIPPED_WRAPPER`.
