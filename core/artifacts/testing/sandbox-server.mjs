@@ -12,6 +12,7 @@ import http from "node:http";
 import { page, pageHeaders } from "../render.js";
 
 export const SECRET_COOKIE = "vyre_session=S3CRET-COOKIE";
+export const LAX_COOKIE = "vyre_lax=S3CRET-LAX";
 export const SECRET_STORAGE = "S3CRET-STORAGE";
 
 /** The hostile artifact's script: each attack passes when it throws, returns nothing secret or is blocked. */
@@ -20,7 +21,7 @@ const HOSTILE = String.raw`
   const MODE = new URLSearchParams(location.search).get("mode") || "framed";
   const PORT = location.port;
   const out = [];
-  const SECRETS = ["S3CRET-COOKIE", "S3CRET-STORAGE", "S3CRET-GLOBAL"];
+  const SECRETS = ["S3CRET-COOKIE", "S3CRET-LAX", "S3CRET-STORAGE", "S3CRET-GLOBAL"];
   const leaks = v => { try { const s = typeof v === "string" ? v : JSON.stringify(v); return SECRETS.some(x => s && s.includes(x)); } catch { return false; } };
   // An attack is blocked when it throws, is refused, or returns nothing secret.
   const attack = async (name, fn) => {
@@ -58,6 +59,9 @@ const HOSTILE = String.raw`
   await tag("script src", () => { const s = document.createElement("script"); s.src = sink("/v1/beacon") + "script"; return s; });
   await tag("stylesheet", () => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = sink("/v1/beacon") + "css"; return l; });
   await tag("iframe src", () => { const f = document.createElement("iframe"); f.src = sink("/v1/beacon") + "iframe"; return f; });
+  await attack("popup by an anchor with target=_blank", () => new Promise(res => { const a = document.createElement("a"); a.href = sink("/v1/beacon") + "blank"; a.target = "_blank"; document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
+  await attack("download by an anchor with the download attribute", () => new Promise(res => { const a = document.createElement("a"); a.href = sink("/v1/beacon") + "download"; a.download = "x.json"; document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
+  await attack("popup by form target=_blank", () => new Promise(res => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "formblank"; f.method = "post"; f.target = "_blank"; document.body.appendChild(f); try { f.submit(); } catch {} setTimeout(() => res("tried"), 800); }));
   await tag("form submit", () => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "form"; f.method = "post"; setTimeout(() => { try { f.submit(); } catch {} }, 50); return f; });
   await tag("object data", () => { const o = document.createElement("object"); o.data = sink("/v1/beacon") + "object"; return o; });
   await tag("css url()", () => { const d = document.createElement("div"); d.style.cssText = "width:9px;height:9px;background:url('" + sink("/v1/beacon") + "cssurl')"; return d; });
@@ -73,10 +77,37 @@ const HOSTILE = String.raw`
 `;
 
 /** The hostile artifact as Vyre serves it: the author's HTML, under pageHeaders(). */
-export function hostilePage() {
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hostile</title></head><body><h1>Hostile artifact</h1><script>${HOSTILE}</script></body></html>`;
+export function hostilePage(variant = "main") {
+  // main: the full attack. navmeta and navloc: a page that navigates ITSELF away (a meta refresh, a script):
+  // the sandbox allows a frame to navigate itself and no header forbids it (the Deck blanks a frame that
+  // loads twice), so the server is reached; what must hold is that no cookie goes with it and the
+  // response is unreadable.
+  const body = variant === "navmeta" ? '<meta http-equiv="refresh" content="0;url=/v1/beacon?via=navmeta"><p>moving</p>'
+    : variant === "navloc" ? "<p>moving</p><script>location.href = '/v1/beacon?via=navloc';</script>"
+    : `<h1>Hostile artifact</h1><script>${HOSTILE}</script>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hostile</title></head><body>${body}</body></html>`;
   const p = page({ title: "Hostile", format: "html", files: { "index.html": html } });
   return { body: p.html, headers: pageHeaders({ scripts: p.scripts, framedBy: "self" }) };
+}
+
+/**
+ * The negative control: the same kind of page with the sandbox OFF (no CSP, allow-same-origin). It must
+ * reach the server and read the cookie, so a zero count from the hostile page means "blocked", not
+ * "unreachable".
+ */
+function controlPage() {
+  return `<!doctype html><html><body><script>
+  (async () => {
+    const out = {};
+    try { out.cookie = document.cookie; } catch (e) { out.cookie = "threw " + e.name; }
+    try { out.storage = localStorage.getItem("vyre_token"); } catch (e) { out.storage = "threw " + e.name; }
+    try { out.fetch = (await (await fetch("/v1/api/secret?via=ctlfetch", { credentials: "include" })).json()).secret; } catch (e) { out.fetch = "threw " + e.name; }
+    new Image().src = "/v1/beacon?via=ctlimg";
+    try { navigator.sendBeacon("/v1/beacon?via=ctlbeacon", "x"); } catch {}
+    await new Promise(r => setTimeout(r, 800));
+    parent.postMessage({ vyreControl: out }, "*");
+  })();
+  </script></body></html>`;
 }
 
 /** The Deck stand-in: first-party, with secrets in its cookie, storage and globals, framing the artifact. */
@@ -89,8 +120,9 @@ function deckPage() {
   window.vyreSecret = "S3CRET-GLOBAL";
 </script>
 <iframe id="f" sandbox="allow-scripts" src="/a/hostile?mode=framed" style="width:340px;height:300px"></iframe>
+<iframe id="c" sandbox="allow-scripts allow-same-origin" src="/a/control" style="width:200px;height:80px"></iframe>
 <script>
-  const f = document.getElementById("f"), framed = [];
+  const f = document.getElementById("f"), c = document.getElementById("c"), framed = []; let control = null;
   let sent = false;
   async function finish(note) {
     if (sent) return; sent = true;
@@ -99,13 +131,16 @@ function deckPage() {
     outer.push({ name: "the frame cannot plant a cookie", ok: !document.cookie.includes("planted"), detail: "outer cookie: " + document.cookie.replace(/S3CRET[^;]*/, "<secret>") });
     outer.push({ name: "the frame cannot plant localStorage", ok: localStorage.getItem("planted") === null, detail: String(localStorage.getItem("planted")) });
     outer.push({ name: "the deck is still here after the hostile page ran", ok: location.pathname === "/", detail: location.pathname });
-    await fetch("/report", { method: "POST", body: JSON.stringify({ ua: navigator.userAgent, note, framed, outer }) });
+    await fetch("/report", { method: "POST", body: JSON.stringify({ ua: navigator.userAgent, note, framed, outer, control }) });
     document.title = "reported";
   }
   addEventListener("message", e => {
+    if (e.source === c.contentWindow && e.data && e.data.vyreControl) { control = e.data.vyreControl; return; }
     if (e.source !== f.contentWindow || !e.data || !e.data.vyreProof) return;
     framed.push({ origin: e.origin, ...e.data.vyreProof });
-    setTimeout(() => finish("message"), 300);
+    // The pages that navigate themselves away run after the main attack, each in its own sandboxed frame.
+    for (const v of ["navmeta", "navloc"]) { const n = document.createElement("iframe"); n.sandbox = "allow-scripts"; n.src = "/a/hostile?mode=" + v; document.body.appendChild(n); }
+    setTimeout(() => finish("message"), 2500);
   });
   setTimeout(() => finish("timeout"), 25000);
 </script></body></html>`;
@@ -116,23 +151,26 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { hits: /** @type {Record<string, number>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
+  const state = { hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
     state.served.push(req.method + " " + u.pathname + (via ? "?via=" + via : ""));
     if (u.pathname === "/") {
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": SECRET_COOKIE + "; Path=/; SameSite=Lax", "cache-control": "no-store" });
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": [SECRET_COOKIE + "; Path=/; SameSite=Strict", LAX_COOKIE + "; Path=/; SameSite=Lax"], "cache-control": "no-store" });
       return void res.end(deckPage());
     }
+    if (u.pathname === "/a/control") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return void res.end(controlPage()); }
     if (u.pathname === "/a/hostile") {
-      const h = hostilePage();
+      const mode = u.searchParams.get("mode");
+      const h = hostilePage(mode === "navmeta" || mode === "navloc" ? mode : "main");
       res.writeHead(200, h.headers);
       return void res.end(h.body);
     }
     if (u.pathname === "/v1/api/secret" || u.pathname === "/v1/beacon" || u.pathname === "/hijack") {
       const key = u.pathname === "/hijack" ? "hijack" : via || "unknown";
       state.hits[key] = (state.hits[key] || 0) + 1;
+      (state.cookies[key] ||= []).push(String(req.headers.cookie || "").split(";").map(x => x.trim().split("=")[0]).filter(Boolean).join(","));
       if (u.pathname === "/v1/api/secret") state.api.push({ via: key, cookie: /vyre_session/.test(req.headers.cookie || "") });
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
       return void res.end(JSON.stringify({ secret: "S3CRET-API" }));
@@ -148,7 +186,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
       res.writeHead(200, { "content-type": "text/plain" });
       return void res.end("ok");
     }
-    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ hits: state.hits, api: state.api, report: state.report, top: state.top })); }
+    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ hits: state.hits, cookies: state.cookies, api: state.api, report: state.report, top: state.top })); }
     res.writeHead(404); res.end("not found");
   });
   server.on("upgrade", (req, socket) => { const u = new URL(req.url || "/", "http://x"); const via = u.searchParams.get("via") || "ws"; state.hits[via] = (state.hits[via] || 0) + 1; socket.destroy(); });
