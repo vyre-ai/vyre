@@ -48,3 +48,19 @@ test("only the first 20000 characters are read, so a huge reply is quick and sti
   assert.ok(r.cut && r.text.length <= MAX_SPOKEN);
   assert.equal(MAX_INPUT, 20_000);
 });
+
+test("a hostile reply cannot freeze the engine: 20000 spaces, backticks, newlines and other repeats each run in under 50 ms", () => {
+  const N = 20_000;
+  for (const [name, text] of Object.entries({ spaces: " ".repeat(N), backticks: "`".repeat(N), newlines: "\n".repeat(N), tabs: "\t".repeat(N), tildes: "~".repeat(N), pipes: "|".repeat(N),
+    "space-newline": " \n".repeat(N / 2), "dash-space-newline": "- \n".repeat(N / 3), "backtick-newline": "`\n".repeat(N / 2), brackets: "[".repeat(N), "open-image": "![".repeat(N / 2), angles: "<".repeat(N), "gt": ">".repeat(N), hashes: "#".repeat(N) })) {
+    const t = performance.now();
+    spoken(text);
+    assert.ok(performance.now() - t < 50, `${name} took ${Math.round(performance.now() - t)} ms`);
+  }
+});
+
+test("the table rule, heading, quote and list patterns still read ordinary text the same", () => {
+  assert.equal(spoken("Intro.\n| a | b |\n|---|---|\n| 1 | 2 |\nDone.").text, "Intro. Done. The rest is on your screen.");
+  assert.equal(spoken("Intro.\n---\nDone.").text, "Intro. Done. The rest is on your screen.");
+  assert.equal(spoken("  ## Heading\n> quoted words\n  - item one\n2) item two").text, "Heading quoted words item one item two");
+});
