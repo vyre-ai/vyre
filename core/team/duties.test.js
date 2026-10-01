@@ -5,7 +5,7 @@ import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { open as openStore } from "../store/index.js";
 import { duties, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
-import { dutyNewsBlock } from "./index.js";
+import { dutyNewsBlock, addRefusal } from "./index.js";
 
 const tm = { agent: "reviewer-harlow-legal", project: "harlow-legal", role: "reviewer" };
 
@@ -138,4 +138,12 @@ test("hash and title: rows carry a fingerprint of what will run and a label to n
   const edited = await api.update(d.id, { instruction: "Read the open issues and goals." });
   assert.notEqual(edited.hash, d.hash);
   assert.notEqual(dutyHash({ trigger: "a", instruction: "b", act: true }), dutyHash({ trigger: "a", instruction: "b", act: false }));
+});
+
+test("addRefusal: a model may not set tools, model or helper_model when it adds a teammate; brief, instructions and isolation pass", () => {
+  assert.equal(addRefusal({ project: "p", role: "r", brief: "b", instructions: "i", isolation: "worktree" }), null);
+  assert.match(addRefusal({ project: "p", role: "r", tools: ["Bash"] }), /default tools and models/);
+  assert.ok(addRefusal({ project: "p", role: "r", model: "opus" }));
+  assert.ok(addRefusal({ project: "p", role: "r", helper_model: "haiku" }));
+  assert.equal(addRefusal(null), null);
 });

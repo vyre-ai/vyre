@@ -138,6 +138,14 @@ export const INTEGRATOR_ROLE = "integrator";
  */
 export const accountChanged = (rec, resolved) => Boolean(rec && rec.account && resolved && resolved.id && String(resolved.id) !== String(rec.account));
 
+/**
+ * What a model may not choose when it adds a teammate: the approval key binds the project and the role, nothing else, so the tools it
+ * may use and the models it runs on stay the defaults. Brief, instructions and isolation may come from the call. The person sets the rest.
+ * @param {any} i the call's input @returns {string|null} why it is refused, or null
+ */
+export const addRefusal = i => (i && (i.tools !== undefined || i.model !== undefined || i.helper_model !== undefined)
+  ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model" : null);
+
 export const isAssistant = meta => Boolean(meta && meta.agentKind === "assistant");
 
 export function preamble(tm) {
@@ -794,6 +802,7 @@ export default {
         if (callerTeammate(meta.agent)) throw Object.assign(new Error("a teammate cannot add teammates; that is the person's, or a session acting on their request"), { code: "denied" });
         if (!isPerson(meta.caller) && !isAssistant(meta) && !(SLUG.test(String(i.project || "")) && await inProject(meta, i.project)))
           throw Object.assign(new Error("team.add is for a person, or a session in that project"), { code: "denied" });
+        if (!isPerson(meta.caller) && addRefusal(i)) throw Object.assign(new Error(addRefusal(i)), { code: "denied" });
         if (!SLUG.test(String(i.project || ""))) throw new Error("project must be a project slug");
         if (!NAME.test(i.role)) throw new Error("a role is lowercase letters, digits and dashes");
         if (i.role === INTEGRATOR_ROLE) throw Object.assign(new Error(`"${INTEGRATOR_ROLE}" is reserved: it comes on its own with a project's first isolation: worktree teammate`), { code: "denied" });
@@ -1108,7 +1117,7 @@ export default {
         const i = input || {};
         if (tool === "team.add") {
           // The teammate does not exist yet: the words name the project and the role.
-          if (!SLUG.test(String(i.project || "")) || !NAME.test(String(i.role || ""))) throw Object.assign(new Error("a project slug and a role"), { code: "bad_input" });
+          if (!SLUG.test(String(i.project || "")) || !NAME.test(String(i.role || ""))) return { to: [] }; // an empty answer is "not asked"
           return { to: [`team.add:${i.project}/${i.role}`] };
         }
         if (tool === "team.duties.start") {
