@@ -9,7 +9,7 @@
 #   2. an image signed by the wrong identity (a real keyless signature from THIS workflow, which is not Vyre's release workflow)
 #   3. an image signed with an ordinary key (a signature exists, but not from the release workflow's identity)
 #   4. a digest the registry does not hold (a tag moved away, an image deleted)
-# Each must be refused with a plain message, and the refused image must not have been pulled (and, in part B, version and data stay). The registry is a local registry:2 with TLS, serving ghcr.io through /etc/hosts and a test CA; the real
+# Each must be refused with a plain message, and the refused image must not have been pulled (and, in part B, version and data stay). Part B turns the tgz-built box into a pulled one by deleting the COMPOSE_FILE build line from its .env, since a real pulled baseline needs a real Vyre image. The registry is a local registry:2 with TLS, serving ghcr.io through /etc/hosts and a test CA; the real
 # install-box.sh and real cosign run unchanged. Honest limits, stated in the results: (a) the cosign image the installer runs is a
 # rebuild of the pinned one (the real binary copied out of it) that carries the test CA and a hosts line, through the installer's own
 # test-only VYRE_COSIGN_IMAGE override, because the pinned image has no way to trust a test CA; (b) a POSITIVE control (an image signed by
@@ -77,7 +77,7 @@ R4="ghcr.io/vyre-ai/vyre@sha256:$(printf '0%.0s' $(seq 1 64))"
 # ---- 5 a release that names an image by digest, as release.sh will
 mkrel() { # mkrel NAME REF
   d="$WORK/$1"; rm -rf "$d"; mkdir -p "$d"; cp -R "$BOX"/. "$d"/
-  sed -i "s|\${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}|$2|; s|\${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}|tailscale/tailscale@sha256:$(printf 'a%.0s' $(seq 1 64))|" "$d/compose.yml"
+  sed -i "s|\${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}|$2|" "$d/compose.yml"
   printf '{"version":"%s","channel":"stable","box":{"ref":"%s"}}\n' "$V0" "$2" >"$d/release.json"
   files=$(awk '{print $2}' "$BOX/SHA256SUMS"; echo release.json)
   (cd "$d" && for f in $(printf '%s\n' $files | sort -u); do sha256sum "$f"; done >SHA256SUMS)
@@ -109,6 +109,9 @@ seen && mem && rec B2-seed ok || rec B2-seed false "seed not readable"
 SUMS0=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
 
 ST=/var/lib/vyre-update
+# The box was built from vyre.tgz (a real pulled install needs a real Vyre image). Make it a pulled box, as one would be: the
+# build line comes out of its .env, so `vyre update` pulls the release's digest instead of building. Disclosed in the header.
+sed -i '/^COMPOSE_FILE=.*compose.build.yml/d' "$DIR/.env"
 sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
 node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
 GOODPUB=$(cat "$WORK/good.pub")
@@ -123,7 +126,7 @@ askupd() { PORT=$((PORT + 1)); serve "$WORK/$1" $PORT
   sudo sh -c "printf 'update\n' >$ST/request/request"
   out=$(sudo env "VYRE_DIR=$DIR" "VYRE_BOX_URL=http://127.0.0.1:$PORT/" VYRE_RELEASES_API= "VYRE_RELEASE_KEY=$GOODPUB" VYRE_UPDATE_MIN_GAP=0 VYRE_UPDATE_WAIT=300 "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
 mkupd upd-missing "$R4"; askupd upd-missing; ready; v=$(hv)
-if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qiE 'pull|manifest|not found|unknown|did not come up'; then rec B3-update-digest-not-held ok "$(printf %s "$out" | tail -1)"
+if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qiE 'manifest|not found|unknown' && printf '%s' "$out" | grep -qi 'rolled back\|nothing was changed'; then rec B3-update-digest-not-held ok "$(printf %s "$out" | tail -1)"
 else rec B3-update-digest-not-held false "rc $rc, runs '$v' (want $V0): $(printf %s "$out" | tail -4)"; fi
 # What the update does with a properly SIGNED release that names an UNSIGNED image: recorded as it is, not asserted as a refusal.
 mkupd upd-unsigned "$R1"; askupd upd-unsigned; ready; v=$(hv)
