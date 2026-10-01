@@ -23,6 +23,7 @@
 // item it makes for itself, google-<name>, granted to itself, and adds the account the way
 // google.add does. Only people start, finish or cancel a sign-in; a model never can.
 
+import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { Credentials, CredentialError } from "../../lib/connectors/auth.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { client, SCOPE, SCOPES } from "./api.js";
@@ -54,6 +55,7 @@ const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code }
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    closeToAddedModules(ctx);
     ctx.store.migrate(MIGRATIONS);
     const accounts = store(ctx.store.db);
     const now = () => Date.now();

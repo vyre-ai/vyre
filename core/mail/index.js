@@ -22,6 +22,7 @@
 //   can ask the person. Never a value.
 // - Nothing runs in the background: no timer, no poll, no child.
 
+import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { addresses, checkContent, parseQuery, addressOf, nameOf } from "../../lib/connectors/message.js";
 import { checkBehalf } from "../../lib/connectors/behalf.js";
 import { MIGRATIONS, ID, callerFor, filingFor, adapterOf, imapConfig, view, pickFor } from "./accounts.js";
@@ -51,6 +52,7 @@ const MAILCAPS = ["send_mail", "read_mail"];
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    closeToAddedModules(ctx);
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const now = () => Date.now();
