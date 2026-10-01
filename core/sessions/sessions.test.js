@@ -548,9 +548,9 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     const ask = id => w.d.registry.call("threads.origin", { session: id }, "module:vyred");
-    assert.deepEqual((await ask(th.id)).data, { session: th.id, known: true, human: true, provider: "claude", account: null });
+    assert.deepEqual((await ask(th.id)).data, { session: th.id, known: true, bound: false, human: true, provider: "claude", account: null });
     const stranger = crypto.randomUUID();
-    assert.deepEqual((await ask(stranger)).data, { session: stranger, known: false, human: false, provider: null, account: null }, "a transcript with no thread is not a person's");
+    assert.deepEqual((await ask(stranger)).data, { session: stranger, known: false, bound: false, human: false, provider: null, account: null }, "a transcript with no thread is not a person's");
     assert.equal((await w.tool("threads.origin", { session: th.id })).error.code, "no_such_tool", "modules only");
   });
 
