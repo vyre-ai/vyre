@@ -21,6 +21,7 @@ jobs:
       - name: Assemble dist/ like the dry run, and sign it with a throwaway key
         run: |
           sh scripts/build-site.sh
+          cmp site/w scripts/install-windows.ps1
           mkdir dist
           for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do cp "site/box/$f" dist/; done
           node -e '

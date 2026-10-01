@@ -82,3 +82,11 @@ What to do today: stop sessions you are done with, or lower `idle_minutes` or `m
 - **Vyre for Chrome cannot see everything.** It does not read cross-origin iframes. A script can get around the guard on WebRTC and on DNS hints in some forms, and by writing with `innerHTML` or building an iframe. See [Connectors](using/connectors.md).
 - **Sessions you start by hand on a box.** The sessions Vyre runs on a Docker box run as a separate user that cannot open Vyre's socket. A Claude Code you start by hand in the box's container does not, so Vyre's checks on its tool calls are the protection there. See [Presence](concepts/presence.md).
 - **No Gate on shell sends or shell file changes.** A message sent some other way, such as `curl` to a mail API, is not recognised as a send, and files a shell command changes are not recorded. See [the security floor](concepts/floor.md).
+
+## The first Windows install checks a checksum, not a signature
+
+`irm https://vyre.run/w | iex` downloads `VyreSetup.exe` and checks its SHA-256 against the line in the release's `SHA256SUMS`, both fetched over https from GitHub. It does not verify `SHA256SUMS.sig`: Windows PowerShell 5.1 cannot check an Ed25519 signature, and the installer is not code-signed yet, so Windows shows its "unrecognized app" warning (choose More info, then Run anyway). Every later update is different: the app verifies it against Vyre's release key and refuses anything unsigned.
+
+What to do: install only from `vyre.run/w` or the release page on GitHub. A signature-verified first install (a PowerShell Ed25519 check, or code-signing the installer) is planned for 0.2.1.
+
+Owner: windows with launch.

@@ -198,6 +198,7 @@ done
 tar -xzOf "$box/vyre.tgz" package/package.json | grep -q "\"version\": \"$version\"" || fail "vyre.tgz is not $version"
 tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Dockerfile$' || fail "vyre.tgz has no box/Dockerfile, which the image build needs"
 cmp -s "$box/install-box.sh" "$repo/site/install.sh" || fail "site/install.sh differs from site/box/install-box.sh"
+cmp -s "$repo/scripts/install-windows.ps1" "$repo/site/w" || fail "site/w differs from scripts/install-windows.ps1 (build-site.sh makes it)"
 sh -n "$box/install-box.sh" || fail "install-box.sh does not parse"
 sh -n "$box/vyre" || fail "the box wrapper does not parse"
 # The shipped wrapper is the release build: none of the test overrides (the release key, the cosign image, where a release comes from) survive in it.
@@ -228,6 +229,8 @@ if [ "$LIVE" = 1 ]; then
   done <"$box/SHA256SUMS"
   (cd "$work/live" && sum -c --quiet "$box/SHA256SUMS") || fail "$base/box serves different bytes"
   curl -fsSL "$base/install.sh" | cmp -s - "$box/install-box.sh" || fail "$base/install.sh is not install-box.sh"
+  curl -fsSL "$base/w" | cmp -s - "$repo/scripts/install-windows.ps1" || fail "$base/w is not scripts/install-windows.ps1"
+  case "$(curl -sI "$base/w" | tr -d '\r' | grep -i '^content-type:')" in *text/plain*) ;; *) fail "$base/w is not served as text/plain" ;; esac
   code=$(curl -s -o /dev/null -w '%{http_code}' "$base/box/no-such-file")
   [ "$code" = 404 ] || fail "$base answers a missing file with $code, not 404"
   code=$(curl -sL -o /dev/null -w '%{http_code}' "$base/start")

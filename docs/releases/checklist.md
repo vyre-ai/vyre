@@ -32,3 +32,7 @@ Naming (Lumen, Vyre Memory) waits for its own clearance before it goes on vyre.r
 ## What the released compose.yml must look like (pulled boxes)
 
 A box that pulls its image checks the release before it pulls (`vyre update` in box/vyre, and install-box.sh). The release job must therefore write the released `compose.yml` with every `image:` line as the literal `image: <name>@sha256:<64 hex>`: no `${VYRE_IMAGE:-...}` variable, no tag, no trailing comment. `release.json` names the box image (and the computer image) by the same digest under `images`, and cosign signs each digest with the release workflow's identity. The wrapper installed on a server is the release build of box/vyre (scripts/strip-wrapper.mjs, run by build-site.sh): `release-check.sh` fails if it still names a test override, and `release.sh` refuses `VYRE_TEST_UNSTRIPPED_WRAPPER`.
+
+## After 0.2.0 lands on stage: redeploy the site for vyre.run/w
+
+`https://vyre.run/w` is `scripts/install-windows.ps1`, put at `site/w` by `scripts/build-site.sh` and served as plain text by `site/_headers`. It only exists once the site is redeployed from the commit that carries 0.2.0 (the site is built from main only; `scripts/deploy-site.sh`). Check afterwards: `curl -sI https://vyre.run/w` is 200 with `content-type: text/plain`, and `curl -s https://vyre.run/w | cmp - scripts/install-windows.ps1`. `release-check.sh --live` does both.

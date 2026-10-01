@@ -10,6 +10,7 @@
 #
 # Writes (all generated, all gitignored):
 #   site/install.sh               what `curl -fsSL https://vyre.run/install.sh | sh` runs
+#   site/w                        scripts/install-windows.ps1, what `irm https://vyre.run/w | iex` runs
 #   site/box/install-box.sh       the same file, beside the rest
 #   site/box/compose.yml, compose.build.yml, vyre.env.example, vyre
 #                                 the stack install-box.sh lays out in /srv/vyre
@@ -66,6 +67,9 @@ cp "$src/scripts/install-box.sh" "$out/install-box.sh"
 # The Mac server installer, served beside it and covered by SHA256SUMS.
 [ ! -f "$src/scripts/install-mac-server.sh" ] || cp "$src/scripts/install-mac-server.sh" "$out/install-mac-server.sh"
 cp "$src/scripts/install-box.sh" "$here/site/install.sh"
+# The Windows installer's one line, `irm https://vyre.run/w | iex`: the script itself, served as plain text (site/_headers). Generated here, never
+# edited in site/ (like install.sh).
+cp "$src/scripts/install-windows.ps1" "$here/site/w"
 
 {
   printf '/box /box/install-box.sh 200\n'
