@@ -16,7 +16,7 @@ import fs from "node:fs";
 import { Readable } from "node:stream";
 import * as config from "../../core/config/index.js";
 import { callerKind } from "../../core/modules/index.js";
-import { listener, LOCAL } from "./listen.js";
+import { listener, LOCAL, isAgentCaller } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
 import { spoken } from "./spoken.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
@@ -146,7 +146,7 @@ export default {
     ctx.route("speech", (req, res, { caller, url }) => {
       const ticket = url.searchParams.get("ticket") || "";
       const x = tickets.get(ticket);
-      if (req.method !== "GET" || !LOCAL.includes(kindOf(caller)) || !x) {
+      if (req.method !== "GET" || isAgentCaller(caller) || !LOCAL.includes(kindOf(caller)) || !x) {
         res.writeHead(req.method !== "GET" ? 405 : 404, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: { code: "not_found", message: "no such speech ticket here" } }));
         return;
