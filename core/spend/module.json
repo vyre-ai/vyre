@@ -4,7 +4,12 @@
   "description": "One ledger of what agents, sessions and memory spend, per provider and per day (UTC), and a daily cap per provider. At the cap the spending thread pauses with one line and a raise-it action; nothing asks on each call.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["spend.record", "spend.check", "spend.summary", "spend.raise"] },
+  "does": { "tools": [
+    {"name": "spend.record", "reach": "modules"},
+    {"name": "spend.check", "reach": "anyone"},
+    {"name": "spend.summary", "reach": "anyone"},
+    {"name": "spend.raise", "reach": "person"}
+  ] },
   "watches": { "emits": ["spend.capped", "spend.raised"] },
   "shows": { "cli": [] },
   "settings": [

@@ -4,7 +4,11 @@
   "description": "Predictive text for every surface: names after @, commands after /, entities, accounts and times as the user types.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["suggest.query", "suggest.offer", "suggest.picked"] },
+  "does": { "tools": [
+    {"name": "suggest.query", "reach": "anyone"},
+    {"name": "suggest.offer", "reach": "modules"},
+    {"name": "suggest.picked", "reach": "anyone"}
+  ] },
   "watches": { "emits": ["suggest.ready"] },
   "shows": { "cli": [] },
   "needs": {},
