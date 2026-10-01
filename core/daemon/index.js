@@ -191,7 +191,7 @@ async function startLocked(opts, root, p, release) {
 }
 
 /** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */
-const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i;
 /**
  * The only forms a socket caller may name an agent in: its MCP server's and its hooks' (harness
  * mcp/server.js, hooks/hook.js). A surface's label with an agent in it ("cli:agent:kit") would be
@@ -253,7 +253,7 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 
 // "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/i;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
