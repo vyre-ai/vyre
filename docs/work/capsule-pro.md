@@ -315,7 +315,7 @@ a held talk from a tapped one and Esc does not cancel dictation yet (T2).
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
 
 Only what cannot be tested for them: the keychain, Touch ID, lock and sleep, the hot keys, a
-banner. About 20 minutes. Everything goes to the user's own address and nobody else. Before
+banner. About 30 minutes. Everything goes to the user's own address and nobody else. Before
 starting: this Vyre install is the user's own (not a temp home), a Gmail sender is connected
 (`vyre call gate.senders '{}'` lists `gmail`), and the Mac has Touch ID.
 Held test mail: `H='{"kind":"send","via":"gmail","to":"<your own address>","content":{"subject":"Vyre check N","body":"Capsule check."}}'`,
@@ -346,13 +346,28 @@ then `vyre call gate.request "$H"` with N changed each time.
 9. **A banner from the box.** `vyre timer 1m vyre check`. Hide the Capsule. The first time,
    macOS asks to allow notifications: allow them. Pass: a banner at the top right after a minute,
    with Done and Snooze. Press Done: it goes, and the Deck and phone show it answered.
-10. **An update keeps permissions.** Update Vyre (the next npm version, or `npm i -g` of the
-   branch), then `vyre capsule`. Pass: it rebuilds once ("Building the Capsule"), still
-   `Vyre Local` (step 1's command), and Control twice (step 3) works with no new permission
-   prompt.
+10. **An update and permissions.** Update Vyre (the next npm version, or `npm i -g` of the
+   branch), then `vyre capsule`. Pass: it rebuilds once ("Building the Capsule") and is still
+   `Vyre Local` (step 1's command). Note whether Control twice (step 3) still works or macOS
+   asks again. 0.2.0 ships self-signed and says it may ask again; a silent keep is a bonus, and
+   a note either way.
 11. **Light while hidden.** Leave the Capsule hidden for a minute. Then run
    `footprint $(pgrep -x Vyre) | grep phys_footprint:` and `ps -o %cpu= -p $(pgrep -x Vyre)`.
    Pass: under 60 MB and under 0.1% (CI measured 24 MB and 0.07%).
+
+12. **Speed.** Press Option-Space and type "a", then a word. Pass: rows appear as you type with
+   no pause you can see (the runner measures 52 ms to first rows at the 95th percentile). Note
+   any visible lag and which letters.
+13. **Icon and motion.** The Dock and menu bar show the Lumen lens (Bone, not lime). Opening
+   draws the lens in about a fifth of a second. The very first open runs about 1.6 s. With
+   Reduce Motion on in System Settings, it appears without the draw-in.
+14. **Unlock.** Lock the Vault (`vyre call vault.lock '{}'`), open Lumen, choose a login. Pass:
+   Touch ID or the Mac password card opens, and a correct entry fills the login. A wrong
+   password says so and keeps the card.
+15. **Oversight and voice** (needs stage with the platform, vault and assistant branches).
+   Start a computer-use task from an agent. Pass: the oversight panel opens top right with the
+   plan first, can be dragged, takes a typed note, and Esc waits for the current act. A spoken
+   reply plays from a mic turn.
 
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.

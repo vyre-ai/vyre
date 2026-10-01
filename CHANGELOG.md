@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Docs: Lumen 0.2 ships self-signed and not notarized; the Capsule page says macOS may ask for permissions again after an update, and the real-Mac checklist adds speed, icon and motion, unlock, and oversight and voice steps. Deep glass moves to 0.2.1 (Bone tint ships).
 - Lumen: when an agent changes a guard because you asked ("Auto-approve edits changed, as you asked."),
   Lumen shows that line under the empty box with Undo (Return); Undo puts the setting back and needs no
   proof. A notification says it too if Lumen is hidden.

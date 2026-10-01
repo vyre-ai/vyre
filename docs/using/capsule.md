@@ -31,8 +31,16 @@ Type in Lumen and it finds your threads, projects and agents, and offers to ask 
    Tools (`xcode-select --install` if they are missing). Nothing is downloaded. It builds into
    `~/.vyre/capsule/Vyre.app`, once, in under a minute, and again whenever the package brings a
    new version of its source. It never uses `/Applications` or sudo. The first time, it offers to
-   make a local signing identity ("Vyre Local") in your login keychain, so macOS keeps the
-   Lumen's permissions across rebuilds; say no and it is signed ad hoc.
+   make a local signing identity ("Vyre Local") in your login keychain; say no and it is signed
+   ad hoc.
+
+   > [!NOTE] Lumen 0.2 is self-signed, not notarized
+   > Lumen is built on your Mac and signed by you, not by Apple, so it carries no Developer ID
+   > and no notarization. That is why nothing is downloaded and Gatekeeper never sees it. The
+   > cost: macOS can ask for Input Monitoring, Accessibility and the other permissions again
+   > after each update, because a rebuilt app can look like a new app to macOS. The "Vyre Local"
+   > identity is meant to keep the grants, but it has not been proven on a real Mac yet, so
+   > expect the prompts. An Apple Developer ID build comes later.
 
 2. Open it:
 
