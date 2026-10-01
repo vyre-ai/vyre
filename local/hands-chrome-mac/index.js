@@ -145,7 +145,7 @@ export default {
         })();
       }
       else if (e.event === "site.report" && learnOn()) {
-        void (async () => { await ctx.call("memory.site.report", { origin: String(e.origin || ""), part: String(e.part || ""), id: String(e.id || ""), outcome: e.outcome === "ok" ? "ok" : "miss" }).catch(() => null); })();
+        void (async () => { if (typeof e.template === "string") { await ctx.call("memory.site.report", { origin: String(e.origin || ""), template: String(e.template).slice(0, 200), rung: Number(e.rung), lowerFailed: e.lowerFailed === true }).catch(() => null); return; } await ctx.call("memory.site.report", { origin: String(e.origin || ""), part: String(e.part || ""), id: String(e.id || ""), outcome: e.outcome === "ok" ? "ok" : "miss" }).catch(() => null); })();
       }
       else if (e.event === "site.put" && learnOn()) {
         void (async () => {
@@ -265,7 +265,7 @@ export default {
       return via.run(meta || {}, async () => {
         const agent = agentOf(meta.caller);
         const args = { ...input };
-        delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget;
+        delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget; delete args.pointBudget;
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
         { const bad = trustKeyIn(args); if (bad) throw denied("bad_request", `arguments may not carry "${bad}": approvals come from the host, not from arguments`); }
         /** @type {any} */ const trust = {};
@@ -304,7 +304,29 @@ export default {
               trust.writeBudget = { create: reserved.create, edit: reserved.edit, tab: g.tab, ...(g.tabOrigin ? { tabOrigin: g.tabOrigin } : {}), ...(g.apiOrigin ? { origin: g.apiOrigin } : {}) };
             }
           }
+          // A point on a drawn surface (a canvas) goes through only when the approved plan names that kind of point, for this tab and this origin: the module hands the extension what is left,
+          // reserved for the call and given back when it answers (the extension says what it spent).
+          /** @type {null | { g: NonNullable<typeof grant>, click: number, type: number, drag: number }} */ let pointReserved = null;
+          if (op === "point.act" && grant && grant.tab != null && covers("", {}, args) && oversight.state !== "stopped") {
+            const g = grant, l = /** @type {any} */ (g.left);
+            if ((l.dclick || 0) > 0 || (l.dtype || 0) > 0 || (l.ddrag || 0) > 0) {
+              pointReserved = { g, click: l.dclick || 0, type: l.dtype || 0, drag: l.ddrag || 0 };
+              l.dclick = 0; l.dtype = 0; l.ddrag = 0;
+              trust.pointBudget = { click: pointReserved.click, type: pointReserved.type, drag: pointReserved.drag, tab: g.tab, origins: [g.tabOrigin, .../** @type {any} */ (g).drawnOrigins || []].filter(Boolean) };
+            }
+          }
           let res = screen(await bridge.call(op, args, { trust, timeoutMs: op === "login.wait" ? Math.min(Number(args.timeoutMs) || 120_000, 600_000) + 15_000 : args.timeoutMs }));
+          if (pointReserved) {
+            const pr = pointReserved, g = pr.g, l = /** @type {any} */ (g.left);
+            const sp = isObj(res) && isObj(res.spent) ? res.spent : {};
+            const used = { click: Number(sp.click) || 0, type: Number(sp.type) || 0, drag: Number(sp.drag) || 0 };
+            l.dclick += Math.max(0, pr.click - used.click); l.dtype += Math.max(0, pr.type - used.type); l.ddrag += Math.max(0, pr.drag - used.drag);
+            if (used.click + used.type + used.drag > 0 && isObj(res) && res.ok) {
+              g.used++;
+              changes.push({ at: Date.now(), kind: "edit", what: scrub(`${String(res.did)} on a drawn surface at ${isObj(res.at) ? `${res.at.x},${res.at.y}` : "?"} (${isObj(res.under) ? String(res.under.frame) : ""}), covered by the plan`).slice(0, 160), covered: true });
+              showPresence({ of: g.total, label: g.title });
+            }
+          }
           // What the batch covered on its own: count it, give back what it did not use, and keep it for the summary.
           if (reserved) {
             const r = reserved, g = r.g;
@@ -487,7 +509,8 @@ export default {
     pass("chrome.fill", "page.fill", "Set many form fields in one step, across the tab's frames: fields is a list of {selector, value}. Values a person typed never come back in results. A submit is held like chrome.act's.", { fields: { type: "array", items: obj({ selector, label: { ...str, description: "Instead of a selector: the field's visible label." }, value: str, optional: bool }) }, submit: bool, partial: { ...bool, description: "True: set the fields that are found and report the rest (notFound) instead of failing before setting any." }, wait: WAIT });
     pass("chrome.eval", "page.eval", "Run a JavaScript expression in a tab and return its JSON result. Values shaped like credentials (tokens, keys, JWTs, values under secret-looking names) are masked; other values come back as the page holds them, so an expression can still read a short cookie or a typed field. Runs in the top page unless frame names one (an index, frame id, or a piece of its origin or URL). Refused when a visible password field is in ANY readable frame of the tab. A script can read with the page's login but cannot write with it: a POST, PUT, PATCH or DELETE it makes is refused and nothing is sent, and a script that opens the page's stored login (IndexedDB or storage auth tokens, cookies) is refused. PREFER chrome_api call OVER eval-fetch: it signs the request with the page's own login inside the page, so the token is never in a script or in your hands, and a write is asked first. A message, post or payment the script tries to send is held for the person's approval.", { expression: str, frame: { description: "Run in this frame: its index, frame id, or a piece of its origin or URL. Default: the top page." } });
     pass("chrome.wait", "page.wait", "Wait for exactly one thing: a control (selector), the URL to contain some text (url), or the network to be quiet for idleMs, up to timeoutMs. It looks in every frame of the tab, including one that appears or navigates while waiting; frame limits it to one.", { selector: { description: "A selector object, or a CSS selector string." }, url: { ...str, description: "Wait until the page URL contains this." }, idleMs: { ...int, description: "Wait until the network has been quiet this long." }, settled: { ...bool, description: "Wait until loading spinners are gone and the DOM and network are quiet." }, enabled: bool, stable: bool, gone: { ...bool, description: "With selector: wait until it is absent." }, quietMs: int, netQuietMs: int, frame: { description: "Look only in this frame: its index, frame id, or a piece of its origin or URL. Default: every frame." } });
-    pass("chrome.screenshot", "page.screenshot", "A PNG of a tab (or of one control), base64-encoded. Nothing from pages Vyre may not look at.", { agent: str });
+    tool("chrome.point", "Act on a POINT of a screenshot, the last rung when a surface has no controls in the page (a canvas, a video, a frame Vyre cannot read into). Take chrome_screenshot first and pass its shot.id with x and y in the picture's own pixels (the shot says its scale and viewport; the page must not have moved since). action: click, double, type (text; no line breaks or control keys), scroll (dy), hover, or drag (to: {x, y}). What is under the point is read first, and by its text: a Send, Delete, publish or payment holds for the person exactly as chrome_act would, even when drawn as a bare div. Something with no text at all (a drawn surface) waits for the person, unless an approved plan (chrome_approve, an item with drawn: click | type | drag) covers it for this tab and origin. Never use it when chrome_snapshot shows the control: act on that instead.", obj({ tab, timeoutMs: timeout, shot: { ...str, description: "The id from chrome_screenshot's result (shot.id)." }, x: { type: "number" }, y: { type: "number" }, action: { type: "string", enum: ["click", "double", "type", "scroll", "hover", "drag"] }, text: { ...str, description: "For type." }, to: { type: "object", description: "For drag: {x, y} of the drop point, in the same screenshot." }, dy: { type: "number", description: "For scroll: pixels (negative is up)." }, agent: str }), (i, m) => { const { action, ...rest } = i; return dispatch("point.act", { ...rest, kind: action }, m); });
+    pass("chrome.screenshot", "page.screenshot", "A picture of a tab, base64-encoded, with a shot (id, scale, viewport) that chrome_point maps a point from. Nothing from pages Vyre may not look at, and no picture of a page that shows a password or one-time-code field. maxWidth scales the picture down.", { maxWidth: { type: "number", description: "Scale the picture down to this many pixels wide (160 or more)." }, agent: str });
     pass("chrome.batch", "batch.run", "Run a list of steps inside the browser with no round trip between them: fastest for a known sequence. It stops at the first failure, on the person's stop, or at a page Vyre may not touch, and says which step. Give saveAs a name and, when every step worked, the batch is kept as a recipe for this site (what was typed becomes {parameters}; chrome_recipe replays it in one call).", { steps: { type: "array", items: { type: "object" } }, saveAs: { ...str, description: "Keep this batch as a named recipe when every step works." } });
     pass("chrome.inspect", "dev.inspect", "DevTools' view of the page: an element's outerHTML, attributes and box model, computed styles, the CSS rules that match it, and its event listeners. Reads the top page unless frame names one (a cross-origin iframe is read through its own session).", { selector, what: { type: "array", items: { type: "string", enum: ["dom", "box", "styles", "rules", "listeners"] } }, frame: { description: "Inspect in this frame: its index, frame id, or a piece of its origin. Default: the top page." } });
     tool("chrome.sources", "The page's scripts: list them, get one by id, or search across all of them. Source maps' file names come with them. Scripts of every frame (cross-origin iframes too) are covered; each carries its frame, and frame limits a list or search to one.",
@@ -530,7 +553,7 @@ export default {
 
     // Oversight: the plan, the person's word, and stop.
     tool("chrome.approve", "Ask the person to approve a plan ONCE before a job with many changes, for example \"create these 8 workflows as drafts\". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A delete, a message to a contact and a payment are never covered: each asks one at a time. A publish is covered only when you set asked: true because the person's own words asked for it (\"build and publish these\"); the card then says \"and publish\" plainly. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.",
-      obj({ title: str, items: { type: "array", items: obj({ kind: { type: "string", enum: PLAN_KINDS }, what: str, count: { type: "number" }, asked: { type: "boolean", description: "For publish: true only when the person's own words asked for it (\"build and publish these\"). Without it a publish asks one at a time." } }, ["kind", "what"]) }, tab }, ["title", "items"]),
+      obj({ title: str, items: { type: "array", items: obj({ kind: { type: "string", enum: PLAN_KINDS }, what: str, count: { type: "number" }, drawn: { type: "string", enum: ["click", "type", "drag"], description: "A create or edit done by POINTING at a drawn surface (chrome_point on a canvas), not by an API write. The card says plainly that the person cannot be shown what such a click does." }, origin: { ...str, description: "With drawn: the origin of the frame the pointing happens in, when it is not the tab's own." }, asked: { type: "boolean", description: "For publish: true only when the person's own words asked for it (\"build and publish these\"). Without it a publish asks one at a time." } }, ["kind", "what"]) }, tab }, ["title", "items"]),
       async (i, meta) => {
         const agent = agentOf(meta.caller);
         await requireGrant(agent);
@@ -541,15 +564,19 @@ export default {
           if (!PLAN_KINDS.includes(kind)) throw denied("bad_request", `an item's kind must be one of ${PLAN_KINDS.join(", ")}`);
           const what = scrub(String(x && x.what || "").slice(0, 160));
           if (!what.trim()) throw denied("bad_request", "every item needs text that says what it does");
-          return { kind, what, count: Math.min(50, Math.max(1, Math.floor(Number(x && x.count) || 1))), ...(kind === "publish" && x && x.asked === true ? { asked: true } : {}) };
+          const drawn = x && ["click", "type", "drag"].includes(String(x.drawn)) ? String(x.drawn) : "";
+          if (drawn && kind !== "create" && kind !== "edit") throw denied("bad_request", "pointing at a drawn surface can be planned as a create or an edit only: a delete, a send, a publish or a payment is never covered");
+          return { kind, what, count: Math.min(50, Math.max(1, Math.floor(Number(x && x.count) || 1))), ...(drawn ? { drawn, ...(typeof x.origin === "string" && /^https?:\/\/[^/\s]+$/.test(x.origin) ? { origin: x.origin } : {}) } : {}), ...(kind === "publish" && x && x.asked === true ? { asked: true } : {}) };
         });
         const title = scrub(String(i.title || "").slice(0, 120)) || "Plan";
         const left = { create: 0, edit: 0, publish: 0 };
-        for (const it of items) if (it.kind in left && (it.kind !== "publish" || it.asked)) /** @type {any} */ (left)[it.kind] += it.count;
+        const drawnItems = items.filter((/** @type {any} */ it) => it.drawn);
+        if (drawnItems.length && !Number.isInteger(i.tab)) throw denied("bad_request", "a plan that points at drawn surfaces must name its tab");
+        for (const it of items) { if (it.drawn) { /** @type {any} */ (left)["d" + it.drawn] = (/** @type {any} */ (left)["d" + it.drawn] || 0) + it.count; continue; } if (it.kind in left && (it.kind !== "publish" || it.asked)) /** @type {any} */ (left)[it.kind] += it.count; }
         const total = items.reduce((/** @type {number} */ n, /** @type {any} */ it) => n + it.count, 0);
         const tabId = Number.isInteger(i.tab) ? i.tab : undefined;
-        const plan = { id: crypto.randomBytes(6).toString("hex"), title, items, left, total, ...(tabId !== undefined ? { tab: tabId, tabOrigin: originOf(urls.get(tabId) || "") || undefined } : {}) };
-        const res = { held: true, sig: "plan", plan, url: tabId !== undefined ? urls.get(tabId) : "", control: `Plan: ${title}`, fields: items.map((/** @type {any} */ it) => ({ name: it.kind === "publish" && it.asked ? `and publish x${it.count}` : `${it.kind} x${it.count}`, value: it.what })) };
+        const plan = { id: crypto.randomBytes(6).toString("hex"), title, items, left, total, ...(drawnItems.length ? { drawnOrigins: [...new Set(drawnItems.map((/** @type {any} */ it) => it.origin).filter(Boolean))] } : {}), ...(tabId !== undefined ? { tab: tabId, tabOrigin: originOf(urls.get(tabId) || "") || undefined } : {}) };
+        const res = { held: true, sig: "plan", plan, url: tabId !== undefined ? urls.get(tabId) : "", control: `Plan: ${title}`, fields: [...items.map((/** @type {any} */ it) => ({ name: it.drawn ? `${it.kind} by pointing (${it.drawn}) x${it.count}` : it.kind === "publish" && it.asked ? `and publish x${it.count}` : `${it.kind} x${it.count}`, value: it.drawn ? `${it.what}${it.origin ? ` [${it.origin}]` : ""}` : it.what })), ...(drawnItems.length ? [{ name: "Note", value: "Clicks on a drawn surface (a canvas, a video) cannot be checked: Vyre cannot tell what they do, so a click there could send or delete. Approve only if you trust this page with that." }] : [])] };
         const h = await via.run(meta, async () => hold("chrome.approve", {}, res, meta, `approve plan: ${title}`, tabId));
         return isObj(h) && h.held && h.id ? { ...h, plan: { title, total, items: items.length }, why: `This plan waits for the person's approval. To start it, call ${cfg.sendTool || "the Gate"} with this id; the person approves that call. Deleting, messaging and payments stay one-at-a-time whatever the plan says, and so does publishing unless the plan says the person asked for it.` } : h;
       });

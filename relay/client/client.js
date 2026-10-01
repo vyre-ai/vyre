@@ -58,6 +58,9 @@ export function defaultVisibility() {
   };
 }
 
+/** What the relay passes on, exactly, when the box says it removed this device (close code 4401). It is the relay's claim, not proof. */
+export const REMOVED = "device removed";
+
 /** The device's static key from the store, made and stored on first use. */
 export async function deviceKey({ keyStore, crypto }) {
   let k = await keyStore.get();
@@ -317,9 +320,9 @@ export class Connection {
     this.max = o.backoff?.max ?? BACKOFF.max;
     this.random = o.random || Math.random;
     this.visibility = o.visibility || defaultVisibility();
-    /** @type {"connecting"|"open"|"offline"} */
+    /** @type {"connecting"|"open"|"offline"|"relay_removed"} */
     this.state = "connecting";
-    /** @type {(state: "connecting"|"open"|"offline") => void} */
+    /** @type {(state: "connecting"|"open"|"offline"|"relay_removed") => void} */
     this.onstate = () => {};
     this.closed = false;
     /** @type {import("./channel.js").Channel | null} */
@@ -371,25 +374,46 @@ export class Connection {
       this.reply = reply;
       this.backoff = this.min;
       this.lastError = null;
-      channel.onclose = () => this.lost(channel);
+      channel.onclose = reason => this.lost(channel, reason);
       this.setState("open");
       this.keepalive();
       for (const w of this.waiters.splice(0)) w.resolve(channel);
     } catch (e) {
       this.dialing = false;
       this.lastError = /** @type {Error} */ (e);
+      if (/** @type {Error} */ (e).message === REMOVED) { this.removed(); return; }
       this.retry();
     }
   }
 
-  /** @param {import("./channel.js").Channel} ch */
-  lost(ch) {
+  /** @param {import("./channel.js").Channel} ch @param {string} [reason] */
+  lost(ch, reason) {
     if (this.channel !== ch) return;
     this.channel = null;
     this.ws = null;
     globalThis.clearInterval(this.pinger);
     this.pinger = null;
+    if (reason === REMOVED) { this.removed(); return; }
     this.retry();
+  }
+
+  /**
+   * The relay passed on 4401 "device removed". That is the RELAY's word, never the box's own answer: a
+   * compromised relay can say it, so nothing here may wipe anything on it. The state is final for this
+   * relay path (no retry can work if it is true), and the app must ask the box directly over a path the
+   * relay does not control (the tailnet address, or a fresh pairing check) before it acts on it.
+   */
+  removed() {
+    if (this.closed) return;
+    this.closed = true;
+    globalThis.clearTimeout(this.retryTimer);
+    globalThis.clearInterval(this.pinger);
+    this.offVisible();
+    this.offOnline();
+    for (const f of [...this.follows]) f.close();
+    for (const w of this.waiters.splice(0)) w.reject(Object.assign(new Error(REMOVED), { code: "relay_removed" }));
+    this.channel = null;
+    this.setState("relay_removed");
   }
 
   retry() {

@@ -278,13 +278,13 @@ test("drive: only the owner shares; agents, Claude and unpaired tailnet nodes ar
   const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
   const { work } = boxWorld(t);
   const { reg } = await registry(t, { role: "box", peers: [MAC_ID], cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work] } } });
-  const before = ts.calls().length;
   for (const caller of ["mcp:agent:kit", "harness:agent:kit", "mcp", "module:watchers"]) await no(reg, "files.drive.share", { name: "projects" }, caller, "denied");
   await no(reg, "files.drive.share", { name: "projects" }, "local", "denied", { agent: "kit" });
   await no(reg, "files.drive.unshare", { name: "projects" }, "mcp:agent:kit", "denied");
   await no(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", "denied", { person: PERSON, peer: { stableId: PHONE_ID } });
   await no(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", "denied");
-  assert.equal(ts.calls().length, before, "a refused caller never reaches tailscale");
+  // Only a drive or whois call would come from a share that ran. Another module's late `status --json` at start is not this test's.
+  assert.deepEqual(ts.calls().filter(c => c[0] === "drive" || c[0] === "whois"), [], "a refused caller never reaches tailscale");
   // The paired Mac, by the node the listener established, and the Capsule on the box.
   assert.equal((await ok(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", { person: PERSON, peer: { stableId: MAC_ID } })).shared, "projects");
   assert.equal((await ok(reg, "files.drive.unshare", { name: "projects" }, "capsule")).unshared, "projects");

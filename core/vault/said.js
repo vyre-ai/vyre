@@ -38,7 +38,7 @@ export const RECORDERS = ["module:sessions", "module:assistant", "module:threads
 /** What the switchboard (module:threads), which hears the person's turn, may record: a # tag's use and an asked action, nothing else. */
 export const THREADS_KINDS = ["use", "act_out"];
 /** How long a plain (not standing) ask is good from when it was said, unless the recorder gave its own window (1 to 60 minutes): a stale "merge it" or "send that email" cannot be spent days later. */
-export const PLAIN_WINDOW_MS = Object.freeze({ act_out: 15 * 60_000, send: 60 * 60_000, post: 60 * 60_000, pay: 60 * 60_000 });
+export const PLAIN_WINDOW_MS = Object.freeze({ act_out: 15 * 60_000, setting: 15 * 60_000, revoke: 15 * 60_000, send: 60 * 60_000, post: 60 * 60_000, pay: 60 * 60_000 });
 const MAX_TO = 20, MAX_TEXT = 500;
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
