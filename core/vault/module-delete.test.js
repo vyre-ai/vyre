@@ -21,11 +21,8 @@ const MODULE = name => `export default { async start(ctx) {
 test("a first-party module deletes its own item without presence, and nothing else", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
-  const first = path.join(root, "first");
+  const first = path.join(root, "modules");
   for (const n of ["ghub", "other"]) writeModule(first, n, { does: { tools: [`${n}.put`, `${n}.del`] } }, MODULE(n));
-  // An added module in the home's modules folder, listing the delete in needs.tools.
-  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery.", does: { tools: [{ name: "bakery.put", reach: "anyone" }, { name: "bakery.del", reach: "anyone" }] }, needs: { tools: ["vault.delete"] } },
-    MODULE("bakery"));
   const d = await start({ presence: present, root, firstPartyRoots: [first], log: () => {} });
   t.after(() => d.stop());
   const as = (tool, input = {}, caller = "local") => d.registry.call(tool, input, caller);
@@ -43,8 +40,6 @@ test("a first-party module deletes its own item without presence, and nothing el
   assert.equal(theirs.ok, false); assert.match(theirs.message, /not made by ghub/);
   const gone = (await as("ghub.del", { name: "no-such-item" })).data;
   assert.equal(gone.ok, false); assert.match(gone.message, /no item named/);
-  const added = (await as("bakery.del", { name: "persons-key" })).data;
-  assert.equal(added.ok, false); assert.equal(added.error, "not_declared");
   assert.ok(await has("persons-key") && await has("other-token") && await has("gh-token"), "nothing was deleted by a refusal");
 
   // Positive control: its own item goes, with no presence proof, and its grants and audit are the vault's own.
@@ -55,4 +50,16 @@ test("a first-party module deletes its own item without presence, and nothing el
   // A model still cannot delete anything, and the person's own surface still can.
   assert.equal((await d.registry.call("vault.delete", { name: "persons-key" }, "mcp", { thread: "t-1" })).error.code, "denied");
   assert.equal((await as("vault.delete", { name: "persons-key" })).data.deleted, "persons-key");
+});
+
+test("an added module that lists vault.delete in needs.tools is refused it (not_declared), and the item stays", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
+  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery.", does: { tools: [{ name: "bakery.del", reach: "anyone" }] }, needs: { tools: ["vault.delete", "vault.list"] } }, MODULE("bakery"));
+  const d = await start({ presence: present, root, log: () => {} });
+  t.after(() => d.stop());
+  assert.equal((await d.registry.call("vault.put", { name: "persons-key", value: "p" }, "local")).error, undefined);
+  const added = (await d.registry.call("bakery.del", { name: "persons-key" }, "local")).data;
+  assert.equal(added.ok, false); assert.equal(added.error, "not_declared", JSON.stringify(added));
+  assert.ok((await d.registry.call("vault.list", {}, "local")).data.items.some(i => i.name === "persons-key"));
 });
