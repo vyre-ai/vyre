@@ -63,7 +63,12 @@ const HOSTILE = String.raw`
   await tag("css url()", () => { const d = document.createElement("div"); d.style.cssText = "width:9px;height:9px;background:url('" + sink("/v1/beacon") + "cssurl')"; return d; });
   const payload = { mode: MODE, ua: navigator.userAgent, results: out };
   if (MODE === "framed") parent.postMessage({ vyreProof: payload }, "*");
-  else { const pre = document.createElement("pre"); pre.id = "results"; pre.textContent = JSON.stringify(payload); document.body.appendChild(pre); }
+  else {
+    const pre = document.createElement("pre"); pre.id = "results"; pre.textContent = JSON.stringify(payload); document.body.appendChild(pre);
+    // A browser with no WebDriver (the iOS simulator, headless Chrome) reads the result by the page navigating itself
+    // to the collector, which the sandbox allows and the CSP does not forbid: it carries results, not data out.
+    if (new URLSearchParams(location.search).get("report") === "nav") location.href = "/topreport?d=" + btoa(unescape(encodeURIComponent(JSON.stringify(payload)))).replace(/\+/g, "-").replace(/\//g, "_");
+  }
 })();
 `;
 
@@ -111,7 +116,7 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { hits: /** @type {Record<string, number>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), served: [] };
+  const state = { hits: /** @type {Record<string, number>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
@@ -138,7 +143,12 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
       req.on("end", () => { try { state.report = JSON.parse(b); } catch { state.report = { error: "bad report" }; } res.writeHead(204); res.end(); });
       return;
     }
-    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ hits: state.hits, api: state.api, report: state.report })); }
+    if (u.pathname === "/topreport") {
+      try { state.top = JSON.parse(Buffer.from(String(u.searchParams.get("d")).replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")); } catch { state.top = { results: [{ name: "the top-level report", ok: false, detail: "unreadable" }] }; }
+      res.writeHead(200, { "content-type": "text/plain" });
+      return void res.end("ok");
+    }
+    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ hits: state.hits, api: state.api, report: state.report, top: state.top })); }
     res.writeHead(404); res.end("not found");
   });
   server.on("upgrade", (req, socket) => { const u = new URL(req.url || "/", "http://x"); const via = u.searchParams.get("via") || "ws"; state.hits[via] = (state.hits[via] || 0) + 1; socket.destroy(); });

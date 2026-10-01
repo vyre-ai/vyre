@@ -40,6 +40,9 @@ test("the hostile page is served with the real artifact headers, and the server 
   const st = await (await fetch(srv.url + "/state")).json();
   assert.deepEqual(st.hits, { fetch: 1, img: 1, hijack: 1 });
   assert.deepEqual(st.api, [{ via: "fetch", cookie: true }]);
+  const payload = Buffer.from(JSON.stringify({ results: [{ name: "x", ok: true, detail: "d" }] })).toString("base64").replace(/\+/g, "-").replace(/\//g, "_");
+  await fetch(srv.url + "/topreport?d=" + payload);
+  assert.deepEqual((await (await fetch(srv.url + "/state")).json()).top, { results: [{ name: "x", ok: true, detail: "d" }] }, "a page with no WebDriver reports by navigating to the collector");
   await fetch(srv.url + "/report", { method: "POST", body: JSON.stringify({ framed: [], outer: [] }) });
   assert.deepEqual((await (await fetch(srv.url + "/state")).json()).report, { framed: [], outer: [] });
 });

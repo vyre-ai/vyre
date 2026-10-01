@@ -1,9 +1,9 @@
 // AR-S2 baseline in Chrome for Testing on Linux (and any OS with CHROME set): the same hostile page,
 // framed and at the top level, so a failure elsewhere can be told from a failure of the harness.
 // Chrome runs headless against the local server; the Deck stand-in posts its report back, and the
-// top-level run reads the page's results from the DOM Chrome dumps.
+// top-level page navigates itself to the collector with its results.
 
-import { spawn, execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { startServer } from "./sandbox-server.mjs";
 import { verify } from "./sandbox-verify.mjs";
 
@@ -20,10 +20,12 @@ try {
   const end = Date.now() + 60000;
   while (!srv.state.report && Date.now() < end) await sleep(500);
   c.kill();
-  // Top level: dump the DOM once the script has run.
-  const dom = execFileSync(CHROME, [...flags, "--virtual-time-budget=20000", "--dump-dom", srv.url + "/a/hostile?mode=top"], { encoding: "utf8", timeout: 60000 });
-  const m = /<pre id="results">([\s\S]*?)<\/pre>/.exec(dom);
-  const top = m ? JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")) : null;
+  // Top level: the page navigates itself to the collector with its results.
+  const c2 = spawn(CHROME, [...flags, srv.url + "/a/hostile?mode=top&report=nav"], { stdio: "ignore" });
+  const end2 = Date.now() + 60000;
+  while (!srv.state.top && Date.now() < end2) await sleep(500);
+  c2.kill();
+  const top = srv.state.top;
   if (!srv.state.report) console.log("framed: no report");
   if (!top) console.log("top-level: no results in the dumped DOM");
   console.log("user agent:", srv.state.report && srv.state.report.ua);
