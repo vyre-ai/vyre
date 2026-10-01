@@ -32,7 +32,7 @@ vyre capsule install
 
 `vyre capsule install` builds Vyre Lumen on your Mac from the package; nothing is downloaded for it.
 
-Prefer the terminal on a Linux server? The setup page's line is `curl -fsSL https://vyre.run/install.sh | sh`. Step by step: [Install](docs/get-started/install.md).
+The line the setup page shows is `curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh`, where the code is the one on the page. (`curl -fsSL https://vyre.run/install.sh | sh` is the same install without a code, for the terminal only.) Step by step: [Install](docs/get-started/install.md).
 
 ## On your Mac: Vyre Lumen
 

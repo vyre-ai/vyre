@@ -21,10 +21,11 @@ memory and files.
 Open https://vyre.run/setup. It gives you one line to paste on your server, then walks you through
 naming your server, signing in to your AI, connecting Tailscale and adding your phone.
 
-On a Linux server the line is:
+On a Linux server or a Mac that stays on, the line the page shows is:
 ```
-curl -fsSL https://vyre.run/install.sh | sh
+curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh
 ```
+Without a code, from the terminal only: `curl -fsSL https://vyre.run/install.sh | sh`.
 On your Mac, with Tailscale installed and signed in (Node 22.5 or newer):
 ```
 npm install -g https://vyre.run/box/vyre.tgz

@@ -74,7 +74,7 @@
       <span class="num">01</span>
       <div class="body-col">
         <h2 id="server-h" class="h2">Open the setup page</h2>
-        <p>Go to <a href="/setup/">vyre.run/setup</a> and press <strong>Set up my server</strong>. The page gives you one line with a one-time code in it. The code works for an hour and for one server.</p>
+        <p>Go to <a href="/setup/">vyre.run/setup</a> and choose <strong>A Linux server</strong> or <strong>A Mac that stays on</strong>. The page gives you one line with a one-time code in it. The code works for an hour and for one server.</p>
         <p>Open a terminal on your server as yourself, not as root, and paste the line. It looks like this:</p>
       <div class="term-block">
         <div class="term-row"><pre>curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;the code on the page&gt; sh</pre><button class="btn btn-line btn-sm" type="button" data-copy="curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;the code on the page&gt; sh" aria-label="Copy the command curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;the code on the page&gt; sh"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><span class="txt">Copy</span></button></div>
@@ -88,7 +88,7 @@
       <div class="body-col">
         <h2 id="onboarding-h" class="h2">Finish in your browser</h2>
         <ol class="sub">
-          <li><span><strong>Check the words.</strong> Your server's terminal prints four words. The page shows four words too; press <em>These match my server's terminal</em> only if they are the same. If they are not, press <em>They don't match</em> and start again.</span></li>
+          <li><span><strong>Check the words.</strong> Your server's terminal prints four words. The page shows four words too; press <em>These match my server's terminal</em> only if they are the same. If they are not, press <em>They don't match</em>.</span></li>
           <li><span><strong>Name your server.</strong> Pick the address you will reach it at, <code>you.vyre.run</code>, or use your own domain.</span></li>
           <li><span><strong>Save your recovery code.</strong> It is shown once. If you ever reinstall, it takes this address back.</span></li>
           <li><span><strong>Sign in to your AI.</strong> Claude, Codex and Grok each sign in on the provider's own page; Vyre never sees your password. One is enough to go on, and you can add more later.</span></li>
@@ -158,7 +158,7 @@
         <h2 id="trouble-h" class="h2">If something goes wrong</h2>
         <ul class="need">
           <li>The page says the code expired, or two servers used it: press <em>Start again</em> for a new line.</li>
-          <li>The words do not match: close the page and start again. It means the line was not run on your server.</li>
+          <li>The words do not match: press <em>They don't match</em>, then start again. It means the line was not run on your server.</li>
           <li>On the server: <code>vyre status</code>, <code>vyre logs</code>, and <code>docker compose -p vyre ps</code>.</li>
           <li>Start over on a Linux server (keeps your data): <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then set up again. Add <code>--purge</code> to delete the vault, sign-ins and projects too.</li>
         </ul>
