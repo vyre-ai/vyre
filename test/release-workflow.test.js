@@ -49,6 +49,6 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   const prepare = yml.indexOf("  prepare:"), images = yml.indexOf("\n  images:");
   assert.ok(prepare < i && i < images, "it is a step of the prepare job, which needs no approval");
   const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
-  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
+  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });

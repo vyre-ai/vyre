@@ -100,9 +100,17 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             echo "### Signing path: $TAG vs ${prev:-nothing (no published release yet)}"
+            # The phone app's dependencies, as a short list first (its build is signed with the release key): the raw lockfile diff below is long.
+            git show "$base:apps/app/package-lock.json" > "$RUNNER_TEMP/old-lock.json" 2>/dev/null || : > "$RUNNER_TEMP/old-lock.json"
+            node scripts/lock-changes.mjs "$RUNNER_TEMP/old-lock.json" apps/app/package-lock.json > "$RUNNER_TEMP/lock-changes.txt"
+            echo "#### apps/app dependency changes (name@version; a changed integrity under the same version is listed too)"
+            echo '```'
+            head -n 300 "$RUNNER_TEMP/lock-changes.txt"
+            echo '```'
+            if [ "$(wc -l < "$RUNNER_TEMP/lock-changes.txt")" -gt 301 ]; then echo "**The list is cut at 300 lines; read apps/app/package-lock.json's diff.**"; fi
             # shellcheck disable=SC2086
             if git diff --quiet "$base" HEAD -- $paths; then
               echo "no changes to the signing path"
