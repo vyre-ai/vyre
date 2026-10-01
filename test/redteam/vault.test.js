@@ -6,6 +6,14 @@
 // the user's Mac: node --test "test/redteam/*.test.js". Every name, address and value is a sample.
 //
 // IDs: V = vault review, G = Gate and asked intents (reviewer-2's code reviews), A = asked reach.
+//
+// Controls (a legitimate case that must work, so a refusal cannot pass for the wrong reason): every test below has one EXCEPT these three,
+// which a reader must not take as fully controlled:
+//   - V-M10 has none here: the legitimate sealed-card path needs a fake network the daemon world cannot have (the target check refuses
+//     private addresses). Its control is core/vault/request.test.js, "approving runs exactly the held request...".
+//   - V-N4 has a partial one: the person's own credential creation succeeds, but no allowed module-side write is shown.
+//   - G-MV4 has a partial one: the person sees every item, but the allowed revoke by an unnamed session is not repeated here
+//     (core/vault/module.test.js covers it).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

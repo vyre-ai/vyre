@@ -92,7 +92,7 @@ test("redteam P-M7c: a JWK with private members, or a blob that carries primes, 
   const withPrimes = Buffer.concat([header(0x31415352, 128, 128), e, n, primes, primes]);
   assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: withPrimes.toString("base64url"), alg: -257 }), /private key material/i, "an RSA1 blob that carries primes");
   const privateBlob = Buffer.concat([header(0x32415352, 128, 128), e, n, primes, primes]);
-  assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: privateBlob.toString("base64url"), alg: -257 }), /./, "an RSA2 private blob");
+  assert.throws(() => p.enroll({ kind: "device", name: "x", public_key: privateBlob.toString("base64url"), alg: -257 }), /base64url SPKI DER public key/, "an RSA2 private blob is not read as a public key at all");
   // Control: the same key as a well-formed public RSA1 blob (primes zero) enrolls.
   const publicBlob = Buffer.concat([header(0x31415352, 0, 0), e, n]);
   assert.ok(p.enroll({ kind: "device", name: "blob", public_key: publicBlob.toString("base64url"), alg: -257 }).id, "a well-formed public blob enrolls (control)");
