@@ -675,7 +675,7 @@ test("chrome.fill: an agent caller (mcp, a vouched \"cli agent:\" spelling, a ha
   /** @type {any[]} */ const seen = [];
   const x = await connect({ "page.fill": (/** @type {any} */ a) => { seen.push(a); return { ok: true, filled: 1 }; } });
   const fill = { fields: [{ label: "Email", value: "a@b.example" }] };
-  for (const caller of [KIT, "cli agent:kit", "harness"]) {
+  for (const caller of [KIT, "cli agent:kit", "cli:agent:kit", "harness"]) {
     const r = await reg.call("chrome.fill", fill, caller);
     assert.equal(r.error && r.error.code, "denied", `${caller}: refused without a grant`);
     assert.match(r.error.message, /not granted/);
