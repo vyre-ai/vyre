@@ -718,8 +718,15 @@ read_release() {
   for ref in $BOX_REF $COMPUTER_REF; do
     printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' \
       || die "release.json names an image that is not a ghcr.io/vyre-ai digest"
-    printf '%s\n' "$imgs" | awk -v r="$ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "compose.yml does not pin $ref, which release.json names"
   done
+  # The box ref is one of the image lines, whole. The computer image is not a service of the stack: compose.yml carries its ref as the default of
+  # VYRE_COMPUTERS_IMAGE, on a line that is not a comment.
+  if [ -n "$BOX_REF" ]; then
+    printf '%s\n' "$imgs" | awk -v r="$BOX_REF" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "compose.yml does not pin $BOX_REF, which release.json names"
+  fi
+  if [ -n "$COMPUTER_REF" ]; then
+    grep -v '^[[:space:]]*#' "$TMP/compose.yml" | grep 'VYRE_COMPUTERS_IMAGE' | grep -qF "$COMPUTER_REF" || die "compose.yml does not carry $COMPUTER_REF as the computers image, which release.json names"
+  fi
 }
 
 # verify_images: each named image is signed by our release workflow, then the box image is

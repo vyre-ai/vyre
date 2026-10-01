@@ -59,7 +59,7 @@ const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8"
 function site(base, { images = true, pin = true } = {}) {
   const dir = path.join(base, "site");
   fs.mkdirSync(dir, { recursive: true });
-  const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n  computer:\n    image: ${COMPUTER}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
+  const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n    environment:\n      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
     "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),

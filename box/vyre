@@ -573,11 +573,17 @@ verify_release_images() {
   [ -z "$badimg" ] || die "the release's compose.yml starts an image that is not pinned exactly by digest ($(printf '%s' "$badimg" | head -n 1 | sed 's/^[[:space:]]*//')); nothing was changed"
   for ref in $box_ref $computer_ref; do
     printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' || die "release.json names an image that is not a ghcr.io/vyre-ai digest; nothing was changed"
-    printf '%s\n' "$imgs" | awk -v r="$ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "the release's compose.yml does not pin $ref as an image line, which release.json names; nothing was changed"
   done
+  # The box's ref is one of the image lines, whole. The computer image is not a service of this stack: compose.yml hands its ref to vyred and
+  # the Docker proxy as the default of VYRE_COMPUTERS_IMAGE (a root run never passes that setting on, so the default stands); it must be there,
+  # on a line that is not a comment.
+  printf '%s\n' "$imgs" | awk -v r="$box_ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "the release's compose.yml does not pin $box_ref as an image line, which release.json names; nothing was changed"
+  if [ -n "$computer_ref" ]; then
+    grep -v '^[[:space:]]*#' "$tmp/compose.yml" | grep 'VYRE_COMPUTERS_IMAGE' | grep -qF "$computer_ref" || die "the release's compose.yml does not carry $computer_ref as the computers image, which release.json names; nothing was changed"
+  fi
   # Every ghcr.io/vyre-ai image line of the released compose.yml is checked, not only the two release.json names (a third-party image such as
   # tailscale rests on the signed digest of the release that pins it).
-  all_refs=$(printf '%s\n' "$imgs" | sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/[^[:space:]]*\)$/\1/p' | sort -u)
+  all_refs=$( { printf '%s\n' "$imgs" | sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/[^[:space:]]*\)$/\1/p'; printf '%s\n' "$box_ref" "$computer_ref"; } | grep -v '^$' | sort -u)
   stage verifying-images
   for ref in $all_refs; do
     if ! docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$tmp/cosign.err"; then
