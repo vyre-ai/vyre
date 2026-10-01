@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### test: the chat contract knows thread.plan
+
+- `test/chat-sessions-contract.test.js` listed events the Deck listens for that nothing emits by name; `thread.plan` (the plan checklist) is built by `core/switchboard/translate.js` as an event object, which that scan does not see, so it joins AHEAD_EVENTS with the reason. Found by a run of the contract tests on the test box.
+
 #### chat: "@claude" says which account this turn runs on
 
 - When a draft starts with `@claude`, `@codex` or `@grok`, a line under the box says "This turn runs on Claude (Personal)": the account's label when the provider has several, so a bare provider name never surprises (the box picks the provider's default account; `@Claude-Work` names one). One account says just the provider. (reviewer-2's LOW on 6e91b09f7.)
