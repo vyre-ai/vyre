@@ -71,6 +71,8 @@ function vars(t) {
     if (text) derive.push(`--s1:${text}`, `--s2:${mix(62)}`);
   }
   out.unshift(...derive);
+  const k = Number(t.scale ?? t.textScale);
+  if (Number.isFinite(k) && k >= 0.5 && k <= 2) out.push(`--k:${k}`);
   const f = fontOf(t.font || t.fontFamily);
   if (f) out.push(`--font:${f}`);
   const hf = fontOf(t.headingFont || t.heading);

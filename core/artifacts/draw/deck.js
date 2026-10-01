@@ -32,6 +32,7 @@ function slideStyle(sd) {
   if (font) css.push(`--font:${font}`, `font-family:${font}`);
   if (["left", "center", "right"].includes(sd.align)) css.push(`--align:${sd.align}`);
   if (["top", "center", "bottom"].includes(sd.valign)) css.push(`--valign:${{ top: "flex-start", center: "center", bottom: "flex-end" }[/** @type {"top"|"center"|"bottom"} */ (sd.valign)]}`);
+  const k = Number(sd.scale); if (Number.isFinite(k) && k >= 0.5 && k <= 2) css.push(`--k:${k}`);
   const pad = lengthOf(sd.padding, 0, 30); if (pad) css.push(`--pad:${parseFloat(pad)}cqw`);
   return css.join(";");
 }

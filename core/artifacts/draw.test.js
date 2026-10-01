@@ -214,3 +214,13 @@ test("markdown documents take an @theme line; pages and apps keep their own CSS"
   for (const ok of ["style-src 'unsafe-inline'", "img-src data: blob:", "font-src data:"]) assert.ok(csp.includes(ok), ok);
   for (const no of ["connect-src 'none'", "default-src 'none'", "form-action 'none'", "sandbox allow-scripts"]) assert.ok(csp.includes(no), no);
 });
+
+test("mermaid's own init themeVariables and a deck's text scale are honoured too", () => {
+  const h = drawMermaid("I", `%%{init: {'theme':'base','themeVariables':{'primaryColor':'#1f2a37','primaryBorderColor':'#9fb3c8','primaryTextColor':'#f5f5f5','lineColor':'#9fb3c8','background':'#101820','fontFamily':'Georgia, serif'}}}%%\nflowchart TD\n A --> B`);
+  assert.match(h, /^<style>:root\{[^}]*--panel:#1f2a37[^}]*--rs:#9fb3c8[^}]*--bg:#101820[^}]*--font:'Georgia', serif/);
+  assert.match(h, /<svg[\s\S]*Diagram/);
+  const d = drawDeck("S", '@theme {"scale":1.3}\n# Big\n\n---\n@slide {"scale":0.8}\n# Small');
+  assert.match(d, /--k:1\.3/);
+  assert.match(d, /style="--k:0\.8"/);
+  assert.match(drawDeck("S", '@theme {"scale":99}\n# x'), /^<div class="deck">/, "an out of range scale is dropped");
+});

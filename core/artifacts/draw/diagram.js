@@ -355,13 +355,40 @@ function figure(src, d) {
 <div class="srcpane"><pre class="src">${esc(src)}</pre></div>`;
 }
 
+
+/**
+ * The theme a Mermaid source asks for: a `%%theme {json}` line, or Mermaid's own
+ * `%%{init: {"themeVariables": {...}}}%%` (primaryColor, primaryBorderColor, primaryTextColor,
+ * lineColor, background, fontFamily, ...), mapped to the same checked theme keys.
+ * @param {string} src
+ */
+function themeOf(src) {
+  /** @type {any} */ let theme = null;
+  for (const l of src.split("\n")) {
+    const m = /^\s*%%theme\s+(\{.*\})\s*$/.exec(l);
+    if (m && !theme) try { theme = JSON.parse(m[1]); } catch {}
+  }
+  const im = /%%\{\s*init\s*:\s*(\{[\s\S]*?\})\s*\}%%/.exec(src);
+  if (im) {
+    /** @type {any} */ let init = null;
+    try { init = JSON.parse(im[1]); } catch { try { init = JSON.parse(im[1].replace(/'/g, '"')); } catch {} }
+    const v = init && init.themeVariables;
+    if (v && typeof v === "object") {
+      /** @type {any} */ const t = {};
+      const map = { primaryColor: "node", primaryBorderColor: "stroke", primaryTextColor: "text", textColor: "text", lineColor: "edge", background: "canvas", secondaryColor: "decision", clusterBkg: "group", clusterBorder: "group", fontFamily: "font" };
+      for (const [from, to] of Object.entries(map)) if (v[from] !== undefined && t[to] === undefined) t[to] = v[from];
+      theme = { ...t, ...(theme || {}) };
+    }
+  }
+  return theme;
+}
+
 /**
  * Mermaid source to the page body.
  * @param {string} title @param {string} src
  */
 export function drawMermaid(title, src) {
-  /** @type {any} */ let theme = null;
-  for (const l of src.split("\n")) { const m = /^\s*%%theme\s+(\{.*\})\s*$/.exec(l); if (m && !theme) try { theme = JSON.parse(m[1]); } catch {} }
+  const theme = themeOf(src);
   const head = themeCss(theme) + `<h1>${esc(title)}</h1>`;
   if (!src.trim()) return head + state("Nothing to draw yet", "The diagram source is empty.");
   try {
