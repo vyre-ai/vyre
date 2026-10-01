@@ -160,11 +160,60 @@ function ensureExcluded(repoDir) {
 }
 
 /**
- * A worktree and branch for one session: `<repoDir>/.sessions/<safe-id>` on `vyre/<safe-id>`.
- * No token needed; a worktree is a local git operation on a repo already cloned.
- * @param {{ repoDir: string, session: string, defaultBranch: string }} p
+ * What a session's commits say about who made them (PLAN M3, reviewer N4): the connected account's
+ * own name and email when one is known (set per worktree, so the repo's and the person's own git
+ * config are untouched), and a `Vyre-Session: <id>` trailer on every commit, so the person can audit
+ * which session wrote what. The trailer comes from a prepare-commit-msg hook in a per-session hooks
+ * folder that links the repo's own hooks, so a repo's existing hooks still run. Idempotent.
+ * @param {{ repoDir: string, dest: string, id: string, identity?: { name: string, email: string } | null }} p
  */
-export async function worktreeAdd({ repoDir, session, defaultBranch }) {
+async function stampWorktree({ repoDir, dest, id, identity }) {
+  const common = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (!common.ok) return;
+  const commonDir = common.stdout.trim();
+  // Per-worktree config needs this switch on the repo once; it changes nothing else.
+  await gitAsync(repoDir, ["config", "extensions.worktreeConfig", "true"]);
+  if (identity && identity.name && identity.email) {
+    const clean = v => String(v).replace(/[\r\n<>]/g, " ").trim().slice(0, 200);
+    await gitAsync(dest, ["config", "--worktree", "user.name", clean(identity.name)]);
+    await gitAsync(dest, ["config", "--worktree", "user.email", clean(identity.email)]);
+  }
+  const set = await gitAsync(repoDir, ["config", "--local", "--get", "core.hooksPath"]);
+  const own = set.ok && set.stdout.trim() ? path.resolve(repoDir, set.stdout.trim()) : path.join(commonDir, "hooks");
+  const hooksDir = path.join(commonDir, "vyre-hooks", id);
+  fs.mkdirSync(hooksDir, { recursive: true });
+  try {
+    for (const name of fs.readdirSync(own)) {
+      if (name === "prepare-commit-msg" || name.endsWith(".sample")) continue;
+      const link = path.join(hooksDir, name);
+      try { fs.rmSync(link, { force: true }); fs.symlinkSync(path.join(own, name), link); } catch { /* a hook that cannot be linked is skipped */ }
+    }
+  } catch { /* the repo has no hooks folder */ }
+  const quoted = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const hook = `#!/bin/sh
+# Written by Vyre for session ${id}: stamps each commit with the session that made it, then runs the repo's own prepare-commit-msg if it has one.
+git interpret-trailers --in-place --if-exists doNothing --where end --trailer ${quoted(`Vyre-Session: ${id}`)} "$1" 2>/dev/null || true
+orig=${quoted(path.join(own, "prepare-commit-msg"))}
+if [ -x "$orig" ]; then exec "$orig" "$@"; fi
+exit 0
+`;
+  fs.writeFileSync(path.join(hooksDir, "prepare-commit-msg"), hook, { mode: 0o755 });
+  await gitAsync(dest, ["config", "--worktree", "core.hooksPath", hooksDir]);
+}
+
+/** Remove a session's hooks folder once its worktree is gone. */
+async function dropHooks(repoDir, id) {
+  const common = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+  if (common.ok) { try { fs.rmSync(path.join(common.stdout.trim(), "vyre-hooks", id), { recursive: true, force: true }); } catch {} }
+}
+
+/**
+ * A worktree and branch for one session: `<repoDir>/.sessions/<safe-id>` on `vyre/<safe-id>`.
+ * No token needed; a worktree is a local git operation on a repo already cloned. `identity` is the
+ * connected account's name and email, when known.
+ * @param {{ repoDir: string, session: string, defaultBranch: string, identity?: { name: string, email: string } | null }} p
+ */
+export async function worktreeAdd({ repoDir, session, defaultBranch, identity = null }) {
   const id = safeSegment(session, "session id");
   ensureExcluded(repoDir);
   const dest = path.join(repoDir, ".sessions", id);
@@ -172,12 +221,13 @@ export async function worktreeAdd({ repoDir, session, defaultBranch }) {
   // Unarchive: the session's worktree was removed but its branch (and any commits on it) stays, so
   // an existing branch is checked out as it is, never reset to the default branch. A worktree that
   // is still there is returned as it is.
-  if (fs.existsSync(dest)) return { path: dest, branch };
+  if (fs.existsSync(dest)) { await stampWorktree({ repoDir, dest, id, identity }); return { path: dest, branch }; }
   const have = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
   const r = await gitAsync(repoDir, have.ok
     ? ["worktree", "add", dest, branch]
     : ["worktree", "add", dest, "-b", branch, defaultBranch]);
   if (!r.ok) throw fail(`git worktree add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "worktree_failed");
+  await stampWorktree({ repoDir, dest, id, identity });
   return { path: dest, branch };
 }
 
@@ -236,6 +286,7 @@ export async function worktreeRemove({ repoDir, session, defaultBranch, deleted 
     const saved = Number(ahead.stdout.trim()) > 0 ? await saveTip(repoDir, dest, id) : null;
     const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
     if (!rm.ok) throw fail(`git worktree remove failed: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
+    await dropHooks(repoDir, id);
     const del = await gitAsync(repoDir, ["branch", "-d", branch]);
     return { removed: true, pruned: del.ok, ...(saved ? { saved_as: saved.ref } : {}) };
   }
@@ -243,6 +294,7 @@ export async function worktreeRemove({ repoDir, session, defaultBranch, deleted 
   if (!safety.safe) return { removed: false, needsConfirm: true, path: dest, branch, dirty: safety.dirty, commits: safety.commits };
   const rm = await gitAsync(repoDir, ["worktree", "remove", dest]);
   if (!rm.ok) throw fail(`git worktree remove failed even though nothing would be lost: ${rm.stderr.trim().slice(0, 300) || "no output"}`, "cleanup_failed");
+  await dropHooks(repoDir, id);
   // `git branch -d` takes the short branch name, not a full ref (refs/heads/<branch> is not
   // found under that spelling) - safeSegment already rules out a leading dash here, which is the
   // actual protection this call needs.

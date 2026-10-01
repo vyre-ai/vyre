@@ -99,7 +99,7 @@ test("connect: the real gh flow - code shown, gh finishes, token read once, save
 
   await waitFor(r.events, "github.connected");
   assert.deepEqual(r.saved, [{ item: "github-home", fields: { token: TOKEN } }]);
-  assert.deepEqual(r.accounts[0], { name: "home", login: "alex", avatar_url: "https://avatars.example/alex.png", item: "github-home" });
+  assert.deepEqual(r.accounts[0], { name: "home", login: "alex", avatar_url: "https://avatars.example/alex.png", item: "github-home", user_id: null, display_name: null, email: null });
   assert.equal(r.c.status(started.id), "used");
   assert.deepEqual(fs.readdirSync(r.tmpRoot), [], "the private gh folder is gone");
 
@@ -204,13 +204,13 @@ test("paste: a pasted token is checked with GitHub first, then saved and the acc
       assert.equal(opts.headers.authorization, `Bearer ${PAT}`);
       if (String(url).startsWith("https://api.github.com/user/repos")) return { ok: true, status: 200, headers: { get: () => '<https://api.github.com/user/repos?per_page=1&page=7>; rel="next", <https://api.github.com/user/repos?per_page=1&page=7>; rel="last"' }, json: async () => [{}] };
       assert.equal(url, "https://api.github.com/user");
-      return { ok: true, status: 200, json: async () => ({ login: "sam", avatar_url: "https://avatars.example/sam.png" }) };
+      return { ok: true, status: 200, json: async () => ({ login: "sam", id: 4242, name: "Sam Quill", email: null, avatar_url: "https://avatars.example/sam.png" }) };
     }),
   });
   const out = await r.keep(r.c.paste({ name: "work", token: `  ${PAT}\n` }));
   assert.deepEqual([out.connected, out.name, out.login, out.repos], [true, "work", "sam", 7]);
   assert.deepEqual(r.saved, [{ item: "github-work", fields: { token: PAT } }]);
-  assert.deepEqual(r.accounts[0], { name: "work", login: "sam", avatar_url: "https://avatars.example/sam.png", item: "github-work" });
+  assert.deepEqual(r.accounts[0], { name: "work", login: "sam", avatar_url: "https://avatars.example/sam.png", item: "github-work", user_id: 4242, display_name: "Sam Quill", email: null });
   assert.ok(r.events.some(e => e.type === "github.connected" && e.payload.login === "sam"));
   assertNoLeak(r, [PAT]);
 });

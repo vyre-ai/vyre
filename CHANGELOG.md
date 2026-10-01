@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Commits a session makes in a GitHub project now carry the connected account's name and email (its public email, else GitHub's noreply address), and every session commit ends with a `Vyre-Session: <id>` line, so you can see which session wrote what. The repo's own git identity and hooks are untouched; projects with no GitHub account keep git's own author and still get the line.
+
 - Disconnecting GitHub now deletes its token from the vault, and says so plainly when it cannot, instead of quietly leaving a live token behind. The account stays listed after a failure so you can retry.
 
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.

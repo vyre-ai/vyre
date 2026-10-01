@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { connector } from "./connect.js";
-import { MIGRATIONS, store, projectStore, forOne } from "./accounts.js";
+import { MIGRATIONS, store, projectStore, forOne, commitIdentity } from "./accounts.js";
 import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
 import { safeSegment, cloneRepo, worktreeAdd, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
@@ -456,6 +456,30 @@ export default {
       return defaultBranch ? { home: row.home, defaultBranch } : null;
     }
 
+    /**
+     * The identity a project's session commits as: its recorded account's name and email. An account
+     * connected before ids were kept is filled in once from GitHub (best effort); a project with no
+     * GitHub account, or an account GitHub cannot be asked about, sets none and git's own applies.
+     */
+    async function identityFor(project) {
+      const proj = projects.get(project);
+      const acct = proj && accounts.get(proj.account);
+      if (!acct) return null;
+      let a = acct;
+      if (!a.user_id) {
+        try {
+          const token = await ctx.vault.fetch(a.item, { field: "token" });
+          const res = await fetch("https://api.github.com/user", { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
+          const j = res.ok ? await res.json() : null;
+          if (j && Number.isInteger(j.id)) {
+            a = accounts.put({ name: a.name, login: a.login, avatar_url: a.avatar_url, item: a.item, user_id: j.id, display_name: typeof j.name === "string" ? j.name.trim().slice(0, 100) : null,
+              email: typeof j.email === "string" && /^[^\s@<>]+@[^\s@<>]+$/.test(j.email) ? j.email : null }, now());
+          }
+        } catch { /* no identity this time */ }
+      }
+      return commitIdentity(a);
+    }
+
     ctx.tool("github.session.worktree", {
       internal: true,
       description: "Sessions only: a worktree and branch for a session in any project whose home is a git repo (GitHub's or local-only), or null when the project has no repo yet.",
@@ -465,7 +489,7 @@ export default {
         checkModuleCaller("github.session.worktree", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) return null;
-        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch });
+        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, identity: await identityFor(project) });
       },
     });
 

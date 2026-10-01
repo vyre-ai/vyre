@@ -13,7 +13,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -111,6 +111,45 @@ test("worktreeAdd: unarchive - an existing branch is checked out as it is (commi
   assert.equal(fs.readFileSync(path.join(w2.path, "kept.md"), "utf8"), "still here\n");
   const again = await worktreeAdd({ repoDir, session: "back1", defaultBranch: "main" });
   assert.deepEqual(again, w2);
+});
+
+test("worktreeAdd: a session commits as the connected account and every commit carries a Vyre-Session trailer, the repo's own hooks still run, and the repo's own identity is untouched", async t => {
+  const repoDir = makeClonedRepo(t);
+  // The repo has hooks of its own: a pre-commit that leaves a marker, and a prepare-commit-msg of its own.
+  const hooks = path.join(repoDir, ".git", "hooks");
+  fs.mkdirSync(hooks, { recursive: true });
+  fs.writeFileSync(path.join(hooks, "pre-commit"), `#!/bin/sh\ntouch "${path.join(repoDir, "pre-commit-ran")}"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(hooks, "prepare-commit-msg"), `#!/bin/sh\nprintf '\\nOrig-Hook: ran\\n' >> "$1"\n`, { mode: 0o755 });
+  const identity = { name: "Alex Rivera", email: "4242+alex@users.noreply.github.com" };
+  const w = await worktreeAdd({ repoDir, session: "who1", defaultBranch: "main", identity });
+  fs.writeFileSync(path.join(w.path, "n.md"), "x\n");
+  plainGit(w.path, ["add", "n.md"]);
+  plainGit(w.path, ["commit", "-q", "-m", "add n"]);
+  assert.equal(plainGit(w.path, ["log", "-1", "--format=%an|%ae|%cn|%ce"]).trim(), "Alex Rivera|4242+alex@users.noreply.github.com|Alex Rivera|4242+alex@users.noreply.github.com");
+  const msg = plainGit(w.path, ["log", "-1", "--format=%B"]);
+  assert.match(msg, /^add n/);
+  assert.match(msg, /^Vyre-Session: who1$/m);
+  assert.match(msg, /Orig-Hook: ran/, "the repo's own prepare-commit-msg still runs");
+  assert.ok(fs.existsSync(path.join(repoDir, "pre-commit-ran")), "the repo's own pre-commit still runs, linked into the session's hooks");
+  assert.equal(plainGit(repoDir, ["config", "--local", "--get", "user.email"]).trim(), "a@example.com", "the repo's own identity is untouched");
+  assert.equal(spawnSync("git", ["config", "--local", "--get", "core.hooksPath"], { cwd: repoDir, env: { ...process.env, GIT_CONFIG_GLOBAL: os.devNull } }).status, 1, "the repo's own hooks path is untouched");
+  // idempotent, and cleaned up with the worktree once nothing would be lost
+  await worktreeAdd({ repoDir, session: "who1", defaultBranch: "main", identity });
+  plainGit(repoDir, ["merge", "-q", "--ff-only", "vyre/who1"]);
+  const hooksDir = path.join(repoDir, ".git", "vyre-hooks", "who1");
+  assert.ok(fs.existsSync(hooksDir));
+  assert.equal((await worktreeRemove({ repoDir, session: "who1", defaultBranch: "main" })).removed, true);
+  assert.equal(fs.existsSync(hooksDir), false, "the session's hooks folder goes with its worktree");
+});
+
+test("worktreeAdd: with no known account identity the commit keeps git's own author but still carries the trailer", async t => {
+  const repoDir = makeClonedRepo(t);
+  const w = await worktreeAdd({ repoDir, session: "anon1", defaultBranch: "main" });
+  fs.writeFileSync(path.join(w.path, "n.md"), "x\n");
+  plainGit(w.path, ["add", "n.md"]);
+  plainGit(w.path, ["commit", "-q", "-m", "plain"]);
+  assert.equal(plainGit(w.path, ["log", "-1", "--format=%ae"]).trim(), "a@example.com");
+  assert.match(plainGit(w.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: anon1$/m);
 });
 
 test("worktreeRemove: a clean worktree with no commits of its own is removed, and its branch pruned", async t => {
