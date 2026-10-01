@@ -27,6 +27,7 @@ import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { prIntents } from "../../lib/said/pr.js";
+import { teamIntents } from "../../lib/said/team.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -1369,20 +1370,36 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {string} uuid @param {string[]} pasted @param {string|null|undefined} project
    */
   async hearActs(id, text, uuid, pasted, project) {
-    if (!project || !/\b(?:prs?|pull[\s-]+requests?|merge|merging)\b/i.test(text)) return;
+    const pr = /\b(?:prs?|pull[\s-]+requests?|merge|merging)\b/i.test(text);
+    const team = /\b(?:retire|retiring|duty|duties|fill|staff|role|teammate)\b/i.test(text);
+    if (!project || (!pr && !team)) return;
     let typed = String(text);
     for (const span of pasted || []) if (typeof span === "string" && span) typed = typed.split(span).join(" ");
-    const where = /** @type {{ project: string, session: string, pr?: number }} */ ({ project, session: id });
-    const cur = await this.deps.call("github.session.pr", { project, session: id }).catch(() => null);
-    const prs = cur && !cur.error && cur.data && Array.isArray(cur.data.prs) ? cur.data.prs : [];
-    if (prs.length === 1 && Number.isInteger(Number(prs[0]))) where.pr = Number(prs[0]);
-    const target = async (tool, input) => {
-      const r = await this.deps.call("github.act.target", { tool, input }).catch(() => null);
-      return r && !r.error && r.data && Array.isArray(r.data.to) ? r.data.to : null;
-    };
-    const { intents } = await prIntents(typed, where, target).catch(() => ({ intents: [] }));
+    /** @type {any[]} */ let intents = [];
+    if (pr) {
+      const where = /** @type {{ project: string, session: string, pr?: number }} */ ({ project, session: id });
+      const cur = await this.deps.call("github.session.pr", { project, session: id }).catch(() => null);
+      const prs = cur && !cur.error && cur.data && Array.isArray(cur.data.prs) ? cur.data.prs : [];
+      if (prs.length === 1 && Number.isInteger(Number(prs[0]))) where.pr = Number(prs[0]);
+      const target = async (tool, input) => {
+        const r = await this.deps.call("github.act.target", { tool, input }).catch(() => null);
+        return r && !r.error && r.data && Array.isArray(r.data.to) ? r.data.to : null;
+      };
+      intents = intents.concat((await prIntents(typed, where, target).catch(() => ({ intents: [] }))).intents);
+    }
+    if (team) {
+      // What the project really has (core/team's roster, the person's agents that may fill a role): the words name none of it.
+      const roster = await this.deps.call("team.roster", { project }).catch(() => null);
+      const agents = await this.deps.call("agents.list", {}).catch(() => null);
+      if (roster && !roster.error && roster.data) {
+        const rd = roster.data;
+        const fillers = agents && !agents.error && Array.isArray(agents.data)
+          ? agents.data.filter(a => a && a.kind !== "assistant" && (a.projects === "*" || (Array.isArray(a.projects) && (a.projects.includes("*") || a.projects.includes(project))))).map(a => String(a.name)) : [];
+        intents = intents.concat(teamIntents(typed, { project, roles: Array.isArray(rd.roles) ? rd.roles : [], agents: fillers, duties: Array.isArray(rd.duties) ? rd.duties : [] }).intents);
+      }
+    }
     for (const it of intents) {
-      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: "github", to: it.to, what: it.what, standing: false,
+      await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: it.channel || "github", to: it.to, what: it.what, standing: false,
         ...(it.when && Number.isInteger(it.when.window_minutes) ? { window_minutes: it.when.window_minutes } : {}) }).catch(() => null);
     }
   }
@@ -1809,7 +1826,7 @@ export class Switchboard {
    * @param {{ purpose: string, system?: string|null, prompt: string, model?: string|null, timeoutMs?: number }} o
    * @returns {Promise<{ text: string, ok: boolean, cost_usd: number, warm: boolean, ms: number, thread: string }>}
    */
-  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000, onText = null }) {
+  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000, onText = null, ledger = null }) {
     const t0 = Date.now();
     const key = `${purpose}\u0000${model || ""}\u0000${crypto.createHash("sha256").update(String(system || "")).digest("hex")}`;
     this.spares = this.spares || new Map();
@@ -1821,6 +1838,9 @@ export class Switchboard {
     if (!st) throw new Error(`the ${purpose} session did not start`);
     const answer = new Promise(resolve => { st.answered = resolve; });
     if (onText) st.onText = onText;
+    // The spend ledger attributes a thread's cost to its recorded purpose (core/spend): a module that asked on behalf of
+    // something ("watcher:digest") has this one answer charged there. The spare is never reused after it, so nothing else sees it.
+    if (ledger) this.db.prepare("UPDATE threads_runs SET purpose = ? WHERE id = ?").run(ledger, id);
     this.write(id, String(prompt));
     // The next question's session starts now, while this one answers.
     if (!this.closing) {
@@ -2202,6 +2222,18 @@ export class Switchboard {
     for (const id of [...this.socks.keys()]) this.closeSocket(id);
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }
+}
+
+/**
+ * "<module>:<word>" for the spend ledger, from the calling module's label and the word it gave (with or without its own
+ * "<module>:" in front); null when there is no word, it is not a plain word, or it names another module.
+ * @param {unknown} caller @param {unknown} word
+ */
+export function ledgerName(caller, word) {
+  const m = /^module:([a-z][a-z0-9-]{0,39})$/.exec(String(caller || ""));
+  if (!m || typeof word !== "string") return null;
+  const w = word.startsWith(`${m[1]}:`) ? word.slice(m[1].length + 1) : word;
+  return /^[a-z0-9][a-z0-9_.-]{0,50}$/i.test(w) ? `${m[1]}:${w}` : null;
 }
 
 const str = { type: "string" };
@@ -2807,8 +2839,10 @@ export default {
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.quick", {
       description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
-      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, spend_purpose: { type: "string", description: "Who this question is for, as a word (for example digest): letters, digits and _ . - up to 50. The cost of this one answer is recorded in the spend ledger under \"<your module>:<word>\" (spend.summary), never under another module's name; absent, under the session's own purpose." }, stream: { type: "boolean", description: "Hand partial text to the calling module as it arrives (ctx.call opts.onPartial); the answer still returns whole." }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
       run: async (i, meta) => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000,
+        // The ledger name is always "<the calling module>:<word>": a module books only under its own name (the tool is module-only).
+        ledger: ledgerName(/** @type {any} */ (meta).caller, i.spend_purpose),
         onText: i.stream && meta && typeof /** @type {any} */ (meta).partial === "function" ? /** @type {any} */ (meta).partial : null }),
     });
 

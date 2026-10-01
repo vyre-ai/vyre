@@ -290,7 +290,7 @@ export function mountSession(container, opts) {
     // Everything at once: one round trip from a phone, not three. A paired Mac's session is only
     // ever a transcript the box asks the Mac for (recall.transcript, source "mac").
     const [r, t, nm] = await Promise.all([
-      opts.recorded || isMac(where) ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
+      opts.recorded || isMac(where) ? { error: { message: "not a live session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
       readTail(),
       readNames(attempt),
       readTeammates(attempt),

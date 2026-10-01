@@ -20,7 +20,7 @@ permissions:
   contents: read
 concurrency:
   group: vault-mac-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   test:
     runs-on: macos-latest

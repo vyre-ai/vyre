@@ -397,7 +397,7 @@ export function claudeOnce(o = {}) {
     // No extended thinking: on this job it spent 21k tokens and three minutes a batch for the same reads.
     const env = modelEnv(o.env || process.env, o.billing ? o.billing() : undefined);
     const p = spawn(o.bin || process.env.VYRE_CLAUDE_BIN || "claude", args, { cwd: o.cwd || process.cwd(), env, stdio: ["pipe", "pipe", "pipe"] });
-    let out = "", err = "";
+    let out = "", err = "", writeFailed = "";
     const timer = setTimeout(() => { p.kill("SIGKILL"); reject(new Error("the model did not answer in time")); }, READER.timeoutMs);
     p.stdout.on("data", d => { out += d; });
     p.stderr.on("data", d => { err += d; });
@@ -410,8 +410,11 @@ export function claudeOnce(o = {}) {
         const u = j.usage || {};
         resolve({ text: String(j.result || ""), usd: Number(j.total_cost_usd) || 0,
           tokens_in: Number(u.input_tokens || 0) + Number(u.cache_read_input_tokens || 0) + Number(u.cache_creation_input_tokens || 0), tokens_out: Number(u.output_tokens || 0) });
-      } catch { reject(new Error((err || out || `exit ${code}`).slice(0, 200))); }
+      } catch { reject(new Error((err || out || `${writeFailed ? `the model binary closed its input (${writeFailed}); ` : ""}exit ${code}`).slice(0, 200))); }
     });
+    // A model binary that exits before it reads its prompt (claude not signed in, a crash at start) closes the pipe, and the write fails with
+    // EPIPE. Unhandled, that error kills vyred. It is noted here and the close handler reports the read as failed, with what the binary said.
+    p.stdin.on("error", e => { writeFailed = String((/** @type {any} */ (e)).code || e.message || "write failed"); });
     p.stdin.end(prompt);
   });
 }

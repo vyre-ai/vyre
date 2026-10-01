@@ -161,3 +161,15 @@ ticket-derived secret as the pairing secret, and returns the same shape `pair()`
 shown as two groups of 4) the box's own Touch ID prompt already shows for `relay.join`, so a
 "pairing with alex's box (a1b2 c3d4)" screen on the phone reads identically to what the person
 sees on the box's own screens.
+
+## A removed device
+
+When the owner removes a device (`relay.devices.remove`, or `presence.remove` on its key) the box closes
+its channel with code **4401** and reason **`device removed`**, and refuses its reconnects with the same
+code and reason. The relay (Worker and Node server) passes on exactly that code and reason and nothing
+else the box says. `connect()` ends in the final state `"relay_removed"` (`conn.onstate("relay_removed")`), stops
+redialing on that relay path, and rejects waiting calls with `code: "relay_removed"`. The name says
+whose word it is: the relay's. A compromised relay can send 4401 too, so it is never proof and nothing
+may be wiped on it. An app asks the box directly over a path the relay does not control (the tailnet
+address, or a pairing check) before it acts. A handshake refusal for a stranger's key is the relay's
+generic 4410 "box closed the connection". Pair again to come back. The box keeps a removed device's row for good, blanked to the public key and the time it was removed (the name, presence key id, build and path are cleared), and nothing prunes it, so a phone that was away for months still hears "device removed" when it returns.

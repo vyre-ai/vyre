@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["assistant.brief", "assistant.patterns", "assistant.glance", "assistant.capabilities", "assistant.log", "assistant.prompt.diff", "assistant.daily", "assistant.welcome"] },
-  "watches": { "emits": ["assistant.briefed", "assistant.glanced", "assistant.rolled"] },
+  "watches": { "emits": ["assistant.briefed", "assistant.glanced", "assistant.rolled", "push.proactive"] },
   "shows": { "cli": [] },
   "settings": [
     { "key": "assistant.chattiness", "group": "assistant", "label": "Pushes a day", "help": "The most times the assistant, watchers and duties may notify you in a day. Quiet hours still hold. 0 is never.", "type": "int", "min": 0, "max": 20, "default": 3, "levels": ["account"], "apply": "live" },

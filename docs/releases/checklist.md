@@ -15,6 +15,7 @@ The order matters: nothing is served before the release is signed, and everythin
 3. **Sign.** The sign job writes the final `SHA256SUMS` (every file above is listed) and `SHA256SUMS.sig`: Ed25519, with the release key, over the line `vyre-release-sums` and then the exact `SHA256SUMS` bytes. The private key is a protected secret of the workflow and is never on a machine.
 4. **Publish.** The GitHub release carries the assets as signed, unchanged: `vyre.tgz`, `SHA256SUMS`, `SHA256SUMS.sig`, `shell.json`, `manifest.json` and the rest. Publishing never rebuilds `SHA256SUMS`.
 5. **Prove the update path.** On a throwaway server, `vyre update` installs the release and says "signature checked against Vyre's release key"; the same release with its signature removed is refused. A Mac does the same.
+5b. **Served matches signed.** After the deploy in step 6, `node scripts/check-served.mjs --origin https://vyre.run --release <the release's assets folder>` passes: the setup page and the install scripts vyre.run serves are the files the release's signed `setup.json` lists. It is a tamper check for what that one request gets, since an origin can answer another client or network differently: run it from more than one place.
 6. **vyre.run.** Deploy the site and the install files (`scripts/build-site.sh`, then `scripts/deploy-site.sh site --branch main`, which refuses a folder that carries a staging `setup/config.json`).
 7. **phone.vyre.run.** Built and deployed with the first signed release, with the owner's approval, and never before it:
 

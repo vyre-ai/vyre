@@ -31,7 +31,7 @@ export const fixturesOn = (() => { try { return store?.getItem("vyre.fixtures") 
 export const fromFixtures = new Set();
 
 /** Tools are named for what they do; some live in a module of another name. */
-const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learn" };
+const MODULE = { threads: "switchboard", agents: "switchboard", onboard: "box", gate: "gate", learn: "learn" }; // internal-word: the module id, compared in code and never drawn
 
 export class ApiError extends Error {
   /** @param {string} code @param {string} message @param {string} tool @param {Record<string, any>} [detail] the whole error body vyred sent, for fields beyond code/message (e.g. presence_required's `methods`) */
@@ -139,7 +139,7 @@ async function post(name, input, extra, keepalive) {
     body = await res.json().catch(() => null);
   } catch {
     reach(false);
-    return fallback(name, input, new ApiError("offline", "vyred did not answer", name));
+    return fallback(name, input, new ApiError("offline", "The box did not answer", name));
   }
   // The service worker answers a read it kept with offline: true; the box itself was not reached.
   reach(!body?.offline);
@@ -151,9 +151,20 @@ async function post(name, input, extra, keepalive) {
     return body.data;
   }
   const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
+  // The one signal for a removed phone: the box's own answer to any contact from a device it no
+  // longer knows. Only that exact code on a 4xx; a network error or a 5xx never counts.
+  if (err.code === "device_removed" && res.status >= 400 && res.status < 500 && secureOrigin()) for (const fn of [...removedSubs]) { try { fn(); } catch {} }
   if (err.missing || res.status === 404) return fallback(name, input, err);
   throw err;
 }
+
+/** The answer is the box's own only over TLS to its address (a valid certificate for the box's name), or on this machine's own loopback: never plain http over a network. */
+const secureOrigin = () => { const l = globalThis.location; return !l || l.protocol === "https:" || l.hostname === "localhost" || l.hostname === "127.0.0.1"; };
+
+/** @type {Set<() => void>} */
+const removedSubs = new Set();
+/** Hear the box say `device_removed` to this phone (js/wipe.js wipes on it). Returns a stop. @param {() => void} fn */
+export function onDeviceRemoved(fn) { removedSubs.add(fn); return () => { removedSubs.delete(fn); }; }
 
 // ---- the presence session: one passkey covers the next sends on this device ------------------
 // After a passkey proof for one of these tools the box opens a session bound to this device (30
@@ -247,7 +258,7 @@ export async function callWithCode(name, input, code, method = "code") {
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "vyred did not answer", name); }
+  } catch { throw new ApiError("offline", "The box did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
@@ -266,7 +277,7 @@ export async function callWithGrant(name, input, grant) {
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "vyred did not answer", name); }
+  } catch { throw new ApiError("offline", "The box did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
@@ -384,7 +395,7 @@ function getOutbox() {
  */
 export async function queue(name, input = {}, { presence, onWait } = {}) {
   if (presence === true) {
-    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "vyred did not answer", name);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "The box did not answer", name);
     return call(name, input, { presence: true, write: true });
   }
   const box = await getOutbox();

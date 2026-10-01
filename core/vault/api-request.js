@@ -113,7 +113,39 @@ export function normalize(i) {
   const hosts = i.hosts.map(normalizeHost);
   const endpoints = Array.isArray(i.endpoints) ? i.endpoints.map(normalizeEndpoint) : [];
   const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}) };
+  const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}) };
+}
+
+/**
+ * `scope`: which named agents and which projects may read through this credential without being asked, the same
+ * { projects, agents } a connection carries ("*" or a list each). A credential with no scope is for the person and
+ * the assistant only: a project's agent never reads through a connection nobody gave its project.
+ * @param {any} sc @returns {{ projects: "*" | string[], agents: "*" | string[] }}
+ */
+function normalizeScope(sc) {
+  if (!isObj(sc)) throw bad('scope is { projects: "*" | [ids], agents: "*" | [names] }');
+  const one = (/** @type {any} */ v, /** @type {string} */ what) => {
+    if (v === undefined || v === "*") return "*";
+    if (!Array.isArray(v) || v.length > 64 || !v.every(x => typeof x === "string" && x && x.length <= 128)) throw bad(`scope.${what} must be "*" or a list`);
+    return [...new Set(v)];
+  };
+  return { projects: one(sc.projects, "projects"), agents: one(sc.agents, "agents") };
+}
+
+/**
+ * May a model call read through this credential? The person's own session and the assistant are not asked here. A named agent, or a
+ * session bound to a project, needs the credential's scope to name its agent (or "*") AND its project (or "*"): a scope of "*" on
+ * both is "everyone", an absent scope is "no one".
+ * @param {{ scope?: { projects: "*" | string[], agents: "*" | string[] } }} config @param {{ agent?: string, project?: string }} who
+ */
+export function scopeAllows(config, { agent, project }) {
+  const sc = config.scope;
+  if (!sc) return false;
+  // Fail closed: an absent agent or project matches only "*", never a list, so a caller that names neither is not let in by a scope that names someone.
+  const agentOk = sc.agents === "*" || Boolean(agent && sc.agents.includes(agent));
+  const projectOk = sc.projects === "*" || Boolean(project && sc.projects.includes(project));
+  return agentOk && projectOk;
 }
 
 /**

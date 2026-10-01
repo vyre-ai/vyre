@@ -45,7 +45,8 @@ export function serve({ runtime, stdin, stdout, name = "vyre-chrome", version = 
     if (out.ok) return reply(id, { content: content(out.result) });
     const e = out.error || {};
     const msg = String(e.message || e);
-    reply(id, { isError: true, content: [{ type: "text", text: /^[a-z_]+: /.test(msg) || !e.code ? msg : `${e.code}: ${msg}` }] });
+    const img = e.image && typeof e.image.data === "string" ? e.image : null;
+    reply(id, { isError: true, content: [...(img ? [{ type: "image", data: img.data, mimeType: img.mime || "image/jpeg" }] : []), { type: "text", text: /^[a-z_]+: /.test(msg) || !e.code ? msg : `${e.code}: ${msg}` }] });
   }
 
   function onMessage(/** @type {any} */ m) {
