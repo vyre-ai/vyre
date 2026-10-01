@@ -1,0 +1,40 @@
+# The github module on a runner: the tests the Mac cannot run (core/github/registry.test.js boots a real
+# vyred and a real vault) and the LIVE ones (a real clone from github.com, the sign-in against the real
+# pinned gh). No GitHub account or token anywhere. Runs on pushes that touch core/github and by hand.
+name: github
+on:
+  push:
+    branches: ["work/github", "work/github-*"]
+    paths: ["core/github/**", "box/Dockerfile", ".github/workflows/github.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: github-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  github:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VYRE_NO_DIALOGS: "1"
+      VYRE_LIVE_GITHUB: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # The pinned gh, checked against the sum pinned in box/Dockerfile, the way the box image does.
+      - name: Install the pinned gh
+        run: |
+          v=$(sed -n 's/^ARG GH_VERSION=//p' box/Dockerfile)
+          sum=$(sed -n 's/^ARG GH_SHA256_AMD64=//p' box/Dockerfile)
+          curl -fsSL --retry 3 -o /tmp/gh.tgz "https://github.com/cli/cli/releases/download/v${v}/gh_${v}_linux_amd64.tar.gz"
+          echo "$sum  /tmp/gh.tgz" | sha256sum -c -
+          tar -xzf /tmp/gh.tgz -C /tmp
+          sudo install -m 0755 "/tmp/gh_${v}_linux_amd64/bin/gh" /usr/local/bin/gh
+          gh --version
+      - name: The github module's tests, registry and live ones included
+        run: node --test core/github/*.test.js
