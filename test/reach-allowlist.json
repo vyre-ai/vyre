@@ -1906,10 +1906,6 @@
    "module": "spend",
    "default": "open to any caller"
   },
-  "statusline.line": {
-   "module": "statusline",
-   "default": "limited by callers in code"
-  },
   "suggest.offer": {
    "module": "suggest",
    "default": "internal or hook in code",
