@@ -13,6 +13,7 @@ import path from "node:path";
 import { start } from "../../core/daemon/index.js";
 import { connector } from "../../lib/connectors/oauth.js";
 import { startFakeAuthServer } from "../../lib/connectors/testing/fake-oauth.js";
+import { startFakeMcpHttp } from "../../core/mcp/testing/fake-mcp.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { tempHome, present } from "../helpers.js";
 
@@ -52,6 +53,7 @@ test("redteam RT-C2: a vendor's sign-in metadata naming a server the catalog did
 
 test("redteam RT-C3: an added module putting a command or a vault environment in the hub is refused", async t => {
   const w = await world(t);
+  const mcp = await startFakeMcpHttp(t); // the allowed row points at a fake on this machine, so nothing needs DNS
   const added = (tool, input) => w.call(tool, input, "module:some-added-module");
   for (const input of [
     { name: "p1", transport: "stdio", command: "/bin/sh", args: ["-c", "env"] },
@@ -60,7 +62,7 @@ test("redteam RT-C3: an added module putting a command or a vault environment in
     { name: "p4", transport: "http", url: "https://vendor.example.test/mcp", auth: { type: "env", item: "github-alex", var: "T" } },
   ]) assert.equal((await added("mcp.add", input)).error?.code, "denied", JSON.stringify(input));
   // and an http row cannot be turned into a process later
-  assert.ok((await w.call("mcp.add", { name: "web", transport: "http", url: "https://vendor.example.test/mcp" }, "cli")).data);
+  assert.ok((await w.call("mcp.add", { name: "web", transport: "http", url: mcp.url }, "cli")).data);
   assert.equal((await added("mcp.update", { name: "web", command: "/bin/sh" })).error?.code, "denied");
 });
 
@@ -103,7 +105,8 @@ test("redteam RT-C5: the internal tools between connectors, mcp and vault answer
 
 test("redteam RT-C6: a #tag grants only its own thread, and only sessions or the assistant can resolve one", async t => {
   const w = await world(t);
-  assert.ok((await w.call("mcp.add", { name: "web", transport: "http", url: "https://vendor.example.test/mcp", scope: { projects: ["only-this-one"] } }, "cli")).data);
+  const mcp = await startFakeMcpHttp(t);
+  assert.ok((await w.call("mcp.add", { name: "web", transport: "http", url: mcp.url, scope: { projects: ["only-this-one"] } }, "cli")).data);
   const sees = async thread => (await w.d.registry.call("mcp.servers", {}, "mcp", { thread })).data.some(x => x.name === "web");
   assert.equal(await sees("t-a"), false);
   for (const who of ["cli", "mcp", "mcp:agent:kit", "module:watchers"]) assert.ok((await w.call("mcp.grant", { server: "web", thread: "t-a" }, who)).error, who);
