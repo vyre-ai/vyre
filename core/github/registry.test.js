@@ -79,3 +79,29 @@ test("the person's yes binds the PR: with no intent an agent's merge is not_aske
   assert.equal((await agent({ project: "app", pr: 12 })).error.code, "not_asked", "a plain yes is used up by the merge it covered");
   assert.equal(requests.length, 1, "and the second try never reached GitHub");
 });
+
+test("disconnecting GitHub deletes the token item from the real vault; an item the person made themselves is refused plainly and the account stays (real registry, real vault)", async t => {
+  let daemon = null;
+  const root = tempHome(t, { stop: () => daemon && daemon.stop() });
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  daemon = await start({ root, presence: present, log: () => {} });
+  const reg = daemon.registry;
+  const items = async () => ((await reg.call("vault.list", {}, "cli")).data.items || []).map(i => i.name);
+  // The item the sign-in makes: put by the github module itself, so its origin is module:github.
+  const put = await reg.call("vault.put", { name: "github-home", kind: "pat", fields: { token: "test-token-not-real" }, grants: ["github"] }, "module:github");
+  assert.ok(put.data, JSON.stringify(put.error));
+  accountStore(reg.deps.db).put({ name: "home", login: "alex", avatar_url: null, item: "github-home" }, Date.now());
+  assert.ok((await items()).includes("github-home"));
+  const gone = await reg.call("github.remove", { name: "home" }, "cli");
+  assert.deepEqual(gone.data, { removed: true }, JSON.stringify(gone.error));
+  assert.equal((await items()).includes("github-home"), false, "the token is gone from the vault");
+  assert.deepEqual((await reg.call("github.accounts", {}, "cli")).data, []);
+
+  // An item the person made by hand under the same name is not the module's to delete.
+  assert.ok((await reg.call("vault.put", { name: "github-mine", kind: "pat", fields: { token: "test-token-not-real" } }, "cli")).data);
+  accountStore(reg.deps.db).put({ name: "mine", login: "sam", avatar_url: null, item: "github-mine" }, Date.now());
+  const refused = await reg.call("github.remove", { name: "mine" }, "cli");
+  assert.equal(refused.error && refused.error.code, "vault_delete_failed", JSON.stringify(refused));
+  assert.ok((await items()).includes("github-mine"), "a person's own item is untouched");
+  assert.equal((await reg.call("github.accounts", {}, "cli")).data.length, 1, "the account stays listed");
+});
