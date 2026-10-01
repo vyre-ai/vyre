@@ -220,19 +220,33 @@ export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
  * none of these is in SESSIONABLE. A tool may also ask for some inputs only (`terminalAsk(input)` on its definition).
  */
 export const TERMINAL_ASKS = new Set([
-  "hands.grant.add", "hands.grant.remove", "hands.pause", "hands.resume",
-  "mcp.add", "mcp.update", "mcp.remove", "mcp.restart", "connectors.connect", "connectors.disconnect",
-  "agents.create", "agents.update", "agents.delete", "agents.resume",
-  "sessions.limits.set", "sessions.mode.set", "sessions.models.set", "sessions.prompt.set", "sessions.prompt.revert", "sessions.usage.resume",
+  // Power raised or reach widened (what an agent could do afterwards): the only reason a tool is on this list.
+  "hands.grant.add",
+  "mcp.add", "mcp.update", "connectors.connect",
+  "agents.create", "agents.update",
+  "sessions.limits.set", "sessions.mode.set", "sessions.models.set", "sessions.prompt.set", "sessions.usage.resume",
   "spend.raise",
-  "vault.vaults.create", "vault.device.join", "vault.device.revoke", "vault.ssh.generate", "vault.relay", "vault.connections.revoke",
-  "gate.said.add", "gate.said.revoke", "gate.settle", "gate.reject", "gate.revise",
-  "team.charter.set", "team.default.set", "team.add",
-  "update.apply", "link.pair", "link.signin", "link.signout", "link.unpair", "presence.person.revoke",
-  "names.claim", "names.release", "github.connect", "github.remove", "google.add", "google.connect", "google.remove",
-  "computers.member.add", "computers.member.rotate", "computers.member.remove", "computers.member.dispose", "computers.takeover", "computers.giveback",
-  "glass.take", "glass.release", "term.attach", "term.open", "threads.shell",
+  // Pairing and the vault.
+  "vault.vaults.create", "vault.device.join", "vault.ssh.generate", "vault.relay", "link.pair", "link.signin",
+  // The person's own approvals, and who the teammates are.
+  "gate.said.add", "gate.settle", "team.charter.set", "team.default.set", "team.add",
+  // New code, new accounts and credentials.
+  "update.apply", "names.claim", "github.connect", "google.add", "google.connect", "computers.member.add", "computers.member.rotate",
 ]);
+
+/**
+ * What the person reads when a Tier 1 tool asks from a terminal: the tool, then its target and scope first, each value cut short, so
+ * a long command or instruction cannot push the part that matters off the end. Up to 400 characters.
+ * @param {string} tool @param {any} input
+ */
+export function terminalSummary(tool, input) {
+  const o = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const first = ["name", "agent", "server", "key", "id", "project", "to", "preset", "label"];
+  const early = ["command", "url", "scope", "projects", "agents", "mode", "level", "value", "limit", "amount"];
+  const order = [...first.filter(k => k in o), ...early.filter(k => k in o), ...Object.keys(o).filter(k => !first.includes(k) && !early.includes(k))];
+  const show = v => { const t = typeof v === "string" ? v : JSON.stringify(v); return String(t).replace(/\s+/g, " ").slice(0, 70) + (String(t).length > 70 ? "..." : ""); };
+  return `${tool}: ${order.map(k => `${k}=${show(o[k])}`).join(", ")}`.slice(0, 400);
+}
 
 /** Does this call, from a terminal, need the person's proof? @param {string} tool @param {any} def @param {any} [input] */
 export function terminalAsks(tool, def, input) {
@@ -632,6 +646,7 @@ export class Presence {
         if (s) return s.slice(0, 400);
       } catch {}
     }
+    if (TERMINAL_ASKS.has(tool) || (def && typeof def.terminalAsk === "function")) return clean(terminalSummary(tool, input));
     return clean(`${tool} ${canonical(input)}`.slice(0, 160));
   }
 

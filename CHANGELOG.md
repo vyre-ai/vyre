@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- Presence: reviewer-2's Tier 1 tools (the ones that let an agent widen its own power or reach) need the person's proof when the call comes from a terminal (socket label cli or local): one Touch ID or device proof per call, tied to that call, no standing window. The CLI asks once at the terminal and retries that call; Deck, Capsule, mobile and tailnet callers are not asked.
+- Presence: the 30 Tier 1 tools that raise an agent's power or reach, pair, or touch the vault (the terminal asks list in core/presence) need the person's proof when the call comes from a terminal (socket label cli or local): one Touch ID or device proof per call, tied to that call, no standing window. The CLI asks once at the terminal and retries that call; Deck, Capsule, mobile and tailnet callers are not asked.
 
 - Socket trust: under a proved server, a person label also needs the pty to be the terminal host's own (the shell chain shares the peer's terminal, with at most one named pty helper such as VS Code's ptyHost or iTerm2's iTermServer, plus sshd's login pair). A pty an extension, task or agent made for itself (script, python pty.spawn, node-pty) is capped.
 
