@@ -533,7 +533,7 @@ export class Runtime {
 
   /** Run in a child and check the items; a bad item is the run's error. */
   async exec(dir, spec, since, hook) {
-    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, viaRequest: spec.net ? async (url, init) => {
+    const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
         const rule = spec.net[url.hostname];
         if (!rule || !rule.credential) return undefined;
         const method = String((init && init.method) || "GET").toUpperCase();

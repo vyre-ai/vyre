@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The box's wall for watchers: a `spawner` candidate for `lib/sandbox/wall.js`, used when a spawner
+  socket exists and its client has `spawnAsWatcher` (launch's pool-uid wall). A launched child cannot
+  read the person's folders, so the watcher's files are handed to it over its channel and written
+  into its own private TMPDIR, the only place node's permission flags let it read or write. It is
+  probed like the others, with the child's own attempts; a spawner that refuses (its rule is not in
+  place) is a refusal in words, not a failed watcher. Frozen edge: `core/watchers -> core/spawner`.
+
 - The wall: a watcher child runs where it can reach nothing but its parent: no network (no
   loopback, no unix socket), a view of the filesystem with only its own folder, the node binary and
   the system libraries (nothing of the home or run directories), no sight of or signal to other

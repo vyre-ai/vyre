@@ -39,7 +39,7 @@ export const LIMITS = { channelBytes: 64_000_000, channelLine: 1_000_000, asks: 
  */
 export async function runOnce(opts) {
   // Fail closed: no wall that keeps a child off the network means no watcher runs, said in words.
-  const found = opts.wall === undefined ? await getWall() : { wall: opts.wall, why: opts.wall ? opts.wall.why : "no wall" };
+  const found = opts.wall === undefined ? await (opts.findWall ? opts.findWall() : getWall()) : { wall: opts.wall, why: opts.wall ? opts.wall.why : "no wall" };
   if (!found.wall) {
     return { items: [], logs: [], cursor: null, ms: 0, sandboxed: false, isolated: false, wall: null, unisolated: true,
       error: `watchers cannot run on this machine: it has no way to keep a watcher off the network (${found.why}). Nothing was run.` };
@@ -47,11 +47,22 @@ export async function runOnce(opts) {
   return runIn(found.wall, opts);
 }
 
-function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, viaRequest = null, netOptions = {}, identity = sandboxIdentity() }) {
+async function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal, hosts = null, netAuth, askFn = null, viaRequest = null, netOptions = {}, identity = sandboxIdentity() }) {
   const started = Date.now();
   const real = fs.realpathSync(dir);
   const runner = fs.realpathSync(RUNNER);
-  const execArgv = SANDBOXED ? [FLAG,`--allow-fs-read=${real}`, `--allow-fs-read=${runner}`] : [];
+  // A launched child (the box spawner) cannot read the person's folders: it is handed the watcher's
+  // files over its channel and writes them into its own private TMPDIR, the only place it may write.
+  const handed = Boolean(wall.launch && wall.materialize);
+  const execArgv = !SANDBOXED ? [] : handed
+    ? [FLAG, `--allow-fs-read=${wall.workGlob}`, `--allow-fs-write=${wall.workGlob}`, `--allow-fs-read=${runner}`]
+    : [FLAG, `--allow-fs-read=${real}`, `--allow-fs-read=${runner}`];
+  const files = handed ? readFolder(real) : null;
+  const nodeBin = fs.realpathSync(process.execPath);
+  /** @type {any} */
+  const launched = wall.launch ? await wall.launch([process.execPath, ...execArgv, runner], { ro: [path.dirname(runner)] }).catch(e => e) : null;
+  if (launched instanceof Error) return { items: [], logs: [], cursor: null, ms: Date.now() - started, sandboxed: false, isolated: false, wall: wall.kind, unisolated: true,
+    error: `watchers cannot run on this machine: ${launched.message}. Nothing was run.` };
   /** @type {string[]} */ const released = [];
   const items = [], logs = [];
   let asks = 0, dropped = 0, cursor = null, error = /** @type {string|null} */ (null), finished = false;
@@ -65,9 +76,8 @@ function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal,
   return new Promise(resolve => {
     // The child talks to its parent in lines of JSON on stdin and stdout, so any launcher that gives
     // a child pipes can start it, inside the wall.
-    const nodeBin = fs.realpathSync(process.execPath);
-    const { cmd, args } = wall.wrap([process.execPath, ...execArgv, runner], { ro: [real, runner, nodeBin, path.dirname(nodeBin)], cwd: real });
-    const child = spawn(cmd, args, { env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["pipe", "pipe", "pipe"] });
+    const w = launched ? null : /** @type {NonNullable<typeof wall.wrap>} */ (wall.wrap)([process.execPath, ...execArgv, runner], { ro: [real, runner, nodeBin, path.dirname(nodeBin)], cwd: real });
+    const child = launched || spawn(/** @type {any} */ (w).cmd, /** @type {any} */ (w).args, { env: {}, cwd: real, ...(identity.uid != null ? { uid: identity.uid, gid: identity.gid ?? identity.uid } : {}), stdio: ["pipe", "pipe", "pipe"] });
     const send = obj => { if (child.stdin && child.stdin.writable) child.stdin.write(JSON.stringify(obj) + "\n"); };
     child.stdin?.on("error", () => {});
     // The channel carries messages and nothing else: a line over 1 MB, a total over 64 MB, or a line
@@ -147,8 +157,21 @@ function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, signal,
       }
       resolve({ items: error ? [] : items, logs, cursor: error ? null : cursor, error, ms: Date.now() - started, sandboxed: SANDBOXED, isolated: true, wall: wall.kind });
     });
-    send({ t: "run", entry: pathToFileURL(path.join(real, "watch.js")).href, since: since ?? null, hook });
+    send({ t: "run", ...(files ? { files } : { entry: pathToFileURL(path.join(real, "watch.js")).href }), since: since ?? null, hook });
   });
+}
+
+/** The files of a watcher folder, to hand to a launched child: flat, text, small. */
+function readFolder(dir) {
+  const out = {}; let total = 0, n = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!e.isFile() || ++n > 64) continue;
+    const text = fs.readFileSync(path.join(dir, e.name), "utf8");
+    total += text.length;
+    if (total > 1_000_000) throw new Error("the watcher folder is over 1 MB");
+    out[e.name] = text;
+  }
+  return out;
 }
 
 /** A value and the encodings that would still identify it in a log or an item. */

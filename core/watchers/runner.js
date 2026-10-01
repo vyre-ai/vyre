@@ -7,6 +7,11 @@
 // to the parent: vault.fetch asks (the parent checks the watcher's own `needs`), emit and log
 // report. The parent validates, dedupes and files; this side only runs the function.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
 let asked = 0;
 /** @type {Map<number, { resolve: (v: any) => void, reject: (e: Error) => void }>} */
 const waiting = new Map();
@@ -68,7 +73,15 @@ const onMessage = async (/** @type {any} */ msg) => {
   }
   if (msg.t !== "run") return;
   try {
-    const mod = await import(msg.entry);
+    let entry = msg.entry;
+    if (msg.files) {
+      // Handed in by the parent: written into this child's own private TMPDIR, then run from there.
+      const dir = path.join(process.env.TMPDIR || os.tmpdir(), "watcher");
+      fs.mkdirSync(dir, { recursive: true });
+      for (const [name, text] of Object.entries(msg.files)) if (/^[A-Za-z0-9._-]{1,100}$/.test(name)) fs.writeFileSync(path.join(dir, name), String(text));
+      entry = pathToFileURL(path.join(dir, "watch.js")).href;
+    }
+    const mod = await import(entry);
     const watch = mod.default;
     if (typeof watch !== "function") throw new Error("watch.js has no default export function");
     const vault = {

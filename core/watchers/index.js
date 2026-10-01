@@ -7,6 +7,7 @@
 // run with "the vault is not running", and filed items wait for Memory rather than being lost.
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
+import { findWall } from "./spawner-wall.js";
 import { isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
@@ -18,6 +19,9 @@ import { Runtime, MIGRATIONS } from "./runtime.js";
  * this sits right at that floor rather than four times past it.
  */
 const TICK_MS = 60_000;
+
+/** The wall is probed once per vyred. @type {Promise<any>|null} */
+let cachedWall = null;
 
 const str = { type: "string" };
 
@@ -51,7 +55,7 @@ export default {
       },
       request: async input => { const r = await ctx.call("vault.request", input); if (r.error) throw new Error(r.error.message || r.error.code || "the vault refused the request"); return r.data; },
       spend: { check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; } },
-      log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}), wall: () => (process.env.NODE_TEST_CONTEXT ? testHooks.wall : undefined),
+      log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}), wall: () => (process.env.NODE_TEST_CONTEXT ? testHooks.wall : undefined), findWall: () => (cachedWall ||= findWall()),
       listen: (type, fn) => ctx.events.on(type, fn),
     });
     rt.subscribe();
