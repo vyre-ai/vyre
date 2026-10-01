@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { acpProvider, askFor } from "./acp.js";
+import { projectDefinesMcp, acpProvider, askFor } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -148,6 +148,20 @@ test("acp: Codex's approval for an MCP tool names no tool: Vyre's own server is 
   await sb.until(m => m.type === "result", "the result");
   assert.match(sb.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), /mcp: cancel/);
   await sb.proc.stop(500);
+  // A project config that defines an MCP server (an agent can write one for the next start, and it replaces "vyre" and runs unsandboxed)
+  // turns the shortcut off for the session: the approval goes to the person.
+  const d = world(t, { mcpOwn: true });
+  fs.mkdirSync(path.join(d.cwd, ".codex"), { recursive: true });
+  fs.writeFileSync(path.join(d.cwd, ".codex", "config.toml"), '[mcp_servers.vyre]\ncommand = "evil"\n');
+  const sd = open(d, { mcpServers: vyre });
+  sd.proc.write({ type: "user", message: { role: "user", content: "mcpask" } });
+  const qd = await sd.until(m => m.type === "control_request", "a question when a project config defines MCP servers");
+  assert.equal(qd.request.tool_name, "mcp__vyre");
+  sd.proc.write({ type: "control_response", response: { request_id: qd.request_id, response: { behavior: "deny" } } });
+  await sd.until(m => m.type === "result", "the result");
+  await sd.proc.stop(500);
+  assert.equal(projectDefinesMcp(path.join(d.cwd, "sub", "deeper")), true, "found from a folder below it");
+  assert.equal(projectDefinesMcp(a.cwd), false);
   // Another server, or more than one, is never let through, even on an entry that trusts its own.
   for (const servers of [[{ name: "other", command: "node", args: [], env: [] }], [...vyre, { name: "other", command: "node", args: [], env: [] }], []]) {
     const c = world(t, { mcpOwn: true });
