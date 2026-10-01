@@ -373,7 +373,9 @@ function themeOf(src) {
     const m = /^\s*%%theme\s+(\{.*\})\s*$/.exec(l);
     if (m && !theme) try { theme = JSON.parse(m[1]); } catch {}
   }
-  const im = /%%\{\s*init\s*:\s*(\{[\s\S]*?\})\s*\}%%/.exec(src);
+  // One init block, found by indexOf (a lazy regex over a repeated "%%{init:{" was quadratic).
+  const at = src.indexOf("%%{"), end = at < 0 ? -1 : src.indexOf("}%%", at);
+  const im = at >= 0 && end > at && /^%%\{\s*init\s*:/.test(src.slice(at, at + 40)) ? [, src.slice(src.indexOf("{", at + 3), end).trim()] : null;
   if (im) {
     /** @type {any} */ let init = null;
     try { init = JSON.parse(im[1]); } catch { try { init = JSON.parse(im[1].replace(/'/g, '"')); } catch {} }

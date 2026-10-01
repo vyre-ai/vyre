@@ -266,3 +266,10 @@ test("names that exist on every object are not themes, dashes, markers or positi
     assert.ok(!cleanSvg(`<svg><style>.a{background:${bad}}</style></svg>`).svg.includes("<style>"), `style element ${bad}`);
   }
 });
+
+test("an init block is found without a lazy scan, and a repeated unclosed one is cheap", () => {
+  const s = performance.now();
+  drawMermaid("t", "%%{init:{".repeat(25_000) + "\nflowchart TD\nA-->B");
+  assert.ok(performance.now() - s < 100, `${Math.round(performance.now() - s)} ms`);
+  assert.match(drawMermaid("t", `%%{init: {"themeVariables": {"primaryColor": "#123456"}}}%%\nflowchart TD\nA-->B`), /--panel:#123456/);
+});
