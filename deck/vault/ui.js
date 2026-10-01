@@ -67,7 +67,7 @@ export function clearSecrets(el) {
   for (const i of el.querySelectorAll("[data-vt-secret]")) /** @type {HTMLInputElement} */ (i).value = "";
 }
 export const field = (label, input, hint, extra) => h("label", { class: "vt-field" }, h("span", { class: "lbl" }, label), input, extra || null, hint ? h("span", { class: "vt-hint" }, hint) : null);
-export const errText = e => (!e ? "" : e.code === "no_such_tool" || e.missing ? `This vyred does not have ${e.tool || "that tool"} yet.` : e.code === "denied" ? `vyred refused: ${e.message}` : String(e.message || e));
+export const errText = e => (!e ? "" : e.code === "no_such_tool" || e.missing ? "This box does not support that yet." : e.code === "denied" ? `The box refused: ${e.message}` : String(e.message || e));
 
 /** A button that asks once more before it acts. */
 export function confirmButton(label, confirmLabel, cls, act) {
