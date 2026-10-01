@@ -64,6 +64,35 @@ pub fn is_newer(current: &str, candidate: &str) -> bool {
     match (parts(current), parts(candidate)) { (Some(a), Some(b)) => b > a, _ => false }
 }
 
+/// The release to read: the newest stable `vX.Y.Z` tag in GitHub's releases list. The repository's
+/// "Latest" release is often an Android one (`android-0.1.0-...`), which has no SHA256SUMS, so
+/// `releases/latest/download` cannot be used. Drafts, prereleases and tags that are not plain versions are skipped.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Pick {
+    pub tag: String,
+    pub assets: Vec<String>,
+}
+
+pub fn pick_release(list_json: &str) -> Option<Pick> {
+    let v: serde_json::Value = serde_json::from_str(list_json).ok()?;
+    v.as_array()?
+        .iter()
+        .filter(|r| r["draft"] != true && r["prerelease"] != true)
+        .filter_map(|r| {
+            let tag = r["tag_name"].as_str()?;
+            let plain = tag.strip_prefix('v')?;
+            if plain.split('.').count() != 3 || plain.contains(['-', '+']) { return None; }
+            let key = parts(plain)?;
+            let assets = r["assets"].as_array()?.iter().filter_map(|a| a["name"].as_str().map(str::to_string)).collect();
+            Some((key, Pick { tag: tag.to_string(), assets }))
+        })
+        .max_by_key(|(k, _)| *k)
+        .map(|(_, p)| p)
+}
+
+/// Where a tag's files live.
+pub fn release_base(tag: &str) -> String { format!("https://github.com/vyre-ai/vyre/releases/download/{tag}") }
+
 /// The installer named in the signed sums (`Vyre_<version>_x64-setup.exe`) when it is newer than
 /// `current`. The version comes from the signed name, never from anything unsigned.
 pub fn newer_installer(listed: &HashMap<String, String>, current: &str) -> Option<(String, String)> {
@@ -140,5 +169,21 @@ mod tests {
         for n in ["Vyre_0.2.0_x64-setup.exe", "Vyre_0.10.0_x64-setup.exe", "vyre-box.tar.gz", "Vyre_x_x64-setup.exe"] { m.insert(n.to_string(), "aa".repeat(32)); }
         assert_eq!(newer_installer(&m, "0.2.0"), Some(("Vyre_0.10.0_x64-setup.exe".into(), "0.10.0".into())));
         assert_eq!(newer_installer(&m, "0.10.0"), None);
+    }
+
+    #[test]
+    fn the_release_is_the_newest_stable_version_tag_never_an_android_one() {
+        let list = r#"[
+          {"tag_name":"android-0.1.0-ebcb0b0","prerelease":false,"draft":false,"assets":[{"name":"vyre.apk"}]},
+          {"tag_name":"v0.1.1","prerelease":false,"draft":false,"assets":[{"name":"SHA256SUMS"}]},
+          {"tag_name":"v0.2.0-rc.1","prerelease":true,"draft":false,"assets":[]},
+          {"tag_name":"v0.10.0","prerelease":false,"draft":true,"assets":[]},
+          {"tag_name":"v0.1.10","prerelease":false,"draft":false,"assets":[{"name":"SHA256SUMS"},{"name":"SHA256SUMS.sig"}]},
+          {"tag_name":"v0.1.9","prerelease":false,"draft":false,"assets":[]}
+        ]"#;
+        assert_eq!(pick_release(list), Some(Pick { tag: "v0.1.10".into(), assets: vec!["SHA256SUMS".into(), "SHA256SUMS.sig".into()] }));
+        assert_eq!(pick_release("[]"), None);
+        assert_eq!(pick_release("not json"), None);
+        assert_eq!(release_base("v0.1.1"), "https://github.com/vyre-ai/vyre/releases/download/v0.1.1");
     }
 }

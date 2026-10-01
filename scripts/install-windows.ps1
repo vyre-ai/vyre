@@ -9,8 +9,8 @@
 #
 # Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
 # the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
-# N-M5), VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default
-# https://github.com/vyre-ai/vyre/releases/latest/download).
+# N-M5), VYRE_INSTALL_DIR (default $env:LOCALAPPDATA\Vyre), VYRE_RELEASE_BASE (default: the newest
+# stable vX.Y.Z GitHub release that carries VyreSetup.exe).
 #
 #   -Uninstall     stop the app, remove the tray/autostart/protocol-key registration and the
 #                  install dir (reviewer W-M5/N-L3: also revokes this device's session on the box
@@ -141,7 +141,15 @@ if ($DryRun) {
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 
 $releaseBase = $env:VYRE_RELEASE_BASE
-if (-not $releaseBase) { $releaseBase = "https://github.com/vyre-ai/vyre/releases/latest/download" }
+if (-not $releaseBase) {
+    # GitHub's "latest" release is often an Android one with no Windows files, so name the newest stable
+    # vX.Y.Z release that actually carries the installer and its checksums.
+    $list = Invoke-RestMethod "https://api.github.com/repos/vyre-ai/vyre/releases?per_page=50" -Headers @{ "User-Agent" = "vyre-install" }
+    $best = $list | Where-Object { -not $_.draft -and -not $_.prerelease -and $_.tag_name -match '^v\d+\.\d+\.\d+$' -and ($_.assets.name -contains 'VyreSetup.exe') -and ($_.assets.name -contains 'SHA256SUMS') } |
+        Sort-Object { [version]($_.tag_name.TrimStart('v')) } -Descending | Select-Object -First 1
+    if (-not $best) { throw "No Windows release has been published yet." }
+    $releaseBase = "https://github.com/vyre-ai/vyre/releases/download/$($best.tag_name)"
+}
 
 $exe = Get-VerifiedInstaller -ReleaseBase $releaseBase -Dest $InstallDir
 # Run the installer quietly (per-user, no elevation), then start the installed app.

@@ -222,23 +222,49 @@ fn notify(app: AppHandle, title: String, body: String) -> Result<(), String> {
     app.notification().builder().title(title).body(body).show().map_err(|e| e.to_string())
 }
 
-const RELEASE_BASE: &str = "https://github.com/vyre-ai/vyre/releases/latest/download";
-
 fn fetch(url: &str, limit: u64) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let mut buf = Vec::new();
-    ureq::get(url).call().map_err(|e| e.to_string())?.into_reader().take(limit).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    ureq::get(url).set("User-Agent", "vyre-app").call().map_err(|e| e.to_string())?.into_reader().take(limit).read_to_end(&mut buf).map_err(|e| e.to_string())?;
     Ok(buf)
+}
+
+/// What the update check found. Nothing is installed here.
+enum Answer {
+    /// The newest signed release has nothing newer than this build.
+    Current(String),
+    /// A newer installer, listed and hashed in the signed sums.
+    Newer { name: String, version: String, base: String, listed: std::collections::HashMap<String, String> },
+    /// The release cannot be trusted or read; the reason is plain words.
+    Refused(String),
+}
+
+fn latest_check() -> Answer {
+    let current = option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
+    let run = || -> Result<Answer, String> {
+        let list = String::from_utf8(fetch("https://api.github.com/repos/vyre-ai/vyre/releases?per_page=50", 4 << 20)?).map_err(|_| "the releases list is not text")?;
+        let pick = update::pick_release(&list).ok_or("no stable release found")?;
+        // A release this app cannot verify is refused, never read part way.
+        for need in ["SHA256SUMS", "SHA256SUMS.sig"] {
+            if !pick.assets.iter().any(|a| a == need) { return Ok(Answer::Refused(format!("{} has no {need}, so it is unsigned", pick.tag))); }
+        }
+        let base = update::release_base(&pick.tag);
+        let sums = fetch(&format!("{base}/SHA256SUMS"), 1 << 20)?;
+        let sig = String::from_utf8(fetch(&format!("{base}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
+        let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
+        Ok(match update::newer_installer(&listed, current) {
+            Some((name, version)) => Answer::Newer { name, version, base, listed },
+            None => Answer::Current(pick.tag),
+        })
+    };
+    run().unwrap_or_else(|e| Answer::Refused(e))
 }
 
 /// Download and run a newer installer, but only one the Vyre release key signed for. Unsigned,
 /// unlisted, hash-mismatched and not-newer all refuse; nothing is written until every check passes.
 fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
-    let sums = fetch(&format!("{RELEASE_BASE}/SHA256SUMS"), 1 << 20)?;
-    let sig = String::from_utf8(fetch(&format!("{RELEASE_BASE}/SHA256SUMS.sig"), 4096)?).map_err(|_| "signature is not text")?;
-    let listed = update::verify_sums(&sums, &sig, update::RELEASE_KEY)?;
-    let Some((name, version)) = update::newer_installer(&listed, option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"))) else { return Ok(None) };
-    let bytes = fetch(&format!("{RELEASE_BASE}/{name}"), 300 << 20)?;
+    let Answer::Newer { name, version, base, listed } = latest_check() else { return Ok(None) };
+    let bytes = fetch(&format!("{base}/{name}"), 300 << 20)?;
     update::check_file(&listed, &name, &bytes)?;
     // Written to the app's own data dir (not the shared temp dir), then re-hashed from disk so
     // what runs is what was checked.
@@ -478,6 +504,8 @@ fn selftest(out: &str) {
         Ok("both".into())
     })());
     check("system-path", Ok(sys("System32\\icacls.exe")));
+    // The live update check against GitHub (read only, installs nothing).
+    check("update-check", Ok(match latest_check() { Answer::Current(t) => format!("signed {t}, nothing newer"), Answer::Newer { name, version, .. } => format!("newer {version} ({name})"), Answer::Refused(r) => format!("refused: {r}") }));
     check("version", Ok(option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")).to_string()));
     let _ = std::fs::write(out, lines.join("\n") + "\n");
 }
