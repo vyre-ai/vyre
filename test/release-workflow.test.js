@@ -29,3 +29,11 @@ test("release.yml: a publishing run builds and signs only a commit that is on ma
   assert.match(yml, /origin\/work\/stage-0\.2/);
   assert.match(yml, /if: github\.event_name == 'push' && vars\.VYRE_RELEASES == 'go'\n\s+run: \|\n\s+git fetch --no-tags origin main work\/stage-0\.2/);
 });
+
+test("release.yml: the step that holds the signing key runs only checked-in scripts, with no inline code", () => {
+  const i = yml.indexOf("- name: release.json, SHA256SUMS, and on a publish");
+  const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
+  assert.ok(!/node -e|node --eval|python|perl -e/.test(step), "no inline interpreter code in the step that sees the key");
+  assert.match(step, /node scripts\/write-release-json\.mjs/);
+  assert.match(step, /node scripts\/sign-manifest\.mjs/);
+});

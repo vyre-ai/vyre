@@ -303,13 +303,7 @@ jobs:
         env:
           VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
         run: |
-          node -e '
-            const fs = require("fs"), [version, channel, commit, min_from, box, computer] = process.argv.slice(1);
-            const platforms = ["linux/amd64", "linux/arm64"];
-            const images = box ? { box: { ref: box, platforms }, computer: { ref: computer, platforms } } : undefined;
-            fs.writeFileSync("dist/release.json", JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
-              notes: fs.readFileSync("dist/notes.md", "utf8"), ...(images ? { images } : {}) }, null, 2) + "\n");' \
-            "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM" "$BOX" "$COMPUTER"
+          node scripts/write-release-json.mjs dist "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM" "$BOX" "$COMPUTER"
           if [ "$PUBLISH" = true ]; then
             # SHA256SUMS.sig: base64 Ed25519 over "vyre-release-sums\n" + the exact SHA256SUMS bytes, by the key pinned in the wrapper, the Mac installer and
             # vyre-core. The key is the release environment's secret and never leaves this step. This also writes manifest.json and the final SHA256SUMS,
