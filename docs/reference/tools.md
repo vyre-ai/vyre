@@ -346,11 +346,12 @@ Artifacts, newest first: every project's for the person, only its own project's 
 
 ### `artifacts.mention.resolve`
 
-What a thread gets when the person tags an artifact with #: a reference to its latest version and how to read it. With a thread, from Vyre's own session module on the person's turn, that thread may also read exactly this artifact, in any project (artifacts.get, versions, diff); it never gains edit or share.
+What a thread gets when the person tags an artifact with #, called by the mentions core for the session or assistant module on the person's own turn: the artifact's name and a hint, and a read grant for exactly this artifact in any project (artifacts.get, versions, diff). It never gains edit or share, and the grant ends with the thread or the artifact.
 
 - Input:
   - `id` string, required
-  - `thread` string
+  - `thread` string, required
+  - `said` string
 - Callers: any caller
 
 ### `artifacts.mention.search`

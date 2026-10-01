@@ -906,7 +906,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   only a definite answer is kept for a connection (`core/daemon/peer.js`, `core/daemon/index.js`).
 - `module.json` gains an optional `setupTools` list (v1, additive): built in modules name the tools the
   setup channel may call before sign-in. An added module that declares it fails to load.
-- `#` tags an artifact in any chat: artifacts is a mentions provider (`artifacts.mention.search` finds titles within the caller's reach, names and hints only; `artifacts.mention.resolve` gives the thread a reference and how to read it). Tagging gives that thread read access to exactly that artifact, in any project (`artifacts.get`, versions and diff), never edit or share; it ends when the artifact or the thread is deleted. Only the session, assistant and mentions modules record a tag.
+- `#` tags an artifact in any chat: artifacts is a mentions provider (`artifacts.mention.search` finds titles within the caller's reach, names and hints only; `artifacts.mention.resolve` gives the thread a reference and how to read it). Tagging gives that thread read access to exactly that artifact, in any project (`artifacts.get`, versions and diff), never edit or share; it ends when the artifact or the thread is deleted. Only the session and assistant modules record a tag, for a thread that exists; the picker's search runs as the person and a model never searches.
 - The `artifacts` module may emit `thread.artifact` (the chat card for a version), as the other built in owners of the thread family do.
 - An added module can no longer emit the gate, push, presence, said, memory, thread, tailscale or
   artifact-links event families; each is reserved for its built-in owner.
