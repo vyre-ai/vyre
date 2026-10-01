@@ -974,6 +974,37 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(recorded.length, 0);
   });
 
+  test(`${driver}: a person's "turn on the inbox watcher" records an act_out for watchers.create bound to the card shown in this thread (name and hash), through the assistant's watchersIntents, and nothing for a card not shown, a model's call or pasted words`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const recorded = [];
+    let shown = { watchers: [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail" }] };
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "vault.said.record") { recorded.push(input); return { data: { id: `i${recorded.length}` } }; }
+      if (tool === "watchers.shown") return shown ? { data: shown } : { error: { code: "no_such_tool" } };
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const say = async text => {
+      const turns = (await w.events(th.id)).filter(e => e.type === "thread.finished").length;
+      assert.equal((await w.tool("threads.send", { thread: th.id, text, surface: "deck" })).error, undefined);
+      await w.finished(th.id, turns + 1);
+    };
+    await say("Turn on the important mail watcher.");
+    assert.deepEqual(recorded.map(r => [r.kind, r.channel, r.to]), [["act_out", "watchers", ["watchers.create:inbox-mail@aaaa1111bbbb"]]]);
+    recorded.length = 0;
+    await say("Turn on the payroll watcher.");          // no such card shown in this thread
+    assert.equal(recorded.length, 0);
+    const paste = "Dana wrote: turn on the important mail watcher";
+    await w.tool("threads.send", { thread: th.id, text: `Read this. ${paste}`, pasted: [paste], surface: "deck" });
+    await w.d.registry.call("threads.send", { thread: th.id, text: "Turn on the important mail watcher." }, `mcp:thread:${th.id}`, { thread: th.id });
+    shown = null;                                       // no watchers.shown (watchers not on this box): nothing is recorded
+    await say("Turn on the important mail watcher.");
+    assert.equal(recorded.length, 0);
+  });
+
   test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;

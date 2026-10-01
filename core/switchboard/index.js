@@ -28,6 +28,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { prIntents } from "../../lib/said/pr.js";
 import { teamIntents } from "../../lib/said/team.js";
+import { watchersIntents } from "../../lib/said/watchers.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -1372,7 +1373,8 @@ export class Switchboard {
   async hearActs(id, text, uuid, pasted, project) {
     const pr = /\b(?:prs?|pull[\s-]+requests?|merge|merging)\b/i.test(text);
     const team = /\b(?:retire|retiring|duty|duties|fill|staff|role|teammate)\b/i.test(text);
-    if (!project || (!pr && !team)) return;
+    const watch = /\bwatchers?\b/i.test(text);
+    if (!project || (!pr && !team && !watch)) return;
     let typed = String(text);
     for (const span of pasted || []) if (typeof span === "string" && span) typed = typed.split(span).join(" ");
     /** @type {any[]} */ let intents = [];
@@ -1397,6 +1399,13 @@ export class Switchboard {
           ? agents.data.filter(a => a && a.kind !== "assistant" && (a.projects === "*" || (Array.isArray(a.projects) && (a.projects.includes("*") || a.projects.includes(project))))).map(a => String(a.name)) : [];
         intents = intents.concat(teamIntents(typed, { project, roles: Array.isArray(rd.roles) ? rd.roles : [], agents: fillers, duties: Array.isArray(rd.duties) ? rd.duties : [] }).intents);
       }
+    }
+    if (watch) {
+      // Only the watchers whose card the person has been shown in THIS thread, each with the card's hash as it is now: watchers.shown
+      // answers from its own record of watchers.card calls made from this thread. No such tool, or no card shown, records nothing.
+      const shown = await this.deps.call("watchers.shown", { thread: id }).catch(() => null);
+      const cards = shown && !shown.error && shown.data && Array.isArray(shown.data.watchers) ? shown.data.watchers : [];
+      if (cards.length) intents = intents.concat(watchersIntents(typed, { watchers: cards }).intents);
     }
     for (const it of intents) {
       await this.deps.call("vault.said.record", { thread: id, said: uuid, kind: "act_out", channel: it.channel || "github", to: it.to, what: it.what, standing: false,
