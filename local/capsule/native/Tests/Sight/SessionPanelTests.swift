@@ -402,7 +402,8 @@ let sessionPanelSuite = Suite("session panel") { t in
             ext.panel.renewEvery = .milliseconds(15)
             _ = await ext.openPanel(nil, glass: false)
             await ext.panel.show(ext.panel.sessions.first { $0.isTerminal }!)
-            try? await Task.sleep(nanoseconds: 120_000_000)
+            // Wait for the renewals instead of a fixed pause: on a loaded runner a pause is too short and fewer calls are made.
+            for _ in 0..<300 where link.calls("recall.watch").count < 4 { try? await Task.sleep(nanoseconds: 10_000_000) }
             _ = await ext.closeSideView()
             let n = link.calls("recall.watch").count
             try? await Task.sleep(nanoseconds: 60_000_000)
@@ -411,6 +412,7 @@ let sessionPanelSuite = Suite("session panel") { t in
         t.eq(r?[0], "false"); t.eq(r?[1], "true", "nothing renews after close")
         let w = link.calls("recall.watch")
         t.ok(w.count >= 4, "\(w.count) calls")
+        guard w.count >= 4 else { return }
         t.eq(w[1]["watch"] as? String, "w_1")
         t.eq(w[2]["watch"] as? String, nil, "a lapsed watch starts again"); t.eq(w[2]["from"] as? String, "69")
         t.eq(w[3]["watch"] as? String, "w_2")

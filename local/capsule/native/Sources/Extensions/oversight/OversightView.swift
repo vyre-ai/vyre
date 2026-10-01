@@ -88,6 +88,7 @@ struct OversightView: View {
                 Circle().strokeBorder(current ? Theme.signal : Theme.rule, lineWidth: current ? 2 : 1)
                 switch s.state {
                 case .done: Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundColor(Theme.stone)
+                case .failed: Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundColor(Theme.ash)
                 case .skipped: Image(systemName: "minus").font(.system(size: 9, weight: .bold)).foregroundColor(Theme.ash)
                 default: Text("\(number)").font(Theme.subtitle).foregroundColor(current ? DeepGlass.ink : Theme.stone)
                 }

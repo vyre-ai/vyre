@@ -1,18 +1,24 @@
 // OversightModel: what the oversight panel knows about the runs an agent is driving on the Mac or
-// in Chrome. It folds hands.* events (capsule-sight's contract, keyed by `run`, the thread or job
-// id) into plain state and turns the person's taps into the tools that carry them out. Nothing
-// here polls, opens a window or asks for anything: no event, no run, no panel.
+// in Chrome. It folds chrome.* events (capsule-sight posts one plan per run with chrome.plan, for the
+// Mac and Chrome alike, keyed by `run`, the thread or the agent) into plain state and turns the
+// person's taps into the tools that carry them out. Nothing here polls, opens a window or asks for
+// anything: no event, no run, no panel.
 //
-// Events:  hands.plan {run, title, steps:[{id, text, state}]}   the whole plan, resent on any change
-//          hands.step {run, step, state}                         one step moves
-//          hands.voice {run, text, final}                        the person's words, as they speak
-//          hands.paused|resumed|stopped {run}
-// Tools (the person's own call, no prompt): hands.pause, hands.resume, hands.stop,
-//          hands.plan.edit {run, step, text}, hands.steer {run, text}.
+// Events:  chrome.plan {run, title, steps:[{id, text, state}]}   the whole plan, resent on any change
+//          chrome.step {run, id, state}   state todo|current|done|failed|skipped
+//          chrome.voice {run, text, final}   the person's words, as they speak
+//          chrome.paused|resumed|stopped, and hands.paused|resumed|stopped {run}
+// Tools (the person's own call, no prompt): chrome.pause {run}, chrome.resume, chrome.stop,
+//          chrome.plan.edit {run, step, text}, chrome.interject {from, text}; hands.pause|resume|stop
+//          {run} once a hands.* event has named the run. chrome.finished {run, ok} ends a run; an all-over plan also closes it.
 
 import Foundation
 
-enum StepState: String, Equatable { case todo, current, done, skipped }
+enum StepState: String, Equatable {
+    case todo, current, done, skipped, failed
+    /// Nothing more will happen to this step.
+    var isOver: Bool { self == .done || self == .skipped || self == .failed }
+}
 
 struct OversightStep: Equatable, Identifiable {
     var id: String
@@ -30,13 +36,15 @@ struct OversightRun: Equatable, Identifiable {
     /// What the person is saying to the agent right now, until the plan answers it.
     var voice: String?
     var paused = false
+    /// The run's pause, stop and resume go to hands.* once a hands.* event has named it, else to chrome.*.
+    var viaHands = false
 
     /// The step the agent is on, else the first that is not done.
     var currentIndex: Int? {
         steps.firstIndex { $0.state == .current } ?? steps.firstIndex { $0.state == .todo }
     }
-    var done: Int { steps.filter { $0.state == .done || $0.state == .skipped }.count }
-    var finished: Bool { !steps.isEmpty && steps.allSatisfy { $0.state == .done || $0.state == .skipped } }
+    var done: Int { steps.filter { $0.state.isOver }.count }
+    var finished: Bool { !steps.isEmpty && steps.allSatisfy { $0.state.isOver } }
 }
 
 @MainActor
@@ -63,9 +71,12 @@ final class OversightModel: ObservableObject {
     var isActive: Bool { !runs.isEmpty }
 
     // Which of the panel's controls this vyred can honour; the rest are not drawn.
-    var canPause: Bool { vyred.has("hands.pause") && vyred.has("hands.resume") }
-    var canEdit: Bool { vyred.has("hands.plan.edit") }
-    var canSteer: Bool { vyred.has("hands.steer") }
+    // The plan and its steps come from chrome.plan and chrome.step for a run on the Mac or in Chrome
+    // (capsule-sight: there is no separate hands.plan); pause, stop and resume go to the surface that
+    // run's own events came from.
+    var canPause: Bool { vyred.has("chrome.pause") && vyred.has("chrome.resume") || vyred.has("hands.pause") && vyred.has("hands.resume") }
+    var canEdit: Bool { vyred.has("chrome.plan.edit") }
+    var canSteer: Bool { vyred.has("chrome.interject") }
 
     // MARK: events
 
@@ -73,36 +84,47 @@ final class OversightModel: ObservableObject {
         let before = isActive
         let p = e.payload
         guard let run = VJ.nonEmpty(p["run"]) ?? e.thread.flatMap({ $0.isEmpty ? nil : $0 }) else { return }
+        let fromHands = e.type.hasPrefix("hands.")
         switch e.type {
-        case "hands.plan":
+        case "chrome.plan":
             let steps = ((p["steps"] as? [[String: Any]]) ?? []).enumerated().compactMap { i, s -> OversightStep? in
                 guard let text = VJ.nonEmpty(s["text"]) else { return nil }
                 return OversightStep(id: VJ.nonEmpty(s["id"]) ?? "\(i + 1)", text: text,
                                      state: StepState(rawValue: (s["state"] as? String) ?? "") ?? .todo)
             }
-            var r = OversightRun(id: run, title: VJ.nonEmpty(p["title"]) ?? "Working on your Mac", steps: steps)
-            if let old = runs.first(where: { $0.id == run }) { r.paused = old.paused }
+            var r = OversightRun(id: run, title: VJ.nonEmpty(p["title"]) ?? "Working for you", steps: steps)
+            if let old = runs.first(where: { $0.id == run }) { r.paused = old.paused; r.viaHands = old.viaHands; if p["steps"] == nil { return } }
             // A new plan answers whatever the person said.
             r.voice = nil
             put(r)
-        case "hands.step":
-            guard var r = runs.first(where: { $0.id == run }), let id = VJ.nonEmpty(p["step"]),
+        case "chrome.step":
+            guard var r = runs.first(where: { $0.id == run }), let id = VJ.nonEmpty(p["id"]) ?? VJ.nonEmpty(p["step"]),
                   let st = StepState(rawValue: (p["state"] as? String) ?? ""),
                   let i = r.steps.firstIndex(where: { $0.id == id }) else { return }
             r.steps[i].state = st
             put(r)
-        case "hands.voice":
+        case "chrome.voice":
             guard var r = runs.first(where: { $0.id == run }) else { return }
-            let text = VJ.nonEmpty(p["text"])
             // A finished sentence stays until the plan answers it; empty text clears it.
-            r.voice = text
+            r.voice = VJ.nonEmpty(p["text"])
             put(r, front: false)
-        case "hands.paused", "hands.resumed":
-            guard var r = runs.first(where: { $0.id == run }) else { return }
-            r.paused = e.type == "hands.paused"
-            put(r, front: false)
-        case "hands.stopped":
+        case "chrome.stopped", "hands.stopped":
             drop(run)
+        case "chrome.finished":
+            // The run is over (chrome.plan {finish}, or a stop). A good finish lingers a moment like an all-done
+            // plan; a bad one goes at once.
+            guard runs.contains(where: { $0.id == run }) else { return }
+            if (p["ok"] as? Bool) == false { drop(run) } else { lingerThenDrop(run) }
+        case "chrome.paused", "hands.paused":
+            guard var r = runs.first(where: { $0.id == run }) else { return }
+            r.paused = true
+            if fromHands { r.viaHands = true }
+            put(r, front: false)
+        case "chrome.resumed", "hands.resumed":
+            guard var r = runs.first(where: { $0.id == run }) else { return }
+            r.paused = false
+            if fromHands { r.viaHands = true }
+            put(r, front: false)
         default: return
         }
         if before != isActive { onPresence?() }
@@ -128,6 +150,17 @@ final class OversightModel: ObservableObject {
         }
     }
 
+    private func lingerThenDrop(_ id: String) {
+        lingering[id]?.cancel()
+        lingering[id] = Task { @MainActor [weak self, linger] in
+            try? await Task.sleep(for: linger)
+            guard !Task.isCancelled, let self else { return }
+            let before = self.isActive
+            self.drop(id)
+            if before != self.isActive { self.onPresence?() }
+        }
+    }
+
     private func drop(_ run: String) {
         lingering[run]?.cancel(); lingering[run] = nil
         runs.removeAll { $0.id == run }
@@ -136,10 +169,14 @@ final class OversightModel: ObservableObject {
 
     // MARK: the person's taps
 
-    func pause() { call(active.map { $0.paused ? "hands.resume" : "hands.pause" } ?? "", ["run": active?.id ?? ""]) }
+    func pause() {
+        guard let r = active else { return }
+        let surface = r.viaHands && vyred.has("hands.pause") ? "hands" : "chrome"
+        call("\(surface).\(r.paused ? "resume" : "pause")", surface == "hands" ? ["run": r.id] : r.paused ? [:] : ["run": r.id])
+    }
     func stop() {
         guard let r = active else { return }
-        call("hands.stop", ["run": r.id])
+        call(r.viaHands && vyred.has("hands.stop") ? "hands.stop" : "chrome.stop", r.viaHands ? ["run": r.id] : [:])
     }
 
     /// Retext a step that has not started. An empty or unchanged text changes nothing.
@@ -148,14 +185,14 @@ final class OversightModel: ObservableObject {
         guard let r = active, let s = r.steps.first(where: { $0.id == step }), s.editable else { return }
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.isEmpty || t == s.text { return }
-        call("hands.plan.edit", ["run": r.id, "step": step, "text": t])
+        call("chrome.plan.edit", ["run": r.id, "step": step, "text": t])
     }
 
     /// A course correction, typed or spoken. The agent answers by resending its plan.
     func steer(_ text: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let r = active, !t.isEmpty else { return }
-        call("hands.steer", ["run": r.id, "text": t])
+        call("chrome.interject", ["from": "prompt", "text": t])
     }
 
     private func call(_ tool: String, _ input: [String: Any]) {
