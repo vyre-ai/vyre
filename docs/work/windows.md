@@ -143,6 +143,18 @@ fixes it). NOT TESTED (needs a box to pair with): the confirm window, finish_pai
 tray "Open Vyre Drive", the real update download, toasts, the global hotkey (needs real key events), the
 Windows Hello flows.
 
+**Hosted-runner live check (windows-live, manual; trigger by changing scripts/windows-live/RUN until the
+workflow is on the default branch):** on a hosted Windows Server 2025 runner with a screen: PASS install-windows.ps1
+from a local release, ONLOGON task, `--selftest` (DPAPI, theme, icons, System32 path, live update check), first-run
+page driven over the WebView2 debug port (needs the AdditionalBrowserArguments POLICY on this runner: the env var is
+ignored by WebView2 153), pair code shown as 13 words and a QR, first-run window 520x749 (the size fix holds),
+restricted-key hand-off of the words to the throwaway box on the testbox. BLOCKED: the box's `relay.pair.ticket` gets no
+"registered" answer from the hosted relay within 5 s (status null, three tries, relay.connected fired), so the app never
+resolves a ticket and the confirm window, finish_pair, link window, Drive letter and hotkey steps do not run. Needs
+tailnet: does relay.vyre.run answer ticket registrations from a fresh route? Also found: the update check was
+asking the REST API (403 from a shared address) and `releases/latest` (an Android release): both replaced by the public
+releases feed. A hosted runner has no WebDAV client, so the Drive letter itself can only be proven on a real PC or the VM.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in

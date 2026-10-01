@@ -112,8 +112,8 @@ if ($first) {
   } else { Say "no BOX_SSH_KEY: not pairing" }
 
   # ---- 5. the confirm window appears once the app resolves the ticket at the relay -----------------------
-  $confirm = WaitPage "*confirm.html*" 240
-  Result "confirm-window" ($null -ne $confirm) $(if ($confirm) { "appeared" } else { "no confirm window in 240 s" })
+  $confirm = WaitPage "*confirm.html*" 120
+  Result "confirm-window" ($null -ne $confirm) $(if ($confirm) { "appeared" } else { "no confirm window in 120 s" })
   if ($confirm) {
     Start-Sleep 3
     $detail = Cdp $confirm "document.getElementById('title').textContent + ' | ' + document.getElementById('detail').textContent"
