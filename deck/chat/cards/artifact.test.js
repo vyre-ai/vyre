@@ -261,3 +261,30 @@ test("the frame view carries a line outside the frame saying the page is the age
   assert.ok(line, "the origin line is drawn");
   assert.match(t(line), /Made by kit\. It runs on its own and is not part of Vyre\./);
 });
+
+test("a generated image draws inline from the box's own content route, with its provider and prompt read once from artifacts.get", async () => {
+  const v = vyred({ [TOOLS.get]: { kind: "image", format: "png", media: { mime: "image/png", bytes: 1234, provider: "grok", model: "grok-imagine", prompt: "a red door at dusk" } } });
+  const el = /** @type {any} */ (artifactCard(artifactFromEvent({ thread: "t1", artifact: "m1", version: 1, kind: "image", title: "Red door", mime: "image/png", bytes: 1234 }), { agent: "kit" }));
+  await settle();
+  const img = $(el, "img");
+  assert.equal(img.getAttribute("src"), "/v1/artifacts/content?id=m1");
+  assert.equal(img.getAttribute("alt"), "Red door");
+  assert.equal($(el, "a[download]").getAttribute("href"), "/v1/artifacts/content?id=m1&download=1");
+  assert.match(text(el), /Made by kit · grok, grok-imagine/);
+  assert.match(text(el), /Asked for:\s+a red door at dusk/);
+  assert.equal(v.of(TOOLS.get).length, 1);
+  assert.equal($(el, "iframe"), null, "media never goes in the frame");
+});
+
+test("video and audio take controls; a failed load says the item is gone in words; the prompt is text, never markup", async () => {
+  vyred({ [TOOLS.get]: { kind: "video", media: { provider: "x", prompt: "<b>hi</b>" } } });
+  const vid = /** @type {any} */ (artifactCard({ kind: "artifact", id: "v1", title: "Clip", type: "video" }, {}));
+  assert.equal($(vid, "video").getAttribute("controls"), "");
+  const aud = /** @type {any} */ (artifactCard({ kind: "artifact", id: "a9", title: "Take", type: "audio" }, {}));
+  assert.ok($(aud, "audio"));
+  await settle();
+  assert.equal($(vid, "b"), null);
+  assert.match(text(vid), /<b>hi<\/b>/);
+  $(vid, "video").dispatchEvent(new /** @type {any} */ (globalThis).Event("error"));
+  assert.match(text(vid), /no longer in the project/);
+});

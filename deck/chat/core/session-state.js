@@ -1139,7 +1139,7 @@ export function applyEvent(s, e) {
       const key = `art:${p.artifact}:${p.version ?? 0}`;
       if (s.byKey.has(key)) break;
       insert(s, /** @type {any} */ ({ key, kind: "tool", call: key, name: "artifact", status: "completed", ...(at !== undefined ? { at } : {}),
-        render: { kind: "artifact", id: String(p.artifact), thread: p.thread ?? null, version: p.version ?? null, type: p.kind ?? null, title: p.title ?? null, agent: p.agent ?? null, at: at ?? null } }));
+        render: { kind: "artifact", id: String(p.artifact), thread: p.thread ?? null, version: p.version ?? null, type: p.kind ?? null, title: p.title ?? null, agent: p.agent ?? null, at: at ?? null, ...(p.mime ? { mime: String(p.mime) } : {}), ...(Number.isFinite(p.bytes) ? { bytes: p.bytes } : {}) } }));
       out.add(key);
       break;
     }

@@ -30,6 +30,29 @@ export const TOOLS = { get: "artifacts.get", versions: "artifacts.versions", sha
 /** Where the box serves an artifact version's rendered page (opaque origin, its own CSP). @param {string} id @param {number} v */
 export const renderSrc = (id, v) => `/v1/artifacts/content?id=${encodeURIComponent(id)}&v=${encodeURIComponent(String(v))}`;
 
+/** What a provider generates (artifacts 5ae43ad5): shown inline from the person-only content route, never in the frame. */
+export const MEDIA_KINDS = new Set(["image", "video", "audio"]);
+/** The box's own bytes for a media artifact (one version, its own type, nosniff and a sandbox CSP), so img, video and audio take it as src. @param {string} id @param {boolean} [download] */
+export const mediaSrc = (id, download = false) => `/v1/artifacts/content?id=${encodeURIComponent(id)}` + (download ? "&download=1" : "");
+
+/**
+ * The element for a media artifact. A failed load says so in words, never a broken picture.
+ * @param {string} type @param {string} id @param {string} title
+ */
+export function mediaEl(type, id, title) {
+  const gone = (/** @type {HTMLElement} */ el) => el.replaceWith(h("p", { class: "cv-art-note", role: "status" }, "This item is no longer in the project."));
+  const src = mediaSrc(id);
+  if (type === "video") return h("video", { class: "cv-art-media", controls: true, preload: "metadata", src, "aria-label": title, onerror: (/** @type {Event} */ e) => gone(/** @type {any} */ (e.target)) });
+  if (type === "audio") return h("audio", { class: "cv-art-media cv-art-audio", controls: true, preload: "metadata", src, "aria-label": title, onerror: (/** @type {Event} */ e) => gone(/** @type {any} */ (e.target)) });
+  return h("img", { class: "cv-art-media", src, alt: title, loading: "lazy", onerror: (/** @type {Event} */ e) => gone(/** @type {any} */ (e.target)) });
+}
+
+/** What made it, from artifacts.get's media block: "Grok, grok-imagine" or nothing. @param {any} m */
+export function madeLine(m) {
+  const who = [m?.provider, m?.model].filter(x => typeof x === "string" && x).join(", ");
+  return who;
+}
+
 /** Kinds drawn natively as Markdown; everything else goes to the frame. */
 const TEXT_KINDS = new Set(["doc", "report", "markdown", "note"]);
 /** Kinds that may widen the panel to half the window (layout.md's named exception). */
@@ -65,7 +88,7 @@ export function parseArtifactRoute(pathname, search = "") {
 /** The render payload for a thread.artifact event; null when it names no artifact. @param {any} p */
 export function artifactFromEvent(p) {
   if (!p || typeof p !== "object" || !p.artifact) return null;
-  return { kind: "artifact", id: String(p.artifact), thread: p.thread ?? null, version: p.version ?? null, type: p.kind ?? "", title: p.title ?? "", agent: p.agent ?? null, at: p.at ?? p.ts ?? null };
+  return { kind: "artifact", id: String(p.artifact), thread: p.thread ?? null, version: p.version ?? null, type: p.kind ?? "", title: p.title ?? "", agent: p.agent ?? null, at: p.at ?? p.ts ?? null, ...(p.mime ? { mime: String(p.mime) } : {}), ...(Number.isFinite(p.bytes) ? { bytes: p.bytes } : {}) };
 }
 
 /** One shape for a render payload or an event-made payload. (`kind` on a render payload is "artifact"; the artifact's own kind is `type`.) @param {any} d */
@@ -93,6 +116,7 @@ export function artifactCard(data, ctx = {}) {
     data = d;
     const a = norm(d);
     const by = a.agent || (typeof ctx.agent === "string" ? ctx.agent : ctx.agent?.name);
+    if (MEDIA_KINDS.has(a.type)) return drawMedia(a, by);
     const meta = [a.type, a.version ? `v${a.version}` : "", by ? `made by ${by}` : "", a.at ? `${since(a.at)} ago` : ""].filter(Boolean).join(" · ");
     put(el,
       h("span", { class: "cv-art-ico", "aria-hidden": "true" }, icon(GLYPH[a.type] || "file", 18)),
@@ -103,6 +127,28 @@ export function artifactCard(data, ctx = {}) {
         h("button", { class: "btn btn-sm", type: "button", "aria-label": `Open ${a.title}`, onclick: () => openArtifact(data, ctx) }, "Open"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", "aria-label": `Share ${a.title}`, onclick: () => shareArtifact(data, ctx) }, "Share")));
   };
+  /** An image, video or audio a provider made: inline in the reply at its own size, with what made it under it. */
+  function drawMedia(/** @type {ReturnType<typeof norm>} */ a, /** @type {string|null|undefined} */ by) {
+    el.classList.add("cv-art-mediablock");
+    const made = h("div", { class: "cv-art-meta ellipsis" }, by ? `Made by ${by}` : "");
+    const prompt = h("div", { class: "cv-art-prompt" });
+    put(el,
+      mediaEl(a.type, a.id, a.title),
+      h("div", { class: "cv-art-cap" },
+        h("div", { class: "cv-art-text" }, h("div", { class: "cv-art-title ellipsis" }, a.title), made),
+        h("div", { class: "cv-art-actions" },
+          h("button", { class: "btn btn-sm", type: "button", "aria-label": `Open ${a.title}`, onclick: () => openArtifact(data, ctx) }, "Open"),
+          h("a", { class: "btn btn-ghost btn-sm", href: mediaSrc(a.id, true), download: "", "aria-label": `Download ${a.title}` }, "Download"))),
+      prompt);
+    // Who made it and from what words: artifacts.get's media block, read once; the card stands without it.
+    attempt(TOOLS.get, { artifact: a.id }).then(r => {
+      const m = /** @type {any} */ (r.data)?.media;
+      if (r.error || !m) return;
+      const who = madeLine(m);
+      put(made, [by ? `Made by ${by}` : "", who].filter(Boolean).join(" · "));
+      if (typeof m.prompt === "string" && m.prompt) put(prompt, h("span", { class: "cv-art-meta" }, "Asked for: "), m.prompt.length > 280 ? m.prompt.slice(0, 280) + "…" : m.prompt);
+    });
+  }
   el.update(data);
   return el;
 }
@@ -169,7 +215,7 @@ export function artifactView(data, ctx = {}, o = {}) {
     if (r.error) return { error: failure(r.error) };
     const d = /** @type {any} */ (r.data);
     const t = typeof d === "string" ? d : d?.content ?? d?.text ?? "";
-    return { text: String(t), type: String(d?.type ?? d?.kind ?? "").toLowerCase(), title: d?.title };
+    return { text: String(t), type: String(d?.type ?? d?.kind ?? "").toLowerCase(), title: d?.title, media: d?.media ?? null };
   }
 
   async function show() {
@@ -192,6 +238,13 @@ export function artifactView(data, ctx = {}, o = {}) {
       if (!prev) return say("This is the first version, so there is nothing to compare it with.");
       if (before?.error) return say(before.error, true);
       return put(body, h("div", { class: "cv-art-changes-view", "aria-label": `Changes from v${prev.version} to v${v}` }, renderUnified(before?.text || "", cur.text)));
+    }
+    if (MEDIA_KINDS.has(S.type)) {
+      const who = madeLine(cur.media);
+      return put(body, h("div", { class: "cv-art-mediaview" }, mediaEl(S.type, a.id, S.title),
+        h("p", { class: "cv-art-meta" }, [a.agent || (typeof ctx.agent === "string" ? ctx.agent : ctx.agent?.name) ? `Made by ${a.agent || (typeof ctx.agent === "string" ? ctx.agent : ctx.agent?.name)}` : "", who].filter(Boolean).join(" · ")),
+        typeof cur.media?.prompt === "string" && cur.media.prompt ? h("p", { class: "cv-art-prompt" }, h("span", { class: "cv-art-meta" }, "Asked for: "), cur.media.prompt) : null,
+        h("a", { class: "btn btn-ghost btn-sm", href: mediaSrc(a.id, true), download: "" }, "Download")));
     }
     if (TEXT_KINDS.has(S.type)) return put(body, h("div", { class: "cv-art-md md" }, renderMarkdown(cur.text)));
     const frame = artifactFrame({ src: renderSrc(a.id, v), title: S.title, onBlank: () => {} });
