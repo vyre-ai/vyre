@@ -25,6 +25,8 @@ node relay/app/release.js verify app-out/v/<sha> --pub ~/release.key.pub
 cd relay/app && npx wrangler deploy                   # after the lead approves
 ```
 
+In the release workflow this is one step: `scripts/build-app-out.mjs --dist apps/app/dist --release <x.y.z>` seals the loader and the build with the release key (the release environment's secret, in the environment, never a file; it refuses a key that is not the pinned `RELEASE_KEY`), verifies every folder, and the workflow uploads `app-out` as an artifact. `--throwaway` signs with a fresh key for a dry run and the tests; the deploy's pinned-key check refuses that. `scripts/deploy/fetch-app-out.sh` takes only that artifact from a successful `release` run on the commit being deployed.
+
 A box loads a new build only once its `releases.json` names it (it ships with the box), or once
 the owner pins one with `relay.web.pin`.
 
