@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- watchers.list, card, logs, test, pause and items now show an agent only the projects it is granted
+  (reviewer-2): each declares `projectArg`, and the tool filters by the registry's `meta.reach` (a
+  person, a module and a hook see all; an agent with no known grant sees none). `watchers.pause`
+  records who paused ("paused by <agent>"), so a person sees it was an agent. `core/watchers/shown.js`
+  notes that "shown to the thread" means "shown to the person" only because every surface draws the card.
+
 - The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
   it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<project>/
   <name>@<hash>` for "turn on the mail watcher" and `watchers.preset:<project>/<kind>` for "watch my

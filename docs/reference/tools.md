@@ -8510,7 +8510,8 @@ Items watchers have filed, newest first: for one watcher (name), one project (pr
 
 Every watcher: drafts Claude wrote, and those turned on, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. dir is the folder watchers are written in.
 
-- Input: none
+- Input:
+  - `project` string
 - Callers: any caller
 
 ### `watchers.logs`
@@ -8524,7 +8525,7 @@ A watcher's recent runs, newest first: when, why (schedule, retry, create, hook,
 
 ### `watchers.pause`
 
-Stop a watcher running until it is resumed.
+Stop a watcher running until it is resumed. The pause says who stopped it.
 
 - Input:
   - `name` string, required
