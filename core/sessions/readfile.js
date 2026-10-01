@@ -8,7 +8,20 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const MAX_BYTES = 100 * 1024 * 1024;
+export const MAX_BYTES = 20 * 1024 * 1024;
+
+/** Where a provider leaves what it generated, relative to the account's HOME: Grok's per-session media folders, Codex's generated_images. Nothing else of .grok or .codex (the login lives there). */
+const OUTPUT_FOLDERS = [/^\.grok\/sessions\/[^/]+\/[^/]+\/(?:images|videos|media|audio)\/[^/]+$/, /^\.codex\/generated_images\/[^/]+\/[^/]+$/];
+const MEDIA_EXT = /\.(?:jpe?g|png|webp|gif|mp4|webm|mp3|wav|ogg|m4a)$/i;
+const SENSITIVE_NAME = /auth|token|credential|config|secret|key|passw/i;
+
+/** The first bytes must be a picture, a video or a sound, whatever the name says. @param {Buffer} b */
+export function looksLikeMedia(b) {
+  const at = (i, hex) => b.length >= i + hex.length / 2 && b.subarray(i, i + hex.length / 2).toString("hex") === hex;
+  return at(0, "89504e470d0a1a0a") || at(0, "ffd8ff") || at(0, "474946383761") || at(0, "474946383961")
+    || (at(0, "52494646") && (b.subarray(8, 12).toString("latin1") === "WEBP" || b.subarray(8, 12).toString("latin1") === "WAVE"))
+    || b.subarray(4, 8).toString("latin1") === "ftyp" || at(0, "1a45dfa3") || at(0, "4f676753") || at(0, "494433") || at(0, "fffb") || at(0, "fff3") || at(0, "fff2");
+}
 
 /**
  * @param {string} home @param {string} file @param {number} [max]
@@ -24,10 +37,16 @@ export function openConfined(home, file, max = MAX_BYTES) {
     const realHome = fs.realpathSync(home);
     const real = fs.realpathSync(given);
     if (real !== path.join(realHome, path.relative(base, given))) return { error: "the path goes through a link" };
+    const rel = path.relative(base, given).split(path.sep).join("/");
+    if (!OUTPUT_FOLDERS.some(re => re.test(rel))) return { error: "not a place the provider writes generated files" };
+    if (!MEDIA_EXT.test(rel) || SENSITIVE_NAME.test(path.basename(rel))) return { error: "not a media file name" };
     const fd = fs.openSync(real, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
     const st = fs.fstatSync(fd);
     if (!st.isFile()) { fs.closeSync(fd); return { error: "not a regular file" }; }
     if (st.size > Math.min(max, MAX_BYTES)) { fs.closeSync(fd); return { error: "the file is larger than the limit" }; }
+    // The first bytes, before a single byte leaves: a login file renamed .png is not a picture.
+    const head = Buffer.alloc(16); fs.readSync(fd, head, 0, 16, 0);
+    if (!looksLikeMedia(head)) { fs.closeSync(fd); return { error: "not a picture, video or sound" }; }
     return { fd, size: st.size };
   } catch (e) { return { error: /** @type {any} */ (e).code === "ENOENT" ? "no such file" : "cannot read it" }; }
 }

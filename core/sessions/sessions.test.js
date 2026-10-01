@@ -1186,26 +1186,27 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver });
     const acct = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
     const home = path.join(w.root, "accounts", acct.id);
-    const dir = path.join(home, ".grok", "sessions", "x", "images"); fs.mkdirSync(dir, { recursive: true });
-    const bytes = Buffer.from(Array.from({ length: 70000 }, (_, i) => (i * 7) % 256));
+    const dir = path.join(home, ".grok", "sessions", "x", "abc", "images"); fs.mkdirSync(dir, { recursive: true });
+    const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(Array.from({ length: 70000 }, (_, i) => (i * 7) % 256))]);
     fs.writeFileSync(path.join(dir, "1.jpg"), bytes, { mode: 0o600 });
+    for (const [rel, body] of [[".codex/auth.json", '{"tokens":{"refresh_token":"R"}}'], [".grok/auth.json", '{"token":"T"}']]) { fs.mkdirSync(path.dirname(path.join(home, rel)), { recursive: true }); fs.writeFileSync(path.join(home, rel), body, { mode: 0o600 }); }
     const read = (file, caller = "module:vyred") => w.d.registry.call("sessions.files.read", { account: acct.id, file }, caller);
-    const rel = ".grok/sessions/x/images/1.jpg";
+    const rel = ".grok/sessions/x/abc/images/1.jpg";
     const ok = await read(rel);
     assert.equal(ok.error, undefined, JSON.stringify(ok).slice(0, 200));
     assert.equal(ok.data.size, bytes.length);
     assert.ok(Buffer.from(ok.data.data_b64, "base64").equals(bytes));
     assert.equal(ok.data.sha256, crypto.createHash("sha256").update(bytes).digest("hex"));
     fs.symlinkSync("/etc/hostname", path.join(dir, "link.jpg"));
-    const refused = { ".grok/sessions/x/images/link.jpg": "denied", "/etc/hostname": "bad_input", ".grok/../.codex/auth.json": "bad_input", "accounts/x": "bad_input", ".ssh/id_rsa": "bad_input", ".grok/sessions/x/images/none.jpg": "denied" };
-    for (const [bad, code] of Object.entries(refused)) assert.equal((await read(bad)).error?.code, code, bad);
+    const refused = { ".grok/sessions/x/abc/images/link.jpg": "denied", "/etc/hostname": "bad_input", ".grok/../.codex/auth.json": "bad_input", "accounts/x": "bad_input", ".ssh/id_rsa": "bad_input", ".grok/sessions/x/abc/images/none.jpg": "denied", ".codex/auth.json": "denied", ".grok/auth.json": "denied" };
+    for (const [bad, code] of Object.entries(refused)) { const r = await read(bad); assert.equal(r.error?.code, code, bad); assert.equal(r.data, undefined, `nothing returned for ${bad}`); }
     assert.equal((await w.tool("sessions.files.read", { account: acct.id, file: rel })).error.code, "no_such_tool", "a person cannot call it");
   });
 
   test(`${driver}: generated media a tool call returns is saved as an artifact of the thread: bytes in the stream as they are, a provider's file read as the account, nothing else`, { skip }, async t => {
     const w = await boot(t, { driver });
     const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Second", kind: "login" })).data;
-    const dir = path.join(w.root, "accounts", acct.id, ".grok", "sessions", "x", "images"); fs.mkdirSync(dir, { recursive: true });
+    const dir = path.join(w.root, "accounts", acct.id, ".grok", "sessions", "x", "abc", "images"); fs.mkdirSync(dir, { recursive: true });
     const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
     fs.writeFileSync(path.join(dir, "1.jpg"), jpg, { mode: 0o600 });
     const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
@@ -1217,7 +1218,7 @@ for (const driver of ["cli", "sdk"]) {
     };
     const th = (await w.tool("threads.start", { cwd: w.work, account: acct.id, prompt: `media ${JSON.stringify([
       { mime: "image/png", data_b64: png.toString("base64"), source: "content-block", prompt: "a red circle" },
-      { file: ".grok/sessions/x/images/1.jpg", source: "file", prompt: "a heron" },
+      { file: ".grok/sessions/x/abc/images/1.jpg", source: "file", prompt: "a heron" },
       { file: ".ssh/id_rsa", source: "file" }])}`, surface: "deck" })).data;
     await w.finished(th.id);
     for (let i = 0; i < 50 && registered.length < 2; i++) await new Promise(r => setTimeout(r, 40));
