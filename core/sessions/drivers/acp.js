@@ -148,20 +148,24 @@ export function acpProvider(entry) {
  * Generated media a finished tool call carries, for the Switchboard to save as artifacts: an image or audio content block (Codex's image generation puts
  * the bytes in the stream, with the prompt it revised), or, from Grok's image generation, the path of a file the agent wrote in the account's own folder
  * (nothing of the image is in the stream). Only the shape is read; the file is read later, as the account, by sessions.files.read.
- * @param {any} u a tool_call_update with a final status
+ * @param {any} u a tool_call_update with a final status @param {string} [earlierPrompt] the prompt an earlier update of the same call carried
  * @returns {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]}
  */
-export function mediaOf(u) {
+export function mediaOf(u, earlierPrompt) {
   const out = [];
   const items = Array.isArray(u && u.content) ? u.content : [];
   const said = items.map(c => c && c.content && c.content.type === "text" ? String(c.content.text || "") : "").find(t => /^Revised prompt:/i.test(t));
-  const prompt = said ? said.replace(/^Revised prompt:\s*/i, "").slice(0, 2000) : (u && u.rawInput && typeof u.rawInput.prompt === "string" ? u.rawInput.prompt.slice(0, 2000) : undefined);
-  for (const c of items) {
+  const prompt = said ? said.replace(/^Revised prompt:\s*/i, "").slice(0, 2000) : (u && u.rawInput && typeof u.rawInput.prompt === "string" ? u.rawInput.prompt.slice(0, 2000) : earlierPrompt);
+  // A picture in a tool result is generated media only when the tool says it generated it (Codex: the revised prompt, a saved path); an image a tool merely READ
+  // (Grok's read_file returns file contents as an image block) is the model's input, not something to save.
+  const ro = u && u.rawOutput;
+  const generated = Boolean(said || (ro && (ro.savedPath || ro.revisedPrompt))) && !(ro && ro.type === "ReadFile") && !(u && u.kind === "read");
+  for (const c of generated ? items : []) {
     const x = c && c.content;
     if (x && (x.type === "image" || x.type === "audio") && typeof x.data === "string" && /^(?:image|audio)\/[a-z0-9.+-]+$/i.test(String(x.mimeType || "")) && x.data.length < 28_000_000) out.push({ mime: String(x.mimeType).toLowerCase(), data_b64: x.data, source: "content-block", ...(prompt ? { prompt } : {}) });
   }
-  const ro = u && u.rawOutput;
-  if (ro && ro.type === "ImageGen" && typeof ro.path === "string") {
+  // A file the agent wrote in the account's own folder (Grok: image_gen, reference_to_video): its path is all the stream holds.
+  if (ro && typeof ro.path === "string" && /^(?:images|videos|media|audio)$/.test(String(ro.session_folder || ""))) {
     const i = ro.path.indexOf("/.grok/");
     if (i >= 0) out.push({ file: ro.path.slice(i + 1), source: "file", ...(prompt ? { prompt } : {}) });
   }
@@ -274,6 +278,8 @@ function runAcp(entry, known, o) {
 
   function update(u) {
     const kind = u.sessionUpdate;
+    // A generation tool says its prompt on an earlier update than the one that finishes it: keep it by call id for the media's provenance.
+    if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
     if (kind === "agent_message_chunk") {
       const t = text(u.content);
       if (t) { turnText += t; say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
@@ -301,10 +307,11 @@ function runAcp(entry, known, o) {
   let mcpDenied = false;
   /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
   let projectConfig = false;
+  /** @type {Map<string, string>} */ const toolPrompts = new Map();
   function toolDone(u) {
     // An image or audio block is media, saved by the Switchboard; its bytes are never part of the text a model or a card reads.
     const body = Array.isArray(u.content) ? u.content.filter(c => !(c && c.content && (c.content.type === "image" || c.content.type === "audio"))).map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
-    const media = mediaOf(u);
+    const media = mediaOf(u, toolPrompts.get(String(u.toolCallId)));
     say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body, ...(media.length ? { vyre_media: media } : {}) }] } });
   }
 

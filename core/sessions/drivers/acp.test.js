@@ -574,10 +574,10 @@ test("mediaOf: Codex's image content block keeps its bytes and revised prompt, G
   const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
   const codex = { sessionUpdate: "tool_call_update", status: "completed", content: [{ type: "content", content: { type: "text", text: "Revised prompt: a red circle" } }, { type: "content", content: { type: "image", data: png, mimeType: "image/png", uri: "/h/.codex/generated_images/s/c.png" } }] };
   assert.deepEqual(mediaOf(codex), [{ mime: "image/png", data_b64: png, source: "content-block", prompt: "a red circle" }]);
-  const grok = { sessionUpdate: "tool_call_update", status: "completed", rawInput: { variant: "ImageGen", prompt: "a heron" }, rawOutput: { type: "ImageGen", path: "/home/acct/2001/.grok/sessions/%2Fw/abc/images/1.jpg", filename: "1.jpg" } };
+  const grok = { sessionUpdate: "tool_call_update", status: "completed", rawInput: { variant: "ImageGen", prompt: "a heron" }, rawOutput: { type: "ImageGen", path: "/home/acct/2001/.grok/sessions/%2Fw/abc/images/1.jpg", filename: "1.jpg", session_folder: "images" } };
   assert.deepEqual(mediaOf(grok), [{ file: ".grok/sessions/%2Fw/abc/images/1.jpg", source: "file", prompt: "a heron" }]);
   assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "image", data: png, mimeType: "text/html" } }] }), [], "not an image type");
-  assert.deepEqual(mediaOf({ rawOutput: { type: "ImageGen", path: "/etc/passwd" } }), [], "not under .grok");
+  assert.deepEqual(mediaOf({ rawOutput: { type: "ImageGen", path: "/etc/passwd", session_folder: "images" } }), [], "not under .grok");
   assert.deepEqual(mediaOf({ content: [{ type: "content", content: { type: "text", text: "hi" } }] }), []);
 });
 
@@ -592,4 +592,27 @@ test("acp: a tool call that finishes with a picture reaches the Switchboard as a
   assert.equal(b.vyre_media[0].prompt, "a red circle");
   assert.ok(!String(b.content).includes("iVBOR"), "the bytes are not the text a model or a card reads");
   await s.proc.stop(500);
+});
+
+test("mediaOf over the real Grok video capture: exactly the video file is media, and the pictures the model only read are not", () => {
+  const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "real", "media", "grok-video");
+  const lines = fs.readFileSync(path.join(dir, "stream.ndjson"), "utf8").trim().split("\n").map(l => JSON.parse(l));
+  const found = [], prompts = new Map();
+  let readImages = 0;
+  for (const l of lines) {
+    const u = l.msg && l.msg.params && l.msg.params.update;
+    if (u && u.rawInput && u.rawInput.prompt && u.toolCallId) prompts.set(u.toolCallId, u.rawInput.prompt);
+    if (!u || u.sessionUpdate !== "tool_call_update" || !(u.status === "completed" || u.status === "failed")) continue;
+    if ((u.content || []).some(c => c && c.content && c.content.type === "image")) readImages++;
+    const p = u.rawInput && u.rawInput.prompt; if (p) prompts.set(u.toolCallId, p);
+    found.push(...mediaOf(u, prompts.get(u.toolCallId)));
+  }
+  assert.ok(readImages >= 2, "the capture has pictures the model read back");
+  assert.equal(found.length, 1);
+  assert.match(found[0].file, /^\.grok\/sessions\/[^/]+\/[^/]+\/videos\/1\.mp4$/);
+  assert.equal(found[0].source, "file");
+  assert.match(found[0].prompt, /red circle/);
+  const mp4 = fs.readFileSync(path.join(dir, "video.mp4"));
+  assert.equal(mp4.subarray(4, 8).toString("latin1"), "ftyp", "the captured video is a real mp4");
+  assert.ok(mp4.length < 20 * 1024 * 1024);
 });

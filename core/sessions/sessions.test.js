@@ -1210,6 +1210,10 @@ for (const driver of ["cli", "sdk"]) {
     const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5]);
     fs.writeFileSync(path.join(dir, "1.jpg"), jpg, { mode: 0o600 });
     const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    // The real Grok video from the capture (152 KB mp4), in the account's videos folder.
+    const mp4 = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "real", "media", "grok-video", "video.mp4"));
+    const vdir = path.join(w.root, "accounts", acct.id, ".grok", "sessions", "x", "abc", "videos"); fs.mkdirSync(vdir, { recursive: true });
+    fs.writeFileSync(path.join(vdir, "1.mp4"), mp4, { mode: 0o600 });
     const registered = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
@@ -1219,16 +1223,39 @@ for (const driver of ["cli", "sdk"]) {
     const th = (await w.tool("threads.start", { cwd: w.work, account: acct.id, prompt: `media ${JSON.stringify([
       { mime: "image/png", data_b64: png.toString("base64"), source: "content-block", prompt: "a red circle" },
       { file: ".grok/sessions/x/abc/images/1.jpg", source: "file", prompt: "a heron" },
+      { file: ".grok/sessions/x/abc/videos/1.mp4", source: "file", prompt: "a red circle growing" },
       { file: ".ssh/id_rsa", source: "file" }])}`, surface: "deck" })).data;
     await w.finished(th.id);
-    for (let i = 0; i < 50 && registered.length < 2; i++) await new Promise(r => setTimeout(r, 40));
-    assert.equal(registered.length, 2, JSON.stringify(registered.map(r => [r.mime, r.source])));
+    for (let i = 0; i < 50 && registered.length < 3; i++) await new Promise(r => setTimeout(r, 40));
+    assert.equal(registered.length, 3, JSON.stringify(registered.map(r => [r.mime, r.source])));
     assert.deepEqual([registered[0].thread, registered[0].mime, registered[0].source, registered[0].prompt, registered[0].provider], [th.id, "image/png", "content-block", "a red circle", "claude"]);
     assert.ok(Buffer.from(registered[0].data_b64, "base64").equals(png), "the bytes as they came");
     assert.deepEqual([registered[1].mime, registered[1].source, registered[1].prompt], ["image/jpeg", "file", "a heron"]);
     assert.ok(Buffer.from(registered[1].data_b64, "base64").equals(jpg), "the file read as the account");
+    // (the person's own prompt echoes what the test typed, bytes included; everything the turn produced is what must not hold them)
+    assert.deepEqual([registered[2].mime, registered[2].source, registered[2].prompt], ["video/mp4", "file", "a red circle growing"]);
+    assert.ok(Buffer.from(registered[2].data_b64, "base64").equals(mp4), "the real video, read as the account");
+    const all = JSON.stringify((await w.events(th.id)).filter(e => !/^thread\.(turn|sent|queued)$/.test(e.type)));
+    assert.ok(!all.includes(png.toString("base64")) && !all.includes("data_b64") && !all.includes("vyre_media"), `${(await w.events(th.id)).filter(e => /data_b64|vyre_media/.test(JSON.stringify(e)) || JSON.stringify(e).includes(png.toString("base64"))).map(e => e.type)}: the bytes are consumed by the save and never kept in the thread's events`);
     const evs = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.notice);
     assert.ok(evs.some(e => /Could not save a generated file/.test(String(e.payload.text))), "the refused path says so once in the thread");
+  });
+
+  test(`${driver}: a Grok account's privacy choice defaults to on, only the person sets it, and the rows say plainly what it means`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const g = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
+    const c = (await w.tool("sessions.accounts.add", { provider: "codex", label: "Codex", kind: "login" })).data;
+    const row = async id => (await w.tool("sessions.accounts.list", {})).data.find(a => a.id === id);
+    assert.equal((await row(g.id)).privacy, true, "new accounts keep privacy mode on");
+    assert.match((await row(g.id)).privacy_label, /^Privacy mode on: xAI does not keep this account's sessions; Grok cannot make video\.$/);
+    assert.equal((await row(c.id)).privacy, null, "only Grok has the setting");
+    assert.equal((await w.tool("sessions.accounts.set", { account: g.id, privacy: false })).data.privacy, false);
+    assert.equal((await row(g.id)).privacy, false);
+    assert.match((await row(g.id)).privacy_label, /^Privacy mode off: xAI keeps this account's sessions and may train on them; Grok can make video\.$/);
+    assert.equal((await w.tool("sessions.accounts.set", { account: c.id, privacy: false })).error.code, "bad_input", "Codex has no such setting");
+    const asAgent = await w.d.registry.call("sessions.accounts.set", { account: g.id, privacy: true }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: "x" });
+    assert.ok(asAgent.error, "an agent, even the assistant, cannot set it");
+    assert.equal((await row(g.id)).privacy, false);
   });
 
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
