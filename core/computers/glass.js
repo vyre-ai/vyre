@@ -133,6 +133,7 @@ export class Glass {
     const redeemed = this.pool.redeem(url.searchParams.get("ticket"));
     if (!redeemed) { reject(socket, 403, "Forbidden"); return; }
     const { agent, surface } = redeemed;
+    this.log(`glass: ${agent}/${surface} opening`);
     // The viewer's link is relayed or slow (glass.open asked link.health): pace its frames.
     const slow = Boolean(/** @type {any} */ (redeemed).slow);
 
@@ -213,7 +214,8 @@ export class Glass {
     if (!vnc) { closeWith(socket, 4001, ""); closeAll(`${agent}'s computer is not running`, true); return; }
 
     // The computer answers vyred's address alone; show it this vyred's address before dialling (it can change when vyred is recreated).
-    if (typeof this.pool.pin === "function") await this.pool.pin(agent).catch(() => {});
+    if (typeof this.pool.pin === "function") await this.pool.pin(agent).catch(e => this.log(`glass: ${agent}'s computer did not take this vyred's address (${scrub(e && e.message)})`));
+    this.log(`glass: ${agent}/${surface} dialling the screen`);
     if (closed) return;
     xvnc = net.connect(vnc.port, vnc.host);
     this.sockets.add(xvnc);
