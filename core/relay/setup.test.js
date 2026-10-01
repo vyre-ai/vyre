@@ -472,7 +472,7 @@ test("setup: a second server that used the same code first makes the offer conte
 test("setup: a hello for a box with no setup session is refused, and so is a plain code the box never made", async t => {
   const w = await world(t);
   const p = await page(w);
-  await w.d.registry.call("relay.enable", {}, "module:test");
+  await w.d.registry.call("relay.enable", {}, "cli", { proof: { method: "passkey", id: "x" } });
   await settle(100);
   const status = (await w.d.registry.call("relay.status", {}, "cli")).data;
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "none");
