@@ -2,7 +2,7 @@
 // A project's Team tab (/projects/<slug>?tab=team): the teammates that serve it, and for each one what it is
 // doing now, what it last delivered, its notes, and its setup (who fills the role, its charter, its duties).
 // Reads: team.list {project}, team.status {request}, team.notes {agent}, team.charter.get, team.duties.list.
-// Writes, all the person's own: team.add, team.notes set, team.charter.set and .draft, team.duties.update and
+// Writes, all the person's own: team.add, team.notes set, team.charter.set and .draft, team.duties.enable, .disable and
 // .run-now, team.role.fill, team.retire, team.default.set. Every value from the box is drawn as text. Nothing
 // polls: it loads on open, after each action, and on the team and teammate events.
 //
@@ -12,6 +12,7 @@
 import { h, put, empty } from "../js/dom.js";
 import { attempt as apiAttempt } from "../js/api.js";
 import { plural } from "../js/fmt.js";
+import { watcherCard } from "../chat/cards/watcher.js";
 
 export const EVENTS = ["teammate.added", "teammate.retired", "teammate.charter-changed", "teammate.default-changed", "team.state", "team.request", "team.done", "team.failed", "team.cancelled"];
 const ROLE = /^[a-z][a-z0-9-]{0,30}$/;
@@ -37,7 +38,7 @@ export async function drawTeam(el, ctx, project, deps = {}) {
   const attempt = deps.attempt || apiAttempt;
   if (typeof document !== "undefined" && document.head) for (const href of ["/css/views/memory-lessons.css", "/css/views/project-team.css"]) if (!document.querySelector?.(`link[href="${href}"]`)) document.head.append(h("link", { rel: "stylesheet", href }));
   const st = { rows: /** @type {ReturnType<typeof teammatesOf>} */ ([]), error: /** @type {any} */ (null), open: "", pane: /** @type {Record<string, any>} */ ({}), steer: /** @type {boolean|null} */ (null),
-    agents: /** @type {string[]} */ ([]), problem: /** @type {string|null} */ (null), busy: "", adding: false, editing: /** @type {"" | "notes" | "charter"} */ (""), sure: "" };
+    agents: /** @type {string[]} */ ([]), problem: /** @type {string|null} */ (null), busy: "", cards: /** @type {Map<string, HTMLElement>} */ (new Map()), adding: false, editing: /** @type {"" | "notes" | "charter"} */ (""), sure: "" };
 
   async function load() {
     const [l, d] = await Promise.all([attempt("team.list", { project: project.slug }), attempt("team.default.get", { project: project.slug })]);
@@ -112,8 +113,14 @@ export async function drawTeam(el, ctx, project, deps = {}) {
                   h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "charter-draft", disabled: st.busy === "draft", onclick: () => act("draft", () => attempt("team.charter.draft", { teammate: t.agent })) }, st.busy === "draft" ? "Drafting" : "Draft it from the project"))))),
         h("div", { class: "set-row" }, h("div", { class: "set-k" }, "Duties"),
           h("div", { class: "set-v tm-col" }, p.duties.length ? p.duties.map((/** @type {any} */ d) => h("div", { class: "tm-duty", "data-duty": String(d.id) },
-            h("span", { class: "small" }, clip(d.instruction || d.id, 120)), d.when ? h("span", { class: "small faint" }, String(typeof d.when === "string" ? d.when : d.when?.text || "")) : null,
-            h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt("team.duties.update", { id: String(d.id), enabled: !d.enabled })) }, d.enabled ? "Pause" : "Turn on"),
+            // A proposal (not started) has no watcher folder yet, so watchers.card would not find it: it shows its title, full text, trigger and act line only.
+            // The title comes with the full instruction, its trigger and whether it acts, never alone: a title must not stand for text the person did not read.
+            d.title ? h("strong", { class: "small tm-duty-title" }, String(d.title)) : null,
+            h("span", { class: "small tm-duty-text" }, String(d.instruction || d.id)),
+            h("span", { class: "small faint" }, [d.trigger ? String(d.trigger) : "", d.act === true ? "Can make changes" : d.act === false ? "Only looks and tells you" : ""].filter(Boolean).join(" · ")),
+            d.watcher && d.started === true ? h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-card", "aria-expanded": String(st.cards.has(String(d.id))), onclick: () => { const k = String(d.id); if (st.cards.has(k)) st.cards.delete(k); else st.cards.set(k, watcherCard({ name: String(d.watcher) }, { turnOn: () => attempt("team.duties.enable", { id: k, expect: String(d.instruction || "") }), onDone: () => { st.cards.delete(k); void loadPane(t); } })); draw(); } }, st.cards.has(String(d.id)) ? "Hide what it will do" : "What it will do") : null,
+            st.cards.get(String(d.id)) || null,
+            h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-toggle", disabled: st.busy === "duty" + d.id, onclick: () => act("duty" + d.id, () => attempt(d.enabled ? "team.duties.disable" : "team.duties.enable", d.enabled ? { id: String(d.id) } : { id: String(d.id), expect: String(d.instruction || "") })) }, d.enabled ? "Pause" : "Turn on"),
             d.enabled ? h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "duty-run", onclick: () => act("run" + d.id, () => attempt("team.duties.run-now", { id: String(d.id) })) }, "Run now") : null)) : h("span", { class: "small muted" }, "No duties."))),
         st.sure === t.agent
           ? h("div", { class: "tm-actions" }, h("span", { class: "small muted" }, `Retire ${t.role}? Its notes and history are kept, and adding ${t.role} again brings it back.`),

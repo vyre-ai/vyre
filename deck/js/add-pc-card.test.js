@@ -15,7 +15,7 @@ test("Add a Windows PC: the words or the QR text reach relay.pair.ticket as the 
   const words = (await seedToWords(seed, c)).join(" ");
   for (const text of [words, words.toUpperCase(), seedQrText(seed)]) {
     const r = await addPc(text, attempt);
-    assert.deepEqual(r, { ok: true, expiresAt: 1234 });
+    assert.deepEqual(r, { ok: true, expiresAt: 1234, confirmed: true });
   }
   assert.equal(calls.length, 3);
   for (const [name, input, opts] of calls) { assert.equal(name, "relay.pair.ticket"); assert.equal(input.seed, base64url(seed)); assert.deepEqual(opts, { presence: "asked" }); }
@@ -38,4 +38,13 @@ test("Add a Windows PC: a wrong code never reaches the box, and each failure say
   assert.match(String(/** @type {any} */ (busy).message), /already waiting/);
   assert.match(seedProblem({ code: "unavailable" }), /relay did not answer/);
   assert.equal(seedProblem(null), "Could not add the computer.");
+});
+
+test("Add a Windows PC: confirmed is false only when the relay says so; absent reads as confirmed", async () => {
+  const seed = newSeed(c);
+  const words = (await seedToWords(seed, c)).join(" ");
+  const ask = data => addPc(words, async () => ({ data }));
+  assert.equal((await ask({ expiresAt: 1, confirmed: false })).confirmed, false);
+  assert.equal((await ask({ expiresAt: 1, confirmed: true })).confirmed, true);
+  assert.equal((await ask({ expiresAt: 1 })).confirmed, true);
 });

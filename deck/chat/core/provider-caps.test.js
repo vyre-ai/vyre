@@ -53,3 +53,11 @@ test("the meter shows what usage allows: everything, context only, or nothing (n
   assert.equal(meter(liveCaps(providers, "codex")), "context");
   assert.equal(meter(liveCaps([], "x")), null);
 });
+
+test("providers.list's real rows ({ id, capabilities }) read the same as the earlier draft's ({ provider, caps })", () => {
+  const real = [{ id: "codex", label: "Codex", accounts: [], models: [], capabilities: { streaming: true, resume: true, interrupt: true, modes: false, steering: false, usage: "coarse", rewind: false } }];
+  const c = liveCaps(real, "codex");
+  assert.equal(c.interrupt, true);
+  assert.equal(c.resume, true);
+  assert.equal(liveCaps(real, "claude").interrupt, false);
+});

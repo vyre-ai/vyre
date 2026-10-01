@@ -82,6 +82,7 @@ import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
 import { textItemRow } from "./live-text.js";
+import { undoSheet } from "./undo-sheet.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
@@ -212,6 +213,7 @@ export function mountSession(container, opts) {
     name: () => agentName(),
     project: () => record.current?.project || opts.project || null,
     onRewind: () => openRewind(),
+    onUndo: () => openUndo(),
     // "/find [words]" (native-core/commands.js): the existing Find page already queries
     // recall.search + memory.relevant and has its own scoping rules; the composer just gets there fast.
     onFind: q => go("/find" + (q ? "?q=" + encodeURIComponent(q) : "")),
@@ -273,7 +275,9 @@ export function mountSession(container, opts) {
   /** Who the replies are from, as an avatar (js/avatars.js threadAvatar): the project's tile, a chat's draft tile, an agent, a teammate or the assistant. */
   const whoAv = (size = 24, cls = "av-agent msg-av cv-av") => threadAvatar({ agent: record.current?.agent, project: record.current?.project || opts.project || null, thread },
     { size, cls, title: agentName() });
-  const headFor = ts => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv());
+  const headFor = (ts, prov = null) => headRow(agentName(), ts, isAssistant({ agent: record.current?.agent }, names), whoAv(), prov);
+  /** Who wrote a run, from its first reply that says: provider and model as the box tagged the event, else nothing. */
+  const provOf = (/** @type {any} */ r) => { for (const k of r.type === "run" ? r.keys : [r.key]) { const it = /** @type {any} */ (S.byKey.get(k)); if (it?.provider) return { provider: it.provider, model: it.model || null }; } return null; };
   /** This page is the one on screen, and the tab is visible. */
   const visible = () => {
     try { if (typeof document !== "undefined" && document.visibilityState === "hidden") return false; } catch {}
@@ -426,6 +430,8 @@ export function mountSession(container, opts) {
     const chip = chipText();
     const ctx = contextLabel(S.usage);
     const proj = projectName();
+    // Media cards ask "which project is this saved in" by reading this off the session around them.
+    if (proj) container.setAttribute("data-project", proj); else container.removeAttribute("data-project");
     checkSight();
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
@@ -632,6 +638,37 @@ export function mountSession(container, opts) {
     rewind.el.setAttribute("tabindex", "-1");
     rewind.el.focus?.();
   }
+  /** "Use in <model>" on a media card: address that model for ONE turn, never switching the session. The composer is filled with
+   * "@<provider> #<item>" and the person sends when ready; the item is copied into the session's folder when that turn starts, by the box. */
+  function useMedia(/** @type {{ id: string, title: string, provider: string, name: string }} */ d) {
+    if (!switchboard()) return;
+    const cur = composer.value().trim();
+    composer.setText(`@${d.name}${cur ? " " + cur : ""} `);
+    composer.tag({ kind: "artifact", id: d.id, name: d.title });
+  }
+  container.addEventListener("deck:media-use", e => { e.stopPropagation(); useMedia(/** @type {any} */ (e).detail); });
+
+  /** /undo: this session's own changes, over github.session.history/undo/redo. The session is the folder it works in, under its project's .sessions. */
+  async function openUndo() {
+    if (rewind || !switchboard()) return;
+    const project = record.current?.project || opts.project || null;
+    const cwd = String(sessionCwd() || "");
+    const at = cwd.lastIndexOf("/.sessions/");
+    const session = at >= 0 ? cwd.slice(at + "/.sessions/".length).split("/")[0] : "";
+    const sheet = undoSheet({
+      load: () => project && session ? attempt("github.session.history", { project, session }) : Promise.resolve({ error: { message: "This session is not working in a project folder of its own." } }),
+      undo: to => attempt("github.session.undo", { project, session, ...(to ? { to } : {}) }),
+      redo: n => attempt("github.session.redo", { project, session, ...(n ? { n } : {}) }),
+      onClose: closeRewind,
+      say: e => e?.missing ? NEEDS_UPDATE : String(e?.message || e?.code || "That did not work."),
+    });
+    rewind = /** @type {any} */ ({ el: sheet.el, key: () => false, refresh() {}, restore: () => "conversation" });
+    rewindScrim.hidden = false; rewindBox.hidden = false;
+    put(rewindBox, sheet.el);
+    sheet.el.setAttribute("tabindex", "-1");
+    sheet.el.focus?.();
+    await sheet.load();
+  }
   function closeRewind() {
     rewind = null;
     rewindScrim.hidden = true;
@@ -781,6 +818,7 @@ export function mountSession(container, opts) {
       case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard({ ...asBlock(it), project: record.current?.project || opts.project || null }) : toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
+      case "plan": return planEl(it);
       case "ask": return askEl(it);
       case "steer": return steerEl(it);
       case "shell": return shellEl(it);
@@ -799,6 +837,16 @@ export function mountSession(container, opts) {
     const nel = makeEl(it);
     nel._sig = s;
     return nel;
+  }
+
+  /** The agent's own checklist, as it stands: "Plan · 2 of 5 done", each step marked done, running or waiting. */
+  function planEl(it) {
+    const done = it.items.filter(x => x.status === "done").length;
+    return h("div", { class: "cv-row cv-plan", role: "group", "aria-label": `Plan, ${done} of ${it.items.length} done` },
+      h("div", { class: "cv-plan-head" }, h("span", { class: "lbl" }, "Plan"), h("span", { class: "cv-plan-n" }, `${done} of ${it.items.length} done`)),
+      h("ol", { class: "cv-plan-list" }, it.items.map(x => h("li", { class: "cv-plan-step", "data-status": x.status, "aria-label": `${x.text}, ${x.status === "done" ? "done" : x.status === "running" ? "in progress" : "not started"}` },
+        h("span", { class: "cv-plan-mark", "aria-hidden": "true" }, x.status === "done" ? icon("check", 12) : null),
+        h("span", { class: "cv-plan-text" }, x.text)))));
   }
 
   /** Where typed words joined a running turn: "Steered at step 2 · 14:32", or "Steering" until it reads them. */
@@ -891,7 +939,7 @@ export function mountSession(container, opts) {
   }
   const dayRule = d => h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" }));
   const sideOfItem = it => it.kind === "user" ? "user" : it.kind === "turn" ? "turn"
-    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" ? null : "assistant";
+    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" || it.kind === "plan" ? null : "assistant";
 
   /** A fold row for a run of tool calls. */
   function runEl(r) {
@@ -986,7 +1034,7 @@ export function mountSession(container, opts) {
         day(at);
         const rk = r.key;
         usedHeads.add(rk);
-        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at); headEls.set(rk, hd); } return hd; } });
+        want.push({ key: "h:" + rk, kind: "head", make: () => { let hd = headEls.get(rk); if (!hd) { hd = headFor(at, provOf(r)); headEls.set(rk, hd); } else if (!hd.querySelector?.(".pmark")) hd.setProv?.(provOf(r)); return hd; } });
       }
       if (side) prevSide = side;
       if (r.type === "run") {

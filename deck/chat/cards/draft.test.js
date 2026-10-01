@@ -104,7 +104,7 @@ test("email draft: an unmatched edit goes to gate.approve as edited; a failed se
   await $(c, "[data-act=send]").click();
   await settle(); await settle();
   assert.deepEqual(f.of("gate.approve")[0].input, { id: "g-1", edited: { body: "Hi Sam, totals attached." } });
-  assert.match(text(c), /It came back held: mailbox full\. Send tries again\./);
+  assert.match(text(c), /Not sent: mailbox full\. It is still held\. Send tries again\./);
   assert.ok(c.isOpen());
   assert.equal($(c, "[data-act=send]").disabled, false);
 });

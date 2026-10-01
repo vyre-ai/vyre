@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { install, text, $ } from "../../test/fake-dom.js";
 
 install();
-const { guardFrame, artifactFrame, SANDBOX, NAVIGATED } = await import("./artifact-frame.js");
+const { guardFrame, artifactFrame, SANDBOX, SANDBOX_STATIC, INTERACTIVE_LINE, interactiveByKind, NAVIGATED } = await import("./artifact-frame.js");
 
 function fakeFrame() {
   /** @type {Record<string, (() => void)[]>} */ const on = {};
@@ -62,7 +62,7 @@ test("a frame with no onBlank still blanks", () => {
 
 test("the frame is sandbox=allow-scripts only, with the render route as src", () => {
   assert.equal(SANDBOX, "allow-scripts");
-  const el = artifactFrame({ src: "/artifacts/a1/v2/render", title: "Quarterly report" });
+  const el = artifactFrame({ src: "/artifacts/a1/v2/render", title: "Quarterly report", interactive: true });
   const fr = $(el, "iframe");
   assert.equal(fr.getAttribute("sandbox"), "allow-scripts");
   assert.equal(fr.getAttribute("src"), "/artifacts/a1/v2/render");
@@ -81,4 +81,19 @@ test("navigating replaces the frame with the plain line", () => {
   assert.equal(text(el), NAVIGATED);
   assert.equal(NAVIGATED, "This page tried to open another site");
   assert.equal(blanks, 1);
+});
+
+test("a static kind runs no script (sandbox is empty); only interactive:true gets allow-scripts; nothing else is ever allowed", () => {
+  const st = $(artifactFrame({ src: "/x", title: "Deck", interactive: false }), "iframe");
+  assert.equal(SANDBOX_STATIC, "");
+  assert.equal(st.getAttribute("sandbox"), "");
+  assert.equal($(artifactFrame({ src: "/x", title: "Page", interactive: true }), "iframe").getAttribute("sandbox"), "allow-scripts");
+  assert.equal(INTERACTIVE_LINE, "Runs its own code and can reach the internet");
+  assert.deepEqual(["page", "app", "doc", "deck", "dashboard", "diagram", "image"].map(interactiveByKind), [true, true, false, false, false, false, false]);
+});
+
+test("interactive absent, or anything but true, runs no script; an unknown kind is never read as interactive", () => {
+  for (const interactive of [undefined, false, /** @type {any} */ ("yes"), /** @type {any} */ (1)]) assert.equal($(artifactFrame({ src: "/x", title: "T", interactive }), "iframe").getAttribute("sandbox"), "");
+  assert.equal(interactiveByKind("hologram"), false);
+  assert.equal(interactiveByKind(""), false);
 });

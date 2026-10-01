@@ -261,3 +261,72 @@ test("the frame view carries a line outside the frame saying the page is the age
   assert.ok(line, "the origin line is drawn");
   assert.match(t(line), /Made by kit\. It runs on its own and is not part of Vyre\./);
 });
+
+test("a generated image draws inline from the box's own content route, with its provider and prompt read once from artifacts.get", async () => {
+  const v = vyred({ [TOOLS.get]: { kind: "image", format: "png", media: { mime: "image/png", bytes: 1234, provider: "grok", model: "grok-imagine", prompt: "a red door at dusk" } } });
+  const el = /** @type {any} */ (artifactCard(artifactFromEvent({ thread: "t1", artifact: "m1", version: 1, kind: "image", title: "Red door", mime: "image/png", bytes: 1234 }), { agent: "kit" }));
+  await settle();
+  const img = $(el, "img");
+  assert.equal(img.getAttribute("src"), "/v1/artifacts/content?id=m1");
+  assert.equal(img.getAttribute("alt"), "Red door");
+  assert.equal($(el, "a[download]").getAttribute("href"), "/v1/artifacts/content?id=m1&download=1");
+  assert.match(text(el), /Made by kit · grok, grok-imagine/);
+  assert.match(text(el), /Asked for:\s+a red door at dusk/);
+  assert.equal(v.of(TOOLS.get).length, 1);
+  assert.equal($(el, "iframe"), null, "media never goes in the frame");
+});
+
+test("video and audio take controls; a failed load says the item is gone in words; the prompt is text, never markup", async () => {
+  vyred({ [TOOLS.get]: { kind: "video", media: { provider: "x", prompt: "<b>hi</b>" } } });
+  const vid = /** @type {any} */ (artifactCard({ kind: "artifact", id: "v1", title: "Clip", type: "video" }, {}));
+  assert.equal($(vid, "video").getAttribute("controls"), "");
+  const aud = /** @type {any} */ (artifactCard({ kind: "artifact", id: "a9", title: "Take", type: "audio" }, {}));
+  assert.ok($(aud, "audio"));
+  await settle();
+  assert.equal($(vid, "b"), null);
+  assert.match(text(vid), /<b>hi<\/b>/);
+  $(vid, "video").dispatchEvent(new /** @type {any} */ (globalThis).Event("error"));
+  assert.match(text(vid), /no longer in the project/);
+});
+
+test("Use in…: lists the providers with a signed-in account, and choosing one asks the session (never the card) to address it, and the card calls no tool", async () => {
+  const { usableProviders } = await import("./artifact.js");
+  assert.deepEqual(usableProviders([{ provider: "claude", accounts: [] }, { provider: "codex", accounts: [{ signed_in: true }] }, { provider: "grok", accounts: [{ signed_in: false }] }, { id: "codex" }]).map(x => x.provider), ["claude", "codex"]);
+  const v = vyred({ [TOOLS.get]: { kind: "image", media: {} }, "providers.list": [{ provider: "claude", accounts: [] }, { provider: "codex", accounts: [{ signed_in: true }] }] });
+  const el = /** @type {any} */ (artifactCard({ kind: "artifact", id: "m1", title: "Red door", type: "image" }, {}));
+  const seen = [];
+  el.addEventListener("deck:media-use", e => seen.push(e.detail));
+  const use = $$(el, "button").find(b => text(b) === "Use in…");
+  use.dispatchEvent(new /** @type {any} */ (globalThis).Event("click")); await settle();
+  const items = $$(el, "[role=menuitem]");
+  assert.deepEqual(items.map(b => text(b)), ["Claude", "Codex"]);
+  items[1].dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
+  assert.deepEqual(seen, [{ id: "m1", title: "Red door", provider: "codex", name: "Codex" }]);
+  assert.equal(v.of("threads.switch").length + v.of("artifacts.media.copy").length, 0, "the card itself calls neither, and nothing switches the session");
+});
+
+test("an interactive page says it runs its own code under the origin line and logs THAT it navigated away; a static kind has neither", async () => {
+  const { artifactView } = await import("./artifact.js");
+  const { text: t, $: q } = await import("../../test/fake-dom.js");
+  const mk = async (kind, interactive) => {
+    const v = vyred({ [TOOLS.versions]: { versions: [{ version: 1 }] }, [TOOLS.get]: { kind, text: "<p>x</p>", ...(interactive === undefined ? {} : { interactive }) }, [TOOLS.log]: {} });
+    const view = artifactView({ artifact: "p1", version: 1, kind, title: "T" }, {}, {});
+    await settle();
+    return { v, view };
+  };
+  const page = await mk("page", true);
+  assert.match(t(page.view.el), /Runs its own code and can reach the internet/);
+  assert.equal(q(page.view.el, "iframe").getAttribute("sandbox"), "allow-scripts");
+  q(page.view.el, "iframe").dispatchEvent(new /** @type {any} */ (globalThis).Event("load"));
+  q(page.view.el, "iframe").dispatchEvent(new /** @type {any} */ (globalThis).Event("load"));
+  await settle();
+  assert.deepEqual(page.v.of(TOOLS.log).map(c => c.input), [{ id: "p1", kind: "navigated-away" }]);
+  const deck = await mk("deck", false);
+  assert.doesNotMatch(t(deck.view.el), /Runs its own code/);
+  assert.equal(q(deck.view.el, "iframe").getAttribute("sandbox"), "");
+  const unknown = await mk("hologram", undefined);
+  assert.equal(q(unknown.view.el, "iframe").getAttribute("sandbox"), "", "an unknown kind on a box that says nothing runs no script");
+  assert.doesNotMatch(t(unknown.view.el), /Runs its own code/);
+  const old = await mk("page", undefined);
+  assert.match(t(old.view.el), /Runs its own code/, "an older box that says nothing: a page is read as interactive");
+});

@@ -65,6 +65,15 @@ export function tagPicker({ ta, menu, caret, setValue, attempt, use = (_t, fn) =
 
   return {
     show, pick, chips,
+    /** Add a tag the person did not type: "#name" at the end of the words, picked as if from the menu. @param {{ kind: string, id: string, name: string }} v */
+    add(v) {
+      const name = String(v.name || "").replace(/[^\w.-]+/g, "-").replace(/^[^A-Za-z0-9]+|-+$/g, "") || String(v.id);
+      tags.set(name, { kind: v.kind, id: v.id, name });
+      const cur = ta.value;
+      setValue((cur && !/\s$/.test(cur) ? cur + " " : cur) + "#" + name + " ", undefined);
+      ta.focus();
+      return name;
+    },
     /** The "#" at the caret, if any, opens the picker; true when it did. */
     suggest() { const vm = findVaultMention(ta.value, caret()); if (vm) { show(vm); return true; } return false; },
     /** The chips as one row of small buttons, or null with no tag in the text. @param {string} [cls] */

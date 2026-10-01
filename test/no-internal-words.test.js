@@ -41,3 +41,37 @@ test("no internal word (vyred, switchboard, no such tool, as Claude Code does) i
   }
   assert.deepEqual(bad, [], `internal words on a surface (say "the box", "sessions", or what to do next), or mark a never-drawn id with // internal-word: <why>:\n${bad.join("\n")}`);
 });
+
+// ---- the box's own error texts --------------------------------------------------------------------------------------
+// An error built in core/, modules/ or local/ reaches the Deck and the phone as the message a person reads (reviewer-2's
+// note on the Deck guard). The words are not banned outright there yet, because many owners' files say "vyred"; this holds
+// the line: a file may not gain one, and the count below only shrinks. Each owner brings its file's count to 0 by saying
+// "the box" (or what to do next) and lowers the number here. core/cli (the terminal, where vyred is a command people type),
+// core/daemon and tests are out of scope.
+const ERR_CONTEXT = /(Error\(|refuse\(|fail\(|bad\(|throw |message:)/;
+const ERR_SKIP = /(^|\/)(test|testing|node_modules|vendor|fixtures)(\/|$)|\.test\.js$|^core\/(cli|daemon)\//;
+/** The lines per file that put an internal word inside a string literal on an error line. */
+const BASELINE = {
+  "core/computers/index.js": 3, "core/config/index.js": 1, "core/files/drop.js": 1, "core/gate/index.js": 1, "core/hooks/funnel.js": 2, "core/hooks/index.js": 1,
+  "core/modules/index.js": 2, "core/names/backup.js": 1, "core/names/system.js": 1, "core/push/index.js": 1, "core/term/index.js": 1, "core/vault/tools/cli.js": 2, "core/vyre-core/install-main.js": 1, "core/watchers/run.js": 1, "local/voice/listen.js": 1, "local/voice/talk.js": 1,
+  "modules/vault-extension/background.js": 3,
+};
+
+test("the box's error texts: no file gains an internal word, and the counts only shrink", () => {
+  /** @type {Record<string, number>} */ const found = {};
+  for (const top of ["core", "modules", "local"]) for (const f of files(path.join(ROOT, top))) {
+    const rel = path.relative(ROOT, f).split(path.sep).join("/");
+    if (ERR_SKIP.test(rel)) continue;
+    let n = 0;
+    for (const line of fs.readFileSync(f, "utf8").split("\n")) {
+      const t = line.trim();
+      if (t.startsWith("//") || t.startsWith("*") || t.startsWith("/*") || EXEMPT.test(line) || !ERR_CONTEXT.test(line)) continue;
+      if (literals(line).some(x => BANNED.test(x))) n++;
+    }
+    if (n) found[rel] = n;
+  }
+  const grew = Object.keys(found).filter(f => found[f] > (/** @type {any} */ (BASELINE)[f] || 0)).map(f => `${f}: ${found[f]} (allowed ${/** @type {any} */ (BASELINE)[f] || 0})`);
+  const shrank = Object.keys(BASELINE).filter(f => (found[f] || 0) < /** @type {any} */ (BASELINE)[f]).map(f => `${f}: now ${found[f] || 0}, lower BASELINE (was ${/** @type {any} */ (BASELINE)[f]})`);
+  assert.deepEqual(grew, [], `an error text gained "vyred", "switchboard" or another internal word: say "the box" or what to do next:\n${grew.join("\n")}`);
+  assert.deepEqual(shrank, [], `good: an owner cleaned a file. Lower its number in BASELINE so it cannot come back:\n${shrank.join("\n")}`);
+});
