@@ -18,7 +18,7 @@ const REACH = {
   "watchers.list": "anyone", "watchers.test": "anyone", "watchers.card": "anyone", "watchers.logs": "anyone", "watchers.items": "anyone",
   "watchers.create": "asked", "watchers.preset": "asked", "watchers.pause": "anyone",
   "watchers.resume": "person", "watchers.delete": "person", "watchers.run": "person", "watchers.hook": "hook",
-  "watchers.create.target": "modules", "watchers.preset.target": "modules", "watchers.duty.create": "modules", "watchers.duty.update": "modules", "watchers.duty.delete": "modules", "watchers.duty.run": "modules", "watchers.duty.resume": "modules",
+  "watchers.act.target": "modules", "watchers.duty.create": "modules", "watchers.duty.update": "modules", "watchers.duty.delete": "modules", "watchers.duty.run": "modules", "watchers.duty.resume": "modules",
 };
 
 test("every watchers tool names its reach, and it is the one decided", () => {
@@ -77,6 +77,7 @@ test("reach holds against the real registry: asked for a model, person for delet
 
 test("the person's words let the assistant turn a watcher on, pinned to the card's code; a model alone is refused", async t => {
   const { watchersIntents } = await import("../../lib/said/watchers.js");
+  const { presetIntents } = await import("../../lib/said/watcher-presets.js");
   const folder = await import("./folder.js");
   const home = tempHome(t);
   const root = path.join(home, "mods"), wdir = path.join(home, "watchers");
@@ -89,12 +90,11 @@ test("the person's words let the assistant turn a watcher on, pinned to the card
   const hashNow = () => String(folder.read(wdir, "mail-harlow-legal").hash);
   const targets = new URL("./targets.js", import.meta.url).href, folderUrl = new URL("./folder.js", import.meta.url).href;
   const stub = { ...manifest, requires: [], needs: {}, teaches: {} };
-  writeModule(root, "watchers", stub, `import { createTarget, presetTarget } from ${JSON.stringify(targets)};
+  writeModule(root, "watchers", stub, `import { actTarget } from ${JSON.stringify(targets)};
 import * as folder from ${JSON.stringify(folderUrl)};
 export default { async start(ctx) {
   for (const name of ${JSON.stringify(Object.keys(REACH).filter(n => !n.endsWith(".target")))}) ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name }) });
-  ctx.tool("watchers.create.target", { input: { type: "object" }, run: async call => createTarget(call, { read: n => folder.read(${JSON.stringify(wdir)}, n) }) });
-  ctx.tool("watchers.preset.target", { input: { type: "object" }, run: async call => presetTarget(call) });
+  ctx.tool("watchers.act.target", { input: { type: "object" }, run: async call => actTarget(call, { read: n => folder.read(${JSON.stringify(wdir)}, n) }) });
   return { async stop() {} };
 } };`);
   // A stand-in for vault.said.match: it holds what the person's own words recorded and uses each one up.
@@ -113,21 +113,27 @@ export default { async start(ctx) {
   assert.equal(reg.modules.get("watchers").state, "running", reg.modules.get("watchers").error);
   reg.modules.set("vault", { ...reg.modules.get("vault"), dir: path.join(here, "..", "vault") });
 
-  const say = (text) => { const where = { project: "harlow-legal", kinds: ["mail"], watchers: [{ name: "mail-harlow-legal", hash: hashNow(), state: "draft" }] };
-    for (const i of watchersIntents(text, where).intents) /** @type {any} */ (globalThis).__said.add(i.to[0]); };
+  // The recorders as the product runs them: the person's real words, and for turning on the card the person was shown
+  // (its name and hash as of when it was shown), never a fresh read.
+  const say = (text, shown = { name: "mail-harlow-legal", hash: hashNow(), title: "important mail" }) => {
+    const found = [...watchersIntents(text, { watchers: [shown] }).intents, ...presetIntents(text, { project: "harlow-legal", kinds: ["mail"] }).intents];
+    for (const i of found) /** @type {any} */ (globalThis).__said.add(i.to[0]);
+    return found.length;
+  };
   const call = async (tool, input, caller) => { const r = await reg.call(tool, input, caller); return r.error ? r.error.code : "ran"; };
   const model = "mcp:agent:assistant";
 
   // A model alone is refused, for the card's own hash too.
   assert.equal(await call("watchers.create", { name: "mail-harlow-legal", hash: hashNow() }, model), "not_asked");
   // The person says "turn it on": that one watcher, that one code, one use.
-  say("Yes, turn it on.");
+  assert.equal(say("Yes, turn it on."), 0, "'it' names nothing: the assistant's recorder wants the watcher named");
+  assert.equal(say("Turn on the mail watcher."), 1);
   assert.equal(await call("watchers.create", { name: "mail-harlow-legal", hash: "0".repeat(32) }, model), "not_asked", "a hash the person did not see");
   assert.equal(await call("watchers.create", { name: "mail-harlow-legal" }, model), "not_asked", "no hash at all");
   assert.equal(await call("watchers.create", { name: "mail-harlow-legal", hash: hashNow() }, model), "ran");
   assert.equal(await call("watchers.create", { name: "mail-harlow-legal", hash: hashNow() }, model), "not_asked", "the yes was used up");
   // Code edited after the person said yes: the old hash no longer names the folder, so it is refused.
-  say("Turn it on.");
+  say("Turn on the mail watcher.");
   const seen = hashNow();
   fs.writeFileSync(path.join(wdir, "mail-harlow-legal", "watch.js"), "export default async function watch() { /* edited */ }");
   assert.equal(await call("watchers.create", { name: "mail-harlow-legal", hash: seen }, model), "not_asked");

@@ -516,6 +516,7 @@ export class Runtime {
 
   failed(name, r, trigger, res, started) {
     if (res.unisolated) {
+      this.d.forgetWall?.();      // the next run finds the wall again, instead of trusting one that stopped answering
       // Not the watcher's failure and not retried in a hurry: nothing ran, the machine cannot keep it off the network.
       this.db.prepare("UPDATE watchers_watchers SET last_run = ?, last_error = ?, next_at = ? WHERE name = ?").run(started, res.error, this.now() + 3_600_000, name);
       this.record(name, trigger, res, 0, 0);

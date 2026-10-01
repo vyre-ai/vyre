@@ -8,7 +8,7 @@
 // Each fetch names the watcher, and the vault releases only against a grant for that watcher.
 
 import { findWall } from "./spawner-wall.js";
-import { createTarget, presetTarget } from "./targets.js";
+import { actTarget } from "./targets.js";
 import * as folderMod from "./folder.js";
 import { isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
@@ -62,7 +62,7 @@ export default {
       },
       request: async input => { const r = await ctx.call("vault.request", input); if (r.error) throw new Error(r.error.message || r.error.code || "the vault refused the request"); return r.data; },
       spend: { check: async () => { const r = await ctx.call("spend.check", {}); return r.error ? { ok: false, line: "the spend ledger is not answering" } : r.data; } },
-      log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}), wall: () => (process.env.NODE_TEST_CONTEXT ? testHooks.wall : undefined), findWall: () => (cachedWall ||= findWall()),
+      log: ctx.log, netOptions: () => (process.env.NODE_TEST_CONTEXT ? testHooks.net : {}), wall: () => (process.env.NODE_TEST_CONTEXT ? testHooks.wall : undefined), findWall: () => (cachedWall ||= findWall()), forgetWall: () => { cachedWall = null; },
       listen: (type, fn) => ctx.events.on(type, fn),
     });
     rt.subscribe();
@@ -106,9 +106,8 @@ export default {
     ctx.tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });
     ctx.tool("watchers.run", { description: "Run a turned-on watcher now and return what happened.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.run(name); } });
     // What an asked call acts on, for the registry's gate (reach asked, target): the keys lib/said/watchers.js records.
-    ctx.tool("watchers.create.target", { description: "For the gate: the key watchers.create acts on, tied to the code the card showed.", input: { type: "object" },
-      run: async call => createTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
-    ctx.tool("watchers.preset.target", { description: "For the gate: the key watchers.preset acts on.", input: { type: "object" }, run: async call => presetTarget(call) });
+    ctx.tool("watchers.act.target", { description: "For the gate: the key an asked watchers call acts on. watchers.create: <name>@<hash> of the code the card showed (no hash, no key); watchers.preset: <project>/<kind>.", input: { type: "object" },
+      run: async call => actTarget(call, { read: name => folderMod.read(ctx.paths.watchers, name) }) });
     ctx.tool("watchers.card", {
       description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
       input: named,
