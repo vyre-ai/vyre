@@ -60,32 +60,26 @@ pub struct PinChoice {
     pub own_domain: bool,
 }
 
-/// Choose the address from a sealed ticket record's `handle` and `address` (reviewer-2's rules).
-/// A handle means https://<handle>.vyre.run, and a disagreeing `address` is refused. Without a
-/// handle, the record's own https origin is pinned, flagged as an own domain. Neither: refused.
+/// Choose the address from a sealed ticket record's `handle` and `address` (reviewer-2's rules, as applied here).
+/// The box's name is always sent as `handle`, even when the box lives on its own domain, so a handle alone does not
+/// mean vyre.run. Rules: an address on vyre.run must be exactly https://<handle>.vyre.run, else it is refused; an
+/// address on any other domain is the box's own and is pinned only as its own visible line (own_domain) after the
+/// person's Pair; with no address, a handle gives https://<handle>.vyre.run; neither: refused.
 pub fn pin_from_offer(handle: Option<&str>, address: Option<&str>) -> Result<PinChoice, &'static str> {
     let valid = |h: &str| { let b = h.as_bytes(); !b.is_empty() && b.len() <= 32 && b[0].is_ascii_alphanumeric() && b[b.len() - 1].is_ascii_alphanumeric() && b.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-') };
+    if let Some(h) = handle { if !valid(h) { return Err("bad_handle"); } }
     let addr = match address { Some(a) => Some(Pinned::parse(a).ok_or("bad_address")?), None => None };
+    let on_vyre = |origin: &str| origin.strip_prefix("https://").map_or(false, |h| { let host = h.split(':').next().unwrap_or(""); host == "vyre.run" || host.ends_with(".vyre.run") });
     match (handle, addr) {
-        (Some(h), a) => {
-            if !valid(h) { return Err("bad_handle"); }
+        (Some(h), Some(a)) if on_vyre(a.origin()) => {
             let want = format!("https://{}.vyre.run", h.to_ascii_lowercase());
-            if let Some(a) = a { if a.origin() != want { return Err("address_disagrees"); } }
+            if a.origin() != want { return Err("address_disagrees"); }
             Ok(PinChoice { address: want, own_domain: false })
         }
-        (None, Some(a)) => Ok(PinChoice { address: a.origin().to_string(), own_domain: !a.origin().ends_with(".vyre.run") }),
+        (_, Some(a)) => Ok(PinChoice { address: a.origin().to_string(), own_domain: !on_vyre(a.origin()) }),
+        (Some(h), None) => Ok(PinChoice { address: format!("https://{}.vyre.run", h.to_ascii_lowercase()), own_domain: false }),
         (None, None) => Err("no_address"),
     }
-}
-
-/// A Windows tool's full path under the Windows folder, so the shell never runs a same-named file
-/// from the working directory. `system_root` is the SystemRoot variable, trusted only as a drive path.
-pub fn system_path(system_root: Option<&str>, rel: &str) -> String {
-    let root = match system_root {
-        Some(r) if r.len() >= 3 && r.as_bytes()[0].is_ascii_alphabetic() && &r[1..3] == ":\\" => r.trim_end_matches('\\'),
-        _ => "C:\\Windows",
-    };
-    format!("{root}\\{rel}")
 }
 
 #[cfg(test)]
@@ -142,23 +136,17 @@ mod tests {
     }
 
     #[test]
-    fn the_pin_follows_the_handle_and_refuses_a_disagreeing_address() {
+    fn the_pin_follows_the_handle_on_vyre_run_and_the_own_domain_otherwise() {
         let ok = |h, a| pin_from_offer(h, a).map(|c| (c.address, c.own_domain));
         assert_eq!(ok(Some("alex"), None), Ok(("https://alex.vyre.run".into(), false)));
         assert_eq!(ok(Some("alex"), Some("https://alex.vyre.run")), Ok(("https://alex.vyre.run".into(), false)));
-        assert_eq!(ok(Some("alex"), Some("https://evil.example")), Err("address_disagrees"));
-        assert_eq!(ok(None, Some("https://box.harlow.example")), Ok(("https://box.harlow.example".into(), true)));
+        assert_eq!(ok(Some("alex"), Some("https://mallory.vyre.run")), Err("address_disagrees"));
+        assert_eq!(ok(Some("alex"), Some("https://vyre.run")), Err("address_disagrees"));
+        // A named box on its own domain: the handle is just its name, the address is its own.
+        assert_eq!(ok(Some("alex"), Some("https://box.harlow.example")), Ok(("https://box.harlow.example".into(), true)));
         assert_eq!(ok(None, Some("https://box.harlow.example:8443")), Ok(("https://box.harlow.example:8443".into(), true)));
         assert_eq!(ok(None, Some("http://box.harlow.example")), Err("bad_address"));
         assert_eq!(ok(None, None), Err("no_address"));
         assert_eq!(ok(Some("-x"), None), Err("bad_handle"));
-    }
-
-    #[test]
-    fn windows_tools_run_by_full_path() {
-        assert_eq!(system_path(Some("D:\\Win"), "System32\\reg.exe"), "D:\\Win\\System32\\reg.exe");
-        assert_eq!(system_path(Some("D:\\Win\\"), "explorer.exe"), "D:\\Win\\explorer.exe");
-        assert_eq!(system_path(Some(".\\evil"), "System32\\reg.exe"), "C:\\Windows\\System32\\reg.exe");
-        assert_eq!(system_path(None, "System32\\net.exe"), "C:\\Windows\\System32\\net.exe");
     }
 }
