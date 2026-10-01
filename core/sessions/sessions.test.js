@@ -1029,10 +1029,11 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok((await w.tool("threads.delete", { thread: th.id })).error, "a second delete finds nothing");
   });
 
-  test(`${driver}: accounts add/remove/bind are "asked": an agent and the assistant are refused with no prompt, the person is not, and an asked add from a session covers only that session's project`, { skip }, async t => {
+  test(`${driver}: accounts: an agent is refused, the assistant may only start an account (project-scoped, pending, unusable until the person finishes), remove is the person's, bind is limited to the asked project`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
     const body = JSON.stringify({ provider: "grok", label: "Sneaky", kind: "setup-token", vault_item: "work-token" });
     const say = async agent => {
       const th = (await w.tool("threads.start", { cwd: w.work, agent, prompt: `vyre-sock sessions.accounts.add ${body}`, surface: "deck" })).data;
@@ -1041,18 +1042,33 @@ for (const driver of ["cli", "sdk"]) {
     };
     const kit = await say("kit");
     assert.equal(kit.error && kit.error.code, "not_asked", JSON.stringify(kit));
-    assert.equal((await w.tool("sessions.accounts.list", { provider: "grok" })).data.length, 0, "nothing was added");
-    const juno = await say("juno");
-    assert.equal(juno.error && juno.error.code, "not_asked", `the assistant is held to it too: ${JSON.stringify(juno)}`);
-    assert.equal((await w.tool("sessions.accounts.list", { provider: "grok" })).data.length, 0, "the assistant added nothing");
-    assert.equal((await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).error, undefined, "the person adds directly");
-    // When the person's own words did ask (meta.asked), an add with no scope covers the project the request came from, never "*".
-    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    assert.equal((await w.tool("sessions.accounts.list", { provider: "grok" })).data.length, 0, "an ordinary agent added nothing");
+    // The assistant (verified meta.agent) may start an add from a session in the project the request came from.
     const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
-    const added = await w.d.registry.call("sessions.accounts.add", { provider: "grok", label: "Asked", kind: "setup-token", vault_item: "work-token" }, `mcp:agent:juno`, { agent: "juno", agentKind: "assistant", thread: th.id, asked: true });
-    assert.equal(added.error, undefined, JSON.stringify(added));
-    assert.deepEqual(added.data.scope, { projects: ["harlow-legal"], agents: "*" });
+    const asJuno = (tool, input) => w.d.registry.call(tool, input, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: th.id });
+    const started = await asJuno("sessions.accounts.add", { provider: "grok", label: "Second", kind: "setup-token", vault_item: "work-token", is_default: true, scope: { projects: "*" } });
+    assert.equal(started.error, undefined, JSON.stringify(started));
+    assert.deepEqual(started.data.scope.projects, ["harlow-legal"], "its scope is the request's project, whatever it asked for");
+    assert.equal(started.data.pending, true);
+    assert.equal(started.data.is_default, false);
+    // Started but unfinished: it can never be chosen, by name or by default, so no session can run on it.
+    const named = await w.d.registry.call("sessions.accounts.resolve", { provider: "grok", account: started.data.id, project: "harlow-legal" }, "module:vyred");
+    assert.equal(named.error && named.error.code, "pending", JSON.stringify(named));
+    const implicit = await w.d.registry.call("sessions.accounts.resolve", { provider: "grok", project: "harlow-legal" }, "module:vyred");
+    assert.ok(!implicit.data || implicit.data.id !== started.data.id, "never a fallback either");
+    const launch = await w.tool("threads.start", { project: "harlow-legal", provider: "grok", account: started.data.id, prompt: "hello", surface: "deck" });
+    assert.ok(launch.error, `a session cannot start on a pending account: ${JSON.stringify(launch).slice(0, 200)}`);
+    // The assistant cannot finish it: bind to a wider scope, an agent, a default, or another project is refused, and the bound project does not finish a key's account.
+    for (const bad of [{ project: "northwind" }, { agent: "kit" }, { is_default: true }, {}]) assert.equal((await asJuno("sessions.accounts.bind", { id: started.data.id, ...bad })).error?.code, "denied", JSON.stringify(bad));
+    assert.equal((await asJuno("sessions.accounts.bind", { id: started.data.id, project: "harlow-legal" })).data.pending, true, "its own bind never finishes the account");
+    assert.equal((await asJuno("sessions.accounts.remove", { id: started.data.id })).error?.code !== undefined, true, "remove is the person's");
+    assert.equal((await w.tool("sessions.accounts.list", { provider: "grok" })).data.length, 1, "still there");
+    // The person finishes it on their own surface (their bind confirms a key's account), and removes it.
+    assert.equal((await w.tool("sessions.accounts.bind", { id: started.data.id, project: "harlow-legal" })).data.pending, false);
+    assert.equal((await w.d.registry.call("sessions.accounts.resolve", { provider: "grok", account: started.data.id, project: "harlow-legal" }, "module:vyred")).error, undefined);
+    assert.equal((await w.tool("sessions.accounts.remove", { id: started.data.id })).error, undefined);
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).error, undefined, "the person adds directly");
   });
 
   test(`${driver}: a model session cannot stop, delete or read another project's thread, may stop a child it started, a plain mcp caller never mutates, and the verified assistant still can`, { skip }, async t => {

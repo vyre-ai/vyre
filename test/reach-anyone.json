@@ -327,23 +327,19 @@
   },
   "sessions.accounts.add": {
    "module": "sessions",
-   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
+   "reason": "askedOnly(): runs for a person's surface, on meta.asked, or for the verified assistant (meta.agent), which only STARTS an account: it covers the request's project only and is pending (never resolved, never a fallback) until the person finishes it on their own device; any other agent gets not_asked"
   },
   "sessions.accounts.bind": {
    "module": "sessions",
-   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
+   "reason": "askedOnly(): a non-person (the verified assistant, or on meta.asked) binds only to the project the request came from, never an agent, a default or '*', and never finishes a pending account; the person's surface sets anything wider and confirms a key's account"
   },
   "sessions.accounts.list": {
    "module": "sessions",
    "reason": "read-only (an agent sees accounts without their vault item names)"
   },
-  "sessions.accounts.remove": {
-   "module": "sessions",
-   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
-  },
   "sessions.accounts.signin": {
    "module": "sessions",
-   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
+   "reason": "askedOnly(): as add; a non-person starts a sign-in only for a new or still-pending account, scoped to the request's project, and the account is usable only when the person finishes the provider's own sign-in on their device (markSignedIn)"
   },
   "sessions.limits.get": {
    "module": "sessions",

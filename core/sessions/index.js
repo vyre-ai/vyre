@@ -16,7 +16,7 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import fs from "node:fs";
@@ -53,14 +53,17 @@ CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, message
 
 /**
  * "asked" reach, enforced here until the kernel's own check (P17) lands: the tool runs for a person's own
- * surface; anyone else (an agent, the assistant, a module) only when meta.asked says the person's own words in their
- * own turn asked for exactly this. Otherwise refused, no prompt (lead's ruling, 1 Oct).
+ * surface; anyone else only when meta.asked says the person's own words in their own turn asked for exactly this; and,
+ * for the tools that only start something the person must finish (add, signin, bind), the verified assistant (lead's ruling, 1 Oct).
  * @param {any} meta @param {string} what
  */
-export function askedOnly(meta, what) {
+export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
   if (m.asked) return;
+  // The verified assistant (vyred's meta.agent, never the label) may start an account for the person; the account stays pending until the
+  // person finishes it on their own device (accounts.js pending), so this lets it start, never finish.
+  if (assistant && m.agent && m.agentKind === "assistant") return;
   throw Object.assign(new Error(`${what} runs only when the person asked for it; nothing in their own words asked for this`), { code: "not_asked" });
 }
 
@@ -77,7 +80,7 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION]);
     const db = ctx.store.db;
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
@@ -262,16 +265,23 @@ export default {
         return seesItems ? rows : rows.map(({ vault_item, ...r }) => r);
       });
 
+    /** The project the request came from: the calling session's own thread's project, or null. @param {any} meta */
+    const requestProject = async meta => {
+      const th = meta && typeof meta.thread === "string" ? await ctx.call("threads.get", { thread: meta.thread, limit: 1 }).catch(() => null) : null;
+      const p = th && th.data && th.data.thread && th.data.thread.project;
+      return p ? String(p) : null;
+    };
     tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
       async (i, meta) => {
-        askedOnly(meta, "Adding an account");
-        // Not a person's surface: the account covers the project the request came from, never every project.
-        if (i.scope === undefined && !isPerson(meta || {})) {
-          const th = meta && typeof meta.thread === "string" ? await ctx.call("threads.get", { thread: meta.thread, limit: 1 }).catch(() => null) : null;
-          const project = th && th.data && th.data.thread && th.data.thread.project;
-          i = { ...i, scope: { projects: project ? [String(project)] : [], agents: "*" } };
+        askedOnly(meta, "Adding an account", { assistant: true });
+        // Not a person's surface: the account covers only the project the request came from, never every project, and is pending
+        // (unusable) until the person finishes it on their own device (a login's sign-in, or their bind of a key's account).
+        const byPerson = isPerson(meta || {});
+        if (!byPerson) {
+          const project = await requestProject(meta);
+          i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
         if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i);
       });
@@ -288,7 +298,8 @@ export default {
     tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
       { type: "object", properties: { provider: str, label: str, account: str, flow: str, code: str } },
       async (i, meta) => {
-        askedOnly(meta, "Signing in an account");
+        askedOnly(meta, "Signing in an account", { assistant: true });
+        const byPerson = isPerson(meta || {});
         if (i.flow && i.code) return signins.submit(String(i.flow), String(i.code));
         if (i.flow) return signins.status(String(i.flow));
         const provider = String(i.provider || "");
@@ -296,8 +307,14 @@ export default {
         if (provider === "claude" && !usesSpawner()) throw Object.assign(new Error("on this machine Claude uses the login already on it (run claude and sign in there)"), { code: "bad_input" });
         let row = i.account ? accounts.row(String(i.account)) : null;
         if (i.account && (!row || row.provider !== provider || row.kind !== "login")) throw Object.assign(new Error("that is not a login account on this provider"), { code: "bad_input" });
+        // A non-person starts a sign-in only for a new account, or one still pending: it never re-signs-in a working account.
+        if (!byPerson && row && !row.pending) throw Object.assign(new Error("only the person signs a working account in again"), { code: "denied" });
         const created = !row;
-        if (!row) row = await accounts.add({ provider, label: String(i.label || PROVIDERS.find(p => p.id === provider)?.label || provider), kind: "login" });
+        if (!row) {
+          const project = byPerson ? null : await requestProject(meta);
+          row = await accounts.add({ provider, label: String(i.label || PROVIDERS.find(p => p.id === provider)?.label || provider), kind: "login",
+            ...(byPerson ? {} : { scope: { projects: project ? [project] : [], agents: "*" }, pending: true }) });
+        }
         const account = row;
         try { return await signins.start({ provider, account, onDone: ok => { if (ok) accounts.markSignedIn(account.id); else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
         catch (e) { if (created) accounts.remove(account.id); throw e; }
@@ -305,11 +322,18 @@ export default {
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
-      async (i, meta) => { askedOnly(meta, "Removing an account"); return accounts.remove(i.id); });
+      async (i, meta) => { if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" }); return accounts.remove(i.id); });
 
     tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
       { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
-      async (i, meta) => { askedOnly(meta, "Binding an account"); return accounts.bind(i); });
+      async (i, meta) => {
+        askedOnly(meta, "Binding an account", { assistant: true });
+        if (isPerson(meta || {})) return accounts.bind({ ...i, confirm: true });
+        // Not a person's surface: only to the project the request came from, never "*", an agent or a default; it never finishes a pending account.
+        const project = await requestProject(meta);
+        if (!project || i.project !== project || i.agent || i.is_default) throw Object.assign(new Error("outside a person's surface an account is bound only to the project the request came from; a wider scope is set from the person's own surface"), { code: "denied" });
+        return accounts.bind({ id: i.id, project });
+      });
 
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
