@@ -15,6 +15,7 @@
 import { connections, MIGRATIONS } from "../../lib/connectors/connect.js";
 import { fromGraph, fromGoogle, upNext, requests } from "../../lib/connectors/calendar.js";
 import { catalogFrom } from "../../lib/connector-presets/index.js";
+import { isPerson } from "../../lib/caller.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -105,7 +106,7 @@ export default {
         // Widening who may use a connection is the person's act: the registry already limits `callers`, and this says it again
         // where it matters, so no change to the list above can let a model, an agent's thread or a module in.
         const who = String(meta && meta.caller || "");
-        if (!PEOPLE.includes(who)) throw fail("only you change who may use a connection, from your own screen", "denied");
+        if (!isPerson(meta)) throw fail("only you change who may use a connection, from your own screen", "denied");
         return conn.setScope(input, { as: who });
       },
     });
