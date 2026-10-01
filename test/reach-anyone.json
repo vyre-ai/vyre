@@ -127,7 +127,7 @@
   },
   "chrome.point": {
    "module": "chrome",
-   "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard); the URL floor applies to the tab and to the frame the point lands in; what is under the point is classified by its text (a Send, Delete, publish or payment holds at the Gate whatever the plan says) and a drawn surface (no text of its own) holds unless the approved plan covers it for this tab and origin (trust.pointBudget, set only by the module); the page must still match the kept screenshot. Tests: local/hands-chrome-mac/ext-point.test.js and the point_rung stage"
+   "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
   },
   "chrome.recipe": {
    "module": "chrome",

@@ -282,6 +282,44 @@ async function main() {
         return { steps: steps.length, params: first.recipe.params.length, firstMs, replayMs, oneCall: true };
       });
 
+      // Site learning is ON BY DEFAULT (0.2.0): this stage writes no `learn` setting at all. Visit 1 sends nothing the store would keep (two visits make evidence); visit 2 teaches it; the card
+      // then reaches the device and chrome_site returns it. A set of canary values typed into the form on both visits must never appear in any stored row.
+      await stage("learn_default", async () => {
+        writeConfig(data, { learnVisitMinutes: 0.02 });
+        const cfg = JSON.parse(fs.readFileSync(path.join(data, "config.json"), "utf8"));
+        if ("learn" in cfg && cfg.learn !== true) throw new Error("the harness config turned learning off before the default was tested: " + JSON.stringify(cfg));
+        const store = createSiteStore({ dataDir: data, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile } });
+        const origin = new URL(fixture.url).origin;
+        const url = `${fixture.url}/checkout?learn=1`;
+        const hn = await mcp.call("chrome_tabs", { action: "use", url, openIfMissing: true }); const lt = hn.id ?? (hn.tab && hn.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: lt, url }); await sleep(600);
+        const ask = { identifier: "apply-promo", name: "Apply promo" };
+        const CANARIES = ["CANARYFIRST-7731", "canary.7731@example.test", "CANARYCARD-4242-4242-4242", "CANARYNAME-Jordan-Quill"];
+        const visit = async () => {
+          await mcp.call("chrome_fill", { tab: lt, fields: [{ selector: { identifier: "f-first" }, value: CANARIES[0] }, { selector: { identifier: "f-email" }, value: CANARIES[1] }, { selector: { identifier: "f-card" }, value: CANARIES[2] }, { selector: { identifier: "f-card-name" }, value: CANARIES[3] }] }).catch(() => {});
+          await mcp.call("chrome_act", { tab: lt, selector: ask, kind: "click", wait: { timeoutMs: 4000 } });
+          await mcp.call("chrome_site", { action: "flush", tab: lt }); await sleep(600);
+        };
+        const id = controlId(pageTemplate(url), ask);
+        const rec = () => (store.record(origin) || { controls: [] }).controls.find((/** @type {any} */ c) => c.id === id);
+        await visit();
+        if (rec()) throw new Error("one visit already stored the control: a control is learned by what two visits saw");
+        await sleep(1500); await visit();
+        const learned = rec();
+        if (!learned || learned.selector.identifier !== "apply-promo") throw new Error("learning on by default did not learn the control after two visits: " + JSON.stringify(store.record(origin) && store.record(origin).controls).slice(0, 300));
+        // the card reaches the device on the next arrival, and chrome_site returns it
+        await mcp.call("chrome_tabs", { action: "navigate", tab: lt, url }); await sleep(900);
+        await mcp.call("chrome_act", { tab: lt, selector: ask, kind: "click", wait: { timeoutMs: 4000 } }); await sleep(800);
+        const card = await mcp.call("chrome_site", { tab: lt });
+        if (!JSON.stringify(card).includes("apply-promo")) throw new Error("visit 2's card does not carry the learned control: " + JSON.stringify(card).slice(0, 300));
+        // the canaries: not in any stored row, not in the card the device holds
+        const dir = path.join(data, "sites");
+        const rows = fs.existsSync(dir) ? fs.readdirSync(dir).map(f => fs.readFileSync(path.join(dir, f), "utf8")).join("\n") : "";
+        if (!rows) throw new Error("no stored rows to check the canaries against");
+        for (const c of [...CANARIES, "4242"]) if (rows.includes(c) || JSON.stringify(card).includes(c)) throw new Error(`a canary value (${c.slice(0, 10)}...) reached a stored row or the card`);
+        return { learnedAfterTwoVisits: learned.selector.identifier, cardHasControl: true, canaries: CANARIES.length, rowsBytes: rows.length };
+      });
+
       // Learning, verified and healed on the fixture (learning is on for this stage only, with a 1.2 s "visit"): a button is learned, moved (its identifier changes), found by its
       // label, re-learned under the SAME id with the new selector, then moved where nothing finds it: repeated misses quarantine it and the card stops offering it.
       await stage("site_heal", async () => {
