@@ -248,6 +248,8 @@ test("service worker: /app/<path> is answered from the build the loader named, h
 
   assert.equal((await ask("app.css")).status, 404, "nothing is served before a build is adopted");
   await w.fire("message", { data: { type: "vyre-build", sha, manifest } });
+  assert.deepEqual({ ...w.messages.at(-1) }, { type: "vyre-build", ok: true, sha }, "the loader is told the build is adopted, so it can start the app");
+  assert.equal((await w.fire("fetch", { request: new Request("https://app.vyre.run/app/%E0%A4%A") })).status, 404, "a malformed escape is a 404, not a thrown error");
   const ok = await ask("app.css");
   assert.equal(await ok.text(), "body{margin:0}");
   assert.equal((await ask("_expo/static/js/web/entry-0.4.2.js")).status, 200, "expo's own path under /app/");

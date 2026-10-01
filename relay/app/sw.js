@@ -97,7 +97,11 @@ async function appFile(rel) {
 async function respond(req) {
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== self.location.origin) return fetch(req);
-  if (url.pathname.startsWith("/app/")) return appFile(decodeURIComponent(url.pathname.slice(5)));
+  if (url.pathname.startsWith("/app/")) {
+    let rel = "";
+    try { rel = decodeURIComponent(url.pathname.slice(5)); } catch { return new Response("not found", { status: 404 }); }
+    return appFile(rel);
+  }
   if (url.pathname.startsWith("/v/")) {
     const folders = await caches.open(FOLDERS);
     const hit = await folders.match(url.pathname);
@@ -122,7 +126,7 @@ if (typeof self !== "undefined" && self.addEventListener) {
   self.addEventListener("activate", e => e.waitUntil(activateLoader().then(() => clients.claim())));
   self.addEventListener("fetch", e => e.respondWith(respond(e.request)));
   self.addEventListener("message", e => {
-    if (e.data && e.data.type === "vyre-build") e.waitUntil(adoptBuild(String(e.data.sha), String(e.data.manifest)).catch(err => tell({ type: "vyre-build", refused: true, why: String(err.message || err) })));
+    if (e.data && e.data.type === "vyre-build") e.waitUntil(adoptBuild(String(e.data.sha), String(e.data.manifest)).then(() => tell({ type: "vyre-build", ok: true, sha: String(e.data.sha) })).catch(err => tell({ type: "vyre-build", refused: true, why: String(err.message || err) })));
     if (e.data && e.data.type === "vyre-release?") e.waitUntil(active().then(a => e.source && e.source.postMessage({ type: "vyre-release", ...(a || {}) })));
   });
 }
