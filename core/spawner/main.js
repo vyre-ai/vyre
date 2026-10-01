@@ -13,7 +13,7 @@ import path from "node:path";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { serve } from "./server.js";
-import { readStatus, holdsNetAdmin, POOL } from "./wall.js";
+import { readStatus, holdsNetAdmin, recheck, POOL } from "./wall.js";
 
 const env = process.env;
 const num = (v, d) => (/^\d+$/.test(String(v || "")) ? Number(v) : d);
@@ -72,7 +72,7 @@ if (!process.getuid || process.getuid() !== 0) {
   const grantGroup = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/chmod", "710", dir], { stdio: "ignore" });
   // The watcher wall: pool uids, their folders, and the status the entry script wrote after installing and probing the rule.
   const watcher = { min: num(env.VYRE_WATCH_UID_MIN, POOL.min), max: num(env.VYRE_WATCH_UID_MAX, POOL.max), home: env.VYRE_WATCH_HOME || "/run/vyre-watch",
-    allow: [env.VYRE_WATCH_NODE || "/usr/local/bin/node"], status: () => readStatus(env.VYRE_WALL_STATUS), heldCap: holdsNetAdmin };
+    allow: [env.VYRE_WATCH_NODE || "/usr/local/bin/node"], status: () => readStatus(env.VYRE_WALL_STATUS), heldCap: holdsNetAdmin, reprobe: () => recheck() };
   const srv = await serve({ socket: SOCKET, mode: 0o660, allow, work: WORK, agent: AGENT, home, makeDir, grantGroup, accounts, watcher, log });
 
   // The loop, and so vyred, as uid vyre, in the shared group, with no capabilities, and knowing

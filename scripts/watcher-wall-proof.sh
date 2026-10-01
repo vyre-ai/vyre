@@ -30,10 +30,10 @@ docker cp "$HERE/scripts/watcher-wall-driver.mjs" wallbox:/tmp/watcher-wall-driv
 waitwall wallbox || { rec 1-wall-status false "no status after 60 s: $(docker logs wallbox 2>&1 | tail -5)"; exit 1; }
 s=$(status wallbox); echo "$s" | grep -q '"ok":true' && rec 1-wall-installed ok "$s" || rec 1-wall-installed false "$s"
 
-# 2 the serving spawner holds neither NET_ADMIN (bit 12) nor SETPCAP (bit 8)
+# 2 the serving spawner no longer holds NET_ADMIN (bit 12); it keeps SETPCAP (bit 8) only to start watchers with an empty bounding set
 pid=$(docker exec wallbox sh -c "pgrep -f 'spawner/main.js' | head -1")
 bnd=$(docker exec wallbox sh -c "sed -n 's/^CapBnd:[[:space:]]*//p' /proc/$pid/status")
-if [ -n "$bnd" ] && [ $(( (0x$bnd >> 12) & 1 )) -eq 0 ] && [ $(( (0x$bnd >> 8) & 1 )) -eq 0 ]; then rec 2-capabilities-dropped ok "CapBnd $bnd"; else rec 2-capabilities-dropped false "CapBnd '$bnd' of pid $pid"; fi
+if [ -n "$bnd" ] && [ $(( (0x$bnd >> 12) & 1 )) -eq 0 ]; then rec 2-capabilities-dropped ok "CapBnd $bnd"; else rec 2-capabilities-dropped false "CapBnd '$bnd' of pid $pid"; fi
 # vyred (uid vyre) has no capability at all
 vp=$(docker exec wallbox sh -c "pgrep -u vyre -f 'core/daemon' | head -1")
 veff=$(docker exec wallbox sh -c "sed -n 's/^CapEff:[[:space:]]*//p' /proc/${vp:-0}/status" 2>/dev/null)
@@ -49,6 +49,7 @@ if(a.env.some(k=>!["HOME","TMPDIR","PWD","SHLVL","_","OLDPWD"].includes(k)))bad.
 for(const k of ["loopback","public"])if(a[k]!=="ECONNREFUSED")bad.push(k+" "+a[k]);
 if(a.listenerSaw!==0)bad.push("the loopback listener saw "+a.listenerSaw+" connection(s)");
 if(!["EACCES","EPERM","ENOENT"].includes(a.unix))bad.push("unix "+a.unix);
+if(!/^0+$/.test(a.capBnd||"x"))bad.push("the child bounding set is not empty: "+a.capBnd);
 for(const k of ["work","vyreHome","vault"])if(a[k]==="yes")bad.push(k+" readable");
 if(a.ownHome!=="yes")bad.push("its own folder: "+a.ownHome);
 if(bad.length){console.log(bad.join("; "));process.exit(1)}' "$a" >"$OUT/probe.verdict" 2>&1 && rec 3-child-refused ok "$a" || rec 3-child-refused false "$(cat "$OUT/probe.verdict") :: $a"
@@ -73,6 +74,25 @@ rules=$(sudo nsenter -t "$npid" -n iptables -S OUTPUT 2>&1 | grep -c 'uid-owner 
 a2=$(drv wallbox probe)
 if [ "${at2:-0}" -ge "${at1:-1}" ] && [ "$rules" = 1 ] && echo "$a2" | grep -q '"loopback":"ECONNREFUSED"'; then rec 6-restart-reprobed ok "status at $at1 then $at2, one rule, child refused"
 else rec 6-restart-reprobed false "at $at1 then $at2, rules $rules: $a2"; fi
+
+# 6b the rule vanishes while this container keeps running (tailscale's container, whose namespace this one shares, was recreated alone):
+#    the status file still says ok, and the next watcher is refused all the same
+sudo nsenter -t "$npid" -n iptables -D OUTPUT -m owner --uid-owner 3000-3031 -j REJECT
+st=$(status wallbox)
+b6=$(drv wallbox probe)
+if echo "$st" | grep -q '"ok":true' && echo "$b6" | grep -q 'REFUSED.*watcher wall is not in place'; then rec 6b-rule-gone-refused ok "status still ok, spawn refused: $b6"; else rec 6b-rule-gone-refused false "status '$st', answer '$b6'"; fi
+# the next container start reinstalls and re-probes: a watcher runs again
+docker restart wallbox >/dev/null; sleep 1; docker cp "$HERE/scripts/watcher-wall-driver.mjs" wallbox:/tmp/watcher-wall-driver.mjs; waitwall wallbox
+b6c=$(drv wallbox probe)
+echo "$b6c" | grep -q '"loopback":"ECONNREFUSED"' && rec 6c-restart-reinstalls ok "$b6c" || rec 6c-restart-reinstalls false "$b6c"
+# 6d an abstract unix socket listening in the shared namespace is reachable by any uid, so it refuses the watcher; gone, it runs again
+docker exec -d -u vyre wallbox node -e 'require("net").createServer().listen("\0vyre-leak"); setTimeout(()=>{}, 600000)'
+sleep 2
+b6d=$(drv wallbox probe)
+if echo "$b6d" | grep -q 'REFUSED.*abstract unix socket'; then rec 6d-abstract-listener-refused ok "$b6d"; else rec 6d-abstract-listener-refused false "$b6d"; fi
+docker exec wallbox sh -c "pkill -f vyre-leak" >/dev/null 2>&1; sleep 1
+b6e=$(drv wallbox probe)
+echo "$b6e" | grep -q '"loopback":"ECONNREFUSED"' && rec 6e-abstract-gone-runs ok || rec 6e-abstract-gone-runs false "$b6e"
 
 # 7 a box that was not given NET_ADMIN says so and refuses a watcher
 docker rm -f wallbox >/dev/null; box wallbare "--cap-add SETUID --cap-add SETGID --cap-add KILL"

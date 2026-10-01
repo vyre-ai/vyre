@@ -48,7 +48,7 @@ const MAX_LIVE = 16;
  *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
- *   watcher: the watcher wall (role "watcher"): { min, max, home, allow, status, wrap?, makeDir?, wipe? }; without it a watcher spawn is refused
+ *   watcher: the watcher wall (role "watcher"): { min, max, home, allow, status, reprobe?, heldCap?, wrap?, makeDir?, wipe? }; without it a watcher spawn is refused
  *   accounts: the per-account uid range and where each HOME lives (ADR 0030 phase 2); without it
  *   a spawn naming an account is refused. shared: the groups an account joins only when asked
  *   (the /work group).
@@ -173,7 +173,7 @@ export async function serve(o) {
     try { asUid(who, "/bin/rm", "-rf", home); } catch {}
     try { asUid(who, "/usr/bin/find", "/tmp", "/var/tmp", "-mindepth", "1", "-user", String(who.uid), "-delete"); } catch {}
   };
-  const watcherWrap = (argv, cwd, who) => ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c",
+  const watcherWrap = (argv, cwd, who) => ["/usr/bin/setpriv", `--reuid=${who.uid}`, `--regid=${who.gid}`, "--clear-groups", "--inh-caps=-all", "--bounding-set=-all", "--", "/bin/sh", "-c",
     'umask 077; cd "$1" || exit 126; shift; exec "$@"', "sh", cwd, "/usr/bin/tini", "-s", "--", ...argv];
 
   function start(id) {
@@ -252,6 +252,12 @@ export async function serve(o) {
     let req;
     try { req = await line(sock); } catch (e) { sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); return; }
     if (req.op === "spawn") {
+      // A watcher: the wall is checked again right now. The rule lives in a namespace this container shares, so a status file that said ok at
+      // start proves nothing about this moment. A failed check refuses the spawn in plain words and changes nothing.
+      if (req.role === "watcher" && wl && wl.reprobe && wl.status().ok) {
+        const again = await wl.reprobe();
+        if (!again.ok) { sock.end(JSON.stringify({ error: `the watcher wall is not in place: ${again.why}` }) + "\n"); return; }
+      }
       const why = refuse(req);
       if (why) { sock.end(JSON.stringify({ error: why }) + "\n"); return; }
       const id = crypto.randomBytes(16).toString("hex");
