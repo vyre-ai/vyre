@@ -49,9 +49,9 @@ test("with two accounts the chip is a menu: it lists them, and choosing another 
   assert.ok($(chip, ".pmark"), "wearing the provider's badge");
   click(chip); await settle();
   const items = $$(c.el, "[role=option]");
-  assert.deepEqual(items.map(i => text(i).replace(/\s+/g, " ")).map(t => /Personal/.test(t) ? "Personal" : /OpenAI/.test(t) ? "OpenAI" : t), ["Personal", "OpenAI"]);
-  assert.match(text(items[1]), /ChatGPT Plus/);
-  click(items[1]); await settle();
+  assert.deepEqual(items.map(i => text(i).replace(/\s+/g, " ")).map(t => /Personal/.test(t) ? "Personal" : /OpenAI/.test(t) ? "OpenAI" : t), ["Personal", "Opus", "OpenAI"]);
+  assert.match(text(items[2]), /ChatGPT Plus/);
+  click(items[2]); await settle();
   assert.deepEqual(calls.find(x => x.tool === "threads.switch")?.input.provider, "codex");
   assert.equal(calls.find(x => x.tool === "threads.switch")?.input.account, "x1");
   c.stop();
@@ -59,7 +59,7 @@ test("with two accounts the chip is a menu: it lists them, and choosing another 
 
 test("with one account the chip names who answers and does nothing; choosing the account already answering sends nothing", async () => {
   calls.length = 0;
-  rows = [rows[0]];
+  rows = [{ ...rows[0], models: [] }];
   const c = mount("claude");
   await settle();
   const chip = $(c.el, ".composer-answer");
@@ -123,5 +123,28 @@ test("the @ menu offers the accounts only at the very start of the draft, and pi
   assert.ok(items.some(i => /Codex/.test(text(i)) && /Accounts/.test(text(i))), "Codex is offered as an account");
   click(items.find(i => /Accounts/.test(text(i))));
   assert.equal(c.value().trim(), "@Codex");
+  c.stop();
+});
+
+test("each account lists its models: a model of the answering account asks threads.model; a model of another asks threads.switch with it", async () => {
+  rows = [
+    { id: "claude", label: "Claude", accounts: [{ id: "c1", label: "Personal", signed_in: true, default: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] },
+    { id: "codex", label: "Codex", accounts: [{ id: "x1", label: "OpenAI", signed_in: true }], models: [{ id: "gpt-5", label: "GPT-5" }] }];
+  switchAnswer = { status: 200, body: { data: { ok: true } } };
+  calls.length = 0;
+  const c = mount("claude");
+  await settle();
+  click($(c.el, ".composer-answer")); await settle();
+  let items = $$(c.el, "[role=option]");
+  assert.deepEqual(["Personal", "Opus", "Sonnet", "OpenAI", "GPT-5"].map((w, i) => text(items[i]).startsWith(w)), [true, true, true, true, true]);
+  click(items[2]); await settle();
+  assert.deepEqual(calls.find(x => x.tool === "threads.model")?.input.model, "sonnet");
+  assert.equal(calls.filter(x => x.tool === "threads.switch").length, 0);
+  calls.length = 0;
+  click($(c.el, ".composer-answer")); await settle();
+  items = $$(c.el, "[role=option]");
+  click(items[4]); await settle();
+  const sw = calls.find(x => x.tool === "threads.switch")?.input;
+  assert.deepEqual([sw.provider, sw.account, sw.model], ["codex", "x1", "gpt-5"]);
   c.stop();
 });

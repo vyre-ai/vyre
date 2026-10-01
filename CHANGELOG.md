@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: choose the model in "Answer with"
+
+- Each account in the "Answer with" menu now lists its models under it (`providers.list`'s `models`, current one marked "now"). A model of the answering account asks `threads.model`; a model of another provider or account asks `threads.switch` with the model. The chip is a menu whenever there is anything to choose, even with one account. Codex and Grok list models only once sessions' init has reported them.
+
 #### chat: "@codex" asks one account for one turn
 
 - Typing `@codex`, `@grok` or `@claude` (or `@Provider-label` when a provider has several accounts) at the very start of a message runs that turn on that account while the session stays where it is. Send passes it as `threads.send`'s account mention (`{ kind: "account", id: "codex" | "codex:<account>" }`), not as a teammate; a word that is no account is still a teammate as before. The `@` menu lists the accounts that can answer, under "Accounts", only at the start of a draft. A refusal (out of usage, busy, open elsewhere) says what the box said and puts the words back. "Use in..." on a media card fills the composer with `@<Provider> #<item>` and this does the rest.

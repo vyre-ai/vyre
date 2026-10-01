@@ -3,7 +3,8 @@
 // providers.list. Pure: no DOM and no tool calls. Rows are the accounts that can answer (signed in; Claude counts without one),
 // each with its plan and models in a line, and the current one marked.
 
-/** @typedef {{ provider: string, account: string|null, label: string, sub: string, now: boolean }} AnswerRow */
+/** @typedef {{ id: string, label: string }} ModelChoice */
+/** @typedef {{ provider: string, account: string|null, label: string, sub: string, now: boolean, models: ModelChoice[] }} AnswerRow */
 
 /**
  * @param {any} rows providers.list's answer: [{ id, label, accounts: [{ id, label, signed_in, default, plan? }], models: [{ id, label }] }]
@@ -17,14 +18,15 @@ export function answerRows(rows, current = {}) {
     const provider = String(r?.id ?? r?.provider ?? "").toLowerCase();
     if (!provider) continue;
     const accounts = (Array.isArray(r.accounts) ? r.accounts : []).filter((/** @type {any} */ a) => a && a.signed_in !== false && a.signedIn !== false);
-    const models = (Array.isArray(r.models) ? r.models : []).map((/** @type {any} */ m) => String(m?.label || m?.id || "")).filter(Boolean).slice(0, 3);
+    const choices = (Array.isArray(r.models) ? r.models : []).filter((/** @type {any} */ m) => m && typeof m.id === "string" && m.id).map((/** @type {any} */ m) => ({ id: String(m.id), label: String(m.label || m.id) }));
+    const models = choices.map((/** @type {ModelChoice} */ m) => m.label).slice(0, 3);
     // Claude is always there to answer; the others need a signed-in account.
     const rowsFor = accounts.length ? accounts : provider === "claude" ? [{ id: null, label: null }] : [];
     for (const a of rowsFor) {
       const label = String(a.label || r.label || provider);
       const plan = typeof a.plan === "string" && a.plan ? a.plan : "";
       const mine = current.provider === provider && (current.account ? current.account === a.id : accounts.length ? a.default === true || accounts[0] === a : true);
-      out.push({ provider, account: a.id ? String(a.id) : null, label, sub: [plan, ...models].filter(Boolean).join(", "), now: !!mine });
+      out.push({ provider, account: a.id ? String(a.id) : null, label, sub: [plan, ...models].filter(Boolean).join(", "), now: !!mine, models: choices });
     }
   }
   // Only one row is "now": the first that matches.
@@ -63,3 +65,6 @@ export function accountAtStart(text, rows, nameOf) {
   const prov = rows.find(r => r.provider === word || nameOf(r.provider).toLowerCase() === word);
   return prov ? { mention: { kind: "account", id: prov.provider, name: nameOf(prov.provider) }, token: m[1] } : null;
 }
+
+/** Whether a model the session reports is this choice: the same id, or the alias inside a longer id ("claude-opus-4-5" is "opus"). @param {string|null|undefined} current @param {string} id */
+export const isModel = (current, id) => !!current && (current === id || current.toLowerCase().includes(id.toLowerCase()));
