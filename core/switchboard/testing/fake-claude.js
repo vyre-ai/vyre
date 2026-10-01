@@ -63,7 +63,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 

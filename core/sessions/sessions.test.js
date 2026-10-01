@@ -1136,6 +1136,52 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined, "the verified assistant");
   });
 
+  test(`${driver}: a GitHub project's session gets its commit identity and hooks in its environment on every launch and resume (github.session.env), and only those keys`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const env = { GIT_AUTHOR_NAME: "Dana (Harlow)", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "Dana (Harlow)", GIT_COMMITTER_EMAIL: "dana@example.com",
+      GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.hooksPath", GIT_CONFIG_VALUE_0: "/tmp/hooks-x", LD_PRELOAD: "/evil.so", GIT_SSH_COMMAND: "evil" };
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    const asked = [];
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "github.project.of") return { data: { repo: "harlow/legal" } };
+      if (tool === "github.session.env") { asked.push(input); return { data: { env } }; }
+      if (tool === "github.session.worktree") return { error: { code: "no_such_tool" } };
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const first = w.launches().at(-1);
+    assert.deepEqual([first.git.name, first.git.committer, first.git.count, first.git.k0, first.git.v0], ["Dana (Harlow)", "dana@example.com", "1", "core.hooksPath", "/tmp/hooks-x"]);
+    assert.ok(!JSON.stringify(first).includes("evil"), "only the identity and hooks keys reach the child");
+    // A resume asks again and carries the same environment.
+    await w.tool("threads.stop", { thread: th.id });
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "again", surface: "deck" })).error, undefined);
+    await w.finished(th.id, 2);
+    const second = w.launches().at(-1);
+    assert.equal(asked.length >= 2, true, "github.session.env is asked on the resume too");
+    assert.deepEqual([second.git.name, second.git.count, second.git.k0], ["Dana (Harlow)", "1", "core.hooksPath"]);
+  });
+
+  test(`${driver}: a GIT_CONFIG_COUNT already in vyred's environment is appended to, never overwritten, by the session's hooks entry`, { skip }, async t => {
+    const saved = { c: process.env.GIT_CONFIG_COUNT, k: process.env.GIT_CONFIG_KEY_0, v: process.env.GIT_CONFIG_VALUE_0 };
+    Object.assign(process.env, { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.useConfigOnly", GIT_CONFIG_VALUE_0: "true" });
+    t.after(() => { for (const [k, v] of [["GIT_CONFIG_COUNT", saved.c], ["GIT_CONFIG_KEY_0", saved.k], ["GIT_CONFIG_VALUE_0", saved.v]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+    const w = await boot(t, { driver });
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "github.project.of") return { data: { repo: "harlow/legal" } };
+      if (tool === "github.session.env") return { data: { env: { GIT_AUTHOR_NAME: "Dana", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.hooksPath", GIT_CONFIG_VALUE_0: "/tmp/hooks-x" } } };
+      if (tool === "github.session.worktree") return { error: { code: "no_such_tool" } };
+      return realCall(tool, input, caller, meta);
+    };
+    assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const g = w.launches().at(-1).git;
+    assert.deepEqual([g.count, g.k0, g.k1], ["2", "user.useConfigOnly", "core.hooksPath"], "the existing entry stays at 0 and the hooks entry is 1");
+  });
+
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
     const w = await boot(t, { driver });
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet

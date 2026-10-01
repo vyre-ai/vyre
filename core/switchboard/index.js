@@ -465,6 +465,27 @@ export class Switchboard {
   }
 
   /**
+   * A GitHub session's commit identity and hooks are its environment (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_* names and emails, and one
+   * GIT_CONFIG_* entry for the hooks folder), put in the session process on every launch AND resume. {} when the project has no repo, git is older than
+   * 2.31, or github is not here. Only those keys, only strings.
+   * @param {string|null|undefined} project @param {string} id
+   * @returns {Promise<Record<string, string>>}
+   */
+  async gitEnv(project, id) {
+    if (!project) return {};
+    try {
+      const gh = await this.deps.call("github.project.of", { project });
+      if (!gh || gh.error || !gh.data) return {};
+      const r = await this.deps.call("github.session.env", { project, session: id });
+      const e = r && !r.error && r.data && r.data.env;
+      if (!e || typeof e !== "object") return {};
+      /** @type {Record<string, string>} */ const out = {};
+      for (const [k, v] of Object.entries(e)) if (/^(GIT_AUTHOR_(NAME|EMAIL)|GIT_COMMITTER_(NAME|EMAIL)|GIT_CONFIG_(COUNT|KEY_0|VALUE_0))$/.test(k) && typeof v === "string") out[k] = v;
+      return out;
+    } catch { return {}; }
+  }
+
+  /**
    * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
    * guess between two paid accounts). Null when the provider has only this machine's own login.
    * `resuming`: the thread this is for, whose account must still exist.
@@ -584,6 +605,7 @@ export class Switchboard {
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
     // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
     // under the same thread: there is nothing of its own to resume.
+    o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
@@ -772,6 +794,17 @@ export class Switchboard {
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
+    // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
+    // is appended after it, never over it.
+    if (o.gitEnv) {
+      const { GIT_CONFIG_COUNT: n, GIT_CONFIG_KEY_0: k, GIT_CONFIG_VALUE_0: v, ...ident } = o.gitEnv;
+      Object.assign(env, ident);
+      if (n !== undefined && k !== undefined && v !== undefined) {
+        const have = Number.parseInt(String(env.GIT_CONFIG_COUNT ?? "0"), 10);
+        const at = Number.isInteger(have) && have > 0 && have < 1000 ? have : 0;
+        env[`GIT_CONFIG_KEY_${at}`] = k; env[`GIT_CONFIG_VALUE_${at}`] = v; env.GIT_CONFIG_COUNT = String(at + 1);
+      }
+    }
     // The key is how the child proves which agent it is: vyred believes "mcp:agent:<name>" only
     // with the key of a live thread of that agent (threads.vouch). A new one per process.
     const key = o.agent ? crypto.randomBytes(24).toString("base64url") : null;
@@ -1175,7 +1208,7 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt);
   }
 
