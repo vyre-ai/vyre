@@ -45,9 +45,9 @@ out=$(verify "$REF"); rc=$?
 # 3 signed by another signer: a throwaway key, no certificate from the release workflow
 KD=$(mktemp -d); docker run --rm --user "$(id -u):$(id -g)" -v "$KD:/k" -w /k -e COSIGN_PASSWORD= "$COSIGN_IMAGE" generate-key-pair >"$OUT/keygen.log" 2>&1
 if [ -s "$KD/cosign.key" ]; then
-  docker run --rm --network host -v "$KD:/k" -e COSIGN_PASSWORD= "$COSIGN_IMAGE" sign --yes --key /k/cosign.key --allow-insecure-registry --tlog-upload=false "$REF" >"$OUT/sign.log" 2>&1
+  docker run --rm --user "$(id -u):$(id -g)" --network host -v "$KD:/k" -e COSIGN_PASSWORD= "$COSIGN_IMAGE" sign --yes --key /k/cosign.key --allow-insecure-registry --tlog-upload=false "$REF" >"$OUT/sign.log" 2>&1
   # It is now signed, by a key: with the keyless identity the installer demands it must still be refused.
-  docker run --rm --network host -v "$KD:/k" "$COSIGN_IMAGE" verify --key /k/cosign.pub --allow-insecure-registry --insecure-ignore-tlog "$REF" >/dev/null 2>&1 && signed=1 || signed=0
+  docker run --rm --user "$(id -u):$(id -g)" --network host -v "$KD:/k" "$COSIGN_IMAGE" verify --key /k/cosign.pub --allow-insecure-registry --insecure-ignore-tlog "$REF" >/dev/null 2>&1 && signed=1 || signed=0
   out=$(verify "$REF"); rc=$?
   [ "$signed" = 1 ] && [ $rc -ne 0 ] && rec 3-wrong-signer-refused ok "signed by a throwaway key, refused by the release identity: $(echo "$out" | tail -1)" || rec 3-wrong-signer-refused false "signed=$signed rc=$rc: $(echo "$out" | tail -3) $(tail -2 "$OUT/sign.log")"
 else rec 3-wrong-signer-refused false "could not make a throwaway key: $(tail -2 "$OUT/keygen.log")"; fi
