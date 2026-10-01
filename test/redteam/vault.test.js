@@ -154,6 +154,11 @@ test("redteam V-M9: vault.request to a loopback, tailnet, link-local or metadata
   assert.equal((await cli("vault.put", credential("public-one"))).error, undefined, "a public host is accepted");
 });
 
+// Positive control for V-M10 lives in core/vault/request.test.js, "approving runs exactly the held request, re-checked; an edit, a wrong
+// caller or a changed credential is refused": the same test holds a real outward request, approves it, and watches it run exactly as
+// sealed (status 202, the credential added at the boundary, one request on the network), then refuses a forged card, an unsealed card,
+// an edited body, url and summary, a changed credential and a deleted one. It needs a fake network, which the daemon world here cannot
+// have (the target check refuses private addresses), so the control stays there and this test proves the daemon-level door.
 test("redteam V-M10: a model cannot hold a card of its own words through the vault-api sender, and an edited card never runs", async t => {
   const { cli, agent, reg } = await world(t);
   assert.equal((await cli("vault.put", credential("ms-graph"))).error, undefined);
