@@ -22,7 +22,7 @@ export const SURE = 0.5;
 /** The default daily cap on questions, in USD (config.memory.model.askDailyUsd): about 150 a day. */
 export const ASK_DAILY_USD = 0.5;
 /** What a surface shows when the cap is reached: never a silent failure. */
-export const LIMIT_MESSAGE = "Vyre IQ has used today's share of your Claude plan. It answers again tomorrow, or give memory a bigger share in Settings.";
+export const LIMIT_MESSAGE = "Vyre Memory has used today's share of your Claude plan. It answers again tomorrow, or give memory a bigger share in Settings.";
 /** What one answer call may cost at most, in USD. */
 export const MAX_USD = 0.02;
 
@@ -118,31 +118,78 @@ export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
 
 /**
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
- *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number }>)|null,
- *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
- *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean }} deps
+ *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number, onText?: (soFar: string) => void }) => Promise<{ text: string, usd: number }>)|null,
+ *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void, why?: () => string | null },
+ *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean,
+ *   decide?: ((i: { q: string, project_cwds: string[], writes?: any }) => Promise<any>)|null }} deps
+ *   decide: what the person decided (core/memory/decisions.js), tried before the model: "Now: X (since 24 Sep). Before: Y."
  *   personalQ: the question is about the user's own life; then only the user's own words, from
  *   sessions source trust keeps, may ground the answer (never Claude's turns or a reply).
  *   fixes: the person's corrections (iq/fix.js); every answer gets an answer_id they can correct.
  *   runner: null means only kept replies are used (the evaluation's replay, or no model at all).
  */
-export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true }) {
+/**
+ * The answer's text so far, out of a model reply that is JSON still arriving: what follows "answer": up to
+ * its closing quote. Null until the answer has begun.
+ * @param {string} soFar
+ */
+export function partialAnswer(soFar) {
+  const m = /"answer"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(String(soFar));
+  if (!m) return null;
+  let raw = m[1];
+  if (/(?:^|[^\\])(?:\\\\)*\\$/.test(raw)) raw = raw.slice(0, -1);
+  try { return JSON.parse(`"${raw}"`); } catch { return raw.replace(/\\u[0-9a-fA-F]{0,3}$/, ""); }
+}
+
+/**
+ * A runner's onText that hands `draft` the answer so far, at least 100 ms apart.
+ * @param {(text: string) => void} draft @param {() => void} used
+ */
+export function drafter(draft, used) {
+  let last = 0, sent = "";
+  return soFar => {
+    const t = partialAnswer(soFar);
+    const now = Date.now();
+    if (!t || t === sent || now - last < 100) return;
+    last = now; sent = t; used();
+    try { draft(t); } catch { /* a closed connection never fails the answer */ }
+  };
+}
+
+/** What a site answer is remembered by in a correction: the sites it is about, never its text. @param {any[]} sources */
+const siteMark = sources => `site answer: ${[...new Set((sources || []).map(x => x && x.site).filter(Boolean))].sort().join(", ")}`;
+
+export function asker({ db, answer, retrieve, site = null, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true, decide = null }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
   /**
-   * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null,
-   *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void }} input
+   * writes: the scope of memory writes (core/memory/write.js) retrieval may add as passages.
+   * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null, writes?: any,
+   *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void, draft?: ((text: string) => void)|null }} input
    *   stage: told as each step starts, so a surface shows what IQ is doing (ADR 0034, stream).
+   *   draft: the answer so far, for the calling connection only (never the events bus), from a streaming runner,
+   *   at most every 100 ms; "" once the check fails, so the surface removes it.
    */
-  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {}, screen = null }) {
+  return async function ask({ question, project_cwds = [], personal: sees = false, siteOk = false, thread = null, stage = () => {}, screen = null, writes = null, draft = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
+    // A site Vyre for Chrome learned, when the question names it ("what do you know about GoHighLevel?"), is worked out in code,
+    // for the person's own surfaces only. It never decides anything: the normal answer always runs, and what it finds answers alone; the
+    // site summary answers only when nothing else did.
+    const siteAns = site && siteOk && q ? await Promise.resolve(site(q)).catch(() => null) : null;
     const done = r => {
-      const out = { answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) };
+      let out = { answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) };
+      if (siteAns && siteAns.answer && out.via !== "corrected") {
+        // What the normal answer finds answers alone; the site summary speaks only when nothing else did.
+        if (!(out.answer && !out.abstained)) { const { limited, message, why, ...rest } = out; out = { ...rest, answer: siteAns.answer, confidence: siteAns.confidence, abstained: false, known: [], sources: siteAns.sources, via: "site" }; }
+        // Said to be wrong: the site summary is never given again for this question. It is remembered by the question and the site, not
+        // by its text, which changes with every count and date.
+        if (fix && fix.action === "wrong" && out.via === "site" && fix.old === siteMark(out.sources)) out = { answer: null, confidence: 0, abstained: true, known: [`You said "${fix.old}" is wrong.`], sources: [], via: "corrected", why: "corrected", cost_usd: 0, latency_ms: out.latency_ms };
+      }
       // An answer the person can correct where it appears, by this id.
       // A "not sure" has one too: the person can type the answer IQ did not have.
-      if (fixes && q && out.via !== "corrected" && !out.limited) out.answer_id = fixes.issue({ question: q, answer: out.answer || "", via: out.via, facts: r.facts || [], sources: out.sources });
+      if (fixes && q && out.via !== "corrected" && !out.limited) out.answer_id = fixes.issue({ question: q, answer: out.via === "site" ? siteMark(out.sources) : out.answer || "", via: out.via, facts: r.facts || [], sources: out.sources });
       delete out.facts;
       return out;
     };
@@ -164,6 +211,13 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
         return refused({ answer: f.answer, confidence: f.confidence, abstained: false, sources: f.sources || [], via: "fact", facts: (f.facts || []).map(x => String(x.id)) });
       }
     }
+    // 1b. A decision the person made, newest wins (plan 3.5): "Now: X (since 24 Sep). Before: Y." No model.
+    if (decide && !personalQ(q)) {
+      const d = await decide({ q, project_cwds, writes }).catch(() => null);
+      if (d && d.answer) {
+        return refused({ answer: d.answer, confidence: d.confidence, abstained: false, sources: [d.source], history: d.history, via: "decision" });
+      }
+    }
     // 2. The passages.
     stage("searching");
     const forgotten = fixes ? fixes.forgotten() : new Set();
@@ -175,20 +229,20 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     // and the model sees it, marked as never a source. Never for a question about the user's life,
     // never as evidence, never cited.
     const view = !mine && screen && POINTS.test(q) ? screenText(screen) : "";
-    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread, hint: view })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
+    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread, hint: view, ...(writes ? { writes } : {}) })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
     if (mine) passages = passages.filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
       .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) })).filter(p => p.text.trim());
     if (!passages.length) return done({ via: "retrieval" });
     // 3. The answer, kept by the prompt's hash.
     const prompt = askPrompt(q, passages, view);
     const hash = askHash(prompt);
-    let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0;
+    let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0, shown = false;
     // The day's cap is reached: say so, with where to change it, and never answer quietly with nothing.
-    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: LIMIT_MESSAGE });
+    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: (budget.why && budget.why()) || LIMIT_MESSAGE });
     if (text == null && runner) {
       stage("reading");
       try {
-        const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD });
+        const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD, ...(draft ? { onText: drafter(draft, () => { shown = true; }) } : {}) });
         text = r.text; usd = r.usd || 0;
         budget.charge(usd);
         put.run(hash, VERSION, Date.now(), String(text), usd);
@@ -206,7 +260,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
       const again = own.length ? checkAsk({ ...parseAsk(text), cite: own.map((_, i) => i + 1) }, own, { header: false }) : { abstained: true };
       if (again.abstained) c = { abstained: true, known: c.known || [], why: "who someone is to you stands only on your own words" };
     }
-    if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
+    if (c.abstained) { if (shown && draft) draft(""); return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why }); }
     const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).flatMap(p => [{ session: p.session, seq: p.seq, role: p.role, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null },
       ...(p.reply ? [{ session: p.session, seq: p.reply.seq, role: "assistant", name: p.name, quote: String(p.reply.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }] : [])]);
     return refused({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });

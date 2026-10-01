@@ -35,7 +35,7 @@ const GATE_JS = `export default { async start(ctx) {
   return {};
 } };`;
 
-async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {any} */ (null), floor = /** @type {any} */ (null) } = {}) {
+async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {any} */ (null), floor = /** @type {any} */ (null), origin = /** @type {any} */ (null) } = {}) {
   const home = tempHome(t);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
@@ -48,7 +48,7 @@ async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {
   fs.writeFileSync(path.join(gateDir, "index.js"), GATE_JS);
   const f = fakeApp({ elements: [] });
   const reg = new Registry({ db, events: new Events(db), log: () => {},
-    config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { extensionOrigin: null, sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
+    config: { role: "local", hands: { runner: f.run, sleep: async () => {} }, chrome: { extensionOrigin: origin, sockPath, nativeHost, floor, home: sockDir, platform: "darwin", hostDir: sockDir } } });
   const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE || m.dir === HANDS), ...(gate ? discover([path.join(home, "mods")]) : [])];
   // The stand-in Gate stands for Vyre's own Gate module, which is first party; an added module could not call chrome.release.
   const firstParty = reg.isFirstParty.bind(reg);
@@ -64,8 +64,9 @@ async function rig(/** @type {any} */ t, { gate = true, nativeHost = /** @type {
 
 /** A fake extension with tabs and a snapshot, recording every op. */
 const ext = (/** @type {string} */ sockPath, /** @type {any} */ over = {}) => fakeExtension(sockPath, {
-  handler: (op, args) => {
-    if (over[op]) return over[op](args);
+  handler: (op, args, frame) => {
+    // The fakes below read approvals the way the old wire carried them; they now arrive in frame.trust, so show them together.
+    if (over[op]) return over[op]({ ...args, ...(frame && frame.trust ? frame.trust : {}) });
     if (op === "tabs.list") return { tabs: [
       { id: 1, url: "https://harlow.example/intake?token=abcdefghijklmnop", title: "Intake", attached: true },
       { id: 2, url: "https://chase.com/accounts", title: "Chase" },
@@ -92,6 +93,7 @@ test("module: it offers chrome:mac to the Gate for acts, again before the first 
   await reg.call("chrome.act", { selector: { role: "button", name: "Send" }, kind: "click" }, "cli");
   const o = gate().offers.find((/** @type {any} */ x) => x.name === "chrome:mac");
   assert.deepEqual([o.tool, o.kinds], ["chrome.release", ["act"]]);
+  assert.equal(o.recipients, "to", "the Gate matches an asked send or a standing permission on the site origin, which is `to`");
 });
 
 test("module: with no extension connected, a call says so", async t => {
@@ -219,15 +221,17 @@ test("module: a held outward act becomes a Gate card with the fields and origin,
   assert.deepEqual(req.content.fields, [{ name: "Email", value: "alex@example.com" }]);
   assert.equal(req.content.control, "button Send inquiry");
   assert.deepEqual([req.content.op, req.content.args, req.content.signature], [undefined, undefined, undefined], "what to replay never rides on the card");
-  assert.equal(x.ops("page.act")[0].args.asked, false, "an agent's own act was not asked for by the person");
+  assert.equal(x.ops("page.act")[0].trust.asked, false, "an agent's own act was not asked for by the person");
 
   // Only the Gate releases.
   assert.equal((await reg.call("chrome.release", { id: "held-1", content: req.content }, "cli")).error.code, "no_such_tool");
   const rel = await reg.call("chrome.release", { id: "held-1", content: req.content }, "module:gate");
   assert.equal(rel.error, undefined, JSON.stringify(rel));
   assert.equal(rel.data.ok, true);
-  const sent = x.ops("page.act")[1].args;
-  assert.equal(sent.release.sig, "sig-1");
+  const sentFrame = x.ops("page.act")[1];
+  const sent = sentFrame.args;
+  assert.equal(sentFrame.trust.release.sig, "sig-1", "the approval rides in trust");
+  assert.equal(sent.release, undefined, "and never in args");
   assert.equal(sent.selector.name, "Send inquiry");
   assert.ok(events("chrome.acted").some((/** @type {any} */ e) => /released/.test(e.payload.summary)));
 });
@@ -242,7 +246,7 @@ test("module: a send the person's words or a standing permission cover is releas
   const r = await reg.call("chrome.act", { selector: { role: "button", name: "Send inquiry" }, kind: "click", tab: 1 }, "cli");
   assert.equal(r.error, undefined, JSON.stringify(r));
   assert.equal(r.data.sent, true, "the act went out and its result came back");
-  assert.equal(x.ops("page.act")[1].args.release.sig, "sig-9", "release replayed what was held, found by its ref");
+  assert.equal(x.ops("page.act")[1].trust.release.sig, "sig-9", "release replayed what was held, found by its ref");
   // The ref is single-use: replaying it later finds nothing.
   const again = await reg.call("chrome.release", { id: "sent-1", content: gate().requests.at(-1).content }, "module:gate");
   assert.equal(again.error.code, "denied");
@@ -360,7 +364,7 @@ test("module: an agent's own Gate card releases nothing, and a script or API cal
   assert.equal((await reg.call("chrome.eval", { expression: "send()", tab: 1 }, "cli")).data.value, 2);
   const rel = await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate");
   assert.equal(rel.error, undefined, JSON.stringify(rel));
-  assert.equal(x.ops("page.eval").at(-1).args.asked, true);
+  assert.equal(x.ops("page.eval").at(-1).trust.asked, true);
   assert.equal((await reg.call("chrome.release", { id: held.data.id, content: {} }, "module:gate")).error.code, "denied");
 });
 
@@ -377,4 +381,291 @@ test("module: the panel's controls (pause, plan.edit, voice) are the person's, n
   assert.equal(events("chrome.voice").length, 1);
   assert.equal(events("chrome.plan").at(-1).payload.steps[1].text, "Fill in only the name");
   assert.equal(events("chrome.plan").at(-1).payload.run, "kit");
+});
+
+test("module: chrome.open on a site that did not load says so (the tab and why), not a bare blind refusal", async t => {
+  const { reg, connect } = await rig(t);
+  await connect({ "tabs.use": () => ({ id: 7, windowId: 1, url: "chrome-error://chromewebdata/", title: "app.harlow.example", opened: true, loaded: false, failed: "the page did not load: Chrome is showing its own error page." }) });
+  const r = await reg.call("chrome.open", { url: "https://app.harlow.example/" }, "cli");
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.deepEqual([r.data.blind, r.data.tab, r.data.loaded], [true, 7, false]);
+  assert.match(r.data.failed, /did not load/);
+  assert.match(r.data.why, /did not load/);
+});
+
+// ---- why there is no extension, and the one fix (the user's first install: nothing said what was wrong)
+const HOST_OK = { status: () => ({ installed: [{ browser: "chrome" }], launcherExists: true, launcherExecutable: true }), install: () => ({}) };
+
+test("diagnose: nothing has ever connected: says Chrome never started the connector, and the fix (load and enable the extension, then quit and reopen Chrome)", async t => {
+  const { reg } = await rig(t, { nativeHost: HOST_OK });
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.equal(st.connected, false);
+  assert.equal(st.stage, "host_never_started");
+  assert.match(st.problem, /no connector process has ever connected/);
+  assert.match(st.fix, /chrome:\/\/extensions.*quit and reopen Chrome/);
+  const r = await reg.call("chrome.snapshot", {}, "cli");
+  assert.equal(r.error.code, "no_extension");
+  assert.match(r.error.message, /Chrome has not started the connector/);
+  assert.match(r.error.message, /quit and reopen Chrome/);
+});
+
+test("diagnose: a connector that is not registered says to run install", async t => {
+  const { reg } = await rig(t, { nativeHost: { status: () => ({ installed: [], launcherExists: true }), install: () => ({}) } });
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.equal(st.stage, "host_not_registered");
+  assert.match(st.fix, /vyre-chrome install/);
+});
+
+test("diagnose: a host that connected but never said hello, and one that was connected and dropped, are told apart", async t => {
+  const { reg, sockPath } = await rig(t, { nativeHost: HOST_OK });
+  const silent = await fakeExtension(sockPath, { hello: false });
+  await until(async () => (await reg.call("chrome.status", {}, "cli")).data.socket.connections >= 1);
+  assert.equal((await reg.call("chrome.status", {}, "cli")).data.stage, "host_no_hello");
+  await silent.close();
+  const good = await fakeExtension(sockPath);
+  await until(async () => (await reg.call("chrome.status", {}, "cli")).data.connected);
+  assert.equal((await reg.call("chrome.status", {}, "cli")).data.problem, undefined, "no problem while connected");
+  await good.close();
+  await until(async () => !(await reg.call("chrome.status", {}, "cli")).data.connected);
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.equal(st.stage, "extension_dropped");
+  assert.match(st.problem, /connected and then disconnected/);
+});
+
+test("diagnose: a host launched for a different extension id is refused and says so", async t => {
+  const key = JSON.parse(fs.readFileSync(path.join(HERE, "extension", "manifest.json"), "utf8")).key;
+  const { extensionIdFromKey } = await import("./native-host/install.js");
+  const right = `chrome-extension://${extensionIdFromKey(key)}/`;
+  const { reg, sockPath } = await rig(t, { nativeHost: HOST_OK, origin: right });
+  const wrong = await fakeExtension(sockPath, { hello: false });
+  await wrong.send({ event: "host", origin: "chrome-extension://" + "a".repeat(32) + "/" });
+  await wrong.hello();
+  await until(async () => (await reg.call("chrome.status", {}, "cli")).data.stage === "host_refused");
+  const st = (await reg.call("chrome.status", {}, "cli")).data;
+  assert.match(st.problem, /different extension id/);
+  assert.match(st.fix, /vyre-chrome install/);
+});
+
+test("module: an approved plan covers that many creates; a kind it does not list, a publish, and a stopped run still ask", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const heldWrite = (/** @type {string} */ kind, /** @type {string} */ method) => ({ ok: false, held: true, write: true, kind, method, why: "a change with the person's login", control: { role: "request", name: `${method} https://api.example/x` }, fields: [], sig: "s", url: "https://app.example/w" });
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked)
+    ? { ok: true, status: 200, method: a.entry === "del" ? "DELETE" : "POST" }
+    : a.entry === "pub" ? { ok: false, held: true, control: { role: "request", name: "POST https://api.example/publish" }, fields: [], sig: "p", url: "https://app.example/w" }
+    : a.entry === "del" ? heldWrite("delete", "DELETE") : heldWrite("create", "POST") });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const call = (/** @type {string} */ entry) => reg.call("chrome.api", { action: "call", entry, tab: 1 }, KIT);
+  // no plan: a write is held for the person
+  assert.equal((await call("c1")).data.held, true);
+  // the plan: the person approves it once, through the same release path as a send
+  const p = await reg.call("chrome.approve", { title: "Two drafts", items: [{ kind: "create", what: "draft workflow", count: 2 }, { kind: "publish", what: "nothing yet" }], tab: 1 }, KIT);
+  assert.equal(p.error, undefined, JSON.stringify(p));
+  assert.equal(p.data.held, true);
+  const card = gate().requests[gate().requests.length - 1];
+  assert.equal(card.content.kind, "plan");
+  assert.match(card.content.control, /Two drafts/);
+  assert.deepEqual(card.content.fields.map((/** @type {any} */ f) => f.value), ["draft workflow", "nothing yet"]);
+  const rel = await reg.call("chrome.release", { id: p.data.id, content: card.content }, "module:gate");
+  assert.equal(rel.data.approved, true);
+  assert.equal(rel.data.total, 3, "counts the publish too, which it lists but never covers");
+  const before = x.ops("api.call").length;
+  assert.equal((await call("c1")).data.ok, true, "the first create goes through");
+  assert.equal((await call("c2")).data.ok, true, "and the second");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 2);
+  assert.equal(x.ops("api.call").length - before, 4, "each covered write was tried, held, then sent once with writeOk");
+  assert.equal((await call("c3")).data.held, true, "a third create is not in the plan");
+  assert.equal((await call("del")).data.held, true, "a delete is not in the plan");
+  assert.equal((await call("pub")).data.held, true, "a publish is never covered");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 2, "nothing else was sent");
+});
+
+test("module: stopping Vyre ends the plan, and a plan needs real items", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked) ? { ok: true, status: 200, method: "POST" } : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://api.example/x" }, fields: [], sig: "s", url: "https://app.example/w" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  assert.equal((await reg.call("chrome.approve", { title: "x", items: [] }, KIT)).error.code, "bad_request");
+  assert.equal((await reg.call("chrome.approve", { title: "x", items: [{ kind: "rm-rf", what: "all" }] }, KIT)).error.code, "bad_input");
+  const p = await reg.call("chrome.approve", { title: "One", items: [{ kind: "create", what: "a draft" }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.stop", { by: "esc" }, "capsule");
+  await reg.call("chrome.resume", { answer: "ok" }, "capsule");
+  const r = await reg.call("chrome.api", { action: "call", entry: "c1", tab: 1 }, KIT);
+  assert.equal(r.data.held, true, "the plan did not survive the stop");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 0);
+});
+
+test("module: the summary says what a plan's writes changed, what can be undone, and what still waits; it clears for the next job", async t => {
+  const { reg, gate, connect } = await rig(t);
+  let n = 0;
+  await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked)
+    ? { ok: true, status: 201, method: "POST", url: "https://api.example/workflow/abc", responseBody: JSON.stringify({ data: { id: `wf_${++n}` } }) }
+    : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://api.example/workflow/abc" }, fields: [], sig: "s", url: "https://app.example/w" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const empty = await reg.call("chrome.summary", {}, KIT);
+  assert.match(empty.data.lines[0], /Nothing was changed/);
+  const p = await reg.call("chrome.approve", { title: "Two drafts", items: [{ kind: "create", what: "draft", count: 2 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT);
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT);
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT); // a third: held, and it is pending
+  const s = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(s.error, undefined, JSON.stringify(s));
+  assert.deepEqual(s.data.counts, { create: 2, edit: 0, delete: 0 });
+  assert.deepEqual(s.data.changes.map((/** @type {any} */ c) => c.id), ["wf_1", "wf_2"]);
+  assert.match(s.data.changes[0].undo, /^delete wf_1$/);
+  assert.match(s.data.lines[0], /2 changes made: 2 created/);
+  assert.ok(s.data.lines.some((/** @type {string} */ l) => /1 action is still waiting/.test(l)));
+  assert.ok(s.data.lines.some((/** @type {string} */ l) => /2 of 2 used/.test(l)));
+  const again = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(again.data.changes.length, 0, "cleared for the next job");
+});
+
+test("module: a publish is covered only when the plan says the person's own words asked for it; a delete never is", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const pubHeld = { ok: false, held: true, kind: "publish", method: "POST", control: { role: "request", name: "POST https://api.example/workflow/w1/publish" }, fields: [], sig: "p", url: "https://app.example/w" };
+  const delHeld = { ok: false, held: true, write: true, kind: "delete", method: "DELETE", control: { role: "request", name: "DELETE https://api.example/workflow/w1" }, fields: [], sig: "d", url: "https://app.example/w" };
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.asked || a.writeOk) ? { ok: true, status: 200, method: a.entry === "del" ? "DELETE" : "POST", url: "https://api.example/workflow/w1/publish" } : a.entry === "del" ? delHeld : pubHeld });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const approve = async (/** @type {any} */ items) => { const p = await reg.call("chrome.approve", { title: "Build", items, tab: 1 }, KIT); const card = gate().requests[gate().requests.length - 1]; await reg.call("chrome.release", { id: p.data.id, content: card.content }, "module:gate"); return card; };
+  // not asked for: the plan lists the publish, but it still asks
+  await approve([{ kind: "publish", what: "the intake workflow" }, { kind: "delete", what: "old draft" }]);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.held, true);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "del", tab: 1 }, KIT)).data.held, true, "a delete always asks");
+  // asked for ("build and publish these"): the card says so, and the publish goes through once
+  const card = await approve([{ kind: "publish", what: "the intake workflow", asked: true }]);
+  assert.deepEqual(card.content.fields.map((/** @type {any} */ f) => f.name), ["and publish x1"]);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.ok, true);
+  assert.equal((await reg.call("chrome.api", { action: "call", entry: "pub", tab: 1 }, KIT)).data.held, true, "only as many as the plan said");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => o.trust.asked === true).length, 1);
+});
+
+test("module: the finish card and summary link each created item to its own builder page on the person's own host", async t => {
+  const { reg, gate, connect } = await rig(t);
+  let n = 0;
+  await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "Workflows", url: "https://crm.harlowlaw.example/v2/location/LOC1234/automation/workflows", active: true }] }),
+    "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked)
+      ? { ok: true, status: 201, method: "POST", url: "https://backend.example.com/workflow/LOC1234", responseBody: JSON.stringify({ id: `wfid${++n}abc` }) }
+      : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://backend.example.com/workflow/LOC1234" }, fields: [], sig: "s", url: "https://crm.harlowlaw.example/x" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  const p = await reg.call("chrome.approve", { title: "Two", items: [{ kind: "create", what: "workflow", count: 2 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.api", { action: "call", entry: "a", tab: 1 }, KIT);
+  const s = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(s.data.changes[0].open, "https://crm.harlowlaw.example/v2/location/LOC1234/automation/workflows/wfid1abc", JSON.stringify(s.data));
+  assert.match(s.data.lines.join("\n"), /open: https:\/\/crm\.harlowlaw\.example\/v2\/location\/LOC1234\/automation\/workflows\/wfid1abc/);
+});
+
+test("module: a model cannot approve its own write by passing writeOk (or asked); both are stripped before anything reaches Chrome", async t => {
+  const { reg, connect } = await rig(t);
+  const x = await connect({ "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked) ? { ok: true, status: 200, method: "POST" } : { ok: false, held: true, write: true, kind: "create", method: "POST", control: { role: "request", name: "POST https://api.example/x" }, fields: [], sig: "s", url: "https://app.example/w" } });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  const r = await reg.call("chrome.api", { action: "call", entry: "a", tab: 1, writeOk: true, asked: true }, KIT);
+  assert.equal(r.data.held, true, "still held: no plan covers it and the model's own claim counts for nothing");
+  assert.ok(x.ops("api.call").every((/** @type {any} */ o) => (o.trust || {}).writeOk !== true), "writeOk never reached the extension");
+});
+
+test("module: a plan is for one site: other tabs and other API origins are still asked", async t => {
+  const { reg, gate, connect } = await rig(t);
+  const write = (/** @type {string} */ origin) => ({ ok: false, held: true, write: true, kind: "create", method: "POST", origin, control: { role: "request", name: `POST ${origin}/x` }, fields: [], sig: "s", url: "https://app.example/w" });
+  let next = "https://api.one.example";
+  const x = await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "A", url: "https://app.one.example/v2/location/L1/automation/workflows" }, { id: 2, title: "B", url: "https://app.two.example/" }] }),
+    "api.call": (/** @type {any} */ a) => (a.writeOk || a.asked) ? { ok: true, status: 201, method: "POST" } : write(next) });
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  const p = await reg.call("chrome.approve", { title: "Some", items: [{ kind: "create", what: "drafts", count: 5 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  const call = (/** @type {number} */ tab) => reg.call("chrome.api", { action: "call", entry: "a", tab }, KIT);
+  assert.equal((await call(1)).data.ok, true, "the approved tab");
+  assert.equal((await call(2)).data.held, true, "another tab");
+  next = "https://api.other.example";
+  assert.equal((await call(1)).data.held, true, "another API origin");
+  next = "https://api.one.example";
+  assert.equal((await call(1)).data.ok, true, "the pinned origin still goes through");
+  assert.equal(x.ops("api.call").filter((/** @type {any} */ o) => (o.trust || {}).writeOk === true).length, 2);
+});
+
+test("module: a batch or recipe may make the writes an approved plan covers without stopping at each; the budget is the module's alone", async t => {
+  const { reg, gate, connect } = await rig(t);
+  /** @type {any[]} */ const seen = [];
+  const x = await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "A", url: "https://app.one.example/w" }] }),
+    "batch.run": (/** @type {any} */ a) => {
+      seen.push(a);
+      const b = a.writeBudget ? { ...a.writeBudget } : null;
+      const covered = [];
+      let created = 0;
+      for (let i = 0; i < 3; i++) { if (b && b.create > 0) { b.create--; covered.push({ kind: "create", res: { ok: true, status: 201, method: "POST", url: "https://api.one.example/x", origin: "https://api.one.example", responseBody: JSON.stringify({ id: `id${i}abcd` }) } }); created++; } }
+      return { ok: created === 3, done: created, results: [], ...(covered.length ? { covered } : {}) };
+    } });
+  void x;
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  // no plan: no budget, and a model's own budget is stripped
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  assert.equal(seen[0].writeBudget, undefined);
+  const p = await reg.call("chrome.approve", { title: "Two", items: [{ kind: "create", what: "drafts", count: 2 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }], writeBudget: { create: 99 } }, KIT);
+  assert.deepEqual(seen[1].writeBudget, { create: 2, edit: 0, tab: 1, tabOrigin: "https://app.one.example" }, "the plan's remaining count bound to its tab and site, not the model's");
+  const s = await reg.call("chrome.summary", {}, KIT);
+  assert.equal(s.data.counts.create, 2, "what the batch covered is counted and listed");
+  // the budget is spent: the next batch gets none
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[2].writeBudget, undefined);
+});
+
+
+test("module: the write budget is reserved when handed out: parallel batches cannot double it, unused writes come back, a lost reply counts as spent", async t => {
+  const { reg, gate, connect } = await rig(t);
+  /** @type {any[]} */ const seen = [];
+  /** @type {Function[]} */ const release = [];
+  const x = await connect({
+    "tabs.list": () => ({ tabs: [{ id: 1, title: "A", url: "https://app.one.example/w" }, { id: 2, title: "B", url: "https://app.two.example/" }] }),
+    "batch.run": (/** @type {any} */ a) => {
+      seen.push(a);
+      const covered = [];
+      const b = a.writeBudget ? { ...a.writeBudget } : { create: 0 };
+      // this batch only manages to make ONE write however much it was given
+      if (b.create > 0) covered.push({ kind: "create", res: { ok: true, status: 201, method: "POST", url: "https://api.one.example/x", origin: "https://api.one.example" } });
+      if (a.steps[0].op === "hang") return new Promise(() => {});
+      if (a.steps[0].op === "gate") return new Promise(r => release.push(() => r({ ok: true, done: 1, results: [], ...(covered.length ? { covered } : {}) })));
+      return { ok: true, done: covered.length, results: [], ...(covered.length ? { covered } : {}) };
+    } });
+  void x;
+  await reg.call("hands.grant.add", { agent: "kit" }, "cli");
+  await reg.call("chrome.plan", PLAN, KIT);
+  await reg.call("chrome.tabs", { action: "list" }, KIT);
+  const p = await reg.call("chrome.approve", { title: "Eight", items: [{ kind: "create", what: "drafts", count: 8 }], tab: 1 }, KIT);
+  await reg.call("chrome.release", { id: p.data.id, content: gate().requests[gate().requests.length - 1].content }, "module:gate");
+  // two batches at once: the first reserves all 8, the second gets nothing
+  const first = reg.call("chrome.batch", { tab: 1, steps: [{ op: "gate", args: {} }] }, KIT);
+  await until(() => seen.length >= 1);
+  const second = await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  void second;
+  assert.equal(seen[0].writeBudget.create, 8);
+  assert.equal(seen[1].writeBudget, undefined, "the second batch cannot get the same writes again");
+  release.forEach(f => f());
+  await first;
+  // it made one write: the other 7 come back
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[2].writeBudget.create, 7, "unused writes are returned, the used one is not");
+  // another tab gets no budget at all
+  await reg.call("chrome.batch", { tab: 2, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[3].writeBudget, undefined, "a batch on another tab gets zero");
+  // a reply that never comes: the reservation is spent, not handed out again
+  const lost = reg.call("chrome.batch", { tab: 1, timeoutMs: 80, steps: [{ op: "hang", args: {} }] }, KIT);
+  await lost;
+  await reg.call("chrome.batch", { tab: 1, steps: [{ op: "page.act", args: {} }] }, KIT);
+  assert.equal(seen[seen.length - 1].writeBudget, undefined, "what a lost batch held is counted as spent");
 });

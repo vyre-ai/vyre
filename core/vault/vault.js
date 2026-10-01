@@ -1057,6 +1057,21 @@ export class Vault {
   }
 
   /**
+   * The sealed secret of an oauth api-credential, replaced: what a sign-in stores and what a refresh
+   * rotates. Only the secret changes; the person-written config is carried over untouched. In-process
+   * only (a tool that calls this decides who may), so it is the one write to an api-credential that
+   * does not come from a person's surface.
+   * @param {string} name @param {string} secret
+   */
+  async setApiSecret(name, secret) {
+    const { row, config } = await this.apiCredential(name);
+    if (config.auth.type !== "oauth") throw new Error(`${row.name} is not an oauth credential, so it has no sign-in to store`);
+    const { fields } = await this.open(row);
+    await this.writeVersion(row, {}, { ...fields, secret: String(secret) }, "vault");
+    this.audit("sign-in", row.name, "vault", true, "tokens stored");
+  }
+
+  /**
    * Open an item: `{ meta, fields }`. The row must pass its MAC, the file must be the version
    * the row names, and the sealed meta must match the row, or it is refused and audited.
    */
@@ -1099,6 +1114,13 @@ export class Vault {
       if (typeof v !== "string") throw new Error(`field ${k} must be text`);
       if (v.length > MAX_VALUE) throw new Error(`field ${k} is larger than 64 KB`);
       clean[k] = v;
+    }
+    // Replacing only the key of an api-credential the person already made keeps everything they wrote into it (hosts, endpoints, readers):
+    // a put with a secret and no config carries the stored config over. Only a person's own surface may; the check below still refuses the rest.
+    if (kind === "api-credential" && clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)
+        && (["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) {
+      const had = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
+      if (had && had.kind === "api-credential") clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
     }
     checkFields(kind, clean);
     // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
@@ -1251,7 +1273,16 @@ export class Vault {
 
   grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}), status: g.status }; }
 
-  revoke({ name, module, watcher, project }, caller) {
+  revoke({ name, module, watcher, project }, caller, { onlyPendingBy = null } = {}) {
+    // A named agent or another module may only withdraw a request it made itself, never an active grant (reviewer-2 M-V4).
+    if (onlyPendingBy) {
+      const w = watcher === undefined ? "" : watcher;
+      const r = this.db.prepare(`DELETE FROM vault_grants WHERE item=? AND module=? AND status='pending' AND by=?${project !== undefined ? " AND project=?" : ""}${watcher !== undefined ? " AND watcher=?" : ""}`)
+        .run(...[name, module, onlyPendingBy, ...(project !== undefined ? [project] : []), ...(watcher !== undefined ? [w] : [])]);
+      const n = Number(r.changes);
+      this.audit("revoke", name, caller, true, `${watcher ? `${module}/${watcher}` : module} (own pending request)`);
+      return { revoked: n };
+    }
     const r = project !== undefined
       ? (watcher === undefined
         ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND project=?").run(name, module, project)

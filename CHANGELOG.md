@@ -19,11 +19,379 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   J0 (the onboarding page loads, no errors, no sample-world names, a screenshot) in Chrome.
   `scripts/matrix/report.mjs` folds every device's results into results.json and a results page.
   Nothing runs on the test server, which is now the user's real server.
+- eval: the relevant-p95 measurement (scripts/eval-memory.js) takes the best p95 of five warm rounds, and up to fifteen when the best is still within half of the bar, so a loaded CI runner's spikes (Node 24 under load) can no longer fail a 5 ms bound the code meets by 35 times (p95 is 0.13 ms), while a real regression slows every round and still fails. The bar is unchanged.
+- rungs (reviewer-2 LOWs): a replica's rung time is clamped to now, a change of rung is throttled to one per template per minute, and the count is documented as a hint for where to start, never trust.
+- site knowledge: rungs for capsule-sight's page ladder. The record holds `rungs: { <canonical page template>: { r: 1..5, n: 0..255, d: day, at } }`, at most 40 templates, integers only and never a string from the page; the store alone counts it (lib applyRung): one count per template per 30-minute visit window on its own clock, capped at 255, a different rung starts over (at 2 when the lower rungs were seen to fail). memory.site.report takes { origin, template, rung, lowerFailed? } beside its old { part, id, outcome } form; a patch from Chrome cannot set rungs (only a replica's sync can); the arrival card carries `startRungs` ({ template: r } once a rung has worked twice); union and mergeFamily fold them; memory.site.detail lists them.
+- eval (reviewer-2 notes): the recording re-reads the key's usage from OpenRouter every 20 calls (spend by anything else on the key is seen, and a read that fails stops the run), and scripts/provider-proof.mjs applies the same start guard (refuses at $14 or more, or when the usage cannot be read) and prints the usage before and after.
+- eval: the recording harness guards the key's own spend. Before any call it reads the key's usage from OpenRouter (GET /api/v1/key) and refuses to start at $14 or more, or when it cannot read it (exit 3, nothing sent to the model); during a run it stops cleanly before a call that could pass $15 of the key's total (so spend that never reached the committed ledger counts), writing the partial results; it prints the key's usage before and after, never the key.
+- memory.site.list's `forgotten` entries also carry `until` (the same epoch ms as expires_at), and a row entry's `name` is the site's name when it has one.
+- site knowledge: the store's test clock (VYRE_SITE_TEST_CLOCK, under NODE_ENV=test or VYRE_CHROME_TEST) is honoured only when the store's home is under the OS temp directory (lib testNow takes { home, tmp }), so a forged clock can never move a real home's purge or undo windows. The Deck docs world (deck/test/world.js, sample in deck/test/site-sample.js) seeds one fictional site, Harlow CRM, with a family, three controls, a flow with runs and one thing that used to work, for the Sites tab's screenshots; a test keeps the sample whole.
+- site knowledge: memory.site.list also returns `forgotten`, what the person forgot in the last 24 hours and can still restore (a whole site or one row, with key, name, part, id, label, when and when it expires), so the Sites tab offers Undo from the box rather than from browser storage; detail and forgotten share one label function. (The patch strip of miss state and the union comment were already in 85b8c51c.)
+- site knowledge: sanitize strips missAt, lastMissAt and qAt from a patch (a builder can no longer create an item that is set aside from birth); only a replica's record through memory.site.sync (sanitize {replica: true}, the person's own other device) keeps its miss state.
+- site knowledge: a harness-only clock. With NODE_ENV=test or VYRE_CHROME_TEST set, VYRE_SITE_TEST_CLOCK naming a file that holds an ISO time makes that time the store's "now" (lib testNow), which the 30-minute miss window and the two-day quarantine read, so a real-Chrome stage can put misses on two days. Without a test flag the variable is ignored; it is never a setting.
+- site knowledge: (1) memory.site.forget of one row is undoable for 24 hours like a whole site (table memory_site_forgotten_items); memory.site.restore takes { key } or { key, part, id }, and the row returns with the trust it had. Forget all now redacts the answers log as a single forget does. (2) heal() counts at most one miss per item per 30-minute visit and sets an item aside only when the misses span two days (a low conf alone no longer does), and a patch can no longer set or clear the miss bookkeeping, so no client can quarantine an item in seconds. (3) Wrong? on a site-alone answer is remembered by the question and the site, not by the summary's text, which changes with every count.
+- site knowledge S2 (reviewer-2 T3, T4): a site is matched by a whole name, family id or full host only (never a host's core word like "google"); memory.ask finds the sites a question names from an index of names, families and hosts (two new columns of memory_site) and parses only the matched sites' records, so a question that names no site parses nothing.
+- site knowledge S2 review (reviewer-2 S1, S2; team-lead's mechanism): the site never decides an answer. When a question names a site, the normal answer always runs first; what it finds answers alone, with no site text appended, and the site summary answers only when nothing else does and the question names a known site (no word list). Forgetting a site overwrites every answer in the answers log that cited it, and its copy in any correction, with [forgotten].
+- site knowledge, S2: memory.ask answers "what do you know about GoHighLevel?" (by a site's name, family id or host, with an intent phrase) in code from the stored records, `via: "site"`, with a source per record, for the person's own surfaces only (never an agent in a project); it says the hosts, when it last worked and how sure it is, the sign-in look, frames, controls, the site's own API, flows with runs and failures, and what used to work. Wrong? gives the answer up for that question (as for any answer); Forget on a site answer forgets the cited records (24-hour undo, and a replica cannot bring them back), and memory.uncorrect restores them. New memory.site.detail gives the Sites list one site's rows with the ids memory.site.forget takes (structure only, never a selector).
+- site knowledge: a selector's identifier (a data-testid or id attribute, which can be a person's name in a row, like row-jane-doe) is stored only when two separate visits saw it (`identifierVisits`), as a label is; with one visit or none the identifier is dropped, and a control with no other selector is dropped with it. Patch builders send `identifierVisits: [visitA, visitB]` on the control.
+- memory.site.learn defaults ON (the user's choice), after reviewer-2 cleared the privacy work at 6285de78. A setting read error still counts as off. Learning needs capsule-sight's extension re-vendored at 6285de78 and the learner sending the evidence fields.
+- site knowledge, reviewer-2's residuals R1 to R5: ids are generated shapes (c12, e_44, e_a1b2c3d, shell, builder2), never a word; a number in a step is kept only under 1000 or under a structural key (nth, timeoutMs, limit...), so a ZIP or street number is refused; a param's choices need a static widget (menu, radiogroup, tablist) and at most 8 options, so a select of people is not kept; union keeps a held item whole when it is the newer; a signal's hyphenated identifier must be a join of route, widget and landmark words, not a slug. memory.site.learn stays off by default.
+- site knowledge, reviewer-2's H1b and mediums: a step value is an exact lower-case {placeholder}, a digits-only ref (c12, e_44), an exact id defined in the same patch or already held by the record, a fixed verb or key word, or one of the flow's declared choices; nothing is guessed from a word's shape. A step's free-text label is no longer stored, a choice needs two visits as an option (choicesVisits), a selector signal is an identifier or a widget word, and sync's union can no longer raise the trust of a held item, let a changed flow or endpoint keep its trust, or bring in items above 0.5. memory.site.learn now defaults OFF until reviewer-2 clears the privacy work (memory.site.sync stays on; it moves nothing while learning is off).
+- site knowledge, reviewer-2 fixes (reviews/iq.md e3bb3bc8, 67aa2397): H1 a stored step holds only {placeholders}, references to stored items, a small vocabulary, a flow's own declared choices and small integers; any other literal refuses the patch. H2 every path is canonicalised (canonTemplate: only known route words survive, every other segment becomes {id}, an @ refuses), which Chrome applies too before looking a page up. H3 a signal keeps a role, an identifier, a duration or a path, never page text or css. M1 labels need all their evidence or are dropped. M2 src shipped and notes are not claimable by a patch (trusted loader, person's surfaces only) and a future date is clamped to now. M3 a changed item (new steps, endpoint, frame match, page) starts over at 0.5. M5 opaque tokens refuse the patch. L keys never appear in a refusal path and __proto__ is skipped. Store: a whole-site forget leaves a tombstone that a replica's older copy cannot undo and sync tells the replica what was forgotten; forgotten rows are purged on every call; sync cannot raise trust or create a family no origin names; settings fail closed on a hub error; device:<id> phones are a person's surface.
+- site knowledge, step 2: the store in core/memory (core/memory/site.js): tables memory_site (one row per origin and per family, the record and its small arrival card), memory_site_events (a ring of 200 per key) and memory_site_forgotten (24-hour undo); tools site.get (card or named parts, not_modified by rev, origin merged with its family), site.put (through the lib's allowlist, refused whole on a secret, seed or email, a family written only by an origin that named it, a removal needs the current base_rev), site.report (ok or miss, heal and quarantine), site.list, site.forget (one item, a site, or all), site.restore, site.sync (two-way replica sync, union by newest verified) and the event site.learned. The person's surfaces and Vyre's own first-party modules only, never an agent. Two settings, both on by default: memory.site.learn (learn how each website works) and memory.site.sync (bring in what standalone Vyre for Chrome learned on its own); flipping the user's answer is a default change. SITE_TABLES lists the tables for memory.wipe and memory.export when they land.
+- site knowledge, step 1 (team/0.2/chrome-learning-plan.md): lib/site-knowledge.js, the pure record Vyre for Chrome keeps per website (frames, selectors and roles, ready and login signals, learned API shapes, flows, notes; each with conf and last-verified), usable by the extension, standalone and core/memory. An allowlist schema (no css or DOM paths in a selector, path templates only, type names in shapes); a secret shape, pairing seed, key or email anywhere refuses the whole patch and names the field, never the text; a control label is kept only when seen in two visits, unique, outside a record list and free of a person's data, otherwise the control is found by identifier or structure. Merge by item id with self-heal (success +0.1, miss x0.6, quarantine, a healed selector keeps the old one as prev), union for replicas with tombstones, family merge, and the 8 KB arrival card. The redaction rules moved to lib/secret-shapes.js (pure) so both share them; core/recall re-exports them unchanged.
+- Seeding a provider's config into an account's HOME no longer follows a link the agent planted: every folder below HOME is made and checked with `lstat` (a symlink is refused, nothing is written through it), and the file is replaced with `O_NOFOLLOW` (`core/sessions/spawn.js`).
+- An agent that switches its own mode mid-session (`current_mode_update`) to one Vyre does not list is never recorded as being in it: Vyre sets it back to the last listed mode with `session/set_mode`, or stops the session with a plain reason; `allowModes` on an entry now intersects with the default allowlist instead of replacing it, so an entry can only narrow it (`core/sessions/drivers/acp.js`).
+- Codex's start is pinned, not trusted: every start writes the account's `config.toml` from Vyre's own settings (approval on-request, sandbox workspace-write; whatever the agent left there is replaced), pins the session mode to `agent` (else `read-only`) with `session/set_mode`, and refuses a start where neither is offered; `agent` is on the ask-mode list, so Codex can work. What leaves for a person (an authenticate error, the agent's stderr tail) is stripped of credential shapes and of the run's own secret values, `CODEX_API_KEY` is kept from the agent's shells, and a custom endpoint with no key in the environment fails plainly instead of sending an empty Bearer (`core/sessions/drivers/acp.js`, `codex.js`).
+- The ACP driver follows what the real agents do (measured on hosted runners with codex-acp 2.0.1, codex-cli 0.159.2 and Grok Build 1.0.44, `scripts/provider-wire-proof.mjs`, `.github/workflows/proof-wire.yml`): session/new answers "Authentication required" until `authenticate`, so an entry names its method (`authMethod`; Codex: API key method when a key is set, else the stored ChatGPT login; Grok: `xai.api_key` with a key or custom endpoint, else `grok.com`), an agent left waiting for a browser sign-in is reported as "sign this account in first", and an entry can authenticate before any session (`authFirst`) and pass client capabilities and authenticate parameters. Codex's `-c` flags never reach it (the model provider and the start mode are unchanged), so none are passed; a custom OpenAI-compatible endpoint now goes through codex-acp's gateway method, and a real Codex turn ran end to end against a local stand-in. CODEX_HOME is made before codex-acp starts (it exits at once without it). Modes are an allowlist (`ALLOWED_MODES`: default, ask, untrusted, on-request, read-only, plan, agent; Codex narrows it to read-only and agent): an unknown mode, such as Codex's `agent-full-access` or one a later release adds, is never listed or entered, and an agent that starts in one is moved to an ask mode or the session does not run. A real Grok turn also ran against a stand-in with a config.toml custom model. Each CLI's real login command reached its provider's own address and code on a runner (codex: auth.openai.com, grok: accounts.x.ai, claude: claude.com) without completing a login (`core/sessions/drivers/*`).
+- memory tools that take `room` as an alias for `project` (graph, facts, relevant, why, correct, heard, corrections, answer, split, context, today, card) declare projectArg ["project", "room"], so the registry's grant check covers an agent naming a project through `room`; test/project-arg.test.js checks any tool with both inputs declares both.
+- fix: core/vault/rotate.test.js reads the provider list from lib/secret-detect.js, where the shape list moved (core/vault/detect.js re-exports it); vault-mac failed on the old path.
+- fix (stage red after the iq merge): the shared secret-shape list moved from core/vault/detect.js to lib/secret-detect.js (core/vault/detect.js re-exports it), and the redaction rules to lib/secret-shapes.js, so core/recall imports only libs (no core/recall to core/vault edge, test/boundaries). memory.write, memory.write.forget, memory.write.restore and memory.heard declare projectArg (test/project-arg). memory_remember from the person's own session (no agent, no project named) keeps a personal fact through memory.remember again, as /vyre remember does; an agent or a named project writes to project memory.
+#### test: the restart-loop SIGKILL test waits on its condition
+
+- `core/daemon/loop.test.js`: the fake vyred wrote its pid file after its start line, so on a slow hosted runner the test could read an empty file and `process.kill(0, "SIGKILL")` (its own process group) or kill too early. The fake writes the pid first, the test checks it is a real pid, and every wait in the file is a condition with a 20 s ceiling instead of a fixed count of 50 ms sleeps.
+
+- The onboarding's history step works: `import.scan`, `plan`, `start`, `status`, `stop` and `cancel` now allow the onboarding page's own caller (the loopback's `onboard` label), which they refused ("import.scan is not available to onboard callers"), so the step showed "Your history cannot be read yet". A model's caller is still refused. docs-shots: the walk's last step goes Continue on Your devices, then Open Vyre on the tour of Lumen.
+- `scripts/docs-shots`: the onboarding walk follows the new step order (You, Where should Vyre live, Tailscale, Your address, Claude Code, Your history, ..., Your devices): after the name it waits for `#live`, not `#claude`, and goes on to each step by address without choosing on the live step (choosing would mark Tailscale and the address skipped, and they have shots). Built on app-design's work/app-design-shots 76b24862 (a failed step stops the walk, the Deck shots still run). Not run here: it needs headless Chrome, which is a runner's, not this Mac's.
+- The Vyre master icon (app-design's export, work/app-design 978cd607) is wired in: vyre.run and its setup, start and 404 pages (favicon.svg and .ico, apple-touch, 32, 192 and 512 px), the iOS asset catalog (AppIcon-1024), Android (adaptive icon with foreground, background and monochrome, legacy and round mipmaps, the Play Store image; the old vector launcher drawables and the round icon pointing at the square one are gone), and the Expo app's icon, adaptive icon (with its background image) and favicon. `apps/ios/scripts/render-icon.sh` now copies the export instead of drawing the old icon from TOKENS.md. No product name (Lumen, Drive, Vault, Memory) icon is used: the trademark check is pending.
+#### memory: the Sites tab
+
+- `/memory?tab=sites` (`deck/views/memory-sites.js`), shaped to app-design's `team/0.2/sites-list.html`: the sites Vyre for Chrome learned (`memory.site.list`), each with its host, a "Family of N sites" and "N used to work" chip, counts and a chevron that opens the detail (`memory.site.detail`: Flows, Controls, API calls, Notes, Frames; never a selector or a value). Forget never asks first, because every Forget is undoable for a day: a site (`memory.site.forget {key}`) or a row (`{key, part, id}`) leaves "Forgot X. Undo" in its place, and Undo is `memory.site.restore` with the same arguments (answers `{restored: 1 | 0}`). Forget all and forgetting a family each ask once. The Undo lives on the box: the list answer's `forgotten` entries (`{kind: "site" | "row", key, name, part?, id?, label?, at, expires_at}`, last 24 hours) are listed, with an Undo each, in one collapsed "Recently forgotten (N)" row at the bottom, so they are quiet and still reachable on any device and after a reload; nothing is kept in the browser. A forget made on this screen leaves "Forgot X. Undo  Dismiss" in its place, and Dismiss clears it on this screen. Wrong? on a row is Forget with the same Undo, no confirmation. Wrong? on an answer stays the ordinary `memory.correct` and `memory.uncorrect` path. Built against iq's work/iq-s2 deb59e28.
+
+#### The Capsule's `next` command (Lumen's next-meeting line)
+
+- `google`: `google.calendar.today` (read only, open to any caller) answers `{ events: [{ id, account, title, start, end, when, join?, link }] }`: timed meetings from now to the end of this box's day, running ones included, all-day events left out, `when` as "in 10 min" or "now, ends in 20 min", `join` only when the event carries an https link, `link` the join link or the event page. Nothing connected answers an empty list. Cached for a minute. The module declares `shows.capsule["view:next"]` over it (first-party, `root`, one "Open" action), so `capsule.commands` lists `next` and `capsule.view` answers a list frame.
+- Microsoft and personal Google are in it. The `next` command moved to the connectors module (`connectors.calendar.today`, `shows.capsule["view:next"]`; the google module no longer declares one, so there is one `next`): it merges Google's native module, Microsoft Graph's calendarView and Google Calendar's events, each read through `vault.request`.
+- Join links (reviewer-2 LOW): the row shows where "Open" goes (`in 10 min · meet.google.com`); a link in an event's location counts only on a known meeting host (Meet, Zoom, Teams, Webex), so an invite cannot put a phishing page in `join`; the meeting's own link (Google's hangout or conference entry, Graph's onlineMeeting) is preferred; events the person declined are skipped. `google.calendar.next` events gain `join` and `declined` only when present.
+- `vault`: an api-credential may carry `readers: [{ module, paths }]`, written with the credential (only a person's own surface can), so connecting is the grant and there is no second prompt. A listed module may make reads of those paths through the credential with no grant, and every other call (another path, a write, a send) is refused to it, never held. Reader paths are plain text, a literal prefix that may end in one `*` (no other wildcard), matched at a segment boundary: `calendarViewfoo`, `..` and an encoded slash, backslash or dot never match, and a reader that is also granted is still limited to its paths. `vault.update` and `vault.edit` cannot read an api-credential back, so `vault.put` from a person's surface is the only way to write or widen `readers` (tested for modules, mcp and agents). The Microsoft and personal Google presets name the connectors module and their calendar paths exactly (`/v1.0/me/calendarView`, `/calendar/v3/calendars/primary/events`, then only a query), and a path holding `;` is refused as well (reviewer-2 M-C1). `lib/connectors/calendar.js` shapes the answers.
+
+- CI now publishes stills of Lumen as an artifact (`lumen-screens-<sha>`): the lens drawing itself in on
+  a summon, the first-launch open at six moments, the menu bar mark light and dark, the panel in its
+  states, and a macOS screen capture of the panel with a word typed. The speed check reports "key to
+  first rows" against 50 ms and "key to all rows" (Spotlight and the like included) apart.
+- Lumen: Spotlight searches (files, documents, mail) now run entirely off the main thread, so a search
+  for a word no longer holds up the next keystroke. Text counts as typed only when a key press says
+  so; anything else that arrives in the box (a paste, a restored draft, dictation) is marked as not
+  typed.
+- Lumen: typing is lighter. The first paint of a search is a slice of 8 rows and the rest follow on
+  the next turn; one letter searches only what is already on this Mac (no Spotlight, mail or
+  document search) and shows at most 20 rows; and a newer key cancels the slow search an older one
+  started instead of letting it finish.
+- Lumen: a module's "needs" answer that names a credential (a need id, optionally the vendor) now opens
+  "Add your ..." in the panel; once it is saved, the command asks again. One without a credential is
+  shown as its words.
+- Lumen: stretches of the box that did not come from typing (a paste, a drop, undo, dictation, an
+  autocorrect) are tracked by position through every later edit, and sent with a message so that a
+  #Name inside them tags nothing.
+- Lumen: when a calendar module declares a next-meeting command, the empty box shows one line under
+  it: the next meeting and when ("Harlow Legal call · in 25 min"). It is asked when Lumen shows, at
+  most once a minute, and there is no line when there is no meeting.
+- Lumen: type "#" and some letters in the box to tag anything in your work: a saved login, a file, an
+  artifact, a repo or a pull request. The list shows names only, in the order the platform gives
+  them; Tab or Return writes the pick as #Name (or #"Name with spaces") and keeps it as a chip. Taking
+  the tag out of the words takes the chip off. A message sent to a session carries the chips that are
+  still in it. Nothing is looked up until you type a "#", and "issue#12" or "C#" stay plain words.
+- Lumen has its icon: the lens, on the app, in the menu bar (a one-colour template that follows light
+  and dark, with the bead larger and violet when something waits on you) and in the bar. On every
+  summon the bar arrives over 220 ms and the lens draws itself in; the first time Lumen runs, the
+  tile, the lens's point of light and "Vyre Lumen" appear for 1.6 s. With Reduce Motion everything is
+  simply there.
+- Lumen: icons for files and apps are made off the main thread, so a first letter no longer waits on
+  the system for a dozen pictures; a row draws without its icon and the icon appears when ready. The
+  panel is drawn once, hidden, shortly after launch, so the first summon is warm.
+- Lumen: words a module puts in the box (an ask effect) only sit there. Nothing is asked, looked up
+  or sent from them until you edit them or press Return. "Copy" says what it copies.
+- CLI: `vyre capsule` says Lumen ("Lumen built", "Lumen open", "Building Lumen for this Mac"). The
+  command name stays.
+- Lumen: commands that modules declare (Gmail, Calendar, Drive, GitHub, the vault and any module
+  you add) show up in the box as commands. Press Return on one and the box searches it: its list
+  is the results, Tab opens a row's detail, Command-K lists a row's actions, and Esc goes back one
+  step and then out. A form takes Return to send. Anything that sends as you shows exactly what will
+  go first; a second Return sends those words, and a change in them shows them again. A module you
+  added is marked "from <module>", and a link it gives opens only as https, mailto or vyre.
+  Nothing is polled; the list of commands is read when Lumen shows, at most twice a minute.
+- Capsule: the app is named Lumen (Vyre Lumen in the menu bar and in System Settings), and Vyre IQ
+  is now Vyre Memory in every line the Capsule shows. File and bundle names do not change in
+  0.2. Public use of the Lumen name waits for the trademark check.
+- Capsule: move and size the window of the app in front from the box. Type "left half", "right
+  half", "top right", "left third", "two thirds", "maximize", "center", "next display" or
+  "restore" and press Return. It needs Accessibility, which macOS asks for once the first time;
+  until then the row says what to allow. Restore puts a window back where it was before the
+  Capsule last moved it.
+- Capsule: Return now pastes clipboard history, snippets and emoji into the app you were in, instead
+  of only copying them. The first time, macOS asks once for Accessibility (until you allow it,
+  Return copies and says so). Type "paste" in the box and choose "Make Return copy instead of paste"
+  to switch back; Copy and Paste are always both in Command-K. Answers to a sum, a colour, a time or
+  a rate still copy.
+- Capsule: give any app, system command, snippet, quicklink or command of yours a short alias and a
+  hotkey. Press Command-K on the row and choose "Set alias" (type a word, Return) or "Set hotkey"
+  (press the shortcut). Typing the alias puts that row first. The hotkey runs the row from
+  anywhere with no window, except one that asks first (Restart, a shell line), which opens the
+  Capsule on it instead. macOS's own shortcuts and Option-Space are refused, and so is one another
+  app already holds. They are kept in `<vyre home>/capsule/bindings.json`.
+- Capsule: emoji, colours, time zones, money, snippets, quicklinks and your own commands now show
+  up as rows. ":tada" or "smile emoji" finds emoji, "#ff6347" gives every colour form, "time in
+  tokyo" gives the time there, and "100 usd in eur" converts. Money reads exchange rates from one
+  public source (open.er-api.com), only when you type something that reads as money, at most once
+  every 12 hours; with no rates there is no money row. Your own lists live in
+  `<vyre home>/capsule/snippets.json`: snippets (`;sig` copies its text with {date}, {time} and
+  {clipboard} filled in), quicklinks (`wiki pastry` opens a link with your words in it) and
+  commands (open a link, or run a shell line after you confirm). A bad entry is left out and the
+  rest still work.
+- Capsule speed check: the CI run now types real words a letter at a time and reports the median
+  and 95th percentile from key to rows and from hide to show, against one frame (16 ms) and 50 ms.
+- Capsule: the key that proves you are at the Mac no longer needs a fingerprint reader. It asks for
+  Touch ID where the Mac has it and for the Mac's login password where it does not, and only for
+  what already asked (pairing, vault reveals, sends you did not ask for). A Mac with no Secure
+  Enclave keeps the key in the keychain instead, guarded by the same check in the Capsule.
+- Capsule: on a Mac that runs vyre-core, the installer starts the Capsule with a one-time code on a
+  private channel. The Capsule makes its key, enrols it with vyre-core using that code, and tells
+  you the key's fingerprint to compare with the installer's. The code is used once, never written
+  down, and is sent only to a socket that really is vyre-core's.
+- Capsule: a small floating panel shows what an agent is doing while it drives your Mac or Chrome.
+  It lists the plan with the step it is on, and you can drag it anywhere (it remembers where) or
+  make it small. Change a step that has not started by double-clicking it, tell the agent what to
+  change in the field (Return sends, Esc stops), and Pause, Resume or Stop at any time. It asks
+  for nothing and shows no prompt. It appears when the agent's plan arrives and goes when the run
+  ends. Controls your Vyre cannot carry out are not shown.
+- lib/within.js is the one way to race a promise against a clock: the timer is held until the answer or the limit, then cleared. The modules registry, projects stop, recall stop, settings checks, presence Touch ID wait, glass link health, agents ask wait, the daemon drain, the backup tar exit wait, the ACP memory wait, teammates' boundedWait and the switchboard answer and control waits use it (each had an unref'd timer that let the loop drain mid-await on macOS and Node 22). test/within-hygiene.test.js fails on a new one-line unref'd race.
+#### fix: Settings did not load (a missing served module)
+
+- `deck/js/add-pc-card.js` (Settings, Add a Windows PC) imports `relay/client/seedwords.js` and `words.js`, which vyred did not serve, so the browser's module import failed and the Settings page stayed on "This page loads when your box answers." (it blanked the docs-shots settings-connections and settings-devices shots). The daemon's relay-client allowlist now includes both. A new daemon test walks every module the Deck imports from outside `deck/` and fetches each from a running vyred, so the next one fails in CI, not in a browser.
+
+#### chat: a queued-message edit always sends `pasted`
+
+- `threads.edit` now carries `pasted` every time, `[]` when nothing was pasted: sessions hears an edited queued message only when the key is an array (an absent key counts the whole edit as not typed). `threads.send` still leaves the key out when nothing was pasted.
+
+#### settings: hidden keys, and the cap over every provider
+
+- The generic Settings groups skip a key its module marks `hidden: true` (iq hides every `spend.*` key: Settings, Spend is their one screen). Settings, Spend and the spend-cap line also handle provider `all`, the cap over every provider together (`spend.summary`'s `all`, `spend.raise {provider: "all"}`).
+
+#### chat and settings: the spend cap
+
+- `deck/chat/cards/spend-capped.js`: when iq's `spend.capped` event is for this thread, a quiet row under the paused thread shows the box's line and a Raise it button that opens one amount field (prefilled with the suggested cap). Raise calls `spend.raise {provider, to}` (or `{provider, off: true}` for No cap); the provider comes from the event, the amount from the field, and the tool is fixed, never the one the event names.
+- Settings, Spend (`deck/views/settings-spend.js`): today's spend (UTC) per provider against its daily cap from `spend.summary`, with Change cap (`spend.raise`). One plain line on a box with no spend module. `spend.summary` and `spend.raise` are optional in the deck contract test until iq merges.
+
+#### chat: a failed send or a queued message taken back keeps its own span map
+
+- The composer remembers, per sent message, the pasted spans and the tags it carried. A failed send, or a queued message taken back for editing, puts the words back with that map: the typed `#tags` (and their chips) survive, pasted text stays marked, and the edit (`threads.edit`) carries the same `pasted` and `mentions`. A draft restored across a reload has no map and stays all not-typed. `paste-spans` gains `mark(start, end)`; the tag picker gains `restore(list)`.
+
+#### app: the Expo typecheck
+
+- `ToolItem` in `deck/chat/core/session-state.js` declares `render?: Record<string, any>` (the card payload a tool result carries), so `apps/app`'s `tsc --noEmit` passes again (it failed at the `item.render` assignment). Run locally with `npm ci && npm run typecheck` in `apps/app`: clean.
+
+#### chat: text is typed only when a keystroke says so (reviewer-2 M-N3)
+
+- The pasted-span default is flipped: an `input` with no `inputType`, a restored draft, a recalled message and a dictation replacement are not typing and mark their stretch; the composer's own deliberate insertions (a picked command, file, suggestion, tag or the @role near-miss) announce themselves as the person's own. The new-session sheet follows the same rule.
+
+#### deck: the Windows shell contract (C22): window.__VYRE_SHELL__, /quick
+
+- `deck/js/platform.js` reads `window.__VYRE_SHELL__ = { platform }` (the Windows app injects it frozen before any page script; the older `__vyreShell = { os }` still reads). Inside the shell the key glyphs are Ctrl (every hard-coded Cmd-Enter hint now comes from `kbd()`), the browser "Install" step is hidden, and `installed()` is true. It only changes presentation and never grants anything.
+- `/quick` (`deck/views/quick.js`): the hotkey panel's compact ask, the assistant's current thread drawn small with its recent answer above one composer and an "Open in full" link, no rail. A link to it opens the thread and waits for words; nothing acts on load.
+
+#### chat: the # tag picker in the new-session sheet
+
+- The `#` picker, its chips and the pasted-span tracking are one component now (`deck/chat/tag-picker.js`), used by the composer and by the new-session sheet, where the first message is where `#` is used most. A pick shows the same chip; Start sends `mentions: [{kind, id, name}]` and `pasted` on both `threads.start` and `agents.ask`. Esc closes the picker before it closes the sheet. More paste tests: a multi-line CRLF paste, undo of a paste, and a drag and drop move.
+
+#### chat: the composer sends the pasted spans (reviewer-2 M-P2)
+
+- `deck/chat/core/paste-spans.js` tracks which stretches of the draft were pasted, dropped, redone or replaced (the input's `inputType`, or a paste event, marks the stretch the edit's diff found, so no string is compared and a Windows `\r\n` paste is marked like any other; then the offsets of every later edit: typing before moves a span, typing inside keeps the whole stretch marked, deleting drops it). `threads.send` carries them as `pasted: [string]` and the new-session sheet sends them on `threads.start` and `agents.ask`, so a `#Name` inside pasted text never resolves as a tag; only a picked chip can. No `pasted` key when nothing was pasted. Tests: `paste-spans.test.js` (5), two in `composer-vault.test.js`, one in `newsession.test.js`.
+
+#### settings: "Add a service", the connectors catalog
+
+- `deck/views/connectors.js`: the catalog of vendor-hosted connectors (`connectors.catalog`) grouped by `group`, above the existing MCP, Google and GitHub lists in Settings > Connections. Connect (or Add another) draws the box's step in place: an https sign-in page opened in a new tab with a paste box for a browser on another device (`connectors.connect.finish`), a hidden token field with the preset's own extra fields, a vault item picker for an OAuth client (read only at that step), or a plain "comes through another connector" line; Disconnect calls `connectors.disconnect`. It follows `connectors.connected`, `connect-failed` and `disconnected`, and shows one plain line on a box without the connectors module. Tests: `deck/test/connectors.test.js` (9); the connections tests expect the catalog call.
+
+#### deck: the Capsule is Lumen
+
+- Every user-facing mention of the Capsule in the Deck now says Lumen (settings, devices, pairing, onboarding, the surfaces list, asks answered from it, the sign-in line). Code identifiers (`capsule`, `capsule.js`, css classes, route and tool names) are unchanged. Vyre IQ is now Vyre Memory in the same places (the onboarding history step's question box and its limit line).
+
+#### chat: "#" is one universal tag; "/remember" saves a memory; artifacts render from /v1/artifacts/content
+
+- `#` (anywhere, first character included) opens one picker over everything that can be tagged, through `mentions.search {q, limit}` (vault items, artifacts, files, repos, projects; names and hints only), grouped by kind. A pick writes `#Name` into the words and shows a chip that carries `{kind, id}`; the turn goes out with `mentions: [{kind, id, name}]` for the tags still in the text. The "using #name" line for vault uses stays. The menu gains group headings (`row.group`).
+- "Save a memory" is `/remember <note>` (a command in the list, and the composer's memory mode); `#` no longer means memory anywhere.
+- `renderSrc` in `cards/artifact.js` is now `/v1/artifacts/content?id=&v=`.
+
+- spend (reviewer-2): a person's own `agents.ask` is relayed to threads.send as that person whether or not it carries tags (it was as the agents module unless tagged), so the daily spend cap, which holds what agents and modules start on their own, does not hold it, and their words are heard as their own turn; the agent's thread gets one notice with the cap line. Any other caller's ask still goes as module:agents and stays held.
+- spend (reviewer-2, team-lead): the cap check holds an agent, a module or a hook, and no longer the person's own unnamed mcp or harness session (only one that carries an agent claim); a ledger that is down lets work through and says so once a day in the log. A real-daemon test shows the cap reached, asking an agent refused with the raise-it line, and the person's send, deck and own mcp session going through. capOf read settings.get's result wrongly through the daemon (it is `{data}`): fixed, and spend.raise now reports a failed write. The spend.* settings carry `hidden: true`, which settings.schema passes on, so the Deck's own Spend screen is the only one. The total cap over every provider was already in (spend.all.daily_usd).
+- spend: spend.all.daily_usd, a daily cap over every provider together (any provider, openrouter and the rest included), first in Settings, Spend. At it the spending thread pauses on whichever provider with "Spend across every provider today reached ..." and `vyre spend raise all <dollars>`; spend.check answers scope "all" for every provider while it holds, spend.summary carries `all`, and a provider's own cap still holds under a roomy all-cap.
+- spend (reviewer-2 M-S1, LOW): threads.start and threads.send now ask spend.check for the thread's provider when the caller is an agent, a module, mcp, a harness hook or an automation, and answer `spend_capped` with the cap line at the cap; the person's own surfaces are never held, and no spend module means no cap. Any provider without its own setting shares spend.other.daily_usd (a cap for each of them), so OpenRouter and the like are capped too.
+- spend (new module core/spend, plan 3.9): one ledger of what threads, agents and memory spend, per UTC day, provider, account, purpose and agent, and a daily cap per provider, a setting (spend.<provider>.daily_usd, Settings, Spend; empty is no cap). Hands-free: at the cap the spending thread is paused with one line and a raise-it action (`spend.capped` carries the line and spend.raise as its action, once a day per provider), never a prompt on a call. Tools spend.record (Vyre's own modules only), spend.check, spend.summary, spend.raise (the person only; `vyre spend raise claude 20`, `+5`, `off`). Threads are read from thread.finished; memory's reader and answers record their dollars, the reader waits and Vyre Memory answers from facts and search at the cap, saying why.
+- memory.prompt: person: true is honored only from a first-party module (meta.firstParty, the registry's own mark); an added module setting it gets nothing.
+- recall: a key in a URL's query or fragment (`?api_key=sk-...`) is redacted, the URL kept. recall.watch does one catch-up read 300 ms after it starts watching a file: on macOS fs.watch delivers nothing for a line appended in its first moments, which then waited for the 60 s sweep (the test of it was red on the Mac only). The recall module test no longer assumes $HOME is the person's home (it uses realHome()).
+- recall: the re-clean of stored turns is bounded (500 turns a batch, yielding between) and resumable (the last rowid is kept with REDACT_VERSION), run at the start of each index pass until done; pairing tickets (43 base64url characters after wink, ticket, pair or offer) are redacted too. memory.prompt fails closed: a module caller that names no agent and does not pass person: true gets nothing.
+- recall (reviewer-2 M-I1): the redaction list also removes `#claim=` codes, `vyre-pc:` pairing seeds, private key blocks and pasted keys or tokens by the shapes core/vault/detect.js names (not its random-looking fallback, so hashes and ids stay); turns already stored are cleaned once per REDACT_VERSION at the next pass and their vectors dropped. Wink tickets have no fixed shape and are not matched. memory.prompt's description says a module caller must pass the thread's agent (test added).
+- memory.facts: a name that is only in the person's own life (memory.me's personal store, such as "Robin" taught by memory.remember) returns an empty list with a `note` saying to ask memory.me, to a caller who may read personal facts; an agent gets the plain empty answer.
+- IQ is renamed Vyre Memory in what people read: memory tool descriptions, `vyre memory ask` help, the limit message, the Deck import screen, ADR 0034 and the memory and using docs. Code names, tool names and paths are unchanged.
+- memory.prompt: the text blocks an ACP session gets in a prompt, built from memory.brief (first prompt) and up to 5 memory.relevant lines (every prompt), each quoted as memory and never as instructions, scoped by the caller's own grant. The Switchboard's ACP driver sends them as resource blocks; the memory MCP tools already reach ACP sessions through the vyre server it passes in session/new.
+- recall: a redaction list (REDACTIONS, redact) runs on every turn before indexing, seeded with tailnet's Tailscale sign-in link rule; redactLinks stays as an alias.
+- recall: for a transcript under an account's folder (VYRE_ACCOUNTS_HOME), the indexer takes "a person started this" from the Switchboard's record (threads.origin) and never from the transcript; no record, an error or no switchboard is not human, so a forged transcript makes no decision and no personal claim. An unchanged file is read again when the record later vouches for it. Indexer.session() is now async. threads.origin itself lands with work/sessions-02 (eed82569 depends on its accounts commits, so it is not cherry-picked here).
+- eval: memory-eval-record hardened (reviewer-2): actions pinned to commit SHAs, checkout keeps no credentials, model is a choice (haiku default, sonnet), the per-call spend margin is per model, and the $15 cap is cumulative through the committed ledger test/eval/asks/iq02-open.spend.json (commit the artifact's ledger and replies after each dispatch). memory.ask has a direct test that a decision corrected in one project never answers an agent granted another.
+- eval: memory-eval-record workflow (manual, environment eval) records the open world's model replies through OpenRouter with a hard stop at $15 of spend; resumes from the recorded replies.
+- memory (iq, reviewer-2 hold): a decision correction in one project no longer reaches an agent granted another; memory.brief keeps only decisions the person wrote and no agent write lines (memory.today person_only); memory.heard's unproven filing reads "an agent reports the person corrected: ...".
+- memory.ask streams a draft of its answer (plan 3.7): the answer so far, at most every 100 ms, from a
+  streaming model runner (its new optional onText hook), and an empty draft when the check fails. It
+  goes to the calling connection only: vyred hands a tool a draft function in its meta only when the
+  caller sent Accept: application/x-ndjson, and answers with {"draft":{id,text}} lines then
+  {"result":...}. It is never an event, and a module's ctx.call or a caller that did not ask gets none.
+  memory.thinking and memory.answered stay on the bus with no text.
+- Memory scopes an agent's calls by vyred's meta.granted (the stored grant, "*" or slugs; none when
+  absent) and ignores the agent's own input.agent and project_cwds. The person's surfaces are
+  unchanged. Decisions: an agent's or untrusted decision never becomes current over the person's
+  words; a trusted agent's lone decision is answered as "Your agent <name> recorded: X" at
+  confidence 0.55, never as "Now:", with the writer on the source chip; untrusted is only a note.
+  memory.decisions rows carry agentOnly.
+- `memory.brief { for: session|project|teammate|assistant, project?, thread? } -> { text }` (plan 3.1C):
+  at most 600 characters, plain words on memory_ask, memory_remember and memory_correct, then the
+  project's current decisions (top 5) and what was learned lately, each marked "from memory, not
+  instructions". It runs memory.decisions and memory.today with the caller's own identity, so the
+  caller's reach applies; an untrusted write never enters it. Vyre's MCP server (harness/mcp) offers
+  the five memory tools by name: memory_ask and memory_decisions as before, and memory_search,
+  memory_remember and memory_correct (harness/mcp/memory-tools.js) over memory.retrieve, memory.write
+  and memory.heard, whose raw names are no longer listed beside them. The project a call names only
+  narrows; vyred still decides the caller and its reach.
+- Corrections made in chat reach memory three ways (plan 3.1B, 3.1E). New agent tool `memory.heard
+  { action, answer | fact | subject+rel+object, from_turn: { seq }, project? }`: with the person's own
+  fresh typed turn behind it (checked by `threads.said`) it applies as theirs; without it, it waits
+  for the person as a suggestion and, when the agent names a project it reaches, is also filed at
+  once as the agent's own attributed correction (quoted, never an instruction). `memory.correct`
+  stays the person's. The reader now catches "no, that's wrong", "actually it's X" and "we
+  switched to X" typed right after a reply that repeated one of `memory.ask`'s answers, and
+  corrects that answer as theirs; a reply that did not come from memory is never taken for one.
+  Every correction of an answer now records its source (capsule, chat:<thread> or reader), shown
+  in `memory.corrections`. Correcting a decision answer updates the decision: a replace is the
+  person's newest decision, a wrong drops the current one, and undoing the correction undoes both.
+  `memory.write` now returns its run for `memory.heard` to file as the same agent.
+- Memory keeps decisions (plan 3.5). The person's typed turns are read for what they decided
+  ("host it on netlify", "going back to stripe", "30 min slots"), per project and topic, and the
+  newest decision wins: the old one is replaced, or reverted when the person goes back to it, and
+  stays as history. `memory.ask` answers a decision question before any model: "Now: Netlify (since
+  24 Aug). Before: Vercel (9 Jul).", citing the one turn that says it. New tool `memory.decisions
+  { topic?, history?, project? }`. An agent's `memory.write` decision is current until something
+  newer replaces it; it never replaces the person's, and stays beside it as a note. Claude's
+  turns, system blocks, emails and limited writers never make a decision. On the open 0.2 world
+  (replayed reads, no model): decision questions 0 to 33 of 50, history 0 to 18 of 25, confident-wrong
+  and unanswerable unchanged at 0 and 50 of 50.
+- test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
+
+- test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
+- modules: the timer behind a call's bounded wait (target, lineage, project and scope lookups) is no longer unref'd, so a pending wait keeps the event loop alive; on macOS the loop drained with the call unanswered and the test runner cancelled the rest of the file.
+
+- Queued words keep what hearing them made, and an edit is heard again only with the composer's word on what was typed. `threads.edit` accepts `mentions` and `pasted` (a person's surface only, as `threads.send`): with `pasted` (even empty) the edited words are heard as the person's new words (a said row, `#` tags resolved for the thread), and the note the model is told is stored with the queued message (`threads_inbox.note`) and handed over with it at the turn's end, on Send now, and to a session in a terminal; without `pasted` the whole edited text counts as not typed, so nothing is heard and the old note is dropped. A queued `threads.send` now keeps its note too (it used to be lost). Words heard at send time are not heard again at delivery. An edit or a take-back (`threads.unqueue`) revokes what the original words recorded in vault (every intent recorded against the message: an act_out from "merge it", a use grant from a `#` tag), so an agent is not covered by words the person no longer stands behind; a grant a tag's provider made on its own (a Drive file) is that provider's to withdraw (`core/switchboard/index.js`).
+- test: federation-reads grants the harness agent juno its project (an agent with no grant is refused), and asserts the refusal for one with none.
+
+- module-sdk: toolEntries leaves target, projectArg and cwdArg out of an entry unless the manifest sets them, so the v1 entry shape is unchanged.
+
+- A daemon-level test that no module does work after vyred stops: the full registry starts, stops (after its startup work, at once, mid-startup, and with agents missing), then runs two seconds more with the store closed; any `database is not open`, unhandled rejection or uncaught exception fails it and names the module from its stack path. A control module that writes after stop proves the check catches and names it (`test/stop-quiet.test.js`). It found no other module on this machine's config.
+- The projects module's `stop()` now ends the access auto-seed's retries and waits (two seconds at most) for the step it is in; before, the seed kept running and writing after the registry stopped and its database closed ("database is not open"), which a test worked around with a sleep (`core/projects/index.js`).
+- A folder an agent names (cwdArg) is judged on its real path and the tool runs on it: `projects.of` answers the canonical `folder` (symlinks and `..` resolved), and the registry replaces the checked field with it. A `..` path or a symlink into another project is refused (`core/projects/index.js`, `core/modules/index.js`, `core/projects/cwd-grant.test.js`; reviewer-2).
+- Project grants, round two (reviewer-2): a tool entry's `cwdArg` names the input field holding a folder; for an agent the registry maps it to its project (`projects.of`) and refuses a project it is not granted, and a folder in no project for an agent with an explicit project list (a wildcard agent and the assistant are not scoped to project folders). A named project is now rewritten to the canonical slug that was authorized (a display name that equals another project's slug can no longer pass the check and resolve to the other project). `cwdArg` declared on harness.brief, enrich, rules, learn and stop, learn.check, projects.of and context, recall.sessions and threads.start (and `projectArg` on threads.start and appearance.resolve). A hygiene test fails when an agent-reachable tool with a project, projects or cwd input declares neither (`core/modules/index.js`, `test/project-arg.test.js`).
+- Project grants, fail closed (lead, github): an agent with no recorded grant, or one projects.reach cannot answer for, is refused any named project and gets an empty `meta.reach`, never the whole list (the daemon already gives a named agent with no row `granted: []`, never `*`); `projectArg` is also declared on watchers.items and harness.enrich; the asked gate's target call gets the agent's `granted` in its meta (`core/modules/index.js`). A `needs` frame from a Capsule view or action now carries `need: { kind: "credential", need | item, module?, label? }` from the tool's needs_credential detail, so Lumen opens "Add your key" directly (`local/capsule/views.js`).
+- Project grants enforced once, in the registry: a tool entry may name `projectArg` (an input field, or a list of them), and an
+  agent's call for a project it is not granted is refused with `not_found` before the tool runs, through `projects.reach` (the owner's
+  revokes included); the tool gets `meta.reach` for listings. Declared on the agent-callable tools that take a project: goals.list and
+  set, planner.list, add, update and calendar.create, projects.threads, add-threads, remove-threads and context, team.ask and list,
+  sessions.limits.get, mode.get and prompt.preview, settings.get, snapshot and request, harness.brief, gate.held and request, and the memory
+  tools (`core/modules/index.js`, the manifest schema and checker, the module.json files). Found by the github audit (reviewer-2).
+- The asked-tool check now sits inside the once-per-Idempotency-Key run, so a retry that only replays a stored answer never asks vault or spends an ask; a `not_asked` answer is not stored, so the retry after the person's yes runs (`core/modules/index.js`, `core/modules/idempotency.js`).
+- The asked-tool check (reviewer-2): the match now passes `consume: true`, so one "yes" is spent by one act; the check is the last gate before the tool runs (after input validation, the rules and presence), so a call refused earlier never spends the ask; the target and thread-lineage calls get two seconds each and late is `not_asked` (`core/modules/index.js`).
+- An asked tool may carry `target` (built in only): an internal tool of its module that answers what one call acts on. The registry asks it before `vault.said.match` and passes its answer as the whole `to` of the match (github answers `github.project.pr.merge:alex/app#7`), so the person's yes binds one pull request, not the whole tool; an error, an empty answer or one later than two seconds is `not_asked` (`core/modules/index.js`, the manifest checker and schema; github's ask).
+- `memory.prompt` for a Codex or Grok prompt now says whose thread it is, as iq's new contract needs: an agent's thread passes `agent` (only that agent's grant), the person's own thread (no agent, a chat, project or capsule thread) passes `person: true`, and any other thread (a job, a helper) passes neither and so gets no memory. Both come from the thread's record, never from the session (`core/switchboard/index.js`).
+- `memory.prompt` for a Codex or Grok prompt now says whose thread it is, as iq's new contract needs: an agent's thread passes `agent` (only that agent's grant), the person's own thread (no agent, and a recorded chat, project or capsule purpose; a record with no purpose is not) passes `person: true`, and any other thread (a job, a helper) passes neither and so gets no memory. Both come from the thread's record, never from the session (`core/switchboard/index.js`).
+- The Vyre master icon (app-design's export, work/app-design 978cd607) is wired in: vyre.run and its setup, start and 404 pages (favicon.svg and .ico, apple-touch, 32, 192 and 512 px), the iOS asset catalog (AppIcon-1024), Android (adaptive icon with foreground, background and monochrome, legacy and round mipmaps, the Play Store image; the old vector launcher drawables and the round icon pointing at the square one are gone), and the Expo app's icon, adaptive icon (with its background image) and favicon. `apps/ios/scripts/render-icon.sh` now copies the export instead of drawing the old icon from TOKENS.md. No product name (Lumen, Drive, Vault, Memory) icon is used: the trademark check is pending.
+- Connect GitHub with a pasted personal access token, no GitHub CLI needed. The token is checked with GitHub before anything is saved, so a bad paste fails right away. A fine-grained token can reach fewer repos than the sign-in.
+
+- An agent limited to certain projects can no longer read or act on another project's GitHub repo by naming it; the project reads as if it did not exist.
+
+- A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). Two tests use the real vault and skip until vault lists `module:threads` as a recorder and resolver.
+- said: `prIntents` records act_out intents for "open a PR", "merge it" and "review this PR", bound to the exact key github.act.target answers with. Nothing is recorded when the PR or branch is ambiguous or the sentence carries a condition (if, when, once, unless, after, before, until, only, as long as, provided, assuming). A plain ask covers 15 minutes.
+
+- `assistant.welcome`: the first chat message after setup, {text, cards}, built from onboard.status with no model call. A card shows only while its step is open, and carries an id (and href for links), never a tool.
+- A person's own "open a PR", "merge it" or "review this PR" becomes an `act_out` intent at `threads.send` and on `threads.start`'s first prompt, through the assistant's `prIntents` (`lib/said/pr.js`, copied here identically until assistant lands): it keeps only real asks (no questions, conditions, negations or standing permissions), binds each to github's composite key (`github.act.target`: `github.project.pr.merge:alex/app#7`) for the thread's project and one PR, and the switchboard records it as the person with `vault.said.record`. The thread's own PR is `github.session.pr`'s answer, used only when it is exactly one; pasted spans are removed first (`core/switchboard/index.js` `hearActs`). The intent carries prIntents' window (`window_minutes`, 15) so vault lets a spoken "merge it" lapse. Two tests use the real vault and registry, with only github stood in.
+- Vault lets the threads module record and resolve what the person said: `module:threads` joins the recorders of `vault.said.record` and the resolvers of `vault.mention.resolve` (the switchboard, which hears the person's turn, is module `threads`; before this a real box refused every `#` tag grant and every act_out from it). `vault.said.record` takes an optional `window_minutes` (1 to 1440, stored in the intent's `limits`, refused on a standing permission), and a plain `act_out` the person asked for lapses after it, 15 minutes when none is given; standing permissions and other kinds are unchanged. Composite act_out keys with `#` and `@` (`github.project.pr.merge:alex/app#7`) match exactly (`core/vault/said.js`).
+- `#` tags on `threads.start` and `agents.ask`, with `threads.send`'s trust: `mentions: [{kind, id, name}]` and `pasted: [span]` are honoured only from a person's own surface. `threads.start` hears the first prompt as any person's turn (said row, tags resolved for the new thread, the notes beside the prompt for the model only); from a model, a module or a guest the tags are dropped. `agents.ask` from a person with tags sends the words on as that person (`core/modules` `CALL_AS.agents`: person labels only, and only to `threads.send`), so threads.send hears them; any other caller's tags are dropped (`core/switchboard/index.js`, `core/agents/index.js`, `core/modules/index.js`).
+- GitHub reads for you and your agents: where a pull request stands (checks, reviews, ready to merge), its comments, and a project's issues. Text written by others is marked as theirs.
+
 - Setup page, B3 backstop: `names.status` is now on the setup channel's tool list (read only: the name, its address, the phase and the certificate), and the page asks it about once a second while the address is not serving, so a missed event can never leave the page on "Publishing your address"; `serving` or `failed` (with the box's reason) from it advances the page beside the certificate events. A box without the tool is left to the events. B4 has a test that a sign-in link that is not Tailscale's clears "Getting the link" and shows the refusal with the Connect button.
 - Setup page fix (e2e2's B3): after the node joins, the address goes from dns to certificate to serving on the box without a `tailscale.changed`, so the page stayed on "Publishing your address". It now also reads the box's `certificate.issued` and `certificate.failed` events (only this box's own name, from the start of the list so an early one is not missed), shows serving when the certificate is issued and the box's reason when it failed, and stops watching at either.
 - The GitHub CLI ships with Vyre, so "Sign in with GitHub" (which runs the real `gh auth login`) works on a real box: the box image pins gh 2.102.0 and checks each architecture's archive against its published sum before unpacking it (`/usr/local/bin/gh`, found as plain `gh`), and CI runs `gh --version` in the built image and requires the pinned version. The Mac server installer no longer installs gh with Homebrew: it uses a gh already on PATH, else the same pinned version downloaded into Vyre's own bin and checked against its sum. `test/box-gh.test.js` keeps the two pins on one version.
 - The setup page's staging overrides are narrowed: an install URL must be under vyre.run or vyre-site.pages.dev (not any pages.dev name), a relay under vyre.run only.
+- `vyre backup` stops a tar that closes its output and then hangs: 30 seconds after the output ends it is killed with a plain error, so a stuck tar cannot hold a backup open (`core/names/backup.js`, reviewer-2). Test-only: the personal-extract speed test takes the best of three passes, so a loaded runner's swell no longer fails it.
+- Test-only: the Vyre Drive tests stop every registry they started before any temp dir (including the fake tailscale's) is removed (an after-hook ordering race that surfaced as ENOTEMPTY).
+- The CDP mux drops an agent client that has an agent id but no browser context, so a future path that skips the ready gate fails closed instead of serving unfenced (`core/computers/image/computerd/cdpmux.js`, reviewer-2).
+- A real race in `vyre backup`: once tar's output ended, the export killed tar if its exit code was not in yet, so a clean
+  exit became "tar exited null" and the backup failed (a loaded machine hit it now and then). tar is now only stopped when
+  the reader gives up early (`core/names/backup.js`, a fake-tar test that fails without the fix). Test-only: the peer
+  detached-call test reads the answer once the file parses, not when curl has created it.
+- A real race in the CDP mux, found as the flaky two-agents computerd test: an agent client's first call could arrive after its
+  browser session opened but before its browser context was made, and then ran with no context, so a
+  `Target.createTarget` landed in the shared default context, outside every per-agent fence (and the agent never saw its
+  own target). A call now waits until the session and the context are both ready (`core/computers/image/computerd/cdpmux.js`,
+  a deterministic test in cdpmux.test.js).
+- Connecting GitHub now also gives your agents GitHub's own hosted MCP server (issues, pull requests, code search), using the same sign-in. Reads run; anything that writes waits for you like any other outward action, and file writes and pushes go through Vyre's own push, which checks for secrets first. Removing the account removes the server.
+
 - The box image makes the per-account homes the spawner requires: uids and groups 2000 to 2063, each with a private `/home/acct/<uid>` (owner the account, mode 0710), `vyre` in every account's group so vyred can read transcripts, and compose mounts `/home/acct` as the `vyre-accounts` volume so accounts survive a recreate. Before this a fresh box answered "spawner: account 2001 has no home at /home/acct/2001" to every sign-in, so the setup page could not sign an account in (e2e2's B1). The box-image job checks the homes' owner and mode and vyre's groups (`box/Dockerfile`, `box/compose.yml`, `.github/workflows/box-image.yml`).
+#### Connectors: review fixes (reviewer-2 M1, M2, two LOWs)
+
+- Production reads only the shipped catalog: a config file's `connectors.presets` count only when a test sets `VYRE_CONNECTORS_TEST_PRESETS=1`, and then never reuse a shipped id. A person's own connector goes through add-an-MCP-server-by-URL.
+- Discovery is checked before anything is sent: the protected-resource document must be about the service asked (same origin, equal or parent path), the authorization-server document's issuer must be the one it was fetched for, every address it names goes through `checkHttpsUri` (https only for an https vendor), and each own-account preset pins the authorization-server origins it expects (`oauth.as`); anything else is refused before a registration or a code is sent. A path issuer (GitHub's shape) is fetched at its path-aware address. The `open` step reports the sign-in host.
+- `bind()` refuses a same-named server whose url or credential is not this connection's; `connectors.persist` takes only `refresh_token`, `access_token`, `expires_at` and `scope`.
+- `vault.request`: one OAuth refresh in flight per credential; concurrent callers wait and re-read the sealed tokens, so a rotating vendor never sees the same refresh token twice (vault review MEDIUM).
+- `mcp.add` and `mcp.update`: an added (not first-party) module may add an http or sse server but not a stdio command or an environment from the vault; a person and Vyre's own modules may (reviewer-2 M-G1).
+- Guide text for Google says plainly that the unverified app screen shows once.
+- The test-preset switch also needs `NODE_TEST_CONTEXT` (a node:test run), and a test preset's id may not equal or extend a shipped id, or be a prefix of one, so it cannot win a shipped vendor's longest-match binding (reviewer-2 LOW).
+
+#### Connectors: guided own-app sign-ins, Slack and Zoom, Microsoft and Google personal through the vault, the # connector kind
+
+- Presets: `slack` (own internal app, prefilled manifest link, https redirect pasted back; a `xoxp-`
+  token mode), `zoom` (own General app, hosted MCP, Basic client secret), `microsoft` (Graph mail and
+  calendar, public client, `localhost` redirect), `google-personal` (Gmail, Calendar, Drive REST with the
+  publish-to-production guidance), `slack-web` (token fallback). `target: "api"` presets are vault
+  api-credentials, not hub servers. Guides are data: `oauth.guide` (steps, links, a manifest link with
+  `{redirect}` filled in), `oauth.redirect` (scheme, host, path), `oauth.port`, `oauth.basic`,
+  `oauth.public`.
+- `connectors.connect` answers `needs: client` with the guide and the two fields, and takes them back as
+  `app { client_id, client_secret? }` from a person's surface; they go to the vault as `<name>-app`.
+- `vault`: an oauth `api-credential` now signs in. `vault.credential.tokens` (internal, connectors only,
+  refused unless the token endpoint is the one the person's config names) seals the sign-in into the
+  credential; `vault.request` uses the stored access token, then refreshes at the config's own token
+  endpoint (target-checked) and seals a rotated refresh token before going on. `Vault.setApiSecret`.
+- `core/modules`: `connectors` may call `vault.put` for an `api-credential` as the person who asked
+  (`CALL_AS`), and nothing else.
+- `mcp`: `mcp.grant` (internal, connectors only): a `#tag` lets one thread, and the threads it came
+  from, use a server whatever its scope says, until vyred restarts.
+- `connectors.mention.search` and `connectors.mention.resolve` and a `mentions` manifest entry for the
+  `#` picker's `connector` kind: connected apps, then a `Connect <name>` row per app not connected.
+- `vyre connect add app` prints the guide, asks for the client ID and a hidden secret, and waits.
+
+#### Connectors: a catalog of vendor-hosted apps and one connect flow (charter minimum 9)
+
+- `lib/connector-presets` (`presets.json`, `index.js`): 45 presets, each a vendor's own hosted MCP
+  server as data (url, transport, sign-in shape, token header, who can use it, evidence), plus the
+  vendors checked and ruled out with the reason. Facts and sources: `team/0.2/connectors-catalog.md`.
+  GoHighLevel uses the generic `/mcp/` address; a client-specific one (`/mcp/anthropic`) fails
+  validation. `catalogFrom(config)` adds `connectors.presets` for test fakes on this machine.
+- `core/connectors` is now a module (`connectors`): tools `connectors.catalog`, `.list`, `.connect`,
+  `.connect.finish`, `.connect.cancel`, `.disconnect` and the internal `.persist`; table
+  `connectors_connections`; events `connectors.connected`, `.connect-failed`, `.disconnected`. One flow
+  for every app: dynamic client registration (RFC 7591) when discovery finds it, the person's own OAuth
+  app from a vault item when it does not, a pasted token where the preset offers one. The credential is
+  a vault item `<connection>-auth` bound to the vendor's origin and granted to the hub; a token comes
+  only from a person's surface and never comes back out.
+- `mcp`: a row that names a preset's item is refused for any host but the vendor's (longest preset id
+  wins), and the hub now passes the row's url when it mints a header, so a token is refused for any
+  other address (P21).
+- `core/connectors/auth.js`: an OAuth item may be a public client (no secret), may hold the access
+  token the sign-in just got (used while it is good, so a fresh connection does not spend its refresh
+  token), and a vendor that rotates the refresh token has the new one saved through `connectors.persist`
+  before it is needed again; a failed save is an error, and the new token is kept in memory meanwhile.
+- `core/connectors/oauth.js`: scopes are optional, `offline` asks for `offline_access` only where the
+  vendor lists it, and a fixed loopback `port` serves vendors whose redirect address is typed in ahead
+  of time.
+- `vyre connect apps` and `vyre connect add app <preset> [--label] [--mode] [--client]`; `remove` and
+  `test` accept an app.
+- Tests use fake OAuth and fake MCP servers only (`fake-oauth.js` gains `rotate`, `fake-mcp.js` gains
+  `protectedBy` and a function `requireAuth`).
+
 - `scripts/deploy-site.sh DIR --branch main|staging` is the one way to deploy the site: `--branch main` (vyre.run) refuses a folder that contains `setup/config.json`. `scripts/stage-site.sh` now validates the relay and install URL with the same code the page runs (`site/setup/config.js`), not shell patterns, so a lookalike host such as `ws://127.0.0.1.evil.example` is refused and never widens the CSP, and it prints what it wrote.
 - Reviewer-2's M-S1: the setup page ignores `/setup/config.json` on vyre.run and www.vyre.run, and elsewhere takes an install URL or relay only on a host under vyre.run or pages.dev (relay: workers.dev too) or a test runner's loopback, so nothing put on the production origin can change the install line.
 - Reviewer-2's follow-ups on the release files: root's `publish-release` copies each file without following links into a root-only temp folder, checks the copies are regular files, publishes only when SHA256SUMS.sig verifies over the copied SHA256SUMS (so an unsigned release publishes nothing), and only publishes a shell.json that the signed list has; the Mac `vyre update` publishes only after a verified signature (not after `--allow-unsigned`); `build-phone` refuses a sw.js without the SHELL_SIGNED line (the phone would run unchecked) and a shell.json path that climbs out of the site.
@@ -199,6 +567,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   no network, no forms and no remote images.
 - `lib/secret-text`: finds vendor key shapes in text, without repeating them.
 - The docs reference reads v1 object tool entries.
+- "Add a Windows PC" takes a code in only two ways: typing the words, or the in-card camera scan. There is no link or address handover (a link can come from anyone; reviewer-2 H-T1). After a scan the card shows the code's first four words while the approval prompt is up, so the person can glance at their PC.
+- "Add a Windows PC" scans its QR code in every browser with a camera: where there is no `BarcodeDetector` (Safari on iPhone and Mac, Firefox) the Deck loads the vendored jsQR 1.4.0 (`deck/vendor/jsqr`, Apache-2.0, 127 KB minified, listed in NOTICE, pinned by the source's sha256 in its header). It decodes frames on the device and is loaded only when the person taps scan. It ships inside the signed box release with the rest of `deck/`.
+- One encoding for the Windows app's pairing seed: `relay/client/seedwords.js`. The 16-byte seed is 13 words from the setup page's list (words 1 to 12 carry the 128 bits, word 13 is an 11-bit SHA-256 checksum, so one mistyped, missing, swapped or extra word is caught), or a QR carrying `vyre-pc:` and the 22 base64url characters. Typing is forgiving (case, separators, first four letters). Settings > Devices has "Add a Windows PC" (`deck/js/add-pc-card.js`): the words, or a QR scanned with the browser's own detector where there is one, then `relay.pair.ticket { seed }` with the presence prompt.
 - `relay.pair.ticket` fails when the relay refuses or does not confirm the registration (a seed the relay already holds answers `conflict`), instead of returning a ticket that never resolves (reviewer-2). `relay/client/shellkey.js`: a device key held by a desktop shell's native side (the Windows app's DPAPI key). The bundled page holds the Noise channel with a marker private key, and `dh` calls the shell's `device_key_dh`; `device_key_pub` gives the public half. Tested against the real box handshake.
 - `relay.pair.ticket { seed }`: a computer that chose its own pairing ticket (the Windows app) has the Deck's box register it, so the app already holds it and nothing has to travel back. The seed is 8 to 32 bytes, base64url, and the ticket is single use for five minutes like any other. Ticket records (Wink and setup) now carry `address`, the box's own https origin (its own domain when it serves one, port kept), covered by the record's MAC, and `resolveTicket` returns it as `address` (null when the box has none). An app pins that and nothing else.
 - vyred no longer asks the name directory anything until a name is held or being recovered. The 30-second and hourly check made a signed request (and a route key) on every idle box, which broke the perf budget on Node 22 (CPU sustained 13%); the check now returns at once for a box that never claimed a name.
@@ -260,6 +631,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   stdout pipe), which named vyred itself, read as "vyred itself, not a caller" and ran a person's tool
   once in about 200 runs. The fd is now read afresh per attempt, no helper starts on a closed socket,
   and an answer from a socket that closed meanwhile is discarded (`core/daemon/peer.js`).
+- A tool with reach "asked" now runs for a model, the harness or a module when `vault.said.match` says the
+  person's own words (or a standing permission) asked for it, in that call's thread and its lineage. It
+  fails closed: no vault, a locked vault, an error or no thread is `not_asked` (`core/modules/index.js`).
 - The home lock is held only by vyred's real command line (node on core/daemon/main.js, or `vyre daemon`),
   not by any live process with "vyre" somewhere in its arguments (`core/daemon/lock.js`).
 - A caller chain that stays unreadable after a fresh read (a missing pid, an empty or timed-out `ps`) is
@@ -435,6 +809,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - vyred refuses any path under a `fixtures` folder of the Deck unless VYRE_DECK_FIXTURES=1 (dev
   worlds and tests set it), so a `?fixtures=1` link can't show sample threads on a real install.
   Placeholders that named the sample world now say what to type ("Your project's name").
+#### lib/caps-flags: the one provider capability list (C14b), on its own for sessions
+
+- `lib/caps-flags/index.js`: `FLAGS` (steer, queue, interrupt, resume, fork, rewind {conversation, code}, modes, plan, questions, permissions, thinking, effort, images, commands, tasks, subagents, model_switch, usage none|coarse|detailed, remember null|CLAUDE.md|AGENTS.md|GEMINI.md), `TOOL_KINDS` (read, edit, write, run, search, fetch, mcp, task, other), `normalizeCaps(raw)` (every flag present and typed, unknown keys dropped) and `checkCaps(raw)` (the problems, [] when exact). No imports. Extracted from work/native-core-0.2 (5a9d5f96) so sessions can import it in conform() and threads.get's `caps`; `task` added to the tool kinds as sessions' shapes say.
 - A pairing hello with `enroll: true` gets `enroll: { grant, expires, rpId }` in the box's reply (inside the device's own Noise channel): the one-time, five-minute presence grant to enroll a passkey at the box's own address, `rpId` being that address's host. The setup QR's `relay.setup.claim` answers the same three fields, so a phone has one enrolment flow. Not bound to a peer (at the address the phone is a tailnet node the pairing cannot know); the owner-login rule, the rp_id, five minutes and one use bind it.
 - Migrating a Mac to vyre-core's device key: `redeem` deletes a `relay-device/key.json` left by an earlier pairing the moment the new pairing succeeds, and its result names the old device (`superseded`) for the owner to remove at the box with `relay.devices.remove`, so the old file key stops being trusted (reviewer-2).
 - Your own domain now serves. `names.domain.serve { domain }`, after `names.domain.check` passes, gets the domain's certificate by ACME DNS-01 through the `_acme-challenge` CNAME (the challenge goes to `<routehash>.acme.vyre.run` through the directory and is cleared after), keeps it beside the box's name, and the tailnet listener presents it by SNI, accepts its Host, and applies the same owner and Origin rules. Events `domain.ready { domain, address }` and `domain.failed`; `names.status` gains `domain` and `port`. Renewed daily at 30 days like the name's. (The event is `domain.ready`, not `names.domain.ready`: event names are noun.past-verb.) Tested against the real directory Worker on the fake runtime and a fake DNS, and a real TLS connection on loopback.
@@ -683,6 +1060,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   warnings, never failures. A module for a newer contract is never run: its row says which Vyre it
   needs. `vyre module upgrade` moves a module onto the current form, and pinned fixtures in
   `test/fixtures/modules/` hold every release to it.
+- Undo for what acts on your behalf (core/undo, PLAN P14). When an agent, the assistant, a watcher
+  or a module does something reversible for you, the module that did it records the inverse, and
+  one tap runs it. A model never supplies an inverse, and nothing that sends, posts, pays, deletes
+  outside or is your own action gets one. An agent can undo only its own actions. The log works
+  with the assistant switched off and keeps 30 days. `docs/design/undo.md` explains it.
 - A Mac can be the server: `scripts/install-mac-server.sh` installs Vyre in your own account (no root, no password), starts Colima for agents' computers, writes the setup code into `vyre.env`, and runs vyred as one LaunchAgent under `caffeinate` so the Mac stays awake while it runs. It starts when you sign in to that Mac; starting with nobody signed in waits for the system service. `--uninstall` keeps your data.
 - `link.health` answers in one shape everywhere (`reach`, `why`, `fix`, `since`, `tailnet`) on the
   Mac, the box and the relay client, with the older fields kept beside it. Vyre publishes the
@@ -702,6 +1084,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   J0 (the onboarding page loads, no errors, no sample-world names, a screenshot) in Chrome.
   `scripts/matrix/report.mjs` folds every device's results into results.json and a results page.
   Nothing runs on the test server, which is now the user's real server.
+- The lime primary is retired everywhere. The user picked Bone: no accent hue, cream is the
+  primary on dark and ink on paper, and focus, washes, chips and the mark dot use the same
+  neutral. Capsule, Deck, phone, Windows, setup, site, docs, brand marks, app icons, splash
+  screens and screenshots all changed. On Deep glass a chip has no wash and focus is two-tone,
+  so text holds 4.5:1 over every sample wallpaper. `test/no-lime.test.js` fails if the old colour
+  or its hex comes back.
 
 ## 0.1.1
 

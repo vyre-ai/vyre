@@ -1,5 +1,5 @@
 // @ts-check
-// Find: the phone's Capsule. One box at the top; as you type, what matches comes in below in a
+// Find: the phone's Lumen. One box at the top; as you type, what matches comes in below in a
 // fixed order: ask the assistant, sessions, files, agents, memory, projects. With an empty box,
 // the recent sessions and the agents. A pull-down from the top of any phone screen lands here
 // (js/pwa.js). On desktop the same thing as a centred column.
@@ -16,13 +16,13 @@
 // agents.list names it, else the one whose thread.sent carries this exact text from the deck.
 // Only the last message of the turn is kept, as ask.js does. Nothing polls.
 //
-// Commands (js/commands.js, the grammar the Mac Capsule and the native apps share): "@kit ..."
+// Commands (js/commands.js, the grammar the Mac Lumen and the native apps share): "@kit ..."
 // asks that agent (agents.ask, wait: false, then its thread opens); "tell <session> to ..." types
 // into a session (threads.send) and watches it; "watch <session>" and "tell me when <session> is
 // done" watch it (threads.watch, notify: "deck"). A line under the box says what Enter will do,
 // and the matching sessions are listed so a tap picks another one.
 //
-// On a phone (under 760 px, docs/design/phone.md section 7) this is the Capsule opened: the shell
+// On a phone (under 760 px, docs/design/phone.md section 7) this is Lumen opened: the shell
 // shows it as a full-height sheet, and this view draws its content. A top row with the box and
 // Done (back to where the sheet came from), a segmented scope (All, Chats, Files, Memory, Run),
 // then Ask, Run (the grammar above as plain-words rows, the command in mono under each), From
@@ -391,7 +391,7 @@ export default async function find(ctx) {
     else put(body, h("div", { class: "small muted" }, d?.note ? `No preview: ${d.note}.` : "No preview for this file."));
   }
 
-  // ---- the phone: the Capsule, opened (docs/design/phone.md section 7) ------------------------
+  // ---- the phone: Lumen, opened (docs/design/phone.md section 7) ------------------------
   /** A card row: a button or a link, in the list's keyboard order. */
   function prow({ href, onclick, cls = "", label }, ...kids) {
     const props = { class: "fd-prow " + cls, "data-row": "", role: "option", "aria-selected": "false", ...(label ? { "aria-label": label } : {}) };

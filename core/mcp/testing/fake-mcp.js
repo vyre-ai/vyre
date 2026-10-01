@@ -200,8 +200,10 @@ function readBody(req) {
  * Start a fake MCP server over HTTP. `calls` records every tool call, `requests` every HTTP
  * request with the auth, session and protocol headers it carried, and `sessions` the live ones.
  * @param {any} t the node:test context, whose after() stops the server
- * @param {{ tools?: any[], pageSize?: number, requireAuth?: string, mode?: "http" | "sse",
- *   redirect?: boolean, reply?: "json" | "sse", endpoint?: string }} [o]
+ * @param {{ tools?: any[], pageSize?: number, requireAuth?: string | ((authorization: string | undefined) => boolean), mode?: "http" | "sse",
+ *   redirect?: boolean, reply?: "json" | "sse", endpoint?: string, protectedBy?: string }} [o]
+ *   `requireAuth` may be a function that judges the Authorization header; `protectedBy` names an
+ *   authorization server and makes this server publish RFC 9728 protected-resource metadata for it.
  *   `reply: "sse"` answers each streamable-HTTP request with an SSE stream; `endpoint` makes the
  *   legacy SSE server name that message endpoint instead of its own.
  */
@@ -228,7 +230,11 @@ export async function startFakeMcpHttp(t, o = {}) {
       body: msg,
     });
     if (o.redirect) { res.writeHead(307, { location: "http://127.0.0.1:9/elsewhere" }); return res.end(); }
-    if (o.requireAuth && req.headers.authorization !== o.requireAuth) { res.writeHead(401); return res.end(); }
+    if (o.protectedBy && url.pathname.startsWith("/.well-known/oauth-protected-resource")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ resource: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}/mcp`, authorization_servers: [o.protectedBy] }));
+    }
+    if (o.requireAuth && !(typeof o.requireAuth === "function" ? o.requireAuth(req.headers.authorization) : req.headers.authorization === o.requireAuth)) { res.writeHead(401); return res.end(); }
     if (mode === "sse") return sse(req, res, url, msg);
     return streamable(req, res, msg);
   });

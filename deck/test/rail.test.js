@@ -188,7 +188,7 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
   decl(css, ".rail-avatar", /background: var\(--hover\); color: var\(--text\)/);
   decl(css, ".rail-initial", /font-size: 13px; line-height: 16px; font-weight: 600/);
   assert.match(noComments(css), /@media \(prefers-reduced-motion: reduce\) \{ \.rail-home, \.rail-place \{ transition: none; \} \}/);
-  // No lime, violet, wash or left bar on a place: the badge (marks.css) is the only colour.
+  // No bone, violet, wash or left bar on a place: the badge (marks.css) is the only colour.
   for (const sel of [".rail", ".rail-place", ".rail-label", ".rail-avatar", ".rail-set"]) {
     for (const r of rules(css, sel)) {
       if (/focus-visible|rail-home/.test(r.sel)) continue;

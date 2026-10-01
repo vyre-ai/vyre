@@ -72,8 +72,8 @@ export class ExtensionDriver {
       case "page.eval": { const r = await b.call("page.eval", { tabId, expression: rest.expression }); if (r && r.ok === false) throw new Error(r.error || "eval failed"); return r.value; }
       case "page.snapshot": { const r = await b.call("page.snapshot", { tabId }); return { ...r, count: Array.isArray(r.controls) ? r.controls.length : 0 }; }
       case "page.fill": return okOrThrow(await b.call("page.fill", { tabId, fields: rest.fields.map((/** @type {any} */ f) => ({ selector: toSelector(f.selector), value: f.value })) }));
-      case "page.act": return okOrThrow(await b.call("page.act", { tabId, selector: toSelector(rest.selector), kind: "click", asked: true }));
-      case "batch.run": return okOrThrow(await b.call("batch.run", { tabId, asked: true, steps: toProtoSteps(rest.steps, tabId) }));
+      case "page.act": return okOrThrow(await b.call("page.act", { tabId, selector: toSelector(rest.selector), kind: "click" }, { trust: { asked: true } }));
+      case "batch.run": return okOrThrow(await b.call("batch.run", { tabId, steps: toProtoSteps(rest.steps, tabId) }, { trust: { asked: true } }));
       case "net.list": { const r = await b.call("net.list", { tabId, filter: { url: rest.filter && rest.filter.urlIncludes }, limit: 500 }); return r.requests; }
       case "api.learn": {
         const r = await b.call("api.learn", { tabId });

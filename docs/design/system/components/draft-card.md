@@ -17,7 +17,7 @@ the phone. Drawn on "Needs you, phone and desktop" and "Presence, sign in once, 
 |---|---|---|
 | Deck | `deck/chat/gate-item.js` (work/chat); phone `deck/js/need-sheet.js`, `deck/js/editable.js` (work/pwa) | partial |
 | App | `apps/app/app/need/[id].tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -98,8 +98,8 @@ Deck (work/chat, work/pwa)
 
 App (work/mobile)
 - [ ] Fields are read-only; spec: edit in place.
-- [ ] No presence line; no "Send with Face ID" state; sends from the Deck or the Capsule "for now".
+- [ ] No presence line; no "Send with Face ID" state; sends from the Deck or Lumen "for now".
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Field keys in caps, tracked; label "HELD FOR YOU"; spec: sentence case.
 - [ ] No scheduled send; no presence line under Send.

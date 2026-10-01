@@ -10,6 +10,8 @@ import { tempHome } from "../../test/helpers.js";
 
 const LOOP = path.join(path.dirname(fileURLToPath(import.meta.url)), "loop.sh");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** Wait for a condition, not a fixed time: a hosted runner can take seconds to start a node process. */
+async function until(ok, ms = 20_000) { for (const end = Date.now() + ms; Date.now() < end && !ok();) await sleep(50); return ok(); }
 
 /**
  * A fake vyred: logs each start, exits with the next code in `codes`, or stays up until SIGTERM,
@@ -20,8 +22,8 @@ function fake(dir, codes, { termMs = 200, termCode = 0 } = {}) {
   fs.writeFileSync(js, `import fs from "node:fs";
 const log = ${JSON.stringify(path.join(dir, "log"))};
 const n = fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\\n").filter(Boolean).length : 0;
-fs.appendFileSync(log, "start\\n");
 fs.writeFileSync(${JSON.stringify(path.join(dir, "pid"))}, String(process.pid));
+fs.appendFileSync(log, "start\\n");
 const codes = ${JSON.stringify(codes)};
 if (n < codes.length) process.exit(codes[n]);
 process.on("SIGTERM", () => setTimeout(() => { fs.appendFileSync(${JSON.stringify(path.join(dir, "drained"))}, "yes"); process.exit(${termCode}); }, ${termMs}));
@@ -38,12 +40,12 @@ function run(dir, codes, o) {
   return { p, exited, err: () => err, starts: () => (fs.existsSync(path.join(dir, "log")) ? fs.readFileSync(path.join(dir, "log"), "utf8").split("\n").filter(Boolean).length : 0) };
 }
 
-test("loop: a vyred that exits is started again, and a container stop drains it and ends the loop", { timeout: 20_000 }, async t => {
+test("loop: a vyred that exits is started again, and a container stop drains it and ends the loop", { timeout: 40_000 }, async t => {
   const dir = tempHome(t);
   const l = run(dir, [1]);
   t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
-  for (let i = 0; i < 100 && l.starts() < 2; i++) await sleep(50);
-  assert.equal(l.starts(), 2, "vyred was not started again after it exited");
+  assert.ok(await until(() => l.starts() >= 2), "vyred was not started again after it exited");
+  assert.equal(l.starts(), 2);
   assert.match(l.err(), /exited \(1\); starting it again/);
   await sleep(200);
   l.p.kill("SIGTERM");
@@ -52,7 +54,7 @@ test("loop: a vyred that exits is started again, and a container stop drains it 
   assert.equal(l.starts(), 2, "a stopping container started vyred again");
 });
 
-test("loop: five exits inside a minute leave vyred to Docker's restart policy", { timeout: 20_000 }, async t => {
+test("loop: five exits inside a minute leave vyred to Docker's restart policy", { timeout: 40_000 }, async t => {
   const dir = tempHome(t);
   const l = run(dir, [3, 3, 3, 3, 3, 3]);
   t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
@@ -61,28 +63,31 @@ test("loop: five exits inside a minute leave vyred to Docker's restart policy", 
   assert.match(l.err(), /5 times in a minute/);
 });
 
-test("loop: a stop passes on vyred's own exit code, even when vyred is gone before the loop waits again", { timeout: 20_000 }, async t => {
+test("loop: a stop passes on vyred's own exit code, even when vyred is gone before the loop waits again", { timeout: 40_000 }, async t => {
   // vyred drains at once and exits 7: the trapped wait returns 143, and the loop must not.
   const dir = tempHome(t);
   const l = run(dir, [], { termMs: 0, termCode: 7 });
   t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
-  for (let i = 0; i < 100 && l.starts() < 1; i++) await sleep(50);
+  assert.ok(await until(() => l.starts() >= 1), "vyred did not start");
   await sleep(200);
   l.p.kill("SIGTERM");
   assert.equal(await l.exited, 7);
   assert.equal(l.starts(), 1);
 });
 
-test("loop: a vyred killed by a signal (SIGKILL, the OOM killer) is started again", { timeout: 20_000 }, async t => {
+test("loop: a vyred killed by a signal (SIGKILL, the OOM killer) is started again", { timeout: 40_000 }, async t => {
   // dash answers a second wait on a vyred killed by SIGKILL with 137 again, forever: the loop
   // spun there at a full core and never started vyred again.
   const dir = tempHome(t);
   const l = run(dir, []);
   t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
-  for (let i = 0; i < 100 && l.starts() < 1; i++) await sleep(50);
-  process.kill(Number(fs.readFileSync(path.join(dir, "pid"), "utf8")), "SIGKILL");
-  for (let i = 0; i < 100 && l.starts() < 2; i++) await sleep(50);
-  assert.equal(l.starts(), 2, "vyred was not started again after a SIGKILL");
+  assert.ok(await until(() => l.starts() >= 1), "vyred did not start");
+  // The pid file is written before the start line, so it is whole here; never kill pid 0 (the test's own process group).
+  const pid = Number(fs.readFileSync(path.join(dir, "pid"), "utf8"));
+  assert.ok(Number.isInteger(pid) && pid > 1, `a real pid, not ${pid}`);
+  process.kill(pid, "SIGKILL");
+  assert.ok(await until(() => l.starts() >= 2), "vyred was not started again after a SIGKILL");
+  assert.equal(l.starts(), 2);
   assert.match(l.err(), /exited \(137\); starting it again/);
   l.p.kill("SIGTERM");
   assert.equal(await l.exited, 0);

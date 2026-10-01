@@ -35,7 +35,7 @@ const FONTS = "https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400
 
 // The Lead mark and the wordmark, from docs/design/TOKENS.md. Colours come from CSS (.mk-*), so
 // the one drawing is Bone and Signal on dark, Ink on paper.
-const MARK = `<svg class="mark" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="mk-d" cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>`;
+const MARK = `<svg class="mark" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="mk-d" cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>`;
 const WORDMARK = `<svg class="wordmark" width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path class="mk-w" d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICON_MENU = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.5 5h13M2.5 9h13M2.5 13h13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
 const ICON_SEARCH = `<svg class="search-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.75" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;

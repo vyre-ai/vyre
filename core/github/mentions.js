@@ -55,6 +55,8 @@ export async function searchMentions({ token, login, q = "", kinds }) {
 export function parseId(id) {
   const m = ID.exec(String(id || ""));
   if (!m) return null;
+  const full = m[2] || m[4];
+  if (/\/\.\.?$/.test(full)) return null; // a repo named "." or ".." is a path, not a repo
   return m[2] ? { type: "repo", full_name: m[2] } : { type: m[3], full_name: m[4], number: Number(m[5]) };
 }
 

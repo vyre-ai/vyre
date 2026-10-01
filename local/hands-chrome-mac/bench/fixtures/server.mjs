@@ -8,11 +8,16 @@
 //   GET  /healthz             no auth
 // The auth pair mirrors a real app: a bearer header the page's JS adds, plus a session cookie the
 // browser adds, so the API-learning path (bench/api-learn.mjs) has both kinds to classify.
+// The same server also answers the FRAMES world by Host header (frames-world.mjs): a.localhost is a shell
+// that embeds the Workflows app on b.localhost (an iframe on another site), which nests an editor from
+// c.localhost; d.localhost is a fresh origin. /__state (any host) is JSON for assertions. A request whose
+// Host is not one of those four falls through to the routes above, so the old benches are unchanged.
 // Run standalone: node server.mjs --port 8123. Sample world only (Harlow Legal, Northwind Bakery).
 import fs from "node:fs";
 import http from "node:http";
 import crypto from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { createFramesWorld } from "./frames-world.mjs";
 
 export const TOKEN = "fixture-token-123";
 export const SESSION = "fixture-session-abc";
@@ -47,15 +52,26 @@ export async function startFixtureServer({ port = 0, host = "127.0.0.1" } = {}) 
   /** @type {Map<string, any>} */
   const workflows = new Map();
   const stats = { requests: 0, api: 0, denied: 0 };
+  const frames = createFramesWorld();
 
   const server = http.createServer((req, res) => {
     stats.requests++;
+    if (frames.handle(req, res)) return;
     const url = new URL(req.url || "/", "http://x");
     const p = url.pathname;
     if (req.method === "GET" && p === "/healthz") return json(res, 200, { data: { ok: true } });
     if (req.method === "GET" && (p === "/checkout" || p === "/checkout/")) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       return void res.end(page("checkout.html"));
+    }
+    // A sign-in wall and what the person gets after it: for the login handoff proof. The password field is never filled by Vyre.
+    if (req.method === "GET" && p === "/login") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      return void res.end('<!doctype html><title>Sign in</title><body><h1>Sign in to Harlow</h1><form id="f"><label>Email <input name="email" id="email"></label><label>Password <input type="password" name="pw" id="pw"></label><button type="button" id="signin">Sign in</button></form></body>');
+    }
+    if (req.method === "GET" && p === "/dashboard") {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
+      return void res.end('<!doctype html><title>Dashboard</title><body><h1>Dashboard</h1><button type="button" id="apply-promo" data-testid="apply-promo">Apply</button></body>');
     }
     if (req.method === "GET" && (p === "/ghl" || p === "/ghl/")) {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Set-Cookie": `sid=${SESSION}; Path=/; HttpOnly; SameSite=Lax` });
@@ -125,6 +141,9 @@ export async function startFixtureServer({ port = 0, host = "127.0.0.1" } = {}) 
     url: `http://${host}:${addr.port}`,
     stats,
     workflows,
+    frames,
+    /** The site URLs for the frames world on this server's port, e.g. site("shell") is http://a.localhost:PORT. @param {"shell"|"app"|"widgets"|"fresh"} name */
+    site: name => `http://${{ shell: "a", app: "b", widgets: "c", fresh: "d" }[name]}.localhost:${addr.port}`,
     close: () => new Promise(resolve => { server.closeAllConnections?.(); server.close(() => resolve(undefined)); }),
   };
 }
@@ -132,5 +151,5 @@ export async function startFixtureServer({ port = 0, host = "127.0.0.1" } = {}) 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const i = process.argv.indexOf("--port");
   const s = await startFixtureServer({ port: i > 0 ? Number(process.argv[i + 1]) : 0 });
-  console.log(`fixture server on ${s.url}  (/checkout, /ghl)`);
+  console.log(`fixture server on ${s.url}  (/checkout, /ghl; frames world at http://a.localhost:${s.port}/)`);
 }

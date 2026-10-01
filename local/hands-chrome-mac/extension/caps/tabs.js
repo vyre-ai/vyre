@@ -94,20 +94,57 @@ async function bring(ctx, tabId, focus) {
 }
 
 /** @param {any} ctx @param {string} url @param {boolean} focus */
-async function open(ctx, url, focus) {
+async function open(ctx, url, focus, timeoutMs = 15_000) {
   const v = await ctx.floorUrl(url, "tabs.open");
   if (!v.allow) throw err("blocked", `${v.why} (${v.tier})`);
   const tab = await ctx.tabs.create({ url, active: focus });
   const set = await openedSet(ctx);
   set.add(tab.id);
   await saveOpened(ctx, set);
-  return tab;
+  // Resolve only when the tab has committed to the page and finished loading (or the time is up), so the next call sees the real page,
+  // never a tab that is still loading or already sitting on Chrome's error page.
+  const s = ctx.tabs.settle ? await ctx.tabs.settle(tab.id, Math.min(60_000, Math.max(0, Number(timeoutMs) || 15_000))) : { tab, settled: true, waitedMs: 0 };
+  return { created: tab, tab: s.tab || tab, settled: s.settled, waitedMs: s.waitedMs };
+}
+
+/**
+ * What an open tab ended up as, said plainly: loaded, still loading, or Chrome's error page (the site did not load).
+ * @param {any} r the result of open() @param {string} asked the URL that was asked for
+ */
+function landed(r, asked) {
+  const url = String((r.tab && (r.tab.url || r.tab.pendingUrl)) || "");
+  const failed = url.startsWith("chrome-error:");
+  return { finalUrl: redact.url(url || asked), title: String((r.tab && r.tab.title) || "").slice(0, 120), loaded: r.settled && !failed, ...(failed ? { failed: "the page did not load: Chrome is showing its own error page (no network, a wrong address or a refused connection). The tab is open; check the address and try again." } : {}), ...(!r.settled && !failed ? { stillLoading: true } : {}), waitedMs: r.waitedMs };
 }
 
 /** @type {{ name: string, ops: Record<string, (args: any, ctx: any) => Promise<any>> }} */
 export default {
   name: "tabs",
   ops: {
+    // What the person sees of Vyre's work in this tab: the run label, the tab's group, whether the pill is in the page.
+    "tabs.presence": async (args, ctx) => {
+      const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
+      const p = ctx.presence;
+      const out = { active: !!(p && p.active()), label: p ? p.label() : "", group: null, pill: null, card: null, exposedToPage: null };
+      if (tabId !== undefined) {
+        try { const t = await ctx.tabs.get(tabId); if (t && t.groupId != null && t.groupId !== -1) { const g = chrome.tabGroups ? await chrome.tabGroups.get(t.groupId) : null; out.group = g ? { id: g.id, title: g.title, color: g.color, collapsed: g.collapsed } : { id: t.groupId }; } } catch { /* no groups API */ }
+        try {
+          const r = await ctx.cdp.send(tabId, "Runtime.evaluate", { expression: "JSON.stringify({ pill: !!document.querySelector('vyre-pill'), card: !!document.querySelector('vyre-card'), stop: typeof window.vyreStop, login: typeof window.vyreLogin, state: typeof window.__vyrePill })", returnByValue: true });
+          const v = JSON.parse(r && r.result ? r.result.value : "{}");
+          out.pill = !!v.pill; out.card = !!v.card;
+          // What a website's own script can see of Vyre: nothing should be there.
+          out.exposedToPage = { vyreStop: v.stop !== "undefined", vyreLogin: v.login !== "undefined", pillState: v.state !== "undefined" };
+        } catch { /* not attached */ }
+        // A real mouse click on one of the pill's own buttons, to prove the button reaches the stop. The same as the person clicking it.
+        if (args.press && ["Stop", "Pause"].includes(String(args.press)) && p && p.buttonPoint) {
+          const pt = await p.buttonPoint(tabId, String(args.press));
+          out.pressed = !!pt;
+          if (pt) for (const type of ["mousePressed", "mouseReleased"]) await ctx.cdp.send(tabId, "Input.dispatchMouseEvent", { type, x: pt.x, y: pt.y, button: "left", clickCount: 1 });
+        }
+      }
+      return out;
+    },
+
     "tabs.list": async (_args, ctx) => ({ tabs: (await survey(ctx)).map(shape) }),
 
     "tabs.find": async (args, ctx) => {
@@ -127,14 +164,16 @@ export default {
         return { ...shape(best.s), reused: true, matched: best.how };
       }
       if (typeof args.url !== "string" || args.openIfMissing === false) throw err("no_tab", "no open tab matches and none was opened");
-      const tab = await open(ctx, args.url, focus);
-      return { id: tab.id, windowId: tab.windowId, url: redact.url(args.url), title: "", active: !!tab.active, opened: true, reused: false, matched: "opened" };
+      const r = await open(ctx, args.url, focus, Number(args.timeoutMs) || undefined);
+      const l = landed(r, args.url);
+      return { id: r.created.id, windowId: r.created.windowId, url: l.finalUrl, title: l.title, active: !!r.created.active, opened: true, reused: false, matched: "opened", loaded: l.loaded, ...(l.failed ? { failed: l.failed } : {}), ...(l.stillLoading ? { stillLoading: true } : {}), waitedMs: l.waitedMs };
     },
 
     "tabs.open": async (args, ctx) => {
       if (typeof args.url !== "string" || !args.url) throw err("bad_request", "tabs.open needs a url");
-      const tab = await open(ctx, args.url, args.focus === true);
-      return { id: tab.id, windowId: tab.windowId, url: redact.url(args.url), opened: true };
+      const r = await open(ctx, args.url, args.focus === true, Number(args.timeoutMs) || undefined);
+      const l = landed(r, args.url);
+      return { id: r.created.id, windowId: r.created.windowId, url: l.finalUrl, title: l.title, opened: true, loaded: l.loaded, ...(l.failed ? { failed: l.failed } : {}), ...(l.stillLoading ? { stillLoading: true } : {}), waitedMs: l.waitedMs };
     },
 
     "tabs.activate": async (args, ctx) => {
@@ -182,7 +221,10 @@ export default {
       const target = await ctx.floorUrl(args.url, "tabs.open");
       if (!target.allow) throw err("blocked", `${target.why} (${target.tier})`);
       await ctx.tabs.update(id, { url: args.url });
-      return { id, url: redact.url(args.url) };
+      const st = ctx.tabs.settle ? await ctx.tabs.settle(id, Math.min(60_000, Math.max(0, Number(args.timeoutMs) || 15_000))) : null;
+      const now = st && st.tab ? String(st.tab.url || "") : "";
+      const failed = now.startsWith("chrome-error:");
+      return { id, url: redact.url(now || args.url), ...(st ? { loaded: st.settled && !failed, waitedMs: st.waitedMs } : {}), ...(failed ? { failed: "the page did not load: Chrome is showing its own error page. Check the address and try again." } : {}) };
     },
   },
 };

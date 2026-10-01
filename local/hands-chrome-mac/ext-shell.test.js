@@ -3,12 +3,14 @@
 // chrome.debugger wrapper (idempotent attach, detach rejects in-flight); the registry.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { start, redactResult, MIN_RETRY_MS, MAX_RETRY_MS } from "./extension/background.js";
+import { start, redactResult, MIN_RETRY_MS, MAX_RETRY_MS, FAST_RETRY_MS, FAST_WINDOW_MS, BADGE_AFTER_MS } from "./extension/background.js";
+import { explain } from "./extension/shared/diag.js";
 import { createCdp } from "./extension/lib/cdp.js";
 import { register, dispatch, loadOptional, loadReport, opNames, ready } from "./extension/caps/index.js";
 import { createCtx } from "./extension/lib/ctx.js";
 import { createFakeChrome, createFakePage, samplePage } from "./test-support/fake-chrome.js";
 import { proto } from "./extension/lib/shared.js";
+import { dispatchT } from "./test-support/trust.js";
 
 const tick = () => new Promise(r => setImmediate(r));
 const until = async f => { for (let i = 0; i < 50 && !f(); i++) await tick(); };
@@ -96,26 +98,57 @@ test("a request naming a blind tab is refused by the shell's floor", async () =>
   assert.equal(port().sent.find(m => m.id === 1).error.code, "blocked");
 });
 
-test("reconnect backoff: never faster than 5 s, growing to a minute, reset by a message", async () => {
+test("reconnect: every 3 s for the first two minutes of a failure, then backing off to a minute, and fast again after a healthy connection", async () => {
   const { chrome, timers, shell, port } = boot();
   assert.equal(chrome._.counts.connectNative, 1);
-  for (let i = 0; i < 8; i++) {
+  // The first two minutes: a person who has just installed is watching.
+  let cycles = 0;
+  while (timers.now() < FAST_WINDOW_MS) {
     port().hostClose();
     assert.equal(timers.pending.length, 1, "exactly one retry is pending");
-    timers.advance(timers.delays.at(-1) - 1);
-    assert.equal(chrome._.counts.connectNative, 1 + i, "not before the delay");
+    assert.equal(timers.delays.at(-1), FAST_RETRY_MS, "3 s while the failure is young");
+    timers.advance(FAST_RETRY_MS - 1);
+    assert.equal(chrome._.counts.connectNative, 1 + cycles, "not before the delay");
     timers.advance(1);
-    assert.equal(chrome._.counts.connectNative, 2 + i);
+    cycles++;
   }
-  assert.ok(timers.delays.every(d => d >= MIN_RETRY_MS && d <= MAX_RETRY_MS), timers.delays.join());
-  assert.equal(timers.delays[0], 5000);
-  assert.equal(timers.delays.at(-1), MAX_RETRY_MS);
-  assert.ok(timers.delays.every((d, i) => i === 0 || d >= timers.delays[i - 1]));
+  assert.ok(cycles >= 39, `about 40 quick tries in two minutes, got ${cycles}`);
+  // After that: 5 s, doubling, capped at a minute.
+  const later = [];
+  for (let i = 0; i < 6; i++) { port().hostClose(); later.push(timers.delays.at(-1)); timers.advance(timers.delays.at(-1)); }
+  assert.deepEqual(later, [5000, 10_000, 20_000, 40_000, MAX_RETRY_MS, MAX_RETRY_MS]);
+  assert.ok(timers.delays.every(d => d >= MIN_RETRY_MS && d <= MAX_RETRY_MS));
   port().deliver({ id: 9, op: "tabs.list" });
   await tick();
   assert.equal(shell.attempts(), 0);
   port().hostClose();
-  assert.equal(timers.delays.at(-1), 5000, "backoff restarts after a healthy connection");
+  assert.equal(timers.delays.at(-1), FAST_RETRY_MS, "fast again after a healthy connection");
+});
+
+test("nothing is swallowed: Chrome's own reason for a failure is kept, the popup words say the one fix, and the badge shows after 20 s", async () => {
+  const { chrome, timers, shell, port } = boot();
+  chrome.runtime.lastError = { message: "Specified native messaging host not found." };
+  port().hostClose();
+  chrome.runtime.lastError = undefined;
+  const c = shell.conn();
+  assert.equal(c.lastError, "Specified native messaging host not found.");
+  assert.equal(c.everConnected, false);
+  const stored = (await chrome.storage.session.get("vyre.conn"))["vyre.conn"];
+  assert.equal(stored.lastError, c.lastError, "kept in chrome.storage.session for the popup");
+  const e = explain(c, timers.now() + 30_000);
+  assert.equal(e.state, "failing");
+  assert.match(e.headline, /cannot find the Vyre connector/);
+  assert.match(e.fix, /vyre-chrome install.*quit and reopen Chrome/);
+  // forbidden and exited say something different
+  assert.match(explain({ ...c, lastError: "Access to the specified native messaging host is forbidden." }).headline, /refused the connector/);
+  assert.match(explain({ ...c, lastError: "Native host has exited." }).fix, /vyre-chrome doctor/);
+  // A message from the host means connected, and clears the failure.
+  port().hostClose && timers.advance(FAST_RETRY_MS);
+  port().deliver({ event: "hello-ack" });
+  await tick();
+  assert.equal(explain(shell.conn()).state, "connected");
+  assert.equal(shell.conn().connectedAt !== null, true);
+  assert.ok(BADGE_AFTER_MS >= 10_000);
 });
 
 test("the keepalive alarm never shortens a pending backoff, and reconnects when nothing is pending", async () => {
@@ -124,7 +157,7 @@ test("the keepalive alarm never shortens a pending backoff, and reconnects when 
   const n = chrome._.counts.connectNative;
   chrome._.onAlarm.fire({ name: "vyre.keepalive" });
   assert.equal(chrome._.counts.connectNative, n, "a retry is already pending");
-  timers.advance(MIN_RETRY_MS);
+  timers.advance(FAST_RETRY_MS);
   assert.equal(chrome._.counts.connectNative, n + 1);
   // a worker woken with no timer and no port: the alarm connects, but not within 5 s of the last try
   shell.stop();
@@ -220,7 +253,7 @@ test("registry: validates names, refuses duplicates, unknown_op, and survives mi
   assert.throws(() => register({ name: "y", ops: { "tabs.list": async () => 1 } }), /already registered/);
   assert.throws(() => register({ name: "z" }), /needs a name/);
   const ctx = createCtx({ chrome: createFakeChrome() });
-  await assert.rejects(dispatch("no.such", {}, ctx), { code: "unknown_op" });
+  await assert.rejects(dispatchT("no.such", {}, ctx), { code: "unknown_op" });
   await assert.rejects(dispatch("tabs.list", [], ctx), { code: "bad_request" });
   await ready;
   const rep = loadReport();
@@ -243,7 +276,7 @@ test("registry: optional capabilities load through an importer; a broken one is 
   assert.ok(rep.optional.failed.some(f => f.name === "zz-broken" && /Unexpected token/.test(f.error)));
   assert.ok(rep.optional.missing.includes("zz-gone"));
   const ctx = createCtx({ chrome: createFakeChrome() });
-  assert.deepEqual(await dispatch("probe2.ping", {}, ctx), { ok: true });
+  assert.deepEqual(await dispatchT("probe2.ping", {}, ctx), { ok: true });
 });
 
 test("caps receive module events through onEvent; one throwing does not silence the rest", async () => {

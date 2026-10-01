@@ -17,7 +17,7 @@ phone.
 |---|---|---|
 | Deck | `deck/views/planner.js`, `deck/css/views/planner.css` (main) | partial |
 | App | none in `apps/app` (work/mobile) | not built |
-| Capsule | `Host/Planner.swift` under `local/capsule/native/Sources/` (work/capsule-pro), banner only | partial |
+| Lumen | `Host/Planner.swift` under `local/capsule/native/Sources/` (work/capsule-pro), banner only | partial |
 
 ## Anatomy
 
@@ -101,7 +101,7 @@ Deck (main)
 - [ ] Snooze has no duration in its label, and there is no Dismiss.
 - [ ] No "Live" status; no missed banner copy "Missed while the box was down".
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] The banner says "Missed: Timer"; no ring count.
 
 App (work/mobile)

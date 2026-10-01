@@ -11,11 +11,23 @@
 //
 //   node scripts/docs-check                  everything
 //   node scripts/docs-check --no-reference   skip regenerating the reference pages
+//   node scripts/docs-check --release        also fail on screenshots older than the code they show
+//
+// Stale screenshots (kind `shots`) are a warning while people work, because any change to the Deck's
+// CSS or app.js ages most of them at once; they fail only with --release, which scripts/release-check.sh
+// runs. Retake them with npm run docs:shots on the test box or the docs-shots workflow.
 
 import { check, format, counts } from "./lib/docs/check.js";
 
-const problems = await check({ reference: process.argv.includes("--no-reference") ? false : undefined });
+const release = process.argv.includes("--release");
+const all = await check({ reference: process.argv.includes("--no-reference") ? false : undefined });
+const stale = all.filter(p => p.kind === "shots");
+const problems = release ? all : all.filter(p => p.kind !== "shots");
 for (const line of format(problems)) process.stdout.write(line + "\n");
+if (!release && stale.length) {
+  const shots = new Set(stale.map(p => p.file)).size;
+  process.stderr.write(`docs-check: warning: ${shots} screenshot${shots === 1 ? " is" : "s are"} older than the code they show (release-check fails on this; run npm run docs:shots on the test box)\n`);
+}
 if (problems.length) {
   const by = Object.entries(counts(problems)).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, n]) => `${k} ${n}`).join(", ");
   process.stderr.write(`docs-check: ${problems.length} problem${problems.length === 1 ? "" : "s"} (${by})\n`);

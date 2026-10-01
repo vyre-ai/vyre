@@ -127,3 +127,34 @@ test("act.run: stops after the repeat limit on a click that never lands", async 
   assert.equal(r.ok, false);
   assert.match(r.why, /tried the same thing twice/);
 });
+
+import { Cdp } from "./cdp.js";
+
+test("cdp: the page the hands attach to is a real web page, never one of Chrome's own popups", async () => {
+  const c = /** @type {any} */ (Object.create(Cdp.prototype));
+  const asked = /** @type {any[]} */ ([]);
+  c.connect = async () => {};
+  c.sessionId = null;
+  c.send = async (/** @type {string} */ method, /** @type {any} */ params) => {
+    asked.push([method, params]);
+    if (method === "Target.getTargets") return { targetInfos: [
+      { targetId: "pop", type: "page", url: "chrome://omnibox-popup.top-chrome/" },
+      { targetId: "dev", type: "page", url: "devtools://devtools/bundled/x.html" },
+      { targetId: "untrusted", type: "page", url: "chrome-untrusted://x/" },
+      { targetId: "real", type: "page", url: "https://harlow.example/intake" },
+    ] };
+    if (method === "Target.attachToTarget") return { sessionId: "s-" + params.targetId };
+    return {};
+  };
+  assert.equal(await c.page(), "s-real");
+  // With only Chrome's own pages open, a blank page is made rather than attaching to one of them.
+  const d = /** @type {any} */ (Object.create(Cdp.prototype));
+  d.connect = async () => {}; d.sessionId = null;
+  d.send = async (/** @type {string} */ method, /** @type {any} */ params) => {
+    if (method === "Target.getTargets") return { targetInfos: [{ targetId: "pop", type: "page", url: "chrome://omnibox-popup.top-chrome/" }] };
+    if (method === "Target.createTarget") return { targetId: "blank" };
+    if (method === "Target.attachToTarget") return { sessionId: "s-" + params.targetId };
+    return {};
+  };
+  assert.equal(await d.page(), "s-blank");
+});

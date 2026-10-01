@@ -17,7 +17,7 @@ detail from 720 px up; the phone uses its own header (see phone-shell). Drawn on
 |---|---|---|
 | Deck | `deck/js/app.js`, `deck/css/deck.css` (main) | partial |
 | App | `apps/app/src/ui/Screen.tsx` (work/mobile), phone header only | not built |
-| Capsule | not used | not used |
+| Lumen | not used | not used |
 
 ## Anatomy
 

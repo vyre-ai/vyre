@@ -11,10 +11,15 @@
 // request of that origin, inside the worker, and handed to the page's own fetch; it is never
 // returned or logged, and the response comes back through redact.request. A call that is not GET
 // or HEAD is acting: refused while stop is in force and checked against the floor.
+//
+// FRAMES. The traffic of every frame of the tab is in the buffer (net.js), so api.learn learns from a cross-origin
+// iframe's calls too, and each entry records `frame`, the origin of the frame it was learned in. api.call runs the
+// fetch INSIDE that frame by default (or the one `frame` names: index, id or a piece of its origin), so that
+// frame's own cookies and auth sign it; the origin guard then compares against that frame's origin.
 
-import { classifySend, held } from "../shared/outbound.js";
+import { classifySend, held, writeGate } from "../shared/outbound.js";
 import { learn, mergeCatalog, buildCall } from "../shared/apilearn.js";
-import { records, target, refuse, pageFetch, present, start } from "./net.js";
+import { records, target, refuse, pageFetch, present, start, frameList } from "./net.js";
 
 const KEY = "api.catalog";
 const MAX_ORIGINS = 20;
@@ -54,7 +59,11 @@ const ops = {
     const tab = await target(ctx, args, "api.learn");
     await start(ctx, tab);
     const recs = await records(ctx, tab, { since: args?.since });
-    const fresh = learn(recs.map(r => ({ method: r.method, url: r.url, status: r.status, type: r.type, requestHeaders: r.reqHeaders, postData: r.postData })));
+    // Learn per frame, so an entry says which frame's traffic it came from (a script inside the builder iframe, not the shell).
+    /** @type {Map<string, any[]>} */
+    const byFrame = new Map();
+    for (const r of recs) { const k = r.frame || ""; (byFrame.get(k) || byFrame.set(k, []).get(k))?.push(r); }
+    const fresh = [...byFrame].flatMap(([frame, rs]) => learn(rs.map(r => ({ method: r.method, url: r.url, status: r.status, type: r.type, requestHeaders: r.reqHeaders, postData: r.postData }))).map(e => (frame ? { ...e, frame } : e)));
     const st = store(ctx);
     const all = await st.load();
     /** @type {Set<string>} */
@@ -78,14 +87,14 @@ const ops = {
     return { origins, entries: origins.flatMap(o => all[o].entries) };
   },
 
-  async "api.call"(args, ctx) {
+  async "api.call"(args, ctx, trust = {}) {
     const all = await store(ctx).load();
-    const entry = Object.values(all).flatMap(o => o.entries).find(e => e.id === args?.entryId);
+    const entry = Object.values(all).flatMap(o => o.entries).find(e => e.id === (args?.entryId ?? args?.entry));
     if (!entry) throw refuse("not_found", "no catalog entry with that id (run api.learn first)");
     const acting = !/^(GET|HEAD)$/.test(entry.method);
     const tab = await target(ctx, args, acting ? "api.call" : "api.catalog", acting);
     let built;
-    try { built = buildCall(entry, args?.params || {}); } catch (e) { throw refuse("bad_request", /** @type {Error} */ (e).message); }
+    try { built = buildCall(entry, args?.params || args?.args || {}); } catch (e) { throw refuse("bad_request", /** @type {Error} */ (e).message); }
     /** @type {Record<string, string>} */
     const headers = { accept: "application/json", ...(built.headers || {}) };
     let authNote;
@@ -100,9 +109,26 @@ const ops = {
     // Hands-free after the grant, except a request that SENDS something as the person (a message,
     // a post, a payment) when nobody asked: that waits at the Gate. Judged by method and endpoint.
     const ob = classifySend(built.method, built.url, typeof built.body === "string" ? built.body : "");
-    if (ob.send && args?.asked !== true) return held(built.method, built.url, ob.why, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
-    const res = await pageFetch(ctx, tab, { url: built.url, method: built.method, headers, body: built.body }, { origin: entry.origin });
-    return { entryId: entry.id, ...(authNote ? { authNote } : {}), ...present({ method: built.method, url: built.url, status: res.status, mime: res.mime, responseHeaders: res.headers, responseBody: res.body }) };
+    if (ob.send && trust.asked !== true) return held(built.method, built.url, ob.why, `${built.method} ${built.url} ${typeof built.body === "string" ? built.body : ""}`);
+    // Every other write is a change made with the person's login: the one write gate decides (asked, or a plan the module says covers it).
+    const gate = writeGate(built.method, built.url, typeof built.body === "string" ? built.body : "", trust);
+    if (gate.held) return gate.held;
+    // Which frame runs it: the one asked for, else the one the entry was learned in, else the top page.
+    const frames = await frameList(ctx, tab);
+    /** @type {any} */ let frame = null;
+    let guard = entry.origin;
+    if (args?.frame != null && args.frame !== "") {
+      if (!frames.length || !ctx.frames?.pickFrom) throw refuse("bad_request", "this tab's frames cannot be listed, so a frame cannot be chosen");
+      frame = ctx.frames.pickFrom(frames, args.frame);
+      if (!frame) throw refuse("not_found", `no frame matches ${JSON.stringify(args.frame)}; the frames are ${frames.map(f => `${f.index} ${f.origin || "top"}`).join(", ")}`);
+      if (frame.origin) guard = frame.origin;
+    } else if (entry.frame && frames.length) {
+      frame = frames.find(f => f.readable && f.origin === entry.frame) || null;
+      if (!frame && frames.some(f => f.origin === entry.frame)) throw refuse("not_found", `the frame this call was learned in (${entry.frame}) cannot be read right now`);
+      if (frame) guard = entry.frame;
+    }
+    const res = await pageFetch(ctx, tab, { url: built.url, method: built.method, headers, body: built.body }, { origin: guard, frame, gate });
+    return { entryId: entry.id, ...(frame && frame.index > 0 ? { frame: frame.index, frameOrigin: frame.origin } : {}), ...(authNote ? { authNote } : {}), ...present({ method: built.method, url: built.url, status: res.status, mime: res.mime, responseHeaders: res.headers, responseBody: res.body }) };
   },
 };
 

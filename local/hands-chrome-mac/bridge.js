@@ -18,7 +18,7 @@ import * as redact from "./extension/shared/redact.js";
 export { socketPath };
 
 /** Longer ops than the default 30 s: a batch runs many steps, a replay waits on the network. */
-export const OP_TIMEOUTS = { "batch.run": 120_000, "net.replay": 60_000, "api.call": 60_000, "page.wait": 65_000 };
+export const OP_TIMEOUTS = { "batch.run": 120_000, "ghl.run": 120_000, "net.replay": 60_000, "api.call": 60_000, "page.wait": 65_000 };
 
 /** @param {string} code @param {string} [message] */
 const err = (code, message) => Object.assign(new Error(message || proto.fail(code).message), { code });
@@ -37,6 +37,8 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
   /** @type {net.Server|null} */
   let server = null;
   let seq = 0;
+  /** What has happened on the socket, so the module can say WHY there is no extension (never a payload, only counts and times). */
+  const stats = { connections: 0, lastConnectionAt: /** @type {number|null} */ (null), lastHostOrigin: /** @type {string|null} */ (null), hellos: 0, lastHelloAt: /** @type {number|null} */ (null), refused: /** @type {{ at: number, why: string }|null} */ (null) };
 
   const fan = (/** @type {any} */ e) => { for (const fn of [...listeners]) { try { fn(e); } catch (x) { log(`listener failed: ${/** @type {Error} */ (x).message}`); } } };
 
@@ -48,6 +50,7 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
     /** @type {Conn} */
     const c = { sock, hello: null, origin: "", pending: new Map() };
     conns.add(c);
+    stats.connections++; stats.lastConnectionAt = Date.now();
     const rd = reader();
     sock.on("data", d => {
       let msgs;
@@ -70,14 +73,16 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
     // The host says which origin Chrome launched it for, once, before the hello. Not authentication
     // (any process of this user can write the same frame): it only tells our extension's host from
     // a host some other extension or profile started.
-    if (m.event === "host" && !c.origin) { c.origin = typeof m.origin === "string" ? m.origin : ""; return; }
+    if (m.event === "host" && !c.origin) { c.origin = typeof m.origin === "string" ? m.origin : ""; stats.lastHostOrigin = c.origin || null; return; }
     if (m.event === "hello") {
       if (extensionOrigin && c.origin !== extensionOrigin) {
         log(`ignored a hello that did not come from the pinned extension (origin ${JSON.stringify(c.origin || "none")})`);
+        stats.refused = { at: Date.now(), why: c.origin ? "it came from a different extension id than the one this connector is pinned to" : "the connector did not say which extension started it" };
         c.sock.destroy();
         return;
       }
       if (m.protocol !== proto.PROTOCOL) {
+        stats.refused = { at: Date.now(), why: `the extension speaks protocol ${m.protocol}, this connector speaks ${proto.PROTOCOL} (reload the extension after updating)` };
         send(c, { event: "bad_protocol", expected: proto.PROTOCOL, got: m.protocol });
         c.sock.end();
         return;
@@ -91,6 +96,7 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
         live.sock.destroy();
       }
       live = c;
+      stats.hellos++; stats.lastHelloAt = Date.now();
       fan({ event: "hello", ...c.hello });
       return;
     }
@@ -184,6 +190,8 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
     },
     /** Whether an extension has said hello and is still there. */
     connected: () => Boolean(live),
+    /** What has reached the socket so far (counts and times only). */
+    stats: () => ({ ...stats, refused: stats.refused ? { ...stats.refused } : null }),
     /** What the live extension said in its hello (version, browser), redacted, or null. */
     info: () => (live ? live.hello : null),
     /**
@@ -200,7 +208,7 @@ export function createBridge({ sockPath = socketPath(), timeoutMs = 30_000, opTi
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => { c.pending.delete(id); reject(err("timeout", `${op} did not answer in ${ms} ms`)); }, ms);
         c.pending.set(id, { resolve, reject, timer, op });
-        send(c, { id, op, args }).then(ok => { if (!ok) { clearTimeout(timer); c.pending.delete(id); reject(err("no_extension", "could not write to the extension")); } });
+        send(c, { id, op, args, ...(o.trust ? { trust: o.trust } : {}) }).then(ok => { if (!ok) { clearTimeout(timer); c.pending.delete(id); reject(err("no_extension", "could not write to the extension")); } });
       });
     },
     /** Tell the extension something without waiting (stop, resume). Resolves once written. @param {any} frame */

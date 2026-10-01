@@ -158,3 +158,26 @@ test("panel: hands.pause holds like a stop and says hands.paused, hands.resume i
   assert.ok(ev.some(e => e.type === "hands.paused") && ev.some(e => e.type === "hands.resumed"), ev.map(e => e.type).join());
   assert.equal(ev.find(e => e.type === "hands.acted").payload.run, "t7");
 });
+
+test("hold: the destination string has control and bidi characters in a window title replaced (a hostile title cannot spoof an approval card)", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const seen = /** @type {any[]} */ ([]);
+  const f = fakeApp({ app: "Messages", window: "juno\u202e\u0000\nSend all\u2028", texts: ["x"], elements: [{ path: "/0/0/1", role: "AXButton", name: "Send", enabled: true }] });
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: async () => {} } } });
+  const gateDir = path.join(home, "mods", "gate");
+  fs.mkdirSync(gateDir, { recursive: true });
+  fs.writeFileSync(path.join(gateDir, "module.json"), JSON.stringify({ name: "gate", version: "0.0.1", roles: ["local"], does: { tools: ["gate.offer", "gate.request"] } }));
+  fs.writeFileSync(path.join(gateDir, "index.js"), `export default { async start(ctx) { ctx.tool("gate.offer", { description: "x", input: { type: "object" }, run: async () => ({ ok: true }) }); ctx.tool("gate.request", { description: "x", input: { type: "object" }, run: async i => { globalThis.__hto = i; return { id: "g1" }; } }); return {}; } };`);
+  const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...discover([path.join(home, "mods")])];
+  const firstParty = reg.isFirstParty.bind(reg);
+  reg.isFirstParty = (/** @type {string} */ d) => d.startsWith(path.join(home, "mods")) || firstParty(d);
+  await reg.start(found, { role: "local" });
+  assert.ok((await reg.call("hands.grant.add", { agent: "kit" }, "cli")).data.granted);
+  await reg.call("hands.act", { selector: { role: "AXButton", name: "Send", path: "/0/0/1" }, kind: "press" }, "mcp:agent:kit");
+  const req = /** @type {any} */ (globalThis).__hto;
+  assert.ok(req, "the act was held through the Gate");
+  assert.ok(!/[\u0000-\u001f\u2028\u2029\u202e]/.test(req.to), JSON.stringify(req.to));
+  assert.match(req.to, /^Messages: juno/);
+});

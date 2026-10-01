@@ -23,6 +23,8 @@ It is built for real GoHighLevel work (see "GoHighLevel" below), but it drives a
 
        claude mcp add vyre-chrome -- ~/.vyre-chrome/app/vyre-chrome mcp
 
+`./vyre-chrome install` ends by waiting up to a minute for the extension to connect. Load the extension while it waits and it says "Connected"; if it does not connect, it says exactly what is wrong and the one thing to do (for example, "quit and reopen Chrome once" when Chrome was already open). The extension has a toolbar icon: click it any time to see whether it is connected and, if not, why. `vyre-chrome doctor` checks the whole path from a terminal (Node, the installed copy, the connector registered for each browser, the launcher, a real connector round trip, whether a browser started a connector process) and prints the one next step. Supported browsers: Chrome, Chromium, Brave, Edge, and on macOS Dia and Arc.
+
 Check it: start Claude Code and ask it to run `chrome_status`. It should say connected. Chrome shows two bars that cannot be hidden: a warning about developer-mode extensions when it starts, and "started debugging this browser" while a tab is being driven.
 
 ## Uninstall

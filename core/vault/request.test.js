@@ -402,10 +402,10 @@ test("bearer formats, api keys, and a secret held in another vault item", async 
   assert.ok(!JSON.stringify(r).includes(other));
 });
 
-test("an oauth credential says plainly that signing in for one is not built yet", async t => {
+test("an oauth credential that was never signed in says so (the sign-in itself is core/vault/api-oauth.test.js)", async t => {
   const { ask, cred } = await mk(t);
   await cred("harlow-oauth", { auth: { type: "oauth", client: { item: "harlow-client" }, authorize_uri: "https://login.harlow.test/authorize", token_uri: "https://login.harlow.test/token", scopes: ["s"] }, hosts: ["graph.harlow.test"] }, "");
-  await assert.rejects(ask({ credential: "harlow-oauth", method: "GET", url: "https://graph.harlow.test/v1/me" }), /not built yet/);
+  await assert.rejects(ask({ credential: "harlow-oauth", method: "GET", url: "https://graph.harlow.test/v1/me" }), /not signed in yet/);
 });
 
 test("a big response is cut like an MCP result, binary is summarised, and a truncated read says so", async t => {

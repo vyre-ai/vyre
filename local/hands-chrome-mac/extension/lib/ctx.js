@@ -13,6 +13,7 @@
 //   ctx.setStopped(bool)       the shell's, set from the module's stop and resume events
 
 import { createCdp } from "./cdp.js";
+import { createFrames } from "./frames.js";
 import * as floor from "./floor.js";
 import { err } from "./err.js";
 import { dispatch } from "../caps/index.js";
@@ -22,6 +23,7 @@ import { dispatch } from "../caps/index.js";
  */
 export function createCtx({ chrome, emit = () => {} }) {
   const cdp = createCdp({ chrome, emit });
+  const frames = createFrames({ cdp });
   let stopped = false;
 
   const storage = {
@@ -51,6 +53,23 @@ export function createCtx({ chrome, emit = () => {} }) {
       const b = await chrome.tabs.query({ active: true, currentWindow: true });
       return (b && b[0]) || null;
     },
+    /**
+     * Wait until a tab has COMMITTED to a page and finished loading (status complete, an address, nothing pending), or the time is up.
+     * Never throws for a slow page: it returns what the tab looks like at the end. @param {number} id @param {number} [ms]
+     * @returns {Promise<{ tab: any, settled: boolean, waitedMs: number }>}
+     */
+    async settle(id, ms = 15_000) {
+      const t0 = Date.now();
+      /** @type {any} */ let tab = null;
+      for (;;) {
+        try { tab = await chrome.tabs.get(id); } catch { tab = null; }
+        const url = tab ? String(tab.url || "") : "";
+        if (tab && tab.status === "complete" && url && !tab.pendingUrl) return { tab, settled: true, waitedMs: Date.now() - t0 };
+        if (!tab) return { tab: null, settled: false, waitedMs: Date.now() - t0 };
+        if (Date.now() - t0 >= ms) return { tab, settled: false, waitedMs: Date.now() - t0 };
+        await new Promise(r => setTimeout(r, 80));
+      }
+    },
     /** @param {number} windowId */
     async focusWindow(windowId) { if (chrome.windows?.update) await chrome.windows.update(windowId, { focused: true }); },
   };
@@ -70,22 +89,64 @@ export function createCtx({ chrome, emit = () => {} }) {
       try { const old = (await api.getSessionRules()).map((/** @type {any} */ r) => r.id).filter((/** @type {number} */ id) => id >= RULE_MIN && id <= RULE_MAX); if (old.length) await api.updateSessionRules({ removeRuleIds: old }); } catch { /* nothing to clear */ }
     },
     /**
-     * Block WebSockets, beacons and "other" requests of one tab to any host not in `allowHosts`. `ok` is false when the browser
-     * could not set the rule (no API, or it refused): the caller then reports the containment as partial.
-     * @param {{ tab: number, allowHosts: string[] }} o @returns {Promise<{ id: number|null, ok: boolean, why?: string }>}
+     * Block EVERY request of one tab (all resource types, the page's own navigation included: `location = ...` is an exfiltration channel too) to anything not in the allow list, at the network
+     * level, in every frame of the tab including one a script just made. The allow list is exact origins (scheme, host AND port) as higher-priority ALLOW rules, not hostnames:
+     * a hostname list would also allow other ports and every subdomain. `ok` is false when the browser could not set the rules (no API, or it refused).
+     * @param {{ tab: number, allowOrigins?: string[], allowHosts?: string[] }} o @returns {Promise<{ id: number|null, ids: number[], ok: boolean, why?: string }>}
      */
-    async block({ tab, allowHosts }) {
+    async block({ tab, allowOrigins = [], initiatorHosts = [], wsHosts = [] }) {
       const api = dnrApi();
-      if (!api) return { id: null, ok: false, why: "this browser has no declarativeNetRequest" };
-      const id = ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq;
-      const rule = { id, priority: 1, action: { type: "block" }, condition: { tabIds: [tab], resourceTypes: ["websocket", "ping", "other"], ...(allowHosts.length ? { excludedRequestDomains: allowHosts } : {}) } };
-      try { await api.updateSessionRules({ removeRuleIds: [id], addRules: [rule] }); return { id, ok: true }; } catch (e) { return { id: null, ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
+      if (!api) return { id: null, ids: [], ok: false, why: "this browser has no declarativeNetRequest" };
+      const next = () => (ruleSeq >= RULE_MAX ? (ruleSeq = RULE_MIN) : ++ruleSeq);
+      const TYPES = ["main_frame", "sub_frame", "stylesheet", "script", "image", "font", "object", "xmlhttprequest", "ping", "csp_report", "media", "websocket", "webtransport", "webbundle", "other"];
+      const origins = [...new Set(allowOrigins)].filter(o => /^https?:\/\/[^/\s*^|?]+$/.test(o)).slice(0, 200);
+      // A second pair for requests that belong to no tab (tabId -1: a shared or service worker's own fetches), scoped by the INITIATOR's host so other sites' workers are left alone.
+      const hosts = [...new Set(initiatorHosts)].filter(h => /^[a-z0-9.\-]+$/i.test(h)).slice(0, 50);
+      /** @type {any[]} */ const rules = [];
+      const scopes = [{ tabIds: [tab] }, ...(hosts.length ? [{ tabIds: [-1], initiatorDomains: hosts }] : [])];
+      const blockId = next();
+      let first = true;
+      /** @type {number[]} */ const blockIds = [];
+      for (const scope of scopes) {
+        const bid = first ? blockId : next(); blockIds.push(bid);
+        rules.push({ id: bid, priority: 1, action: { type: "block" }, condition: { ...scope, resourceTypes: TYPES } });
+        first = false;
+        for (const o of origins) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { ...scope, urlFilter: `|${o}/`, resourceTypes: TYPES } });
+      }
+      // A WebSocket handshake is ws:// or wss://, which the http(s) allow rules above do not match. The first party's host gets both, on any port (`|ws://host:` cannot match host.evil.com);
+      // a third party's host gets none, so a script's new socket to it is refused while the guard is up.
+      for (const h of [...new Set(wsHosts)].filter(h => /^[a-z0-9.\-]+$/i.test(h)).slice(0, 10)) {
+        for (const scheme of ["ws", "wss"]) for (const tail of ["/", ":"]) rules.push({ id: next(), priority: 2, action: { type: "allow" }, condition: { tabIds: [tab], urlFilter: `|${scheme}://${h}${tail}`, resourceTypes: ["websocket"] } });
+      }
+      const ids = rules.map(r => r.id);
+      try { await api.updateSessionRules({ removeRuleIds: ids, addRules: rules }); } catch (e) { return { id: null, ids: [], ok: false, why: String(/** @type {Error} */ (e).message || e).slice(0, 160) }; }
+      // CONFIRMED, not assumed: every rule reads back, and (where the browser offers testMatchOutcome, unpacked extensions) an Image and an XHR to a fresh origin from this tab match the block.
+      let tested = false;
+      try {
+        const have = new Set((await api.getSessionRules()).map((/** @type {any} */ r) => r.id));
+        if (!ids.every(id => have.has(id))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: "the rules did not read back" }; }
+        if (typeof api.testMatchOutcome === "function") {
+          const allowIds = new Set(rules.filter(r => r.action.type === "allow").map(r => r.id));
+          // The tab's rule with an Image and an XHR, and (when there is one) the tab-less rule with an XHR whose initiator is a page host: each must match its block and no allow rule.
+          const probes = [{ type: "image", tabId: tab, rule: blockIds[0], initiator: origins[0] || "https://vyre-dnr-probe.invalid" }, { type: "xmlhttprequest", tabId: tab, rule: blockIds[0], initiator: origins[0] || "https://vyre-dnr-probe.invalid" }];
+          const ini = hosts.length ? origins.find(o => { try { return hosts.includes(new URL(o).hostname); } catch { return false; } }) || `https://${hosts[0]}` : "";
+          if (blockIds[1] != null) probes.push({ type: "xmlhttprequest", tabId: -1, rule: blockIds[1], initiator: ini });
+          for (const q of probes) {
+            const out = await api.testMatchOutcome({ url: "https://vyre-dnr-probe.invalid/x", type: q.type, tabId: q.tabId, initiator: q.initiator });
+            const m = (out && out.matchedRules) || [];
+            if (!m.some((/** @type {any} */ x) => x.ruleId === q.rule) || m.some((/** @type {any} */ x) => allowIds.has(x.ruleId))) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: `the ${q.type} test request${q.tabId === -1 ? " without a tab" : ""} was not blocked by the rule` }; }
+          }
+          tested = true;
+        }
+      } catch (e) { await this.unblock(ids); return { id: null, ids: [], ok: false, why: "the rules could not be confirmed: " + String(/** @type {Error} */ (e).message || e).slice(0, 120) }; }
+      return { id: blockId, ids, ok: true, tested };
     },
-    /** @param {number|null} id */
-    async unblock(id) {
+    /** @param {number|number[]|null} ids */
+    async unblock(ids) {
       const api = dnrApi();
-      if (id == null || !api) return;
-      try { await api.updateSessionRules({ removeRuleIds: [id] }); } catch { /* already gone */ }
+      const list = ids == null ? [] : Array.isArray(ids) ? ids : [ids];
+      if (!list.length || !api) return;
+      try { await api.updateSessionRules({ removeRuleIds: list }); } catch { /* already gone */ }
     },
   };
   void dnr.sweep();
@@ -97,7 +158,7 @@ export function createCtx({ chrome, emit = () => {} }) {
 
   /** @type {any} */
   const ctx = {
-    cdp, tabs, storage, dnr,
+    cdp, tabs, storage, dnr, frames,
     emit,
     stopped: () => stopped,
     setStopped: (/** @type {boolean} */ v) => { stopped = !!v; if (stopped) ctx.stoppedAt = Date.now(); },
@@ -110,8 +171,8 @@ export function createCtx({ chrome, emit = () => {} }) {
     async floorTier() { const cfg = await floorConfig(); return (/** @type {string} */ url) => floor.tierOf(url, cfg).tier; },
     /** @param {string} url @param {string} op */
     async floorUrl(url, op) { return floor.decide(url, op, await floorConfig()); },
-    /** @param {string} op @param {any} [args] */
-    call: (op, args) => dispatch(op, args || {}, ctx),
+    /** @param {string} op @param {any} [args] @param {any} [trust] what the caller was approved for; never inside args */
+    call: (op, args, trust) => dispatch(op, args || {}, ctx, trust),
   };
   return ctx;
 }

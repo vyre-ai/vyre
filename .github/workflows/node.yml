@@ -35,14 +35,17 @@ jobs:
       - run: npm test
       - run: npm run eval:answer
       - run: npm run perf-check
-  # Windows support (ADR 0037): the same suite on windows-latest, to catch path and shell
-  # assumptions before any Windows-specific code lands. Not yet green; non-blocking on purpose
-  # while docs/work/windows.md tracks the fixes it finds. Skips eval:answer and perf-check, which
-  # assume a Linux/Mac process model for their CPU/RSS budget, not what this job is proving.
+  # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
+  # only files that pass there), so a red result means something, and it blocks: a regression cannot
+  # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.
   test-windows:
     runs-on: windows-latest
-    timeout-minutes: 30
-    continue-on-error: true
+    # The full suite took over 30 minutes here and held up stage landings. This runs the tests
+    # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
+    # client), each bounded, and must finish inside 10 minutes. It lists only files that pass on
+    # Windows, so a red result means something; the files left out, each with its reason, are in
+    # docs/work/windows.md ("Known Windows gaps").
+    timeout-minutes: 10
     env:
       VYRE_NO_DIALOGS: "1"
     steps:
@@ -52,7 +55,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm test
+      - run: npm run test:windows
   # Windows LOW (security review, ADR 0037): the local vyred socket's privacy, verified on a real
   # windows-latest runner rather than hardware. Not continue-on-error: the lead's call was that
   # Tier A ships marked "preview" with the gap written down if this cannot be made to pass, not
@@ -95,13 +98,17 @@ jobs:
           $sockPath = (node -e "import('./core/config/index.js').then(c => console.log(c.paths(process.env.VYRE_HOME).socket))").Trim()
           "sock=$sockPath" >> $env:GITHUB_OUTPUT
           $found = $false
-          for ($i = 0; $i -lt 100; $i++) {
+          for ($i = 0; $i -lt 300; $i++) {
             if (Test-Path $sockPath) { $found = $true; break }
             Start-Sleep -Milliseconds 200
           }
           if (-not $found) {
             Write-Output "--- vyred.out ---"; Get-Content "$env:RUNNER_TEMP\vyred.out" -ErrorAction SilentlyContinue
             Write-Output "--- vyred.err ---"; Get-Content "$env:RUNNER_TEMP\vyred.err" -ErrorAction SilentlyContinue
+            $alive = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+            Write-Output "--- vyred process ($($proc.Id)) still running: $([bool]$alive) ---"
+            $log = Get-ChildItem "$env:RUNNER_TEMP\vyre-home\logs" -Filter *.log -ErrorAction SilentlyContinue | Select-Object -Last 1
+            if ($log) { Write-Output "--- $($log.FullName) ---"; Get-Content $log.FullName -ErrorAction SilentlyContinue }
             throw "vyred did not create its socket at $sockPath"
           }
 

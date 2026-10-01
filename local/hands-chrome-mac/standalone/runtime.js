@@ -11,17 +11,22 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import chromeModule from "../index.js";
-import { createTrace, rungOf, nextRung } from "./trace.js";
+import { createTrace, rungOf, nextRung, readConfig } from "./trace.js";
 import { callerKind } from "../caller.js";
+import { createSiteStore } from "./sitestore.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, "..");
+/** A "visit" for the two-visit evidence: the person's setting, never under 5 minutes unless a test flag is on (a tiny window would make "seen twice" true within seconds). @param {any} minutes @param {Record<string, string|undefined>} [env] */
+export const visitMsFrom = (minutes, env = process.env) => Math.max(env.NODE_ENV === "test" || env.VYRE_CHROME_TEST ? 1000 : 5 * 60_000, Math.round((Number(minutes) || 30) * 60_000));
 export const dataDirOf = (/** @type {Record<string, string|undefined>} */ env = process.env) => env.VYRE_CHROME_HOME || path.join(os.homedir(), ".vyre-chrome");
 export const sockPathOf = (/** @type {string} */ dataDir, platform = process.platform) =>
   platform === "win32" ? `\\\\.\\pipe\\vyre-chrome-standalone-${safeUser()}` : path.join(dataDir, "run", "chrome.sock");
 function safeUser() { try { return os.userInfo().username; } catch { return "user"; } }
 
 /** Tools the model may not call: the person's own controls, and the Gate's release (chrome.send stands in for it). */
+/** Errors that are not about a control or a page (nothing to step down from): the ladder hint would only mislead. */
+const NO_LADDER = new Set(["blocked", "stopped", "no_extension", "denied", "declined", "pending", "detached", "not_listening", "plan_first", "waiting_input", "bad_request", "not_found_tool"]);
 const HIDDEN = new Set(["chrome.release", "chrome.interject", "chrome.install", "chrome.pause", "chrome.plan.edit", "chrome.voice"]);
 
 /**
@@ -31,6 +36,7 @@ export async function createRuntime(o = {}) {
   const dataDir = o.dataDir || dataDirOf();
   const log = o.log || (m => process.stderr.write(`[vyre-chrome] ${m}\n`));
   const trace = createTrace({ dataDir, version: o.version });
+  const sites = createSiteStore({ dataDir });
   /** @type {Map<string, any>} */ const tools = new Map();
   /** @type {Map<string, Set<Function>>} */ const listeners = new Map();
   /** @type {Map<string, { content: any, tool: string }>} */ const held = new Map();
@@ -56,11 +62,17 @@ export async function createRuntime(o = {}) {
       return { data: { id, state: "held" } };
     }
     if (tool === "hands.grant.list") return { data: [] };
+    // Vyre Memory's site knowledge, answered from files in this folder when there is no Vyre to ask.
+    if (tool === "memory.site.get") return sites.get(input || {});
+    if (tool === "memory.site.put") return readConfig(dataDir).learn !== true ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
+    if (tool === "memory.site.report") return readConfig(dataDir).learn !== true ? { data: { known: false } } : sites.report(input || {});
+    if (tool === "memory.site.list") return sites.list();
+    if (tool === "memory.site.forget") return sites.forget(input || {});
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
   }
 
   const ctx = {
-    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
+    config: { chrome: { sockPath: o.sockPath || sockPathOf(dataDir), vyreHome: dataDir, hostDir: o.hostDir || path.join(PKG, "native-host"), extensionDir: o.extensionDir || path.join(PKG, "extension"), sendTool: "chrome_send", learn: () => readConfig(dataDir).learn === true, learnVisitMs: () => visitMsFrom(readConfig(dataDir).learnVisitMinutes), ghlHosts: () => { const h = trace.config().ghlHosts; return Array.isArray(h) ? h : []; }, ...(o.chrome || {}) } },
     log,
     events,
     call,
@@ -68,6 +80,22 @@ export async function createRuntime(o = {}) {
   };
 
   const running = await chromeModule.start(ctx);
+
+  // What this server knows, for `vyre-chrome doctor` and the install check to read from another process: the connection state, why not, the one fix.
+  const statusFile = path.join(dataDir, "run", "status.json");
+  const writeStatus = async () => {
+    try {
+      const r = /** @type {any} */ (await run("chrome.status", {}, "cli"));
+      fs.mkdirSync(path.dirname(statusFile), { recursive: true, mode: 0o700 });
+      const tmp = `${statusFile}.${process.pid}`;
+      fs.writeFileSync(tmp, JSON.stringify({ pid: process.pid, at: new Date().toISOString(), connected: r.connected === true, listening: r.listening !== false, extension: r.extension ? { version: r.extension.version, protocol: r.extension.protocol } : null, stage: r.stage || null, problem: r.problem || null, fix: r.fix || null, socket: r.socket || null, hostInstalled: r.hostInstalled === true }, null, 2), { mode: 0o600 });
+      fs.renameSync(tmp, statusFile);
+    } catch { /* status is a courtesy; never a failure */ }
+  };
+  for (const ev of ["chrome.connected", "chrome.disconnected", "chrome.replaced"]) events.on(ev, () => { void writeStatus(); });
+  void writeStatus();
+  const statusTimer = setInterval(() => { void writeStatus(); }, 20_000);
+  statusTimer.unref();
 
   /** Run a tool as the model in Claude Code would: a person's session, not a named agent. @param {string} name @param {any} input @param {string} caller */
   async function run(name, input, caller) {
@@ -97,8 +125,13 @@ export async function createRuntime(o = {}) {
         if (typeof ask === "function" && trace.config().confirmSends !== false) {
           const c = h.content || {};
           const fields = Array.isArray(c.fields) ? c.fields.slice(0, 12).map((/** @type {any} */ f) => `${f.name || f.label || "field"}: ${String(f.value ?? "").slice(0, 60)}`).join("\n") : "";
-          const r = /** @type {any} */ (await ask(`Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
-          if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error("the person did not approve this send, so nothing was sent"), { code: "declined" });
+          const isPlan = c.kind === "plan";
+          const r = /** @type {any} */ (await ask(isPlan
+            ? `Approve this plan once?\n${c.control || "?"}${fields ? "\n" + fields : ""}\nEach create and edit it lists then goes through without asking again, and a publish only if it says "and publish". Deleting, messaging and payments still ask one at a time.`
+            : `Send this from ${c.origin || "your browser"}?\nControl: ${c.control || "?"}${fields ? "\n" + fields : ""}`));
+          // No answer is not a no: the act stays held, the person was notified in Chrome, and the same id can be asked again.
+          if (r && r.action === "timeout") throw Object.assign(new Error(`the person has not answered yet (they were notified in Chrome). Nothing was ${isPlan ? "approved" : "sent"}; it is still waiting. Call chrome_send with the same id to ask again, or carry on with something else.`), { code: "pending" });
+          if (!r || r.action !== "accept" || !r.content || r.content.approve !== true) throw Object.assign(new Error(isPlan ? "the person did not approve this plan, so nothing was started" : "the person did not approve this send, so nothing was sent"), { code: "declined" });
         }
         held.delete(id);
         out = { ok: true, result: await run("chrome.release", { id, content: h.content }, "module:gate") };
@@ -124,7 +157,7 @@ export async function createRuntime(o = {}) {
     const runMs = Date.now() - t0;
     const c = /** @type {any} */ (out);
     // The ladder: a failure says which rung it was on and what the next one is.
-    if (!c.ok && c.error && rungOf(name)) { const hint = nextRung(rungOf(name)); if (hint && c.error.code !== "blocked" && c.error.code !== "stopped") c.error.message = `${c.error.message} | ladder: ${hint}`; }
+    if (!c.ok && c.error && rungOf(name)) { const hint = nextRung(rungOf(name)); if (hint && !NO_LADDER.has(String(c.error.code))) c.error.message = `${c.error.message} | ladder: ${hint}`; }
     trace.call({ tool: name, args: input, queueMs, runMs, ok: c.ok, result: c.result, error: c.error });
     // A failure can leave a small screenshot behind, when the person turned that on.
     if (!c.ok && trace.config().shots === true && tools.has("chrome.screenshot") && name !== "chrome.screenshot") {
@@ -152,7 +185,7 @@ export async function createRuntime(o = {}) {
   }
 
   return {
-    dataDir, trace, list, invoke, held,
-    async stop() { trace.write({ kind: "session", event: "stop" }); await running.stop(); },
+    dataDir, trace, list, invoke, held, call,
+    async stop() { clearInterval(statusTimer); try { const j = JSON.parse(fs.readFileSync(statusFile, "utf8")); if (j && j.pid === process.pid) fs.rmSync(statusFile, { force: true }); } catch { /* gone or not ours */ } trace.write({ kind: "session", event: "stop" }); await running.stop(); },
   };
 }
