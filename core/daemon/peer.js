@@ -741,3 +741,31 @@ let socketTrustMode = "strict";
  */
 export function setSocketTrust(mode) { socketTrustMode = mode === "label" ? "label" : "strict"; }
 export const socketTrust = () => socketTrustMode;
+
+/**
+ * Who a plain model caller (the person's own Claude Code through Vyre's MCP, no verified thread) is, from the kernel: the nearest claude ancestor
+ * of the socket's peer, its start time, and its working folder. `session` is "<pid>:<start>", stable for the
+ * life of that process and never reused by another; `cwd` is where the MCP server (and so the session) runs. Either is null where the OS will not say.
+ * @param {number} pid @param {(pid: number) => any} [look] @param {NodeJS.Platform} [platform]
+ * @returns {{ session: string|null, cwd: string|null }}
+ */
+export function peerIdentity(pid, look = processTable(), platform = process.platform) {
+  const base = a => String(a || "").trim().split(/\s+/)[0].split("/").pop();
+  // The claude process's own folder, never the peer's: a model's shell can `cd` anywhere before it calls. No claude above the peer: nothing is verified.
+  let target = 0;
+  try { for (const c of ancestry(pid, look).chain) if (base(c.args) === "claude") { target = c.pid; break; } } catch { /* none */ }
+  if (!target) return { session: null, cwd: null };
+  let cwd = null, start = null;
+  try {
+    if (platform === "linux") {
+      cwd = fs.readlinkSync(`/proc/${target}/cwd`);
+      const st = fs.readFileSync(`/proc/${target}/stat`, "utf8");
+      start = st.slice(st.lastIndexOf(")") + 2).split(" ")[19] || null;
+    } else if (platform === "darwin") {
+      const out = execFileSync("/usr/sbin/lsof", ["-a", "-d", "cwd", "-p", String(target), "-Fn"], { encoding: "utf8", timeout: 2000 });
+      cwd = (out.split("\n").find(l => l.startsWith("n")) || "").slice(1) || null;
+      start = execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(target)], { encoding: "utf8", timeout: 2000 }).trim() || null;
+    }
+  } catch { /* unreadable: null */ }
+  return { session: start ? `${target}:${start}` : null, cwd };
+}

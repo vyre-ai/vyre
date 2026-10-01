@@ -43,6 +43,20 @@ async function prompt(id, blocks) {
       out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: "ok" } }] } } });
       say("Ran it.");
     } else say("I was not allowed to.");
+  } else if (t === "imagecodex") {
+    // Codex's image generation: a completed tool call whose content carries the picture (a 1x1 PNG) and the prompt it revised.
+    const tc = { toolCallId: `exec-${crypto.randomUUID().slice(0, 8)}`, kind: "other", title: "Image generation", status: "in_progress", rawInput: {} };
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call", ...tc } } });
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "tool_call_update", toolCallId: tc.toolCallId, status: "completed", content: [
+      { type: "content", content: { type: "text", text: "Revised prompt: a red circle" } },
+      { type: "content", content: { type: "image", mimeType: "image/png", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", uri: "/h/.codex/generated_images/s/c.png" } }] } } });
+    say("drew it");
+  } else if (t === "mcpask") {
+    // codex-acp 2.1.0's approval for an MCP tool: kind execute, no title, no rawInput, _meta.is_mcp_tool_approval.
+    const r = await call("session/request_permission", { sessionId: session, toolCall: { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, kind: "execute", status: "pending" }, _meta: { is_mcp_tool_approval: true }, options: [
+      { optionId: "allow_once", name: "Allow", kind: "allow_once" }, { optionId: "allow_always", name: "Always allow", kind: "allow_always" }, { optionId: "cancel", name: "Cancel", kind: "reject_once" }] });
+    const oc = r.outcome || {};
+    say(oc.outcome === "selected" ? `mcp: ${oc.optionId}` : "mcp: not allowed");
   } else if (t === "plan") {
     out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "plan", entries: [{ content: "read it", priority: "high", status: "completed" }, { content: "change it", priority: "high", status: "in_progress" }, { content: "test it", priority: "low", status: "pending" }] } } });
     const tc = { toolCallId: `call-${crypto.randomUUID().slice(0, 8)}`, title: "Delete build", kind: "delete", status: "completed", rawInput: { path: "/w/build" } };
@@ -55,6 +69,14 @@ async function prompt(id, blocks) {
   } else if ((m = /^term (.+)$/.exec(t))) {
     try {
       const { terminalId } = await call("terminal/create", { sessionId: session, command: "/bin/sh", args: ["-c", m[1]] });
+      await call("terminal/wait_for_exit", { sessionId: session, terminalId });
+      say("term: " + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
+      await call("terminal/release", { sessionId: session, terminalId });
+    } catch (e) { say("term failed: " + e.message); }
+  } else if ((m = /^termline (.+)$/.exec(t))) {
+    // Grok Build's shape: the whole command line in `command`, no args.
+    try {
+      const { terminalId } = await call("terminal/create", { sessionId: session, command: m[1] });
       await call("terminal/wait_for_exit", { sessionId: session, terminalId });
       say("term: " + (await call("terminal/output", { sessionId: session, terminalId })).output.trim());
       await call("terminal/release", { sessionId: session, terminalId });

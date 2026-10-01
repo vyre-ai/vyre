@@ -13,6 +13,7 @@
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
 import crypto from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -366,6 +367,20 @@ export class Switchboard {
     if (st && st.turn && payload && payload.turn === undefined && /^(thread|ask)\./.test(type) && type !== "thread.stopped") payload = { ...payload, turn: st.turn };
     // Which provider ran a tool call, so a card draws its own tool names and a mixed thread reads right.
     if (type === "thread.tool" && payload && payload.phase === "started" && payload.provider === undefined) payload = { ...payload, provider: (st && st.launch && st.launch.provider) || "claude" };
+    // Who wrote it: the provider, model and account on every turn, reply, usage and finish event, so a chat draws the reply's own icon and memory can
+    // tag the turn (provider is set at launch and never empty; model is what the provider reported, null until it has).
+    if (/^thread\.(turn|text|thinking|usage|finished)$/.test(type) && payload && payload.provider === undefined && !(type === "thread.text" && payload.message === "vyre")) {
+      // Read from the row at most every 2 s per thread: text deltas are frequent, and the model changes only at init or a switch.
+      const now = Date.now();
+      let tag = this.tags && this.tags.get(thread);
+      if (!tag || now - tag.at > 2000 || type === "thread.turn") {
+        const rec = this.record(thread);
+        tag = rec ? { at: now, provider: rec.provider || "claude", model: rec.model || null, account: rec.account || null } : null;
+        if (!this.tags) this.tags = new Map();
+        if (tag) this.tags.set(thread, tag); else this.tags.delete(thread);
+      }
+      if (tag) payload = { ...payload, provider: tag.provider, model: tag.model, account: tag.account };
+    }
     // The server's clock on every piece of text (ms epoch), for a surface's words-per-second meter.
     if ((type === "thread.text" || type === "thread.thinking") && payload && payload.t === undefined) payload = { ...payload, t: Date.now() };
     const ev = this.emitRaw(type, payload, thread, project);
@@ -393,7 +408,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, archived: r.archived_at || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, starter: optsOf(r).starter || null, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -465,6 +480,56 @@ export class Switchboard {
   }
 
   /**
+   * Generated media a provider's tool call returned (an image or audio block with its bytes, or a file Grok left in the account's folder) is saved as an
+   * artifact of the thread (artifacts.media.register, which keeps the bytes and the provenance). A file is read as the account by sessions.files.read.
+   * Quiet when artifacts is not here; a failure says so once in the thread, never breaks the turn.
+   * @param {string} id @param {any} rec @param {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]} media
+   */
+  async saveMedia(id, rec, media) {
+    const MIME = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4" };
+    for (const m of media.slice(0, 4)) {
+      try {
+        let data = m.data_b64, mime = m.mime;
+        if (!data && m.file) {
+          if (!rec.account) continue;
+          const r = await this.deps.call("sessions.files.read", { account: rec.account, file: m.file });
+          if (r.error) throw new Error(r.error.message || r.error.code);
+          data = r.data.data_b64;
+          mime = mime || MIME[String(m.file).split(".").pop().toLowerCase()];
+        }
+        if (!data || !mime) continue;
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}) });
+        if (r.error && r.error.code === "no_such_tool") return;
+        if (r.error) throw new Error(r.error.message || r.error.code);
+      } catch (e) {
+        this.emit("thread.text", { message: "vyre", text: `Could not save a generated file as an artifact: ${String(/** @type {Error} */ (e).message).slice(0, 160)}`, done: true, notice: true }, id, rec.project);
+        return;
+      }
+    }
+  }
+
+  /**
+   * A GitHub session's commit identity and hooks are its environment (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_* names and emails, and one
+   * GIT_CONFIG_* entry for the hooks folder), put in the session process on every launch AND resume. {} when the project has no repo, git is older than
+   * 2.31, or github is not here. Only those keys, only strings.
+   * @param {string|null|undefined} project @param {string} id
+   * @returns {Promise<Record<string, string>>}
+   */
+  async gitEnv(project, id) {
+    if (!project) return {};
+    try {
+      const gh = await this.deps.call("github.project.of", { project });
+      if (!gh || gh.error || !gh.data) return {};
+      const r = await this.deps.call("github.session.env", { project, session: id });
+      const e = r && !r.error && r.data && r.data.env;
+      if (!e || typeof e !== "object") return {};
+      /** @type {Record<string, string>} */ const out = {};
+      for (const [k, v] of Object.entries(e)) if (/^(GIT_AUTHOR_(NAME|EMAIL)|GIT_COMMITTER_(NAME|EMAIL)|GIT_CONFIG_(COUNT|KEY_0|VALUE_0))$/.test(k) && typeof v === "string") out[k] = v;
+      return out;
+    } catch { return {}; }
+  }
+
+  /**
    * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
    * guess between two paid accounts). Null when the provider has only this machine's own login.
    * `resuming`: the thread this is for, whose account must still exist.
@@ -518,7 +583,8 @@ export class Switchboard {
       }
       const purpose = purposeOf(o, w.project);
       // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
-      if (!o.model) {
+      // The models table is Claude's (aliases like opus); another provider's model is the one it reports, so none is recorded until then.
+      if (!o.model && provider === "claude") {
         const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
@@ -551,6 +617,9 @@ export class Switchboard {
       // The thread this one was started for (a teammate's or sub-agent's), so a person's words in the parent
       // count for it (threads.lineage). Only what vyred verified: never an id read from a model's input.
       if (o.parent && this.record(String(o.parent))) kept.parent = String(o.parent);
+      // A plain mcp caller (the person's own Claude Code through Vyre's MCP) started it: "mcp:<claude pid>:<its start time>", set by vyred from the socket
+      // peer and never from input, so one terminal session cannot handle another's threads.
+      if (typeof o.starter === "string" && /^mcp:\d+:/.test(o.starter)) kept.starter = o.starter;
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
@@ -581,6 +650,7 @@ export class Switchboard {
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
     // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
     // under the same thread: there is nothing of its own to resume.
+    o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
@@ -769,6 +839,18 @@ export class Switchboard {
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
+    // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
+    // is appended after it, never over it. github's hook wrappers unset GIT_CONFIG_COUNT, KEY_0 and VALUE_0 when they run in another repo, which clears any entries the
+    // person's own environment carried for that hook run only (nothing outside the hook), so appending at KEY_<n> stays correct.
+    if (o.gitEnv) {
+      const { GIT_CONFIG_COUNT: n, GIT_CONFIG_KEY_0: k, GIT_CONFIG_VALUE_0: v, ...ident } = o.gitEnv;
+      Object.assign(env, ident);
+      if (n !== undefined && k !== undefined && v !== undefined) {
+        const have = Number.parseInt(String(env.GIT_CONFIG_COUNT ?? "0"), 10);
+        const at = Number.isInteger(have) && have > 0 && have < 1000 ? have : 0;
+        env[`GIT_CONFIG_KEY_${at}`] = k; env[`GIT_CONFIG_VALUE_${at}`] = v; env.GIT_CONFIG_COUNT = String(at + 1);
+      }
+    }
     // The key is how the child proves which agent it is: vyred believes "mcp:agent:<name>" only
     // with the key of a live thread of that agent (threads.vouch). A new one per process.
     const key = o.agent ? crypto.randomBytes(24).toString("base64url") : null;
@@ -845,6 +927,8 @@ export class Switchboard {
     const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
+    if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
+    if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
@@ -1172,7 +1256,7 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt);
   }
 
@@ -2402,7 +2486,10 @@ export default {
      * Guard every tool. Inside an agent's own thread (caller mcp:agent:<name>) only the assistant
      * may drive sessions; other agents stay inside their own work.
      */
-    const guard = (caller, what, meta) => {
+    // The verified meta of the call being run (set by tool() below), so a label never grants: an agent is the assistant only by vyred's meta.agent
+    // and meta.agentKind (the stored row), not by the label or by whether it already has a thread record.
+    const calls = new AsyncLocalStorage();
+        const guard = (caller, what, meta) => {
       if (fromLink(caller)) return;
       const agent = agentOf(caller);
       // The agent vyred verified decides (meta.agent, meta.agentKind); a label that names the assistant alone is a claim.
@@ -2414,7 +2501,55 @@ export default {
       // The link's words are always the box's surface, whatever the input says.
       return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
     };
-    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
+    /**
+     * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
+     *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;
+     *  - a plain mcp or harness caller with no verified thread and no agent: refused on every mutating tool;
+     *  - a session (thread, no agent): mutates only its own thread and the threads it started; reads those and its own project's.
+     * Other agents keep guard() and mayReach. Without this a prompt-injected session could stop, delete, rewind or read any other
+     * session (reviewer-2 and the lead, 1 Oct).
+     * @param {any} meta @param {string|undefined} target a thread id @param {boolean} mutating
+     */
+    const sessionMay = async (meta, target, mutating, tool = "") => {
+      const m = meta || {};
+      const caller = String(m.caller || "");
+      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
+      if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
+      if (typeof m.thread !== "string" || !m.thread) {
+        // The person's own Claude Code through Vyre's MCP, no verified thread: like a session, and known by the kernel (meta.peerSession is the claude
+        // process and its start time, meta.peerCwd its folder, both read by vyred from the socket peer). It starts threads and stops, archives or
+        // sends into those it started; never deletes or rewinds; reads the threads it started and its folder's project's. Where the OS will not say
+        // who or where, it handles only what it can prove it started, and reads nothing else.
+        if (tool === "threads.start") return true;
+        const me = typeof m.peerSession === "string" && m.peerSession ? `mcp:${m.peerSession}` : null;
+        if (mutating && (tool === "threads.delete" || tool === "threads.rewind")) return false;
+        const t = typeof target === "string" && target ? sb.record(target) : null;
+        if (!t) return !target ? !mutating : true; // an unknown id: the tool's own not-found answers
+        if (me && t.starter === me) return true;
+        if (mutating) return false;
+        if (typeof m.peerCwd !== "string" || !m.peerCwd) return false;
+        const of = await ctx.call("projects.of", { cwd: m.peerCwd }).catch(() => null);
+        const project = of && of.data && of.data.slug;
+        return Boolean(project && t.project === project);
+      }
+      if (typeof target !== "string" || !target || target === m.thread) return true;
+      const t = sb.record(target);
+      if (!t) return true; // unknown: the tool's own not-found answers
+      if (sb.lineage(target).includes(m.thread)) return true;
+      if (mutating) return false;
+      const me = sb.record(m.thread);
+      return Boolean(me && me.project && t.project === me.project);
+    };
+    const SESSION_MUTATING = new Set(["threads.start", "threads.delete", "threads.archive", "threads.unarchive", "threads.stop", "threads.interrupt", "threads.rewind",
+      "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.lease", "threads.release"]);
+    const SESSION_READS = new Set(["threads.fork", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
+    const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
+      ? async (i, meta, ...rest) => {
+        if (!(await sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name), name))) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
+        return run(i, meta, ...rest);
+      }
+      : run;
+    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: (i, m, ...r) => calls.run(m, () => inner(i, m, ...r)), callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
 
@@ -2427,7 +2562,7 @@ export default {
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, meta) => { const { caller, thread, firstParty } = meta;
+      async (i, meta) => { const { caller, thread, firstParty, agent, peerSession } = meta;
         guard(caller, "start sessions", meta);
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -2435,9 +2570,10 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, ...rest } = i;
+        const { mentions, pasted, starter: _claimed, ...rest } = i;
+        const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
-        return sb.launch({ ...rest, parent, surface: surfaceOf(i, caller) }, person);
+        return sb.launch({ ...rest, parent, ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -2571,7 +2707,7 @@ export default {
       async (i, meta) => { const { caller } = meta;
         guard(caller, "list sessions", meta);
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) return sb.list(q);
+        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
@@ -2934,7 +3070,9 @@ export default {
       run: async i => {
         const rec = sb.record(String(i.session));
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
-        return { session: String(i.session), known: Boolean(rec), human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+        // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
+        const bound = Boolean(sb.sessions.boundPid(String(i.session)));
+        return { session: String(i.session), known: Boolean(rec), bound, human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
     });
     ctx.tool("threads.lineage", {
@@ -2950,7 +3088,14 @@ export default {
     // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
     tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",
       { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" } } },
-      async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
+      async (i, meta) => {
+        // A live headless thread of Vyre's has its own verified socket; only that thread's own claude process may bind its id (anything else would get that thread's key).
+        const rec = sb.record(String(i.session));
+        const own = rec ? /** @type {any} */ (sb.db.prepare("SELECT pid FROM threads_runs WHERE id = ?").get(String(i.session))) : null;
+        const itsOwn = Boolean(own && own.pid && sb.sessions.claudeOf(Number(i.pid)) === Number(own.pid)); // the thread's own claude process binding itself
+        if (rec && sb.live.has(String(i.session)) && (meta || {}).thread !== String(i.session) && !itsOwn) throw Object.assign(new Error("that session is a live Vyre thread; it is bound only through its own socket"), { code: "denied" });
+        return sb.sessions.bind(i.session, i.pid);
+      }, ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).

@@ -52,7 +52,7 @@ const MEMORY_MS = 3000;
  * refused, never listed and never entered, including a mode a later release adds: an allowlist, because a denylist of bypass
  * words let Codex's "agent-full-access" through once. An entry may narrow it (`allowModes`, intersected with this list), never widen it.
  */
-export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
+export const ALLOWED_MODES = /^(default|ask|untrusted|on-request|read-?only|workspace-write|plan|agent)$/i;
 export const BYPASS_MODE = /bypass|yolo|dangerous|never.?ask|full.?auto|full.?access|auto.?approve|accept.?all|skip.?perm/i;
 
 /** ACP tool kind -> the Claude tool name the floor's rules know (rules.js is Claude-tool-name shaped until build step 8). */
@@ -86,6 +86,38 @@ function descendants(pid) {
     return out;
   } catch { return []; }
 }
+/**
+ * Does a .codex/config.toml exist in this folder or any above it? Codex loads those on top of the account's own config, and one can add
+ * or replace an MCP server (and change approval and sandbox) in many TOML spellings, so this does not parse: existing is enough, and so
+ * is anything that stops it being checked.
+ * @param {string} dir
+ */
+export function projectCodexConfig(dir) {
+  let d = path.resolve(dir);
+  for (let i = 0; i < 40; i++) {
+    // Only "not there" (ENOENT, ENOTDIR) is none: a file that exists but cannot be read (EACCES, a folder owned by another uid, a directory
+    // named config.toml) counts as a config, since what it holds is unknown.
+    try { fs.accessSync(path.join(d, ".codex", "config.toml")); return true; } catch (e) { const c = /** @type {any} */ (e).code; if (c !== "ENOENT" && c !== "ENOTDIR") return true; }
+    const up = path.dirname(d);
+    if (up === d) break;
+    d = up;
+  }
+  return false;
+}
+
+/**
+ * Is a file Vyre seeds in the account's HOME anything but what Vyre wrote? (An agent's edit to it is overwritten at every start, so at a
+ * start this is false unless something else changed it in between.)
+ * @param {string|undefined} home @param {Record<string, string>} seed
+ */
+export function seedTampered(home, seed) {
+  if (!home) return false;
+  for (const [rel, want] of Object.entries(seed || {})) {
+    // Not there (ENOENT) is nothing extra; a file that cannot be read (EACCES, a directory) is not known to be what Vyre wrote.
+    try { if (fs.readFileSync(path.join(home, rel), "utf8") !== want) return true; } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") return true; }
+  }
+  return false;
+}
 const kill = (pid, sig) => { try { process.kill(pid, sig); } catch {} };
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; } };
 
@@ -112,6 +144,34 @@ export function acpProvider(entry) {
 }
 
 /** @param {any} entry @param {any} known @param {any} o */
+/**
+ * Generated media a finished tool call carries, for the Switchboard to save as artifacts: an image or audio content block (Codex's image generation puts
+ * the bytes in the stream, with the prompt it revised), or, from Grok's image generation, the path of a file the agent wrote in the account's own folder
+ * (nothing of the image is in the stream). Only the shape is read; the file is read later, as the account, by sessions.files.read.
+ * @param {any} u a tool_call_update with a final status @param {string} [earlierPrompt] the prompt an earlier update of the same call carried
+ * @returns {{ mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[]}
+ */
+export function mediaOf(u, earlierPrompt) {
+  const out = [];
+  const items = Array.isArray(u && u.content) ? u.content : [];
+  const said = items.map(c => c && c.content && c.content.type === "text" ? String(c.content.text || "") : "").find(t => /^Revised prompt:/i.test(t));
+  const prompt = said ? said.replace(/^Revised prompt:\s*/i, "").slice(0, 2000) : (u && u.rawInput && typeof u.rawInput.prompt === "string" ? u.rawInput.prompt.slice(0, 2000) : earlierPrompt);
+  // A picture in a tool result is generated media only when the tool says it generated it (Codex: the revised prompt, a saved path); an image a tool merely READ
+  // (Grok's read_file returns file contents as an image block) is the model's input, not something to save.
+  const ro = u && u.rawOutput;
+  const generated = Boolean(said || (ro && (ro.savedPath || ro.revisedPrompt))) && !(ro && ro.type === "ReadFile") && !(u && u.kind === "read");
+  for (const c of generated ? items : []) {
+    const x = c && c.content;
+    if (x && (x.type === "image" || x.type === "audio") && typeof x.data === "string" && /^(?:image|audio)\/[a-z0-9.+-]+$/i.test(String(x.mimeType || "")) && x.data.length < 28_000_000) out.push({ mime: String(x.mimeType).toLowerCase(), data_b64: x.data, source: "content-block", ...(prompt ? { prompt } : {}) });
+  }
+  // A file the agent wrote in the account's own folder (Grok: image_gen, reference_to_video): its path is all the stream holds.
+  if (ro && typeof ro.path === "string" && /^(?:images|videos|media|audio)$/.test(String(ro.session_folder || ""))) {
+    const i = ro.path.indexOf("/.grok/");
+    if (i >= 0) out.push({ file: ro.path.slice(i + 1), source: "file", ...(prompt ? { prompt } : {}) });
+  }
+  return out.slice(0, 4);
+}
+
 function runAcp(entry, known, o) {
   const floor = o.floor || entry.floor || null;
   const args = typeof entry.args === "function" ? entry.args(o) : entry.args || [];
@@ -218,6 +278,8 @@ function runAcp(entry, known, o) {
 
   function update(u) {
     const kind = u.sessionUpdate;
+    // A generation tool says its prompt on an earlier update than the one that finishes it: keep it by call id for the media's provenance.
+    if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
     if (kind === "agent_message_chunk") {
       const t = text(u.content);
       if (t) { turnText += t; say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } }); }
@@ -239,15 +301,47 @@ function runAcp(entry, known, o) {
     }
   }
   let usage = /** @type {any} */ (null);
+  /** Whether the shortcut for Vyre's own MCP server may be used in this session (set at every start). */
+  let ownMcpSafe = false;
+  /** The refusal of an MCP approval is said once per session. */
+  let mcpDenied = false;
+  /** Whether a .codex/config.toml from the session folder up exists (set at every start). */
+  let projectConfig = false;
+  /** @type {Map<string, string>} */ const toolPrompts = new Map();
   function toolDone(u) {
-    const body = Array.isArray(u.content) ? u.content.map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
-    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body }] } });
+    // An image or audio block is media, saved by the Switchboard; its bytes are never part of the text a model or a card reads.
+    const body = Array.isArray(u.content) ? u.content.filter(c => !(c && c.content && (c.content.type === "image" || c.content.type === "audio"))).map(c => text(c && c.content !== undefined ? c.content : c)).join("") : "";
+    const media = mediaOf(u, toolPrompts.get(String(u.toolCallId)));
+    say({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: String(u.toolCallId), is_error: u.status === "failed", content: body, ...(media.length ? { vyre_media: media } : {}) }] } });
   }
 
   /** A permission question: to the person as can_use_tool; the answer picks an allow_once or reject_once option. */
   async function permission(m) {
     const p = m.params || {};
     const tc = p.toolCall || {};
+    // MEASURED on codex-acp 2.1.0: before an MCP tool runs, Codex asks with kind "execute", NO title and NO rawInput, and says only
+    // _meta.is_mcp_tool_approval. It names neither the server nor the tool, so the person could not judge it (a blank Bash command, or
+    // "an MCP tool"), and Vyre cannot tell whose it is. Codex also loads MCP servers from a project's own .codex/config.toml, which an
+    // agent with workspace write can create for the next start: a project config that redefines "vyre" replaces it, runs unsandboxed and
+    // inherits the approval setting. So: Vyre's own server ("vyre") is gated by vyred on every call (reach, the Gate, presence), and an
+    // entry that says so (`mcpOwn`) has its approval let through, but only when "vyre" is the one server Vyre passed and NO
+    // .codex/config.toml exists from the session folder up (not a parse of it: existing is enough, since it can add a server in any TOML
+    // spelling and change approval and sandbox) and the account's own seeded config is as Vyre wrote it, checked at every start. Every other MCP approval is DENIED, and said once in words.
+    if (p._meta && p._meta.is_mcp_tool_approval === true) {
+      const servers = (Array.isArray(o.mcpServers) ? o.mcpServers : []).map(x => String((x && x.name) || ""));
+      const only = servers.length === 1 && servers[0] === "vyre";
+      const opts = Array.isArray(p.options) ? p.options : [];
+      const once = opts.find(x => x && x.kind === "allow_once");
+      if (entry.mcpOwn && only && once && ownMcpSafe) { respond(m.id, { outcome: { outcome: "selected", optionId: once.optionId } }); return; }
+      const no = opts.find(x => x && x.kind === "reject_once");
+      respond(m.id, { outcome: no ? { outcome: "selected", optionId: no.optionId } : { outcome: "cancelled" } });
+      if (!mcpDenied) {
+        mcpDenied = true;
+        const t = projectConfig ? "This project's Codex settings define their own tool servers, so Vyre can't tell which tool is asking. It was refused." : "Vyre can't tell which tool server is asking. It was refused.";
+        say({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: t } } });
+      }
+      return;
+    }
     announce(tc);
     const a = askFor(tc);
     const rid = `acp-perm-${++askN}`;
@@ -352,7 +446,12 @@ function runAcp(entry, known, o) {
       const env = { ...(o.env || {}), ...Object.fromEntries((Array.isArray(p.env) ? p.env : []).filter(e => e && typeof e.name === "string" && !/^(LD_|DYLD_|NODE_OPTIONS)/.test(e.name)).map(e => [e.name, String(e.value)])) };
       for (const k of secretEnv) delete env[k];
       const t = { output: "", truncated: false, exit: /** @type {any} */ (null), waiters: /** @type {any[]} */ ([]), child: /** @type {any} */ (null), limit: Number(p.outputByteLimit) || 1_000_000 };
-      t.child = spawnSession(String(p.command), Array.isArray(p.args) ? p.args.map(String) : [], { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
+      // MEASURED on Grok Build 1.0.46: it sends the whole command line as `command` with no `args` ("/usr/bin/bash -lc 'touch x'"), which as
+      // an executable path is ENOENT. A command with spaces and no args is a command line, run by the shell the floor already judged it as.
+      const argv = Array.isArray(p.args) ? p.args.map(String) : [];
+      const line = String(p.command);
+      const [exe, args] = !argv.length && /\s/.test(line.trim()) ? ["/bin/sh", ["-c", line]] : [line, argv];
+      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
       const add = d => { t.output += d; if (t.output.length > t.limit) { t.output = t.output.slice(-t.limit); t.truncated = true; } };
       t.child.stdout.setEncoding("utf8"); t.child.stderr.setEncoding("utf8");
       t.child.stdout.on("data", add); t.child.stderr.on("data", add);
@@ -376,6 +475,9 @@ function runAcp(entry, known, o) {
     const caps = init.agentCapabilities || {};
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
+    const seeded = typeof entry.seed === "function" ? entry.seed(o) : entry.seed;
+    projectConfig = projectCodexConfig(cwd);
+    ownMcpSafe = !projectConfig && !seedTampered(o.env && o.env.HOME, seeded || {});
     // Real agents (codex-acp, Grok Build) answer session/new with "Authentication required" (-32000) until the client calls
     // authenticate {methodId}. The entry names the method it wants from what the agent offers (never a prompt to the person):
     // an API key method when the key is in the environment, else the stored login. An agent that then waits for a browser
@@ -422,7 +524,7 @@ function runAcp(entry, known, o) {
     // one its own config file, which the agent can edit, chose) is moved to an ask mode, or the session does not run.
     const rawMode = String(m.currentModeId || "");
     if (rawMode && !modes.some(x => x.id === rawMode)) {
-      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|plan|agent)$/i;
+      const ask = entry.askMode || /^(default|ask|untrusted|on-request|read-?only|workspace-write|plan|agent)$/i;
       const to = modes.find(x => ask.test(x.id));
       let ok = false;
       if (to) { try { await request("session/set_mode", { sessionId: sid, modeId: to.id }); mode = to.id; ok = true; } catch {} }

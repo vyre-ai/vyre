@@ -106,3 +106,16 @@ test("signin: a code pasted after the command closed its input is not a crash (E
   await new Promise(res => setTimeout(res, 300));
   assert.equal(crashed, null, crashed ? String(crashed.code || crashed.message) : "");
 });
+
+test("signin: a sign-in nobody finishes ends at its time limit and says onDone false, so the row it created can be removed", async t => {
+  const home = fs.mkdtempSync(path.join(SCRATCH, "login-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const s = new Signins({ ttl: 150, spawn: () => spawn(FAKE, [], { env: { ...process.env, HOME: home, FAKE_LOGIN: "device", FAKE_LOGIN_MS: "60000" }, stdio: ["pipe", "pipe", "pipe"] }) });
+  t.after(() => s.stop());
+  const done = [];
+  const first = await s.start({ provider: "codex", account: { id: "a1" }, onDone: ok => done.push(ok) });
+  assert.equal(first.step, "code");
+  for (let i = 0; i < 50 && !done.length; i++) await new Promise(r => setTimeout(r, 40));
+  assert.deepEqual(done, [false], "ended unfinished");
+  assert.equal(s.status(first.flow).step, "failed");
+});

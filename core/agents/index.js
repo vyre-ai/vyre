@@ -19,6 +19,7 @@
 // The switchboard is used through ctx.call and its events, never by importing it.
 
 import fs from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
 import { within } from "../../lib/within.js";
@@ -69,7 +70,10 @@ const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort"
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 
 export default {
-  async start(ctx) {
+  async start(ctx0) {
+    // Each tool runs with the verified meta of its call in scope, so guard() can read vyred's meta.agent and meta.agentKind (never the label).
+    const calls = new AsyncLocalStorage();
+    const ctx = Object.create(ctx0, { tool: { value: (name, def) => ctx0.tool(name, def && typeof def.run === "function" ? { ...def, run: (i, m, ...r) => calls.run(m, () => def.run(i, m, ...r)) } : def) } });
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
@@ -259,6 +263,15 @@ export default {
       if (kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
 
+    // A model's call (mcp or harness) is judged by what vyred verified, never the label: the verified assistant passes; a plain caller with
+    // no verified thread and no agent never mutates; stopping an agent is the assistant's or the person's, not another session's.
+    const modelMay = (meta, { sessionOk = false } = {}) => {
+      const m = meta || {};
+      if (!/^(?:mcp|harness)(?::|$)/.test(String(m.caller || ""))) return true;
+      if (m.agent) return m.agentKind === "assistant";
+      return sessionOk && typeof m.thread === "string" && m.thread !== "";
+    };
+
     // For vyred only: the stored grant of an agent vyred has already verified (its thread's own
     // socket, or a vouched key), attached to meta so a tool that scopes by project reads what the
     // agent is really granted, never a filter the caller's own input or env carries.
@@ -350,6 +363,7 @@ export default {
       run: async (i, meta) => {
         const { caller } = meta;
         guard(meta, "talk to other agents");
+        if (!modelMay(meta, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
         // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;
@@ -443,7 +457,7 @@ export default {
     ctx.tool("agents.threads", {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, meta) => { guard(meta, "read other agents"); must(agent); return use("threads.list", { agent }); },
+      run: async ({ agent }, meta) => { guard(meta, "read other agents"); if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads another agent's threads"), { code: "denied" }); must(agent); return use("threads.list", { agent }); },
     });
 
     ctx.tool("agents.usage", {
@@ -451,6 +465,7 @@ export default {
       input: { type: "object", properties: { agent: { type: "string" }, since: { type: "integer" } } },
       run: async ({ agent, since }, meta) => {
         guard(meta, "read other agents' usage");
+        if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads other agents' usage"), { code: "denied" });
         if (agent) must(agent);
         const rows = await use("threads.usage", { ...(agent ? { agent } : {}), ...(since ? { since } : {}) });
         const used = new Map(rows.map(r => [r.agent, r]));
@@ -473,6 +488,7 @@ export default {
       input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
       run: async ({ agent, limit, before }, meta) => {
         guard(meta, "read other agents' conversations");
+        if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads other agents' conversations"), { code: "denied" });
         if (agent) must(agent);
         return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
       },
@@ -504,6 +520,7 @@ export default {
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
       run: async ({ agent }, meta) => {
         guard(meta, "stop agents");
+        if (!modelMay(meta)) throw Object.assign(new Error("stopping an agent is the assistant's or the person's, not another session's"), { code: "denied" });
         must(agent);
         const ts = await use("threads.list", { agent });
         const stopped = [];
