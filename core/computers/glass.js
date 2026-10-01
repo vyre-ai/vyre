@@ -16,6 +16,7 @@
 // it cannot gate. A ticket marked slow (the viewer is relayed or far away, per link.health) has
 // its incremental update requests paced to 5 a second (Pacer); nothing else is held back.
 
+import { STOPPED } from "./pool.js";
 import net from "node:net";
 import { Bytes, ClientParser, INPUT, clientHandshake, serverHandshake } from "./rfb.js";
 import { acceptKey, encodeFrame, FrameParser } from "./ws.js";
@@ -215,7 +216,15 @@ export class Glass {
     this.sockets.add(xvnc);
     const xvncBytes = new Bytes();
     xvnc.on("data", b => xvncBytes.push(b));
-    xvnc.on("close", () => closeAll("the computer's screen closed"));
+    // The screen's connection ended. If the computer itself died, say so in words (4001 with a reason: Glass shows it and stops
+    // retrying) and let the pool mark it stopped now, not at its next sweep.
+    xvnc.on("close", async () => {
+      if (closed) return;
+      const dead = typeof this.pool.verifyAlive === "function" ? await this.pool.verifyAlive(agent).catch(() => false) : false;
+      if (closed) return;
+      if (dead) { closeWith(socket, 4001, STOPPED); closeAll("the computer stopped", true); return; }
+      closeAll("the computer's screen closed");
+    });
     xvnc.on("error", e => closeAll(scrub(e.message, vnc.password)));
 
     /** @type {{ bytes: Buffer }} */

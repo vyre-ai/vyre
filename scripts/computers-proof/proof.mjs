@@ -253,8 +253,8 @@ try {
     const note = (ok, name, evidence) => { results.push({ ok, name }); console.log(`${ok ? "PASS" : "FAIL"} ${name}${evidence !== undefined ? `: ${typeof evidence === "string" ? evidence : JSON.stringify(evidence)}` : ""}`); if (!ok) failed = true; };
     sh(["kill", CONTAINER]);
     let st = null;
-    for (let i = 0; i < 90; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
-    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 90 s, not running", { state: st });
+    for (let i = 0; i < 30; i++) { const g = await person("computers.get", { agent: AGENT }); st = g.data && g.data.state; if (st && st !== "running") break; await sleep(1000); }
+    note(st === "stopped" || st === "none", "4f a killed computer is reported stopped within 30 s, not running", { state: st });
     const w = await person("computers.watch", { agent: AGENT, surface: "deck:laptop" });
     let said = w.error ? String(w.error.message) : "";
     if (!w.error) {
@@ -262,7 +262,7 @@ try {
       try { const ws = await wsConnect(socketPath, w.data.path); viewers.push(ws); const rfb = new RfbClient(ws); await rfb.handshake(); said = "the stream opened on a dead computer"; }
       catch (e) { said = "ticket given, then the stream ended: " + String(e.message).slice(0, 120); }
     }
-    note(Boolean(w.error) && /\S/.test(said), "4f Glass refuses a killed computer with a plain message (no ticket for a dead computer)", said || "no message");
+    note(Boolean(w.error) && said === "This computer stopped. Start it again?", "4f Glass refuses a killed computer with a plain message (no ticket for a dead computer)", said || "no message");
     const up = shOk(["ps", "--filter", `name=${CONTAINER}`, "--format", "{{.Status}}"]);
     note(!/^Up/.test(up), "4f no running container is left", up || "(none)");
   }

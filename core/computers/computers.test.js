@@ -275,6 +275,20 @@ test("computers: watch hands out a one-use ticket that expires", async t => {
   assert.match((await s.cli("computers.watch", { agent: "juno", surface: "glass:laptop" })).error.message, /juno has no computer/);
 });
 
+test("computers: watch refuses a computer that died on its own, in plain words, until it is started again", async t => {
+  const s = await boot(t);
+  await s.cli("computers.checkout", { agent: "kit" });
+  const driver = s.h.pool.driver;
+  [...driver.containers.values()][0].state = "exited";
+  const w = await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" });
+  assert.equal(w.error.message, "This computer stopped. Start it again?");
+  assert.equal(w.error.code, "stopped");
+  assert.equal(s.h.pool.view("kit").state, "stopped");
+  // Starting it again clears that, and a ticket is handed out as before.
+  await s.cli("computers.checkout", { agent: "kit" });
+  assert.ok((await s.cli("computers.watch", { agent: "kit", surface: "glass:laptop" })).data.ticket);
+});
+
 test("computers: eviction and a full pool through the tools", async t => {
   const s = await boot(t, { computers: { driver: "fake", sweepMs: 0, waitMs: 60, screens: 1 } });
   await s.cli("computers.checkout", { agent: "kit" });

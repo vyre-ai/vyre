@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Computers: a computer that dies under its checkout (killed, out of memory, crashed) is marked stopped
+  at the next sweep, or at once when a Glass stream to it drops: its checkout is released, computer.stopped
+  is emitted, and Glass closes the stream with "This computer stopped. Start it again?" (4001 with the
+  reason, so the Deck shows it and stops retrying). `computers.watch` refuses a ticket for a computer that
+  died, with the same words, until it is started again (`pool.verifyAlive`, `pool.died`).
+- Computers: the pool's readiness check dials computerd's port, not the screen's. Every unauthenticated
+  connection to Xvnc counts toward its host blacklist, and enough of them made Glass's first connection
+  fail with "does not speak RFB 3.8"; the image also raises Xvnc's BlacklistThreshold to 50 (found by
+  the J7 matrix run on a GitHub runner).
 #### install-box.sh: --print-link wrote an empty .env, so compose pulled an unpublished image
 
 - In `--print-link` mode `say` writes to stderr, and the .env block was built with `say`, so

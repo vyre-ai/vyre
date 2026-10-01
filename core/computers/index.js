@@ -15,7 +15,7 @@
 // computers.endpoint, which is internal (modules only): the hands need the token to reach
 // computerd, and they hold it in memory, never in a result they pass on.
 
-import { Pool, MIGRATIONS, NO_DRIVER, LIMITS } from "./pool.js";
+import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED } from "./pool.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
@@ -269,6 +269,9 @@ export default {
         const surface = await ownSurface(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         await pool.allowed(agent);
+        // A computer that died on its own is not started behind the person's back by opening its screen.
+        await pool.verifyAlive(agent).catch(() => false);
+        if (pool.died.has(agent) && (pool.row(agent) || {}).state !== "running") throw Object.assign(new Error(STOPPED), { code: "stopped" });
         const ticket = pool.ticket(agent, surface, { slow: i.slow === true });
         const { w, h } = pool.size(agent);
         return { ticket, path: `/v1/streams/computers/glass?ticket=${encodeURIComponent(ticket)}`, width: w, height: h };

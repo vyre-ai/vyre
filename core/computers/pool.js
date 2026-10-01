@@ -106,6 +106,9 @@ function memberToken(key, computerId, agentId, generation) {
  * @typedef {{ agent: string, thread: string|null, screen: number, since: number, touched: number, viewers: number, verified?: number }} Checkout
  */
 
+/** What a person is told when the computer they were watching died, or is dead when they ask for its screen. */
+export const STOPPED = "This computer stopped. Start it again?";
+
 export class Pool {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, driver: import("./driver/index.js").Driver|null,
@@ -136,6 +139,8 @@ export class Pool {
     this.wait = deps.wait;
     // Is the computer's screen answering yet? Only the Docker driver has a real address to dial;
     // the fake's hosts are names nothing resolves, so its computers are ready once started.
+    /** Agents whose computer died on its own since it last started: Glass tells a viewer so instead of starting it. @type {Set<string>} */
+    this.died = new Set();
     this.probe = deps.probe !== undefined ? deps.probe : deps.driver && deps.driver.name === "docker" ? tcpProbe : null;
     this.opts = {
       screens: Math.max(1, Number(c.screens || 2)),
@@ -444,6 +449,7 @@ export class Pool {
     }
     await this.boot(agent, id);
     this.set(agent, { state: "running" });
+    this.died.delete(agent);
     // A computer that just started or thawed joins the tailnet (when the switch is on), and so
     // does a running one that has no node yet. It never holds up the checkout.
     if (before !== "running" || !this.row(agent).stable_id) this.joinTailnet(agent);
@@ -470,7 +476,10 @@ export class Pool {
       if (st.host) this.hosts.set(agent, { host: st.host, ports: st.ports || { ...PORTS } });
       const h = this.hosts.get(agent);
       // The screen AND computerd (its port answers a little after Xvnc: the first hands call right after a checkout used to hit a refused connection).
-      if (!this.probe || (h && await this.probe(h.host, h.ports.vnc) && (!h.ports.helper || await this.probe(h.host, h.ports.helper)))) return;
+      // computerd starts after Xvnc, so its port answering means the screen is up too. The screen's own port is dialled
+      // only when there is no computerd to ask: every connection to it that does not log in counts against Xvnc's
+      // host blacklist, and enough of them make Glass's first real connection from this address refused.
+      if (!this.probe || (h && await this.probe(h.host, h.ports.helper ? h.ports.helper : h.ports.vnc))) return;
       if (Date.now() >= deadline) {
         throw bootFailure(`${agent}'s computer started but its screen did not answer within ${Math.round(this.opts.bootMs / 1000)} s`, `see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
       }
@@ -602,7 +611,7 @@ export class Pool {
         const st = await this.driver.inspect(r.container).catch(() => null);
         if (st && st.state === "missing") { this.leftTailnet(agent); this.set(agent, { state: "none", container: null }); this.hosts.delete(agent); }
         // It died while nobody held it: say stopped, not running, until the next checkout starts it.
-        else if (st && st.state === "exited") { this.leftTailnet(agent); this.set(agent, { state: "stopped" }); this.hosts.delete(agent); this.emit("computer.stopped", { agent }); }
+        else if (st && st.state === "exited") { this.leftTailnet(agent); this.set(agent, { state: "stopped" }); this.hosts.delete(agent); this.died.add(agent); this.emit("computer.stopped", { agent }); }
         this.log(`could not freeze ${agent}'s computer: ${/** @type {Error} */ (e).message}`);
         return false;
       }
@@ -656,8 +665,34 @@ export class Pool {
 
   // ---- time ------------------------------------------------------------------------------
 
+  /**
+   * Is the agent's computer still running? A container that died (killed, out of memory, crashed) is
+   * marked stopped at once: its checkout and viewers are released, the tailnet node is forgotten, and
+   * computer.stopped is emitted, so nothing keeps saying "running". Returns true when it was dead.
+   * @param {string} agent
+   */
+  async verifyAlive(agent) {
+    const d = this.driver;
+    const r = this.row(agent);
+    if (!d || !r || r.state !== "running" || !r.container) return false;
+    const st = await d.inspect(r.container).catch(() => null);
+    if (!st || st.state === "running" || st.state === "paused") return false;
+    if (this.row(agent).state !== "running") return false;
+    this.leftTailnet(agent);
+    this.release(agent, "stopped");
+    this.set(agent, st.state === "missing" ? { state: "none", container: null } : { state: "stopped" });
+    this.hosts.delete(agent);
+    this.died.add(agent);
+    this.emit("computer.stopped", { agent, died: true });
+    this.log(`${agent}'s computer died (${st.state}${st.exitCode != null ? `, exit code ${st.exitCode}` : ""})`);
+    return true;
+  }
+
   /** Release idle checkouts and freeze computers idle past freezeMs. index.js calls it on a timer, tests by hand. */
   async sweep() {
+    // A computer that died under its checkout is noticed here (the sweep runs every few seconds while anything is in use)
+    // and, sooner, when a Glass stream to it drops. One local inspect per running computer.
+    for (const r of this.rows()) if (r.state === "running") await this.verifyAlive(r.agent).catch(() => {});
     const now = this.now();
     for (const co of [...this.checkouts.values()]) {
       if (co.viewers === 0 && !this.heldBy(co.agent) && now - co.touched >= this.opts.idleMs) this.release(co.agent, "idle");
