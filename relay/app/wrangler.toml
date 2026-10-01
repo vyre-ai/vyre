@@ -1,6 +1,6 @@
 # app.vyre.run: the hosted web app's loader and its content-addressed builds (ADR 0026 section 10).
 # Build the directory with relay/app/release.js (loader, then build) before deploying.
-# Deploying needs the lead's approval; no account id lives here.
+# Deploys only through .github/workflows/relay-deploy.yml (the lead's approval, the deploy environment); no account id lives here.
 name = "vyre-app"
 main = "worker.js"
 compatibility_date = "2026-09-01"
@@ -11,5 +11,5 @@ binding = "ASSETS"
 run_worker_first = true
 not_found_handling = "none"
 
-# Set at deploy, lead approval required:
-# routes = [{ pattern = "app.vyre.run", custom_domain = true }]
+workers_dev = false
+routes = [{ pattern = "app.vyre.run", custom_domain = true }]
