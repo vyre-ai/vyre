@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the frame runs script only when told to
+
+- `artifactFrame` gives `allow-scripts` only when `interactive` is exactly true; absent, false or anything else is an empty sandbox. On a box that does not say, only a page or an app is read as interactive, so an unknown kind runs no script (reviewer-2's note on 9d87f92b3).
+
 #### chat: provider caps read providers.list's real rows
 
 - `liveCaps` (`deck/chat/core/provider-caps.js`) now reads `{ id, capabilities }`, the shape `providers.list` really answers, as well as the earlier draft's `{ provider, caps }`. Nothing in the Deck reads it yet, so no screen changed.

@@ -54,12 +54,12 @@ export function guardFrame(frame, { onBlank } = {}) {
  * A guarded, sandboxed frame for one artifact page. `src` is the artifacts render route's URL
  * (a path on the box, never something the artifact chose). onBlank is called after the frame is
  * blanked; the returned element is a wrapper whose content swaps to the plain line.
- * @param {{ src: string, title: string, interactive?: boolean, onBlank?: () => void }} o
+ * @param {{ src: string, title: string, interactive?: boolean, onBlank?: () => void }} o interactive must be exactly true for scripts: absent, or an unknown kind, runs none
  * @returns {HTMLElement & { guard: ReturnType<typeof guardFrame> }}
  */
 export function artifactFrame(o) {
   const wrap = /** @type {any} */ (h("div", { class: "cv-art-frame" }));
-  const frame = h("iframe", { class: "cv-art-iframe", sandbox: o.interactive === false ? SANDBOX_STATIC : SANDBOX, title: o.title, referrerpolicy: "no-referrer", loading: "eager" });
+  const frame = h("iframe", { class: "cv-art-iframe", sandbox: o.interactive === true ? SANDBOX : SANDBOX_STATIC, title: o.title, referrerpolicy: "no-referrer", loading: "eager" });
   wrap.guard = guardFrame(frame, { onBlank: () => {
     wrap.replaceChildren(h("p", { class: "cv-art-note", role: "alert" }, NAVIGATED));
     o.onBlank?.();

@@ -324,6 +324,9 @@ test("an interactive page says it runs its own code under the origin line and lo
   const deck = await mk("deck", false);
   assert.doesNotMatch(t(deck.view.el), /Runs its own code/);
   assert.equal(q(deck.view.el, "iframe").getAttribute("sandbox"), "");
+  const unknown = await mk("hologram", undefined);
+  assert.equal(q(unknown.view.el, "iframe").getAttribute("sandbox"), "", "an unknown kind on a box that says nothing runs no script");
+  assert.doesNotMatch(t(unknown.view.el), /Runs its own code/);
   const old = await mk("page", undefined);
   assert.match(t(old.view.el), /Runs its own code/, "an older box that says nothing: a page is read as interactive");
 });
