@@ -19,6 +19,7 @@ jobs:
     env:
       VYRE_NO_DIALOGS: "1"
       VYRE_LIVE_GITHUB: "1"
+      VYRE_GH_BIN: /usr/local/bin/gh
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

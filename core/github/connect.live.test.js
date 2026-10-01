@@ -18,8 +18,10 @@ const LIVE = process.env.VYRE_LIVE_GITHUB === "1";
 const skip = LIVE ? false : "set VYRE_LIVE_GITHUB=1 to run this on a GitHub Actions runner (real gh, real network, no account)";
 
 test("LIVE: the pinned gh prints the sign-in code and address connect.js parses, accepts every flag, and cancel stops it and removes its folder", { skip }, async t => {
-  const gh = resolveGh(undefined);
-  assert.ok(gh, "gh is installed in a system folder on the runner");
+  // The runner image ships its own gh in /usr/bin; the workflow installs the pinned one in /usr/local/bin
+  // and names it, so the test proves the version Vyre ships and not whichever gh comes first.
+  const gh = resolveGh(process.env.VYRE_GH_BIN || undefined);
+  assert.ok(gh, "gh is installed on the runner");
   const version = /gh version (\d+\.\d+\.\d+)/.exec(spawnSync(gh, ["--version"], { encoding: "utf8" }).stdout || "");
   const pinned = /ARG GH_VERSION=(\S+)/.exec(fs.readFileSync(new URL("../../box/Dockerfile", import.meta.url), "utf8"));
   assert.ok(version && pinned && version[1] === pinned[1], `the gh on this runner (${version && version[1]}) is the pinned one (${pinned && pinned[1]})`);
