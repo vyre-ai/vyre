@@ -1,0 +1,24 @@
+# Real uids, as root: a watcher's sandbox uid cannot open a socket (loopback, a tailnet-range
+# address, the internet), and every scripted refusal holds against real children
+# (core/watchers/isolation.test.js; plan IM1 and done-check 8). Skipped by the normal suite, which
+# never runs as root.
+name: watchers-isolation
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/watchers"]
+    paths: ["core/watchers/**", "lib/sandbox/**", ".github/workflows/watchers-isolation.yml"]
+permissions:
+  contents: read
+jobs:
+  isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The sandbox uid must be able to reach the checkout's runner.js and its own folder.
+      - run: sudo chmod o+x /home/runner /home/runner/work "$GITHUB_WORKSPACE/.." "$GITHUB_WORKSPACE"
+      - run: sudo env "PATH=$PATH" node --test core/watchers/isolation.test.js
