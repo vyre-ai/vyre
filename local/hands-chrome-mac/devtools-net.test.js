@@ -382,8 +382,8 @@ test("egress guard: children start PAUSED while it is up; Fetch goes on BEFORE a
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-F2") throw new Error("Timed out"); return {}; };
   k.push(1, "Target.attachedToTarget", { sessionId: "S-F2", waitingForDebugger: true, targetInfo: { targetId: "F2", type: "iframe", url: "https://b.example/x" } });
   await new Promise(r => setTimeout(r, 5));
-  const f2 = k.sent.filter(s => s.session === "S-F2").map(s => s.method === "Runtime.evaluate" ? "eval:" + s.params.expression : s.method);
-  assert.ok(f2.indexOf("eval:location.replace('about:blank')") >= 0 && f2.indexOf("Runtime.runIfWaitingForDebugger") > f2.indexOf("eval:location.replace('about:blank')"), "an unguarded child is emptied while it waits, and only then resumed: " + f2.join());
+  const f2 = k.sent.filter(s => s.session === "S-F2").map(s => s.method === "Page.navigate" ? "nav:" + s.params.url : s.method);
+  assert.ok(f2.indexOf("nav:about:blank") >= 0 && f2.indexOf("Runtime.runIfWaitingForDebugger") > f2.indexOf("nav:about:blank"), "an unguarded child is sent to a blank page while it waits, and only then resumed: " + f2.join());
   assert.ok(k.sent.some(s => s.method === "Runtime.terminateExecution"), "the script is stopped");
   const out = await eg.stop();
   assert.ok(out.some((/** @type {any} */ o) => o.method === "GUARD" && o.stopped && /could not be guarded/.test(o.origin)), "the result says it was stopped");
@@ -398,6 +398,7 @@ test("egress guard: an unguardable child that cannot be emptied stays paused and
   const eg = await egressGuard(k.ctx, 1);
   k.respond["Fetch.enable"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X" || session === "S-W") throw new Error("'Fetch.enable' wasn't found"); return {}; };
   k.respond["Runtime.evaluate"] = (/** @type {any} */ p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X" && /location\.replace/.test(String(p.expression))) throw new Error("no"); return { result: { value: [] } }; };
+  k.respond["Page.navigate"] = (/** @type {any} */ _p, /** @type {number} */ _t, /** @type {string|undefined} */ session) => { if (session === "S-X") throw new Error("no"); return {}; };
   // a FRAME answering "no Fetch domain" is not a worker: it fails the guard, and with the evaluate refused it stays paused
   k.push(1, "Target.attachedToTarget", { sessionId: "S-X", waitingForDebugger: true, targetInfo: { targetId: "X", type: "iframe", url: "https://b.example/x" } });
   await new Promise(r => setTimeout(r, 10));

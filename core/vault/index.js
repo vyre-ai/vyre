@@ -35,6 +35,7 @@ import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import * as saidTools from "./said.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
+import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
 
 export { presence };
@@ -291,6 +292,20 @@ export default {
     tool("vault.import", ["cli", "local", "mcp"], "Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.",
       obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" } }, ["file"]), (input, { caller }) => vault.import(input, caller),
       presence("Import a file into the vault", ({ file, rewrite }) => `Import the items in ${path.resolve(String(file))} into the vault${rewrite ? " and rewrite its .env files to vault references" : ""}`));
+
+    tool("vault.env.scan", SURFACES, "The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.",
+      obj({ roots: strs }), async ({ roots }) => {
+        /** @type {{ project?: string, dir: string }[]} */
+        let dirs = [];
+        if (Array.isArray(roots) && roots.length) dirs = roots.filter(r => typeof r === "string" && path.isAbsolute(r)).map(dir => ({ dir }));
+        else {
+          const r = await ctx.call("projects.list", {}).catch(() => null);
+          for (const p of (r && r.data && Array.isArray(r.data.projects) ? r.data.projects : [])) {
+            for (const d of [p.home, ...(Array.isArray(p.folders) ? p.folders : [])]) if (typeof d === "string" && d) dirs.push({ project: String(p.name || p.slug || ""), dir: d });
+          }
+        }
+        return scanEnvFiles(dirs);
+      });
 
     tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));

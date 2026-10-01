@@ -220,6 +220,16 @@ async function main() {
             newSocketToKnownDomainAllowed: wsA2.upgrades >= 1,
             plainHeldReport: plain && plain.held === true, existingResult: existing && (existing.value ?? existing.error),
           };
+          // A THIRD-PARTY socket: the page itself talks to "localhost" (over http, so that origin is on the page's list, and over a socket it opens by itself). A script's NEW socket to that same
+          // host is still refused while the guard is up (only the first party's host gets ws/wss allow rules); the server must see no new upgrade.
+          const wsE = await mkWs("localhost");
+          const ePort = /:(\d+)\//.exec(wsE.url)?.[1];
+          const eNav = await mcp.call("chrome_tabs", { action: "navigate", tab: et, url: `${fixture.url}/wsprobe?u=${encodeURIComponent(wsE.url)}&img=${encodeURIComponent(`http://localhost:${ePort}/p.png`)}` }).then(async () => { for (let i = 0; i < 30; i++) { const st = await mcp.call("chrome_eval", { tab: et, expression: "window.__wsState" }).catch(() => ({})); if (st && st.value && st.value !== "connecting") return st.value; await sleep(100); } return "timeout"; });
+          const eBefore = wsE.upgrades;
+          await mcp.call("chrome_eval", { tab: et, expression: `(async () => { try { new WebSocket(${JSON.stringify(wsE.url)}); } catch (e) {} await new Promise(r => setTimeout(r, 700)); return 1; })()` }).catch(() => ({}));
+          await sleep(300);
+          Object.assign(websocketProof, { thirdPartyControlPageSocket: eNav === "open" && eBefore >= 1, scriptSocketToListedThirdParty: wsE.upgrades === eBefore ? "refused (server saw none)" : `NOT refused (${wsE.upgrades - eBefore})` });
+          wsE.close();
           wsA.close(); wsA2.close(); wsB.close(); wsC.close(); wsD.close();
           // Channels the Fetch domain does not see. Reported as they are: held or not, no claim beyond what this shows.
           const host = new URL(other.url).host;
@@ -234,6 +244,8 @@ async function main() {
           if (!wp.controlFreshDomainServerReachedByPageLoad) throw new Error("the WebSocket control failed (the fresh server was not reachable by a page load), so the refusals prove nothing: " + JSON.stringify(wp));
           if (!wp.pageHeldSocketOpened || !wp.existingSocketUntouched) throw new Error("the page's own open socket did not keep working during the guard: " + JSON.stringify(wp));
           if (wp.plainNewSocketToFreshDomain !== "refused (server saw none)" || wp.iframeBypassToFreshDomain !== "refused (server saw none)") throw new Error("a new WebSocket to a fresh domain was not refused: " + JSON.stringify(wp));
+          if (!/** @type {any} */ (wp).thirdPartyControlPageSocket) throw new Error("the third-party WebSocket control failed (the page could not open its own socket to it), so the refusal proves nothing: " + JSON.stringify(wp));
+          if (/** @type {any} */ (wp).scriptSocketToListedThirdParty !== "refused (server saw none)") throw new Error("a script's new WebSocket to a third party the page uses was not refused: " + JSON.stringify(wp));
           if (!wp.newSocketToKnownDomainAllowed) throw new Error("a new socket to the page's own domain was refused: " + JSON.stringify(wp));
           return { heldOutside: true, ownOriginValue: own.value, websocketProof, channels };
         } finally { await other.close(); }

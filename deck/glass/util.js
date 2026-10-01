@@ -45,7 +45,7 @@ const WORDS = {
   held: "Someone else has the keyboard right now.",
   shield_unavailable: "Signing in privately is not available on this box yet: the agent's computer cannot hide the page from the agent.",
   no_screen: "This computer has no screen to show.",
-  offline: "vyred did not answer. The box may be asleep or out of reach.",
+  offline: "The box did not answer. It may be asleep or out of reach.",
 };
 
 /** @param {any} err an ApiError or anything thrown */

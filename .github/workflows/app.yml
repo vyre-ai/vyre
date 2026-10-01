@@ -23,7 +23,7 @@ permissions:
   contents: read
 concurrency:
   group: app-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 env:
   VYRE_NO_DIALOGS: "1"
   EXPO_NO_TELEMETRY: "1"

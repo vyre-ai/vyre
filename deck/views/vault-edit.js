@@ -268,7 +268,7 @@ export function editPane(app, panel, what, focus) {
     title, form);
   drawKind();
   if (focus) (editing ? title : nameIn).focus({ preventScroll: true });
-  if (!vc.has("vault.update")) put(status, "This vyred has no vault.update yet, so the Deck cannot save items.");
+  if (!vc.has("vault.update")) put(status, "This box cannot save vault items from the Deck yet.");
 }
 
 /**
