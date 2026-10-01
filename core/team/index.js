@@ -147,6 +147,13 @@ export const addRefusal = i => (i && (i.tools !== undefined || i.model !== undef
   ? "a model adds a teammate with the default tools and models; the person sets tools, model and helper_model"
   : i && i.isolation === "none" ? "a model does not choose isolation none (it runs in the person's own folder); leave isolation out, or use worktree or folder" : null);
 
+/**
+ * The isolation a new teammate starts with: the call's own, else folder for the person's surface and worktree for a model (its own branch,
+ * an integrator brought along, nothing written in the person's folder; a project that is not a git repo falls back to folder with a notice).
+ * @param {any} i @param {boolean} person
+ */
+export const addIsolation = (i, person) => (i && i.isolation) || (person ? "folder" : "worktree");
+
 export const isAssistant = meta => Boolean(meta && meta.agentKind === "assistant");
 
 export function preamble(tm) {
@@ -820,7 +827,7 @@ export default {
           return { ...byAgent(agent), revived: true };
         }
         if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
-        let isolation = i.isolation || "folder";
+        let isolation = addIsolation(i, isPerson(meta.caller));
         let notice;
         if (isolation === "worktree") {
           const home = await projectHome(i.project);

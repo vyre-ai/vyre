@@ -5,7 +5,7 @@ import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { open as openStore } from "../store/index.js";
 import { duties, dutyHash, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
-import { dutyNewsBlock, addRefusal } from "./index.js";
+import { dutyNewsBlock, addRefusal, addIsolation } from "./index.js";
 
 const tm = { agent: "reviewer-harlow-legal", project: "harlow-legal", role: "reviewer" };
 
@@ -148,4 +148,12 @@ test("addRefusal: a model may not set tools, model or helper_model when it adds 
   assert.match(addRefusal({ project: "p", role: "r", isolation: "none" }), /isolation none/);
   assert.equal(addRefusal({ project: "p", role: "r", isolation: "folder" }), null);
   assert.equal(addRefusal(null), null);
+});
+
+test("addIsolation: the person's surface defaults to folder, a model to worktree, and an explicit choice stands", () => {
+  assert.equal(addIsolation({}, true), "folder");
+  assert.equal(addIsolation({}, false), "worktree");
+  assert.equal(addIsolation({ isolation: "folder" }, false), "folder");
+  assert.equal(addIsolation({ isolation: "none" }, true), "none"); // only the person's surface may say none; addRefusal stops a model
+  assert.equal(addIsolation(null, false), "worktree");
 });
