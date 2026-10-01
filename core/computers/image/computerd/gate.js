@@ -46,6 +46,13 @@ export function createGate({ now = Date.now } = {}) {
       const l = (fails.get(k) || []).filter(x => t - x < WINDOW_MS);
       l.push(t); fails.set(k, l);
     },
+    /** Forget addresses whose failures have all aged out, so the map does not grow with every address that ever knocked. */
+    prune() {
+      const t = now();
+      for (const [k, l] of fails) { const keep = l.filter(x => t - x < WINDOW_MS); if (keep.length) fails.set(k, keep); else fails.delete(k); }
+    },
+    /** How many addresses are remembered (for the test). */
+    get remembered() { return fails.size; },
     /** Has this address failed so often that it is closed on at the connection? @param {string|undefined} addr */
     blocked(addr) {
       const k = plainAddr(addr);

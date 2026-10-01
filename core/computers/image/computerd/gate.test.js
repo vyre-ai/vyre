@@ -39,10 +39,10 @@ test("gate: an address that keeps failing is closed on at the connection, and a 
 /** A server wired the way computerd wires it: any address connects, a valid token proves vyred and pins, anyone else unknown is closed on. */
 async function serve(t, gate) {
   const server = http.createServer((req, res) => {
-    const ok = req.headers.authorization === "Bearer token";
-    if (ok) gate.pin(req.socket.remoteAddress);
+    const owner = req.headers.authorization === "Bearer token", cdp = req.headers.authorization === "Bearer cdp-token";
+    if (owner) gate.pin(req.socket.remoteAddress);
     else if (!gate.known(req.socket.remoteAddress)) { gate.failed(req.socket.remoteAddress); req.socket.destroy(); return; }
-    res.writeHead(ok ? 200 : 401).end();
+    res.writeHead(owner || cdp ? 200 : 401).end();
   });
   server.on("connection", s => { if (gate.blocked(s.remoteAddress)) s.destroy(); });
   await new Promise(r => server.listen(0, "127.0.0.1", r));
@@ -78,4 +78,26 @@ test("gate: computerd answers nobody it does not know, except a valid token, whi
   assert.equal(await ask(port, "127.0.0.4", "token"), "HTTP/1.0 200 OK", "vyred came back at another address: the token re-pins it, no restart");
   assert.equal(gate.pinned, "127.0.0.4");
   assert.equal(await ask(port, "127.0.0.3", ""), "", "and the old address is now just another peer");
+});
+
+test("gate: a CDP client's token never moves the pin; from another address it gets nothing", async t => {
+  const gate = createGate();
+  const port = await serve(t, gate);
+  if ((await ask(port, "127.0.0.2", "")) === "unavailable") return t.skip("this machine has no 127.0.0.2 to connect from");
+  assert.equal(await ask(port, "127.0.0.3", "token"), "HTTP/1.0 200 OK");
+  assert.equal(gate.pinned, "127.0.0.3");
+  assert.equal(await ask(port, "127.0.0.2", "cdp-token"), "", "a shared-mode agent token from another place gets nothing");
+  assert.equal(gate.pinned, "127.0.0.3", "and the pin did not move");
+  assert.equal(await ask(port, "127.0.0.3", "cdp-token"), "HTTP/1.0 200 OK", "from vyred's address it is served");
+  assert.equal(gate.pinned, "127.0.0.3");
+});
+
+test("gate: the failure map forgets addresses once their failures have aged out", () => {
+  let t = 0;
+  const g = createGate({ now: () => t });
+  for (let i = 0; i < 50; i++) g.failed(`172.18.0.${i}`);
+  assert.equal(g.remembered, 50);
+  t += 61_000;
+  g.prune();
+  assert.equal(g.remembered, 0);
 });

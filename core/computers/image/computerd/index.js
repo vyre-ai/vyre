@@ -605,6 +605,8 @@ function cdpUpgrade(req, socket, head) {
   const token = url.searchParams.get("token") || "";
   // Identity comes only from which credential this token is (identifyClient), never from
   // anything else on this URL -- there is no agentName param here to trust or distrust, by design.
+  // The same address rule as the plain routes: a CDP token from an address that is neither loopback nor vyred's gets nothing.
+  if (!gate.known(req.socket.remoteAddress)) { gate.failed(req.socket.remoteAddress); socket.destroy(); return; }
   const id = identifyClient(token);
   if (!id) return refuse("401 Unauthorized");
   const { kind } = id;
@@ -675,7 +677,9 @@ const server = createServer(async (req, res) => {
     // opens /cdp/json/version (and the upgrade) and nothing else, same as before.
     const isOwner = sameToken(bearer, TOKEN);
     const cdpId = isVersion ? identifyClient(bearer) : null;
-    if (isOwner || cdpId) gate.pin(req.socket.remoteAddress);
+    // Only the owner's token moves the pin. A CDP client's token is an agent's (in shared mode, one per member), so whoever holds
+    // it from another place must not pull the pin away from vyred: from an address that is not known it gets nothing.
+    if (isOwner) gate.pin(req.socket.remoteAddress);
     else if (!gate.known(req.socket.remoteAddress)) {
       // Not vyred, and not this computer: no answer at all, not even a 401 (gate.js).
       gate.failed(req.socket.remoteAddress);
@@ -789,6 +793,7 @@ const server = createServer(async (req, res) => {
 server.on("upgrade", (req, socket, head) => cdpUpgrade(req, socket, head));
 
 server.on("connection", sock => { if (gate.blocked(sock.remoteAddress)) sock.destroy(); });
+setInterval(() => gate.prune(), 60_000).unref();
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`computerd listening on :${PORT}`);
 });
