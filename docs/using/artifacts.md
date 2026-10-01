@@ -36,14 +36,26 @@ storage, it cannot reach Vyre or the rest of your screen, and it cannot load any
 internet or send a request out.
 
 One thing no browser setting stops: a page can send the browser to another web address by itself, and
-it can put anything it contains into that address. So treat a page or an app as able to send out
-whatever is inside it. Do not let an agent put in one anything you would not send to the internet,
-and be careful with an interactive artifact made in a session that read mail, web pages or other
-content you did not write. Vyre says so on the frame ("Runs its own code and can reach the internet"),
-and when a page or an app loads a second time, which means it navigated away, the artifact's activity
-records that it left. Where it went is usually not known to Vyre, because a browser does not tell the
-surface around a frame where the frame went, so the log says that it left, not to what address. The log
-is written from what the Deck sees, so it is a record to look at, not a guard.
+it can put anything it contains into that address. Every way a script can leave its page by navigation
+does this: setting the address, a meta refresh, and clicking a link, with or without the download
+attribute. Popups, form posts, downloads, storage, cookies and every other request a page could make are
+blocked. We tested this in Chrome, Safari on a Mac and Safari on an iPhone: a page delivered addresses of
+about 8,000 bytes to a server in every one (the test sent 8,000 bytes and the server received addresses of
+8,024 to 8,029), and the browsers accept far longer ones (Chrome takes about 2 MB), so treat the channel
+as large. The request is a plain GET: the page cannot read the answer.
+
+Safari on a Mac and on an iPhone add one thing: when the page sends itself to your own Vyre address, Safari
+also sends your Vyre session cookie with that request, because it judges "same site" from the page around
+the frame, not from the frame. Chrome does not. Vyre's tools are all POST requests, so that GET cannot call
+a tool; Vyre is changing its server to ignore your session on requests that come from inside a page frame.
+
+So treat a page or an app as able to send out whatever is inside it. Do not let an agent put in one
+anything you would not send to the internet, and be careful with an interactive artifact made in a session
+that read mail, web pages or other content you did not write. Vyre says so on the frame ("Runs its own code
+and can reach the internet"), and when a page or an app loads a second time, which means it navigated away,
+the artifact's activity records that it left. Where it went is usually not known to Vyre, because a browser
+does not tell the surface around a frame where the frame went, so the log says that it left, not to what
+address. The log is written from what the Deck sees, so it is a record to look at, not a guard.
 
 Documents, reports, dashboards, diagrams and decks run no code and are not affected: Vyre draws them
 itself from what the agent wrote.
