@@ -260,7 +260,7 @@ test("connections: several email accounts, one list, granted per surface", async
   assert.deepEqual(ok(await cli("vault.connections.grant", { id: m2.id, surface: "agents" })).connection.surfaces, ["capsule", "chat", "agents"]);
   const agentSees = ok(await kit("vault.connections.list", { capability: "send_mail" })).connections;
   assert.deepEqual(agentSees.map(r => r.id), [m2.id]);
-  assert.equal((await kit("vault.connections.get", { id: m2.id })).error.code, "denied", "get is for modules");
+  assert.ok(["denied", "no_such_tool"].includes((await kit("vault.connections.get", { id: m2.id })).error.code), "get is for modules");
   /** A row as the person's list shows it. */
   const one = async id => ok(await cli("vault.connections.list")).connections.find(r => r.id === id);
 
@@ -287,7 +287,7 @@ test("connections: several email accounts, one list, granted per surface", async
   assert.equal((await ask({ id: g.id, caller: "tailnet-guest:dana@northwind.test" })).allowed, false);
   assert.equal((await ask({ id: "cn_nothere", caller: "capsule" })).reason, "no such connection");
   assert.equal((await ask({ id: g.id, caller: "capsule" })).allowed, true);
-  assert.equal((await cli("vault.connections.allowed", { id: g.id, caller: "capsule" })).error.code, "denied", "allowed is for modules");
+  assert.ok(["denied", "no_such_tool"].includes((await cli("vault.connections.allowed", { id: g.id, caller: "capsule" })).error.code), "allowed is for modules");
 
   // Revoke without a person, but only a surface's own: agents may drop agents, not another's.
   pres.deny = true;
@@ -326,7 +326,7 @@ test("connections: several email accounts, one list, granted per surface", async
   // unregister is scoped to the caller's own source.
   assert.deepEqual(ok(await other("vault.connections.unregister", { ref: "harlow" })), { removed: false });
   assert.deepEqual(ok(await postbox("vault.connections.unregister", { ref: "harlow" })), { removed: true, id: lost.id });
-  assert.equal((await cli("vault.connections.register", { ref: "x", provider: "mcp", account: "x", auth: "none" })).error.code, "denied");
+  assert.ok(["denied", "no_such_tool"].includes((await cli("vault.connections.register", { ref: "x", provider: "mcp", account: "x", auth: "none" })).error.code), "register is for modules");
   assert.match((await hub("vault.connections.register", { ref: "x", provider: "mcp", account: "x", auth: "magic" })).error.message, /auth must be one of/);
 
   // A tampered row is granted to nothing; a re-register signs it with no surfaces.

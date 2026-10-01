@@ -10,6 +10,7 @@
 // The relay listener, when `vault.relay` is set in config.json, is the one door other people's
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
+import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
@@ -57,6 +58,9 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    // A first-party tool declared anyone is open to an added module that lists it in needs.tools (ADR 0047). These four
+    // take or use secrets for Vyre's own modules only: an added module reaches a secret through ctx.vault.fetch.
+    closeToAddedModules(ctx, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify"] });
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
     if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
@@ -189,8 +193,15 @@ export default {
         return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
       });
 
-    tool("vault.delete", SURFACES, "Delete an item and its grants.",
+    tool("vault.delete", [...SURFACES, "module"], "Delete an item and its grants. A first-party module may delete only an item it made itself (its own origin).",
       obj({ name: str }, ["name"]), (input, { caller }) => {
+        // A module has no presence proof to give: the person's own action (a person-only tool of that module) is the proof. Origin is set by
+        // vyred when the module puts the item and cannot be passed in, so a module can delete only what it made, never a person's or another's.
+        if (String(caller).startsWith("module:")) {
+          const mod = String(caller).slice(7), own = vault.row(input.name);
+          if (!own) throw new Error(`no item named ${input.name}`);
+          if (own.origin !== caller) throw new Error(`${input.name} was not made by ${mod}, so ${mod} cannot delete it`);
+        }
         // `<vault>/<item>` in a shared vault goes as a signed tombstone (shared.js).
         const r = vault.row(input.name);
         const slash = String(input.name).indexOf("/");

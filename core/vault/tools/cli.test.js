@@ -255,7 +255,8 @@ test("vault tools: the ssh agent signs for vault keys after approval; private ke
   const lease = (await cli("vault.ssh.approve", { id: waiting[0].id })).data.lease;
   assert.equal(lease.host, "unbound");
   assert.equal((await cli("vault.ssh.approvals")).data.leases.length, 1);
-  assert.equal((await mcp("vault.ssh.forget", {})).data.ended, 1, "taking access away needs no one");
+  assert.equal((await mcp("vault.ssh.forget", {})).error.code, "denied", "forgetting an approval is the person's own (reach person)");
+  assert.equal((await cli("vault.ssh.forget", {})).data.ended, 1, "the person's own call ends the approvals");
   assert.ok(b.d.events.since(0, { limit: 1000 }).some(e => e.type === "vault.ssh-approved"));
 
   // The production default, without a stub, refuses and logs that approval is needed.

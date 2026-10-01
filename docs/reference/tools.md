@@ -1816,6 +1816,7 @@ Add a standing permission yourself, from Settings: what may go out without askin
     - `max_amount` number
   - `what` string
 - Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `gate.said.list`
 
@@ -7332,11 +7333,11 @@ The connectors module stores a finished sign-in in an oauth api-credential: { na
 
 ### `vault.delete`
 
-Delete an item and its grants.
+Delete an item and its grants. A first-party module may delete only an item it made itself (its own origin).
 
 - Input:
   - `name` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 - Needs a person present.
 
 ### `vault.device.approve`
