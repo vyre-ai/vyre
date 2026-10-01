@@ -37,7 +37,14 @@ export function inspect(buf) {
 export { isSealed, isStream };
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
-export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names"];
+export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names", "data"];
+
+/**
+ * Files under `data` that mean something only to a running process and so stay out: the artifacts
+ * share server's own state file (its pid and port). Everything else under data is the person's,
+ * artifacts and their versions included (PLAN.md AR8).
+ */
+const DATA_SKIP = new Set([".server.json"]);
 
 /**
  * Vault item names a provider sign-in lives under. Kept as a plain local constant, not an
@@ -63,10 +70,10 @@ function run(argv, opts = {}) {
 }
 
 /** Copy a folder, keeping only files and folders: sockets mean nothing later, and restore refuses links. */
-function copyTree(from, to) {
+function copyTree(from, to, skip = /** @type {Set<string> | null} */ (null)) {
   fs.cpSync(from, to, {
     recursive: true, preserveTimestamps: true,
-    filter: src => { const st = fs.lstatSync(src); return st.isFile() || st.isDirectory(); },
+    filter: src => { if (skip && skip.has(path.basename(src))) return false; const st = fs.lstatSync(src); return st.isFile() || st.isDirectory(); },
   });
 }
 
@@ -274,7 +281,7 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
           copyTree(src, path.join(staging, name));
           for (const id of excludedIds) fs.rmSync(path.join(staging, name, "items", id + ".json"), { force: true });
         } else if (st.isFile()) fs.copyFileSync(src, path.join(staging, name));
-        else if (st.isDirectory()) copyTree(src, path.join(staging, name));
+        else if (st.isDirectory()) copyTree(src, path.join(staging, name), name === "data" ? DATA_SKIP : null);
         else continue;
         included.push(name);
       }
