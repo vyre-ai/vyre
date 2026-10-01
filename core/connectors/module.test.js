@@ -206,7 +206,8 @@ test("connectors: who may use a connection is shown in the catalog and changed o
   assert.equal((await w.cli("connectors.catalog", {})).data.presets.find(p => p.id === "fakevendor").connected[0].scope, null);
   // a model cannot change it
   for (const who of ["mcp", "mcp:agent:kit", "module:sessions", "module:watchers", "hook"]) {
-    assert.equal((await w.d.registry.call("connectors.scope", { name: "fakevendor", scope: { projects: "*", agents: "*" } }, who)).error?.code, "denied", who);
+    // refused either way: a tool the caller may not use is `denied`, and one the registry hides from that kind of caller (a hook reaches only its webhook route) is `no_such_tool`
+    assert.match((await w.d.registry.call("connectors.scope", { name: "fakevendor", scope: { projects: "*", agents: "*" } }, who)).error?.code || "", /^(denied|no_such_tool)$/, who);
   }
   assert.deepEqual(await scopeNow(), { projects: "*", agents: [], assistant: true }, "unchanged");
   assert.equal((await w.cli("connectors.scope", { name: "no-such-connection", scope: null })).error?.code, "not_found");

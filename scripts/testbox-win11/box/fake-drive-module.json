@@ -1,0 +1,24 @@
+{
+  "name": "files",
+  "version": "0.1.0",
+  "description": "Test stand-in for the files module's Drive address tools, so a Windows PC can map a share the VM serves itself.",
+  "roles": [
+    "box",
+    "local"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      "files.drive.candidates",
+      "files.drive.address"
+    ]
+  },
+  "watches": {
+    "emits": []
+  },
+  "shows": {
+    "cli": []
+  },
+  "needs": {},
+  "teaches": {}
+}
