@@ -105,6 +105,38 @@
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
+  "assistant.brief": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.capabilities": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.daily": {
+   "module": "assistant",
+   "reason": "guard: in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent; it rolls the assistant's own daily thread and nothing else, deferred while the assistant is working"
+  },
+  "assistant.glance": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.log": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.patterns": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.prompt.diff": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
+  "assistant.welcome": {
+   "module": "assistant",
+   "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
+  },
   "chrome.point": {
    "module": "chrome",
    "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
@@ -464,6 +496,62 @@
   "network.tailscale.status": {
    "module": "network",
    "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
+  },
+  "planner.add": {
+   "module": "planner",
+   "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
+  },
+  "planner.agenda": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.calendar.create": {
+   "module": "planner",
+   "reason": "guard: an agent may only ask for an invite; attendees mean invites, which hold at the Gate for the person (returns held); its own planner event is the agent's own item"
+  },
+  "planner.calendar.sync": {
+   "module": "planner",
+   "reason": "guard: reads the connected Google calendars into the planner's own copy only; it never writes to a calendar and changes nothing of the person's"
+  },
+  "planner.delete": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.dismiss": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.done": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.get": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.list": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.parse": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.ringing": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.snooze": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
+  },
+  "planner.upcoming": {
+   "module": "planner",
+   "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
+  },
+  "planner.update": {
+   "module": "planner",
+   "reason": "guard: owns() in core/planner refuses an agent any item it did not add (an agent may change, finish, snooze, dismiss or delete only its own items; a calendar copy is nobody's to add)"
   },
   "presence.capsule.pin": {
    "module": "presence",
@@ -1136,6 +1224,30 @@
   "vault.verify": {
    "module": "vault",
    "reason": "callers list in code (surfaces, tailnet, module; no model) and the presence proof carried to core"
+  },
+  "watchers.card": {
+   "module": "watchers",
+   "reason": "read-only: the card is worked out from the folder, no network, no model"
+  },
+  "watchers.items": {
+   "module": "watchers",
+   "reason": "read-only: items watchers have filed, scoped by project"
+  },
+  "watchers.list": {
+   "module": "watchers",
+   "reason": "read-only"
+  },
+  "watchers.logs": {
+   "module": "watchers",
+   "reason": "read-only: a watcher's recent runs"
+  },
+  "watchers.pause": {
+   "module": "watchers",
+   "reason": "guard: stops a watcher only; it never starts anything (an agent cannot undo a person's pause: watchers.resume is the person's)"
+  },
+  "watchers.test": {
+   "module": "watchers",
+   "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
   }
  }
 }

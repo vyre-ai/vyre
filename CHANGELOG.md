@@ -29,6 +29,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - fix(threads): the person's own Claude Code through Vyre's MCP (no verified thread or agent) is known by the kernel: vyred reads the socket peer's claude ancestor (pid and start time) and its working folder. It starts threads and stops, archives or sends into only those that same terminal session started (the starter is recorded from the peer, never from input), never deletes or rewinds, and reads its folder's project and its own threads, nothing when the folder cannot be read. threads.origin counts a terminal-only bound session as known; threads.bind logs a peer the OS cannot name.
 
 - fix(security): a model's call is judged by what vyred verified, never the label. A plain mcp or harness caller with no verified thread or agent never mutates a thread or an agent; a session mutates only its own thread and the threads it started and reads its own project's; the verified assistant keeps its powers through meta.agent. agents.stop, history, threads and usage the same. A hook (harness.brief, enrich, rules, learn, stop, touched) names only its own session. threads.bind refuses a pid that is not the caller's own process or above it. hooks.delivery refuses any model caller. sessions.accounts: the verified assistant may start an add or sign-in, but the account covers only the request's project and is pending (never resolved, never a fallback) until the person finishes it on their own device (a login's sign-in, or their bind of a key's account); bind outside a person's surface is limited to the request's project; remove is the person's. Other agents get not_asked. Every session tool's reach is explicit (threads, sessions, agents, harness, hooks, goals: 113 tools).
+- media: how Codex and Grok Build deliver a generated image, measured with one real turn each (fixtures in `core/sessions/testing/real/media/`, with tests). Codex (`$imagegen`): a completed `tool_call_update` carries an ACP `image` content block (`mimeType`, base64 `data` and a `uri` in the account's own `<CODEX_HOME>/generated_images/<session>/<call>.png`) after a text block "Revised prompt: ...", and `rawOutput` has `savedPath` and `revisedPrompt`; the model may also copy the image into the workspace. Grok (`/bundled:imagine`): a tool call `image_gen` (kind other, `x.ai/tool` kind `image_gen`), a permission question first (variant ImageGen, allow_once or reject_once), then a completed update whose text content is JSON `{path, filename, session_folder, message}` and `rawOutput` `{type: "ImageGen", path}`: the image is a 0600 JPEG file under `<GROK_HOME>/sessions/<urlencoded cwd>/<session>/images/`, with no image block, no bytes and no URL in the stream. Video: Codex has no video tool; Grok has `reference_to_video` but the signed-in account's zero data retention refuses it ("Video generation tools are unavailable under zero data retention").
+- proof: `provider-tool-proof.mjs --real-home <home> --capture <dir>` also records the raw ACP stream of the handshake and four real turns per provider (a plain reply, a command outside the workspace, a Vyre MCP tool, a plan-and-edit turn), scrubbed of the account, the machine and tokens; the driver takes an optional `tap` of every raw JSON-RPC message for it. The first set, from real Codex (codex-acp 2.1.0) and Grok Build 1.0.46 on the test box, is in `core/sessions/testing/real/` with a test that parses it and checks nothing of the machine is in it.
+- acp: a turn's tokens are now read from the `session/prompt` response. Measured on the real accounts: neither Codex nor Grok Build sends a token `usage_update` (Grok's empty usage in the meter spike); Codex puts the standard ACP `usage` on the response and Grok puts `inputTokens`, `outputTokens`, `cachedReadTokens`, `reasoningTokens`, `totalTokens`, `modelId` and a `usage` object with `costUsdTicks` (unit undocumented) in `_meta`. The result's `usage` now carries `input_tokens` (without the cached part, since both count it inside inputTokens), `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `reasoning_tokens`, `model` and, for Grok, the raw `cost_usd_ticks`, shaped as the Switchboard already reads Claude's usage, so agents.usage and budgets work for every provider; context used and size from `usage_update` stay when it comes. No dollars are invented from ticks.
+- proof: `node scripts/provider-tool-proof.mjs --real-home <VYRE_HOME>` runs three turns per provider on the real signed-in accounts under `<VYRE_HOME>/accounts` and the real model, with no stand-in: a plain reply (and the usage the driver reports), a command outside the workspace (a question to Vyre for Codex, the floor-served terminal for Grok) and a Vyre tool through the real MCP bridge. Run on the test box against a throwaway Vyre only; it uses the account's own HOME as Vyre would. First real result: Grok answered, ran a command through Vyre's terminal, and called `waiting_count` through Vyre's MCP bridge (vyred saw `mcp:agent:juno`); Codex was not signed in yet.
+- acp: a seeded config that cannot be read counts as not Vyre's (only a missing file is nothing extra).
+- grok: the meter spike's "Internal error" on OpenRouter was a retired model id. `x-ai/grok-code-fast-1` is no longer on OpenRouter (its list now has grok-4.x and `x-ai/grok-build-0.1`), OpenRouter answers a retired id with a 400, and Grok Build shows that as "Internal error" on every turn while session/new still succeeds: reproduced against the real Grok CLI with an endpoint that rejects the model (the retired-model case fails every turn, the title request's own unknown model, `grok-4.6`, does not). The proofs use `x-ai/grok-build-0.1`, and `scripts/lib/eval-openrouter.js` `modelListed()` asks OpenRouter's public model list first, so a retired slug stops the run with its name instead of "Internal error" and spends nothing.
+- codex: Vyre now starts Codex in `workspace-write` (or `read-only`), never `agent`. Measured on codex-cli 0.159.3 and codex-acp 2.1.0 against a scripted stand-in for the model: `agent` is now "Auto review", where a model (the guardian, on the same gateway) decides and no question ever reaches Vyre or the person, so the floor and the person's yes were bypassed; `workspace-write` and `read-only` send `session/request_permission` for a command that must leave the sandbox and run it only on an allow. Codex's per-call approval for an MCP tool names no server and no tool (only `_meta.is_mcp_tool_approval`), which used to be drawn as a blank Bash command: Vyre's own `vyre` server (gated by vyred on every call) is let through, any other is asked as `mcp__<server>`. The shortcut holds only when `vyre` is the one server Vyre passed, no `.codex/config.toml` exists from the session folder up (existing is enough: nothing is parsed, since a project config can add or replace a server in any TOML spelling and change approval and sandbox; measured, one that redefines `vyre` replaces it, runs unsandboxed and inherits the approval setting) and the account's seeded config is as Vyre wrote it; every other MCP approval is denied, never put to the person blind, and said once: "This project's Codex settings define their own tool servers, so Vyre can't tell which tool is asking. It was refused." (Vyre's own tools still work through vyred.)
+- acp: `terminal/create` with the whole command line in `command` and no `args` (Grok Build's shape) is run by the shell, still judged by the floor first; before, it failed with ENOENT.
+- proof: why Codex's requests seemed to carry no tools. Codex 0.159 with its newer models declares no top-level `tools`: all of them ride in an `additional_tools` input item in namespaces, the shell and every MCP tool are nested inside the one `exec` custom tool's JavaScript (`tools.exec_command(...)`, `tools.mcp__vyre__<tool>(...)`, listed at run time in `ALL_TOOLS`), and codex-acp's `mcpServers` do reach it. `scripts/proof-mock-model.mjs` reads `additional_tools`, answers a custom tool call and counts a tool result only after the latest user message; `scripts/provider-tool-proof.mjs` proves on the real Codex: a shell command asked about and answered, a denied one not run, the floor, a Vyre tool call through the real MCP bridge as the verified caller, interrupt and resume; and on Grok the floor-served terminal.
+- said: a setting is named by its label as a phrase, masked out of the words before the ask is read, so a label that holds a condition word ("Lock when the Mac sleeps") is the setting's name and not a condition on the ask. Tested against every setting the shipped core modules declare: "turn off lock when the Mac sleeps" gives `vault.lock_on_sleep=false@account`, the string settings.request asks for; a real condition or a quoted request still records nothing.
+- said: settings are heard too. `lib/said/hear.js` reads `settings.schema`'s keys when a turn with a settings verb arrives and records a kind "setting" intent (`<key>=<value>@account` or `@project/<slug>`) for "turn off the daily digest" or "use opus by default in this project"; the vault record carries the kind and no channel. Tested in process through a settings.request that matches the same string: only that key, value and level pass, once; a quoted, deferred or pasted request records nothing.
+- said: the person's turn is heard by `lib/said/hear.js` (the switchboard's hearActs now only records what it returns): PR intents, team intents (retire, fill, team.add against `team.roster {project}`) and watcher intents against `watchers.shown {thread}`, whose cards carry the hash as shown and a `shownTurnsAgo` counted from the thread's own turns (never defaulted; a card whose time is unknown gets no pronoun); kinds from watchers.preset. `test/said-hear.test.js` drives it in process with the real asked gate: a card shown with hash A and the folder later changed to B, then "turn on X": create with A works once and B is refused; "add a researcher teammate" lets one team.add happen in that project and for that role only.
+- said: `teamIntents` also records `team.add:<project>/<role>` for "add a researcher teammate to this project" or "make me a growth teammate": the role is the word before "teammate" (lowercase, digits, dashes), the project is the thread's, a role already live in the project, a bare "a new teammate" and the reserved "integrator" record nothing. Same rules as the other team intents.
+- said: `watchersIntents` (one file, watchers' recorder with the hash rule) records act_out intents (channel "watchers") for "watch my inbox" (`watchers.preset:<project>/<kind>`) and "turn on the inbox watcher" or "turn it on" (`watchers.create:<project>/<name>@<hash>`). The hash is the one in the card the person was shown, taken by the caller from the card results already in the thread, never a fresh card or list. "Turn it on" binds only to a card shown in the last two assistant turns (`shownTurnsAgo` 0 or 1); a named watcher is not limited by age. Plain asks only, 15 minutes, one use; no match or an ambiguous one records nothing. `test/said-watchers.test.js` runs the real registry asked gate: said after the card the assistant's create succeeds once; an agent-written watcher with no words, a changed hash (even after the folder was edited), another watcher or thread, or a lapsed yes is refused.
+- assistant and planner: every tool now says its reach. The eight assistant tools and the planner tools an agent may use (add, list, get, ringing, update, done, snooze, dismiss, delete, agenda, upcoming, calendar sync and create, parse) are "anyone", written deliberately: each limits its caller in code (the assistant tools to the person and the assistant; the planner to an agent's own items, with calendar invites held at the Gate). planner.settings is "person".
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
 
 - test: the reach suite is tighter. A callers list counts as a limit only when it names neither mcp nor harness (82 tools whose list admits a model are labelled and must declare a reach); `reach: "anyone"` needs a reason in test/reach-anyone.json, and a mutating-verb tool needs a reason that names a guard; reach-module-calls now covers local and lib and fails on a computed tool name outside test/reach-computed-calls.json; reach-dump keeps both roles and a tool the box and local define differently needs a line in test/reach-roles.json. link.pair, link.unpair, link.signout, presence.person.revoke, projects.move and projects.watchers.add and remove are reach person; projects.access.revoke and projects.add-workspace stay anyone because the agents, github and sync modules call them.
@@ -38,6 +53,141 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - platform modules declare an explicit reach: link, projects, presence, sync, mentions, releases and events (74 tools). Tools whose code already restricts `callers` keep `anyone` (the list governs), internal and module-only tools are `modules`, person-surface-only tools are `person`; the mutating presence and link tools stay `anyone` because they are HUMAN_ONLY (a presence proof) or PERSON_ONLY by name. `presence.test.js` reads tool names from object entries, and `sync-send.test.js` expects `no_such_tool` for a surface calling a `modules` tool.
 
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
+- The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
+  it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<project>/
+  <name>@<hash>` for "turn on the mail watcher" and `watchers.preset:<project>/<kind>` for "watch my
+  inbox". `watchers.create.target` and `watchers.preset.target` (reach modules) answer those keys for
+  the asked gate; create answers one only when the call carries the hash of the code now in the
+  folder, so a made-up hash, no hash, or code edited after the yes is refused. `watchers.shown
+  {thread}` (reach modules, for sessions) answers the cards a thread was shown with the hash each
+  carried WHEN IT WAS SHOWN, from a record `watchers.card` and `watchers.preset` write for the calling
+  thread, never recomputed from the folder, so card A shown then an edit still reads A. `watchers.list`
+  rows carry `hash` and `title`. After a refusal in words (no wall) the wall is found again on the next
+  run.
+- Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
+  is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
+  watcher on only when the person's own words asked for it, after the card; `watchers.resume`,
+  `watchers.delete` and `watchers.run` are the person's; `watchers.hook` is the webhook's. The duty
+  operations moved to `watchers.duty.create`, `.update`, `.delete`, `.run` and `.resume`, reach
+  modules (the teammates module's, for a duty a person turned on), so a model's asked gate never
+  stands in a teammate's way; `core/team/duties.js` calls the new names. `watchers.create` no longer
+  takes owner, when or instruction. `watchers.preset` is no longer limited to the person and the
+  assistant: asked covers a model. `core/watchers/reach.test.js` checks all of it against the real
+  registry.
+- `vyre uninstall --system`: if the AppArmor profile will not unload, it says the profile file is
+  removed but the profile may stay loaded until the next reboot.
+
+- The macOS wall is `(deny default)` with Apple's BSD baseline (`bsd.sb`) and only what node needs:
+  exec of the node binary and nothing else, reads of the watcher's folder, node and its parents'
+  names, no writes (but /dev/null), no signals to others, no network. A child cannot run pbpaste,
+  open, osascript or any other program, and cannot list the keychains or ~/Library. Its probe now
+  tries each of those (reviewer-2). Every test that spawns a child or listens skips on a Mac unless
+  GITHUB_ACTIONS is true (`lib/sandbox/test-host.js`), not on a bare CI=1.
+
+- The box's wall for watchers: a `spawner` candidate for `lib/sandbox/wall.js`, used when a spawner
+  socket exists and its client has `spawnAsWatcher` (launch's pool-uid wall). A launched child cannot
+  read the person's folders, so the watcher's files are handed to it over its channel and written
+  into its own private TMPDIR, the only place node's permission flags let it read or write. It is
+  probed like the others, with the child's own attempts; a spawner that refuses (its rule is not in
+  place) is a refusal in words, not a failed watcher. Frozen edge: `core/watchers -> core/spawner`.
+
+- The wall: a watcher child runs where it can reach nothing but its parent: no network (no
+  loopback, no unix socket), a view of the filesystem with only its own folder, the node binary and
+  the system libraries (nothing of the home or run directories), no sight of or signal to other
+  processes, no inherited fds. Linux: bubblewrap (`--unshare-all --die-with-parent`); macOS: a
+  `sandbox-exec` profile (network, signals, writes and the home, temp and run areas denied).
+  `lib/sandbox/wall.js` probes each wall with the child's own attempts (a TCP listener, a unix
+  socket, a file in the home directory, a signal to a same-user process, and a read of its folder
+  that must work) and accepts it only if all hold. No wall, no watcher: the refusal says the machine
+  cannot keep a watcher off the network, with the one fix (install bubblewrap; on Ubuntu 23.10 and
+  later, the AppArmor profile that lets bwrap use user namespaces, which `vyre up --system` installs
+  and `vyre uninstall --system` removes; the profile lets any user on that machine create user
+  namespaces through bwrap). A watcher refused this way is not counted as failing or
+  paused and is tried again in an hour. The channel to the child is lines of JSON on stdin and
+  stdout, at most 1 MB a line and 64 MB in all; anything else on it fails the run; the child's
+  console and `log()` go to stderr. Dry runs report `wall`. `core/watchers/isolation.test.js` and
+  the `watchers-isolation` workflow prove it against a real vyred on Ubuntu (no bubblewrap,
+  restricted, with the installer's profile) and macOS runners.
+- Presets for a repo (`kind: "repo"`: issues and pull requests of an owner/name, with or without a
+  GitHub credential), a Slack channel (`kind: "slack"`: new messages, by channel id) and a public
+  feed (`kind: "feed"`: RSS, Atom or JSON feed, with a conditional request so an unchanged feed
+  costs one 304). Each is written off with its card like mail and calendar, files short quoted
+  notes marked as from outside, filters by a plain text match with no model, and starts quietly
+  (repo and Slack file nothing on the first run; the feed files up to its latest matches once and
+  never twice). Schedules are never faster than 15 minutes (Slack 5).
+
+- Calendar preset: `watchers.preset {kind: "calendar", project, credential, calendar?, match?, days?,
+  when?}` writes an off-by-default watcher that reads the next N days of a Google Calendar through
+  `vault.request` (GET only), starts quietly (the first run files nothing), then files a short note
+  for each new or changed event that matches, by a plain text match with no model. `watcher.json`
+  gains `params`, a small object of a preset's settings.
+
+- Mail preset hardening (reviewer-2): a Message-ID the sender chose is searched in Gmail only when
+  it is a plain id (never OR, from:, quotes), and the message found must carry exactly that id;
+  `gmailId` from the push is used when present. A duty files at most 25 items per push.
+  `watchers.preset` is the person's or their assistant's, and refuses a name that already exists.
+
+- `watchers.resume {name, hash?}` takes the card's hash and refuses with "changed after its card
+  was shown" when the code moved; with no hash it still resumes unchanged code (a code change
+  since it was turned on is refused either way).
+
+- Mail preset: `watchers.preset {kind: "mail", project, credential}` writes a watcher (fixed code)
+  that runs on `vault.push`, reads each pushed message's sender, subject and first lines through
+  `vault.request` with the person's Google api-credential (a read, through the vault, scoped to
+  that watcher by its grant), asks a model for a yes or no against the person's own words on what
+  counts as important, and files only the important ones as short quoted notes marked as from
+  outside. It is left off with its card and the exact grant command; `watchers.create {name, hash}`
+  turns it on. `net.<host>.credential` names an api-credential the vault calls with itself (reads
+  only), beside `net.<host>.vault` for a plain item Vyre attaches. A filed item's `quote` goes into
+  the taught fact in quotation marks.
+
+- `watchers.card {name}`: what the person sees before turning a watcher on. Three plain lines
+  (when, check, do) from the author's `summary` in `watcher.json` (or derived for a duty and for a
+  summary-less watcher), plus facts Vyre works out from the folder itself and never from the
+  summary: hosts it reads, credentials attached per host, whether it can act, model cost cap. It
+  returns the code's hash; `watchers.create {name, hash}` refuses if the code moved since the card.
+
+- `ask(prompt)` for watchers: a model judgment with no tools (through `threads.quick`), only when `watcher.json` declares `ask: { dailyUsd }`. The budget is
+  tallied per watcher per day for that cap, while the dollars reach core/spend by themselves (the
+  quick session's thread.finished) and the provider's own cap is checked first with spend.check;
+  with the ledger off a watcher cannot ask; 20 asks and 8000 characters per run; a prompt
+  that carries an attached credential is refused; the reply is scrubbed.
+
+- A duty on `push <connection>` runs on vault's `vault.push` event: one item per message id, only
+  for projects the connection's `scope` covers (no scope, no run), keeping no sender or subject.
+
+- lib/sandbox follow-ups from review: a redirect may not leave the watcher's declared hosts; a
+  credential goes to the exact declared host over https only and is dropped when a redirect changes
+  origin; one overall deadline per fetch; the credential is scrubbed from response headers; 6to4
+  relay anycast and site-local IPv6 are refused; hosts under `net` are exact names, not subdomains;
+  a dry run reports `networkIsolated` (false unless vyred runs as root with the sandbox user).
+
+- Raw vault values no longer reach a watcher (reviewer-2 H1). `needs` is refused in `watcher.json`
+  and `vault.fetch` in a watcher is refused; a credential goes under `net` and the parent attaches
+  it to that host's requests. A watcher reads only the hosts it lists under `net` (none listed means
+  no network). The parent scrubs an attached credential, and its base64, hex and URL forms, from
+  the response, the logs and the error.
+
+- Duties on the watchers runtime: `watchers.create {name: "duty-<role>-<id>", project, owner:
+  {kind: "teammate", teammate}, when, instruction, act}` writes a watcher folder from plain words
+  (fixed template code, never model-written), turns it on and files one item per firing.
+  `watchers.update`, `watchers.delete` and `watchers.run` complete the set; duty calls are refused
+  unless they come from the teammates module or the person. `when` reads an event
+  (`thread.finished`, with optional `where k=v`), a schedule (`daily 07:00`, `weekdays 09:30`,
+  `hourly`, `every 30 minutes`, cron; never faster than 5 minutes) or `push <connection>` (runs on
+  the `vault.push` event, which vault has yet to emit). `watcher.json` gains `owner`, `instruction`,
+  `act` and `when`; `watcher.deleted` is a new event.
+
+- `lib/sandbox` (watchers, shared with platform's module host): a sandboxed child has no network of
+  its own and reaches the web through its parent's `fetch`, GET and HEAD only, ports 80 and 443,
+  public addresses only (private, CGNAT, Tailscale, loopback, link-local and IPv6 forms that
+  embed an IPv4 are refused after DNS and on every redirect; the connection goes to the checked
+  address). When vyred is root the child runs as the `vyre-sandbox` uid (`VYRE_SANDBOX_UID`).
+- `watcher.json` gains `net`: the hosts a watcher reads, each with an optional vault item the
+  parent attaches to that host's requests only. A watcher's own `Authorization` header is
+  dropped; the credential never reaches the watcher's code.
+
+- settings.loosened: when an agent changes a guard because the person asked (settings.request, a loosening key or a change that needed a confirm, a reset of a loosening key included), settings emits `settings.loosened { change, key, label, level, project|device|session?, by, said }` with no value. core/push turns it into a loud `notice` push (not in the daily budget, rings through quiet hours, on by default) with the fixed sentence "<label> changed, as you asked. Undo" and the path /settings?change=<id>; the change's Undo (settings.undo) needs no proof.
 - eval (iq): the real-use memory test, on Vyre's own sessions only (the user approved it, 1 Oct 2026). `scripts/real-use-extract.mjs` reads Claude Code transcripts whose cwd is under a folder and writes a scrubbed corpus: it keeps only the person's typed turns, teammate messages and assistant text (meta messages such as CLAUDE.md and the memory index, system reminders, tool results and thinking are dropped first), redacts with recall's rules and the vault's shapes plus emails, addresses, home paths, the owner's handle and session temp paths, drops a session that names a client or a private matter more than twice and replaces a passing mention with [client]. `scripts/eval-realuse.mjs` generates about 50 specific-fact questions from that corpus (each expected string must appear verbatim in its session, in at most two sessions, and not in the question), then runs four arms on one model, none, a simulated Claude auto memory, Vyre's memory.ask and the full context, scored by the expected strings, under a hard spend cap (REALUSE_CAP_USD, default $5) and the key's own usage before and after. eval-bar gains a `real` world read from a file. The corpus is data a caller holds and is never part of the repository. Tests: `scripts/real-use-extract.test.js`, `scripts/lib/realuse.test.js`. The `memory-realuse` workflow (environment `eval`, runs on the test box's own runner) reads the corpus from the fixed folder on the test box, so it never leaves the test box; it uploads only a results table and a list of session ids, dates and sizes, and wipes the corpus, questions, replies and ledger when a run ends (`step: gen` keeps them so the questions can be read on the test box first).
 - grok: the meter spike's "Internal error" on OpenRouter was a retired model id. `x-ai/grok-code-fast-1` is no longer on OpenRouter (its list now has grok-4.x and `x-ai/grok-build-0.1`), OpenRouter answers a retired id with a 400, and Grok Build shows that as "Internal error" on every turn while session/new still succeeds: reproduced against the real Grok CLI with an endpoint that rejects the model (the retired-model case fails every turn, the title request's own unknown model, `grok-4.6`, does not). The proofs use `x-ai/grok-build-0.1`, and `scripts/lib/eval-openrouter.js` `modelListed()` asks OpenRouter's public model list first, so a retired slug stops the run with its name instead of "Internal error" and spends nothing.
 - codex: Vyre now starts Codex in `workspace-write` (or `read-only`), never `agent`. Measured on codex-cli 0.159.3 and codex-acp 2.1.0 against a scripted stand-in for the model: `agent` is now "Auto review", where a model (the guardian, on the same gateway) decides and no question ever reaches Vyre or the person, so the floor and the person's yes were bypassed; `workspace-write` and `read-only` send `session/request_permission` for a command that must leave the sandbox and run it only on an allow. Codex's per-call approval for an MCP tool names no server and no tool (only `_meta.is_mcp_tool_approval`), which used to be drawn as a blank Bash command: Vyre's own `vyre` server (gated by vyred on every call) is let through, any other is asked as `mcp__<server>`.

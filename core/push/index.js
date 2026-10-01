@@ -30,10 +30,10 @@ export const MIGRATIONS = [
 /** The push services browsers use. Anything else is refused: vyred must not POST to any URL a client names. */
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
-const KINDS = ["ask", "draft", "watch", "lesson", "planner", "goal", "proactive"];
+const KINDS = ["ask", "draft", "watch", "lesson", "planner", "goal", "proactive", "notice"];
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
 /** Kinds on until switched off. A lesson is not "needs you", so it is off until switched on. */
-const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true, goal: true, proactive: true };
+const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true, goal: true, proactive: true, notice: true };
 /** The kinds nobody asked for in the moment: they share one daily budget (assistant.chattiness, default 3).
  * Not ask (a session is blocked on the person) and not planner (a reminder the person set). */
 const CAPPED = new Set(["draft", "watch", "lesson", "goal", "proactive"]);
@@ -94,6 +94,11 @@ const NOTES = {
   // The title is a fixed sentence the source wrote, never model text; over the daily budget it is dropped.
   "push.proactive": e => ({ kind: "proactive", title: String(e.payload.title || "Something needs a look").slice(0, 120),
     path: String(e.payload.path || "/needs").slice(0, 200), tag: String(e.payload.tag || `proactive-${Date.now()}`).slice(0, 100) }),
+  // An agent loosened a guard because the person asked (core/settings, settings.loosened): a notice, not an ask. It is
+  // not counted in the daily budget and rings through quiet hours; the title is one fixed sentence around the setting's
+  // own label (never model text), and the path opens that change, whose Undo needs no proof.
+  "settings.loosened": e => ({ kind: "notice", title: `${String(e.payload.label || "A setting").slice(0, 80)} changed, as you asked. Undo`,
+    path: `/settings?change=${enc(e.payload.change)}`, tag: `settings-loosened-${e.payload.change}`, loud: true }),
   "goal.done": e => ({ kind: "goal", title: "A goal is done", path: `/goals/${enc(e.payload.goal)}`, tag: `goal-done-${e.payload.goal}` }),
 };
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
