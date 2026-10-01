@@ -214,6 +214,47 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 
 /**
+ * Tier 1 of reviewer-2's list (reviews/platform.md, 2 Oct 2026): tools that let an agent widen its own power or reach, so a
+ * call from a terminal (socket label cli or local) needs a proof the person's hand makes, tied to that one call. Deck,
+ * Capsule, mobile and tailnet callers are not asked: they hold a person session already. No standing window follows:
+ * none of these is in SESSIONABLE. A tool may also ask for some inputs only (`terminalAsk(input)` on its definition).
+ */
+export const TERMINAL_ASKS = new Set([
+  // Power raised or reach widened (what an agent could do afterwards): the only reason a tool is on this list.
+  "hands.grant.add",
+  "mcp.add", "mcp.update", "connectors.connect",
+  "agents.create", "agents.update",
+  "sessions.limits.set", "sessions.mode.set", "sessions.models.set", "sessions.prompt.set", "sessions.usage.resume",
+  "spend.raise",
+  // Pairing and the vault.
+  "vault.vaults.create", "vault.device.join", "vault.ssh.generate", "vault.relay", "link.pair", "link.signin",
+  // The person's own approvals, and who the teammates are.
+  "gate.said.add", "gate.settle", "team.charter.set", "team.default.set", "team.add",
+  // New code, new accounts and credentials.
+  "update.apply", "names.claim", "github.connect", "google.add", "google.connect", "computers.member.add", "computers.member.rotate",
+]);
+
+/**
+ * What the person reads when a Tier 1 tool asks from a terminal: the tool, then its target and scope first, each value cut short, so
+ * a long command or instruction cannot push the part that matters off the end. Up to 400 characters.
+ * @param {string} tool @param {any} input
+ */
+export function terminalSummary(tool, input) {
+  const o = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const first = ["name", "agent", "server", "key", "id", "project", "to", "preset", "label"];
+  const early = ["command", "url", "scope", "projects", "agents", "mode", "level", "value", "limit", "amount"];
+  const order = [...first.filter(k => k in o), ...early.filter(k => k in o), ...Object.keys(o).filter(k => !first.includes(k) && !early.includes(k))];
+  const show = v => { const t = typeof v === "string" ? v : JSON.stringify(v); return String(t).replace(/\s+/g, " ").slice(0, 70) + (String(t).length > 70 ? "..." : ""); };
+  return `${tool}: ${order.map(k => `${k}=${show(o[k])}`).join(", ")}`.slice(0, 400);
+}
+
+/** Does this call, from a terminal, need the person's proof? @param {string} tool @param {any} def @param {any} [input] */
+export function terminalAsks(tool, def, input) {
+  if (TERMINAL_ASKS.has(tool)) return true;
+  try { return Boolean(def && typeof def.terminalAsk === "function" && input !== undefined && def.terminalAsk(input)); } catch { return false; }
+}
+
+/**
  * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
  * a device paired over the relay (`device:<id>`), and the Capsule. The CLI rides its own window
  * instead, bound to the login terminal vyred saw (`terminal`, see Presence.verify): the CLI is a
@@ -605,6 +646,7 @@ export class Presence {
         if (s) return s.slice(0, 400);
       } catch {}
     }
+    if (TERMINAL_ASKS.has(tool) || (def && typeof def.terminalAsk === "function")) return clean(terminalSummary(tool, input));
     return clean(`${tool} ${canonical(input)}`.slice(0, 160));
   }
 

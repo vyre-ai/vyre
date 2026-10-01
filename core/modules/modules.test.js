@@ -661,8 +661,8 @@ const bakeryV1 = () => ({
   roles: ["box", "local"], requires: { notes: ">=0.1.0" },
   does: { tools: [
     { name: "bakery.orders", summary: "list today's orders" },
-    { name: "bakery.target", summary: "change the daily target", reach: "asked" },
-    { name: "bakery.flour", summary: "order flour", outward: "pay" },
+    { name: "bakery.target", summary: "change the daily target", reach: "asked", addedModules: true },
+    { name: "bakery.flour", summary: "order flour", outward: "pay", addedModules: true },
     { name: "bakery.sync", summary: "for other modules", reach: "modules" },
     { name: "bakery.hook", summary: "the till's webhook", reach: "hook" },
   ] },
@@ -752,6 +752,13 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.sync", {}, "module:notes")).error.code, "not_declared");
   reg.modules.set("mail", { ...reg.modules.get("notes"), dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
   assert.equal((await reg.call("bakery.sync", {}, "module:mail")).data.ran, "bakery.sync");
+  // One rule: a tool of Vyre's own that has not opted in (addedModules) is closed to an added module, whatever "anyone" says.
+  const bakeryRec = reg.modules.get("bakery");
+  reg.modules.set("bakery", { ...bakeryRec, dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
+  assert.equal((await reg.call("bakery.orders", {}, "module:notes")).error.code, "not_declared");
+  assert.equal((await reg.call("bakery.target", {}, "module:notes")).error.code, "not_asked", "an opted-in tool is open, and its own reach still applies");
+  assert.equal((await reg.call("bakery.orders", {}, "cli")).data.ran, "bakery.orders");
+  reg.modules.set("bakery", bakeryRec);
   // hook: the webhook route only.
   assert.equal((await reg.call("bakery.hook", {}, "cli")).error.code, "no_such_tool");
   assert.equal((await reg.call("bakery.hook", {}, "hook")).data.ran, "bakery.hook");

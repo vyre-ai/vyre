@@ -18,6 +18,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { VERSION } from "../daemon/index.js";
+import { setPresenceHandler } from "../daemon/client.js";
+import { callAsPerson } from "./presence.js";
 import { out, dim, bold, beacon, err as errPaint } from "./style.js";
 import { EXIT, UsageError, closest, setJson, wantsJson, wantsView, setView, emit, fail, usage } from "./kit.js";
 import { done, verbWords, textLines } from "./view.js";
@@ -112,6 +114,8 @@ function crashed(name, err) {
 
 /** @param {string[]} argv */
 export async function main(argv) {
+  // A Tier 1 tool run here answers presence_required with terminal: true: ask the person once (Touch ID or the code), for that call only.
+  setPresenceHandler((tool, input, opts) => callAsPerson(tool, input, { root: opts && opts.root, timeout: opts && opts.timeout }));
   const [cmd, ...rest] = argv;
   if (cmd === "version" || cmd === "--version" || cmd === "-v") { out(VERSION); return 0; }
   const all = await commands();
