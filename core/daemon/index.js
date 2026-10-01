@@ -23,7 +23,7 @@ import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
-import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf, foreground, socketTrust } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -347,11 +347,11 @@ export async function above(socket, registry, caller, deps = {}) {
   // shell runs as could write to directly. The Capsule (launchd-started, its own session, not on
   // the terminal list) is the one positive proof besides the walk's own.
   if (result.unknown && caller === "capsule" && registry.deps.presence
-    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
+    && await verifiedCapsule(socket, pid, (registry.deps.presence.capsulePin ? registry.deps.presence.capsulePin() : null), deps.capsuleSeam)) { if (deps.proof) deps.proof.capsule = true; return { inside: false }; }
   // A `vyre` the Capsule spawned by argv: its top is the Capsule itself, named as a server. The pinned
   // cdhash proves that top too (every link below it passed the walk's own checks), so no prompt.
   if (result.server && registry.deps.presence
-    && await verifiedCapsule({}, result.server.pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
+    && await verifiedCapsule({}, result.server.pid, (registry.deps.presence.capsulePin ? registry.deps.presence.capsulePin() : null), deps.capsuleSeam)) { if (deps.proof) deps.proof.capsule = true; return { inside: false }; }
   // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.
@@ -444,15 +444,41 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   // Only a definite answer stays for the connection's life: inside a model, or read to the top and
   // outside. "Unknown" (an unreadable chain, a peer not found) is asked again on the next call.
   if (!v) {
-    const mine = above(socket, registry, undefined, deps).then(w => ({
+    const proof = { capsule: false };
+    const mine = above(socket, registry, PERSON_LABEL.test(caller) ? caller : undefined, { ...deps, proof }).then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
+      capsule: proof.capsule, server: w.server || null,
     }));
     v = mine;
     taken.set(socket, mine);
     mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
-  return (await v).model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+  const a = await v;
+  const asModel = { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true };
+  if (a.model) return asModel;
+  // Inverted trust: a person's label on the socket is only a claim, and a child that left the claude ancestry
+  // (setsid, nohup, a launchd or cron job an agent wrote) sends the same label. The label is kept only for a
+  // peer that proves it is the person; everything else is capped at mcp, silently, with no prompt.
+  if (socketTrust() === "strict" && PERSON_LABEL.test(caller) && !(await personSocket(socket, registry, a, deps))) return { ...asModel, capped: true };
+  return { caller, model: false };
+}
+const PERSON_LABEL = /^(?:cli|local|deck|capsule|mobile)$/;
+
+/**
+ * Whether this peer is the person: the pinned Capsule (or a vyre it spawned), a server the person already proved
+ * once (a VS Code or iTerm2 terminal), or a terminal login that `who` lists and that the peer is in the
+ * foreground process group of, with no claude above it (atTerminal). A setsid, nohup, cron or launchd child has
+ * none of these. @param {any} socket @param {any} registry @param {any} a @param {any} [deps]
+ */
+async function personSocket(socket, registry, a, deps = {}) {
+  if (a.capsule) return true;
+  if (a.server && serverTrust.has(`${a.server.exe}:${a.server.pid}:${a.server.started}`)) return true;
+  const term = await (deps.terminal || atTerminal)(socket, registry, registry.deps && registry.deps.presence);
+  if (!term) return false;
+  const pid = await (deps.peerPid || peerPid)(socket);
+  const fg = pid ? (deps.foreground || foreground)(pid) : null;
+  return Boolean(fg && fg.pgid > 0 && fg.pgid === fg.tpgid);
 }
 /** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean }>>} */
 const taken = new WeakMap();
