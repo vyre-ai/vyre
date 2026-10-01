@@ -781,7 +781,8 @@ export default {
       input: { type: "object", required: ["on"], properties: { on: { type: "boolean" } } },
       examples: [{ on: true }],
       run: async (i, meta) => {
-        if (!isPerson(meta) && !(meta && meta.asked)) throw refuse("turning public links on or off waits for the person's own ask", "not_asked");
+        // Reach "person": the registry refuses everyone else; this stays as the second lock.
+        if (!isPerson(meta)) throw refuse("only the person turns public links on or off, in Settings", "denied");
         if (Object.keys(i).some(k => k !== "on")) throw refuse("public.set takes only on; the address is the network setup's", "bad_input");
         const srv = serverState();
         if (i.on && !srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");

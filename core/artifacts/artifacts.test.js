@@ -189,7 +189,7 @@ test("artifacts: public links, served by a separate process, pinned to a version
   const { port } = await shareServer(t, home);
   const a = await ok("artifacts.create", { project: "harlow-legal", kind: "report", title: "Intake report, October", content: "# Intake\n\nNew matters: 46." });
   assert.equal((await call("artifacts.share", { id: a.id })).error.code, "public_off");
-  assert.equal((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_asked", "an agent turns public links on only when asked");
+  assert.notEqual((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "an agent never turns public links on, only the person does");
   const on = await ok("artifacts.public.set", { on: true });
   assert.equal(on.available, true);
   // The registry holds an outward call from anyone but the person (held_unavailable until the Gate
