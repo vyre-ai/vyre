@@ -46,11 +46,14 @@ export function readTree(dir) {
  * index.html while the files are keyed `_expo/static/js/...`: leading folders are stripped until the path is
  * one of the build's own files.
  */
-export function entriesOf(html, files) {
+export function entriesOf(html, files, base = "") {
   const out = [];
+  const prefix = String(base || "").replace(/^\/+|\/+$/g, "");
   for (const m of String(html).matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="\/?([^"?#]+)"/g)) {
     let p = m[1];
-    while (!(p in files) && p.includes("/")) p = p.slice(p.indexOf("/") + 1);
+    // The configured base URL first (apps/app/app.json experiments.baseUrl); then, for an export whose base is not known, leading folders.
+    if (prefix && p.startsWith(prefix + "/")) p = p.slice(prefix.length + 1);
+    else while (!(p in files) && p.includes("/")) p = p.slice(p.indexOf("/") + 1);
     if (p in files && /\.(m?js|css)$/.test(p) && !out.includes(p)) out.push(p);
   }
   return out;
@@ -103,11 +106,12 @@ async function sealed(files, dir, o) {
 
 /**
  * The app's build into <out>/v/<sha>/. Returns what releases.json lists.
- * @param {{ dist: string, release: string, key: string, out: string, created?: number }} o
+ * @param {{ dist: string, release: string, key: string, out: string, created?: number, base?: string }} o
+ *   `base` is the base URL the export was built with (apps/app/app.json experiments.baseUrl), stripped from index.html's paths.
  */
 export async function build(o) {
   const files = readTree(o.dist);
-  const entry = entriesOf(files["index.html"] ? Buffer.from(files["index.html"]).toString() : "", files);
+  const entry = entriesOf(files["index.html"] ? Buffer.from(files["index.html"]).toString() : "", files, o.base);
   if (!entry.length) throw new Error(`${o.dist}/index.html loads no local script`);
   const tmp = path.join(o.out, `.v-${process.pid}`);
   fs.rmSync(tmp, { recursive: true, force: true });
