@@ -62,6 +62,7 @@ say "1b. release key"
 env -u VYRE_ALLOW_PLACEHOLDER_KEY node "$tree/scripts/check-release-key.mjs" "$tree"
 
 say "2. site"
+[ -z "${VYRE_TEST_UNSTRIPPED_WRAPPER:-}" ] || { echo "release.sh: VYRE_TEST_UNSTRIPPED_WRAPPER is set; a release ships the stripped wrapper" >&2; exit 1; }
 "$tree/scripts/build-site.sh"
 
 say "3. release check"

@@ -189,3 +189,26 @@ test("connectors: the Capsule's `next` command lists today's meetings across cal
   assert.equal(today.events[0].title, "Harlow Legal check-in");
   assert.match(today.events[0].when, /^in \d+ min$/);
 });
+
+test("connectors: who may use a connection is shown in the catalog and changed only by a person, on the hub row", async t => {
+  const w = await world(t, url => [fakevendor(url)]);
+  const s = await w.cli("connectors.connect", { preset: "fakevendor", scope: { projects: ["harlow-site"], agents: ["kit"] } });
+  await w.cli("connectors.connect.finish", { id: s.data.id, url: w.auth.consent(s.data.url) });
+  const scopeNow = async () => ((await w.cli("mcp.servers", {})).data.find(x => x.name === "fakevendor") || {}).scope;
+  assert.deepEqual(await scopeNow(), { projects: ["harlow-site"], agents: ["kit"] });
+  const shown = (await w.cli("connectors.catalog", {})).data.presets.find(p => p.id === "fakevendor").connected[0];
+  assert.deepEqual(shown.scope, { projects: ["harlow-site"], agents: ["kit"] });
+  // a person changes it, and null is the default again
+  assert.deepEqual((await w.cli("connectors.scope", { name: "fakevendor", scope: { projects: "*", agents: ["kit", "juno"] } })).data.scope, { projects: "*", agents: ["kit", "juno"] });
+  assert.deepEqual(await scopeNow(), { projects: "*", agents: ["kit", "juno"] });
+  await w.cli("connectors.scope", { name: "fakevendor", scope: null });
+  assert.deepEqual(await scopeNow(), { projects: "*", agents: [], assistant: true }, "null is the default: you and the assistant only");
+  assert.equal((await w.cli("connectors.catalog", {})).data.presets.find(p => p.id === "fakevendor").connected[0].scope, null);
+  // a model cannot change it
+  for (const who of ["mcp", "mcp:agent:kit", "module:sessions", "module:watchers", "hook"]) {
+    assert.equal((await w.d.registry.call("connectors.scope", { name: "fakevendor", scope: { projects: "*", agents: "*" } }, who)).error?.code, "denied", who);
+  }
+  assert.deepEqual(await scopeNow(), { projects: "*", agents: [], assistant: true }, "unchanged");
+  assert.equal((await w.cli("connectors.scope", { name: "no-such-connection", scope: null })).error?.code, "not_found");
+  assert.match((await w.cli("connectors.scope", { name: "fakevendor", scope: "everyone" })).error.message, /scope is/);
+});

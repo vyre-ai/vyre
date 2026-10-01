@@ -14,7 +14,7 @@ export function h(doc, tag, attrs, ...kids) {
   return el;
 }
 
-/** @typedef {{ begin: () => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
+/** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
  *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
  *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
@@ -54,8 +54,8 @@ export function render(s, ctx) {
     if (s.stage === "start") return [
       el("p", { class: "lbl" }, "Set up"),
       el("h1", { tabindex: "-1" }, "Put Vyre on your server"),
-      el("p", { class: "lead" }, "Your agents run on a server you own. This takes a few minutes, and nothing changes without asking."),
-      el("div", { class: "actions" }, button("Set up my server", "primary", () => actions.begin())),
+      el("p", { class: "lead" }, "Your agents run on a server you own. This takes a few minutes, and nothing changes without asking. Where will it live?"),
+      el("div", { class: "actions" }, button("A Linux server", "primary", () => actions.begin("linux")), button("A Mac that stays on", "secondary", () => actions.begin("mac"))),
       el("p", { class: "note" }, "Vyre never hosts your server and never sees what runs on it."),
     ];
     if (s.stage === "install") {
@@ -63,9 +63,12 @@ export function render(s, ctx) {
       copy.addEventListener("click", ev => actions.copy(s.installLine, /** @type {HTMLElement} */ (ev.currentTarget)));
       return [
         el("p", { class: "lbl" }, "Install"),
-        el("h1", { tabindex: "-1" }, "Run this on your server"),
-        el("p", { class: "lead" }, "Open a terminal on the server as yourself, not root, and paste the line. It asks for sudo itself only when it needs it."),
+        el("h1", { tabindex: "-1" }, s.machine === "mac" ? "Run this on the Mac" : "Run this on your server"),
+        el("p", { class: "lead" }, s.machine === "mac"
+          ? "Open Terminal on the Mac as yourself, not root, and paste the line. It asks for your Mac password once, to set Vyre up as a service that starts when the Mac does, with nobody signed in."
+          : "Open a terminal on the server as yourself, not root, and paste the line. It asks for sudo itself only when it needs it."),
         el("div", { class: "cmd" }, el("pre", null, el("code", null, s.installLine)), copy),
+        s.machine === "mac" ? el("p", { class: "note", "data-role": "filevault" }, "After a power cut: with FileVault on, the Mac waits for someone to unlock it at the screen, and Vyre is off until then. With FileVault off, anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password. Either way the Mac switches itself back on only if \"Start up automatically after a power failure\" is on in System Settings, under Energy, and it starts off on a Mac mini. Vyre keeps the Mac awake while it runs, so leave it plugged in. The installer reads these two settings on your Mac and tells you which applies.") : null,
         el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for your server"),
         el("p", { class: "note" }, "The line holds a one-time code. It works for one hour and for one server."),
         el("div", { class: "actions" }, button("Start again", "quiet", () => actions.begin())),

@@ -59,7 +59,7 @@ const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8"
 function site(base, { images = true, pin = true } = {}) {
   const dir = path.join(base, "site");
   fs.mkdirSync(dir, { recursive: true });
-  const compose = pin ? `image: \${VYRE_IMAGE:-${DIGEST}}\ncomputer: ${COMPUTER}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
+  const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n  computer:\n    image: ${COMPUTER}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
     "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
@@ -178,7 +178,24 @@ test("install-box.sh v2: every image the released compose.yml starts must be pin
   fs.writeFileSync(sumsFile, fs.readFileSync(sumsFile, "utf8").replace(/^[0-9a-f]{64}(  compose\.yml)$/m, `${h}$1`));
   const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /not pinned by digest \(tailscale\/tailscale:stable\)/);
+  assert.match(r.stderr, /not pinned by digest \(image: tailscale\/tailscale:stable\)/);
+});
+
+test("install-box.sh v2: a variable or a comment cannot stand in for a pinned image line", t => {
+  for (const [why, add] of [["a variable with the digest as its default", `  ts:\n    image: \${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale@sha256:${"c".repeat(64)}}\n`],
+    ["a tag with the digest in a comment", `  ts:\n    image: tailscale/tailscale:stable # @sha256:${"c".repeat(64)}\n`]]) {
+    const b = box(t);
+    const url = site(b.base);
+    const file = path.join(url.replace("file://", ""), "compose.yml");
+    const text = fs.readFileSync(file, "utf8") + add;
+    fs.writeFileSync(file, text);
+    const sumsFile = path.join(path.dirname(file), "SHA256SUMS");
+    fs.writeFileSync(sumsFile, fs.readFileSync(sumsFile, "utf8").replace(/^[0-9a-f]{64}(  compose\.yml)$/m, `${crypto.createHash("sha256").update(text).digest("hex")}$1`));
+    const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
+    assert.notEqual(r.status, 0, why);
+    assert.match(r.stderr, /not pinned by digest/, why);
+    assert.ok(!b.calls().includes("docker pull"), `${why}: nothing was pulled`);
+  }
 });
 
 test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) hands sh the code", t => {
@@ -306,6 +323,26 @@ test("install-box.sh v2: with a code the steps are sent sealed to the relay mail
   // A reader with another key gets nothing.
   const other = await createSetupKey();
   await assert.rejects(mailboxReader({ relay: base, secret, key: other, wait: 0 }).then(x => x.next(0)), /would not give this page/);
+});
+
+test("install-box.sh v2: a second paste of the same code on a running install posts nothing to the mailbox", async t => {
+  const relay = createRelay({});
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = box(t);
+  const key = await createSetupKey();
+  const secret = crypto.randomBytes(16);
+  const code = await setupCode(secret, key.spki);
+  const first = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.equal(first.status, 0, first.stdout + first.stderr);
+  const before = (await (await mailboxReader({ relay: base, secret, key, wait: 0 })).next(0)).length;
+  // Now the stack is up: the fake docker answers `compose -p vyre ps -q` with a container id.
+  fs.writeFileSync(path.join(b.base, "bin", "docker"), `#!/bin/sh\ncase "$1 $2" in "compose version") echo 2.29.1 ;; "compose -p") echo abc123 ;; esac\nexit 0\n`, { mode: 0o755 });
+  const second = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
+  assert.equal(second.status, 0, second.stdout + second.stderr);
+  assert.match(second.stdout, /already running/);
+  const after = (await (await mailboxReader({ relay: base, secret, key, wait: 0 })).next(0)).length;
+  assert.equal(after, before, "the second paste wrote no lines, so the page's reader stays in order");
 });
 
 test("install-box.sh v2: a code another server already used stops with the plain refusal", async t => {

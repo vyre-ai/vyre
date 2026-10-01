@@ -16,7 +16,7 @@ const RELAY = "wss://relay.vyre.run";
 const root = document.getElementById("setup");
 
 const actions = {
-  begin: () => flow.begin(),
+  begin: machine => flow.begin(machine),
   setName: text => flow.setName(text),
   claim: () => flow.claim(),
   confirmWords: () => flow.confirmWords(),
@@ -77,6 +77,13 @@ try { const r = await fetch("/setup/signin-hosts.json", { cache: "no-store" }); 
 // vyre.run and www.vyre.run, and its hosts must be Vyre's own or a test runner's loopback (site/setup/config.js).
 let over = {};
 try { const r = await fetch("/setup/config.json", { cache: "no-store" }); if (r.ok) over = setupOverrides(await r.json(), location.hostname); } catch { /* none */ }
-const flow = createFlow({ client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
+/** Does this browser do X25519 and P-256 in WebCrypto? Chrome before 133 does not. */
+const supported = async () => {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return false;
+  await subtle.generateKey({ name: "X25519" }, false, ["deriveBits"]);
+  return true;
+};
+const flow = createFlow({ supported, pinRelay: true, client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
 render(flow.state, { doc: document, root, actions });
 addEventListener("pagehide", () => flow.stop());

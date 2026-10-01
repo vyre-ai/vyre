@@ -3,6 +3,8 @@
 // offer is the one thing faked (it needs a whole daemon; core/relay/setup.test.js covers that half).
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import crypto from "node:crypto";
 import * as client from "../../relay/client/setup.js";
 import { createRelay } from "../../relay/node/server.js";
@@ -920,4 +922,81 @@ test("steps: a sign-in link that is not Tailscale's is shown as a refusal with t
     assert.ok(root.textContent.includes("Connect my server"), "and the person can try again");
     assert.ok(!root.all().some(e => e.tag === "a" && /evil\\.example/.test(String(e.attrs.href))), "the link is never an anchor");
   } finally { flow.stop(); }
+});
+
+test("a browser with no X25519 stops at the start with a named message, not a server error", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, supported: async () => { throw new Error("NotSupportedError"); } });
+  await flow.begin();
+  assert.equal(flow.state.stage, "stopped");
+  assert.equal(flow.state.error.code, "browser");
+  assert.match(flow.state.error.message, /Chrome 133/);
+  flow.stop();
+});
+
+test("machine: the start screen offers a Linux server or a Mac, the choice reaches the install screen, and Start again keeps it", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => { throw Object.assign(new Error("gone"), { code: "ticket_gone" }); }), relay: w.base, sleep: fastSleep, pollMs: 5 });
+  const doc = new FakeDoc();
+  const root = doc.createElement("main");
+  /** @type {any[]} */ const begun = [];
+  const actions = { begin: m => begun.push(m), copy() {}, setName() {}, claim() {}, confirmWords() {}, denyWords() {}, markSaved() {} };
+  const draw = () => render(flow.state, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions });
+  draw();
+  const buttons = () => root.all().filter(e => e.tag === "button");
+  const labels = buttons().map(b => b.textContent);
+  assert.deepEqual(labels, ["A Linux server", "A Mac that stays on"]);
+  buttons()[1].listeners.click();
+  assert.deepEqual(begun, ["mac"], "the Mac button asks for the Mac");
+  await flow.begin("mac");
+  assert.equal(flow.state.machine, "mac");
+  draw();
+  assert.match(root.textContent, /Run this on the Mac/);
+  assert.match(root.textContent, /with FileVault on, the Mac waits for someone to unlock it at the screen, and Vyre is off until then/);
+  assert.match(root.textContent, /anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password/);
+  assert.match(root.textContent, /"Start up automatically after a power failure" is on in System Settings, under Energy, and it starts off on a Mac mini/);
+  assert.ok(flow.state.installLine.startsWith("curl -fsSL "), "the same one line: the script on the Mac picks the Mac install");
+  await flow.begin();
+  assert.equal(flow.state.machine, "mac", "Start again keeps the choice");
+  await flow.begin("linux");
+  draw();
+  assert.match(root.textContent, /Run this on your server/);
+  assert.ok(!/FileVault/.test(root.textContent), "no Mac words on a Linux install");
+  flow.stop();
+});
+
+test("relay pin: the page connects to the box only through its own relay, never to another host the offer names (no Local Network Access prompt)", async t => {
+  const w = await world(t);
+  let connects = 0;
+  const mk = relayInOffer => createFlow({ client: clientWith(async () => ({ ...offer(), offer: { ...offer().offer, relay: relayInOffer } })), relay: w.base, pinRelay: true, sleep: fastSleep, pollMs: 5, debounceMs: 1,
+    connect: async () => { connects++; return { call: async () => ({}), events: async () => [], follow: () => () => {}, onClose() {}, close() {} }; } });
+  for (const bad of ["wss://192.168.1.20", "wss://localhost:8443", "wss://box.vyre.run", "wss://relay.vyre.run", "ws://10.0.0.5", "not a url"]) {
+    const flow = mk(bad);
+    await flow.begin();
+    await until(() => flow.state.stage === "found");
+    flow.confirmWords();
+    await until(() => flow.state.channel === "failed" || flow.state.stage === "stopped");
+    assert.equal(flow.state.channel, "failed", bad);
+    flow.stop();
+  }
+  assert.equal(connects, 0, "nothing connected to any of them");
+  const good = mk(w.base);
+  await good.begin();
+  await until(() => good.state.stage === "found");
+  good.confirmWords();
+  await until(() => connects === 1);
+  good.stop();
+});
+
+test("the setup page's own code makes no request to a private address: its only fetches are same-origin paths", () => {
+  const dir = new URL(".", import.meta.url).pathname;
+  for (const f of fs.readdirSync(dir).filter(n => n.endsWith(".js") && !n.endsWith(".test.js"))) {
+    const text = fs.readFileSync(path.join(dir, f), "utf8");
+    for (const m of text.matchAll(/\bfetch\(\s*([^,)]+)/g)) {
+      if (/^(o\.fetch|opts|globalThis)/.test(m[1])) continue;
+      assert.match(m[1].trim(), /^["'`]\/(?!\/)/, `${f}: fetch(${m[1]}) is not a same-origin path`);
+    }
+    assert.ok(!/XMLHttpRequest|sendBeacon|new EventSource/.test(text), `${f} opens a request of another kind`);
+    assert.ok(!/["'`](?:https?|wss?):\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1)/.test(text.replace(/\/\/.*$/gm, "")), `${f} names a private address`);
+  }
 });

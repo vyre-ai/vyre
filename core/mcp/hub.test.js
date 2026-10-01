@@ -174,7 +174,7 @@ test("whoFrom: an owner device is not person: true here, even though lib/caller.
 
 function fakeHub({ values = {}, behave = {}, ...extra } = {}) {
   const db = new DatabaseSync(":memory:");
-  db.exec(MIGRATIONS[0]);
+  for (const m of MIGRATIONS) db.exec(m);
   const events = [];
   const opened = [];
   const creds = new Credentials({ fetchItem: async item => { if (!(item in values)) throw new Error(`${item} is not granted`); return values[item]; } });
@@ -268,7 +268,7 @@ test("hub: a failed add stands, does not spend the restart budget, and a missing
 
 test("hub: release runs the approved arguments, only on the server the item was held for, and re-checks the tool", async () => {
   const { hub, held, opened } = fakeHub();
-  await hub.add({ name: "chat", transport: "stdio", command: "node" });
+  await hub.add({ name: "chat", transport: "stdio", command: "node", scope: { agents: ["juno"] } });
   const who = { person: false, agent: "juno", thread: "t-1" };
   const h = await hub.call({ server: "chat", tool: "send_message", arguments: { to: "dana@harlowlegal.com", text: "hi" } }, who);
   assert.equal(h.held, "h1");
@@ -347,4 +347,42 @@ test("hub: a github or google credential is bound to its vendor's hosted MCP hos
   assert.throws(() => normalize({ name: "mail", transport: "http", url: "https://evil.example.test/", auth: { type: "bearer", item: "google-work", field: "token" } }), /google credential/);
   assert.ok(normalize({ name: "docs", transport: "http", url: "https://docs.example.test/", auth: { type: "bearer", item: "harlow-docs" } }), "any other item is unaffected");
   assert.ok(BOUND_ITEMS.length >= 2);
+});
+
+test("hub: no scope means you and the assistant only; an explicit open scope stays open, and a row stored before stays open", async () => {
+  const kinds = { kit: "agent", juno: "agent", helper: "assistant" };
+  const { hub, db } = fakeHub({ agentKind: async a => kinds[a] || null });
+  await hub.add({ name: "private", transport: "stdio", command: "node" });
+  await hub.add({ name: "open", transport: "stdio", command: "node", scope: { projects: "*", agents: "*" } });
+  const names = async who => (await hub.servers(who)).map(x => x.name).sort();
+  // the person, an unnamed session of theirs, and the assistant (by what the agent is, not its name) see the private one
+  assert.deepEqual(await names(person), ["open", "private"]);
+  assert.deepEqual(await names({ person: false, agent: null, thread: "t-1" }), ["open", "private"]);
+  assert.deepEqual(await names({ person: false, agent: "helper", thread: "t-1" }), ["open", "private"]);
+  // a named agent does not, and cannot use it
+  assert.deepEqual(await names({ person: false, agent: "kit", thread: "t-1" }), ["open"]);
+  await assert.rejects(hub.call({ server: "private", tool: "list_issues", arguments: {} }, { person: false, agent: "kit", thread: "t-1" }), /may use/);
+  // a scope that names the agent, or a #tag on its thread, gives access on top
+  await hub.update({ name: "private", scope: { agents: ["kit"] } });
+  assert.deepEqual(await names({ person: false, agent: "kit", thread: "t-1" }), ["open", "private"]);
+  await hub.update({ name: "private", scope: null });
+  assert.deepEqual(await names({ person: false, agent: "juno", thread: "t-9" }), ["open"]);
+  hub.grantThread({ server: "private", thread: "t-9" });
+  assert.deepEqual(await names({ person: false, agent: "juno", thread: "t-9" }), ["open", "private"]);
+  // the view shows the default as the shape it is
+  assert.deepEqual((await hub.servers(person)).find(x => x.name === "private").scope, { projects: "*", agents: [], assistant: true });
+
+  // a row that has no scope written (an old or damaged one) is migrated once to an explicit open scope, so nothing that worked stops
+  const old = new DatabaseSync(":memory:");
+  old.exec(MIGRATIONS[0]);
+  for (const [name, scope] of [["a", ""], ["b", "{}"], ["c", "null"], ["d", '{"projects":["harlow"],"agents":["kit"]}']]) {
+    old.prepare("INSERT INTO mcp_servers (name, transport, command, args, auth, scope, tools, added, updated) VALUES (?, 'stdio', 'node', '[]', '{\"type\":\"none\"}', ?, '{}', 1, 1)").run(name, scope);
+  }
+  old.exec(MIGRATIONS[1]);
+  const scopes = Object.fromEntries(old.prepare("SELECT name, scope FROM mcp_servers").all().map(r => [r.name, JSON.parse(r.scope)]));
+  assert.deepEqual(scopes.a, { projects: "*", agents: "*" });
+  assert.deepEqual(scopes.b, { projects: "*", agents: "*" });
+  assert.deepEqual(scopes.c, { projects: "*", agents: "*" });
+  assert.deepEqual(scopes.d, { projects: ["harlow"], agents: ["kit"] }, "a written scope is never touched");
+  void db;
 });

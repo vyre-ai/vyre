@@ -45,6 +45,7 @@ function run(file, args, ms) {
       const e = /** @type {any} */ (err);
       resolve({ code: err ? (typeof e.code === "number" ? e.code : null) : 0, killed: Boolean(e?.killed), stdout: String(stdout || "").trim() });
     });
+    child.stdin?.on("error", () => {});
     child.stdin?.end();
   });
 }

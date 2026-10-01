@@ -663,6 +663,21 @@ one_install() {
   exit 0
 }
 
+# early_one_install: the same check before the mailbox opens. A second paste of the same line must
+# post nothing: its lines would restart at position 0 and the page would reject them as out of order.
+early_one_install() {
+  [ "$DRY" = 1 ] && return 0
+  [ "$UNINSTALL" = 1 ] && return 0
+  [ -f "$DIR/compose.yml" ] || return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  if docker info >/dev/null 2>&1; then DOCKER_SUDO=""
+  elif command -v sudo >/dev/null 2>&1 && sudo -n docker info >/dev/null 2>&1; then DOCKER_SUDO=sudo
+  else return 0
+  fi
+  one_install
+  DOCKER_SUDO=""
+}
+
 # docker_flavor: the Docker this installer knows. Snap, rootless and Podman each break something
 # specific (the TUN device, the socket group, compose.yml itself), so they stop here in plain words.
 docker_flavor() {
@@ -693,15 +708,17 @@ read_release() {
   if [ -z "$BOX_REF" ] && [ "${VYRE_BUILD:-}" != tgz ]; then
     die "release.json names no image digest for the box, so it cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
   fi
-  # Every image the compose file starts is pinned by digest, so an edit cannot slip in a moving tag.
+  # Every image line of the compose file is exactly `image: <name>@sha256:<64 hex>` (no variable a .env can replace, no comment trick, no
+  # tag), and the images release.json names are among those lines, whole.
   if [ -n "$BOX_REF" ]; then
-    unpinned=$(sed -n 's/^ *image: *//p' "$TMP/compose.yml" | grep -v '@sha256:[0-9a-f]\{64\}' || true)
-    [ -z "$unpinned" ] || die "compose.yml starts an image that is not pinned by digest ($(printf '%s' "$unpinned" | head -n 1)). Nothing was installed."
+    imgs=$(grep -E '^[[:space:]]*image:' "$TMP/compose.yml" || true)
+    badimg=$(printf '%s\n' "$imgs" | grep -Ev '^[[:space:]]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$' | grep -v '^$' || true)
+    [ -z "$badimg" ] || die "compose.yml starts an image that is not pinned by digest ($(printf '%s' "$badimg" | head -n 1 | sed 's/^[[:space:]]*//')). Nothing was installed."
   fi
   for ref in $BOX_REF $COMPUTER_REF; do
     printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' \
       || die "release.json names an image that is not a ghcr.io/vyre-ai digest"
-    grep -qF "$ref" "$TMP/compose.yml" || die "compose.yml does not pin $ref, which release.json names"
+    printf '%s\n' "$imgs" | awk -v r="$ref" '{ sub(/^[ \t]*image:[ \t]*/, ""); if ($0 == r) f = 1 } END { exit !f }' || die "compose.yml does not pin $ref, which release.json names"
   done
 }
 
@@ -816,6 +833,7 @@ main() {
   pick_look
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
+  early_one_install
   [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
 
