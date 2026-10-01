@@ -47,6 +47,8 @@ export function relayLink(o) {
    * once, best effort, since each is single-use and short-lived on the relay anyway. */
   /** @type {Array<{ loc: string, record: string, mac: string, exp: number }>} */
   const pendingRegs = [];
+  /** @type {string[]} */
+  let relayFeatures = [];
   /** Setup offers (tailnet plan 3.6) stand until dropped: each reconnect sends them again, which
    * the relay answers 200 for the identical record and mac, so a box never locks itself out. */
   /** @type {Map<string, { loc: string, record: string, mac: string, exp: number }>} */
@@ -101,6 +103,8 @@ export function relayLink(o) {
       } else if (m.t === "ready") {
         clearTimeout(dial);
         ticket = String(m.ticket || "");
+        // What this relay says it does (an older one says nothing): whether it answers a registration, so silence can mean "older" or "failed".
+        relayFeatures = Array.isArray(m.features) ? m.features.map(String) : [];
         backoff = BACKOFF_MIN;
         state("connected");
         flushRegs();
@@ -168,6 +172,8 @@ export function relayLink(o) {
     },
     /** How many device connections are open through the relay. */
     get open() { return data.size; },
+    /** Whether the relay this link is on promises an answer to every registration (so a missing one is a failure, not an older relay). */
+    acknowledges() { return relayFeatures.includes("registered"); },
     /** Register a pairing ticket's locator/record/mac with the relay (ADR 0045), best effort:
      * queued if not connected yet, sent once the control socket is, never retried afterward
      * since each ticket is short-lived and single-use on the relay regardless. Resolves with the

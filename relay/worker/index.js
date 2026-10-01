@@ -30,6 +30,8 @@
  * relay/worker/worker.test.js checks that they match.
  */
 export const BOX_AUTH_TAG = "vyre-relay-box-v1";
+/** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
+export const FEATURES = Object.freeze(["registered"]);
 export const LIMITS = Object.freeze({ waiting: 8, open: 32, buffered: 64, frame: 1 << 20 });
 export const CLOSE = Object.freeze({ boxOffline: 4404, busy: 4429, refused: 4401, replaced: 4409, boxGone: 4410, deviceGone: 4411, tooBig: 1009 });
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
@@ -508,7 +510,7 @@ export class RouteRelay {
     const ticket = b64url(random(18));
     ws.serializeAttachment({ k: "control", ticket });
     const waiting = this.live("device", x => !(/** @type {any} */ (x).piped)).map(d => /** @type {any} */ (this.role(d)).c);
-    this.json(ws, { t: "ready", ticket, waiting });
+    this.json(ws, { t: "ready", ticket, waiting, features: [...FEATURES] });
   }
 
   /**

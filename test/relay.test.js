@@ -711,6 +711,12 @@ test("relay: an older relay that never answers a registration still gets a usabl
   assert.equal(resolved.offer.route, status.route, "the older relay did store it");
 });
 
+test("relay: a relay that says it answers registrations but does not is a failure, not an older relay", async t => {
+  const { d } = await world(t, {}, {}, { dropAck: true });
+  const r = await d.registry.call("relay.pair.ticket", { seed: crypto.randomBytes(16).toString("base64url") }, "cli", PROOF);
+  assert.equal(r.error && r.error.code, "unavailable", JSON.stringify(r));
+});
+
 test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {
   const { d } = await world(t);
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
