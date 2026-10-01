@@ -331,11 +331,12 @@ function scrubWire(text, paths) {
   for (const [from, to] of paths) if (from) t = t.split(from).join(to);
   // The machine's own names: the checkout, the user and the host.
   t = t.split(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")).join("<REPO>");
-  for (const [from, to] of [[os.homedir(), "/home/user"], [os.userInfo().username, "user"], [os.hostname(), "testbox"]]) if (from && from.length > 2) t = t.split(from).join(to);
+  for (const [from, to] of [[os.homedir(), "/home/user"], [os.userInfo().username, "user"], [os.hostname(), "<HOST>"]]) if (from && from.length > 2) t = t.split(from).join(to);
   return t
     .replace(/Bearer [A-Za-z0-9._~+\/=-]{8,}/g, "Bearer [token]")
     .replace(/\b(sk|xai|rq_live|ghp|gho|github_pat)[-_][A-Za-z0-9_-]{12,}/g, "[key]")
     .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "user@example.org")
+    .replace(/"hostname":"[^"]*"/g, '"hostname":"<HOST>"')
     .replace(/"label":"ChatGPT [A-Za-z ]+"/g, '"label":"ChatGPT"').replace(/"plan":"[a-z]+"/g, '"plan":"plan"')
     .replace(/"(agentId|agent_id|agentInstanceId|instanceId|userId|user_id|accountId|account_id|organizationId|teamId)":"[0-9a-f-]{36}"/g, '"$1":"00000000-0000-0000-0000-000000000000"')
     .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "[jwt]");

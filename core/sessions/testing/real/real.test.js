@@ -32,6 +32,9 @@ for (const prov of ["codex", "grok"]) {
   test(`${prov}: nothing of the machine or the account is in the fixtures`, () => {
     const all = fs.readdirSync(path.join(dir, prov)).filter(f => f.endsWith(".ndjson")).map(f => fs.readFileSync(path.join(dir, prov, f), "utf8")).join("\n");
     assert.doesNotMatch(all, /ChatGPT (Plus|Pro|Team|Business|Enterprise|Free)|"email":"[^"]*","plan":"(?!plan")|"(agentId|agentInstanceId|instanceId|userId|accountId)":"(?!0{8}-)/);
+    // The placeholders stay placeholders on a re-capture: no real host name, agent or instance id, or account plan.
+    assert.doesNotMatch(all, /"hostname":"(?!<HOST>")/);
+    assert.ok(!/"authStatus":\{"kind"/.test(all) || /"label":"ChatGPT","account":\{"email":"user@example\.org","plan":"plan"\}/.test(all), "the account's label and plan are generic");
     assert.doesNotMatch(all, /\/home\/(?!user\b)[a-z]|\/Users\/|\/srv\/|Bearer (?!\[token\])[A-Za-z0-9]|\bsk-[A-Za-z0-9]{12,}|eyJ[A-Za-z0-9_-]{10,}\./);
   });
 }
