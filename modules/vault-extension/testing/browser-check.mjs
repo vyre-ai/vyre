@@ -36,11 +36,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const log = m => process.stdout.write(`  ${m}\n`);
 
 /** A one-page static site: a login form, nothing else. */
+const keyValue = `sk-ant-api03-${crypto.randomBytes(24).toString("base64url")}`;
 function servePage() {
   const html = `<!doctype html><html><body>
     <form><input id="u" name="username" autocomplete="username"><input id="p" name="password" type="password" autocomplete="current-password"></form>
   </body></html>`;
-  const server = http.createServer((req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(html); });
+  const keyHtml = `<!doctype html><html><body><main><p>Your new API key</p><code id="k">${keyValue}</code></main></body></html>`;
+  const server = http.createServer((req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(req.url === "/keys" ? keyHtml : html); });
   return new Promise((resolve, reject) => {
     server.on("error", reject);
     server.listen(0, "127.0.0.1", () => { const { port } = /** @type {any} */ (server.address()); resolve({ server, port, url: `http://127.0.0.1:${port}/` }); });
@@ -111,6 +113,8 @@ async function main() {
     const srv = await serveFill({ host: "127.0.0.1", port: 0, fill });
     cleanup.push(() => srv.close());
     const { display } = fill.code({ name: "browser-check" });
+    const unlockPass = `fixture-unlock-${crypto.randomBytes(8).toString("hex")}`;
+    await fill.setUnlockPassphrase({ passphrase: unlockPass });
 
     log(`fill listener at ${srv.url}, page at ${pageUrl}`);
     log("starting Chromium with the extension loaded");
@@ -151,18 +155,32 @@ async function main() {
       return document.getElementById("msg").textContent;
     `);
     if (/not from the popup/.test(String(paired))) {
-      // Headless Chrome cannot open the real toolbar popup: an extension page opened as a tab carries
-      // sender.tab, and the worker refuses pairing from it on purpose (only the popup pairs). So this
-      // run proves the popup renders against real chrome.* APIs and that a tab-hosted copy is refused;
-      // pairing and fill need the toolbar popup and stay a by-hand check.
-      log("popup renders against real chrome.* APIs; a popup opened as a tab is refused, as designed");
-      log("PARTIAL: pairing and fill need the toolbar popup (run by hand in a headed Chrome)");
+      // Headless Chrome cannot open the real toolbar popup: an extension page opened as a tab carries sender.tab, and the worker refuses
+      // pairing from it on purpose (only the popup pairs). That refusal is the first thing this run proves. The pairing itself then
+      // runs through the worker's own `route` (the same code the popup's message reaches, with the real chrome.storage and fetch), called
+      // from DevTools inside the service worker. Only the toolbar click and its sender check are skipped; they stay the user's 6.6b.
+      log("a popup opened as a tab is refused when it tries to pair, as designed");
       popup.close();
-      return;
-    }
-    if (!/^Paired as/.test(String(paired))) throw new Error(`pairing did not confirm: ${JSON.stringify(paired)}`);
-    log(`popup: ${paired}`);
-    if (popup.errors.length) throw new Error(`console errors in the popup: ${popup.errors.join(" | ")}`);
+      const listNow = await (await fetch(`${base}/json/list`)).json();
+      const swt = listNow.find((/** @type {any} */ t) => t.type === "service_worker" && t.url === `chrome-extension://${extId}/background.js`);
+      if (!swt) throw new Error("no background service worker target");
+      const w = await attach(swt.webSocketDebuggerUrl);
+      cleanup.push(() => w.close());
+      const viaWorker = await w.run(`
+        const a = await route({ type: "save-url", url: ${JSON.stringify(srv.url)} });
+        if (a.error) return "save-url: " + JSON.stringify(a.error);
+        const b = await route({ type: "pair", code: ${JSON.stringify(display)}, name: "browser-check" });
+        if (b.error) return "pair: " + JSON.stringify(b.error);
+        const c = await route({ type: "unlock", passphrase: ${JSON.stringify(unlockPass)} });
+        if (c.error) return "unlock: " + JSON.stringify(c.error);
+        return "Paired as " + b.data.name;
+      `);
+      if (!/^Paired as/.test(String(viaWorker))) throw new Error(`pairing through the worker did not confirm: ${viaWorker}`);
+      log(`worker: ${viaWorker}, and unlocked`);
+      w.close();
+    } else if (!/^Paired as/.test(String(paired))) throw new Error(`pairing did not confirm: ${JSON.stringify(paired)}`);
+    else log(`popup: ${paired}`);
+    if (popup.errors.length && !/not from the popup/.test(String(paired))) throw new Error(`console errors in the popup: ${popup.errors.join(" | ")}`);
     popup.close();
 
     // Phase C: fill. Called on the background worker directly (127.0.0.1 is a permanent host
@@ -189,7 +207,46 @@ async function main() {
     if (sha(String(got)) !== sha(pw)) throw new Error("the page's password field does not hold the vault's value");
     log("fill: the real Chromium field now holds the vault's password (compared by hash only)");
 
-    log("PASS: the packaged extension loads, pairs and fills in a real Chromium, not a stub.");
+
+    // Phase E: an API key a page shows is offered by the real chip, and one trusted tap stores it in the vault. The content scripts are
+    // registered by the real worker (syncKeyChip), the tap is a DevTools input event (isTrusted), and the vault is checked by hash.
+    const sw2 = list.find((/** @type {any} */ t) => t.type === "service_worker" && t.url === `chrome-extension://${extId}/background.js`);
+    const bg2 = await attach(sw2.webSocketDebuggerUrl);
+    cleanup.push(() => bg2.close());
+    const synced = await bg2.run(`try { await syncKeyChip(); return "ok"; } catch (e) { return "syncKeyChip: " + e.message; }`);
+    if (synced !== "ok") throw new Error(String(synced));
+    const keyTarget = await (await fetch(`${base}/json/new?${encodeURIComponent(pageUrl + "keys")}`, { method: "PUT" })).json();
+    const keyPage = await attach(keyTarget.webSocketDebuggerUrl);
+    cleanup.push(() => fetch(`${base}/json/close/${keyTarget.id}`).catch(() => {}));
+    await keyPage.send("DOM.enable");
+    await until(() => keyPage.run(`return !!document.querySelector("vyre-vault-key")`), 15000);
+    await sleep(700);
+    const { root } = await keyPage.send("DOM.getDocument", { depth: -1, pierce: true });
+    /** @type {any} */ let saveBtn = null;
+    const walk = (/** @type {any} */ n, inChip) => {
+      if (saveBtn) return;
+      const here = inChip || n.nodeName === "VYRE-VAULT-KEY";
+      if (here && n.nodeName === "BUTTON" && JSON.stringify(n.children || []).includes('"Save"')) saveBtn = n;
+      for (const c of [...(n.children || []), ...(n.shadowRoots || [])]) walk(c, here);
+    };
+    walk(root, false);
+    if (!saveBtn) throw new Error("the chip has no Save button");
+    const { model } = await keyPage.send("DOM.getBoxModel", { backendNodeId: saveBtn.backendNodeId });
+    const q = model.content, x = (q[0] + q[2] + q[4] + q[6]) / 4, y = (q[1] + q[3] + q[5] + q[7]) / 4;
+    for (const type of ["mousePressed", "mouseReleased"]) await keyPage.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
+    const saved = await until(async () => {
+      for (const it of vault.list().items) {
+        if (it.kind === "login" || it.name === "browser-check-login") continue;
+        const row = vault.row(it.name);
+        if (!row) continue;
+        const f = await vault.fields(row);
+        if (Object.values(f).some(v => sha(String(v)) === sha(keyValue))) return { name: it.name, origin: row.origin };
+      }
+      return null;
+    }, 8000);
+    if (!saved.origin || !String(saved.origin).startsWith("http://127.0.0.1:")) throw new Error(`the saved key's origin is wrong: ${saved.origin}`);
+    log(`chip: one trusted tap stored the page's key as ${saved.name}, from ${saved.origin} (compared by hash only)`);
+    log("PASS: the packaged extension loads, pairs through its worker and fills in a real Chromium, and the chip stores a page's key on one trusted tap.");
   } finally {
     await teardown();
   }
