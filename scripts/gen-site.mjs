@@ -177,7 +177,8 @@ const homeBody = `
     <div class="copy">
       ${eyebrow('Open source. Apache 2.0. Your own subscriptions.')}
       <h1 id="hero-h" class="display">Your AI command center, <b>on your own machines.</b></h1>
-      <p class="lead">Vyre runs Claude, Codex, Grok and OpenRouter in one session on a server you own. Reach it from your Mac, your Windows PC or any phone.</p>
+      <p class="lead">Vyre runs your agents on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.</p>
+      <p class="hero-keep">Your agents keep working when your laptop is closed.</p>
       <div class="btn-row">
         <a class="btn btn-fill" href="/setup/">Set up Vyre</a>
         <a class="btn" href="/direction/">See the direction</a>
@@ -277,7 +278,7 @@ const homeBody = `
     <div class="feat-copy rv">
       <span class="num">01 &middot; Vyre Lumen</span>
       <h2 id="lumen-h" class="h2">Ask without leaving <b>what you’re doing.</b></h2>
-      <p class="lead">Press Option-Space over any app on your Mac, and Vyre Lumen opens. On Windows it is Alt+Space.</p>
+      <p class="lead">Press Option-Space on a Mac or Alt+Space on Windows, over any app, and Vyre Lumen opens.</p>
       ${list([['@ anything', 'Name an agent or a project and the message goes there. The destination shows before you send.'], ['Answers from memory', 'If your memory already knows, you get the answer with its source, and no model is used.'], ['Watch it work', 'When an agent works on your Mac or in Chrome, Lumen shows the plan first and lets you pause, stop or edit a step.']])}
     </div>
     <div class="mock rv"><div class="win" role="img" aria-label="The Vyre Lumen oversight panel: kit is working in Chrome, with a plan of four steps, and buttons to pause or stop. Sample data.">
@@ -434,7 +435,7 @@ const homeBody = `
     <div class="sec-head rv">
       ${eyebrow('Where Vyre is going.')}
       <h2 id="dir-h" class="h2">Direction. <b>Not a promise of dates.</b></h2>
-      <p class="lead">This is direction, not a promise of dates. Sessions, then scale, then spaces for teams, with modules alongside.</p>
+      <p class="lead">This is direction, not a promise of dates. Next: your own computers pitch in, teams share servers, and every business app becomes a Vyre module.</p>
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       <div class="piece"><span class="num">0.2.1</span><h3>Hardening</h3><p>Touch ID for sensitive terminal actions, fixes, and real-device passes.</p></div>
@@ -467,9 +468,9 @@ const homeBody = `
 page({
   slug: '', path: '/',
   title: 'Vyre: your AI command center, on your own machines',
-  desc: 'Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or any phone.',
+  desc: 'Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.',
   ogTitle: 'Your AI command center, on your own machines.',
-  ogSub: 'One session across Claude, Codex, Grok and OpenRouter. Reach it from your Mac, your Windows PC or any phone.',
+  ogSub: 'Your agents run on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.',
   body: homeBody, ld: [SOFT(), { '@type': 'WebSite', '@id': `${SITE}/#site`, url: `${SITE}/`, name: 'Vyre', publisher: { '@id': `${SITE}/#org` } }, faqLd(HOME_FAQ)],
 });
 

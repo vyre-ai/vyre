@@ -111,6 +111,7 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 .hero .copy { position: relative; z-index: 2; text-align: center; max-width: 920px; margin-inline: auto; }
 .hero .display { font-size: clamp(38px, 7vw, 82px); }
 .hero .lead { margin-inline: auto; max-width: 34em; }
+.hero-keep { margin: 14px 0 0; font-size: 17px; color: var(--ink); font-weight: 500; letter-spacing: -.01em; }
 .hero-note { margin: 18px 0 0; font: 400 12px/1.5 var(--mono); color: var(--ink-3); letter-spacing: .02em; }
 .stage { position: relative; margin-top: clamp(40px, 6vw, 72px); padding-bottom: 0; }
 .stage canvas.field { position: absolute; left: -4vw; right: -4vw; top: -50px; bottom: -40px; width: calc(100% + 8vw); height: calc(100% + 90px); z-index: 0; pointer-events: none; }

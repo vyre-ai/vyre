@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Vyre: your AI command center, on your own machines</title>
-  <meta name="description" content="Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or any phone.">
+  <meta name="description" content="Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.">
   <link rel="canonical" href="https://vyre.run/">
   <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
@@ -18,14 +18,14 @@
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/">
   <meta property="og:title" content="Vyre: your AI command center, on your own machines">
-  <meta property="og:description" content="Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or any phone.">
+  <meta property="og:description" content="Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.">
   <meta property="og:image" content="https://vyre.run/og/home.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Your AI command center, on your own machines.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Vyre: your AI command center, on your own machines">
-  <meta name="twitter:description" content="Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or any phone.">
+  <meta name="twitter:description" content="Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.">
   <meta name="twitter:image" content="https://vyre.run/og/home.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"SoftwareApplication","@id":"https://vyre.run/#app","name":"Vyre","url":"https://vyre.run/","description":"Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, with memory, a vault, teammates and watchers. Reach it from a Mac, a Windows PC, a Linux server or any phone.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Windows, Linux, iOS, Android","softwareVersion":"0.2.0","license":"https://www.apache.org/licenses/LICENSE-2.0","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://vyre.run/#org"},"codeRepository":"https://github.com/vyre-ai/vyre","downloadUrl":"https://vyre.run/setup/"},{"@type":"WebSite","@id":"https://vyre.run/#site","url":"https://vyre.run/","name":"Vyre","publisher":{"@id":"https://vyre.run/#org"}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is Vyre free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre."}},{"@type":"Question","name":"Do I need a server?","acceptedAnswer":{"@type":"Answer","text":"Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed."}},{"@type":"Question","name":"Does it run on Windows?","acceptedAnswer":{"@type":"Answer","text":"Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”."}},{"@type":"Question","name":"Does it work on my phone?","acceptedAnswer":{"@type":"Answer","text":"Yes, on iPhone and Android. Open Vyre at your own address, add it to your Home Screen, and pair it by scanning a code. The phone needs Tailscale signed in, because your address only opens from your own devices."}},{"@type":"Question","name":"Where does my data live?","acceptedAnswer":{"@type":"Answer","text":"Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app."}},{"@type":"Question","name":"What is Tailscale for?","acceptedAnswer":{"@type":"Answer","text":"Tailscale joins your server, your computers and your phone into one private network. Your address only opens from devices on it, and it is required. The free plan is enough."}},{"@type":"Question","name":"Does it replace Claude Code, Codex or Grok?","acceptedAnswer":{"@type":"Answer","text":"No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do."}},{"@type":"Question","name":"What stops an agent from doing something I did not ask for?","acceptedAnswer":{"@type":"Answer","text":"Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting."}},{"@type":"Question","name":"Is it ready?","acceptedAnswer":{"@type":"Answer","text":"It is 0.2.0, and what this page shows works today. Some things come next, and the direction page lists them. The known gaps list what 0.2.0 does not do yet."}}]}]}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -56,7 +56,8 @@
     <div class="copy">
       <p class="eyebrow">Open source. Apache 2.0. Your own subscriptions.</p>
       <h1 id="hero-h" class="display">Your AI command center, <b>on your own machines.</b></h1>
-      <p class="lead">Vyre runs Claude, Codex, Grok and OpenRouter in one session on a server you own. Reach it from your Mac, your Windows PC or any phone.</p>
+      <p class="lead">Vyre runs your agents on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.</p>
+      <p class="hero-keep">Your agents keep working when your laptop is closed.</p>
       <div class="btn-row">
         <a class="btn btn-fill" href="/setup/">Set up Vyre</a>
         <a class="btn" href="/direction/">See the direction</a>
@@ -156,7 +157,7 @@
     <div class="feat-copy rv">
       <span class="num">01 &middot; Vyre Lumen</span>
       <h2 id="lumen-h" class="h2">Ask without leaving <b>what you’re doing.</b></h2>
-      <p class="lead">Press Option-Space over any app on your Mac, and Vyre Lumen opens. On Windows it is Alt+Space.</p>
+      <p class="lead">Press Option-Space on a Mac or Alt+Space on Windows, over any app, and Vyre Lumen opens.</p>
       <ul class="list"><li><b>@ anything</b><span>Name an agent or a project and the message goes there. The destination shows before you send.</span></li><li><b>Answers from memory</b><span>If your memory already knows, you get the answer with its source, and no model is used.</span></li><li><b>Watch it work</b><span>When an agent works on your Mac or in Chrome, Lumen shows the plan first and lets you pause, stop or edit a step.</span></li></ul>
     </div>
     <div class="mock rv"><div class="win" role="img" aria-label="The Vyre Lumen oversight panel: kit is working in Chrome, with a plan of four steps, and buttons to pause or stop. Sample data.">
@@ -313,7 +314,7 @@
     <div class="sec-head rv">
       <p class="eyebrow">Where Vyre is going.</p>
       <h2 id="dir-h" class="h2">Direction. <b>Not a promise of dates.</b></h2>
-      <p class="lead">This is direction, not a promise of dates. Sessions, then scale, then spaces for teams, with modules alongside.</p>
+      <p class="lead">This is direction, not a promise of dates. Next: your own computers pitch in, teams share servers, and every business app becomes a Vyre module.</p>
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       <div class="piece"><span class="num">0.2.1</span><h3>Hardening</h3><p>Touch ID for sensitive terminal actions, fixes, and real-device passes.</p></div>
