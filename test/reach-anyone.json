@@ -1,0 +1,505 @@
+{
+ "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
+ "tools": {
+  "artifacts.archive": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.create": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.delete": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.diff": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.export": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.get": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.list": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.move": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.public.status": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.restore": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.search": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.share": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.undelete": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.unshare": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "artifacts.update": {
+   "module": "artifacts",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "artifacts.versions": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "events.catalog": {
+   "module": "events",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "learn.accept": {
+   "module": "learn",
+   "reason": "callers list in code (cli, deck, capsule: not local, which any socket client gets) and a presence proof declared and checked in the booted registry (test/reach-presence); person reach would add local back"
+  },
+  "learn.add": {
+   "module": "learn",
+   "reason": "stricter is free: a lesson that loosens anything needs presence (presenceRequired in code); the callers that reach it are the person's surfaces and the harness"
+  },
+  "learn.check": {
+   "module": "learn",
+   "reason": "asked by the harness hooks with the session's own scope; it only reads lessons and writes counters, and the scope check in code limits it to the thread's project"
+  },
+  "learn.edit": {
+   "module": "learn",
+   "reason": "tightening is free, anything that loosens a lesson needs presence (presenceRequired in code) and a proposed lesson is accepted only by the person (check in code)"
+  },
+  "learn.lessons": {
+   "module": "learn",
+   "reason": "read-only; lessons and counters of the person's own work"
+  },
+  "learn.relax": {
+   "module": "learn",
+   "reason": "callers list in code (cli, deck, capsule: not local, which any socket client gets) and a presence proof declared and checked in the booted registry (test/reach-presence); person reach would add local back"
+  },
+  "learn.retire": {
+   "module": "learn",
+   "reason": "callers list in code (cli, deck, capsule: not local, which any socket client gets) and a presence proof declared and checked in the booted registry (test/reach-presence); person reach would add local back"
+  },
+  "learn.signals": {
+   "module": "learn",
+   "reason": "read-only; callers list in code is cli, local, deck, capsule (owner surfaces only, test asserts it)"
+  },
+  "learn.skill-dismiss": {
+   "module": "learn",
+   "reason": "callers list in code (cli, deck, capsule: not local, which any socket client gets) and a presence proof declared and checked in the booted registry (test/reach-presence); person reach would add local back"
+  },
+  "learn.skill-install": {
+   "module": "learn",
+   "reason": "callers list in code (cli, deck, capsule: not local, which any socket client gets) and a presence proof declared and checked in the booted registry (test/reach-presence); person reach would add local back"
+  },
+  "learn.skill-retire": {
+   "module": "learn",
+   "reason": "callers list in code (cli, deck, capsule: not local, which any socket client gets) and a presence proof declared and checked in the booted registry (test/reach-presence); person reach would add local back"
+  },
+  "learn.skills": {
+   "module": "learn",
+   "reason": "read-only; lessons and counters of the person's own work"
+  },
+  "learn.stats": {
+   "module": "learn",
+   "reason": "read-only; lessons and counters of the person's own work"
+  },
+  "link.call": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.events": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.find": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.health": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.hello": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.macs": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pair.approve": {
+   "module": "link",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "link.pair.poll": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.pair.request": {
+   "module": "link",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  },
+  "link.peers": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.pending": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.reply": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.serve": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "link.signin": {
+   "module": "link",
+   "reason": "callers limited in code to capsule, cli, local"
+  },
+  "link.status": {
+   "module": "link",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "memory.answer": {
+   "module": "memory",
+   "reason": "answers from memory only (no write); scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.ask": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.brief": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.card": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.context": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.correct": {
+   "module": "memory",
+   "reason": "an agent's call is stored as a suggestion for the person, never as a correction; the correction itself is decided by the ownerWrite check in code (the person's own surfaces, or a signed-in person's device)"
+  },
+  "memory.curate": {
+   "module": "memory",
+   "reason": "guard() in code scopes an agent to the projects its grant names; whole-graph work needs a whole-scope caller (the person's surfaces), anything else is refused"
+  },
+  "memory.decisions": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.facts": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.graph": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.heard": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.mute": {
+   "module": "memory",
+   "reason": "guard() in code scopes an agent to the projects its grant names; whole-graph work needs a whole-scope caller (the person's surfaces), anything else is refused"
+  },
+  "memory.pin": {
+   "module": "memory",
+   "reason": "guard() in code scopes an agent to the projects its grant names; whole-graph work needs a whole-scope caller (the person's surfaces), anything else is refused"
+  },
+  "memory.profile": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.prompt": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.relevant": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.remember": {
+   "module": "memory",
+   "reason": "personalOnly check in code: only the person's own surfaces may file a personal fact; an agent files with memory.write, scoped to a project it holds"
+  },
+  "memory.retrieve": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.site.get": {
+   "module": "memory",
+   "reason": "chrome() check in code: only the person's own surfaces and a first-party module are admitted, every other caller is refused (denied); the settings memory.site.learn and memory.site.sync gate it again"
+  },
+  "memory.site.put": {
+   "module": "memory",
+   "reason": "chrome() check in code: only the person's own surfaces and a first-party module are admitted, every other caller is refused (denied); the settings memory.site.learn and memory.site.sync gate it again"
+  },
+  "memory.site.report": {
+   "module": "memory",
+   "reason": "chrome() check in code: only the person's own surfaces and a first-party module are admitted, every other caller is refused (denied); the settings memory.site.learn and memory.site.sync gate it again"
+  },
+  "memory.site.sync": {
+   "module": "memory",
+   "reason": "chrome() check in code: only the person's own surfaces and a first-party module are admitted, every other caller is refused (denied); the settings memory.site.learn and memory.site.sync gate it again"
+  },
+  "memory.stats": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.suggest": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.today": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.why": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "memory.write": {
+   "module": "memory",
+   "reason": "projectArg grant check: an agent writes, forgets or restores only in a project its grant names; the writer is taken from the caller, never the input; forgetting everywhere is refused to any caller but the person's own surfaces (check in code)"
+  },
+  "memory.write.forget": {
+   "module": "memory",
+   "reason": "projectArg grant check: an agent writes, forgets or restores only in a project its grant names; the writer is taken from the caller, never the input; forgetting everywhere is refused to any caller but the person's own surfaces (check in code)"
+  },
+  "memory.write.restore": {
+   "module": "memory",
+   "reason": "projectArg grant check: an agent writes, forgets or restores only in a project its grant names; the writer is taken from the caller, never the input; forgetting everywhere is refused to any caller but the person's own surfaces (check in code)"
+  },
+  "memory.writes": {
+   "module": "memory",
+   "reason": "read-only; scoped in code: an agent reads only the projects its grant names (projectArg), the person's own layer goes through the personalOnly check, and guard() refuses any other caller"
+  },
+  "presence.capsule.pin": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.code": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.enroll": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.keys": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.person.sessions": {
+   "module": "presence",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "presence.person.start": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.remove": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.session.close": {
+   "module": "presence",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "presence.session.open": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.check": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.access.grant": {
+   "module": "projects",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "projects.access.list": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.migrate": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "projects.access.revoke": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.archive": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.catalog": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.context": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.create": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.history": {
+   "module": "projects",
+   "reason": "read-only; callers in code: capsule, cli, deck, local, mcp"
+  },
+  "projects.list": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.of": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "projects.rename": {
+   "module": "projects",
+   "reason": "callers limited in code to capsule, cli, deck, local, module"
+  },
+  "projects.threads": {
+   "module": "projects",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "recall.index": {
+   "module": "recall",
+   "reason": "callers list in code (cli, local, deck, capsule, module); no agent or mcp caller is admitted"
+  },
+  "recall.related": {
+   "module": "recall",
+   "reason": "callers list in code (the person's surfaces and first-party modules only), read-only"
+  },
+  "recall.search": {
+   "module": "recall",
+   "reason": "callers list and callerAllowed check in code: the person's surfaces, first-party modules, and mcp only with an agent's grant, which scopes the read to the folders it names; read-only"
+  },
+  "recall.sessions": {
+   "module": "recall",
+   "reason": "callers list and callerAllowed check in code: the person's surfaces, first-party modules, and mcp only with an agent's grant, which scopes the read to the folders it names; read-only"
+  },
+  "recall.status": {
+   "module": "recall",
+   "reason": "read-only counts and progress, no content"
+  },
+  "recall.thread": {
+   "module": "recall",
+   "reason": "callers list and callerAllowed check in code: the person's surfaces, first-party modules, and mcp only with an agent's grant, which scopes the read to the folders it names; read-only"
+  },
+  "recall.transcript": {
+   "module": "recall",
+   "reason": "callers list in code (the person's surfaces and a module; mcp is out, tool output can hold anything), read-only and redacted"
+  },
+  "recall.unwatch": {
+   "module": "recall",
+   "reason": "callers list in code (cli, local, deck, capsule, module); no agent or mcp caller is admitted"
+  },
+  "recall.watch": {
+   "module": "recall",
+   "reason": "callers list in code (cli, local, deck, capsule, module); no agent or mcp caller is admitted"
+  },
+  "releases.cert": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, deck, local, tailnet"
+  },
+  "releases.sign": {
+   "module": "releases",
+   "reason": "callers limited in code to cli, local, module"
+  },
+  "spend.check": {
+   "module": "spend",
+   "reason": "read-only: whether a provider may spend now; no secrets"
+  },
+  "spend.summary": {
+   "module": "spend",
+   "reason": "read-only: today's spend per provider; no secrets"
+  },
+  "suggest.picked": {
+   "module": "suggest",
+   "reason": "callers list in code (cli, local, deck, capsule, module); records a choice only"
+  },
+  "suggest.query": {
+   "module": "suggest",
+   "reason": "callers list in code (cli, local, deck, capsule, module), read-only candidates"
+  },
+  "sync.consent": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.delete.import": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.scan": {
+   "module": "sync",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
+  "sync.upload.cancel": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.chunk": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.finish": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.plan": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "sync.upload.start": {
+   "module": "sync",
+   "reason": "callers limited in code to tailnet"
+  },
+  "undo.list": {
+   "module": "undo",
+   "reason": "read-only, scoped by the module itself"
+  },
+  "undo.run": {
+   "module": "undo",
+   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+  }
+ }
+}
