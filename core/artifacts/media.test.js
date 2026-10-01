@@ -307,3 +307,18 @@ test("media: bytes handed over directly (a provider's content block) are kept wi
   await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: "" }), /empty/);
   assert.notEqual((await call("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64 }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "a model never registers");
 });
+
+test("media: the thread's own folder swapped for a link at the last moment is still refused, and nothing is created in the link's target", async t => {
+  const { call, asVyre } = await boot(t);
+  const d1 = folder(t), d2 = folder(t), victim = folder(t);
+  await asVyre("artifacts.capture.register", { thread: "t1", dir: d1 });
+  await asVyre("artifacts.capture.register", { thread: "t2", dir: d2 });
+  fs.writeFileSync(path.join(d1, "harbour.png"), PNG);
+  const made = await asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png" });
+  // After the identity check and before the open, the agent replaces its folder with a link to a folder Vyre can write.
+  _test.beforeCopyOut = () => { _test.beforeCopyOut = null; fs.renameSync(d2, d2 + ".moved"); fs.symlinkSync(victim, d2); };
+  t.after(() => { _test.beforeCopyOut = null; fs.rmSync(d2, { force: true }); fs.rmSync(d2 + ".moved", { recursive: true, force: true }); });
+  const r = await call("artifacts.media.copy", { id: made.id }, "mcp:agent:kit", { thread: "t2" });
+  assert.equal(r.error?.code, "denied", JSON.stringify(r));
+  assert.deepEqual(fs.readdirSync(victim), [], "nothing was created in the target");
+});

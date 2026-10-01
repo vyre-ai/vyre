@@ -41,7 +41,9 @@ whatever is inside it. Do not let an agent put in one anything you would not sen
 and be careful with an interactive artifact made in a session that read mail, web pages or other
 content you did not write. Vyre says so on the frame ("Runs its own code and can reach the internet"),
 and when a page or an app loads a second time, which means it navigated away, the artifact's activity
-records it.
+records that it left. Where it went is usually not known to Vyre, because a browser does not tell the
+surface around a frame where the frame went, so the log says that it left, not to what address. The log
+is written from what the Deck sees, so it is a record to look at, not a guard.
 
 Documents, reports, dashboards, diagrams and decks run no code and are not affected: Vyre draws them
 itself from what the agent wrote.

@@ -102,6 +102,9 @@ export const _test = {
   ownUid: () => (typeof process.getuid === "function" ? process.getuid() : -1),
   /** @type {null | ((file: string) => void)} */
   beforeOpen: null,
+  /** A hook run in copyOut after the folder's identity check and before it is opened (to prove a swap there is caught). */
+  /** @type {null | (() => void)} */
+  beforeCopyOut: null,
   /** How long a folder event for a media file waits for the file to settle, in ms. */
   mediaDebounce: 1500,
   /** The most generated media one project and one thread may hold, in bytes (plain refusal beyond it). */
@@ -545,37 +548,50 @@ export default {
      * @param {any} reg @param {string} src @param {string} name
      */
     const copyOut = async (reg, src, name) => {
-      const root = reg.dir, dest = path.join(root, "from-artifacts"), me = _test.ownUid();
+      const root = reg.dir, me = _test.ownUid();
       if (dirId(root) !== `${reg.dev}:${reg.ino}`) throw refuse("this thread has no artifacts folder to copy into", "not_found");
-      try { fs.mkdirSync(dest, { mode: 0o755 }); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the thread's artifacts folder is not writable by Vyre", "not_available"); }
-      let dfd;
-      try { dfd = fs.openSync(dest, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW); }
-      catch { throw refuse("from-artifacts in the thread's folder is not a plain folder; remove it and try again", "denied"); }
+      if (_test.beforeCopyOut) _test.beforeCopyOut();
+      // Hold the thread's folder open first, and work relative to that descriptor, so swapping the folder for a link
+      // after the check changes nothing: what is opened is the folder that was checked (reviewer-2 LOW).
+      let rfd;
+      try { rfd = fs.openSync(root, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW); }
+      catch { throw refuse("this thread's artifacts folder is no longer the one registered", "denied"); }
       try {
-        const ds = fs.fstatSync(dfd, { bigint: true });
-        if (!ds.isDirectory() || (me >= 0 && ds.uid !== BigInt(me))) throw refuse("from-artifacts in the thread's folder is not Vyre's; remove it and try again", "denied");
-        fs.fchmodSync(dfd, 0o755); // whatever Vyre's umask: the agent reads it, nothing but Vyre writes it
-        const here = LINUX_FD ? `/proc/self/fd/${dfd}` : dest;
-        const target = path.join(here, name);
-        let ofd;
-        try { ofd = fs.openSync(target, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o644); }
-        catch (e) {
-          if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the file could not be copied into the thread's folder", "not_available");
-          // Already copied: fine if it is a plain file of Vyre's; a link or anything else at that name is refused.
-          const st = fs.lstatSync(target, { bigint: true });
-          if (st.isFile() && st.nlink === 1n && (me < 0 || st.uid === BigInt(me))) return path.join(dest, name);
-          throw refuse(`${name} in from-artifacts is not Vyre's file; remove it and try again`, "denied");
-        }
+        const rs = fs.fstatSync(rfd, { bigint: true });
+        if (`${rs.dev}:${rs.ino}` !== `${reg.dev}:${reg.ino}`) throw refuse("this thread's artifacts folder is no longer the one registered", "denied");
+        const rbase = LINUX_FD ? `/proc/self/fd/${rfd}` : root;
+        const dest = path.join(rbase, "from-artifacts");
+        try { fs.mkdirSync(dest, { mode: 0o755 }); } catch (e) { if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the thread's artifacts folder is not writable by Vyre", "not_available"); }
+        let dfd;
+        try { dfd = fs.openSync(dest, fs.constants.O_RDONLY | fs.constants.O_DIRECTORY | fs.constants.O_NOFOLLOW); }
+        catch { throw refuse("from-artifacts in the thread's folder is not a plain folder; remove it and try again", "denied"); }
         try {
-          const sf = await fs.promises.open(src, "r");
+          const ds = fs.fstatSync(dfd, { bigint: true });
+          if (!ds.isDirectory() || (me >= 0 && ds.uid !== BigInt(me))) throw refuse("from-artifacts in the thread's folder is not Vyre's; remove it and try again", "denied");
+          fs.fchmodSync(dfd, 0o755); // whatever Vyre's umask: the agent reads it, nothing but Vyre writes it
+          const here = LINUX_FD ? `/proc/self/fd/${dfd}` : dest;
+          const target = path.join(here, name);
+          const shown = path.join(root, "from-artifacts", name);
+          let ofd;
+          try { ofd = fs.openSync(target, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o644); }
+          catch (e) {
+            if (/** @type {any} */ (e).code !== "EEXIST") throw refuse("the file could not be copied into the thread's folder", "not_available");
+            // Already copied: fine if it is a plain file of Vyre's; a link or anything else at that name is refused.
+            const st = fs.lstatSync(target, { bigint: true });
+            if (st.isFile() && st.nlink === 1n && (me < 0 || st.uid === BigInt(me))) return shown;
+            throw refuse(`${name} in from-artifacts is not Vyre's file; remove it and try again`, "denied");
+          }
           try {
-            const buf = Buffer.alloc(1024 * 1024);
-            for (let pos = 0;;) { const { bytesRead: n } = await sf.read(buf, 0, buf.length, pos); if (n <= 0) break; await writeAsync(ofd, buf, 0, n); pos += n; }
-          } finally { await sf.close(); }
-          fs.fchmodSync(ofd, 0o644);
-        } finally { fs.closeSync(ofd); }
-        return path.join(dest, name);
-      } finally { fs.closeSync(dfd); }
+            const sf = await fs.promises.open(src, "r");
+            try {
+              const buf = Buffer.alloc(1024 * 1024);
+              for (let pos = 0;;) { const { bytesRead: n } = await sf.read(buf, 0, buf.length, pos); if (n <= 0) break; await writeAsync(ofd, buf, 0, n); pos += n; }
+            } finally { await sf.close(); }
+            fs.fchmodSync(ofd, 0o644);
+          } finally { fs.closeSync(ofd); }
+          return shown;
+        } finally { fs.closeSync(dfd); }
+      } finally { fs.closeSync(rfd); }
     };
 
     /** What generated media a project or a thread already holds, in bytes (deleted items count until they are purged). @param {"project"|"thread"} by @param {string} key */
