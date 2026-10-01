@@ -18,3 +18,11 @@
   Content-Type: text/plain; charset=utf-8
   X-Content-Type-Options: nosniff
   Cache-Control: public, max-age=300
+
+# The v2 pages ship one stylesheet and one script, not fingerprinted, so keep them to an hour. Social cards change rarely.
+/v2.css
+  Cache-Control: public, max-age=3600
+/v2.js
+  Cache-Control: public, max-age=3600
+/og/*
+  Cache-Control: public, max-age=86400
