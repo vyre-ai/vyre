@@ -5,6 +5,20 @@
    "module": "about",
    "default": "limited by callers in code"
   },
+  "agents.job": {
+   "module": "agents",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "agents.scope": {
+   "module": "agents",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "agents.update": {
+   "module": "agents",
+   "default": "callers admit a model"
+  },
   "appearance.check": {
    "module": "appearance",
    "default": "open to any caller"
@@ -616,6 +630,22 @@
   "glass.targets": {
    "module": "glass",
    "default": "open to any caller"
+  },
+  "goals.get": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "goals.list": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "goals.milestone-done": {
+   "module": "goals",
+   "default": "callers admit a model"
+  },
+  "goals.set": {
+   "module": "goals",
+   "default": "callers admit a model"
   },
   "google.release": {
    "module": "google",
@@ -1253,6 +1283,46 @@
    "module": "screen",
    "default": "callers admit a model"
   },
+  "sessions.accounts.resolve": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.mode.resolve": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.models.resolve": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.prompt.compose": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.providers.snapshot": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.routes.next": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.slots": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "sessions.usage.report": {
+   "module": "sessions",
+   "default": "internal or hook in code",
+   "internal": true
+  },
   "settings.changes": {
    "module": "settings",
    "default": "open to any caller"
@@ -1496,6 +1566,100 @@
   "term.open": {
    "module": "term",
    "default": "limited by callers in code"
+  },
+  "threads.bind": {
+   "module": "threads",
+   "default": "callers admit a model"
+  },
+  "threads.busy": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.claimed": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.contend": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.halt": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.history": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.inbox": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.interrupt-in": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.launch": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.lineage": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.live": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.notice": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.origin": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.pids": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.post": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.quick": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.replied": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.usage": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "threads.vouch": {
+   "module": "threads",
+   "default": "internal or hook in code",
+   "internal": true
   },
   "tips.dismiss": {
    "module": "tips",

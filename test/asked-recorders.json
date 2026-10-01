@@ -7,7 +7,6 @@
   "team.retire": "lib/said/team.js",
   "team.role.fill": "lib/said/team.js",
   "team.duties.start": "lib/said/team.js",
-  "artifacts.public.set": "PENDING: artifacts moved it to reach person; delete this line when its branch lands",
   "watchers.create": "PENDING: lib/said/watchers.js lands with work/assistant (recorders watchers.create:<project>/<name>@<hash>)",
   "watchers.preset": "PENDING: lib/said/watchers.js lands with work/assistant (recorders watchers.preset:<project>/<kind>)",
   "team.add": "lib/said/team.js"

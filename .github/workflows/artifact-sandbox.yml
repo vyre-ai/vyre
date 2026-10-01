@@ -1,0 +1,58 @@
+# AR-S2: the artifact sandbox in real browsers. A hostile page artifact, served with the real page
+# headers, tries to read the cookie, local and session storage, IndexedDB, the parent's document and
+# location, navigate the top window, and call out (fetch, XHR, beacon, WebSocket, import, window.open,
+# img, script, stylesheet, frame, form, object, CSS url()). All must fail, framed (the Deck and the
+# phone) and at the top level (a public link), in Safari on macOS, Mobile Safari in the iOS
+# simulator, and Chrome as the baseline that tells a harness fault from a browser fault.
+# Throwaway GitHub runners only, never a person's Mac.
+name: artifact-sandbox
+on:
+  push:
+    paths: ["core/artifacts/render.js", "core/artifacts/draw/**", "core/artifacts/testing/sandbox-*", ".github/workflows/artifact-sandbox.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: artifact-sandbox-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Chrome for Testing
+        run: |
+          npx --yes @puppeteer/browsers install chrome@130 --path "$RUNNER_TEMP/cft" | tee "$RUNNER_TEMP/cft.out"
+          echo "CHROME=$(awk '{print $2}' "$RUNNER_TEMP/cft.out" | tail -1)" >> "$GITHUB_ENV"
+      - name: The harness itself (no browser)
+        run: node --test core/artifacts/testing/sandbox-verify.test.js
+      - name: The sandbox in Chrome
+        run: node core/artifacts/testing/sandbox-chrome.mjs
+  safari:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Let safaridriver drive Safari
+        run: |
+          sudo safaridriver --enable
+          safaridriver --version || true
+      - name: The sandbox in Safari
+        run: node core/artifacts/testing/sandbox-safari.mjs
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: The sandbox in the iOS simulator's Safari
+        run: node core/artifacts/testing/sandbox-ios.mjs
