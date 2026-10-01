@@ -36,7 +36,7 @@ is a one-file change. A provider Vyre does not know gets a circle with the first
 ## Placement
 
 1. **Beside an avatar** (replies, thread rows, the Agents list): the badge is 55 percent of the avatar's
-   size (16 at 28, 22 at 40, 13 at 24, never under 12), at its lower right, offset 4 px outward, with a
+   size, rounded (15 at 28, 22 at 40, 13 at 24, never under 12), at its lower right, offset 4 px outward, with a
    2 px ring in the surface colour so it reads on any ground. The avatar itself (session, project or agent
    per avatar.md) is untouched and keeps its tap behaviour; the badge is not a separate tap target.
 2. **On its own** (picker rows, tool rows, block headers): 16 to 22, no avatar, same shapes.
