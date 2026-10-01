@@ -536,12 +536,16 @@ test("projectDefinesMcp: a project's .codex/config.toml defining an MCP server i
   t.after(() => fsx.rmSync(root, { recursive: true, force: true }));
   const deep = pathx.join(root, "a", "b"); fsx.mkdirSync(deep, { recursive: true });
   assert.equal(projectDefinesMcp(deep), false, "no config");
-  const forms = ["[mcp_servers.vyre]\ncommand = \"x\"", "[ mcp_servers.vyre ]\ncommand = \"x\"", "[[mcp_servers]]\nname = \"x\"", "mcp_servers = { vyre = { command = \"x\" } }", "mcp_servers.vyre.command = \"x\"", "\"mcp_servers\".vyre.command = \"x\""];
+  const forms = ["[mcp_servers.vyre]\ncommand = \"x\"", "[ mcp_servers.vyre ]\ncommand = \"x\"", "[[mcp_servers]]\nname = \"x\"", "mcp_servers = { vyre = { command = \"x\" } }", "mcp_servers.vyre.command = \"x\"", "\"mcp_servers\".vyre.command = \"x\"", "[ \"mcp_servers\" . vyre ]\ncommand = \"x\"", "mcp-servers.vyre = 1"];
   for (const body of forms) {
     fsx.mkdirSync(pathx.join(root, ".codex"), { recursive: true });
     fsx.writeFileSync(pathx.join(root, ".codex", "config.toml"), `model = "m"\n${body}\n`);
     assert.equal(projectDefinesMcp(deep), true, body);
   }
   fsx.writeFileSync(pathx.join(root, ".codex", "config.toml"), 'model = "m"\n# mcp_servers.vyre is not defined here\n');
-  assert.equal(projectDefinesMcp(deep), false, "a comment is not a definition");
+  assert.equal(projectDefinesMcp(deep), true, "even a comment counts: a substring is not a parser disagreement");
+  fsx.writeFileSync(pathx.join(root, ".codex", "config.toml"), 'model = "m"\nsandbox_mode = "read-only"\n');
+  assert.equal(projectDefinesMcp(deep), false, "a config with no MCP mention");
+  fsx.chmodSync(pathx.join(root, ".codex", "config.toml"), 0o000);
+  if (process.getuid && process.getuid() !== 0) assert.equal(projectDefinesMcp(deep), true, "unreadable counts");
 });
