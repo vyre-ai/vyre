@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Fixed a race when two processes open the same new database at once (vyre-core's daemon starting while the installer mints its code): the busy timeout is now set before the switch to WAL, so the second process waits instead of failing with "database is locked".
 - On a Mac server the Capsule.app in a release is signed by vyre-core's own identity: a certificate and key made at install in a folder only root can read (never the login keychain), trusted for code signing only, used by the installer and the update step and removed by uninstall. The Capsule's designated requirement names that certificate.
 - A publishing release now signs the release: `scripts/sign-manifest.mjs` writes `manifest.json`, `SHA256SUMS` (listing every asset including the manifest) and `SHA256SUMS.sig`, the one signature the Mac installer and the Linux updater both verify, with the release workflow's private key (only on a publishing run whose tag commit is on main), and refuses a key that is not the pinned one. The Mac install script is published beside `install-box.sh`.
 - The release public key is pinned (`RELEASE_KEY` in `core/vyre-core/release.js` and in the Mac install script), replacing the placeholder; the release workflow signs with it, and the release gate now refuses the old placeholder.
