@@ -51,7 +51,11 @@ export function centerFn(selector) {
   el.scrollIntoView({ block: "center", inline: "center" });
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return null;
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  // Only where the click would land on it: a control still sliding in, or covered, is not there yet (the caller looks again).
+  const hit = document.elementFromPoint(x, y);
+  if (!hit || !(el === hit || el.contains(hit))) return null;
+  return { x, y };
 }
 
 /**
