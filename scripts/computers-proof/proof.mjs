@@ -264,8 +264,8 @@ try {
   console.log("--- last vyred log lines\n" + logs.slice(-15).join("\n"));
   // What the computer itself says, for a failure seen on a runner that cannot be reached by hand.
   console.log("--- container log (tail)\n" + shOk(["logs", "--tail", "60", CONTAINER]).slice(-6000));
-  console.log("--- processes\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | head -30"]).slice(-3000));
-  console.log("--- first bytes of the VNC port\n" + shOk(["exec", CONTAINER, "sh", "-c", "for p in 5900 5901; do echo port $p; (printf '' | timeout 3 nc 127.0.0.1 $p | head -c 24 | od -c | head -3) 2>&1; done"]).slice(-800));
+  console.log("--- processes\n" + shOk(["exec", CONTAINER, "sh", "-c", "ps -eo user,pid,args | grep -v -E 'chromium|ps -eo|grep' | cut -c1-200 | head -30"]).slice(-3000));
+  console.log("--- first bytes of the VNC port\n" + shOk(["exec", CONTAINER, "sh", "-c", "for p in 5900 5901; do echo port $p; (timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/'$p'; head -c 16 <&3 | od -c | head -3') 2>&1; done; ss -ltn 2>&1 | head -10; ls -la /var/lib/vyre/.vnc 2>&1 | head"]).slice(-800));
   // For debugging a failure by hand: keep the computer up for PROOF_HOLD seconds.
   if (Number(process.env.PROOF_HOLD) > 0) { console.log(`HOLDING ${process.env.PROOF_HOLD} s`); await sleep(Number(process.env.PROOF_HOLD) * 1000); }
 } finally {
