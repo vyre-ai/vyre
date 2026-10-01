@@ -110,6 +110,17 @@ A module you add can't use it: pick `asked`. An agent that calls an `asked` tool
 A module never asks for Touch ID. Vyre asks for it only when pairing a device, revealing a vault
 secret, or sending something you didn't ask for.
 
+An asked tool of Vyre's own may carry `target`, the name of one internal tool of the same module that answers
+`{ to: [...] }`: what this one call acts on, each entry a key of the tool and the thing (a pull request, a recipient).
+That answer is what your yes is matched against, so it binds that thing and not the whole tool, so "merge it" about one pull request never lets an agent merge another.
+
+A tool that takes a project names the input field in `projectArg` (a name, or a list of names). The registry then
+refuses an agent's call for a project the agent is not granted, with `not_found` (so a refusal never says whether the
+project exists), before the tool runs, for every module alike. It asks `projects.reach`, so the owner's revokes count.
+`cwdArg` does the same for a folder: it is mapped to its project, and a folder in no project is refused for an agent with an explicit project list. A named project is rewritten to the canonical slug that was authorized.
+The tool also gets `meta.reach`, `{ all: true }` or `{ all: false, projects: [slug] }`, to keep a listing inside the
+grant when no project is named.
+
 ## Acting as you outside: `outward`
 
 Mark a tool `"outward": "send" | "post" | "pay" | "delete"` when it reaches the world as you: an

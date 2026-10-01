@@ -109,3 +109,96 @@ export async function prOpen({ token, full_name, head, base, title, body, draft 
   const r = await gh(token, "POST", `/repos/${full_name}/pulls`, { title: t, head, base, ...(typeof body === "string" && body ? { body } : {}), ...(draft ? { draft: true } : {}) });
   return { pr: r.number, url: r.html_url, state: r.state, draft: Boolean(r.draft), head, base };
 }
+
+/** Latest review state per reviewer, newest wins; a bare comment never overrides an approval or a change request. */
+function latestReviews(reviews) {
+  const by = new Map();
+  for (const r of reviews || []) {
+    if (!r.user || !["APPROVED", "CHANGES_REQUESTED", "DISMISSED", "COMMENTED"].includes(r.state)) continue;
+    const prev = by.get(r.user.login);
+    if (r.state === "COMMENTED" && prev && prev !== "COMMENTED") continue;
+    by.set(r.user.login, r.state);
+  }
+  return [...by].map(([login, state]) => ({ by: login, state: state === "APPROVED" ? "approved" : state === "CHANGES_REQUESTED" ? "changes_requested" : state === "DISMISSED" ? "dismissed" : "commented" }));
+}
+
+/**
+ * Where a pull request stands: state, whether it merges cleanly, its checks and reviews, and one
+ * `ready` verdict (open, not a draft, mergeable, no check failed or still running, nobody asked for
+ * changes). Read only; no text from the PR's own body or comments.
+ */
+export async function prStatus({ token, full_name, pr, project }) {
+  const n = prNumber(pr);
+  const base = `/repos/${full_name}`;
+  const p = await gh(token, "GET", `${base}/pulls/${n}`);
+  const [runs, reviews] = await Promise.all([
+    gh(token, "GET", `${base}/commits/${p.head.sha}/check-runs?per_page=100`).catch(() => ({ check_runs: [] })),
+    gh(token, "GET", `${base}/pulls/${n}/reviews?per_page=100`).catch(() => []),
+  ]);
+  const checks = (runs.check_runs || []).map(r => ({ name: r.name, state: checkState(r), url: r.html_url || null }));
+  const count = s => checks.filter(c => c.state === s).length;
+  const rv = latestReviews(reviews);
+  const state = p.merged ? "merged" : p.state === "closed" ? "closed" : "open";
+  const ready = state === "open" && !p.draft && p.mergeable === true && count("failed") === 0 && count("running") === 0 && count("pending") === 0 && !rv.some(r => r.state === "changes_requested");
+  return {
+    project, pr: n, state, draft: Boolean(p.draft), mergeable: p.mergeable ?? null, mergeable_state: p.mergeable_state || null,
+    branch: { from: p.head.ref, to: p.base.ref }, html_url: p.html_url,
+    checks, checks_summary: { passed: count("passed"), failed: count("failed"), running: count("running"), pending: count("pending") },
+    reviews: rv, ready,
+  };
+}
+
+/** Every comment on a PR (conversation, inline review comments, review bodies), oldest first. Text is OUTSIDE text. */
+export async function prComments({ token, full_name, pr, project, login, since }) {
+  const n = prNumber(pr);
+  const base = `/repos/${full_name}`;
+  const [issue, inline, reviews] = await Promise.all([
+    gh(token, "GET", `${base}/issues/${n}/comments?per_page=100`),
+    gh(token, "GET", `${base}/pulls/${n}/comments?per_page=100`),
+    gh(token, "GET", `${base}/pulls/${n}/reviews?per_page=100`).catch(() => []),
+  ]);
+  const by = u => (u && login && u.login === login ? "person" : "outside");
+  const all = [
+    ...(issue || []).map(c => ({ id: c.id, kind: "conversation", author: c.user && c.user.login, by: by(c.user), text: c.body || "", at: c.created_at })),
+    ...(inline || []).map(c => ({ id: c.id, kind: "inline", author: c.user && c.user.login, by: by(c.user), path: c.path, line: c.line ?? c.original_line ?? undefined, in_reply_to: c.in_reply_to_id ?? undefined, text: c.body || "", at: c.created_at })),
+    ...(reviews || []).filter(r => r.body).map(r => ({ id: r.id, kind: "review", state: String(r.state || "").toLowerCase(), author: r.user && r.user.login, by: by(r.user), text: r.body, at: r.submitted_at })),
+  ].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  const cut = typeof since === "string" && since ? all.filter(c => String(c.at) > since) : all;
+  return { project, pr: n, outside: true, comments: cut };
+}
+
+const issueRow = i => ({ number: i.number, title: i.title, state: i.state, author: i.user && i.user.login, labels: (i.labels || []).map(l => (typeof l === "string" ? l : l.name)), comments: i.comments, url: i.html_url, updated_at: i.updated_at });
+
+/** Open (or closed, or all) issues of a repo, newest activity first; pull requests are left out. Titles are outside text. */
+export async function issueList({ token, full_name, project, state = "open", q, limit = 30 }) {
+  if (!["open", "closed", "all"].includes(state)) throw err("state must be open, closed or all", "bad_input");
+  const max = Math.min(Math.max(Number(limit) || 30, 1), 50);
+  let items;
+  if (typeof q === "string" && q.trim()) {
+    const term = q.trim().replace(/[^A-Za-z0-9 ._-]/g, " ").slice(0, 100);
+    const r = await gh(token, "GET", `/search/issues?per_page=${max}&sort=updated&q=${encodeURIComponent(`${term} repo:${full_name} is:issue ${state === "all" ? "" : `is:${state}`}`.trim())}`);
+    items = r.items || [];
+  } else {
+    items = await gh(token, "GET", `/repos/${full_name}/issues?state=${state}&per_page=${max}&sort=updated`);
+  }
+  return { project, outside: true, issues: (items || []).filter(i => !i.pull_request).slice(0, max).map(issueRow) };
+}
+
+/** One issue with its first comments. Body and comments are OUTSIDE text. */
+export async function issueGet({ token, full_name, project, issue, login }) {
+  const n = prNumber(issue);
+  const base = `/repos/${full_name}/issues/${n}`;
+  const i = await gh(token, "GET", base);
+  if (i.pull_request) throw err(`#${n} is a pull request; use github.project.pr.get`, "bad_input");
+  const cs = await gh(token, "GET", `${base}/comments?per_page=50`).catch(() => []);
+  return { project, outside: true, ...issueRow(i), body: i.body || "", assignees: (i.assignees || []).map(a => a.login),
+    comments: (cs || []).map(c => ({ id: c.id, author: c.user && c.user.login, by: login && c.user && c.user.login === login ? "person" : "outside", text: c.body || "", at: c.created_at })) };
+}
+
+/** The numbers of the OPEN pull requests whose head is `branch` on the repo itself (a session's vyre/<id> branch). */
+export async function openPrsForBranch({ token, full_name, branch }) {
+  if (!/^[A-Za-z0-9._\/-]{1,200}$/.test(String(branch || "")) || String(branch).startsWith("-") || String(branch).includes("..")) throw err("branch must be a branch name", "bad_input");
+  const owner = full_name.split("/")[0];
+  const rows = await gh(token, "GET", `/repos/${full_name}/pulls?state=open&per_page=30&head=${encodeURIComponent(`${owner}:${branch}`)}`);
+  return (rows || []).filter(r => r && r.head && r.head.ref === branch).map(r => r.number);
+}

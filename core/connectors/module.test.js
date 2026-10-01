@@ -20,6 +20,7 @@ import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { startFakeAuthServer } from "../../lib/connectors/testing/fake-oauth.js";
 import { startFakeMcpHttp } from "../mcp/testing/fake-mcp.js";
+import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 
 async function world(t, presetsFor) {
   const auth = await startFakeAuthServer(t, { dcr: true });
@@ -158,4 +159,33 @@ test("connectors: a #tag lets one thread use a server its scope would hide, and 
   assert.equal(await visible("t-tagged"), true, "tagged: the thread now sees the server");
   assert.equal(await visible("t-other"), false, "only that thread");
   assert.equal((await w.d.registry.call("mcp.grant", { server: "fakevendor", thread: "t-x" }, "cli")).error?.code === undefined, false, "mcp.grant is internal");
+});
+
+test("connectors: the Capsule's `next` command lists today's meetings across calendars, nothing when none is connected", async t => {
+  const fakeGoogle = await startFakeGoogle(t);
+  const w = await world(t, url => [fakevendor(url)]);
+  // nothing connected: empty, and the Capsule lists the command
+  assert.deepEqual((await w.cli("connectors.calendar.today", {})).data, { events: [] });
+  const cmds = await w.cli("capsule.commands", {});
+  if (cmds.data) {
+    const next = cmds.data.commands.find(c => c.module === "connectors" && c.id === "next");
+    assert.ok(next, JSON.stringify(cmds.data.commands.map(c => `${c.module}:${c.id}`)));
+    assert.equal(next.title, "Next meeting");
+    assert.ok(!cmds.data.commands.some(c => c.module === "google" && c.id === "next"), "one `next`, not two");
+    const empty = await w.cli("capsule.view", { module: "connectors", command: "next" });
+    assert.equal(empty.data.kind, "list", JSON.stringify(empty));
+    assert.equal(empty.data.rows.length, 0);
+  }
+  // a Google account adds its meetings, through the google module
+  const end = new Date(); end.setHours(23, 59, 59, 999);
+  if (end.getTime() - Date.now() < 2 * 3_600_000) return void t.skip("too close to the end of this box's day");
+  const sa = fakeGoogle.serviceAccount("alex@example.com");
+  assert.ok((await w.cli("vault.put", { name: "work-google", kind: "secret", fields: { value: sa } })).data);
+  assert.equal((await w.cli("vault.grant", { name: "work-google", module: "google" })).data.grant.status, "active");
+  assert.ok((await w.cli("google.add", { name: "work", email: "alex@example.com", auth: { type: "service-account", item: "work-google" }, base: fakeGoogle.base })).data);
+  // the cache holds for a minute, so a fresh module asks again: connect a second time by restarting is not needed, the key changes with connections only
+  const today = (await w.cli("connectors.calendar.today", { limit: 1 })).data;
+  assert.equal(today.events.length, 1);
+  assert.equal(today.events[0].title, "Harlow Legal check-in");
+  assert.match(today.events[0].when, /^in \d+ min$/);
 });

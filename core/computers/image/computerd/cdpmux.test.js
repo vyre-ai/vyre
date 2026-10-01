@@ -878,3 +878,15 @@ test("cdpmux: a call sent while an agent's browser context is still being made w
   const listed = (await a.call("Target.getTargets")).result.targetInfos.map(t => t.targetId);
   assert.ok(listed.includes(result.targetId), "and the agent sees its own target");
 });
+
+test("cdpmux: an agent client that somehow has no browser context is dropped, never served unfenced", async () => {
+  const { mux } = world();
+  const a = client(mux, "agent", "alice-1", "alice");
+  await a.call("Target.getTargets");
+  const inner = [...mux.clients][0];
+  inner.browserContextId = null; // a future path that skips the ready gate
+  a.send("Target.createTarget", { url: "about:blank" });
+  await tick(20);
+  assert.equal(a.state.closed, true, "dropped");
+  assert.equal(inner.closed, true);
+});

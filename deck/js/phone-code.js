@@ -105,7 +105,7 @@ export function countdown(msLeft) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-const CONFETTI_COLORS = ["#C6F36B", "#F6D186", "#E8A6C7", "#9FD8C8"];
+const CONFETTI_COLORS = ["#F1EEE6", "#F6D186", "#E8A6C7", "#9FD8C8"];
 const DANCE_MS = 600, CONFETTI_MS = 650;
 
 /**
@@ -113,7 +113,7 @@ const DANCE_MS = 600, CONFETTI_MS = 650;
  * are ui-ux's motion prototype, scratchpad/avatar-motion/avatar-motion.html, "goal done": the
  * msDone hop plus a confetti burst, played on the person's own avatar SVG, once, under 700ms —
  * not launch's own invention). `calm` (prefers-reduced-motion) skips all of it for a single
- * still lime dot instead, the prototype's own rule for "done": never a state that survives only
+ * still bone dot instead, the prototype's own rule for "done": never a state that survives only
  * in motion. Targets `.vyrecode-face` (the inner group vyrecode2.js wraps the face in
  * specifically so this composes with its outer position/scale rather than overriding it) inside
  * `ringEl`, the already-drawn `.phone-code-ring` element; a caller with no matching face (an

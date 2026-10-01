@@ -10,6 +10,7 @@
 // Revise writes in the card, not the composer (the spec's composer prefill needs a hook in
 // composer.js, native-core's): the words and Enter are the same, and the card stays open.
 
+import { kbd } from "../js/platform.js";
 import { h, put, isPhone } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -149,7 +150,7 @@ export function planCard(ask, opts = {}) {
         button("revise", "cv-always", "Send changes", null, null, () => answer("revise")),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !!state.busy, onclick: () => { state.revising = false; draw(); } }, "Back")) : null,
       h("div", { class: "gate-actions cv-ask-actions cv-plan-actions" },
-        button("start", "btn-primary", "Start building", "⌘⏎", "Meta+Enter Control+Enter", () => answer("start")),
+        button("start", "btn-primary", "Start building", kbd("Enter"), "Meta+Enter Control+Enter", () => answer("start")),
         revise ? null : button("revise", "cv-always", "Revise", "R", "R", () => { state.revising = true; draw(); }),
         button("keep", "btn-ghost", "Keep planning", null, null, () => answer("keep"))),
       state.error ? problemLine(state.error) : null);

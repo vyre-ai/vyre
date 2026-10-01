@@ -10,6 +10,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import crypto from "node:crypto";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { open } from "../store/index.js";
@@ -101,7 +103,7 @@ const SAID = { thread: "t-1", said: "said-1", kind: "send", to: ["dana@harlowleg
 
 test("said: only sessions and the assistant record; every other caller kind is refused", async t => {
   const { reg, cli } = await daemon(t);
-  assert.deepEqual(RECORDERS, ["module:sessions", "module:assistant"]);
+  assert.deepEqual(RECORDERS, ["module:sessions", "module:assistant", "module:threads"]);
 
   const refused = [
     ["mcp", "mcp", {}], ["an agent", "mcp:agent:juno", { thread: "t-1", agent: "juno" }], ["a session's thread", "mcp:thread:t-1", { thread: "t-1" }],
@@ -234,4 +236,126 @@ test("use: a # tag lets one thread and its descendants use an item by name; the 
   const id = (await cli("gate.said.list")).data.intents.find(x => x.kind === "use").id;
   assert.equal((await cli("gate.said.revoke", { id })).data.id, id);
   assert.equal((await check({})).data.allowed, false);
+});
+
+test("act_out: the threads module records and resolves; a key with # @ and : is exact; a plain ask expires after its window", async t => {
+  const { reg } = await daemon(t);
+  // The switchboard's real caller label is module:threads.
+  const rec = (o, caller = "module:threads") => reg("vault.said.record", { thread: "t-1", said: "said-1", kind: "act_out", channel: "github", to: ["github.project.pr.merge:alex/app#7"], what: "merge it", ...o }, caller);
+  const a = await rec({});
+  assert.match(a.data.id, /^s_/, JSON.stringify(a));
+  const ask = (to, o = {}) => reg("vault.said.match", { kind: "act_out", via: "github", to: [to], thread: "t-1", ...o }, "module:vyred");
+  assert.equal((await ask("github.project.pr.merge:alex/app#7")).data.matched, true, "# and @ and : are fine in a key");
+  assert.equal((await ask("github.project.pr.merge:alex/app#40")).data.matched, false, "another PR is not covered");
+  assert.equal((await ask("github.project.pr.merge:ALEX/app#7", { consume: true })).data.matched, true, "compared without case, and used up");
+  assert.equal((await ask("github.project.pr.merge:alex/app#7")).data.matched, false, "a plain ask is single use");
+  const open = await rec({ said: "said-2", to: ["github.project.pr.open:alex/app@feature-x"] });
+  assert.ok(open.data.id);
+  assert.equal((await ask("github.project.pr.open:alex/app@feature-x")).data.matched, true);
+  // Expiry: 15 minutes by default, or the recorder's own window (1 to 60), never for a standing one.
+  const at = Date.now();
+  await rec({ said: "said-3", to: ["github.project.pr.review:alex/app#9"], at: at - 16 * 60_000 });
+  assert.equal((await ask("github.project.pr.review:alex/app#9")).data.matched, false, "said 16 minutes ago");
+  await rec({ said: "said-4", to: ["github.project.pr.review:alex/app#10"], at: at - 16 * 60_000, window_minutes: 30 });
+  assert.equal((await ask("github.project.pr.review:alex/app#10")).data.matched, true, "the recorder's own window");
+  await rec({ said: "said-5", to: ["github.project.pr.review:alex/app#11"], at: at - 500 * 60_000, window_minutes: 9999 });
+  assert.equal((await ask("github.project.pr.review:alex/app#11")).data.matched, false, "the window is clamped to 60 minutes");
+  assert.ok((await rec({ window_minutes: -1 })).error);
+  await rec({ said: "said-6", to: ["github.project.pr.merge:alex/app#12"], at: at - 5000 * 60_000, standing: true });
+  assert.equal((await ask("github.project.pr.merge:alex/app#12", { thread: "t-9" })).data.matched, true, "a standing one does not expire");
+  // The threads module resolves # tags too (the real caller), and another module label still does not.
+  assert.ok((await reg("vault.mention.resolve", { id: "nope", thread: "t-1" }, "module:threads")).error.code === "not_found");
+  assert.match((await reg("vault.mention.resolve", { id: "nope", thread: "t-1" }, "module:watchers")).error.message, /only sessions and the assistant/);
+});
+
+test("grants: a named agent withdraws only its own pending request, lists only what is granted to it, and the approval prompt says who asked and for which project (M-V4, L-V3)", async t => {
+  const { reg, cli } = await daemon(t);
+  await cli("vault.put", { name: "api-a", kind: "api-key", fields: { value: "fixture-key-aaaaaaaaaaaa" }, hosts: ["https://a.example.test"] });
+  await cli("vault.put", { name: "api-b", kind: "api-key", fields: { value: "fixture-key-bbbbbbbbbbbb" }, hosts: ["https://b.example.test"] });
+  assert.equal((await cli("vault.grant", { name: "api-a", module: "planner" })).data.grant.status, "active");
+  assert.equal((await cli("vault.grant", { name: "api-b", module: "kit" })).data.grant.status, "active");
+  const kit = (tool, input) => reg(tool, input, "mcp:agent:kit", { agent: "kit", thread: "t-1" });
+  // A named agent cannot take away an active grant, however it asks.
+  assert.equal((await kit("vault.revoke", { name: "api-a", module: "planner" })).data.revoked, 0);
+  assert.equal((await kit("vault.revoke", { name: "api-b", module: "kit" })).data.revoked, 0, "not even its own active grant");
+  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "module:watchers")).data.revoked, 0, "another module cannot either");
+  // It may withdraw a request it made.
+  const asked = (await kit("vault.grant", { name: "api-a", module: "kit" })).data.grant;
+  assert.equal(asked.status, "pending");
+  assert.equal((await kit("vault.revoke", { name: "api-a", module: "kit" })).data.revoked, 1, "its own pending request");
+  // The person, and an unnamed session, revoke freely.
+  assert.equal((await reg("vault.revoke", { name: "api-a", module: "planner" }, "mcp")).data.revoked, 1);
+  // List: a named agent with no project scope sees nothing (the project-scoped rules are in the next test).
+  assert.deepEqual((await kit("vault.list", {})).data.items, []);
+  assert.equal((await cli("vault.list")).data.items.length, 2, "the person sees everything");
+});
+
+test("said: a plain send, post or pay ask lives an hour by default, the recorder may shorten it, and the threads module records only use and act_out", async t => {
+  const { reg } = await daemon(t);
+  const at = Date.now();
+  const rec = (o, caller = "module:sessions") => reg("vault.said.record", { thread: "t-1", said: "s", kind: "send", to: ["dana@harlowlegal.com"], what: "email Dana", ...o }, caller);
+  const ask = (o = {}) => reg("vault.said.match", { kind: "send", via: "mail", to: ["dana@harlowlegal.com"], thread: "t-1", ...o }, "module:gate");
+  await rec({ at: at - 61 * 60_000 });
+  assert.equal((await ask()).data.matched, false, "said 61 minutes ago");
+  await rec({ said: "s2", at: at - 30 * 60_000 });
+  assert.equal((await ask()).data.matched, true, "said 30 minutes ago");
+  await rec({ said: "s3", to: ["sam@harlowlegal.com"], at: at - 20 * 60_000, window_minutes: 10 });
+  assert.equal((await ask({ to: ["sam@harlowlegal.com"] })).data.matched, false, "the recorder's shorter window");
+  await rec({ said: "s4", to: ["kit@harlowlegal.com"], at: at - 5000 * 60_000, standing: true }, "module:assistant");
+  assert.equal((await ask({ to: ["kit@harlowlegal.com"], thread: "t-9" })).data.matched, true, "a standing one never lapses");
+  // module:threads: use and act_out only.
+  assert.match((await rec({ kind: "send" }, "module:threads")).error.message, /only use and act_out/);
+  assert.match((await rec({ kind: "pay", to: ["acct_1"], limits: { max_amount: 5, currency: "usd" } }, "module:threads")).error.message, /only use and act_out/);
+  assert.ok((await rec({ kind: "act_out", to: ["github.project.pr.merge:alex/app#7"], channel: "github" }, "module:threads")).data.id);
+  for (const lookalike of ["module:threads-evil", "module:threadsx"]) assert.ok((await rec({}, lookalike)).error, lookalike);
+});
+
+test("grants: vault.list decides 'granted to that agent' by the agent's project scope alone; an agent named like a granted module sees nothing", async t => {
+  const { reg, cli } = await daemon(t);
+  for (const n of ["api-p", "api-m", "api-x"]) await cli("vault.put", { name: n, kind: "api-key", fields: { value: `fixture-key-${n}-0000000000` } });
+  await cli("vault.grant", { name: "api-p", module: "planner", project: "harlow" });
+  await cli("vault.grant", { name: "api-m", module: "kit" });
+  await cli("vault.grant", { name: "api-x", module: "planner", project: "northwind" });
+  const list = (agent, meta = {}) => reg("vault.list", {}, `mcp:agent:${agent}`, { agent, ...meta }).then(r => r.data.items.map(i => i.name).sort());
+  assert.deepEqual(await list("kit", { project: "harlow" }), ["api-p"], "its project's grant only, not a grant to a module that shares its name, not another project's");
+  assert.deepEqual(await list("kit"), [], "with no project scope nothing is visible, even an item granted to a module named kit");
+  assert.deepEqual(await list("planner"), [], "an agent named like a granted module sees nothing");
+  assert.deepEqual(await list("juno", { project: "northwind" }), ["api-x"]);
+  assert.equal((await cli("vault.list")).data.items.length, 3, "the person sees everything");
+});
+
+test("put: a person's put never carries grants; people use vault.grant (the connect path is readers on the credential)", async t => {
+  const { reg, cli } = await daemon(t);
+  assert.match((await cli("vault.put", { name: "x1", kind: "api-key", fields: { value: "fixture-key-0000000000" }, grants: ["connectors"] })).error.message, /grants on put are for modules/);
+  assert.match((await cli("vault.put", { name: "x2", kind: "api-credential", fields: { config: "{}" }, grants: ["connectors"] })).error.message, /grants on put are for modules/);
+  assert.ok((await reg("vault.put", { name: "x3", kind: "api-key", fields: { value: "fixture-key-0000000000" }, grants: ["connectors"] }, "mcp")).error);
+});
+
+test("api-credential: replacing only the key keeps its hosts and endpoints; a module, an agent and a model cannot", async t => {
+  const { reg, cli } = await daemon(t);
+  const config = JSON.stringify({ auth: { type: "bearer" }, hosts: ["graph.example.test"] });
+  const made = await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { config, secret: "fixture-secret-000000000" } });
+  assert.equal(made.error, undefined, JSON.stringify(made));
+  const replaced = await cli("vault.put", { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-secret-111111111" } });
+  assert.equal(replaced.error, undefined, JSON.stringify(replaced));
+  // The stored config came along: a call to another host is refused for the credential's hosts, not for a missing config.
+  const foreign = await cli("vault.request", { credential: "ms-graph", method: "GET", url: "https://elsewhere.example.test/x" });
+  assert.match(String(foreign.error && foreign.error.message), /host/i, JSON.stringify(foreign));
+  // A put for a credential that does not exist, with no config, is still refused.
+  assert.ok((await cli("vault.put", { name: "new-one", kind: "api-credential", fields: { secret: "fixture-secret-222222222" } })).error);
+  // Only a person's surface may replace the key.
+  for (const who of ["module:connectors", "module:watchers", "mcp", "mcp:agent:kit"]) assert.ok((await reg("vault.put", { name: "ms-graph", kind: "api-credential", fields: { secret: "fixture-secret-555555555" } }, who)).error, who);
+});
+
+test("env scan: a person's surface lists the .env files in given folders by count and kind; a model cannot, and a relative root is ignored", async t => {
+  const { reg, cli } = await daemon(t);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-envscan-tool-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const value = `sk-ant-api03-${crypto.randomBytes(24).toString("base64url")}`;
+  fs.writeFileSync(path.join(dir, ".env"), `PORT=3000\nANTHROPIC_API_KEY=${value}\n`);
+  const r = await cli("vault.env.scan", { roots: [dir, "relative/dir"] });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.equal(r.data.files.length, 1);
+  assert.ok(!JSON.stringify(r).includes(value), "never a value");
+  for (const who of ["mcp", "mcp:agent:kit", "module:watchers"]) assert.ok((await reg("vault.env.scan", { roots: [dir] }, who)).error, who);
 });

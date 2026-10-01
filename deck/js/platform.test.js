@@ -33,3 +33,21 @@ test("the injected shell wins, and a malformed one is ignored", () => {
   define("matchMedia", (/** @type {string} */ q) => ({ matches: q === "(display-mode: standalone)" }));
   assert.equal(installed(), true, "an installed web app window counts too");
 });
+
+test("window.__VYRE_SHELL__ (the Windows app's frozen value) is read: Ctrl glyphs, installed, os normalised", () => {
+  define("__vyreShell", undefined);
+  define("navigator", { platform: "MacIntel" });
+  define("__VYRE_SHELL__", Object.freeze({ platform: "windows" }));
+  assert.deepEqual(shell(), { os: "windows", version: "" });
+  assert.equal(installed(), true);
+  assert.equal(mac(), false);
+  assert.equal(kbd("Enter"), "Ctrl+Enter");
+  define("__VYRE_SHELL__", { platform: "macos", version: "0.2.0" });
+  assert.deepEqual(shell(), { os: "mac", version: "0.2.0" });
+  assert.equal(kbd("K"), "⌘K");
+  define("__VYRE_SHELL__", "windows");
+  assert.equal(shell(), null, "a string is not the shell");
+  define("__VYRE_SHELL__", {});
+  assert.equal(shell(), null, "no platform, no shell");
+  define("__VYRE_SHELL__", undefined);
+});

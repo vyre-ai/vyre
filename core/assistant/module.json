@@ -1,0 +1,16 @@
+{
+  "name": "assistant",
+  "version": "0.1.0",
+  "description": "The one assistant's own tools: a daily digest and triage from waiting.list and agents.list, and read-only pattern-noticing from what memory already surfaces about corrections and conflicts. Off by default; the person turns the digest on.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["assistant.brief", "assistant.patterns", "assistant.glance", "assistant.capabilities", "assistant.log", "assistant.prompt.diff", "assistant.daily", "assistant.welcome"] },
+  "watches": { "emits": ["assistant.briefed", "assistant.glanced", "assistant.rolled", "push.proactive"] },
+  "shows": { "cli": [] },
+  "settings": [
+    { "key": "assistant.chattiness", "group": "assistant", "label": "Pushes a day", "help": "The most times the assistant, watchers and duties may notify you in a day. Quiet hours still hold. 0 is never.", "type": "int", "min": 0, "max": 20, "default": 3, "levels": ["account"], "apply": "live" },
+    { "key": "assistant.digest_enabled", "group": "assistant", "label": "Daily digest", "help": "Once a day, at your device's own local start of day, the assistant puts together one paragraph: what's waiting on you, and any pattern it noticed. Off by default; ask for it any time either way with the assistant.", "type": "bool", "levels": ["account"], "apply": "live", "default": false }
+  ],
+  "needs": {},
+  "teaches": {}
+}

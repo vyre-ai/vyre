@@ -2,10 +2,11 @@
 // Only what SENDS something as the person is held: everything else is hands-free after the grant.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifySend, held, digest, guardInstall, guardCollect } from "./extension/shared/outbound.js";
+import { classifySend, held, digest, guardInstall, guardInstallWrites, guardCollect } from "./extension/shared/outbound.js";
 import api from "./extension/caps/api.js";
 import net from "./extension/caps/net.js";
 import { makeCtx } from "./devtools-kit.js";
+import { T } from "./test-support/trust.js";
 
 const GHL = "https://backend.leadconnectorhq.com";
 const sends = [
@@ -50,33 +51,40 @@ async function withCatalog() {
   return { k, orig };
 }
 
-test("api.call: a send is held unless asked, a tag call runs free, asked runs the send", async () => {
+test("api.call: a send is held unless asked, a tag write needs a plan, asked runs the send", async () => {
   const { k } = await withCatalog();
   k.respond["Runtime.evaluate"] = () => ({ result: { value: { status: 200, mime: "application/json", headers: {}, body: "{}" } } });
-  const h = await api.ops["api.call"]({ tab: 3, entryId: "e_send", params: { body: { text: "hi" } } }, k.ctx);
+  const h = await T(api.ops["api.call"])({ tab: 3, entryId: "e_send", params: { body: { text: "hi" } } }, k.ctx);
   assert.equal(h.held, true, JSON.stringify(h));
   assert.match(h.control.name, /POST .*conversations\/messages/);
-  const tag = await api.ops["api.call"]({ tab: 3, entryId: "e_tag", params: { path: { id: "c1" }, body: { tags: ["new"] } } }, k.ctx);
-  assert.equal(tag.held, undefined, "a tag write is hands-free");
+  const tagHeld = await T(api.ops["api.call"])({ tab: 3, entryId: "e_tag", params: { path: { id: "c1" }, body: { tags: ["new"] } } }, k.ctx);
+  assert.equal(tagHeld.held, true, "a tag write is a change with the person's login: held unless a plan covers it");
+  assert.equal(tagHeld.write, true);
+  const tag = await T(api.ops["api.call"])({ tab: 3, entryId: "e_tag", writeOk: true, params: { path: { id: "c1" }, body: { tags: ["new"] } } }, k.ctx);
+  assert.equal(tag.held, undefined, "covered by a plan, it runs");
   assert.equal(tag.status, 200);
-  const asked = await api.ops["api.call"]({ tab: 3, entryId: "e_send", asked: true, params: { body: { text: "hi" } } }, k.ctx);
+  const asked = await T(api.ops["api.call"])({ tab: 3, entryId: "e_send", asked: true, params: { body: { text: "hi" } } }, k.ctx);
   assert.equal(asked.held, undefined);
   assert.equal(asked.status, 200);
 });
 
 test("net.replay: a captured send is held unless asked", async () => {
   const k = makeCtx({ active: 3 });
-  await net.ops["net.start"]({ tab: 3 }, k.ctx);
+  await T(net.ops["net.start"])({ tab: 3 }, k.ctx);
   k.push(3, "Network.requestWillBeSent", { requestId: "9", type: "XHR", request: { url: `${GHL}/conversations/messages`, method: "POST", headers: {}, postData: "{}" } });
   k.push(3, "Network.requestWillBeSent", { requestId: "10", type: "XHR", request: { url: `${GHL}/contacts/c1/tags`, method: "POST", headers: {}, postData: "{}" } });
   k.respond["Runtime.evaluate"] = () => ({ result: { value: { status: 200, mime: "application/json", headers: {}, body: "{}" } } });
-  const h = await net.ops["net.replay"]({ tab: 3, id: "9" }, k.ctx);
+  const h = await T(net.ops["net.replay"])({ tab: 3, id: "9" }, k.ctx);
   assert.equal(h.held, true);
   const sentBefore = k.sent.filter(s => s.method === "Runtime.evaluate").length;
-  const ok = await net.ops["net.replay"]({ tab: 3, id: "10" }, k.ctx);
-  assert.equal(ok.held, undefined, "a tag write is not a send");
+  const tagHeld = await T(net.ops["net.replay"])({ tab: 3, id: "10" }, k.ctx);
+  assert.equal(tagHeld.held, true, "a tag write is a change with the person's login: held unless a plan covers it");
+  assert.equal(tagHeld.write, true);
+  assert.equal(k.sent.filter(s => s.method === "Runtime.evaluate").length, sentBefore, "nothing was sent");
+  const ok = await T(net.ops["net.replay"])({ tab: 3, id: "10", writeOk: true }, k.ctx);
+  assert.equal(ok.held, undefined, "covered by a plan, it runs");
   assert.ok(k.sent.filter(s => s.method === "Runtime.evaluate").length > sentBefore);
-  const asked = await net.ops["net.replay"]({ tab: 3, id: "9", asked: true }, k.ctx);
+  const asked = await T(net.ops["net.replay"])({ tab: 3, id: "9", asked: true }, k.ctx);
   assert.equal(asked.held, undefined, "asked runs it");
 });
 
@@ -84,13 +92,31 @@ test("dev.console.eval: the script runs, its own send is held back, asked runs i
   const dt = (await import("./extension/caps/devtools.js")).default;
   const k = makeCtx({ active: 3 });
   const caught = [{ method: "POST", url: `${GHL}/conversations/messages`, why: "it messages, posts or charges as the person" }];
-  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === guardCollect ? { result: { value: caught } } : p.expression === guardInstall ? { result: { value: true } } : { result: { type: "string", value: "done" } };
-  const h = await dt.ops["dev.console.eval"]({ tab: 3, expression: "fetch('/conversations/messages',{method:'POST'})" }, k.ctx);
+  k.respond["Runtime.evaluate"] = (/** @type {any} */ p) => p.expression === guardCollect ? { result: { value: caught } } : String(p.expression).endsWith(guardInstallWrites) ? { result: { value: true } } : { result: { type: "string", value: "done" } };
+  const h = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "fetch('/conversations/messages',{method:'POST'})" }, k.ctx);
   assert.equal(h.held, true);
-  assert.ok(k.sent.some(s => s.params && s.params.expression === guardInstall), "the guard was installed");
+  assert.ok(k.sent.some(s => s.params && String(s.params.expression).endsWith(guardInstallWrites)), "the guard was installed");
   const plain = makeCtx({ active: 3 });
   plain.respond["Runtime.evaluate"] = () => ({ result: { type: "string", value: "done" } });
-  const r = await dt.ops["dev.console.eval"]({ tab: 3, expression: "1", asked: true }, plain.ctx);
+  const r = await T(dt.ops["dev.console.eval"])({ tab: 3, expression: "1", asked: true }, plain.ctx);
   assert.equal(r.ok, true);
-  assert.ok(!plain.sent.some(s => s.params && s.params.expression === guardInstall), "asked runs with no guard");
+  assert.ok(!plain.sent.some(s => s.params && String(s.params.expression).endsWith(guardInstallWrites)), "asked runs with no guard");
+});
+
+test("net.replay: a method override to DELETE or PUT is held, a GET replay is not, and nothing is sent until the gate passes", async () => {
+  const k = makeCtx({ active: 3 });
+  await T(net.ops["net.start"])({ tab: 3 }, k.ctx);
+  k.push(3, "Network.requestWillBeSent", { requestId: "g1", type: "XHR", request: { url: `${GHL}/contacts/c1`, method: "GET", headers: { authorization: "Bearer abcdefghijklmnop" }, postData: undefined } });
+  k.respond["Runtime.evaluate"] = () => ({ result: { value: { status: 200, mime: "application/json", headers: {}, body: "{}" } } });
+  const get = await T(net.ops["net.replay"])({ tab: 3, id: "g1" }, k.ctx);
+  assert.equal(get.held, undefined);
+  assert.equal(get.status, 200);
+  const before = k.sent.filter(s => s.method === "Runtime.evaluate").length;
+  for (const method of ["DELETE", "PUT", "PATCH", "POST"]) {
+    const h = await T(net.ops["net.replay"])({ tab: 3, id: "g1", overrides: { method } }, k.ctx);
+    assert.equal(h.held, true, method);
+    assert.equal(h.kind, method === "DELETE" ? "delete" : method === "POST" ? "create" : "edit");
+  }
+  assert.equal(k.sent.filter(s => s.method === "Runtime.evaluate").length, before, "no write reached the page");
+  assert.equal((await T(net.ops["net.replay"])({ tab: 3, id: "g1", overrides: { method: "DELETE" }, asked: true }, k.ctx)).status, 200);
 });

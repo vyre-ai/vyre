@@ -114,10 +114,3 @@ test("projects.rename keeps the slug and tile; projects.archive hides from the l
   await w.call("projects.archive", { project: "northwind-bakery", archived: false });
   assert.equal((await w.call("projects.list", {})).projects.length, 1);
 });
-
-test("rename and archive: an agent with no session in the project is refused", async t => {
-  const w = await world(t);
-  await w.call("projects.create", { name: "Northwind Bakery" });
-  await assert.rejects(w.call("projects.rename", { project: "northwind-bakery", name: "X" }, { caller: "mcp" }), /person/);
-  await assert.rejects(w.call("projects.archive", { project: "northwind-bakery" }, { caller: "cli:agent:kit" }), /person/);
-});

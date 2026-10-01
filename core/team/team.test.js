@@ -47,8 +47,11 @@ async function boot(t) {
   // projectsDir must live under root: its default (~/Vyre/projects) is the user's real home,
   // never a temp one (RULES: temp homes only).
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects") }));
-  const d = await start({ root, presence: present, log: () => {} });
-  t.after(() => d.stop());
+  const logs = [];
+  const d = await start({ root, presence: present, log: m => logs.push(String(m)) });
+  let stopped = false;
+  const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
+  t.after(stop);
   const tool = async (name, input, caller = "cli", extra = {}) => {
     const r = await call(name, input, { root, caller, timeout: 20_000, ...extra });
     if (r.error) throw Object.assign(new Error(r.error.message || r.error.code), { code: r.error.code });
@@ -57,7 +60,7 @@ async function boot(t) {
   const project = await tool("projects.create", { name: "Harlow Legal" });
   const raw = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
-  return { root, d, tool, raw, project, launches };
+  return { root, d, stop, logs, tool, raw, project, launches };
 }
 
 const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test@example.com" };
@@ -508,6 +511,59 @@ test("team.duties: a session's duty is stored as a proposal (off, no watcher); o
   const tap = await raw("team.duties.update", { id: d.id, enabled: true });
   assert.ok(tap.error && /watchers/.test(tap.error.message));
   assert.equal((await tool("team.duties.list", { teammate: agent })).duties[0].enabled, false);
+  // The person's click on a surface is the asking: enable takes it directly (here watchers refuses, but it got that far), a session cannot.
+  const click = await raw("team.duties.enable", { id: d.id });
+  assert.ok(click.error && /watchers/.test(click.error.message));
+  const viaSession = await call("team.duties.enable", { id: d.id }, { root, caller: "mcp", timeout: 20_000, session });
+  assert.ok(viaSession.error && !/watchers/.test(viaSession.error.message));
+  // No module may start a worker, and a thread or agent claim on a person surface is no person either.
+  for (const caller of ["module:mail", "cli:agent:kit", "cli:thread:x"]) {
+    const r = await raw("team.duties.enable", { id: d.id }, caller);
+    assert.ok(r.error && !/watchers/.test(r.error.message), `enable by ${caller}`);
+  }
+});
+
+test("person-only writes: a session or an agent is refused projects.rename, projects.archive and team.charter.set; the person is not", async t => {
+  const { tool, raw, root, project, launches } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const calls = [["projects.rename", { project: project.slug, name: "Harlow Legal Two" }], ["projects.archive", { project: project.slug }],
+    ["team.charter.set", { teammate: agent, text: "You review everything." }]];
+  for (const [name, input] of calls) {
+    const viaSession = await call(name, input, { root, caller: "mcp", timeout: 20_000, session });
+    assert.ok(viaSession.error, `${name} by a session`);
+    const viaAgent = await call(name, input, { root, caller: "mcp:agent:kit", timeout: 20_000 });
+    assert.ok(viaAgent.error, `${name} by an agent`);
+  }
+  assert.equal((await tool("team.charter.get", { teammate: agent })).charter, null);
+  assert.equal((await tool("projects.list", {})).projects.some(p => p.slug === project.slug), true); // not archived
+  assert.equal((await tool("team.charter.set", { teammate: agent, text: "You review everything." })).version, 1);
+  assert.ok(!(await raw("projects.rename", { project: project.slug, name: "Harlow Legal Two" })).error);
+});
+
+test("a vyre restart while a request is running fails it with a reason, frees the teammate, and runs the next queued one", async t => {
+  const { tool, stop, root, project } = await boot(t);
+  const agent = `design-${project.slug}`;
+  await tool("team.add", { project: project.slug, role: "design" });
+  await stop();
+  // What a restart leaves behind: one request "running" for a teammate marked working, and one queued behind it.
+  const db = openStore(paths(root).db);
+  const now = Date.now();
+  const ins = (id, state) => db.prepare(`INSERT INTO team_requests (id, teammate, project, from_kind, from_label, via, text, refs, priority, state, attempt, created_at, started_at)
+    VALUES (?,?,?,'person','cli','[]',?,'[]','normal',?,1,?,?)`).run(id, agent, project.slug, 'vyre team.done {"result":"second ok","notes":"unchanged","reason":"test"}', state, now, state === "running" ? now : null);
+  ins("r_stuck001", "running");
+  ins("r_next0002", "queued");
+  db.prepare("UPDATE team_teammates SET current_request = 'r_stuck001', state = 'working' WHERE agent = ?").run(agent);
+  db.close();
+  const d2 = await start({ root, presence: present, log: () => {} });
+  t.after(() => d2.stop());
+  const st = id => call("team.status", { request: id }, { root, caller: "cli", timeout: 20_000 }).then(r => r.data);
+  const stuck = await until(async () => { const r = await st("r_stuck001"); return r && r.state !== "running" ? r : null; }, "the stuck request to close");
+  assert.equal(stuck.state, "failed");
+  assert.match(stuck.result, /vyre restarted/);
+  const next = await until(async () => { const r = await st("r_next0002"); return r && r.state === "done" ? r : null; }, "the queued request to run");
+  assert.match(next.result, /second ok/);
 });
 
 // --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
@@ -725,6 +781,26 @@ test("a worktree teammate's request that finishes with new commits queues a merg
     return row && /^merge team\/design /.test(row.text) ? row : null;
   }, "a merge request queued to the integrator");
   assert.match(merge.text, new RegExp(`from request ${ask.request}`));
+});
+
+test("stopping the daemon right after a worktree teammate's merge was queued leaves no job running against a closed store", async t => {
+  const { tool, stop, logs, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const dir = worktreePath(repo, "design");
+  fs.writeFileSync(path.join(dir, "form.md"), "a calmer form\n");
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-q", "-m", "calmer form"]);
+  const rejections = [];
+  const onRej = e => rejections.push(String(e && e.message || e));
+  process.on("unhandledRejection", onRej);
+  t.after(() => process.off("unhandledRejection", onRej));
+  // No wait: the merge request is queued and the integrator's dispatch starts as the ask closes.
+  await tool("team.ask", { to: "design", project: project.slug, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  await new Promise(r => setTimeout(r, 400));
+  await stop();
+  await new Promise(r => setTimeout(r, 600)); // anything left running would hit the closed store by now
+  assert.deepEqual(rejections.filter(m => /not open/.test(m)), []);
+  assert.deepEqual(logs.filter(m => /not open/.test(m)), []);
 });
 
 // --- slice A review (e2e and reviewer, 8eb1a785): nothing the repo says to run ------------------

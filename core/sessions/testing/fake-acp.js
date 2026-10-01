@@ -25,7 +25,8 @@ let nextId = 1000, session = "", mode = process.env.FAKE_ACP_START_MODE || "defa
 const waits = new Map();
 const call = (method, params) => new Promise((resolve, reject) => { const id = nextId++; waits.set(id, { resolve, reject }); out({ id, method, params }); });
 const say = t => out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: t } } } });
-const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }, { id: "bypassPermissions", name: "Bypass permissions" }] };
+let authed = false;
+const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }, { id: "bypassPermissions", name: "Bypass permissions" }, { id: "agent-full-access", name: "Full access" }, ...(process.env.FAKE_ACP_EXTRA_MODE ? [{ id: process.env.FAKE_ACP_EXTRA_MODE, name: process.env.FAKE_ACP_EXTRA_MODE }] : [])] };
 
 async function prompt(id, blocks) {
   const t = blocks.map(b => b.text || "").join("");
@@ -63,6 +64,11 @@ async function prompt(id, blocks) {
     c.unref();
     if (process.env.FAKE_ACP_PIDFILE) fs.writeFileSync(process.env.FAKE_ACP_PIDFILE, String(c.pid));
     say("detached");
+  } else if ((m = /^switchmode (\S+)$/.exec(t))) {
+    mode = m[1];                                                     // the agent changes its own mode, and says so
+    out({ method: "session/update", params: { sessionId: session, update: { sessionUpdate: "current_mode_update", currentModeId: m[1] } } });
+    await new Promise(r => setTimeout(r, 300));
+    say("switched");
   } else if (t === "mode") say("mode: " + mode);
   else say("echo: " + t);
   out({ id, result: { stopReason: "end_turn" } });
@@ -74,8 +80,16 @@ readline.createInterface({ input: process.stdin }).on("line", async line => {
   if (m.method === "initialize") {
     clientCaps = m.params.clientCapabilities || {};
     log({ launch: process.argv.slice(2), home: process.env.HOME || null, clientCaps });
-    return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: [] } });
+    // FAKE_ACP_AUTH: like the real codex-acp and Grok, session/new answers "Authentication required" (-32000) until authenticate {methodId} was called.
+    return out({ id: m.id, result: { protocolVersion: 1, agentCapabilities: { loadSession: true }, authMethods: process.env.FAKE_ACP_AUTH ? [{ id: "api-key", name: "API Key" }, { id: "chat-gpt", name: "ChatGPT" }, ...(clientCaps && clientCaps.auth && clientCaps.auth._meta && clientCaps.auth._meta.gateway ? [{ id: "gateway", name: "Custom model gateway" }] : [])] : [] } });
   }
+  if (m.method === "authenticate") {
+    log({ authenticate: m.params && m.params.methodId, gateway: m.params && m.params._meta && m.params._meta.gateway ? { baseUrl: m.params._meta.gateway.baseUrl, headers: Object.keys(m.params._meta.gateway.headers || {}), providerName: m.params._meta.gateway.providerName } : undefined });
+    if (process.env.FAKE_ACP_AUTH === "hang") return;                                   // waits for a browser sign-in
+    authed = process.env.FAKE_ACP_AUTH !== "refuse";
+    return out({ id: m.id, ...(authed ? { result: {} } : { error: { code: -32000, message: process.env.FAKE_ACP_AUTH_ERR || "sign-in refused" } }) });
+  }
+  if (m.method === "session/new" && process.env.FAKE_ACP_AUTH && !authed) return out({ id: m.id, error: { code: -32000, message: "Authentication required" } });
   if (m.method === "session/new") {
     session = "fake-" + crypto.randomUUID().slice(0, 8);
     if (store) fs.writeFileSync(path.join(store, session), m.params.cwd);

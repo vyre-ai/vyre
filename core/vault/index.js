@@ -34,6 +34,8 @@ import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import * as saidTools from "./said.js";
+import { grantPrompt, putPrompt } from "./prompt.js";
+import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
 
 export { presence };
@@ -171,11 +173,21 @@ export default {
         return { ...out, ...(grants ? { granted: grants } : {}) };
       }, presence("Save an item in the vault", ({ name, kind }) => {
         const old = vault.row(name);
-        return `${old ? "Replace" : "Add"} ${kind || (old && old.kind) || "secret"} ${quoted(name)} in the vault`;
+        return putPrompt({ name, kind: kind || (old && old.kind) || "secret", replacing: Boolean(old) });
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), input => cli.list(vault.list(input), input));
+      obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
+        const r = cli.list(vault.list(input), input);
+        // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
+        // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
+        // never matched against a module name. "Granted to that agent" means one key: the agent's verified project scope (meta.project)
+        // equals a grant's project. An agent with no project sees nothing.
+        const who = /^mcp:agent:(.+)$/.exec(String(caller));
+        if (!who || !r || !Array.isArray(r.items)) return r;
+        const mine = g => Boolean(project) && g.project === project;
+        return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
+      });
 
     tool("vault.delete", SURFACES, "Delete an item and its grants.",
       obj({ name: str }, ["name"]), (input, { caller }) => {
@@ -194,7 +206,11 @@ export default {
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
     tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
-      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
+      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => {
+        const c = String(caller);
+        // A named agent, or another module, may only withdraw a request it made itself; the person's surfaces and an unnamed session revoke freely.
+        return vault.revoke(input, c, /^mcp:agent:/.test(c) || c.startsWith("module:") ? { onlyPendingBy: c } : {});
+      });
 
     tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
@@ -204,7 +220,7 @@ export default {
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
-        if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+        if (g) return grantPrompt(g, vault.row(g.name)?.vault === "personal");
         const ag = p.agentGrants.find(x => x.id === id);
         if (ag) return vault.agents.summary(ag, () => ag.expires);
         const s = p.passes.find(x => x.id === id);
@@ -276,6 +292,20 @@ export default {
     tool("vault.import", ["cli", "local", "mcp"], "Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.",
       obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" } }, ["file"]), (input, { caller }) => vault.import(input, caller),
       presence("Import a file into the vault", ({ file, rewrite }) => `Import the items in ${path.resolve(String(file))} into the vault${rewrite ? " and rewrite its .env files to vault references" : ""}`));
+
+    tool("vault.env.scan", SURFACES, "The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.",
+      obj({ roots: strs }), async ({ roots }) => {
+        /** @type {{ project?: string, dir: string }[]} */
+        let dirs = [];
+        if (Array.isArray(roots) && roots.length) dirs = roots.filter(r => typeof r === "string" && path.isAbsolute(r)).map(dir => ({ dir }));
+        else {
+          const r = await ctx.call("projects.list", {}).catch(() => null);
+          for (const p of (r && r.data && Array.isArray(r.data.projects) ? r.data.projects : [])) {
+            for (const d of [p.home, ...(Array.isArray(p.folders) ? p.folders : [])]) if (typeof d === "string" && d) dirs.push({ project: String(p.name || p.slug || ""), dir: d });
+          }
+        }
+        return scanEnvFiles(dirs);
+      });
 
     tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
       obj({ name: str, limit: { type: "integer" } }), input => vault.auditTrail(input));

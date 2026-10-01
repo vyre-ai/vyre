@@ -18,6 +18,9 @@ import { fileURLToPath } from "node:url";
 import { hostManifest, launchChrome, parseArgs, prepareExtension, registerHost, resolveChrome, sleep, stats, stepSummary, stopProcess } from "../../spike/harness/lib.mjs";
 import { startFixtureServer } from "../../bench/fixtures/server.mjs";
 import { WORKFLOW_STEPS, GHL_ROBUST, CHECKOUT_FIELDS } from "../../bench/scenarios.mjs";
+import { createSiteStore } from "../sitestore.js";
+import { writeConfig } from "../trace.js";
+import { controlId, pageTemplate } from "../../extension/lib/observe.js";
 import { build } from "../build-release.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -78,7 +81,10 @@ async function main() {
     const rel = build({ out: path.join(tmp, "release") });
     out.release = { version: rel.version, sha256: rel.sha };
     const home = path.join(tmp, "home"); fs.mkdirSync(home);
-    const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: data };
+    // The site store's clock is a file in this run, so the heal stage can put misses on different days (honoured only under this test flag, never a setting).
+    const clockFile = path.join(tmp, "site-clock.txt");
+    fs.writeFileSync(clockFile, "2026-10-01T09:00:00Z\n");
+    const env = { ...process.env, HOME: home, USERPROFILE: home, VYRE_CHROME_HOME: data, VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile };
     const cliInstall = path.join(rel.dir, "standalone", "cli.mjs");
     const app = path.join(data, "app");
     const cli = path.join(app, "standalone", "cli.mjs");
@@ -214,6 +220,16 @@ async function main() {
             newSocketToKnownDomainAllowed: wsA2.upgrades >= 1,
             plainHeldReport: plain && plain.held === true, existingResult: existing && (existing.value ?? existing.error),
           };
+          // A THIRD-PARTY socket: the page itself talks to "localhost" (over http, so that origin is on the page's list, and over a socket it opens by itself). A script's NEW socket to that same
+          // host is still refused while the guard is up (only the first party's host gets ws/wss allow rules); the server must see no new upgrade.
+          const wsE = await mkWs("localhost");
+          const ePort = /:(\d+)\//.exec(wsE.url)?.[1];
+          const eNav = await mcp.call("chrome_tabs", { action: "navigate", tab: et, url: `${fixture.url}/wsprobe?u=${encodeURIComponent(wsE.url)}&img=${encodeURIComponent(`http://localhost:${ePort}/p.png`)}` }).then(async () => { for (let i = 0; i < 30; i++) { const st = await mcp.call("chrome_eval", { tab: et, expression: "window.__wsState" }).catch(() => ({})); if (st && st.value && st.value !== "connecting") return st.value; await sleep(100); } return "timeout"; });
+          const eBefore = wsE.upgrades;
+          await mcp.call("chrome_eval", { tab: et, expression: `(async () => { try { new WebSocket(${JSON.stringify(wsE.url)}); } catch (e) {} await new Promise(r => setTimeout(r, 700)); return 1; })()` }).catch(() => ({}));
+          await sleep(300);
+          Object.assign(websocketProof, { thirdPartyControlPageSocket: eNav === "open" && eBefore >= 1, scriptSocketToListedThirdParty: wsE.upgrades === eBefore ? "refused (server saw none)" : `NOT refused (${wsE.upgrades - eBefore})` });
+          wsE.close();
           wsA.close(); wsA2.close(); wsB.close(); wsC.close(); wsD.close();
           // Channels the Fetch domain does not see. Reported as they are: held or not, no claim beyond what this shows.
           const host = new URL(other.url).host;
@@ -228,6 +244,8 @@ async function main() {
           if (!wp.controlFreshDomainServerReachedByPageLoad) throw new Error("the WebSocket control failed (the fresh server was not reachable by a page load), so the refusals prove nothing: " + JSON.stringify(wp));
           if (!wp.pageHeldSocketOpened || !wp.existingSocketUntouched) throw new Error("the page's own open socket did not keep working during the guard: " + JSON.stringify(wp));
           if (wp.plainNewSocketToFreshDomain !== "refused (server saw none)" || wp.iframeBypassToFreshDomain !== "refused (server saw none)") throw new Error("a new WebSocket to a fresh domain was not refused: " + JSON.stringify(wp));
+          if (!/** @type {any} */ (wp).thirdPartyControlPageSocket) throw new Error("the third-party WebSocket control failed (the page could not open its own socket to it), so the refusal proves nothing: " + JSON.stringify(wp));
+          if (/** @type {any} */ (wp).scriptSocketToListedThirdParty !== "refused (server saw none)") throw new Error("a script's new WebSocket to a third party the page uses was not refused: " + JSON.stringify(wp));
           if (!wp.newSocketToKnownDomainAllowed) throw new Error("a new socket to the page's own domain was refused: " + JSON.stringify(wp));
           return { heldOutside: true, ownOriginValue: own.value, websocketProof, channels };
         } finally { await other.close(); }
@@ -238,6 +256,219 @@ async function main() {
         try { await mcp.call("chrome_tabs", { action: "open", url: "chrome://settings/passwords" }); } catch (e) { msg = String(/** @type {Error} */ (e).message); }
         if (!/blocked/.test(msg)) throw new Error(`expected blocked, got ${JSON.stringify(msg).slice(0, 200)}`);
         return { refused: true };
+      });
+
+      // A flow that worked becomes a recipe (what was typed turns into parameters) and replays as ONE call with the same guards.
+      await stage("recipe_replay", async () => {
+        const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        const steps = WORKFLOW_STEPS.map(s => s.op === "click"
+          ? { op: "page.act", args: { tabId: gt, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
+          : { op: "page.fill", args: { tabId: gt, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        const t0 = performance.now();
+        const first = await mcp.call("chrome_batch", { tab: gt, steps, saveAs: "make-workflow" });
+        const firstMs = Math.round(performance.now() - t0);
+        if (first.ok === false || !first.recipe) throw new Error("the batch did not leave a recipe: " + JSON.stringify(first).slice(0, 300));
+        const typed = WORKFLOW_STEPS.filter(s => s.op !== "click").map(s => String(s.value));
+        const list = await mcp.call("chrome_recipe", { action: "list", tab: gt });
+        if (!list.recipes || !list.recipes.some((/** @type {any} */ r) => r.name === "make-workflow")) throw new Error("the recipe is not listed: " + JSON.stringify(list).slice(0, 300));
+        if (typed.some(v => v.length > 2 && JSON.stringify(list).includes(v))) throw new Error("a typed value is in the recipe listing");
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        const params = Object.fromEntries(first.recipe.params.map((/** @type {string} */ n) => [n, `Replay ${n}`]));
+        const t1 = performance.now();
+        const run = await mcp.call("chrome_recipe", { action: "run", tab: gt, name: "make-workflow", params }, 60_000);
+        const replayMs = Math.round(performance.now() - t1);
+        if (run.ok === false || run.done !== steps.length) throw new Error("the replay did not do every step: " + JSON.stringify(run).slice(0, 400));
+        return { steps: steps.length, params: first.recipe.params.length, firstMs, replayMs, oneCall: true };
+      });
+
+      // Learning, verified and healed on the fixture (learning is on for this stage only, with a 1.2 s "visit"): a button is learned, moved (its identifier changes), found by its
+      // label, re-learned under the SAME id with the new selector, then moved where nothing finds it: repeated misses quarantine it and the card stops offering it.
+      await stage("site_heal", async () => {
+        writeConfig(data, { learn: true, learnVisitMinutes: 0.02 });
+        const store = createSiteStore({ dataDir: data, env: { VYRE_CHROME_TEST: "1", VYRE_SITE_TEST_CLOCK: clockFile } });
+        const origin = new URL(fixture.url).origin;
+        const url = `${fixture.url}/checkout?heal=1`;
+        const hn = await mcp.call("chrome_tabs", { action: "use", url, openIfMissing: true }); const ht = hn.id ?? (hn.tab && hn.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(600);
+        const ask = { identifier: "apply-promo", name: "Apply promo" };
+        const go = (/** @type {number} */ waitMs = 4000) => mcp.call("chrome_act", { tab: ht, selector: ask, kind: "click", wait: { timeoutMs: waitMs } });
+        const flush = () => mcp.call("chrome_site", { action: "flush", tab: ht });
+        const id = controlId(pageTemplate(url), ask);
+        const rec = () => (store.record(origin) || { controls: [] }).controls.find((/** @type {any} */ c) => c.id === id);
+        // learn: two visits (two 1.2 s windows) of the same identifier
+        await go(); await sleep(1500); await go(); await sleep(1500); await go(); await flush(); await sleep(600);
+        const learned = rec();
+        if (!learned || learned.selector.identifier !== "apply-promo") throw new Error("the button was not learned by its identifier: " + JSON.stringify(store.record(origin) && store.record(origin).controls).slice(0, 300));
+        // the card now reaches the device (the next arrival asks for it)
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(800); await go(); await sleep(800);
+        // move 1: the identifier changes, the label does not; the fallback finds it
+        await mcp.call("chrome_eval", { tab: ht, expression: "(() => { document.getElementById('apply-promo').id = 'apply-promo-v2'; return true; })()" });
+        const viaFallback = await go();
+        if (viaFallback.ok === false || !(viaFallback.trace && (viaFallback.trace.fallback === true || viaFallback.trace.strategy !== "identifier"))) throw new Error("the fallback did not find the moved button: " + JSON.stringify(viaFallback).slice(0, 300));
+        await sleep(1500); await go(); await sleep(1500); await go(); await flush(); await sleep(600);
+        const healed = rec();
+        if (!healed || healed.selector.identifier !== "apply-promo-v2") throw new Error("the stored control did not take the new selector under its old id: " + JSON.stringify(healed).slice(0, 300));
+        // move 2: nothing finds it; each failed step is one miss for the stored fact
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ht, url }); await sleep(800); await go().catch(() => {}); await sleep(800);
+        await mcp.call("chrome_eval", { tab: ht, expression: "(() => { const b = document.getElementById('apply-promo') || document.getElementById('apply-promo-v2'); if (b) { b.id = 'gone'; b.textContent = 'Removed'; } return true; })()" });
+        const missOnce = async () => { let failed = false; try { await go(300); } catch { failed = true; } if (!failed) throw new Error("a button that is gone was found"); await flush(); await sleep(500); };
+        const clock = (/** @type {string} */ iso) => fs.writeFileSync(clockFile, iso + "\n");
+        // day 1: four failed steps in a few seconds are ONE miss for the store (one per item per 30-minute window), and three of them cannot quarantine anything
+        for (let i = 0; i < 4; i++) await missOnce();
+        const day1 = rec();
+        if (!day1 || day1.qAt || (day1.misses || 0) !== 1) throw new Error("four quick misses on one day should count once and set nothing aside: " + JSON.stringify(day1).slice(0, 300));
+        // day 3 (two days later): a miss counts again, still two misses
+        clock("2026-10-03T09:30:00Z"); await missOnce();
+        const day3 = rec();
+        if (!day3 || day3.qAt || (day3.misses || 0) !== 2) throw new Error("a miss two days later should be the second: " + JSON.stringify(day3).slice(0, 300));
+        // a third counted miss, 31 minutes later and two days after the first, sets it aside
+        clock("2026-10-03T10:05:00Z"); await missOnce();
+        const after = rec();
+        if (!after || !after.qAt) throw new Error("three counted misses over two days did not set the control aside: " + JSON.stringify(after).slice(0, 300));
+        const card = store.get({ origin }).data;
+        if (card.origin && card.origin.controls.some((/** @type {any} */ c) => c.id === id)) throw new Error("the arrival card still offers a quarantined control");
+        writeConfig(data, { learn: false });
+        await mcp.call("chrome_site", { tab: ht }); // the next call tells the extension learning is off
+        return { id, learned: learned.selector.identifier, healedTo: healed.selector.identifier, conf: after.conf, misses: after.misses, quarantined: true, dedupedDay1: day1.misses };
+      });
+
+      // A script cannot write with the page's login by submitting a form either.
+      await stage("eval_form_submit_refused", async () => {
+        const c = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/checkout?form=1`, openIfMissing: true }); const ct = c.id ?? (c.tab && c.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: ct, url: `${fixture.url}/checkout?form=1` }); await sleep(300);
+        let err = /** @type {any} */ (null);
+        let got = /** @type {any} */ (null);
+        try { got = await mcp.call("chrome_eval", { tab: ct, expression: "(() => { const f = document.querySelector('form'); f.method = 'post'; f.action = '/api/form-probe'; f.requestSubmit(); return 'submitted'; })()" }); } catch (e) { err = e; }
+        if (!err || !/POST/.test(String(err.message))) throw new Error("a script's form submit was not refused: err=" + String(err && err.message).slice(0, 200) + " result=" + JSON.stringify(got).slice(0, 300));
+        const r2 = await mcp.call("chrome_tabs", { action: "presence", tab: ct });
+        return { refused: String(err.message).slice(0, 120), pageStillAt: r2 && r2.pill !== undefined };
+      });
+
+      // What the person sees: Vyre's tab is in a group named Vyre, the badge run is on, a pill is in the page (hidden from snapshots), and the pill's Stop stops the run.
+      await stage("presence", async () => {
+        await mcp.call("chrome_summary", {}); // end whatever an earlier stage left open (a held send nobody answered still owns the badge)
+        // A tab Vyre OPENS joins the group (a tab the person already had is left alone), so open a new one on another origin: localhost, not 127.0.0.1.
+        const p0 = await mcp.call("chrome_tabs", { action: "open", url: `${fixture.url.replace("127.0.0.1", "localhost")}/checkout?presence=1` }); const pt = p0.id ?? (p0.tab && p0.tab.id);
+        await sleep(400);
+        await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
+        let st = /** @type {any} */ ({});
+        for (let i = 0; i < 20; i++) { st = await mcp.call("chrome_tabs", { action: "presence", tab: pt }); if (st.pill) break; await sleep(250); }
+        if (!st.active) throw new Error("the run is not showing as active: " + JSON.stringify(st));
+        if (!/^Step \d+/.test(st.label || "") || !/Esc to stop/.test(st.label || "")) throw new Error("the pill label is " + JSON.stringify(st.label));
+        if (!st.group || st.group.title !== "Vyre" || st.group.color !== "grey") throw new Error("the tab is not in a grey group titled Vyre: " + JSON.stringify(st.group));
+        if (!st.pill) throw new Error("no pill in the page");
+        const snap = await mcp.call("chrome_snapshot", { tab: pt });
+        if (/vyre-pill|Esc to stop|Step \d+ of/i.test(JSON.stringify(snap))) throw new Error("the snapshot shows the pill");
+        // A hostile page: it tries to stop the run, to reach Vyre's state, to show its own words in the pill and to swallow Esc. None of it may work.
+        if (st.exposedToPage && (st.exposedToPage.vyreStop || st.exposedToPage.vyreLogin || st.exposedToPage.pillState)) throw new Error("the page can see Vyre's bindings or state: " + JSON.stringify(st.exposedToPage));
+        await mcp.call("chrome_eval", { tab: pt, expression: "(() => { let r = []; try { window.vyreStop('pill'); r.push('stop-called'); } catch (e) { r.push('no-stop'); } try { window.__vyrePill.set('hacked'); r.push('set-called'); } catch (e) { r.push('no-set'); } document.addEventListener('keydown', e => e.stopImmediatePropagation(), true); return r.join(','); })()", asked: true }).catch(() => {});
+        const still = await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" });
+        if (still.ok === false) throw new Error("a page calling vyreStop stopped the run: " + JSON.stringify(still).slice(0, 200));
+        const after = await mcp.call("chrome_tabs", { action: "presence", tab: pt });
+        if (/hacked/.test(JSON.stringify(after)) || !/Step \d+/.test(after.label || "")) throw new Error("the page changed what the pill says: " + JSON.stringify(after).slice(0, 200));
+        // The pill's own Stop button, pressed with a real click, halts the run (even with a page listener swallowing keys).
+        const pressed = await mcp.call("chrome_tabs", { action: "presence", tab: pt, press: "Pause" });
+        if (!pressed.pressed) throw new Error("no Pause button in the pill to press: " + JSON.stringify(pressed).slice(0, 200));
+        let halted = false;
+        for (let i = 0; i < 20 && !halted; i++) { try { await mcp.call("chrome_act", { tab: pt, selector: { identifier: "apply-promo" }, kind: "click" }); } catch (e) { halted = /stop/i.test(String(e && /** @type {any} */ (e).message || e)); } if (!halted) await sleep(150); }
+        await mcp.call("chrome_resume", { answer: "ok" }).catch(() => {});
+        if (!halted) throw new Error("the pill's Pause button did not halt the run");
+        return { label: st.label, group: st.group, pill: st.pill, exposedToPage: st.exposedToPage, haltedByPill: halted };
+      });
+
+      // One write gate: a write made with the page's login through EVERY public tool is refused or held, and nothing reaches the server.
+      await stage("writes_held_everywhere", async () => {
+        const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        await mcp.call("chrome_net", { action: "start", tab: gt });
+        await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const steps = WORKFLOW_STEPS.map(s => s.op === "click"
+          ? { op: "page.act", args: { tabId: gt, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
+          : { op: "page.fill", args: { tabId: gt, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        await mcp.call("chrome_batch", { tab: gt, steps });
+        const cat = await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const entry = (cat.entries || []).find((/** @type {any} */ e) => e.method === "POST" && /\/api\/workflows/.test(e.pathTemplate || ""));
+        if (!entry) throw new Error("no POST entry to try");
+        const listing = await mcp.call("chrome_net", { action: "list", tab: gt });
+        const rec = (listing.requests || listing.records || listing.entries || []).find((/** @type {any} */ r) => r.method === "POST" && /\/api\/workflows/.test(String(r.url || r.path || "")));
+        const count = async () => { const r = await mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { credentials: 'include', headers: window.__authHeaders || {} }).then(r => r.status)" }).catch(() => null); return r; };
+        void count;
+        const tries = /** @type {Record<string, string>} */ ({});
+        const expectHeld = (/** @type {string} */ name, /** @type {any} */ r, /** @type {any} */ e) => {
+          const text = JSON.stringify(r || {}) + String(e && e.message || "");
+          tries[name] = r && r.held ? "held" : e ? "refused" : "WENT THROUGH";
+          if (!(r && r.held) && !e) throw new Error(`${name} made a write with the page's login unasked: ${text.slice(0, 200)}`);
+        };
+        const attempt = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ f) => { let r, e; try { r = await f(); } catch (x) { e = x; } expectHeld(name, r, e); };
+        await attempt("chrome_eval fetch POST", () => mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: '{\"name\":\"eval probe\"}' }).then(r => r.status)" }));
+        await attempt("chrome_eval form submit", () => mcp.call("chrome_eval", { tab: gt, expression: "(() => { const f = document.createElement('form'); f.method = 'post'; f.action = '/api/workflows'; document.body.appendChild(f); f.submit(); return 'submitted'; })()" }));
+        await attempt("batch step dev.console.eval fetch DELETE", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "dev.console.eval", args: { expression: "fetch('/api/workflows', { method: 'DELETE', credentials: 'include' }).then(r => r.status)" } }] }); return r && r.ok === false ? { held: true, via: "refused", why: String(r.why || "").slice(0, 80) } : r; });
+        await attempt("chrome_api call POST", () => mcp.call("chrome_api", { action: "call", tab: gt, entry: entry.id, args: { body: { name: "api probe" } } }));
+        if (rec) await attempt("chrome_net replay DELETE", () => mcp.call("chrome_net", { action: "replay", tab: gt, id: rec.id, overrides: { method: "DELETE" } }));
+        await attempt("chrome_batch step api.call", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "api.call", args: { entry: entry.id, args: { body: { name: "batch probe" } } } }] }); if (r && (r.held || (r.detail && r.detail.held))) return { held: true }; if (r && r.ok === false) return { held: true, via: "step refused" }; return r; });
+        await attempt("chrome_batch step that claims asked and writeOk itself", async () => { const r = await mcp.call("chrome_batch", { tab: gt, steps: [{ op: "api.call", args: { entry: entry.id, asked: true, writeOk: true, args: { body: { name: "self-approved probe" } } } }] }); if (r && r.ok === false) return { held: true, via: "step held or refused" }; return r; });
+        // the server never saw a write
+        const after = await mcp.call("chrome_eval", { tab: gt, expression: "fetch('/api/workflows', { credentials: 'include' }).then(r => r.status)" }).catch(() => null);
+        void after;
+        return { tries };
+      });
+
+      // Approve once, write many: without a plan a write made with the page's login is held; with one the person approved, that many go through and the next asks again.
+      await stage("plan_approval", async () => {
+        const g = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/ghl`, openIfMissing: true }); const gt = g.id ?? (g.tab && g.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: gt, url: `${fixture.url}/ghl` }); await sleep(300);
+        await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const steps = WORKFLOW_STEPS.map(s => s.op === "click"
+          ? { op: "page.act", args: { tabId: gt, selector: { identifier: (/data-testid="([^"]+)"/.exec(s.selector) || [])[1] }, kind: "click" } }
+          : { op: "page.fill", args: { tabId: gt, fields: [{ selector: { identifier: s.selector.replace(/^#/, "") }, value: s.value }] } });
+        await mcp.call("chrome_batch", { tab: gt, steps });
+        const cat = await mcp.call("chrome_api", { action: "learn", tab: gt });
+        const entry = (cat.entries || []).find((/** @type {any} */ e) => e.method === "POST" && /\/api\/workflows/.test(e.pathTemplate || e.path || ""));
+        if (!entry) throw new Error("the catalog has no POST /api/workflows entry: " + JSON.stringify((cat.entries || []).map((/** @type {any} */ e) => e.method + " " + (e.pathTemplate || e.path))).slice(0, 300));
+        const write = (/** @type {string} */ name) => mcp.call("chrome_api", { action: "call", tab: gt, entry: entry.id, args: { body: { name } } });
+        const h0 = await write("plan probe 0");
+        if (!h0.held || !h0.id) throw new Error("a write with no plan was not held: " + JSON.stringify(h0).slice(0, 300));
+        const p = await mcp.call("chrome_approve", { tab: gt, title: "Two draft workflows", items: [{ kind: "create", what: "draft workflow", count: 2 }] });
+        if (!p.held || !p.id) throw new Error("the plan was not held for the person: " + JSON.stringify(p).slice(0, 300));
+        const ok = await mcp.call("chrome_send", { id: p.id });
+        if (!ok.approved) throw new Error("approving the plan did not start it: " + JSON.stringify(ok).slice(0, 300));
+        const a = await write("plan probe 1"); const b = await write("plan probe 2"); const c = await write("plan probe 3");
+        if (a.held || b.held || (a.status !== 201 && a.status !== 200)) throw new Error("the two covered writes did not go through: " + JSON.stringify({ a, b }).slice(0, 400));
+        if (!c.held) throw new Error("the third write, beyond the plan, was not held: " + JSON.stringify(c).slice(0, 300));
+        // The finish: a summary in words, and the same as a card in the page the run worked in.
+        const sum = await mcp.call("chrome_summary", {});
+        if (!sum.counts || sum.counts.create !== 2 || !Array.isArray(sum.lines) || !/2 created/.test(sum.lines[0])) throw new Error("the summary is wrong: " + JSON.stringify(sum).slice(0, 400));
+        let card = false;
+        for (let i = 0; i < 20 && !card; i++) { const r = await mcp.call("chrome_eval", { tab: gt, expression: "!!document.querySelector('vyre-card')" }); card = (r.value ?? r.result) === true; if (!card) await sleep(250); }
+        if (!card) throw new Error("no finish card in the page");
+        const snap = await mcp.call("chrome_snapshot", { tab: gt });
+        if (/vyre-card|Vyre finished|Dismiss/.test(JSON.stringify(snap))) throw new Error("the snapshot shows the finish card");
+        return { entry: entry.id, unplanned: "held", covered: [a.status, b.status], beyondPlan: "held", summary: sum.lines[0], card };
+      });
+
+      // The sign-in handoff: a step on a login page answers login_required, the tab comes to the front, and Vyre carries on once the person is in.
+      await stage("login_handoff", async () => {
+        const l = await mcp.call("chrome_tabs", { action: "use", url: `${fixture.url}/login`, openIfMissing: true }); const lt = l.id ?? (l.tab && l.tab.id);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: lt, url: `${fixture.url}/login` });
+        let err = /** @type {any} */ (null);
+        try { await mcp.call("chrome_act", { tab: lt, selector: { identifier: "apply-promo" }, kind: "click", wait: { timeoutMs: 500 } }); } catch (e) { err = e; }
+        const msg = String(err && /** @type {any} */ (err).message || "");
+        if (!/login_required|sign in/i.test(msg)) throw new Error("a step on a login page did not answer login_required: " + msg.slice(0, 300));
+        const chk = await mcp.call("chrome_login", { action: "check", tab: lt });
+        if (!chk.wall || chk.kind !== "password" || !chk.waitingForPerson) throw new Error("the login check says " + JSON.stringify(chk));
+        const list = await mcp.call("chrome_tabs", { action: "list" });
+        const mine = (list.tabs || []).find((/** @type {any} */ t) => t.id === lt);
+        if (mine && mine.active === false) throw new Error("the login tab was not brought to the front");
+        // The person signs in (here: the harness plays them and moves the tab on), and the wait ends by itself.
+        const waiting = mcp.call("chrome_login", { action: "wait", tab: lt, timeoutMs: 30_000 }, 60_000).then(r => ({ r }), e => ({ e }));
+        await sleep(2500);
+        await mcp.call("chrome_tabs", { action: "navigate", tab: lt, url: `${fixture.url}/dashboard` });
+        const res = /** @type {any} */ (await waiting);
+        if (!res.r || res.r.signedIn !== true) throw new Error("the wait did not end when the person was in: " + JSON.stringify(res).slice(0, 300));
+        const after = await mcp.call("chrome_act", { tab: lt, selector: { identifier: "apply-promo" }, kind: "click" });
+        if (after.ok === false) throw new Error("the step did not run after sign-in: " + JSON.stringify(after).slice(0, 200));
+        return { walled: chk.kind, waitedMs: res.r.waitedMs, resumed: true };
       });
 
       await stage("trace_and_report", async () => {

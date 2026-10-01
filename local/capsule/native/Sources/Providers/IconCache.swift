@@ -39,7 +39,7 @@ public final class IconCache {
             case .bone: return rgb(0x141311)
             case .stone: return rgb(0x4A463F)
             case .ash: return rgb(0x6B665D)
-            case .signal: return rgb(0x46700C)
+            case .signal: return rgb(0x141311)
             case .recall: return rgb(0x4A463F)
             case .attention: return rgb(0x5B3FC4)
             }
@@ -48,7 +48,7 @@ public final class IconCache {
         case .bone: return rgb(0xF1EEE6)
         case .stone: return rgb(0xB3AEA4)
         case .ash: return rgb(0x8C877D)
-        case .signal: return rgb(0xC6F36B)
+        case .signal: return rgb(0xF1EEE6)
         case .recall: return rgb(0xB3AEA4) // Design A retired the gold: as stone
         case .attention: return rgb(0xB8A4FF)
         }
@@ -100,8 +100,7 @@ public final class IconCache {
     func key(_ spec: IconSpec, px: Int) -> String {
         switch spec {
         case .file(let p):
-            let m = ((try? FileManager.default.attributesOfItem(atPath: p))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-            return "file:\(p):\(Int(m)):\(px)"
+            return "file:\(p):\(Int(modified(p))):\(px)"
         case .bundle(let b): return "bundle:\(b):\(px)"
         case .symbol(let n, let t): return "symbol:\(n):\(t.rawValue):\(px):\(Self.scheme)"
         case .mark: return "mark:\(px):\(Self.scheme)"
@@ -110,6 +109,18 @@ public final class IconCache {
         case .glyph(let s): return "glyph:\(s):\(px):\(Self.scheme)"
         case .none: return ""
         }
+    }
+
+    /// A file's modification time, looked up at most once every 30 seconds per path: the key is built
+    /// for every row on every draw, and a stat each time on the main thread was most of a keystroke.
+    private var mtimes: [String: (at: Date, mtime: Double)] = [:]
+    private func modified(_ p: String) -> Double {
+        let now = Date()
+        if let m = mtimes[p], now.timeIntervalSince(m.at) < 30 { return m.mtime }
+        let t = ((try? FileManager.default.attributesOfItem(atPath: p))?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        if mtimes.count > 2000 { mtimes.removeAll() }
+        mtimes[p] = (now, t)
+        return t
     }
 
     private func store(_ img: NSImage, _ key: String, px: Int) {
@@ -133,6 +144,63 @@ public final class IconCache {
         store(img, k, px: px)
         if case .file(let p) = spec, Self.wantsThumbnail(p) { thumbnail(p, key: k, points: points, scale: scale, px: px, ready: ready) }
         return img
+    }
+
+    /// What is drawn now, with no work: the picture if it is already made, else nil. Never renders.
+    public func cachedNow(_ spec: IconSpec, points: CGFloat, scale: CGFloat) -> NSImage? {
+        let px = max(1, Int((points * scale).rounded()))
+        let k = key(spec, px: px)
+        return k.isEmpty ? nil : cache.object(forKey: k as NSString)
+    }
+
+    /// Whether an icon is worth making off the main thread: a file's or an app's own picture, which
+    /// asks the system for its icon and takes a few to tens of milliseconds the first time.
+    static func isSlow(_ spec: IconSpec) -> Bool {
+        switch spec { case .file, .bundle: return true; default: return false }
+    }
+
+    private static let iconQueue = DispatchQueue(label: "sh.vyre.capsule.icons", qos: .userInitiated, attributes: .concurrent)
+
+    /// The picture for a file or app: the cached one now, or nil now and `ready` on the main thread
+    /// when it has been made off it. A row draws nothing (never a stall) until then.
+    public func imageAsync(_ spec: IconSpec, points: CGFloat, scale: CGFloat, ready: @escaping (NSImage) -> Void) -> NSImage? {
+        let px = max(1, Int((points * scale).rounded()))
+        let k = key(spec, px: px)
+        if k.isEmpty { return nil }
+        if let hit = cache.object(forKey: k as NSString) { order.removeAll { $0 == k }; order.append(k); return hit }
+        guard Self.isSlow(spec) else { return image(spec, points: points, scale: scale) }
+        guard pending.insert(k).inserted else { return nil }
+        Self.iconQueue.async {
+            let img = Self.renderOffMain(spec, points: points, px: px)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self.pending.remove(k)
+                    // A file or app that is gone gets the plain symbol, made here where colours are safe to read.
+                    let fallback: IconSpec = { if case .bundle = spec { return .symbol("app", .ash) }; return .symbol("doc", .ash) }()
+                    guard let img = img ?? self.render(fallback, points: points, px: px) else { return }
+                    self.renders += 1
+                    self.store(img, k, px: px)
+                    ready(img)
+                    if case .file(let p) = spec, Self.wantsThumbnail(p) { self.thumbnail(p, key: k, points: points, scale: scale, px: px, ready: ready) }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// The system icon of a file or app, drawn into its bitmap. Touches no state of the cache.
+    nonisolated static func renderOffMain(_ spec: IconSpec, points: CGFloat, px: Int) -> NSImage? {
+        switch spec {
+        case .file(let p):
+            guard FileManager.default.fileExists(atPath: p) else { return nil }
+            let src = NSWorkspace.shared.icon(forFile: p)
+            return draw(px: px, points: points) { fit(src, in: $0, fill: false) }
+        case .bundle(let b):
+            guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) else { return nil }
+            let src = NSWorkspace.shared.icon(forFile: url.path)
+            return draw(px: px, points: points) { fit(src, in: $0, fill: false) }
+        default: return nil
+        }
     }
 
     static func wantsThumbnail(_ path: String) -> Bool {
@@ -205,7 +273,7 @@ public final class IconCache {
     }
 
     /// A px x px RGBA bitmap, drawn in pixels, wrapped as an image of `points`.
-    static func draw(px: Int, points: CGFloat, _ body: (NSRect) -> Void) -> NSImage? {
+    nonisolated static func draw(px: Int, points: CGFloat, _ body: (NSRect) -> Void) -> NSImage? {
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8, samplesPerPixel: 4,
                                          hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let ctx = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
@@ -224,7 +292,7 @@ public final class IconCache {
     }
 
     /// `fill` crops to the square (photos); otherwise the image fits inside it, centred.
-    static func fit(_ img: NSImage, in rect: NSRect, fill: Bool) {
+    nonisolated static func fit(_ img: NSImage, in rect: NSRect, fill: Bool) {
         let w = max(img.size.width, 1), h = max(img.size.height, 1)
         let k = fill ? max(rect.width / w, rect.height / h) : min(rect.width / w, rect.height / h)
         let r = NSRect(x: rect.midX - w * k / 2, y: rect.midY - h * k / 2, width: w * k, height: h * k)

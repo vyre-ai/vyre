@@ -16,6 +16,7 @@ import { execFile } from "node:child_process";
 import { migrate } from "../store/index.js";
 import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
 import { isServer } from "../config/index.js";
+import { within } from "../../lib/within.js";
 
 /**
  * The floor's list. These need presence whatever their owners declare; a module can add to the
@@ -206,9 +207,11 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 /**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
  * that declaration they ask every time. gate.approve asks only for what goes out as the user:
- * sending, posting, paying or deleting outside (the no-nag rule).
+ * sending, posting, paying or deleting outside (the no-nag rule). vault.account.unlock asks only
+ * when no vault password comes with it (Touch ID): the password is the proof, so a Mac with no
+ * Touch ID reader is asked once, not for the Mac login and then the vault password.
  */
-export const NARROWABLE = new Set(["gate.approve"]);
+export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
 
 /**
  * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
@@ -348,6 +351,20 @@ export const MIGRATIONS = [`
   CREATE TRIGGER presence_keys_signer_alg_update BEFORE UPDATE OF kind, alg, public_key ON presence_keys
     WHEN (NEW.kind = 'capsule' AND (NEW.alg IS NULL OR NEW.alg <> -7)) OR (NEW.kind = 'device' AND (NEW.alg IS NULL OR NEW.alg NOT IN (-7, -257)))
     BEGIN SELECT RAISE(ABORT, 'a capsule key must store alg -7 and a device key alg -7 or -257'); END;
+`, `
+  -- A person session made with a presence key remembers which one, so removing that key can end the
+  -- sessions it opened. presence_removed keeps what was removed for 30 days: a session's id with
+  -- the hash of its secret (so only a holder of the credential this box issued can be told "this
+  -- device was removed"; anyone else gets today's answer) and the removed key's id.
+  ALTER TABLE presence_people ADD COLUMN key_id TEXT;
+  CREATE TABLE presence_removed (
+    id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('session', 'key')),
+    hash TEXT,
+    key_id TEXT,
+    removed INTEGER NOT NULL,
+    PRIMARY KEY (id, kind)
+  );
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -598,8 +615,7 @@ export class Presence {
       // The helper is built on first use, which can take a while. A refusal should not wait on
       // that: until it answers, Touch ID is not offered, and the build carries on behind.
       const t = await this.touchid();
-      const within = new Promise(r => setTimeout(r, 3000, false).unref());
-      try { if (t && await Promise.race([t.available(), within])) out.push("touchid"); } catch {}
+      try { if (t && await within(t.available(), 3000, false)) out.push("touchid"); } catch {}
     }
     if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
     const link = this.coreLink;
@@ -1007,7 +1023,20 @@ export class Presence {
   remove(id) {
     if (this.coreLink) throw coreOwned("presence keys are removed");
     this.db.prepare("DELETE FROM presence_key_devices WHERE key = ?").run(String(id));
-    return Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+    const removed = Number(this.db.prepare("DELETE FROM presence_keys WHERE id = ?").run(String(id)).changes) === 1;
+    if (removed) {
+      // The sessions this key opened end with it. Each is remembered for 30 days (its id and the
+      // hash of its secret) so the device that held it can be told once, plainly, that it was
+      // removed (person.js check); the key's own id is kept too.
+      const now = this.now();
+      this.db.prepare("DELETE FROM presence_removed WHERE removed <= ?").run(now - 30 * 86_400_000);
+      for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id, hash FROM presence_people WHERE key_id = ?").all(String(id)))) {
+        this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
+      }
+      this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
+    }
+    return removed;
   }
 
   /** Never a code, key, signature or input: tool, method and caller only. */

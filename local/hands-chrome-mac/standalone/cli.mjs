@@ -12,7 +12,7 @@ import { PKG, dataDirOf, sockPathOf, createRuntime } from "./runtime.js";
 import { serve } from "./mcp.js";
 import { readConfig, writeConfig, report } from "./trace.js";
 import readline from "node:readline";
-import { doctor, render } from "./doctor.js";
+import { doctor, render, runningBrowsers } from "./doctor.js";
 import { createBridge } from "../bridge.js";
 import { diagnoseConnection } from "../diagnose.js";
 import * as nativeHost from "../native-host/install.js";
@@ -71,6 +71,7 @@ const HELP = `Vyre for Chrome ${version} (vyre-chrome): control your own Chrome 
   vyre-chrome doctor                              checks the whole path from a terminal and says the one fix
   vyre-chrome report [--last N] [--out FILE]      one redacted bundle of your last N sessions, with a summary
   vyre-chrome config ghl-host <domain> [--remove]  optional: a GoHighLevel domain to always count (white-label domains are recognised automatically)
+  vyre-chrome config learn on|off                 learn each site's structure on this computer (default off; never a value)
   vyre-chrome config confirm-sends on|off         ask you before a send and before resuming after Esc (default on)
   vyre-chrome logs on|off|path                    turn the local trace on or off, or print where it is
   vyre-chrome logs values builder|all|none        which typed values a trace keeps (default builder: only on GoHighLevel automation pages)
@@ -128,7 +129,9 @@ async function main() {
     const notRegd = Object.keys(nativeHost.BROWSERS).filter(b => nativeHost.available(/** @type {any} */ (b), process.platform) && !regd.includes(b));
     out(`Vyre for Chrome is installed. Registered the connector for: ${regd.join(", ")}.`);
     if (notRegd.length) out(`Not registered (not found on this computer): ${notRegd.join(", ")}. If you use one of them, run: vyre-chrome install --browsers <name>`);
-    out("If your browser is already open, it may need a quit and reopen before it sees the connector. The check at the end tells you.");
+    const open = runningBrowsers().filter(b => regd.some(r => new RegExp(r === "chrome" ? "chrome" : r, "i").test(b.name)));
+    if (open.length) out(`${open.map(b => b.name).join(" and ")} ${open.length > 1 ? "are" : "is"} already running (since ${new Date(Math.min(...open.map(b => b.startedAt))).toLocaleString()}). A browser that was open before the connector was registered may not see it until you quit it completely and open it again once. The check at the end tells you whether that is needed.`);
+    else out("If your browser is already open, it may need a quit and reopen before it sees the connector. The check at the end tells you.");
     out();
     out(guide(extDirNow, id, r.written.map((/** @type {any} */ w) => w.browser)).split("\n").slice(1, 5).join("\n"));
     out();
@@ -167,7 +170,8 @@ async function main() {
       return;
     }
     if (args[0] === "confirm-sends" && ["on", "off"].includes(args[1])) { writeConfig(dataDir, { confirmSends: args[1] === "on" }); out(`Asking you before a send or a resume is ${args[1]}.`); return; }
-    throw new Error("config: confirm-sends on|off | ghl-host <domain> [--remove]");
+    if (args[0] === "learn" && ["on", "off"].includes(args[1])) { writeConfig(dataDir, { learn: args[1] === "on" }); out(`Learning each site's structure is ${args[1]}. It is off until you turn it on, and it never stores a value.`); return; }
+    throw new Error("config: confirm-sends on|off | learn on|off | ghl-host <domain> [--remove]");
   }
 
   if (cmd === "uninstall") {

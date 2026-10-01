@@ -17,7 +17,7 @@ every size" (the reference), "Needs you, phone and desktop" and "Devices, networ
 |---|---|---|
 | Deck | `deck/css/deck.css` `.rows`, `.section-head` (main, work/pwa) | partial |
 | App | `apps/app/src/ui/List.tsx` (work/mobile) | partial |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift` results, SectionHeader; `UI/AgentDeskView.swift` WaitingList (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift` results, SectionHeader; `UI/AgentDeskView.swift` WaitingList (work/capsule-pro) | partial |
 
 ## Anatomy
 
@@ -97,6 +97,6 @@ Deck
 App (work/mobile)
 - [ ] Virtualized above 100 rows (correct); no sticky group headers, no Load 40 more, no chips.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] SectionHeader is mono 10 caps with tracking; use 12/600 sentence case.
 - [ ] The waiting list caps at 9 rows (`Theme.maxRows`) with no count or more.

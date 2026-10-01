@@ -460,3 +460,27 @@ test("push: live checks for `vyre phone add`: push.subscribed, a test receipt po
   await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
   await until(() => events("push.seen").length === 3, "again after 10 minutes");
 });
+
+test("push: the proactive kinds share one daily budget; asks and set reminders do not count", async t => {
+  const root = tempHome(t);
+  const svc = await fakeService(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (tool, input = {}) => call(tool, input, { root, caller: "deck" });
+  const until = async (fn, what) => { const end = Date.now() + 5000; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 20)); } };
+  const phone = await browser();
+  await deck("push.key");
+  await deck("push.subscribe", { subscription: { endpoint: `${svc.base}/push/phone`, keys: phone.keys } });
+  const capped = [];
+  d.events.on("push.capped", e => capped.push(e.payload.tag));
+  const got = () => svc.got.filter(g => g.path === "/push/phone").length;
+  for (let i = 1; i <= 5; i++) d.events.emit("assistant", "push.proactive", { title: "kit finished the intake form", path: "/threads/t1", tag: `p${i}` }, {});
+  await until(() => got() === 3, "three pushes");
+  await until(() => capped.length === 2, "two over budget");
+  assert.deepEqual(capped, ["p4", "p5"]);
+  d.events.emit("threads", "ask.raised", { ask: "z9", tool: "Bash", summary: "x", destination: "/w" }, { thread: "t-1" });
+  await until(() => got() === 4, "an ask is never capped");
+  assert.equal(got(), 4);
+});

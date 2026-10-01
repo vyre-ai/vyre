@@ -76,7 +76,7 @@ export function termError(err) {
     too_many: "Eight terminals are already open. Close one first.",
     not_found: "That terminal has ended.",
     terminal_closed: "The server was updated and this terminal was closed.",
-    offline: "vyred did not answer. The server may be asleep or out of reach.",
+    offline: "The box did not answer. It may be asleep or out of reach.",
   };
   return words[err.code] || String(err.message || err);
 }
@@ -114,9 +114,9 @@ function loadXterm() {
 function theme() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name, dflt) => cs.getPropertyValue(name).trim() || dflt;
-  // Spec (terminal.md, Colour mapping): ANSI folds onto the roles and lime; no other hue, and
+  // Spec (terminal.md, Colour mapping): ANSI folds onto the roles and bone; no other hue, and
   // never the beacon colour. Paths (blue) in --text-2, user and host in --label, success in --focus.
-  const text = v("--text", "#F1EEE6"), text2 = v("--text-2", "#B3AEA4"), label = v("--label", "#8C877D"), focus = v("--focus", "#C6F36B");
+  const text = v("--text", "#F1EEE6"), text2 = v("--text-2", "#B3AEA4"), label = v("--label", "#8C877D"), focus = v("--focus", "#F1EEE6");
   return {
     background: v("--code-bg", "#121110"), foreground: text,
     cursor: focus, cursorAccent: v("--code-bg", "#121110"),

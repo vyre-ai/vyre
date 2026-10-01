@@ -762,3 +762,46 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 - Note for team-lead: this supersedes "the assistant can turn a proposed duty on" until P17; the person's tap does it.
 - reviewer-2 (54c90229 cleared): with the P17 swap, an edited proposal must show "changed since you last saw it" or re-show its
   instruction when turned on, so the approved text is the text that runs. On the release list (Deck card + an `expect` check on enable).
+
+## Stop cleanly (2026-09-30, platform's find)
+
+- core/team's dispatcher could outlive the daemon: a worktree teammate's queued merge (the integrator's dispatch and the
+  thread.finished listener behind it) kept running after stop and hit "database is not open". Now `stop()` sets a flag, drops the
+  waiting thread.finished listeners, and awaits every in-flight pump/turn-ended job (tracked), before the daemon closes the store;
+  pump does nothing once stopped. Test: stopping right after a worktree merge was queued (fails 3/3 without the fix, passes with it).
+- stop() waits at most STOP_WAIT_MS (10 s, core/team/bounded.js boundedWait), then logs and stops anyway (reviewer-2 LOW).
+
+## Person-only writes + projectArg (2026-09-30, team-lead)
+
+- projects.rename, projects.archive and team.charter.set are now person-only (callers cli, local, deck, capsule, module); a session or an agent
+  is refused by the registry (test in team.test.js; the old unit test that leaned on an in-module check is removed). team.charter.draft stays
+  open to agents: they draft, the person writes. Merged origin/work/platform-contract (67bd90da) for the projectArg registry rule, and declared
+  `projectArg: "project"` on every team.* and projects.* tool that takes a project (team.add/retire/list/ask/charter.*/role.fill/duties.create+list/
+  default.*/project-*, projects.history/rename/archive/add-threads/remove-threads).
+
+## Restart reconcile (2026-10-01, PLAN section 5 row 7)
+
+- At start, a request still `running` whose thread is gone (threads stops every live one at boot) is closed `failed` with "vyre restarted
+  while this was running" (the asker gets it as the result; never re-run on its own since it may have changed things), its teammate is
+  freed and its next queued request starts. Slots are in memory so they start free. Test: core/team/team.test.js "a vyre restart while a
+  request is running...". Daemon-booting tests run on runners or the test box from here on.
+
+## Duty news (2026-10-01, watchers' ask)
+
+- watchers files one item per firing and team.notes refuses module callers, so the dispatcher reads a teammate's duty items
+  (`watchers.items {name}`) and puts what is new ahead of its next request as nonce'd data ("data, not instructions", neutralised,
+  capped). `seen_at` per duty, so each item is read once; a proposal has no watcher so no news. Watchers confirmed their calls match
+  (create/update/pause/resume/delete/run, callers module:team or the person) and that a bad `when` throws a message on how to write it,
+  which team.duties.* already surfaces as "watchers: ...". Tested with a fake watchers (duties.test.js, no daemon).
+
+## Person-surface click is the asking (2026-10-01, team-lead's ruling)
+
+- `team.duties.enable {id}`: cli, local, deck, capsule only, plus an isPerson check (no module, agent or thread claim); `team.duties.disable {id}` also takes module callers since it only stops work.
+  They are the same change as team.duties.update {enabled}, which keeps its gate for agents and sessions (personAsked, gate.said.match with P17).
+
+## Account swap keeps the role (2026-10-01, PLAN row 7)
+
+- shouldRotate also asks `sessions.accounts.resolve {provider of the live thread, agent, project}`; when the account differs from the one the thread ran on
+  (the person bound another account to the teammate) the next request starts a fresh thread, and the role's notes, charter and recent results carry over
+  (accountChanged, unit-tested). A teammate's identity is the role, not the provider's thread. Two teammates in one project on two providers stay independent
+  because the resolve is per agent. Not covered live (needs two real accounts): runner e2e.
