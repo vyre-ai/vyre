@@ -4,7 +4,7 @@
   "description": "One short tip at a time about the part of Vyre you are using, the parts you have not tried, and what an update brought. Each module ships its own tips; this one chooses, never nags, and turns off in Settings.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "tips.next", "reach": "person" }, { "name": "tips.seen", "reach": "person" }, { "name": "tips.used", "reach": "person" }, { "name": "tips.dismiss", "reach": "person" }, { "name": "tips.whatsnew", "reach": "person" }, { "name": "tips.list", "reach": "anyone" }, { "name": "tips.reset", "reach": "person" }] },
+  "does": { "tools": ["tips.next", "tips.seen", "tips.used", "tips.dismiss", "tips.whatsnew", "tips.list", "tips.reset"] },
   "watches": { "emits": ["tips.updated"] },
   "shows": { "cli": ["tips"] },
   "settings": [
