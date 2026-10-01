@@ -54,8 +54,9 @@ export function check(dir, { pulled = false, pubkey = "" } = {}) {
     const imageLines = compose.split("\n").filter(l => /^[ \t]*image:/.test(l));
     for (const l of imageLines) if (!EXACT_IMAGE.test(l)) problems.push(`compose.yml has an image line that is not pinned exactly by digest: ${l.trim()}`);
     if (box && !imageLines.some(l => l.replace(/^[ \t]*image:[ \t]*/, "") === box)) problems.push(`compose.yml has no image line that is exactly ${box}`);
-    const cl = compose.split("\n").filter(l => !/^[ \t]*#/.test(l) && l.includes("VYRE_COMPUTERS_IMAGE"));
-    if (computer && !cl.some(l => l.includes(computer))) problems.push(`compose.yml does not carry ${computer} as the default of VYRE_COMPUTERS_IMAGE`);
+    // Every VYRE_COMPUTERS_IMAGE default in the file (there may be several services that read it) is the signed computers ref, and there is at least one.
+    const defaults = [...compose.replace(/^[ \t]*#.*$/gm, "").matchAll(/VYRE_COMPUTERS_IMAGE:-([^}\s]*)\}/g)].map(m => m[1]);
+    if (computer && (defaults.length === 0 || defaults.some(d => d !== computer))) problems.push(`every default of VYRE_COMPUTERS_IMAGE in compose.yml must be ${computer} (found: ${defaults.join(", ") || "none"})`);
     if (/:latest\b/.test(compose.replace(/^[ \t]*#.*$/gm, ""))) problems.push("compose.yml still names a :latest tag");
   }
 

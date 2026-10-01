@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- release pipeline, reviewer-2's follow-ups: the prepare job of a publishing run fails unless the tagged commit is an ancestor of origin/main or origin/work/stage-0.2, before any repo script runs with the release environment's key; every VYRE_COMPUTERS_IMAGE default in the released compose.yml must equal the signed computers ref (the updater, the installer and check-release-dist all require it, and at least one must exist).
 - release.yml makes what the updater reads (launch, on top of work/integrator's pipeline): the images are pinned into the released compose.yml by `scripts/pin-release-compose.mjs` (literal `image: <ref>@sha256:` lines, no `${VYRE_IMAGE:-...}`); on a publish SHA256SUMS is signed with the Ed25519 key every updater verifies (`scripts/sign-manifest.mjs`, the release environment's VYRE_RELEASE_SIGNING_KEY, which also writes manifest.json and refuses a signature the pinned key does not verify), before minisign and the cosign blob; and `scripts/check-release-dist.mjs dist --pulled --pubkey <pinned key>` gates the release (a dry run is checked without --pulled). The cosign identity is unchanged. `scripts/check-release-key.mjs` also checks that box/vyre pins the same key as release.js and the Mac installer. test/release-workflow.test.js keeps the order.
 #### release: v2 pipeline (0.2 PLAN R1, R5, R7)
 

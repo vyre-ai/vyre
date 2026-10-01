@@ -22,3 +22,10 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const cosignRegex = fs.readFileSync(path.join(REPO, "scripts/install-box.sh"), "utf8").match(/^COSIGN_ID='(.*)'$/m)?.[1] || "";
   assert.ok(cosignRegex.includes("workflows/release\\.yml@refs/tags/v"), "the installer's identity names this workflow file at a version tag");
 });
+
+test("release.yml: a publishing run builds and signs only a commit that is on main or the 0.2 stage line, checked before the notes step", () => {
+  const guard = yml.indexOf("git merge-base --is-ancestor \"$GITHUB_SHA\" origin/main");
+  assert.ok(guard > 0 && guard < yml.indexOf("- name: Version, channel, notes"));
+  assert.match(yml, /origin\/work\/stage-0\.2/);
+  assert.match(yml, /if: github\.event_name == 'push' && vars\.VYRE_RELEASES == 'go'\n\s+run: \|\n\s+git fetch --no-tags origin main work\/stage-0\.2/);
+});
