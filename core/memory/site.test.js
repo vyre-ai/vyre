@@ -91,6 +91,13 @@ test("site.put: a patch with a secret, a seed or an email is refused whole, noth
   assert.equal(String(/** @type {any} */ (w.db.prepare("SELECT record FROM memory_site").get()).record).includes("a1b2c3d4"), false);
 });
 
+test("site.put: a value the bridge already redacted refuses the whole observation, and no marker-only selector is stored", async t => {
+  const w = await world(t);
+  const r = await w.call("memory.site.put", { origin: ORIGIN, patch: patch({ controls: [{ id: "c_00000001", page: "/w", role: "button", selector: { strategy: "identifier", identifier: "[redacted:key:40]" }, outcome: "ok" }] }) });
+  assert.equal(r.data.accepted, false);
+  assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM memory_site").get().n, 0, "nothing stored for it");
+});
+
 test("families: a family is written only by an origin that named it, and a read returns both cards", async t => {
   const w = await world(t);
   assert.equal((await w.call("memory.site.put", { origin: AGENCY, target: "family", family: "ghl", patch: patch() })).code, "denied", "the origin has not named the family");
