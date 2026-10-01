@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "push.key", "reach": "person" }, { "name": "push.subscribe", "reach": "person" }, { "name": "push.unsubscribe", "reach": "person" }, { "name": "push.devices", "reach": "person" }, { "name": "push.settings", "reach": "asked" }, { "name": "push.seen", "reach": "person" }, { "name": "push.test", "reach": "person" }, { "name": "push.receipt", "reach": "person" }] },
+  "does": { "tools": [{ "name": "push.key", "reach": "person" }, { "name": "push.subscribe", "reach": "person" }, { "name": "push.unsubscribe", "reach": "person" }, { "name": "push.devices", "reach": "person" }, { "name": "push.settings", "reach": "person" }, { "name": "push.seen", "reach": "person" }, { "name": "push.test", "reach": "person" }, { "name": "push.receipt", "reach": "person" }] },
   "watches": { "emits": ["push.subscribed", "push.delivered", "push.seen", "push.capped"] },
   "shows": { "deck": ["settings:notifications"], "capsule": [], "cli": [] },
   "needs": { "vault": ["push-vapid"] },

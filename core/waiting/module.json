@@ -4,7 +4,7 @@
   "description": "One list of what waits on the user: session asks, held drafts, ringing reminders and pairing requests.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "waiting.list", "reach": "asked" }, { "name": "waiting.count", "reach": "asked" }] },
+  "does": { "tools": [{ "name": "waiting.list", "reach": "anyone" }, { "name": "waiting.count", "reach": "anyone" }] },
   "watches": { "emits": ["waiting.changed"] },
   "shows": { "cli": [] },
   "needs": {},
