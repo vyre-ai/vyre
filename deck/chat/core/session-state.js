@@ -94,7 +94,7 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
  * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
- * @typedef {{ key: string, kind: "plan", items: { text: string, status: "pending"|"running"|"done" }[], at?: number }} PlanItem
+ * @typedef {{ key: string, kind: "plan", items: { text: string, status: "pending"|"running"|"done" }[], at?: number, seq?: number }} PlanItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
  *   decision?: string|null, summary?: string|null, answers?: any, at?: number, seq?: number }} AskItem
  * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number,
