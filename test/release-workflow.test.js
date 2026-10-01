@@ -80,3 +80,9 @@ test("release.yml: the approver summary names what is being released on its righ
   assert.match(yml, /name: signing-diff\n\s+path: signing-diff\/signing-diff\.txt/);
   assert.ok(yml.indexOf("name: signing-diff") < yml.indexOf("- name: Box files and vyre.tgz"), "uploaded from the prepare job, before any approval");
 });
+
+test("release.yml: prepare refuses a release whose package, lockfile and plugin versions disagree", () => {
+  const i = yml.indexOf('the tag says $version but package.json says $pkg');
+  assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
+  assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
+});

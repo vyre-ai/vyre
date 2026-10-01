@@ -31,7 +31,9 @@ async function box(t, api, config = {}) {
   const savedEnv = { a: process.env.VYRE_UPDATE_DIR, b: process.env.VYRE_UPDATE_STATE, c: process.env.VYRE_UPDATE_QUIET };
   process.env.VYRE_UPDATE_DIR = req; process.env.VYRE_UPDATE_STATE = state; process.env.VYRE_UPDATE_QUIET = "0-24";
   t.after(() => { for (const [k, v] of [["VYRE_UPDATE_DIR", savedEnv.a], ["VYRE_UPDATE_STATE", savedEnv.b], ["VYRE_UPDATE_QUIET", savedEnv.c]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 }, ...config }));
+  // The channel is stated, not read from the build: a box running a prerelease (0.2.0-rc.1) follows beta by design, and these tests are about
+  // stable (a test may pass its own update settings; the channel stays stable unless it says otherwise).
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 }, ...config, update: { channel: "stable", ...(config.update || {}) } }));
   const saved = process.env.VYRE_RELEASES_API;
   process.env.VYRE_RELEASES_API = api;
   const d = await start({ root, log: () => {} });

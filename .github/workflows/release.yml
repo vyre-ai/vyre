@@ -78,6 +78,8 @@ jobs:
           version=${TAG#v}
           pkg=$(node -p 'require("./package.json").version')
           [ "$pkg" = "$version" ] || { echo "the tag says $version but package.json says $pkg: bump it first"; exit 1; }
+          # Every place a version lives (package.json, the lockfile, the Claude Code plugin) must agree: scripts/bump-version.mjs moves them together.
+          node scripts/bump-version.mjs --check
           notes=release/notes/$version.md
           [ -f "$notes" ] || notes=release/notes/${version%-*}.md
           if [ ! -f "$notes" ]; then
