@@ -96,3 +96,13 @@ test("the yes lapses after 15 minutes", async t => {
   w.tick(16 * 60_000);
   assert.equal((await w.create({ name: "inbox-mail", hash: "aaaa1111bbbb" })).error?.code, "not_asked");
 });
+
+test("the folder changes after the card was shown: the intent still carries the shown hash, so create with the new hash is refused", async t => {
+  const w = await world(t);
+  // The card the person saw carried aaaa1111bbbb. The agent then edited the folder; its hash is now 9999eeee0000.
+  const shown = [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail" }];
+  assert.equal(watchersIntents("Turn on the inbox watcher.", { watchers: shown }).intents[0].to[0], "watchers.create:inbox-mail@aaaa1111bbbb");
+  w.say("t1", "Turn on the inbox watcher.", shown);
+  assert.equal((await w.create({ name: "inbox-mail", hash: "9999eeee0000" })).error?.code, "not_asked", "the edited folder is not what they saw");
+  assert.equal(globalThis.__created, undefined);
+});
