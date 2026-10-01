@@ -783,6 +783,21 @@ export class Pool {
       try { await this.driver.remove(c.id); this.log(`removed ${c.agent}'s orphaned computer ${c.id}: its passwords were lost with the table`); }
       catch (e) { this.log(`could not remove orphaned computer ${c.id}: ${/** @type {Error} */ (e).message}`); }
     }
+    // vyred's address can change while a computer keeps running (its container recreated). The computer's gate then
+    // refuses the new address, and the token that would re-pin it could only arrive over a connection the gate refuses. So
+    // after a start, show every running computer the token once; one that closes on us is restarted (its home volume
+    // stays, its secrets are re-seeded, and it pins this vyred at boot). A computer that is merely not listening yet is left.
+    if (this.probe) {
+      for (const r of this.rows()) {
+        if (r.state !== "running" || !this.hosts.has(r.agent)) continue;
+        let closed = false;
+        try { await this.pin(r.agent); } catch (e) { const c = /** @type {any} */ (e).cause && /** @type {any} */ (e).cause.code; closed = c === "ECONNRESET" || c === "UND_ERR_SOCKET"; }
+        if (closed) {
+          this.log(`${r.agent}'s computer refuses this vyred's address; restarting it so it pins the new one`);
+          await this.restart(r.agent).catch(e => this.log(`could not restart ${r.agent}'s computer: ${/** @type {Error} */ (e).message}`));
+        }
+      }
+    }
   }
 
   // ---- what Glass and the hands need -----------------------------------------------------

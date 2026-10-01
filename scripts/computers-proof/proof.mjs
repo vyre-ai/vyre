@@ -262,6 +262,31 @@ try {
       const out = shOk(["exec", "-u", "1000:1000", from, "bash", "-c", `timeout 6 bash -c 'exec 3<>/dev/tcp/${ip}/${port} || exit 7; printf "GET /ping HTTP/1.0\\r\\n\\r\\n" >&3; head -c 12 <&3 | wc -c' 2>&1`]).split("\n").pop().trim();
       return /^\d+$/.test(out) && Number(out) > 0 ? `ANSWERED (${out} bytes)` : "REFUSED";
     };
+    // 4h. What the address gate rests on: the agent's uid has no capability and cannot gain one, so it cannot forge another
+    // computer's (or vyred's) source address or poison the bridge's ARP. Printed in full for the log.
+    const asAgentC = cmd => shOk(["exec", "-u", "1000:1000", CONTAINER, "sh", "-c", cmd]);
+    const stat = asAgentC("grep -E '^(CapInh|CapPrm|CapEff|CapBnd|CapAmb|NoNewPrivs)' /proc/self/status");
+    console.log("--- the agent uid's capabilities\n" + stat);
+    const field = k => (new RegExp(`^${k}:\\s*(\\S+)`, "m").exec(stat) || [])[1];
+    note(/^0+$/.test(String(field("CapEff"))) && /^0+$/.test(String(field("CapPrm"))) && /^0+$/.test(String(field("CapAmb"))) && field("NoNewPrivs") === "1",
+      "4h the agent uid has no effective, permitted or ambient capability, and no-new-privileges is on", { CapBnd: field("CapBnd"), CapEff: field("CapEff"), NoNewPrivs: field("NoNewPrivs") });
+    const sudo = asAgentC("command -v sudo doas pkexec 2>/dev/null; echo done").split("\n").filter(l => l && l !== "done");
+    note(sudo.length === 0, "4h no sudo, doas or pkexec for the agent uid", sudo.join(",") || "none");
+    const suid = asAgentC("find / -xdev -type f -perm -4000 2>/dev/null | head -20").split("\n").filter(Boolean);
+    console.log("setuid files in the image (inert under no-new-privileges): " + (suid.join(" ") || "none"));
+    // 4i (7.5). Forging a source address needs a raw or packet socket (ARP poisoning needs a packet socket); both need
+    // CAP_NET_RAW, which no computer has.
+    const forge = asAgentC(`python3 - <<'PY'
+import socket
+out = []
+for name, fam, typ, proto in (("raw IP socket", socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_RAW), ("raw ICMP socket", socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP), ("packet socket (ARP)", socket.AF_PACKET, socket.SOCK_RAW, 0x0806)):
+    try:
+        x = socket.socket(fam, typ, proto); x.close(); out.append(name + ": OPENED")
+    except Exception as e:
+        out.append(name + ": " + type(e).__name__)
+print("|".join(out))
+PY`).split("\n").pop();
+    note(/^raw IP socket: PermissionError\|raw ICMP socket: PermissionError\|packet socket \(ARP\): PermissionError$/.test(forge), "4i the agent cannot forge a source address or poison ARP: no raw or packet socket opens", forge);
     const a = ipOf(CONTAINER), b = ipOf(otherC);
     for (const [from, to, ip] of [[CONTAINER, other, b], [otherC, AGENT, a]]) {
       for (const port of [5900, 7000]) {

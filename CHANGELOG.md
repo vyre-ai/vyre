@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Computers: the address gate got its own module and tests (`computerd/gate.js`). NET_RAW joins the capabilities a
+  computer may never be given, with a policy test that a computer is made with every capability dropped, only
+  SETUID and SETGID back, and no-new-privileges. When vyred starts, a running computer that closes on its address
+  (vyred was recreated at a new one) is restarted so it pins the new address. J7 prints the agent's CapBnd and
+  CapEff, checks no sudo or setuid path, and tries a raw and a packet socket (7.5).
 - Computers can no longer reach each other's screen or computerd. Every computer shares one Docker network, and
   the J7 matrix step 7.4 showed one computer's agent could dial another's ports 5900 and 7000. Xvnc now listens
   on a unix socket only the vyre uid can open, computerd answers on 5900 and forwards to it, and both of its

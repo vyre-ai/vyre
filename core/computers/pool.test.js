@@ -760,3 +760,20 @@ test("pool: when the runtime cannot be asked, the computer reads unknown, never 
   assert.equal(await pool.verifyAlive("kit"), false);
   assert.equal(pool.view("kit").state, "running");
 });
+
+test("pool: after a vyred start, a computer that closes on this vyred's address is restarted; one that is just not listening yet is left", async t => {
+  const { pool, driver } = setup(t);
+  await pool.checkout("kit");
+  pool.probe = async () => true;
+  const first = [...driver.containers.keys()][0];
+  const failWith = code => { pool.pin = async () => { throw Object.assign(new Error("fetch failed"), { cause: { code } }); }; };
+  failWith("ECONNREFUSED");
+  await pool.reconcile();
+  assert.deepEqual([...driver.containers.keys()], [first], "not listening yet: left alone");
+  failWith("ECONNRESET");
+  await pool.reconcile();
+  const after = [...driver.containers.keys()];
+  assert.equal(after.length, 1);
+  assert.notEqual(after[0], first, "closed on us: made again on the same home");
+  assert.equal(pool.view("kit").state, "running");
+});

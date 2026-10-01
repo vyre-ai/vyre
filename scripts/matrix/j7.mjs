@@ -40,6 +40,12 @@ r.step("7.2-three-app-plan-oversight", "by-hand", { why: "needs a model run and 
 const iso = lines.filter(l => l.tag === "4g");
 if (!iso.length) r.step("7.4-computers-cannot-reach-each-other", "skip", { why: "the proof stopped before this step" });
 else r.step("7.4-computers-cannot-reach-each-other", iso.every(l => l.ok), { why: iso.map(l => `${l.ok ? "refused" : "REACHED"}: ${l.text.replace(/^[^ ]+ /, "")}`).join("; ").slice(0, 400) });
+const caps = lines.filter(l => l.tag === "4h");
+if (!caps.length) r.step("7.5a-agent-has-no-capabilities", "skip", { why: "the proof stopped before this step" });
+else r.step("7.5a-agent-has-no-capabilities", caps.every(l => l.ok), { why: caps.map(l => `${l.ok ? "ok" : "FAIL"}: ${l.text}`).join("; ").slice(0, 400) });
+const forge = lines.filter(l => l.tag === "4i");
+if (!forge.length) r.step("7.5b-agent-cannot-forge-an-address", "skip", { why: "the proof stopped before this step" });
+else r.step("7.5b-agent-cannot-forge-an-address", forge.every(l => l.ok), { why: forge.map(l => l.text).join("; ").slice(0, 400) });
 const kill = lines.filter(l => l.tag === "4f");
 for (const [i, step] of ["7.3a-killed-computer-reported-stopped", "7.3b-glass-says-so-plainly", "7.3c-nothing-left-running"].entries()) {
   const l = kill[i];

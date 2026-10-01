@@ -85,7 +85,7 @@ test("policy: SETUID and SETGID pass with no capAdd configured; the browser volu
 
 test("policy: never a forbidden capability, even if a box misconfigures capAdd to ask for one", async t => {
   const body = await realBody(t, { capAdd: ["SYS_ADMIN"] });
-  for (const cap of ["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]) {
+  for (const cap of ["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "NET_RAW", "DAC_READ_SEARCH", "SYS_RAWIO"]) {
     assert.equal(allowCreate(body, { ...CONFIG, capAdd: [cap] }).ok, false, cap);
   }
 });
@@ -318,4 +318,17 @@ test("policy: an .agent-tokens tar this file allows also parses under computerd'
   assert.equal(parsed.tokens.size, 2);
   assert.deepEqual(parsed.tokens.get(agents[0].token), { id: "id1", name: "alice" });
   assert.deepEqual(parsed.tokens.get(agents[1].token), { id: "id2", name: "alice" });
+});
+
+test("policy: a computer is made with every capability dropped, only SETUID and SETGID back, and no-new-privileges (what the address gate rests on)", async t => {
+  const body = await realBody(t);
+  assert.deepEqual(body.HostConfig.CapDrop, ["ALL"]);
+  assert.deepEqual([...body.HostConfig.CapAdd].sort(), ["SETGID", "SETUID"]);
+  assert.ok(!body.HostConfig.CapAdd.includes("NET_RAW") && !body.HostConfig.CapAdd.includes("NET_ADMIN"));
+  assert.deepEqual(body.HostConfig.SecurityOpt, ["no-new-privileges"]);
+  assert.equal(body.HostConfig.Privileged, false);
+  // And the policy refuses a body that drops less.
+  for (const patch of [b => { b.HostConfig.CapDrop = ["NET_RAW"]; return b; }, b => { b.HostConfig.SecurityOpt = []; return b; }, b => { b.HostConfig.CapAdd = [...b.HostConfig.CapAdd, "NET_RAW"]; return b; }]) {
+    assert.equal(allowCreate(await mutate(t, patch), CONFIG).ok, false);
+  }
 });

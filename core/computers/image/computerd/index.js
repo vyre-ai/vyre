@@ -40,6 +40,7 @@
 
 import { createServer } from "node:http";
 import net from "node:net";
+import { createGate } from "./gate.js";
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -310,21 +311,10 @@ function freezeAgent(on) {
   catch (e) { console.error(`computerd: could not ${on ? "stop" : "continue"} the agent's processes: ${/** @type {any} */ (e).code || e}`); return false; }
 }
 
-// ---- who may connect: vyred, and nothing else on the network -------------------------------
-// Every computer shares one Docker network, and agent code is model-controlled, so another computer must not be able to
-// dial this one's ports. Once vyred has shown the computer's own token (the owner's, or an identified CDP client's), its
-// address is pinned: from then on a connection to 7000 or to the screen's 5900 from any other address, loopback aside (this
-// computer's own processes), is closed before a byte is read. Any later valid token re-pins, so a vyred that comes back at a
-// new address is let in; a wrong token never pins. Before the first valid token anything may connect, and anything that does
-// can only be told 401: the pool pins right after a computer starts (GET /ping).
-/** @type {string|null} */
-let vyredAddr = null;
-const plainAddr = a => String(a || "").replace(/^::ffff:/, "");
-const isLoopback = a => plainAddr(a) === "127.0.0.1" || plainAddr(a) === "::1";
-/** @param {string|undefined} addr */
-function peerAllowed(addr) { return isLoopback(addr) || vyredAddr === null || plainAddr(addr) === vyredAddr; }
-/** @param {string|undefined} addr */
-function pinPeer(addr) { if (!isLoopback(addr)) vyredAddr = plainAddr(addr); }
+// ---- who may connect: vyred, and nothing else on the network (gate.js) ---------------------
+const gate = createGate();
+const peerAllowed = addr => gate.allowed(addr);
+const pinPeer = addr => gate.pin(addr);
 
 /** Constant-time token comparison; hashing first hides the length too. */
 function sameToken(given, expected) {
