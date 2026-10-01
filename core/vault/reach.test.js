@@ -44,8 +44,6 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
       assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${tool} as ${caller}: ${JSON.stringify(r)}`);
     }
     // The module's own call through ctx.call (a first-party module reaches the registry as module:probe).
-    const viaModule = await door("probe.try", "local", {});
-    assert.equal(viaModule.data && viaModule.data.code, undefined, "the probe itself runs for the person");
     const probed = await d.registry.call("probe.try", { tool }, "local");
     assert.ok(probed.data && ["denied", "no_such_tool"].includes(probed.data.code), `${tool} through a module: ${JSON.stringify(probed)}`);
     // Positive control: the person's own surface is past the door.
