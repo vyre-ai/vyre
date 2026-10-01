@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Computers and Glass say their reach on purpose. `computers.handback.set`, `computers.member.*`,
+  `computers.egress.*`, `computers.tailnet.*` and `computers.handback.status` are the person's alone (an agent,
+  the assistant and a module are refused); the tools that scope an agent to its own computer through `resolve`
+  stay open to anyone with that guard, and the internal ones (endpoint, helper, may-act, shield, fill, node.agent,
+  stats) are for modules. `glass.targets`, `open`, `close`, `take` and `release` are the person's; `glass.files.*`
+  stays open to an agent but only on its own computer, now tested for every files tool and every way an agent's
+  caller can be spelled.
 - Computers: the screen's address gate is strict (nobody but vyred's pinned address or loopback, and nobody at all
   before a pin). computerd answers an address it does not know with no bytes unless the request carries a valid
   token, which proves it is vyred and re-pins that address, so a vyred that came back at a new address is let in

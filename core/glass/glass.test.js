@@ -490,6 +490,22 @@ test("glass: an agent reaches only its own computer's files, never the box or an
   assert.match((await s.kit("glass.files.download", { target: "box", path: "files/docs/readme.md" })).error.message, /only its own computer/);
 });
 
+test("glass: through every files tool, in every spelling an agent can arrive as, only its own computer can be the target", async t => {
+  const s = await boot(t);
+  const calls = { "glass.files.list": {}, "glass.files.stat": { path: "a" }, "glass.files.preview": { path: "a" }, "glass.files.download": { path: "a" },
+    "glass.files.upload": { path: "a", size: 1 }, "glass.files.move": { from: "a", to: "b", path: "a" }, "glass.files.mkdir": { path: "a" }, "glass.files.trash": { path: "a" } };
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "cli:agent:kit", "mcp:thread:t1 agent:kit"]) {
+    for (const [tool, input] of Object.entries(calls)) {
+      for (const target of ["computer:pax", "computer:kit2", "computer:ki", "box"]) {
+        const r = await s.registry.call(tool, { ...input, target }, caller);
+        assert.ok(r.error && /only its own computer/.test(r.error.message), `${caller} ${tool} ${target}: ${r.error ? r.error.message : "it was allowed"}`);
+      }
+    }
+  }
+  // A person's screen is not so limited.
+  assert.equal((await s.cli("glass.files.list", { target: "computer:pax" })).error, undefined);
+});
+
 test("glass: a private key is refused by its content, whatever its name, on the way out and on the way in", async t => {
   const s = await boot(t);
   // Split so the repository hygiene scan does not take the fixture for a real key.

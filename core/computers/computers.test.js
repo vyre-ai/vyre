@@ -581,6 +581,23 @@ test("computers: all four member tools are on the PERSON_ONLY floor -- the same 
   }
 });
 
+test("computers: the admin tools are a person's alone: an agent and a module are refused, the person is not", async t => {
+  const s = await boot(t);
+  const person = ["computers.handback.set", "computers.member.add", "computers.member.remove", "computers.member.rotate", "computers.member.dispose",
+    "computers.egress.set", "computers.tailnet.set"];
+  for (const tool of person) {
+    const input = { agent: "kit", computer: "browser-abc123", name: "alice", mode: "off", on: false, minutes: 5 };
+    for (const [who, call] of [["an agent", s.kit], ["the assistant", s.juno], ["a module", s.module]]) {
+      const r = await call(tool, input);
+      assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${who} reached ${tool}: ${JSON.stringify(r.error || r.data).slice(0, 120)}`);
+    }
+  }
+  // The person's own surface gets past the door (this one needs no input to answer).
+  const ok = await s.cli("computers.handback.status");
+  assert.equal(ok.error, undefined);
+  assert.notEqual((await s.kit("computers.handback.status")).error, undefined, "its status is the person's too");
+});
+
 test("computers: computers.member.add reaches pool.js and the vault (there is no vault module running here, so it fails there, not at the tool's own gate)", async t => {
   const s = await boot(t);
   const r = await s.cli("computers.member.add", { computer: "browser-abc123", agent: "kit-1", name: "alice" });

@@ -107,7 +107,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `computer.released` | `agent`, `why` |
 | `computer.resumed` | `agent` |
 | `computer.shielded` | `agent`, `reason` |
-| `computer.stopped` | `agent` |
+| `computer.stopped` | `agent`; sometimes `died` |
 | `computer.taken-over` | `agent`, `surface`, `thread` |
 | `computer.thawed` | `agent` |
 | `computer.unshielded` | `agent`, `reason` |
