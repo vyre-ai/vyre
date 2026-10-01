@@ -246,10 +246,17 @@ export default {
       if (p !== "*" && !(Array.isArray(p) && p.every(x => typeof x === "string"))) throw new Error('projects must be "*" or a list of project slugs');
     };
 
-    /** Only the assistant may drive other sessions, from inside its own thread. */
-    const guard = (caller, what) => {
-      const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
-      if (m && get(m[1])?.kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
+    /**
+     * Only the assistant may drive other sessions, from inside its own thread. The agent vyred verified
+     * (meta.agent, meta.agentKind) decides; a label that names an agent without it is a claim, and a claim
+     * is only ever a reason to refuse.
+     */
+    const guard = (meta, what) => {
+      const m = /^mcp:agent:(.+)$/.exec(String((meta && meta.caller) || ""));
+      if (!m) return;
+      const verified = meta && meta.agent === m[1] ? meta.agentKind : undefined;
+      const kind = verified !== undefined ? verified : meta && meta.agent ? undefined : get(m[1])?.kind;
+      if (kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
 
     // For vyred only: the stored grant of an agent vyred has already verified (its thread's own
@@ -264,8 +271,8 @@ export default {
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },
-      run: async (_, { caller }) => {
-        guard(caller, "list agents");
+      run: async (_, meta) => {
+        guard(meta, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
         return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer,
           // The Deck's agent page shows and edits the job from this list.
@@ -307,11 +314,14 @@ export default {
       // models, only the assistant, and only for its words and model: never credentials, budget,
       // projects, skills or a computer. Every other agent, a bare MCP session and a guest are refused.
       callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
-      run: async (i, { caller }) => {
+      run: async (i, meta) => {
+        const { caller } = meta;
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
           const m = /^mcp:agent:(.+)$/.exec(String(caller));
           const plain = Object.keys(i).every(k => i[k] === undefined || PLAIN_UPDATE.has(k));
-          if (!m || get(m[1])?.kind !== "assistant" || !plain) throw Object.assign(new Error("changing agents is the person's"), { code: "denied" });
+          // The verified agent decides (meta.agent, meta.agentKind); a bare label that names the assistant is a claim.
+          const kind = m && meta.agent === m[1] ? meta.agentKind : m && !meta.agent ? get(m[1])?.kind : undefined;
+          if (!m || kind !== "assistant" || !plain) throw Object.assign(new Error("changing agents is the person's"), { code: "denied" });
         }
         if (i.name !== undefined && i.agent !== undefined && i.name !== i.agent) throw new Error("name and agent say different agents; give one");
         const who = i.name ?? i.agent;
@@ -337,8 +347,9 @@ export default {
       input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
-      run: async (i, { caller }) => {
-        guard(caller, "talk to other agents");
+      run: async (i, meta) => {
+        const { caller } = meta;
+        guard(meta, "talk to other agents");
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
         // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;
@@ -432,14 +443,14 @@ export default {
     ctx.tool("agents.threads", {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, { caller }) => { guard(caller, "read other agents"); must(agent); return use("threads.list", { agent }); },
+      run: async ({ agent }, meta) => { guard(meta, "read other agents"); must(agent); return use("threads.list", { agent }); },
     });
 
     ctx.tool("agents.usage", {
       description: "What each agent has used: turns, threads, time, tokens and cost (all of it, and on the API key), its budget and what is left, and the last rate-limit report. since: ms since epoch. With no agent, every agent, and agent null for threads no agent ran.",
       input: { type: "object", properties: { agent: { type: "string" }, since: { type: "integer" } } },
-      run: async ({ agent, since }, { caller }) => {
-        guard(caller, "read other agents' usage");
+      run: async ({ agent, since }, meta) => {
+        guard(meta, "read other agents' usage");
         if (agent) must(agent);
         const rows = await use("threads.usage", { ...(agent ? { agent } : {}), ...(since ? { since } : {}) });
         const used = new Map(rows.map(r => [r.agent, r]));
@@ -460,8 +471,8 @@ export default {
     ctx.tool("agents.history", {
       description: "Past conversations with an agent (or every agent): what was asked, the answer, when, and the thread, newest last. before: an exchange id, for the page before it.",
       input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
-      run: async ({ agent, limit, before }, { caller }) => {
-        guard(caller, "read other agents' conversations");
+      run: async ({ agent, limit, before }, meta) => {
+        guard(meta, "read other agents' conversations");
         if (agent) must(agent);
         return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
       },
@@ -491,8 +502,8 @@ export default {
     ctx.tool("agents.stop", {
       description: "Stop every running thread of an agent. Its record and transcripts stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, { caller }) => {
-        guard(caller, "stop agents");
+      run: async ({ agent }, meta) => {
+        guard(meta, "stop agents");
         must(agent);
         const ts = await use("threads.list", { agent });
         const stopped = [];

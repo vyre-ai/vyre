@@ -21,6 +21,7 @@
 // authority when one is given, same as term's, and is checked before the label/peer fallback.
 
 import crypto from "node:crypto";
+import { callerKind } from "../../core/modules/index.js";
 import { accept, connect, refuse } from "./ws.js";
 import { DEFAULTS, VoiceError, deepgramListen, offline, origin, settings, statusError, transcribe } from "./providers.js";
 
@@ -37,7 +38,7 @@ const TAIL_MS = 5_000;
 /** A ticket's life, same as term's (core/term/index.js). */
 const TICKET_MS = 30_000;
 
-const kindOf = caller => String(caller || "").replace(/[\s:]agent:.*$/s, "");
+const kindOf = callerKind;
 /** The mic is the person's, physically: "cli agent:kit" is a model running under a CLI wrapper,
  *  not the person, whatever kindOf() would otherwise call it (reviewer, 28 Sep). Checked at both
  *  gates: voice.listen (index.js, the ticket-minting tool call) and here, for a direct connect. */
