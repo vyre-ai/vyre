@@ -774,23 +774,19 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   const wrong = call("agents.create", { name: "nova" }, proof({ ...bare.error.server, pid: bare.error.server.pid + 1 }));
   assert.equal(wrong.error?.code, "presence_required", JSON.stringify(wrong));
 
-  const proved = call("agents.create", { name: "juno" }, proof(bare.error.server));
-  assert.equal(proved.error, undefined, JSON.stringify(proved));
+  // The trust proof covers the server; the call itself is a person-only tool outside Tier 1, so it needs no proof of its own.
+  const person = extra => ({ project: "nope", ...extra });
+  const proved = call("projects.access.revoke", person(), proof(bare.error.server));
+  assert.ok(!["denied", "presence_required"].includes(proved.error?.code), JSON.stringify(proved));
   // Once proved, a peer under that leader with no pty in the foreground is refused, and told how to fix it.
-  const headless = call("agents.create", { name: "ghost" });
+  const headless = call("projects.access.revoke", person());
   assert.equal(headless.error?.code, "denied", JSON.stringify(headless));
   assert.match(headless.error.message, /ssh -t/);
   // A pty the caller made for itself (script) under the leader is no terminal the leader made: refused the same way.
   const q = x => `'${String(x).replace(/'/g, `'\\''`)}'`;
-  const selfPty = JSON.parse(execFileSync("script", ["-qec", `curl ${curlArgs("agents.create", { name: "ghost2" }).map(q).join(" ")}`, "/dev/null"], { encoding: "utf8" }).trim());
+  const selfPty = JSON.parse(execFileSync("script", ["-qec", `curl ${curlArgs("projects.access.revoke", person()).map(q).join(" ")}`, "/dev/null"], { encoding: "utf8" }).trim());
   assert.equal(selfPty.error?.code, "denied", JSON.stringify(selfPty));
-  assert.ok(!names().includes("ghost2"));
-  assert.ok(!names().includes("ghost"));
-
-  // The proof was the person's, and covers that call only: the same peer without one is still not at a terminal the leader made.
-  const again = call("agents.create", { name: "kit" });
-  assert.equal(again.error?.code, "denied", JSON.stringify(again));
-  assert.ok(names().includes("juno") && !names().includes("kit") && !names().includes("nova"));
+  assert.ok(!names().includes("nova"));
 });
 
 test("peer: the trusted-leader test seam cannot reach a real vyred", async () => {

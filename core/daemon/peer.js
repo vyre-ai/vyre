@@ -694,25 +694,37 @@ const SSHD = /^sshd(?:-session)?: /;
 
 /**
  * Is this peer's pty one the proved server's own terminal host made? Walk from the peer up to the server: every process
- * between must share the peer's terminal (the shell, login), except one pty helper by name (VS Code's ptyHost, iTerm2's
- * iTermServer). A pty an extension, task or agent made itself (script, python pty.spawn, node-pty) has the maker above
- * the pty, with no terminal and no host name, so the chain fails (reviewer-2, 2 Oct 2026). Not a boundary against an agent
- * typing into the person's own terminal.
- * @param {number} pid @param {number} serverPid @param {(pid: number) => ({ ppid: number, tty: string|null, args: string }|null)} [look]
+ * between must share the peer's terminal (the shell, login), except one pty helper (VS Code's ptyHost, iTerm2's iTermServer)
+ * and sshd's login pair. A helper counts only when its executable sits inside the proved server's own install folder (the
+ * .app bundle, or the server's directory), and an sshd only when its executable is sshd or, unreadable, its uid is 0: a name
+ * in an argument list proves nothing. A pty an extension, task or agent made itself (script, python pty.spawn, node-pty) has
+ * the maker above the pty, with no terminal and no helper identity, so the chain fails (reviewer-2, 2 Oct 2026). Not a
+ * boundary against an agent typing into the person's own terminal.
+ * @param {number} pid @param {{ pid: number, exe?: string }} server
+ * @param {(pid: number) => ({ ppid: number, tty: string|null, args: string }|null)} [look]
+ * @param {{ exe?: (pid: number) => string|null, uid?: (pid: number) => number|null }} [seam]
  */
-export function ptyHosted(pid, serverPid, look = procInfo) {
+export function ptyHosted(pid, server, look = procInfo, { exe = exePath, uid = processUid } = {}) {
   const me = look(pid);
   if (!me || !me.tty) return false;
+  const exeOfServer = String(server.exe || "");
+  const app = exeOfServer.indexOf(".app/");
+  const folder = app >= 0 ? exeOfServer.slice(0, app + 5) : exeOfServer.startsWith("/") ? exeOfServer.slice(0, exeOfServer.lastIndexOf("/") + 1) : null;
   let helper = 0, sshd = 0, cur = me;
   for (let hops = 0; hops < 64; hops++) {
     const up = cur.ppid;
-    if (up === serverPid) return true;
+    if (up === server.pid) return true;
     if (!up || up <= 1) return false;
     const n = look(up);
     if (!n) return false;
     if (n.tty !== me.tty) {
-      if (SSHD.test(n.args)) { if (++sshd > 2) return false; }
-      else if (!PTY_HOST.test(n.args) || ++helper > 1) return false;
+      if (SSHD.test(n.args)) {
+        const e = exe(up);
+        if (!(e ? /\/sshd(?:-session)?$/.test(e) : uid(up) === 0) || ++sshd > 2) return false;
+      } else {
+        const e = exe(up);
+        if (!PTY_HOST.test(n.args) || !folder || !e || !e.startsWith(folder) || ++helper > 1) return false;
+      }
     }
     cur = n;
   }
