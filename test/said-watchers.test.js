@@ -10,6 +10,7 @@ import path from "node:path";
 import { watchersIntents } from "../lib/said/watchers.js";
 const KINDS = ["mail", "calendar", "repo", "slack", "feed"];
 import { matches } from "../lib/said/match.js";
+import { createTarget, presetTarget } from "../core/watchers/targets.js";
 import { Registry, discover } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
 import { Events } from "../core/events/index.js";
@@ -108,4 +109,21 @@ test("the folder changes after the card was shown: the intent still carries the 
   w.say("t1", "Turn on the inbox watcher.", shown);
   assert.equal((await w.create({ name: "inbox-mail", hash: "9999eeee0000" })).error?.code, "not_asked", "the edited folder is not what they saw");
   assert.equal(globalThis.__created, undefined);
+});
+
+test("no drift: the watchers module's own targets answer exactly the keys the recorder records", () => {
+  // The module's real target functions, with a read() standing in for the folder on disk.
+  const folder = { spec: { project: "harlow-legal" }, hash: "aaaa1111bbbb", problems: [] };
+  const read = name => (name === "inbox-mail" ? folder : { spec: null, hash: null, problems: ["no such folder"] });
+  const recorded = watchersIntents("Turn on the inbox watcher.", W(CARDS)).intents[0].to;
+  assert.deepEqual(createTarget({ input: { name: "inbox-mail", hash: "aaaa1111bbbb" } }, { read }).to, recorded);
+  assert.deepEqual(createTarget({ input: { name: "inbox-mail", hash: "ffff0000ffff" } }, { read }).to, [], "a hash that is not the folder's");
+  assert.deepEqual(createTarget({ input: { name: "inbox-mail" } }, { read }).to, [], "no hash");
+  assert.deepEqual(createTarget({ input: { name: "missing", hash: "aaaa1111bbbb" } }, { read }).to, [], "no folder");
+  for (const [say, kind] of [["Watch my inbox.", "mail"], ["Watch my calendar.", "calendar"], ["Watch the GitHub repo.", "repo"], ["Monitor the Slack channel.", "slack"], ["Watch this RSS feed.", "feed"]]) {
+    const rec = watchersIntents(say, { project: "harlow-legal", kinds: KINDS, watchers: [] }).intents[0].to;
+    assert.deepEqual(presetTarget({ input: { project: "harlow-legal", kind } }).to, rec, say);
+  }
+  // Changing a card's hash after it was shown moves the target away from what was recorded.
+  assert.notDeepEqual(createTarget({ input: { name: "inbox-mail", hash: "aaaa1111bbbb" } }, { read: () => ({ ...folder, hash: "9999eeee0000" }) }).to, recorded);
 });
