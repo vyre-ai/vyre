@@ -43,19 +43,15 @@ jobs:
           sudo apt-get install -y bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
           sudo rm -f /etc/apparmor.d/bwrap /etc/apparmor.d/bwrap-userns-restrict /etc/apparmor.d/vyre-bwrap
-      - name: the installer's wall steps (what vyre up --system runs as root)
+      - name: the product's own installer (sudo vyre up --system) loads the profile
         if: matrix.mode == 'profile'
         run: |
-          cat > /tmp/wall-install.mjs <<'JS'
-          import { wallSteps } from "/home/runner/work/vyre/vyre/lib/sandbox/index.js";
-          import * as s from "/home/runner/work/vyre/vyre/core/names/system.js";
-          const steps = wallSteps();
-          console.log(JSON.stringify(steps.map(x => x.do + " " + (x.path || (x.argv || []).join(" ")))));
-          if (!steps.some(x => x.do === "write")) throw new Error("the installer wrote no profile");
-          await s.apply(steps, { dryRun: false, out: console.log });
-          JS
-          sed -i "s#/home/runner/work/vyre/vyre#$GITHUB_WORKSPACE#g" /tmp/wall-install.mjs
-          sudo env "PATH=$PATH" node /tmp/wall-install.mjs
+          PKG=$(npm pack --silent --pack-destination /tmp | tail -1)
+          sudo env "PATH=$PATH" npm install -g --no-audit --no-fund --omit=dev "/tmp/$PKG"
+          test ! -e /etc/apparmor.d/vyre-bwrap
+          sudo env "PATH=$PATH" vyre up --system --user runner
+          test -e /etc/apparmor.d/vyre-bwrap
+          sudo grep -q vyre-bwrap /sys/kernel/security/apparmor/profiles
       - name: a loopback alias in the tailnet range
         if: runner.os == 'Linux'
         run: sudo ip addr add 100.100.100.100/32 dev lo
@@ -71,14 +67,9 @@ jobs:
         env:
           VYRE_EXPECT_WALL: ${{ matrix.expect }}
         run: node scripts/check-wall-installed.mjs
-      - name: uninstall removes the profile
+      - name: the product's own uninstall (sudo vyre uninstall --system) removes the profile
         if: matrix.mode == 'profile'
         run: |
-          cat > /tmp/wall-uninstall.mjs <<'JS'
-          import { wallUninstallSteps } from "WS/lib/sandbox/index.js";
-          import * as s from "WS/core/names/system.js";
-          await s.apply(wallUninstallSteps(), { dryRun: false, out: console.log });
-          JS
-          sed -i "s#WS#$GITHUB_WORKSPACE#g" /tmp/wall-uninstall.mjs
-          sudo env "PATH=$PATH" node /tmp/wall-uninstall.mjs
+          sudo env "PATH=$PATH" vyre uninstall --system
           test ! -e /etc/apparmor.d/vyre-bwrap
+          ! sudo grep -q vyre-bwrap /sys/kernel/security/apparmor/profiles
