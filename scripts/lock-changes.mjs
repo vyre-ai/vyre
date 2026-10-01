@@ -2,7 +2,7 @@
 // lock-changes: the dependency changes between two package-lock.json files, as a short list (for the release approver's summary).
 //   node scripts/lock-changes.mjs <old-lock.json|-> <new-lock.json>     "-" or a missing file means no previous lock
 // Reads the lock's `packages` map; prints "+ name@version" (added), "- name@version" (removed) and "~ name old -> new" (changed), sorted, and a
-// count line. A new `resolved` or `integrity` for the same version is reported too, since that is how a substituted package looks.
+// count line; substitutions are printed first. A new `resolved` or `integrity` for the same version is reported too, since that is how a substituted package looks.
 import fs from "node:fs";
 
 /** @param {string} text @returns {Map<string, { version: string, resolved: string, integrity: string }>} */
@@ -31,7 +31,10 @@ export function changes(oldText, newText) {
     if (o.version !== v.version) lines.push(`~ ${nm(k)} ${o.version} -> ${v.version}`);
     else if (o.integrity !== v.integrity || o.resolved !== v.resolved) lines.push(`~ ${nm(k)}@${v.version}: same version, different ${o.integrity !== v.integrity ? "integrity" : "source"}`);
   }
-  return lines.sort((x, y) => x.slice(2).localeCompare(y.slice(2)));
+  // Substitutions (same version, different integrity or source) come first, so a long list that is cut for the approver can never hide them.
+  const subst = l => l.includes(": same version, different ");
+  const byName = (x, y) => x.slice(2).localeCompare(y.slice(2));
+  return [...lines.filter(subst).sort(byName), ...lines.filter(l => !subst(l)).sort(byName)];
 }
 
 if (process.argv[1] && process.argv[1].endsWith("lock-changes.mjs")) {
