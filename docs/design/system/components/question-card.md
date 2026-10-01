@@ -1,6 +1,6 @@
 ---
 title: Question card
-summary: An agent's question with radio or checkbox choices, an Other field and Submit, answered from the session or from Needs you.
+summary: An agent's question with radio or checkbox choices, an Other field and Submit, answered from the session or from Needs you. The Survey variant adds a recommended mark, a thoughts box per question and a progress bar.
 audience: builders
 owner: app-design
 status: draft
@@ -18,10 +18,10 @@ share the `.choice`, `.radio` and `.chk` parts drawn on "Session · the composer
 |---|---|---|
 | Deck | `deck/chat/question.js`, `deck/chat/lib/answers.js` (work/chat) | partial |
 | App | none (the ask card says "Answer it in the Deck for now") | not built |
-| Capsule | none | not built |
+| Lumen | none | not built |
 
 Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
-app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+app), from this spec, and Lumen mirrors the same spec in Swift. No surface draws its own
 version (cohesion, ADR 0036).
 
 ## Anatomy
@@ -50,6 +50,25 @@ A neutral card: `--panel`, 1 px `--rule`, radius 12 (phone 10), overflow hidden.
   list from 900 wide (mono or markdown on `--code-bg`), under the list on the phone.
 - **Review step** (several questions): a two-column list, question in `--label`, answer in
   `--text`, then Submit.
+- **Survey** (30 Sep, the user's chat-components ask): several questions in one flow, each with a
+  recommended option and a free-text thoughts box, a progress bar in the header, answers sent back
+  to the agent as one batch on Submit rather than per-question. Reuses every part above; adds:
+  - **Recommended mark**: one choice per question may carry `recommended: true`. It shows a small
+    "Recommended" tag (chip.md's Tag: `--hover` fill, no border, 12/16 `--text-2`) right-aligned
+    on that row, same row height, never a colour and never picked automatically - a recommendation
+    is a hint, not a default selection. At most one per question.
+  - **Thoughts box**: under the choice rows (above Other, if Other is offered), an always-visible,
+    optional multi-line field, placeholder "Add your thoughts (optional)", 2 lines tall, grows to
+    6. Its value rides with that question's answer, never submitted alone. Unlike Other (which
+    replaces a missing choice), the thoughts box is additional to a picked choice, so both may be
+    filled on the same question.
+  - **Progress bar**, replacing the step chip's plain text: a thin `--rule` track, `--focus` fill,
+    in the header under the label row, width = questions answered / total. The step text ("1 of
+    5") stays beside it, not instead of it - the bar is a glance, the text is exact.
+  - **Batch submit**: the footer's Submit sends every question's answer (choice plus thoughts) in
+    one call when the last question is reached, matching the "answers sent back to the agent"
+    requirement - no per-question round trip, so a person can revise an earlier answer (the review
+    step, above) before anything is sent.
 
 ## Sizes
 
@@ -101,5 +120,5 @@ Deck (work/chat)
 App (work/mobile)
 - [ ] Not built: the ask card sends you to the Deck.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] Not built.

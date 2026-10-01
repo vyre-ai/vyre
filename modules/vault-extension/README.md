@@ -2,7 +2,9 @@
 
 A small MV3 extension that fills logins, cards and addresses and answers passkey requests from your own Vyre Vault in Chrome, Arc, Edge, Brave and
 Firefox, from one source. It talks to one address only, the vyred fill listener you configure,
-and it never reads or sends page content. The design and threat model are in
+and it never sends page content. (One named exception: with the API-key offer on, `keychip.js` reads
+the text a page shows locally, looking for one key-shaped value; only a matched value, and only
+after you tap Save, ever leaves the page. See "API keys a page shows".) The design and threat model are in
 `docs/adr/0010-vault-autofill.md`; the fill window and the per-browser plan are in
 `docs/adr/0028-vault-everywhere.md` (decisions 5 and 6).
 
@@ -62,6 +64,32 @@ shorter, never longer.
   worker's memory for two minutes and asks "Save this login?" (or "Update the password?"). Only
   your click saves it, through `/v1/fill/save`: a new login gets this page's origin as its only
   host; an update keeps the replaced password in the item's sealed history (the last 5).
+
+## API keys a page shows
+
+Create-key pages (a provider's console, a token settings page) show a key once. With page access
+allowed and the popup's **Offer to save API keys pages show** on (it is on by default once page
+access is granted), `keychip.js` looks at the text the page shows and at what you select to copy,
+and when you click a Copy button it looks at the box beside it. A value counts when it has a
+provider prefix (`sk-ant-`, `ghp_`, `xoxb-`, `AKIA`, the rows of `core/vault/detect.js`), or when
+it is a long high-entropy string in an element labelled key, token or secret. UUIDs, git and file
+hashes, base64 images, placeholders such as `sk-xxxxxxxx` or `YOUR_API_KEY`, and anything in a
+password input (login save's) never count. The detection is `keyfind.js`, pure functions with
+table-driven tests.
+
+- **One tap.** A small chip in a closed shadow root asks "Save this Anthropic key to Vyre?". Save
+  stores it ready to use through `/v1/fill/save-key`: kind and provider come from `detect.js`
+  (the box classifies the value again and refuses anything that is not a secret), the name is the
+  page's host plus the label (`console.example.com-api-key`), the page's origin is recorded, and
+  when the provider is in the catalog the item is a connection, granted to a module whose need
+  names it when vyred was given a `connect` hook. There is no draft and no second dialog. The chip
+  then shows **Undo** for 10 seconds; undo removes only the item this tap made.
+- **What leaves the page.** Before the tap, only a fingerprint (not the value) and whether the
+  match was generic. The value goes to vyred on the tap, over the same paired, session-bound
+  channel as `/v1/fill/save`, never to a third party, never logged. The worker records which
+  origin the chip was raised on and vyred refuses a save whose page origin differs.
+- **Once per value.** A value is offered once per tab, however many times the page shows it.
+  Nothing appears while Vyre is locked.
 
 ## Cards and addresses
 

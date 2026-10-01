@@ -1,6 +1,6 @@
 // @ts-check
 // How fast the phone app switches pages, measured the way a person feels it: from the tap on a
-// page label (or the Capsule, for Find) to the first frame that shows the page's content (not a
+// page label (or Lumen, for Find) to the first frame that shows the page's content (not a
 // "Reading…" placeholder). Runs in a Chrome that
 // is already running (CDP), as an iPhone at 390x844, with the CPU slowed 4x (a mid-range phone)
 // and 60 ms added to every request (the tailnet from a phone).
@@ -31,7 +31,7 @@ await tab.send("Network.emulateNetworkConditions", { offline: false, latency: 60
 /** Tap a tab and time it to the first frame whose view has real content. */
 async function time(/** @type {string} */ name) {
   return tab.run(`
-    // Find is the Capsule opened; the pages are the header's labels. From Find, Done goes back first.
+    // Find is Lumen opened; the pages are the header's labels. From Find, Done goes back first.
     const done = document.querySelector('.page[data-page="find"]:not(.away) .fd-done');
     if (done && "${name}" !== "find") { done.click(); await new Promise(r => setTimeout(r, 500)); }
     const a = "${name}" === "find" ? document.querySelector('.cap-open') : document.querySelector('.ph-tab[data-view="${name}"]');

@@ -17,7 +17,7 @@ import { _test } from "./index.js";
 const THREADS = `
   const T = { t1: { project: "harlow-legal", agent: "juno", provider: "codex" }, t2: { project: "northwind", agent: "kit", provider: "claude" }, t3: { project: null, agent: null, provider: "claude" } };
   export default { async start(ctx) {
-    ctx.tool("threads.get", { run: async ({ thread }) => ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) });
+    ctx.tool("threads.get", { run: async ({ thread }) => thread === "gone" ? {} : ({ thread: { id: thread, ...(T[thread] || { project: null }) } }) });
     return {};
   } };`;
 
@@ -81,7 +81,7 @@ test("artifacts: an agent works only in its own project, is recorded from the ca
   assert.equal(mine.untrusted, true, "agent-made content is untrusted until the turn's own signal says otherwise");
   assert.ok(events.since(0).some(e => e.type === "thread.artifact" && e.thread === "t1" && e.payload.artifact === mine.id), "the chat card's event");
   const theirs = await ok("artifacts.create", { project: "northwind", kind: "doc", content: "# Orders\n\n40 today." });
-  assert.equal((await call("artifacts.create", { project: "northwind", kind: "doc", content: "x" }, "mcp:agent:juno", { thread: "t1" })).error.code, "denied");
+  assert.equal((await call("artifacts.create", { project: "northwind", kind: "doc", content: "x" }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_found"); // the registry refuses a project juno is not granted (projectArg), before artifacts does
   assert.equal((await call("artifacts.get", { id: theirs.id }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_found", "another project's artifact does not exist for it");
   assert.equal((await call("artifacts.update", { id: theirs.id, content: "y" }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_found");
   assert.deepEqual((await ok("artifacts.list", {}, "mcp:agent:juno", { thread: "t1" })).map(a => a.id), [mine.id]);
@@ -361,14 +361,17 @@ test("artifacts: the # picker finds titles within the caller's reach and resolve
   const { ok, call, asVyre } = await boot(t);
   const a = await ok("artifacts.create", { project: "harlow-legal", kind: "report", title: "Referral tracker", content: "# Referral tracker\n\nsecret body words" });
   await ok("artifacts.create", { project: "other", kind: "doc", title: "Lease notes", content: "# Lease notes\n\nx" });
-  const hit = await asVyre("artifacts.mention.search", { q: "refer" });
+  const hit = await ok("artifacts.mention.search", { q: "refer" });
   assert.deepEqual(hit.map(h => [h.kind, h.id, h.name]), [["artifact", a.id, "Referral tracker"]]);
   assert.ok(!JSON.stringify(hit).includes("secret body"), "names and hints only");
-  assert.equal((await asVyre("artifacts.mention.search", {})).length, 2, "an empty query lists the latest");
-  const r = await asVyre("artifacts.mention.resolve", { id: a.id });
-  assert.deepEqual([r.kind, r.id, r.version, r.read.tool], ["artifact", a.id, 1, "artifacts.get"]);
+  assert.equal((await ok("artifacts.mention.search", {})).length, 2, "an empty query lists the latest");
+  const r = await asVyre("artifacts.mention.resolve", { id: a.id, thread: "t1" });
+  assert.equal((await call("artifacts.mention.search", { q: "x" }, "mcp:agent:juno", { thread: "t1" })).error !== undefined, true, "a model never searches");
+  assert.deepEqual([r.name, r.grant], ["Referral tracker", { read: a.id, access: "read" }]);
+  assert.ok(!JSON.stringify(r).includes("secret body"), "a tag carries no content");
   assert.equal((await call("artifacts.mention.resolve", { id: a.id })).error.code, "no_such_tool", "the person never calls it");
-  await assert.rejects(asVyre("artifacts.mention.resolve", { id: "a_nope" }), /not_found|no artifact|not found/i);
+  await assert.rejects(asVyre("artifacts.mention.resolve", { id: "a_nope", thread: "t1" }), /no artifact/i);
+  await assert.rejects(asVyre("artifacts.mention.resolve", { id: a.id, thread: "gone" }), /no thread/i, "only on a thread that exists");
 });
 
 test("artifacts: a # tag lets one thread read exactly one artifact, in any project, and nothing more", async t => {
@@ -380,7 +383,7 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   assert.notEqual((await call("artifacts.mention.resolve", { id: far.id, thread: "t1" }, "module:bakery")).error, undefined, "a tag is recorded only by first-party modules");
   assert.notEqual((await call("artifacts.mention.resolve", { id: far.id, thread: "t1" }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "never by an agent for itself");
   const r = await asVyre("artifacts.mention.resolve", { id: far.id, thread: "t1" });
-  assert.deepEqual(r.granted, { thread: "t1", access: "read" });
+  assert.deepEqual(r.grant, { read: far.id, access: "read" });
   const got = await juno("artifacts.get", { id: far.id });
   assert.equal(got.error, undefined, JSON.stringify(got.error));
   assert.equal((await juno("artifacts.versions", { id: far.id })).error, undefined);
@@ -388,8 +391,9 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   assert.equal((await juno("artifacts.update", { id: far.id, content: "changed" })).error.code, "not_found", "read only");
   assert.equal((await juno("artifacts.get", { id: far.id }, "t9")).error.code, "not_found", "only that thread");
   assert.equal((await juno("artifacts.search", { q: "Lease" })).data?.length ?? 0, 0, "search stays in scope");
-  await asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "mentions");
-  assert.equal((await juno("artifacts.get", { id: near.id })).error, undefined, "the mentions module may record one too");
+  await assert.rejects(asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "mentions"), /only Vyre's session and assistant/, "the mentions core forwards the caller, it does not record");
+  await asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "assistant");
+  assert.equal((await juno("artifacts.get", { id: near.id })).error, undefined, "the assistant module may record one");
   events.emit("threads", "thread.deleted", { thread: "t1" });
   await new Promise(r => setTimeout(r, 100));
   assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found", "a deleted thread's tags end");

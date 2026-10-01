@@ -25,6 +25,108 @@ and calls the box itself (files.drive.address etc.); the panel stays IPC-free. O
 learns the app's nonce; what the shell presents to the box as its session after pairing (needs
 tailnet: the shell has no Noise channel yet); own-domain boxes (record has only a handle).
 
+**Round 3 (tailnet answers, CI green):** pairing is now seed-based, no `vyre://pair` link: `begin_pair`
+makes a 16-byte CSPRNG seed (memory only, 5 min), the Deck turns it into a ticket, a bundled page
+resolves it with relay/client and calls `offer_pair`; `shell::pin_from_offer` applies reviewer-2's
+address rules; the confirm window shows the host. `device_key_pub`/`device_key_dh` keep the X25519
+key DPAPI-protected in Rust (RFC 7748 tested). capsule-win now builds the NSIS installer
+(`app-windows-<sha>` artifact); release.yml adds Vyre_<version>_x64-setup.exe + VyreSetup.exe
+before SHA256SUMS. NOT DONE: the bundled page that runs relay/client (needs tailnet's work/tailnet-win
+to land: resolveTicket with address, words.js, shellkey.js), a Rust-side 409 surface (the page shows it).
+
+**Device key at rest (reviewer-2, MEDIUM-low, accepted):** DPAPI CurrentUser protects
+`device.key` (app data dir) at rest and from other Windows users, not from code running as the same
+user. No friction fix wanted. No command resets, exports or replaces the key; device_key_pub makes it
+only when none exists; device_key_dh refuses an all-zero result. Both commands are granted only to
+the bundled first-run window, never to main. TODO: owner-only ACL on the key file (app data dir is
+per-user already).
+
+**Pairing page (built, unrun):** first-run loads `pair.js` (tailnet's relay client copied into
+ui/relay at CI time, not forked): begin_pair seed, poll resolveTicket, offer_pair, wait for the
+person's Pair, run pairOffer with the DPAPI key, finish_pair pins and stores the link record. Person
+types the seed (22 characters); no QR or words form yet (no bytes-to-words encoder exists on the Deck
+side). The persistent link window that keeps the channel for box calls (Drive) is NOT built.
+release.yml now calls capsule-win.yml as a reusable workflow and the release job needs it, no race.
+
+**Round 4:** (a) test-windows in node.yml now runs `npm run test:windows` (a bounded set, 10 min cap,
+--test-timeout): 282 tests in about 1.5 min on windows-latest, 211 pass and 70 fail. The failures are
+existing Windows gaps, not this branch: box and connect command tests (fake binaries and POSIX shells),
+config permission and unix-socket tests, the tar-safety tests, and the voice talk tests. The job stays
+continue-on-error. (b) The pairing seed shows as 13 words (seedwords.js) and a `vyre-pc:` QR (vendored
+qrcode), with Copy for a Deck on the same PC (not a true one-click: no link or scheme allowed); cleared
+when pairing ends. (c) Hidden `link` window keeps the box channel; tray "Open Vyre Drive" maps the first
+shared folder via files.drive.address. UNVERIFIED: the Tauri event listen from the page, and the shape
+of files.drive.candidates' answer; both need a real PC run.
+
+## Known Windows gaps (triage of the 70 failures; a Windows PC is a device in 0.2)
+
+`npm run test:windows` lists only files that pass on windows-latest, and the job now blocks (10 minute cap).
+
+Fixed in this round:
+- **Config and key file permissions (security, was MEDIUM).** Node's 0700/0600 do nothing on Windows; files take
+  the parent's ACL. Private under the user profile, but a home kept elsewhere inherited whoever the parent
+  allows. `lib/owner-only.js` now grants the current user alone (by SID) and removes inherited access (icacls, run by
+  full path from System32, verified from the SDDL afterwards) on the Vyre home in
+  `config.ensure`/`save`, the pipe token, and the relay device key folder. Tests check the ACL on win32
+  (no Everyone, Users or Authenticated Users) and the mode bits elsewhere. Best effort: a machine without
+  icacls keeps the profile default. Stricter than a default profile: SYSTEM and Administrators lose access to
+  that folder too, so a backup or antivirus tool running as SYSTEM will not read the Vyre home.
+
+Real gaps, NOT fixed (severity, reason):
+- **`vyre box add` / `box move` from a Windows CLI (MEDIUM, unsupported).** `core/cli/ssh.js` uses a fixed
+  `/tmp` folder and OpenSSH `ControlPath` multiplexing; Windows OpenSSH has no ControlMaster, so it cannot
+  work as written. The Windows path to a server is the setup page and the app. `box.test.js` left out.
+- **`vyre connect` (MEDIUM-low).** The command needs a local vyred. Its test fails with EBUSY deleting
+  `vyre.db` while vyred still holds it (a test cleanup problem on Windows, not a device flaw). Left out.
+- **Path strings (LOW).** `projectsDir` can mix `\` and `/` (a cosmetic join); the claude-home and work-folder
+  tests assert POSIX strings and are skipped on win32 with that named reason.
+- **`relay/client/e2e.test.js` (LOW).** Same EBUSY on `vyre.db`. Left out.
+
+Not things a Windows device does (skipped, named):
+- `core/vyre-core/release.test.js`: vyre-core's tarball install needs `/usr/bin/tar`; a Windows device updates
+  through the signed installer. The tar safety checks (absolute path, `..`, fifo, setuid) guard the Mac and
+  Linux install path, which Windows never runs.
+- `local/voice/*.test.js`, `core/cli/commands/voice.test.js` (the talk/voice services): the voice stream is
+  a Mac-and-box feature, refused to non-Mac callers; the Windows app has no mic path in 0.2.
+- `core/cli/commands/up.test.js`: Mac "up" flow.
+- `test/docs-check.test.js`, `test/docs-index.test.js`: docs build tooling, run on Linux in CI (not diagnosed on
+  Windows; likely line endings).
+
+Peer identity on Windows is in the next section; tests that need it (for example "vault cli: account create")
+are not in the set.
+
+## Windows peer identity (what vyred can and cannot tell on Windows)
+
+vyred decides "the person" versus "an agent" by asking the kernel which process is on the other end of the
+socket and walking its ancestry (core/daemon/peer.js). That read exists for macOS and Linux only. On Windows
+the local socket is a named pipe, and there is NO process-ancestry read: vyred gets no pid, so
+`fromClaude` answers "vyred cannot tell which process is calling" and refuses. The 0.1.2 pipe work adds an
+owner-SID check (the pipe is the signed-in user's), which proves WHICH USER, not whether a model or the person
+is behind the process.
+
+For 0.2 this does not block the Windows app: it runs no local vyred at all. Presence there is the passkey on
+the person's server (Windows Hello), the shell talks to the box over the paired Noise channel, and person-only
+actions are decided on the box. What it DOES block: a Windows PC acting as its own server (Solo or Tier B
+without WSL2). There, vyred could not tell the person from an agent on the same PC, so every person-only tool
+(vault reveal, presence proof, approvals, `vault account create`) would be refused for the person too. Options
+if that is wanted later: run vyred inside WSL2 (Linux peer read works, the Linux path), or build a Windows
+peer read (`GetNamedPipeClientProcessId` plus a process-tree walk) with its own review. Neither is 0.2 scope.
+
+**Lumen (icon and name, unrun):** app icon is app-design's windows/lumen.ico (16 to 256), tray glyphs are
+the black and white tray icons, chosen by the taskbar theme (registry SystemUsesLightTheme, re-read every
+60 s). Window titles, toasts, tray tooltip and the first-run page say "Vyre Lumen". The installer and update
+file keep the plain name `Vyre_<version>_x64-setup.exe` on purpose: the updater and install script match it,
+and renaming it would orphan installed apps. Trademark check on the icons is pending (brand README): keep
+internal. The # picker is a Deck composer feature (deck/chat, native-core): the shell has nothing to add,
+it loads the same page. One dependency: the Deck does not read `window.__VYRE_SHELL__` anywhere yet (grep on
+stage 006da74a), so the Ctrl glyphs, the hidden browser-install card and the compact /quick variant the spec
+wants in the Windows panel are not switched on; that is native-core's side of C22.
+
+**New crates in the signed, auto-installed binary (reviewer-2 LOW):** the tauri `image-ico` feature (for the
+tray glyph) adds four transitive crates to app/Cargo.lock: image 0.25.10, moxcms 0.8.1, pxfm 0.1.30,
+byteorder-lite 0.1.0. Each lock entry carries a checksum, and the build is --locked with no other lock
+change. The tray theme is read with RegGetValueW (windows-sys Win32_System_Registry), no `reg.exe` process.
+
 **RESUMED 2026-09-30 (relaunch).** Merged origin/work/stage-0.2 into work/windows (a merge, not a
 rebase: 32 old commits, six conflicts, all union-resolved; win32 fresh default is role local,
 machine device). Docs and config tests pass locally. Scaffolded the Tauri shell in

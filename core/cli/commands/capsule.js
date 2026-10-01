@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre capsule`: open the Capsule on this Mac, or build it.
+// `vyre capsule`: open Lumen on this Mac, or build it.
 //
 //   vyre capsule            open it (starting vyred and the app when they are not running). The
 //                           Capsule is the native app (local/capsule/native, Swift, ADR 0017),
@@ -27,18 +27,18 @@ import { usage, json, emit, fail, viewing } from "../kit.js";
 export const CAPSULE = path.join(REPO, "local", "capsule");
 export const NATIVE = path.join(CAPSULE, "native");
 
-/** Whether the Capsule can run here: a Mac, and the native app's source to build it from. */
+/** Whether Lumen can run here: a Mac, and the native app's source to build it from. */
 export function nativeAvailable({ platform = process.platform, dir = NATIVE } = {}) {
   return platform === "darwin" && fs.existsSync(path.join(dir, "build.sh"));
 }
 
 /** Every verb run() handles, for `vyre commands --json`; run() refuses any other word. */
 export const VERBS = [
-  { verb: "open", summary: "open the Capsule, building it first when its source changed (the default)", usage: "[--hidden] [--json]" },
-  { verb: "install", aliases: ["build"], summary: "build the Capsule on this Mac now, without opening it; nothing is downloaded", usage: "[--json]" },
+  { verb: "open", summary: "open Lumen, building it first when its source changed (the default)", usage: "[--hidden] [--json]" },
+  { verb: "install", aliases: ["build"], summary: "build Lumen on this Mac now, without opening it; nothing is downloaded", usage: "[--json]" },
 ];
 
-const NOT_MAC = "The Capsule runs on macOS. On this machine, use vyre or the Deck.";
+const NOT_MAC = "Lumen runs on macOS. On this machine, use vyre or the Deck.";
 
 /** A line a person reads; nothing under --json, where stdout holds only the answer. @param {string} line */
 const say = line => { if (!json()) out(line); };
@@ -52,10 +52,10 @@ const refuse = (/** @type {string} */ code, /** @type {string} */ message, /** @
 
 async function open(flags) {
   if (process.platform !== "darwin") return refuse("not_mac", NOT_MAC, "  " + NOT_MAC);
-  if (!dialogsAllowed()) return refuse("no_dialogs", "The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).", "  The Capsule does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).");
-  if (!nativeAvailable()) return refuse("no_source", "The Capsule's source is missing from this package", beacon("  The Capsule's source is missing from this package") + dim(` · ${path.relative(process.cwd(), NATIVE) || NATIVE}`));
+  if (!dialogsAllowed()) return refuse("no_dialogs", "Lumen does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).", "  Lumen does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).");
+  if (!nativeAvailable()) return refuse("no_source", "Lumen's source is missing from this package", beacon("  Lumen's source is missing from this package") + dim(` · ${path.relative(process.cwd(), NATIVE) || NATIVE}`));
   const up = await ensureUp();
-  if (!up.ok) say(dim("  vyred did not start; the Capsule will open and say it is offline."));
+  if (!up.ok) say(dim("  vyred did not start; Lumen will open and say it is offline."));
   return openNative(flags);
 }
 
@@ -68,14 +68,14 @@ const identityOffer = (/** @type {string} */ home) => native.offerIdentity({ hom
  */
 async function installNative() {
   if (process.platform !== "darwin") return refuse("not_mac", NOT_MAC, "  " + NOT_MAC);
-  say(dim("  vyre capsule install builds the Capsule on this Mac; nothing is downloaded."));
+  say(dim("  vyre capsule install builds Lumen on this Mac; nothing is downloaded."));
   const home = config.paths().root;
   const said = await identityOffer(home);
   if (said) say(dim("  " + said));
   const b = native.ensureBuilt({ dir: NATIVE, home, say: s => say(dim("  " + s)) });
   if (!b.ok) return refuse("build_failed", b.message, beacon("  " + b.message));
   if (json()) return emit({ built: Boolean(b.built), app: b.app });
-  out(`  Capsule ${signal(b.built ? "built" : "up to date")} ${dim("· " + b.app + " · vyre capsule opens it")}`);
+  out(`  Lumen ${signal(b.built ? "built" : "up to date")} ${dim("· " + b.app + " · vyre capsule opens it")}`);
   return 0;
 }
 
@@ -89,9 +89,9 @@ async function openNative(flags) {
   if (b.built) say(dim(`  ${b.message}`));
   const env = { VYRE_SOCKET: config.paths().socket, VYRE_HOME: home, ...(flags.hidden ? {} : { VYRE_CAPSULE_OPEN: "1" }) };
   const r = spawnSync("open", native.launchArgs(b.app, env), { encoding: "utf8" });
-  if (r.status !== 0) return refuse("open_failed", `The Capsule did not open: ${String(r.stderr || "").trim()}`, beacon("  The Capsule did not open: ") + dim(String(r.stderr || "").trim()));
+  if (r.status !== 0) return refuse("open_failed", `Lumen did not open: ${String(r.stderr || "").trim()}`, beacon("  Lumen did not open: ") + dim(String(r.stderr || "").trim()));
   if (json()) return emit({ opened: true, app: b.app, built: Boolean(b.built), hidden: Boolean(flags.hidden) });
-  out(`  Capsule ${signal("open")} ${dim("· ⌥Space, or Control twice once it is allowed · " + b.app)}`);
+  out(`  Lumen ${signal("open")} ${dim("· ⌥Space, or Control twice once it is allowed · " + b.app)}`);
   return 0;
 }
 
@@ -111,7 +111,7 @@ export default {
     const flags = { hidden: args.includes("--hidden") };
     const verb = args.find(a => !a.startsWith("--"));
     if (verb === "install" || verb === "build") return installNative();
-    // A mistyped word ("biuld") used to open the Capsule; now it says so.
+    // A mistyped word ("biuld") used to open Lumen; now it says so.
     if (verb && verb !== "open") return usage(`vyre capsule ${verb}: not a subcommand`, "vyre capsule, vyre capsule open or vyre capsule install");
     return open(flags);
   },

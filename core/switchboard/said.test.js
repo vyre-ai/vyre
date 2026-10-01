@@ -60,6 +60,19 @@ test("resolveTags before the mentions mechanism exists: vault is a provider on i
   assert.deepEqual(await resolveTags({ names: ["x"], thread: "t", said: "u", call: async () => { throw new Error("locked"); } }), []);
 });
 
+test("resolveTags: a module refused mentions.search (person-only) still tags a typed vault name by vault.mention.resolve, and chips go through mentions.resolve", async () => {
+  const seen = [];
+  const call = async (tool, input) => {
+    seen.push(tool);
+    if (tool === "mentions.search") return { error: { code: "denied" } };
+    if (tool === "vault.mention.resolve") return input.id === "GHLapikey" ? { data: { name: "GHLapikey", hosts: ["a.test"], note: "use it" } } : { error: { code: "not_found" } };
+    if (tool === "mentions.resolve") return { data: { name: "Fee agreement", note: "read it" } };
+    return { error: { code: "no_such_tool" } };
+  };
+  const tags = await resolveTags({ names: ["GHLapikey", "nothing"], chips: [{ kind: "drive", id: "f1" }], thread: "t", said: "u", call });
+  assert.deepEqual(tags.map(t => [t.kind, t.id, t.outside]), [["drive", "f1", true], ["vault", "GHLapikey", false]]);
+});
+
 test("textHash and tagNote: a hash, and a note that is framed as data, names hosts, never a value, and is capped", () => {
   assert.match(textHash("hi"), /^[0-9a-f]{64}$/);
   const n = tagNote([{ kind: "vault", name: "GHLapikey", hosts: ["a.test"], note: null }]);

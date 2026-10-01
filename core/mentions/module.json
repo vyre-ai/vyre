@@ -10,9 +10,9 @@
   "requires": [],
   "does": {
     "tools": [
-      "mentions.kinds",
-      "mentions.search",
-      "mentions.resolve"
+      { "name": "mentions.kinds", "reach": "person" },
+      { "name": "mentions.search", "reach": "person" },
+      { "name": "mentions.resolve", "reach": "modules" }
     ]
   },
   "watches": {},

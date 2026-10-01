@@ -17,6 +17,7 @@ import { Readable } from "node:stream";
 import * as config from "../../core/config/index.js";
 import { listener, LOCAL } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
+import { spoken } from "./spoken.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
 
 /** A spoken reply is a sentence or two, not a document. */
@@ -116,14 +117,14 @@ export default {
     });
 
     ctx.tool("voice.speak", {
-      description: "Say a reply aloud through the speech provider. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.",
+      description: "Say a reply aloud through the speech provider. Pass reply: true for the assistant's written reply; it is made speakable first (no code, tables or links, cut at a sentence). A surface calls it when the person's own question was spoken, never for a typed one. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.",
       callers: LOCAL,
-      input: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
-      run: async ({ text }, meta) => {
+      input: { type: "object", properties: { text: { type: "string" }, reply: { type: "boolean", description: "The text is a written reply: code, tables and links are left out, and a long one is cut at a sentence with a note that the rest is on screen." } }, required: ["text"] },
+      run: async ({ text, reply }, meta) => {
         refusePeer(meta);
         const s = settings(ctx.config);
         if (!s.speak) throw new VoiceError("speak_off", "spoken replies are off; turn them on in Settings");
-        const said = String(text).trim();
+        const said = reply === true ? spoken(String(text)).text : String(text).trim();
         if (!said) throw new VoiceError("bad_input", "nothing to say");
         if (said.length > MAX_SPEAK) throw new VoiceError("bad_input", `a spoken reply is at most ${MAX_SPEAK} characters`);
         const base = origin(s.provider, s.endpoints);

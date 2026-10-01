@@ -566,7 +566,7 @@ test("presence: every tool on the floor's list is one a shipped module declares"
   // manifests are the whole set.
   const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
   const declared = new Set(discover(["core", "local", "modules"].map(d => path.join(repo, d)))
-    .flatMap(m => (m.manifest && m.manifest.does && m.manifest.does.tools) || []));
+    .flatMap(m => ((m.manifest && m.manifest.does && m.manifest.does.tools) || []).map(t => (typeof t === "string" ? t : t.name))));
   assert.ok(declared.has("gate.approve") && declared.size > 50, "the manifests were found");
   // Held ahead of the tool on purpose, so it is human-only from its first day (core/vault/prove.js
   // lists it too). Anything else unregistered is a typo.
@@ -649,4 +649,41 @@ test("presence: a grant enrolls the first passkey and nothing else, once, for fi
   tick(5 * 60_000 + 1);
   assert.equal((await enroll(late.grant)).ok, false, "expired");
   assert.equal(p.db.prepare("SELECT hash FROM presence_grants WHERE hash = ?").get(grant), undefined, "only its hash is stored");
+});
+
+test("presence: removing a key ends the sessions it opened, and only the holder of that real credential is told the device was removed, for 30 days", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  let clock = 1_800_000_000_000;
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [], now: () => clock });
+  const { PersonSessions, COOKIE } = await import("./person.js");
+  const people = new PersonSessions({ db, now: () => clock });
+  db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)").run("pk1", "passkey", "alex-phone", "x", -7, clock);
+  const mine = people.start({ node: "n1", keyId: "pk1" });
+  const other = people.start({ node: "n2", keyId: null });
+  const headers = (/** @type {{ token: string }} */ s) => ({ cookie: `${COOKIE}=${s.token}` });
+  assert.equal(/** @type {any} */ (people.check({ headers: headers(mine), node: "n1" })).ok, true);
+
+  assert.equal(p.remove("pk1"), true);
+  const gone = /** @type {any} */ (people.check({ headers: headers(mine), node: "n1" }));
+  assert.deepEqual([gone.ok, gone.removed], [false, true], "the holder of the real credential is told");
+  assert.equal(/** @type {any} */ (people.check({ headers: headers(other), node: "n2" })).ok, true, "a session with no such key is untouched");
+
+  // Nobody else learns that this session or key ever existed: a wrong secret, an id it never had and a cookie of another kind get today's answer.
+  const id = mine.id;
+  for (const token of [`${id}.${"A".repeat(43)}`, `${"B".repeat(16)}.${mine.secret}`, `${id}.short`]) {
+    const r = /** @type {any} */ (people.check({ headers: { cookie: `${COOKIE}=${token}` }, node: "n1" }));
+    assert.ok(!r || !r.removed, token);
+    if (r) assert.match(r.why, /no such session/);
+  }
+  // The key's own id is kept as a tombstone too.
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_removed WHERE kind = 'key' AND id = 'pk1'").get().n, 1);
+
+  // Thirty days on, it is forgotten: the same credential gets the ordinary answer.
+  clock += 31 * 86_400_000;
+  people.prune();
+  const late = /** @type {any} */ (people.check({ headers: headers(mine), node: "n1" }));
+  assert.equal(late.removed, undefined);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_removed").get().n, 0);
 });

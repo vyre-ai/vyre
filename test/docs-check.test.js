@@ -236,7 +236,7 @@ test("reference: every declared tool is on the tools page, and the pages are det
   const b = generate({ root: REPO, tmp: SCRATCH });
   assert.deepEqual(a, b);
   const tools = a["reference/tools.md"];
-  const missing = manifests(REPO).flatMap(m => (m.manifest.does?.tools || []).map(t => typeof t === "string" ? t : t.name).filter(t => !tools.includes(`### \`${t}\``)));
+  const missing = manifests(REPO).flatMap(m => (m.manifest.does?.tools || []).map(t => (typeof t === "string" ? t : t.name)).filter(t => !tools.includes(`### \`${t}\``)));
   assert.deepEqual(missing, []);
   for (const [rel, text] of Object.entries(a)) {
     assert.ok(text.startsWith("---\ntitle: "), rel);

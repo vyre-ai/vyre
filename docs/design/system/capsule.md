@@ -1,20 +1,20 @@
 ---
-title: The Capsule, redesigned
-summary: The Design A Capsule for capsule-pro. Keyboard first, answers on pause, a follow-up box, Vyre IQ with sources, an answer card that grows then scrolls, voice on Option-Return and computer use you can stop with Esc.
+title: Lumen, redesigned
+summary: The Design A Lumen for capsule-pro. Keyboard first, answers on pause, a follow-up box, Vyre Memory with sources, an answer card that grows then scrolls, voice on Option-Return and computer use you can stop with Esc.
 audience: builders
 owner: app-design
 status: draft
 ---
 
-# The Capsule, redesigned
+# Lumen, redesigned
 
-The Capsule is one field over any app. Type and it finds; type a question and pause and Vyre IQ
+Lumen is one field over any app. Type and it finds; type a question and pause and Vyre Memory
 answers from your own sessions and memory; say "do ..." and an agent uses your Mac while you watch;
 hold Option-Return and talk. Everything works from the keyboard, and the footer only ever shows
 keys.
 
-This page is the whole Capsule for capsule-pro (work/capsule-pro, `local/capsule/native/`). It
-builds on [Capsule on the Mac](components/capsule-mac.md), which still holds the waiting list, the
+This page is the whole Lumen for capsule-pro (work/capsule-pro, `local/capsule/native/`). It
+builds on [Lumen on the Mac](components/capsule-mac.md), which still holds the waiting list, the
 confirm send card and the presence rules. Where the two disagree, this page wins.
 
 Boards: "Capsule · search, the first keystroke" (CapsuleSearch), "Capsule · Vyre IQ answers"
@@ -32,7 +32,7 @@ computer use" (CapsuleDo), each with a paper board.
    ("Copied", "Taken back") is one 12/16 `text2` line in the body just above the footer, for 2 s.
 4. **The keyboard can do everything.** Every action has a key, and the key is in its
    accessibility hint. The mouse is never required.
-5. **Honest answers.** Vyre IQ answers with its sources, says "Not sure" when it is, and says when
+5. **Honest answers.** Vyre Memory answers with its sources, says "Not sure" when it is, and says when
    it found nothing. It never guesses a person, a date or a number.
 6. **Tokens only.** Every colour, size, radius, font and duration comes from
    `Tokens.generated.swift`, repainted live from the hub (Appearance, below). No hand-typed value.
@@ -44,13 +44,13 @@ computer use" (CapsuleDo), each with a paper board.
 | Panel | 680 wide, 560 at most, radius 14 (`Radius.sheet`) | fill `panel`, 1 px `ruleStrong`, the float shadow, opaque |
 | Input row | 56 tall, padding 0 16, gap 12 | mark 20; field 15/22 `text`; placeholder `label` |
 | "Using your Mac" strip | 36, in flow under the input | fill `hover`, 13/18 `text` |
-| Vyre IQ card | from 88 (thinking) up to the body's height | padding 14 16 16, bottom 1 px `rule` |
+| Vyre Memory card | from 88 (thinking) up to the body's height | padding 14 16 16, bottom 1 px `rule` |
 | Group header | 28, padding 0 16 | 12/16 600 `label` |
 | Result row | 44 at least, padding 4 16, gap 12 | lead 24; title 13; meta 12 `label` |
 | Collapsed results line | 32 | 12/16 `label` |
 | Footer | 32, padding 0 16, gap 16, top 1 px `rule` | 12/16 `label`, key hints |
 
-Top to bottom: the input row, the strip (only while an agent uses the Mac), the Vyre IQ card (only
+Top to bottom: the input row, the strip (only while an agent uses the Mac), the Vyre Memory card (only
 while there is a question), the waiting list ("Needs you", only when something waits), the result
 groups, the footer. The body between the input and the footer is 472 at most (560 - 56 - 32).
 
@@ -74,7 +74,7 @@ the panel grows downward only.
   With a target set, a short line under the input says where ⏎ sends ("Sends to kit · Harlow
   Legal"); with no target there is no line and no heading.
 
-## Vyre IQ answers on pause
+## Vyre Memory answers on pause
 
 **When it asks.** Words that read as a question start a quick answer about 600 ms after typing
 rests: a question word, a "?", or three words or more that nothing on this Mac matches strongly.
@@ -83,7 +83,7 @@ More typing lets the pending answer go (the turn is interrupted); it asks again 
 pause. The same words never ask twice, and the last five answers come back at once.
 
 **Where it shows.** The card opens at the top of the body, above the local results, at its
-thinking height, in the same frame as the pause fires. Its header: "Vyre IQ" 12/600 `label`,
+thinking height, in the same frame as the pause fires. Its header: "Vyre Memory" 12/600 `label`,
 then "quick" or "deeper" 12 `label`, as the group headers are. There are no "Quick answer", "Deeper answer"
 or "Follow up" rows. Once the first words arrive the local results collapse to one line ("12
 local results", with ↓), once, and never jump again.
@@ -113,7 +113,7 @@ end. Sources are the person's own sessions and memory only, never the web.
 | Not sure | "Not sure. Here's what I found:" then `known` and the sources. No guess. |
 | Nothing found | "Nothing in your sessions or memory about this." and one row: ⌘⏎ Think deeper, "asks the deeper model, with thinking" |
 | Deeper, thinking | "deeper" in the header, "Thinking · 12 s" counting; ⏎ or a click opens the thinking text |
-| Box away | "Vyre IQ needs the box. Local results still work." 13 `text2`; the question is kept and asks again when the box is back |
+| Box away | "Vyre Memory needs the box. Local results still work." 13 `text2`; the question is kept and asks again when the box is back |
 | Stopped | Esc on a streaming answer: the words so far stay, "Stopped" 12 `label` after them |
 
 **The follow-up box.** After an answer, ⏎ keeps the answer and empties the field, which reads "Ask
@@ -123,7 +123,7 @@ its prose stepped down to `text2`.
 
 **Think deeper.** ⌘⏎ asks the same question, or the follow-up typed, on the deeper model with
 thinking on, in the same thread: `threads.model` then `threads.thinking {on: true}` then
-`threads.send` (sessions, batch 3b). Until those are on main the Capsule may start a new thread
+`threads.send` (sessions, batch 3b). Until those are on main Lumen may start a new thread
 with the conversation so far; the card looks the same either way.
 
 **Open in Vyre.** ⌘O opens the thread in Vyre's Chat on the box.
@@ -197,7 +197,7 @@ This is the fix for the clipped answer the person reported on 27 Sep.
 
 | Key | What it does |
 |---|---|
-| Control twice, or ⌥Space | open or close the Capsule |
+| Control twice, or ⌥Space | open or close Lumen |
 | type | search; a question answers on pause |
 | ↑ ↓ | move through the results; ↑ from the first row returns to the field |
 | ⏎ | open the selected result; with the field focused and a question typed, ask now; in the follow-up box, continue the thread |
@@ -230,7 +230,7 @@ one thing.
 
 ## Appearance and the hub
 
-The Capsule reads the hub at launch and repaints live:
+Lumen reads the hub at launch and repaints live:
 
 - `GET /v1/theme?device=<id>` returns `{theme, scheme, tokens, css, version, rev}` (the hub's rev as
   the ETag, 304 when unchanged; ADR 0035).
@@ -248,8 +248,8 @@ level meter stop under Reduce Motion (a static line, a static meter at the curre
 
 ## Copy
 
-- Placeholder: "Ask Vyre, find, or run". Follow-up: "Ask a follow-up". Card label: "Vyre IQ".
-- "Not sure. Here's what I found:". "Nothing in your sessions or memory about this.". "Vyre IQ
+- Placeholder: "Ask Vyre, find, or run". Follow-up: "Ask a follow-up". Card label: "Vyre Memory".
+- "Not sure. Here's what I found:". "Nothing in your sessions or memory about this.". "Vyre Memory
   needs the box. Local results still work.".
 - "Using your Mac". "Stopped. 3 steps done.". "Vyre is using your Mac · Esc to stop".
 - Sentence case everywhere. Never caps labels ("SEND TO", "COMMANDS", "WAITING ON YOU"), never
@@ -257,8 +257,8 @@ level meter stop under Reduce Motion (a static line, a static meter at the curre
 
 ## Accessibility
 
-- The panel is a group named "Vyre Capsule"; focus lands in the field on open.
-- The Vyre IQ card is a live region, polite: it announces "Vyre IQ answered" once, not each word.
+- The panel is a group named "Vyre Lumen"; focus lands in the field on open.
+- The Vyre Memory card is a live region, polite: it announces "Vyre Memory answered" once, not each word.
   Its prose is one readable element; each source chip reads "Source 1, Q3 report and Estate
   intake, Harlow Legal, Tuesday, command 1".
 - The strip is a live region, assertive once when computer use starts: "Vyre is using your Mac.
@@ -267,11 +267,11 @@ level meter stop under Reduce Motion (a static line, a static meter at the curre
 
 ## Gaps
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] The answer at the top is capped at 200 and clipped (`CapsuleView` `answer.frame(maxHeight:
   200)`): grow, then scroll, with the keys and the thumb above, and the two snapshot tests.
 - [ ] Empty "Sends to" and "Commands" headings draw with no rows: draw a header only with rows.
-- [ ] Vyre IQ: call `iq.ask` with `stream: true` when memory-iq lands it; show the stages, the
+- [ ] Vyre Memory: call `iq.ask` with `stream: true` when memory-iq lands it; show the stages, the
   source chips (⌘1..⌘3), "Not sure" with `known`, and nothing found. Today the quick answer is a
   capsule-purpose thread with no sources.
 - [ ] ⌘⏎ in the same thread with `threads.model` and `threads.thinking` once they are on main.
@@ -282,7 +282,7 @@ Capsule (work/capsule-pro)
   done.".
 - [ ] Layered Esc (stop, then clear, then hide), one thing per press.
 - [ ] Read `/v1/theme?device=` and repaint on `settings.changed` for `appearance.*` keys.
-- [ ] Everything under Gaps in [Capsule on the Mac](components/capsule-mac.md).
+- [ ] Everything under Gaps in [Lumen on the Mac](components/capsule-mac.md).
 
 memory-iq
 - [ ] `iq.ask` with `stream: true` and `iq.thinking` stages, as in ADR 0034. Personal facts come
@@ -290,4 +290,4 @@ memory-iq
   same answer; grounded or abstain.
 
 sessions
-- [ ] The capsule prompt: "You are Vyre IQ", cite or say "I don't know yet", temperature 0.
+- [ ] The capsule prompt: "You are Vyre Memory", cite or say "I don't know yet", temperature 0.

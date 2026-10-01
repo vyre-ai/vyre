@@ -242,6 +242,18 @@ async function edit(args) {
     input.fields = fields;
   }
   if (Object.keys(input).length === 1) return oops("nothing to change · see vyre vault help");
+  // An API credential is never read back, so it cannot be edited: its key is replaced, and its hosts and readers stay.
+  const item = await tool("vault.item", { name });
+  if (!item.error && item.data && item.data.item && item.data.item.kind === "api-credential") {
+    const others = Object.keys(input).filter(k => k !== "name" && k !== "fields");
+    const keyField = input.fields ? Object.keys(input.fields) : [];
+    if (others.length || keyField.length !== 1 || !["secret", "key", "value"].includes(keyField[0])) return oops(`${name} is an API credential: it cannot be edited, only its key replaced · vyre vault edit ${name} --field secret`);
+    const r2 = await tool("vault.put", { name, kind: "api-credential", fields: { secret: input.fields[keyField[0]] } });
+    input.fields[keyField[0]] = "";
+    if (r2.error) return fail(r2);
+    say(`  ${signal("updated")} ${bold(name)}${dim(" · key replaced, hosts and readers unchanged")}`);
+    return 0;
+  }
   const r = await tool("vault.edit", input);
   if (input.fields) for (const k of Object.keys(input.fields)) input.fields[k] = "";
   if (r.error) return fail(r);
@@ -535,24 +547,24 @@ async function put(args) {
 // ------------------------------------------------------------ grants
 
 async function grant(args) {
-  const f = flags(args, { string: ["watcher"] });
+  const f = flags(args, { string: ["watcher", "project"] });
   const [name, module] = f._;
-  if (!name || !module || f._.length > 2) return oops("vyre vault grant <name> <module> [--watcher w]");
-  const r = await tool("vault.grant", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}) });
+  if (!name || !module || f._.length > 2) return oops("vyre vault grant <name> <module> [--watcher w] [--project p]");
+  const r = await tool("vault.grant", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}), ...(f.project ? { project: f.project } : {}) });
   if (r.error) return fail(r);
   const g = r.data.grant;
   if (g.status === "pending") say(`  ${beacon("waiting for approval")} ${dim(`· vyre vault approve ${g.id}`)}`);
-  else say(`  ${signal("granted")} ${bold(g.name)} to ${grantText(g)}`);
+  else say(`  ${signal("granted")} ${bold(g.name)} to ${grantText(g)}${g.project ? dim(` · ${g.project} only`) : ""}`);
   return 0;
 }
 
 async function revoke(args) {
-  const f = flags(args, { string: ["watcher"] });
+  const f = flags(args, { string: ["watcher", "project"] });
   const [name, module] = f._;
-  if (!name || !module || f._.length > 2) return oops("vyre vault revoke <name> <module> [--watcher w]");
-  const r = await tool("vault.revoke", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}) });
+  if (!name || !module || f._.length > 2) return oops("vyre vault revoke <name> <module> [--watcher w] [--project p]");
+  const r = await tool("vault.revoke", { name, module, ...(f.watcher ? { watcher: f.watcher } : {}), ...(f.project ? { project: f.project } : {}) });
   if (r.error) return fail(r);
-  say(r.data.revoked ? `  ${signal("revoked")} ${bold(name)} from ${module}${f.watcher ? "/" + f.watcher : ""}` : dim(`  ${module} had no grant of ${name}`));
+  say(r.data.revoked ? `  ${signal("revoked")} ${bold(name)} from ${module}${f.watcher ? "/" + f.watcher : ""}${f.project ? dim(` · ${f.project} only`) : ""}` : dim(`  ${module} had no grant of ${name}`));
   return 0;
 }
 
@@ -1025,6 +1037,25 @@ async function sweepCmd(args) {
   }
   if (found.some(x => x.where === "history")) say(dim("  a value in git history stays there after you delete it: rotate it (vyre vault rotate <name>)"));
   if (found.some(x => !x.item)) say(dim("  bring unknown ones in with vyre vault import <folder> --rewrite, or vyre vault put"));
+  return 0;
+}
+
+/** `scan-env [folder...]`: the .env files in your project folders that hold secrets, and the command that imports each. */
+async function scanEnvCmd(args) {
+  const roots = args.filter(a => !a.startsWith("-")).map(a => path.resolve(a));
+  if (args.some(a => a.startsWith("-"))) return oops("vyre vault scan-env [folder...]");
+  const r = await tool("vault.env.scan", roots.length ? { roots } : {});
+  if (r.error) return fail(r);
+  const { files = [], scanned = 0, truncated } = r.data || {};
+  say("");
+  say(`  ${files.length ? beacon(plural(files.length, ".env file")) : signal("no .env file holds a secret")} ${dim(`· ${plural(scanned, "file")} looked at${truncated ? ", stopped at the limit" : ""}`)}`);
+  for (const f of files) {
+    const git = f.git && f.git.tracked ? dim(" · git tracks it, so the values are in its history too") : "";
+    say(`  ${f.project ? `${bold(f.project)} ` : ""}${f.file} ${dim(`· ${plural(f.secrets, "secret")}${f.kinds && f.kinds.length ? ` (${f.kinds.join(", ")})` : ""}`)}${git}`);
+    // The printed line is POSIX quoting, so it is shown only on a POSIX host; elsewhere the file is named and the person runs `vyre vault import <file> --rewrite` in their own shell.
+    say(f.command && process.platform !== "win32" ? `    ${dim(f.command)}` : f.command ? `    ${dim("vyre vault import <the file above> --rewrite")}` : `    ${dim("this path has a control character in it, so no command is printed · rename the folder")}`);
+  }
+  if (files.length) say(dim("\n  import swaps each secret for a vault reference; the program then runs with vyre run -- <command> in that folder"));
   return 0;
 }
 
@@ -2028,7 +2059,7 @@ function viewOf(obj) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  "scan-env": scanEnvCmd, pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 /** Every verb run() handles, for `vyre commands` (core/cli/verbs.js); an alias shares its verb's row. */
@@ -2055,6 +2086,7 @@ const VERBS = [
   { verb: "approve", summary: "allow one of them", usage: "<id>", person: true },
   { verb: "run", summary: "run a command with items in its environment, its output scrubbed (the command goes after --)", usage: "[--env-file f] [item...]", person: true },
   { verb: "totp", summary: "the one-time code, live", usage: "<name> [--once]", person: true, live: true },
+  { verb: "scan-env", summary: "the .env files in your project folders that hold secrets, and how to import each", usage: "[folder...]", read: true },
   { verb: "health", summary: "Watchtower: weak, reused, old and to-rotate items, by name", usage: "", read: true },
   { verb: "remind", summary: "the daily reminder pass, now", usage: "", read: true },
   { verb: "breach", summary: "check every login's password against known breaches", usage: "" },

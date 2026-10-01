@@ -480,8 +480,11 @@ keep what is granted to them while your personal vault is locked.
 
 > [!SNAG] The vault is locked (exit code 4)
 > With the passphrase keystore, run `vyre vault unlock`. For your personal vault, run
-> `vyre vault account unlock` (add `--touchid` once you enrolled it), or unlock in the Deck. Both
-> commands meet the `presence_required` problem above.
+> `vyre vault account unlock` (add `--touchid` once you enrolled it), or unlock in the Deck.
+> Unlocking with Touch ID meets the `presence_required` problem above. Unlocking with the password
+> asks once, for the password itself. After five wrong passwords in a row, Vyre refuses every try
+> for 30 seconds, then 60, doubling up to 15 minutes, and a right password starts the count over.
+> Touch ID unlock never passes through that count, so it still works during the wait.
 
 ## Which surface does what
 

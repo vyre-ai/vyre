@@ -344,9 +344,9 @@ const offerBoard = gate => gate.offer({ name: "courier:board", tool: "courier.re
 
 test("gate: a module's sender is held, edited, approved and sent through the module's own tool", async () => {
   const { gate, calls } = withModule();
-  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete", "act"] });
+  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete"] });
   assert.deepEqual(gate.senders().find(s => s.name === "courier:board"),
-    { name: "courier:board", type: "module", module: "courier", kinds: ["send", "spend", "delete", "act"], content: { summary: "string", text: "string" } });
+    { name: "courier:board", type: "module", module: "courier", kinds: ["send", "spend", "delete"], content: { summary: "string", text: "string" } });
   const { id } = gate.request({ kind: "send", via: "courier:board", to: "#northwind", content: { summary: "Weekly update for Northwind Bakery", text: "Ovens are in." } }, { agent: "kit" });
   assert.equal(gate.held()[0].summary, "Weekly update for Northwind Bakery");
   assert.equal(calls.length, 0);
@@ -409,4 +409,76 @@ test("gate: after a restart, an item held under a module sender not yet offered 
   offerBoard(gate);
   assert.equal(gate.held()[0].summary, "Weekly update");
   assert.equal((await gate.approve({ id })).state, "sent");
+});
+
+test("gate: sendNow (asked-for) sends at once with no held card, and leaves a row that names the intent", async () => {
+  const { gate, events, sent, value } = setup();
+  const r = await gate.sendNow({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: DRAFT, thread: "t-1", project: "harlow-legal" }, { agent: "juno", intent: "s_1" });
+  assert.equal(r.state, "sent");
+  assert.equal(r.by, "said:s_1");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].token, value, "the credential is added at the boundary, as for an approval");
+  assert.deepEqual(gate.held(), [], "it was never a held item the person had to answer");
+  const it = gate.get({ id: r.id });
+  assert.equal(it.state, "sent");
+  assert.equal(it.by, "said:s_1");
+  assert.equal(it.said, "s_1", "get names the intent so the card can show You said to");
+  assert.deepEqual(it.result, { ok: true });
+  assert.deepEqual(it.diff, { removed: [], added: [] });
+  assert.deepEqual(events.map(e => e.type), ["gate.released"], "no gate.held for what was asked for");
+  assert.deepEqual({ by: events[0].payload.by, said: events[0].payload.said, agent: events[0].payload.agent, to: events[0].payload.to }, { by: "said:s_1", said: "s_1", agent: "juno", to: ["dana@harlowlegal.com"] });
+  assert.deepEqual(events[0].where, { thread: "t-1", project: "harlow-legal" });
+  assert.ok(!JSON.stringify(events).includes(value) && !JSON.stringify(events).includes("staging"), "no content or credential in an event");
+  await assert.rejects(gate.approve({ id: r.id }), /already sent/);
+});
+
+test("gate: sendNow checks the request the way request does, before it writes anything", async () => {
+  const { gate, sent } = setup();
+  await assert.rejects(gate.sendNow({ kind: "sneeze", via: "mail", to: "dana@harlowlegal.com", content: DRAFT }, { intent: "s_1" }), /kind must be one of send, spend, delete, act/);
+  await assert.rejects(gate.sendNow({ kind: "send", via: "nowhere", to: "dana@harlowlegal.com", content: DRAFT }, { intent: "s_1" }), /no sender "nowhere"/);
+  await assert.rejects(gate.sendNow({ kind: "spend", via: "mail", to: "dana@harlowlegal.com", content: DRAFT }, { intent: "s_1" }), /does not spend/);
+  await assert.rejects(gate.sendNow({ kind: "send", via: "mail", to: [], content: DRAFT }, { intent: "s_1" }), /where it is going/);
+  await assert.rejects(gate.sendNow({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "x" } }, { intent: "s_1" }), /needs a body/);
+  assert.equal(sent.length, 0);
+  assert.equal(/** @type {any} */ (gate.db.prepare("SELECT COUNT(*) AS n FROM gate_items").get()).n, 0);
+});
+
+test("gate: an asked-for send that fails falls back to held with the error, and the person can try again", async () => {
+  const { gate, events, sent, failNext } = setup();
+  failNext("mail is down");
+  const r = await gate.sendNow({ kind: "send", via: "mail", to: "dana@harlowlegal.com", content: DRAFT, thread: "t-1" }, { intent: "s_1" });
+  assert.equal(r.state, "held");
+  assert.match(r.error, /mail is down/);
+  assert.equal(sent.length, 0);
+  const held = gate.held();
+  assert.equal(held.length, 1);
+  assert.equal(held[0].error, "mail is down");
+  assert.deepEqual(events.map(e => e.type), ["gate.held", "gate.failed"]);
+  const again = await gate.approve({ id: r.id, by: "cli" });
+  assert.equal(again.state, "sent");
+  assert.equal(sent.length, 1);
+  assert.equal(gate.get({ id: r.id }).by, "cli", "the person's approval is what sent the retry");
+});
+
+test('gate: "act" is a kind a sender may name, not one every offered sender takes', () => {
+  const { gate } = withModule();
+  assert.deepEqual(offerBoard(gate), { name: "courier:board", kinds: ["send", "spend", "delete"] }, "an offer that names no kinds still takes only the three");
+  assert.throws(() => gate.request({ kind: "act", via: "courier:board", to: "#northwind", content: { summary: "s", text: "t" } }), /does not act/);
+  gate.offer({ name: "courier:hands", tool: "courier.release", kinds: ["act"] }, "module:courier");
+  const r = gate.request({ kind: "act", via: "courier:hands", to: "Mail on the paired Mac", content: { summary: "Send the drafted reply", state: { hash: "abc", at: 1 } } });
+  assert.equal(r.state, "held");
+  assert.deepEqual(gate.get({ id: r.id }).draft.state, { hash: "abc", at: 1 }, "content, state hash included, is stored verbatim");
+});
+
+test("gate: a shipped module's sender may report its `to` as the real destination; an added module's never does", () => {
+  const { gate } = setup();
+  gate.offer({ name: "chrome:mac", tool: "chrome.send", recipients: "to" }, "module:chrome", true);
+  assert.deepEqual(gate.recipients({ kind: "send", via: "chrome:mac", to: "https://app.example.test", content: { x: 1 } }), ["https://app.example.test"]);
+  gate.offer({ name: "evil:out", tool: "evil.send", recipients: "to" }, "module:evil", false);
+  gate.offer({ name: "chrome:spoof", tool: "chrome.s3", recipients: "to" }, "module:chrome");
+  assert.equal(gate.recipients({ kind: "send", via: "chrome:spoof", to: "https://app.example.test", content: {} }), null, "a name alone is not first-party: the registry decides");
+  assert.equal(gate.recipients({ kind: "send", via: "evil:out", to: "https://app.example.test", content: { x: 1 } }), null, "an added module reports nothing, so nothing covers it");
+  gate.offer({ name: "chrome:none", tool: "chrome.send2" }, "module:chrome");
+  assert.equal(gate.recipients({ kind: "send", via: "chrome:none", to: "https://app.example.test", content: {} }), null, "a sender that does not say so names none");
+  assert.throws(() => gate.offer({ name: "chrome:bad", tool: "chrome.x", recipients: "yes" }, "module:chrome", true), /recipients/);
 });

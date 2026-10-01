@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Memory graph, a floor plan that grows live, and one entity's facts</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2680px; height: 1040px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Places · Memory, the graph view</span>
+      <h1 class="t28 w6">One room per project, a shared room, and every fact one click from its source.</h1>
+      <p class="t15 t2">memory.graph draws the floor plan the Deck renders: people, organisations and projects as rooms fill in while the import runs, and a time-tagged fact (a call, a filing) sits with the room it belongs to. A cross-project person, like the assistant, draws a line into every room it touches. Click any node for its facts, each with a source and a quiet way to correct it.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="row" style="gap: 30px; align-items: flex-start;">
+
+      <div class="cap">
+        <span class="cap-t">Desktop, 1280 wide · Memory, graph tab · growing live during import</span>
+        <div class="win" style="width: 1280px; height: 800px;">
+          <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+          <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+            <nav class="rail" aria-label="Vyre">
+              <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+              <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+              <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+                <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+                <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+              </div>
+            </nav>
+            <main class="main">
+              <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+                <div class="top-l"><h1 class="t15 w6">Memory</h1><span class="t12 t3">214 facts · 9 lessons</span></div>
+                <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+                <div class="top-r"><a class="needs" href="#"><span class="dot dot-need"></span>Needs you 6</a></div>
+              </header>
+              <div class="row" style="height: 52px; flex: none; padding: 0 20px; gap: 8px; border-bottom: 1px solid var(--rule);">
+                <div class="seg"><button type="button">List</button><button class="on" type="button">Graph</button></div>
+                <span class="st" style="margin-left: 16px;"><span class="ring"></span>Live · found 14 people, 6 orgs, 9 projects, 431 sessions</span>
+              </div>
+              <div style="position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 20px;">
+                <div style="position: relative; width: 1180px; height: 560px;">
+                  <svg style="position: absolute; inset: 0; overflow: visible;" width="1180" height="560" aria-hidden="true">
+                    <line x1="108" y1="96" x2="244" y2="96" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="292" y1="96" x2="384" y2="96" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="108" y1="96" x2="108" y2="202" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="108" y1="202" x2="244" y2="202" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="108" y1="368" x2="244" y2="368" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="292" y1="368" x2="384" y2="368" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="654" y1="96" x2="654" y2="202" stroke="var(--rule-strong)" stroke-width="1.5"></line>
+                    <line x1="654" y1="202" x2="108" y2="96" stroke="var(--beacon)" stroke-width="1.5" stroke-dasharray="3 3"></line>
+                  </svg>
+
+                  <div style="position: absolute; left: 24px; top: 16px; width: 520px; height: 260px; border: 1px solid var(--rule-strong); border-radius: 12px;">
+                    <span class="lbl" style="position: absolute; left: 14px; top: 10px;">Harlow Legal</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 62px; top: 56px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;">k</span><span class="t12 w6 trunc">kit</span><span class="t12 t3 trunc">Person</span>
+                  </div>
+                  <div class="tile tile-on" style="position: absolute; left: 198px; top: 56px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M2 4l6 3.5L14 4M2 4v8l6 3.5L14 12V4"></path></svg></span><span class="t12 w6 trunc">Harlow Legal</span><span class="t12 t3 trunc">Org · selected</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 338px; top: 56px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span><span class="t12 w6 trunc">Estate intake</span><span class="t12 t3 trunc">Project</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 62px; top: 162px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span><span class="t12 w6 trunc">Q3 report</span><span class="t12 t3 trunc">Project</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 198px; top: 162px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg></span><span class="t12 w6 trunc">HL-2291</span><span class="t12 t3 trunc">14 Oct hearing</span>
+                  </div>
+
+                  <div style="position: absolute; left: 24px; top: 296px; width: 520px; height: 248px; border: 1px solid var(--rule-strong); border-radius: 12px;">
+                    <span class="lbl" style="position: absolute; left: 14px; top: 10px;">Northwind Bakery</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 62px; top: 328px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M2 4l6 3.5L14 4M2 4v8l6 3.5L14 12V4"></path></svg></span><span class="t12 w6 trunc">Northwind</span><span class="t12 t3 trunc">Org</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 198px; top: 328px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg></span><span class="t12 w6 trunc">Order form</span><span class="t12 t3 trunc">Project</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 338px; top: 328px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;">s</span><span class="t12 w6 trunc">Sam</span><span class="t12 t3 trunc">Person</span>
+                  </div>
+
+                  <div style="position: absolute; left: 568px; top: 16px; width: 588px; height: 528px; border: 1px solid var(--rule-strong); border-radius: 12px;">
+                    <span class="lbl" style="position: absolute; left: 14px; top: 10px;">Shared</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 608px; top: 56px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32 av-me" style="margin: 0 auto;">a</span><span class="t12 w6 trunc">alex</span><span class="t12 t3 trunc">You</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 608px; top: 162px; width: 92px; padding: 8px; gap: 4px; align-items: center; text-align: center; cursor: pointer;">
+                    <span class="av av-32" style="margin: 0 auto;"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M3.5 5.5L8 13L12 6.5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"></path></svg></span><span class="t12 w6 trunc">juno</span><span class="t12 t3 trunc">Assistant · in every room</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 760px; top: 56px; width: 150px; padding: 8px; gap: 4px; text-align: left; cursor: pointer;">
+                    <span class="t12 w6 trunc">Signs emails as alex</span><span class="t12 t3 trunc">no title</span>
+                  </div>
+                  <div class="tile" style="position: absolute; left: 760px; top: 162px; width: 150px; padding: 8px; gap: 4px; text-align: left; cursor: pointer;">
+                    <span class="t12 w6 trunc">Harlow Legal weekly</span><span class="t12 t3 trunc">Every Tue, 23:00</span>
+                  </div>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+
+      <div class="cap">
+        <span class="cap-t">Desktop, 1280 wide · a node clicked · facts, sources and a quiet way to correct one</span>
+        <div class="win" style="width: 1280px; height: 800px; position: relative;">
+          <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+          <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+            <nav class="rail" aria-label="Vyre">
+              <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+              <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+              <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+                <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+                <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+              </div>
+            </nav>
+            <main class="main">
+              <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+                <div class="top-l"><h1 class="t15 w6">Memory</h1><span class="t12 t3">214 facts · 9 lessons</span></div>
+                <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+                <div class="top-r"><a class="needs" href="#"><span class="dot dot-need"></span>Needs you 6</a></div>
+              </header>
+              <div class="row" style="height: 52px; flex: none; padding: 0 20px; gap: 8px; border-bottom: 1px solid var(--rule);">
+                <div class="seg"><button type="button">List</button><button class="on" type="button">Graph</button></div>
+                <span class="st" style="margin-left: 16px;"><span class="dot dot-run"></span>Import finished · 14 people, 6 orgs, 9 projects, 431 sessions</span>
+              </div>
+              <div style="position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden;">
+                <div style="position: absolute; inset: 0; opacity: 0.35;">
+                  <div style="position: absolute; left: 44px; top: 36px; width: 300px; height: 200px; border: 1px solid var(--rule-strong); border-radius: 12px;"></div>
+                </div>
+              </div>
+            </main>
+          </div>
+          <div class="ph-scrim"></div>
+
+          <section class="sheet" aria-label="Harlow Legal, facts" style="position: absolute; z-index: 7; right: 0; top: 96px; bottom: 0; width: 380px; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); border-radius: 0; border-left: 1px solid var(--rule);">
+            <div class="row" style="padding: 18px 20px 14px; gap: 12px; flex: none; border-bottom: 1px solid var(--rule);">
+              <span class="av av-40"><svg class="ic ic-16" viewBox="0 0 16 16"><path d="M2 4l6 3.5L14 4M2 4v8l6 3.5L14 12V4"></path></svg></span>
+              <div class="col grow" style="gap: 2px; min-width: 0;"><h2 class="t20 w6 trunc">Harlow Legal</h2><span class="t13 t2">Org · client since 8 Jan · in 214 sessions</span></div>
+              <button class="ibtn" type="button" aria-label="Close"><svg class="ic" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+            </div>
+            <div class="col" style="padding: 6px 20px 20px; gap: 0; overflow: auto;">
+
+              <div class="col" style="gap: 6px; padding: 14px 0; border-bottom: 1px solid var(--rule);">
+                <span class="t13">Target cost per lead is $180, signed.</span>
+                <span class="t12 t3">confidence 0.9 · from 3 sessions · <span class="steplink">Wrong?</span></span>
+                <div class="row" style="gap: 6px; flex-wrap: wrap;">
+                  <span class="kc-src"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Call, 12 Sep · Harlow Legal weekly · turn 41</span>
+                </div>
+              </div>
+
+              <div class="col" style="gap: 6px; padding: 14px 0; border-bottom: 1px solid var(--rule);">
+                <span class="t13">The Estate branch uses intake form v2.</span>
+                <span class="t12 t3">confidence 0.95 · from 2 sessions · <span class="steplink">Wrong?</span></span>
+                <div class="row" style="gap: 6px; flex-wrap: wrap;">
+                  <span class="kc-src"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Session "Harlow intake" · 24 Sep</span>
+                </div>
+              </div>
+
+              <div class="col" style="gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--rule); background: var(--hover); margin: 0 -20px; padding-left: 20px; padding-right: 20px;">
+                <span class="t13">Reports live in harlow-legal/reports.</span>
+                <div class="row" style="gap: 8px;"><span class="t12 t3">you corrected this · <span class="steplink">Undo</span></span></div>
+                <div class="row" style="gap: 6px; flex-wrap: wrap;">
+                  <span class="kc-src"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg>Call note, Harlow weekly · 25 Sep</span>
+                </div>
+              </div>
+
+              <div class="col" style="gap: 6px; padding: 14px 0;">
+                <span class="t13 t2">Not sure yet.</span>
+                <span class="t12 t3">What memory does know: this room has a weekly call, Tuesdays 23:00.</span>
+                <div class="row" style="gap: 8px; margin-top: 2px;"><div class="inp grow"><span class="inp-ph grow">Know it? Tell me</span></div></div>
+              </div>
+
+            </div>
+          </section>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2680,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

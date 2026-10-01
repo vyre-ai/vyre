@@ -65,3 +65,18 @@ test("import: Claude Code, Codex and Gemini CLI sessions go from the Mac to the 
   assert.ok(texts.every(x => x.split("\n").filter(Boolean).every(l => { try { JSON.parse(l); return true; } catch { return false; } })), "every line is JSON");
   assert.equal(texts.filter(x => JSON.parse(x.split("\n")[0]).cwd === CWD).length, 2, "Claude Code's and Codex's keep the folder they ran in");
 });
+
+test("import: the onboarding page's caller (the loopback's own label) may scan, plan and read the status, but a model may not", { timeout: 30_000 }, async t => {
+  const { start } = await import("../core/daemon/index.js");
+  const { tempHome } = await import("./helpers.js");
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0 } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  for (const tool of ["import.scan", "import.status"]) {
+    const r = await d.registry.call(tool, {}, "onboard");
+    assert.notEqual(r.error && r.error.code, "denied", `${tool}: ${JSON.stringify(r.error)}`);
+  }
+  assert.equal((await d.registry.call("import.scan", {}, "mcp:agent:kit")).error.code, "denied");
+  assert.equal((await d.registry.call("import.start", { plan: "x", mode: "once", pace: "gentle" }, "mcp")).error.code, "denied");
+});

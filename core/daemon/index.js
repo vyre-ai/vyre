@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import * as config from "../config/index.js";
 import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
+import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice } from "../modules/index.js";
@@ -30,6 +31,7 @@ import { registryRules } from "../harness/rules.js";
 // edge (reviewer's MEDIUM, 2026-09-28) and would pull the whole relay module - link, bridge,
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
+import { within } from "../../lib/within.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -58,6 +60,8 @@ export function moduleRoots(root) {
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
+  // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
+  assertDaemonHost({ root, real: isRealHome(root) });
   // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
   // nothing on screen: every dialog gate reads the environment, so say it there.
   // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
@@ -169,7 +173,7 @@ async function startLocked(opts, root, p, release) {
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
-    if (inflight.size) await Promise.race([Promise.allSettled([...inflight]), new Promise(r => setTimeout(r, DRAIN_MS).unref())]);
+    if (inflight.size) await within(Promise.allSettled([...inflight]), DRAIN_MS);
     for (const end of streams) end();
     for (const s of upgraded) s.destroy();
     // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
@@ -543,6 +547,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
     if (c && c.ok) person = { id: c.id, kind: c.kind };
+    // The credential this box issued, for a device whose key was since removed: said once, in plain
+    // words, with its own code (only the holder of the real credential gets it, person.js check).
+    else if (c && c.removed) return send(res, 401, { error: { code: "device_removed", message: c.why } });
     // A bad bearer is refused outright; a lapsed cookie is only a device, and the tool decides.
     else if (c && String(req.headers.authorization || "").startsWith("Vyre ")) return send(res, 401, { error: { code: "person_session_required", message: c.why } });
   }
@@ -708,7 +715,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
     // pid: only vyred's router can hand a tool this (a module's ctx.call carries no meta).
     const signed = socket && name === "presence.capsule.pin" ? await signedBy(req.socket) : undefined;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // A caller that asks for application/x-ndjson gets the tool's live draft on this connection only:
+    // one {"draft":...} line per update, then {"result":...}. No draft function for anyone else, and
+    // a draft is never an event. Only the router sets this; a module's ctx.call carries no meta.
+    const ndjson = /application\/x-ndjson/.test(String(req.headers.accept || "")) && typeof res.writeHead === "function";
+    let live = false;
+    const draft = ndjson ? d => {
+      if (res.writableEnded || res.destroyed) return;
+      if (!live) { live = true; res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" }); }
+      res.write(JSON.stringify({ draft: d }) + "\n");
+    } : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
@@ -723,6 +740,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : ["no_such_tool", "not_found"].includes(result.error.code) ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
       : result.error.code === "idempotency_conflict" ? 409 : 500;
+    if (live) { res.end(JSON.stringify({ result }) + "\n"); return; }
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey
@@ -782,13 +800,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
   // ../../relay/client/<file>.js (deck/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
   // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
-  // Only these seven files - client.js's own browser-safe closure (checked by hand: channel.js,
-  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) - nothing else in relay/client/
+  // Only these nine files - client.js's own browser-safe closure (checked by hand: channel.js,
+  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which deck/js/add-pc-card.js
+  // (Settings, Add a Windows PC) imports - nothing else in relay/client/
   // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
   // /pair/scan without this fell straight through to serveDeck's catch-all shell (team-lead,
   // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
   // through a real vyred the way a phone does.
-  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise)\.js$/.exec(url.pathname);
+  const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
   // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).

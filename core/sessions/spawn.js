@@ -68,12 +68,23 @@ export function spawnSession(command, args, o = {}) {
  * @param {string} home @param {Record<string, string>} files
  */
 export function seedFiles(home, files) {
+  fs.mkdirSync(home, { recursive: true, mode: 0o700 });
   for (const [rel, text] of Object.entries(files)) {
     if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes("..")) throw new Error(`seed path ${rel} must stay inside the HOME`);
     const file = path.join(home, rel);
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-    try { fs.rmSync(file, { force: true }); } catch {}
-    fs.writeFileSync(file, text, { mode: 0o600 });
+    // No part of the path below HOME may be a symlink (an agent can plant ~/.codex as a link to somewhere else, and this runs
+    // as whoever starts the session): each folder is made and checked with lstat, and the file is opened with O_NOFOLLOW.
+    let dir = home;
+    for (const part of path.dirname(rel).split(/[\\/]/).filter(x => x && x !== ".")) {
+      dir = path.join(dir, part);
+      let st = null;
+      try { st = fs.lstatSync(dir); } catch {}
+      if (!st) { fs.mkdirSync(dir, { mode: 0o700 }); st = fs.lstatSync(dir); }
+      if (st.isSymbolicLink() || !st.isDirectory()) throw new Error(`seed path ${rel}: ${path.relative(home, dir)} is not a plain folder`);
+    }
+    try { const st = fs.lstatSync(file); if (st.isSymbolicLink() || !st.isFile()) fs.rmSync(file, { force: true, recursive: false }); else fs.rmSync(file, { force: true }); } catch {}
+    const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW, 0o600);
+    try { fs.writeFileSync(fd, text); } finally { fs.closeSync(fd); }
   }
 }
 

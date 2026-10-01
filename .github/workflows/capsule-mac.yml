@@ -10,7 +10,7 @@ permissions:
   contents: read
 concurrency:
   group: capsule-mac-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   detect:
     runs-on: ubuntu-latest
@@ -55,6 +55,8 @@ jobs:
         run: sw_vers && swiftc --version && xcodebuild -version
       - name: Native Capsule tests
         if: hashFiles('local/capsule/native/build.sh') != ''
+        env:
+          VYRE_CAPSULE_SNAP: ${{ runner.temp }}/lumen-screens
         run: sh local/capsule/native/build.sh test
       - name: Native Capsule app
         # Built even when a native test fails, so the app still comes out and the job still fails.
@@ -65,7 +67,16 @@ jobs:
         timeout-minutes: 6
         env:
           VYRE_CAPSULE_CHECK_DETAIL: "1"
+          VYRE_CAPSULE_SCREENS: ${{ runner.temp }}/lumen-screens
         run: node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app
+      - name: Lumen against a real vyred
+        # The four tools the server now offers (mentions.search, capsule.commands, view, act), read by the built app
+        # from a real daemon in a throwaway home: the # list, the module commands, the next-meeting line.
+        if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        timeout-minutes: 5
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/capsule-daemon-check.mjs local/capsule/native/.build/Vyre.app
       - name: Node tests that need a Mac
         run: |
           npm ci --no-audit --no-fund
@@ -122,4 +133,11 @@ jobs:
         with:
           name: capsule-mac-${{ github.sha }}
           path: dist/*.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: lumen-screens-${{ github.sha }}
+          path: ${{ runner.temp }}/lumen-screens/*.png
+          if-no-files-found: ignore
           retention-days: 14

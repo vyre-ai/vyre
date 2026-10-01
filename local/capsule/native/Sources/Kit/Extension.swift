@@ -268,11 +268,15 @@ public protocol SessionWindow: AnyObject {
     /// The same with a curve of your choosing (ease-out for a slide in, ease-in for one out).
     func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve)
     func close()
+    /// Told after the person drags the window: its new frame. Set by a floating window's owner to
+    /// remember where they put it. Windows that cannot be dragged ignore it.
+    var onMoved: ((NSRect) -> Void)? { get set }
 }
 
 public enum SessionWindowCurve: Sendable { case easeInOut, easeOut, easeIn, linear }
 
 public extension SessionWindow {
+    var onMoved: ((NSRect) -> Void)? { get { nil } set {} }
     /// A window that knows no curves (a test's fake) moves as it always does.
     func setFrame(_ frame: NSRect, duration: TimeInterval, curve: SessionWindowCurve) { setFrame(frame, duration: duration) }
 }
@@ -346,6 +350,10 @@ public protocol CapsuleHost: AnyObject {
     /// id; a second owner gets the same window and the first is told nothing, so take it only
     /// from a command the user ran.
     func sessionWindow(owner: String) -> SessionWindow
+    /// A small floating panel the person can drag anywhere (computer-use oversight), separate from
+    /// the session window. Always in front of ordinary windows, never takes focus from the app the
+    /// person is in unless they click a field in it. Open it only because an agent is driving.
+    func floatingWindow(owner: String) -> SessionWindow
     /// The session window now shows this session (nil: it closed). The Capsule takes that
     /// session's project as the current one (memory.ask's context, the project chip).
     func sessionShown(thread: String?, project: String?)
@@ -388,6 +396,7 @@ public struct CredentialNeed: Sendable, Equatable {
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func floatingWindow(owner: String) -> SessionWindow { NoSessionWindow() }
     func sessionShown(thread: String?, project: String?) {}
     func currentQuery() -> String { "" }
     func dictate(_ text: String, final: Bool) { setQuery(text) }

@@ -1,3 +1,5 @@
+# The Windows app: Cargo.lock files are committed and every build is --locked, with the Rust toolchain
+# and tauri-cli pinned to exact versions, because the result is auto-installed on people's PCs.
 # The Windows Capsule shell (Tier C, docs/design/windows-plan.md section 9). Only
 # local/capsule/native-win exists so far: the global-hotkey decision logic (which binding to ask
 # for, the Alt+Space-vs-system-menu conflict), host-independent and unit-tested. The Tauri panel
@@ -7,15 +9,22 @@
 name: capsule-win
 on:
   push:
-    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
+    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml", "package.json"]
   pull_request:
     paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
   workflow_dispatch:
+  # release.yml calls this for every release and waits for it, so an installer is never missing.
+  workflow_call:
+    inputs:
+      tag:
+        description: "The release tag (vX.Y.Z...); the app's version is taken from it"
+        type: string
+        required: false
 permissions:
   contents: read
 concurrency:
-  group: capsule-win-${{ github.ref }}
-  cancel-in-progress: true
+  group: capsule-win-${{ github.workflow }}-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   build:
     runs-on: windows-latest
@@ -25,9 +34,43 @@ jobs:
         working-directory: local/capsule/native-win
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # A full commit sha of the action (its 1.98.1 branch), with the toolchain named, not a movable tag.
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+        with:
+          toolchain: 1.98.1
       - name: cargo test
-        run: cargo test --verbose
-      - name: build the app (release exe, no bundle)
+        run: cargo test --locked --verbose
+      - name: version, from the repo's package.json (the release checks it equals the tag)
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then v="${{ inputs.tag }}"; v="${v#v}"; else v=$(node -p 'require("../../../package.json").version'); fi
+          case "$v" in [0-9]*.[0-9]*.[0-9]*) ;; *) echo "not a version: $v"; exit 1 ;; esac
+          sed -i "0,/\"version\": \".*\"/s//\"version\": \"$v\"/" app/tauri.conf.json
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "VYRE_APP_VERSION=$v" >> "$GITHUB_ENV"
+      - name: the relay client the pairing page runs (one copy of tailnet's code, not a fork)
+        shell: bash
+        run: |
+          mkdir -p app/ui/relay
+          for f in ../../../relay/client/*.js; do
+            case "$f" in *.test.js|*/nodecrypto.js|*/testing.js) ;; *) cp "$f" app/ui/relay/ ;; esac
+          done
+          ls app/ui/relay
+          mkdir -p app/ui/vendor && cp ../../../deck/vendor/qrcode.js app/ui/vendor/qrcode.js
+      - name: build the installer (NSIS, unsigned for 0.2)
+        shell: bash
         working-directory: local/capsule/native-win/app
-        run: cargo build --release
+        run: |
+          cargo install tauri-cli --version "=2.12.0" --locked
+          cargo tauri build --bundles nsis -- --locked
+      - name: the installer, named Vyre_<version>_x64-setup.exe, for release.yml
+        shell: bash
+        run: |
+          exe=$(ls app/target/release/bundle/nsis/Vyre_*_x64-setup.exe | head -1)
+          [ "$(basename "$exe")" = "Vyre_${VERSION}_x64-setup.exe" ] || { echo "unexpected installer name: $exe"; exit 1; }
+          mkdir -p ../../../out && cp "$exe" ../../../out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: out/Vyre_*_x64-setup.exe
+          if-no-files-found: error

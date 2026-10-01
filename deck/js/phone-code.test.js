@@ -85,7 +85,7 @@ test("countdown: m:ss, never negative, always two digits of seconds", () => {
 });
 
 // playDance: the avatar's dance, ui-ux's motion prototype ("goal done" — a hop plus confetti),
-// not calm() drops it for a still lime dot. Not launch's own animation, but launch wires it.
+// not calm() drops it for a still bone dot. Not launch's own animation, but launch wires it.
 test("playDance: not calm — a hop on .vyrecode-face, a confetti burst, then both are gone", async () => {
   const ring = document.createElement("div");
   const face = document.createElement("g");
@@ -99,7 +99,7 @@ test("playDance: not calm — a hop on .vyrecode-face, a confetti burst, then bo
   assert.equal(ring.querySelectorAll(".phone-code-done-flag").length, 0, "no reduced-motion flag when motion actually played");
 });
 
-test("playDance: calm (reduced motion) — no animation classes, no confetti, a still lime dot instead", async () => {
+test("playDance: calm (reduced motion) — no animation classes, no confetti, a still bone dot instead", async () => {
   const ring = document.createElement("div");
   const face = document.createElement("g");
   face.classList.add("vyrecode-face");

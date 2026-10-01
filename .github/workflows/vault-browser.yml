@@ -1,0 +1,40 @@
+# The vault extension in a real Chrome for Testing (branded Chrome 137+ ignores --load-extension):
+# the popup against real chrome.* APIs, pairing against a real fill listener, and a login filled
+# into a real page. Runs on a throwaway GitHub runner, never on a person's Mac, with the
+# mock-keychain flags every launch carries (lib/chrome-flags).
+name: vault-browser
+on:
+  push:
+    paths: ["modules/vault-extension/**", "core/vault/fill*.js", "lib/chrome-flags/**", ".github/workflows/vault-browser.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: vault-browser-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Chrome for Testing
+        run: |
+          npx --yes @puppeteer/browsers install chrome@130 --path "$RUNNER_TEMP/cft" | tee "$RUNNER_TEMP/cft.out"
+          echo "CHROME=$(awk '{print $2}' "$RUNNER_TEMP/cft.out" | tail -1)" >> "$GITHUB_ENV"
+      - name: The extension in a real browser
+        # A hosted runner cannot give Chrome its user-namespace sandbox; the page served is our own fixture.
+        env:
+          CHROME_EXTRA_FLAGS: "--no-sandbox"
+        run: node modules/vault-extension/testing/browser-check.mjs
+      - name: The key chip in a real browser, with trusted input
+        env:
+          CHROME_EXTRA_FLAGS: "--no-sandbox"
+        run: node modules/vault-extension/testing/chip-check.mjs

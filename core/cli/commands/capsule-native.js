@@ -80,7 +80,7 @@ export function state(dir, app, id = null) {
 export function toolchain(r = run) {
   const s = r("xcrun", ["--find", "swiftc"]);
   if (s.status === 0 && String(s.stdout || "").trim()) return { ok: true, swiftc: String(s.stdout).trim() };
-  return { ok: false, message: "The Capsule is built with Apple's Command Line Tools, which are not installed. Run: xcode-select --install" };
+  return { ok: false, message: "Lumen is built with Apple's Command Line Tools, which are not installed. Run: xcode-select --install" };
 }
 
 /** The stable signing identity if the keychain has one (read only, no prompt). @param {Runner} [r] */
@@ -101,7 +101,7 @@ export function ensureBuilt({ dir, home, runner = run, say = () => {} }) {
   if (st.bin && st.fresh) return { ok: true, bin: st.bin, app, built: false, message: "up to date" };
   const tc = toolchain(runner);
   if (!tc.ok) return { ok: false, bin: null, app, built: false, message: tc.message };
-  say(st.bin ? "The Capsule changed: rebuilding it (under a minute)." : "Building the Capsule for this Mac (once, under a minute).");
+  say(st.bin ? "Lumen changed: rebuilding it (under a minute)." : "Building Lumen for this Mac (once, under a minute).");
   const out = path.join(home, "capsule", "build");
   fs.mkdirSync(out, { recursive: true });
   const b = runner("sh", [path.join(dir, "build.sh"), "app"], {
@@ -110,10 +110,10 @@ export function ensureBuilt({ dir, home, runner = run, say = () => {} }) {
   const made = path.join(out, "Vyre.app");
   if (b.status !== 0 || !fs.existsSync(path.join(made, "Contents", "MacOS", "Vyre"))) {
     const why = String(b.stderr || b.stdout || "").trim().split("\n").filter(l => /error:/.test(l)).slice(0, 3).join("\n") || `build.sh exited ${b.status}`;
-    return { ok: false, bin: null, app, built: false, message: "The Capsule did not build:\n" + why };
+    return { ok: false, bin: null, app, built: false, message: "Lumen did not build:\n" + why };
   }
   const v = runner("codesign", ["--verify", "--strict", made]);
-  if (v.status !== 0) return { ok: false, bin: null, app, built: false, message: "The Capsule built but its signature does not verify: " + String(v.stderr || "").trim() };
+  if (v.status !== 0) return { ok: false, bin: null, app, built: false, message: "Lumen built but its signature does not verify: " + String(v.stderr || "").trim() };
   // Swap in the new app whole, so a running Capsule's bundle is never half-written.
   fs.rmSync(app, { recursive: true, force: true });
   fs.renameSync(made, app);
@@ -123,7 +123,7 @@ export function ensureBuilt({ dir, home, runner = run, say = () => {} }) {
 
 /**
  * The `open` arguments that launch the app, or show it when it already runs (a second open is a
- * reopen, which the app answers by showing the Capsule).
+ * reopen, which the app answers by showing Lumen).
  * @param {string} app @param {Record<string, string>} env
  */
 export function launchArgs(app, env) {
@@ -135,9 +135,9 @@ export function launchArgs(app, env) {
 
 // ------------------------------------------------------------------ the stable identity
 
-export const IDENTITY_QUESTION = "macOS keeps the Capsule's permissions only if every build is signed the same way. " +
+export const IDENTITY_QUESTION = "macOS keeps Lumen's permissions only if every build is signed the same way. " +
   "Create a local signing identity in your login keychain? macOS may ask for your password once.";
-export const AD_HOC_NOTE = "Signed ad hoc: macOS may ask for the Capsule's permissions again after an update.";
+export const AD_HOC_NOTE = "Signed ad hoc: macOS may ask for Lumen's permissions again after an update.";
 
 /** Where the answer is kept, so the question is asked once. @param {string} home */
 const answerFile = home => path.join(home, "capsule", "signing.json");

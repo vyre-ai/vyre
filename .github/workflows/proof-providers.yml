@@ -1,6 +1,8 @@
 # Manual proof of Codex and Grok Build through Vyre's ACP driver against a real endpoint, using the
 # ONE capped OpenRouter key in the protected "eval" environment (secret OPENROUTER_EVAL_KEY). Never
 # runs on push. See scripts/provider-proof.mjs for what it checks. Every CLI flag and login path it
+# The script reads the key's own usage first and refuses to start at $14 or more (the key is shared with the eval recording's $15 budget),
+# and prints it before and after. Every CLI flag and login path it
 # relies on is marked UNVERIFIED in core/sessions/drivers/{codex,grok}.js until this passes once.
 name: proof-providers
 on:

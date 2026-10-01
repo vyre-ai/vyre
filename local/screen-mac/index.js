@@ -11,8 +11,37 @@
 
 import { Screen } from "./screen.js";
 import { makeHelper, ScreenError } from "./runner.js";
+import { callerKind, agentClaim } from "../../core/modules/index.js";
 
 const CALLERS = ["cli", "local", "mcp", "module"];
+
+const PEOPLE = ["cli", "local", "deck", "capsule"];
+/**
+ * The agent behind a call, or null when it is the person's own surface, a plain model session of theirs (mcp) or a module. Same rule as Chrome control: an agent claim in any spelling, or a caller
+ * kind that is none of those, is an agent.
+ * @param {any} meta
+ */
+function agentOf(meta) {
+  const claim = agentClaim(meta && meta.caller) || (meta && meta.agent ? String(meta.agent) : null);
+  if (claim) return claim;
+  const kind = callerKind(meta && meta.caller);
+  return [...PEOPLE, "mcp", "module"].includes(kind) ? null : `caller:${kind}`;
+}
+
+/**
+ * The screen can hold mail, bank pages and passwords, so an agent sees it only the way it drives Chrome: with the person's computer-use grant (hands.grant.add, theirs to give) AND inside a
+ * posted plan (chrome.plan, checked through chrome.plan.check). The person's own surfaces ("ask about my screen") and their own model session are not agents and are not asked.
+ * @param {any} ctx @param {any} meta
+ */
+async function agentGate(ctx, meta) {
+  const agent = agentOf(meta);
+  if (!agent) return;
+  const g = /** @type {any} */ (await ctx.call("hands.grant.list", {}).catch(() => null));
+  const granted = g && !g.error && Array.isArray(g.data) && g.data.some((/** @type {any} */ x) => x.agent === agent);
+  if (!granted) throw new ScreenError("denied", `${agent} is not granted to use this Mac, so it cannot see the screen. Grant it once with hands.grant.add or ask the person to.`);
+  const p = /** @type {any} */ (await ctx.call("chrome.plan.check", { agent }).catch(() => null));
+  if (!(p && !p.error && p.data && p.data.planned === true)) throw new ScreenError("plan_first", "post your plan first with chrome.plan (a short list of steps), then look at the screen.");
+}
 
 /** @param {any} meta */
 function localOnly(meta) {
@@ -36,7 +65,7 @@ export default {
         textMax: { type: "integer", description: "Most characters of visible text, 0-20000. Default 4000." },
       } },
       callers: CALLERS,
-      run: async (input, meta) => { localOnly(meta); return screen.context(input); },
+      run: async (input, meta) => { localOnly(meta); await agentGate(ctx, meta); return screen.context(input); },
     });
 
     // A path, not base64. A window on a Retina display is a few megabytes of PNG, and base64 in
@@ -47,7 +76,7 @@ export default {
       description: "Take a screenshot now, of the front window (default) or the main display (window: false). Returns the path of a PNG in a private folder that is deleted after 60 seconds, plus its width and height; read the file to see it. Needs the Screen Recording grant. Refused, with blind naming why, where screen.context is blind. Local callers only.",
       input: { type: "object", properties: { window: { type: "boolean", description: "Only the front window. Default true." } } },
       callers: CALLERS,
-      run: async (input, meta) => { localOnly(meta); return screen.shot(input); },
+      run: async (input, meta) => { localOnly(meta); await agentGate(ctx, meta); return screen.shot(input); },
     });
 
     return { async stop() { await screen.stop(); } };

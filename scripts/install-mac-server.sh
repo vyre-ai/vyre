@@ -382,15 +382,11 @@ setup_colima() {
   step "Colima is running"
 }
 
-# setup_gh: the gh CLI. One already on PATH is used; else Homebrew; else the pinned release zip,
-# checked against its sum, into BIN. If none works it says so and goes on: GitHub sign-in waits for gh.
+# setup_gh: the gh CLI. One already on PATH is used; else the pinned release zip (never Homebrew), checked against its
+# sum, into Vyre's own bin. If none works it says so and goes on: GitHub sign-in waits for gh.
 setup_gh() {
-  if [ "$DRY" = 1 ]; then say "would make sure the gh CLI is installed (Homebrew, or a pinned download) and give vyred its path"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would make sure the gh CLI is installed (already on PATH, or a pinned, checksummed download into Vyre's own bin) and give vyred its path"; return 0; fi
   g=$(command -v gh 2>/dev/null || true)
-  if [ -z "$g" ] && command -v brew >/dev/null 2>&1; then
-    say "Installing gh with Homebrew..."
-    brew install gh >/dev/null 2>&1 && g=$(command -v gh 2>/dev/null || true)
-  fi
   if [ -z "$g" ]; then
     case "$UNAME_M" in
       arm64|aarch64) ga=arm64; gs=$GH_SHA256_ARM64 ;;

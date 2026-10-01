@@ -15,11 +15,11 @@
     .mono { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
     .lbl { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
     .btn { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; height: 36px; padding: 0 14px; border-radius: 6px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-sizing: border-box; white-space: nowrap; }
-    .btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #C6F36B; outline-offset: 2px; }
+    .btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid #F1EEE6; outline-offset: 2px; }
     .btn-ghost { background: transparent; color: #F1EEE6; border: 1px solid #3A3733; }
     .btn-ghost:hover { background: #1E1C1A; }
-    .btn-primary { background: #C6F36B; color: #0E0D0C; border: 1px solid #C6F36B; }
-    .btn-primary:hover { background: #D4F88A; border-color: #D4F88A; }
+    .btn-primary { background: #F1EEE6; color: #0E0D0C; border: 1px solid #F1EEE6; }
+    .btn-primary:hover { background: #FFFFFF; border-color: #FFFFFF; }
     .kbd { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 11px; line-height: 14px; font-weight: 500; padding: 1px 5px; border-radius: 4px; border: 1px solid #3A3733; color: #B3AEA4; letter-spacing: 0; }
     .rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 12px; border-radius: 6px; color: #B3AEA4; text-decoration: none; font-size: 14px; line-height: 18px; }
     .rail-a:hover { background: #1E1C1A; color: #F1EEE6; }
@@ -40,7 +40,7 @@
   <!-- Top bar -->
   <header style="height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 24px; padding: 0 16px 0 20px; border-bottom: 1px solid #2B2926; box-sizing: border-box;">
     <a href="#" aria-label="vyre home" style="display: flex; align-items: center; gap: 8px; width: 180px; text-decoration: none;">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>
       <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <div class="mono" style="display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid #2B2926; border-radius: 6px; font-size: 12px; line-height: 16px; color: #B3AEA4;">
@@ -68,7 +68,7 @@
       <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 2l6 3.2-6 3.2-6-3.2z"/><path d="M2 8.4l6 3.2 6-3.2"/><path d="M2 11.2l6 3.2 6-3.2"/></svg>Memory</a>
       <a class="rail-a" href="#" style="color: #F1EEE6;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="8.5" rx="1"/><path d="M5.5 14h5M8 11v3"/></svg>Agents</a>
       <a class="rail-sub" href="#"><span>juno</span><span class="mono" style="font-size: 11px; color: #8C877D;">idle</span></a>
-      <a class="rail-sub" href="#" aria-current="page" style="background: rgba(198,243,107,0.12); color: #F1EEE6;"><span>kit</span><span class="mono" style="font-size: 11px; color: #C6F36B;">you</span></a>
+      <a class="rail-sub" href="#" aria-current="page" style="background: rgba(241,238,230,0.12); color: #F1EEE6;"><span>kit</span><span class="mono" style="font-size: 11px; color: #F1EEE6;">you</span></a>
       <a class="rail-sub" href="#"><span>pax</span><span class="mono" style="font-size: 11px; color: #8C877D;">working</span></a>
       <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>Vault</a>
       <a class="rail-a" href="#"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11"/><circle cx="6" cy="5" r="1.6" fill="#0E0D0C"/><circle cx="10" cy="11" r="1.6" fill="#0E0D0C"/></svg>Settings</a>
@@ -87,7 +87,7 @@
         <div style="display: flex; flex-direction: column; gap: 4px;">
           <div style="display: flex; align-items: center; gap: 12px;">
             <h1 style="margin: 0; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em;">kit&#39;s computer</h1>
-            <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; border: 1px solid #C6F36B; color: #C6F36B; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;">YOU HAVE CONTROL</span>
+            <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; border: 1px solid #F1EEE6; color: #F1EEE6; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;">YOU HAVE CONTROL</span>
           </div>
           <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">kit is paused at step 13 of the Harlow Legal <span style="color: #8C877D;">/</span> Ads audit plan <span style="color: #8C877D;">· you took over at 14:32:41</span></div>
         </div>
@@ -110,13 +110,13 @@
         <div style="width: 1008px; flex-shrink: 0; display: flex; flex-direction: column; gap: 14px;">
 
           <!-- The remote desktop, in your hands -->
-          <div aria-label="kit&#39;s desktop, under your control" style="position: relative; width: 1008px; height: 630px; border-radius: 14px; outline: 2px solid #C6F36B; outline-offset: 3px; border: 1px solid #3A3733; background: #161513; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);">
+          <div aria-label="kit&#39;s desktop, under your control" style="position: relative; width: 1008px; height: 630px; border-radius: 14px; outline: 2px solid #F1EEE6; outline-offset: 3px; border: 1px solid #3A3733; background: #161513; overflow: hidden; box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);">
 
             <div class="mono" style="height: 26px; display: flex; align-items: center; gap: 18px; padding: 0 14px; background: #0E0D0C; border-bottom: 1px solid #2B2926; font-size: 11px; line-height: 14px; color: #B3AEA4;">
               <span style="color: #F1EEE6;">kit@box-kit</span>
               <span>Browser</span><span>Terminal</span><span>Files</span>
               <span style="flex-grow: 1;"></span>
-              <span style="color: #C6F36B;">input: Alex Rivera</span>
+              <span style="color: #F1EEE6;">input: Alex Rivera</span>
               <span>14:33</span>
             </div>
 
@@ -138,7 +138,7 @@
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <div style="font-size: 11px; color: #4A463F; font-weight: 500;">Password</div>
-                    <div style="height: 34px; border: 2px solid #46700C; border-radius: 6px; display: flex; align-items: center; gap: 1px; padding: 0 9px; font-size: 13px; letter-spacing: 0.2em; color: #141311; background: #FBFAF6; box-sizing: border-box;">•••••••••••<span style="display: inline-block; width: 1px; height: 16px; background: #141311; margin-left: 2px;"></span></div>
+                    <div style="height: 34px; border: 2px solid #141311; border-radius: 6px; display: flex; align-items: center; gap: 1px; padding: 0 9px; font-size: 13px; letter-spacing: 0.2em; color: #141311; background: #FBFAF6; box-sizing: border-box;">•••••••••••<span style="display: inline-block; width: 1px; height: 16px; background: #141311; margin-left: 2px;"></span></div>
                   </div>
                   <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #4A463F;"><div class="cb"></div>Keep me signed in on this device</div>
                   <div style="height: 34px; border-radius: 6px; background: #141311; color: #F4F1EA; font-size: 13px; font-weight: 500; display: flex; align-items: center; justify-content: center;">Sign in</div>
@@ -166,8 +166,8 @@
 
             <!-- your cursor -->
             <div style="position: absolute; left: 468px; top: 382px; display: flex; align-items: flex-start; gap: 2px;">
-              <svg width="18" height="22" viewBox="0 0 18 22" aria-hidden="true"><path d="M2 2l13 9.2-5.8 1 3.2 6.3-2.6 1.3-3.2-6.4L2 17.6z" fill="#C6F36B" stroke="#0E0D0C" stroke-width="1.4" stroke-linejoin="round"/></svg>
-              <span class="mono" style="margin-top: 16px; padding: 2px 7px; border-radius: 4px; background: #C6F36B; color: #0E0D0C; font-size: 11px; line-height: 14px; font-weight: 500;">you</span>
+              <svg width="18" height="22" viewBox="0 0 18 22" aria-hidden="true"><path d="M2 2l13 9.2-5.8 1 3.2 6.3-2.6 1.3-3.2-6.4L2 17.6z" fill="#F1EEE6" stroke="#0E0D0C" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              <span class="mono" style="margin-top: 16px; padding: 2px 7px; border-radius: 4px; background: #F1EEE6; color: #0E0D0C; font-size: 11px; line-height: 14px; font-weight: 500;">you</span>
             </div>
 
             <!-- rec off badge -->
@@ -178,7 +178,7 @@
 
           <!-- Caption -->
           <div style="display: flex; align-items: baseline; gap: 16px; padding: 0 4px;">
-            <span class="lbl" style="color: #C6F36B; width: 36px;">You</span>
+            <span class="lbl" style="color: #F1EEE6; width: 36px;">You</span>
             <p style="margin: 0; font-size: 17px; line-height: 24px; color: #F1EEE6; flex-grow: 1;">You have control. Hand it back when you&#39;re done.</p>
             <span class="mono" style="font-size: 12px; color: #8C877D; white-space: nowrap;">kit asked: the Vault login was rejected</span>
           </div>
@@ -189,7 +189,7 @@
               <button type="button" aria-label="Playback disabled while you have control" disabled class="btn btn-ghost" style="width: 32px; height: 32px; padding: 0; justify-content: center; color: #8C877D; cursor: default;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M6 4v8M10 4v8"/></svg></button>
               <div role="slider" aria-label="Recording timeline" aria-valuemin="0" aria-valuemax="35" aria-valuenow="35" tabindex="0" style="position: relative; flex-grow: 1; height: 40px;">
                 <div style="position: absolute; left: 0; right: 3%; top: 19px; height: 2px; background: #3A3733;"></div>
-                <div style="position: absolute; left: 97%; right: 0; top: 19px; height: 0; border-top: 2px dashed #C6F36B;"></div>
+                <div style="position: absolute; left: 97%; right: 0; top: 19px; height: 0; border-top: 2px dashed #F1EEE6;"></div>
                 <div class="tick" style="left: 0%;"></div>
                 <div class="tick" style="left: 2%; background: #EBC76B; height: 16px; top: 12px; width: 2px;"></div>
                 <div class="tick" style="left: 9%;"></div>
@@ -202,7 +202,7 @@
                 <div class="tick" style="left: 77%;"></div>
                 <div class="tick" style="left: 95%;"></div>
                 <div class="mono" style="position: absolute; right: 0; bottom: 30px; padding: 4px 8px; border-radius: 4px; background: #1E1C1A; border: 1px solid #3A3733; font-size: 11px; line-height: 14px; color: #F1EEE6; white-space: nowrap; box-shadow: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);">from 14:32:41 · you · not recorded</div>
-                <div style="position: absolute; right: -6px; top: 14px; width: 12px; height: 12px; border-radius: 6px; background: #C6F36B; box-shadow: 0 0 0 3px #0E0D0C;"></div>
+                <div style="position: absolute; right: -6px; top: 14px; width: 12px; height: 12px; border-radius: 6px; background: #F1EEE6; box-shadow: 0 0 0 3px #0E0D0C;"></div>
               </div>
               <button type="button" class="btn btn-ghost" style="height: 32px;">Live</button>
             </div>
@@ -212,7 +212,7 @@
               <span style="width: 12%;">browser</span>
               <span style="width: 41%;">reading 1,942 rows against the CSV</span>
               <span style="flex-grow: 1;">ticking</span>
-              <span style="color: #C6F36B;">you</span>
+              <span style="color: #F1EEE6;">you</span>
             </div>
           </div>
         </div>
@@ -227,7 +227,7 @@
 
           <div style="display: flex; flex-direction: column; padding-left: 8px;">
             <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px 12px 12px 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
-              <span style="color: #F1EEE6;">accounts.example.com</span><span class="mono" style="font-size: 12px; color: #C6F36B;">receives it</span>
+              <span style="color: #F1EEE6;">accounts.example.com</span><span class="mono" style="font-size: 12px; color: #F1EEE6;">receives it</span>
             </div>
             <div style="display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 12px; border-bottom: 1px solid #2B2926; font-size: 13px; line-height: 18px;">
               <span style="color: #B3AEA4;">kit&#39;s thread, Ads audit</span><span class="mono" style="font-size: 12px; color: #8C877D;">never</span>
@@ -249,7 +249,7 @@
           </div>
 
           <label style="display: flex; gap: 12px; padding: 16px 12px 0 20px; font-size: 13px; line-height: 19px; color: #B3AEA4; cursor: pointer;">
-            <input type="checkbox" style="margin: 3px 0 0 0; width: 14px; height: 14px; accent-color: #C6F36B; flex-shrink: 0;">
+            <input type="checkbox" style="margin: 3px 0 0 0; width: 14px; height: 14px; accent-color: #F1EEE6; flex-shrink: 0;">
             <span>Update Vault login <span style="color: #F1EEE6;">Harlow ads</span> with the new password. It stays encrypted on alex-box.</span>
           </label>
 

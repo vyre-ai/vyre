@@ -1,6 +1,6 @@
 ---
 title: Suggestions
-summary: The one suggestion list for the Capsule input, the chat composer on the Deck, the PWA and the app, and later the CLI, drawn from suggest.query. One row look per kind, the three lanes, inline phrase completion as ghost text, and rows that never jump.
+summary: The one suggestion list for Lumen input, the chat composer on the Deck, the PWA and the app, and later the CLI, drawn from suggest.query. One row look per kind, the three lanes, inline phrase completion as ghost text, and rows that never jump.
 audience: builders
 owner: app-design
 status: draft
@@ -12,14 +12,14 @@ What you are typing toward, offered as you type: an agent after @, a command aft
 a name from memory or an upcoming item on the last word, and the rest of a phrase as ghost text.
 Every surface asks the same tool, `suggest.query {text, cursor, surface}` (cohesion, ADR 0036
 decision 3), and draws the answer with this one list. It replaces the composer's own @ and /
-lists and the Capsule's own @ ranking; it reuses the popover (completion variant), the list row,
+lists and Lumen's own @ ranking; it reuses the popover (completion variant), the list row,
 the avatar and the key hint, and adds no new part. Not drawn on a board yet (see Gaps).
 
 | Surface | Implementing file | Status |
 |---|---|---|
 | Deck | the chat-core composer: `deck/chat/pickers.js`, `deck/chat/composer.js` (work/chat; the composer is shared with native-core) | partial |
 | App | the chat-core composer in `apps/app/src/session/Composer.tsx` (work/mobile) | not built |
-| Capsule | `local/capsule/native/Sources/UI/CapsuleView.swift` results and the @ target (work/capsule-pro) | partial |
+| Lumen | `local/capsule/native/Sources/UI/CapsuleView.swift` results and the @ target (work/capsule-pro) | partial |
 | CLI | the prompt of `vyre open` and the Capsule-in-terminal (work/polish-cli), later | not built |
 
 ## Anatomy
@@ -27,7 +27,7 @@ the avatar and the key hint, and adds no new part. Not drawn on a board yet (see
 The answer is `{items: [{kind, sub?, label, insert, detail?, action?, source, id, score}], late?}`.
 Each item draws as one list row (list-row.md), dense on the desktop and 44 on the phone:
 
-1. **Leading.** The kind's icon or avatar, 16 in `--text-2`, or a 24 tile (20 in the Capsule).
+1. **Leading.** The kind's icon or avatar, 16 in `--text-2`, or a 24 tile (20 in Lumen).
 2. **Label.** Base size `--text`, one line, ellipsis. The part that matched the typed text is 600,
    the rest 400. Commands, files and paths in JetBrains Mono 13.
 3. **Detail.** Meta 12/16 `--label`, one line, after the label on the same row (dense) or under it
@@ -83,16 +83,16 @@ lanes open on the first character after @ or /.
 |---|---|---|
 | Chat composer, desktop (Deck, PWA on a laptop) | a popover (completion variant) above the composer box, anchored to its left edge, the composer's width minus 40 | 8 at 28 (dense), then the list scrolls inside |
 | Chat composer, phone (PWA, app) | the same popover above the keyboard, full width minus 16 | 4 at 44 |
-| Capsule | no popover: the rows are the Capsule's result rows (44), in its own groups; mentions go under Agents, Projects and Sessions, commands under Commands, accounts under a "Send from" or "Accounts" group | the body's height |
+| Lumen | no popover: the rows are Lumen's result rows (44), in its own groups; mentions go under Agents, Projects and Sessions, commands under Commands, accounts under a "Send from" or "Accounts" group | the body's height |
 | CLI (later) | printed under the prompt line, one row per line, mono 12 | 6 |
 
-In the Capsule the Mac's local index rows paint first (under 50 ms, capsule.md) and rows from
+In Lumen the Mac's local index rows paint first (under 50 ms, capsule.md) and rows from
 `suggest.query` fill in below them in the same groups; a row that is in both draws once, in the
 local slot.
 
 ## Sizes
 
-| | Desktop popover | Phone popover | Capsule |
+| | Desktop popover | Phone popover | Lumen |
 |---|---|---|---|
 | Row | 28 (commands), 30 (files), 32 with a tile | 44, 56 with a detail line | 44 |
 | Leading | 16 icon, 24 tile | 16 icon, 32 tile | 16 icon, 20 tile |
@@ -115,7 +115,7 @@ local slot.
 - **Accepted.** The token is replaced, the list closes, and the surface calls
   `suggest.picked {kind, source, id}`. Ghost text accepted sends `suggest.picked` for its phrase.
   Closing the list or typing past it sends nothing.
-- **Offline.** The Capsule keeps its local rows; chat shows no list and no error.
+- **Offline.** Lumen keeps its local rows; chat shows no list and no error.
 
 ## Keyboard and touch
 
@@ -164,9 +164,9 @@ Deck, chat composer (work/chat, shared with native-core)
 App (work/mobile)
 - [ ] Nothing built: the composer is text only; take the chat-core list with 44 rows, 4 at most.
 
-Capsule (work/capsule-pro)
+Lumen (work/capsule-pro)
 - [ ] The @ target ranks its own agents and sessions; draw `suggest.query` rows under the local
-      rows, in the Capsule's groups, never moving a drawn row.
+      rows, in Lumen's groups, never moving a drawn row.
 - [ ] No ghost text in the input; no `suggest.picked`.
 
 cohesion
@@ -180,4 +180,4 @@ CLI (work/polish-cli)
 - [ ] Later: the same lanes and order under the prompt; Tab accepts.
 
 System (app-design)
-- [ ] The Suggestions board on the canvas: the three lanes, ghost text, the Capsule groups.
+- [ ] The Suggestions board on the canvas: the three lanes, ghost text, Lumen groups.

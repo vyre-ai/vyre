@@ -217,6 +217,8 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
      * @param {string|null|undefined} agent the named agent, or null for a person's own call
      * @param {string} [caller] @returns {{ interjection?: string }}
      */
+    /** Whether this agent has posted a plan (chrome.plan) and the person has not stopped Vyre: what other modules ask before they show an agent the person's screen. @param {string} agent */
+    planned(agent) { return state !== "stopped" && plans.has(agent); },
     guard(agent, caller) {
       if (state === "stopped") throw refuse("stopped", "the person stopped Vyre in Chrome. Ask them, then wait for chrome.resume before acting again.");
       if (state === "waiting_input") throw refuse("waiting_input", `waiting for the person: ${question || "they were asked a question"}`);

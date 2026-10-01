@@ -55,6 +55,16 @@ export function grokProvider(o = {}) {
     ...(o.custom ? { seed: { ".grok/config.toml": grokConfigToml(o.custom) } } : {}),
     secretEnv: () => ["XAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     env: run => ({ ...(o.home || run.home ? { HOME: String(o.home || run.home) } : {}) }),
+    // MEASURED on Grok Build 1.0.44 (scripts/provider-wire-proof.mjs): with no login session/new answers "Authentication required"
+    // (-32000) and initialize offers grok.com (the stored browser login: authenticate waits for a browser when there is none, which
+    // the driver reports as "sign this account in first"). With a config.toml that names a model's base_url and env_key, session/new
+    // works with no login at all, xai.api_key is offered too, and a real turn ran end to end against a local stand-in.
+    authMethod: (methods, run) => {
+      const has = id => methods.some(m => m.id === id);
+      const env = (run && run.env) || {};
+      if (has("xai.api_key") && (env.XAI_API_KEY || o.custom)) return "xai.api_key";
+      return has("grok.com") ? "grok.com" : null;
+    },
     capabilities: { steering: false, usage: "coarse", rewind: false },
     ...(o.floor ? { floor: o.floor } : {}),
     ...(o.sessions ? { sessions: o.sessions } : {}),
