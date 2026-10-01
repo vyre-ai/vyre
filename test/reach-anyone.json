@@ -673,6 +673,10 @@
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller"
   },
+  "vault.offboard": {
+   "module": "vault",
+   "reason": "presence proof: revoking every pass a person holds needs a person's touch; the assistant offers it when someone leaves and waits for it (module.test.js pins it offered to Claude); callers list in code"
+  },
   "vault.pass.accept": {
    "module": "vault",
    "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it waits for a person to approve"
