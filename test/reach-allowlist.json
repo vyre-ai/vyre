@@ -2154,48 +2154,6 @@
    "module": "sessions",
    "default": "limited by callers in code"
   },
-  "settings.changes": {
-   "module": "settings",
-   "default": "open to any caller"
-  },
-  "settings.get": {
-   "module": "settings",
-   "default": "open to any caller"
-  },
-  "settings.request": {
-   "module": "settings",
-   "default": "limited by callers in code"
-  },
-  "settings.reset": {
-   "module": "settings",
-   "default": "limited by callers in code"
-  },
-  "settings.resolve": {
-   "module": "settings",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "settings.schema": {
-   "module": "settings",
-   "default": "open to any caller"
-  },
-  "settings.set": {
-   "module": "settings",
-   "default": "limited by callers in code"
-  },
-  "settings.snapshot": {
-   "module": "settings",
-   "default": "open to any caller"
-  },
-  "settings.undo": {
-   "module": "settings",
-   "default": "limited by callers in code"
-  },
-  "settings.write": {
-   "module": "settings",
-   "default": "limited by callers in code",
-   "internal": true
-  },
   "sideview.close": {
    "module": "sideview",
    "default": "limited by callers in code"
