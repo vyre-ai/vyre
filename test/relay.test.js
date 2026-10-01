@@ -41,8 +41,8 @@ const SPKI = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).pub
 const P = { "x-vyre-presence": "passkey id=abc" };
 const PROOF = { proof: { method: "passkey", id: "x" } };
 
-async function world(t, relayConfig = {}, startOpts = {}) {
-  const relay = createRelay();
+async function world(t, relayConfig = {}, startOpts = {}, relayOpts = {}) {
+  const relay = createRelay(relayOpts);
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
@@ -663,6 +663,7 @@ test("relay: a computer that chose its own ticket has the box register it; the r
   // No address yet: no origin in the record.
   let minted = (await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF)).data;
   assert.equal(minted.ticket, undefined, "the app's own ticket is not echoed back");
+  assert.equal(minted.confirmed, true, "a current relay confirmed it");
   assert.ok(minted.expiresAt > Date.now());
   let resolved = await resolveTicket(new Uint8Array(seed), { relay: status.url, crypto: nodeCrypto() });
   assert.equal(resolved.address, null);
@@ -696,6 +697,18 @@ test("relay: a computer that chose its own ticket has the box register it; the r
   const paired = await pairTicket(new Uint8Array(seed3), { relay: status.url, ...shell, name: "kit's PC" });
   assert.ok(paired.device);
   void minted;
+});
+
+test("relay: an older relay that never answers a registration still gets a usable, unconfirmed ticket; a refusal from a current one is still a failure", async t => {
+  const { d } = await world(t, {}, {}, { legacyNoAck: true });
+  const seed = crypto.randomBytes(16);
+  const minted = await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF);
+  assert.ok(minted.data, JSON.stringify(minted.error));
+  assert.equal(minted.data.confirmed, false, "no answer from the relay is said plainly");
+  assert.equal(minted.data.connected, true);
+  const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
+  const resolved = await resolveTicket(new Uint8Array(seed), { relay: status.url, crypto: nodeCrypto() });
+  assert.equal(resolved.offer.route, status.route, "the older relay did store it");
 });
 
 test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {

@@ -326,7 +326,9 @@ export function createRelay(o = {}) {
         const exp = Math.min(Number(t.exp) || 0, Date.now() + (setup ? SETUP_TTL : TICKET_TTL));
         if (exp <= Date.now()) return;
         // The box hears the outcome: 200, or 409 when another server registered this locator first.
-        peer.json({ t: "registered", loc, status: registerLoc(loc, { record, mac, exp, ...(setup ? { setup: true } : {}) }) });
+        const status = registerLoc(loc, { record, mac, exp, ...(setup ? { setup: true } : {}) });
+        // `legacyNoAck` (tests only) behaves as the relay deployed before 30 Sep did: it stores the ticket and says nothing back.
+        if (!o.legacyNoAck) peer.json({ t: "registered", loc, status });
       };
     };
     peer.onclose = () => {
