@@ -142,6 +142,41 @@ test("worktreeAdd: a session commits as the connected account and every commit c
   assert.equal(fs.existsSync(hooksDir), false, "the session's hooks folder goes with its worktree");
 });
 
+test("worktreeAdd: the person's effective hooks folder is used, global ones included, a hook that finds its siblings from $0 still works, and the trailer can be turned off", async t => {
+  const repoDir = makeClonedRepo(t);
+  // A global hooks folder (as a person with a global secret scanner has), husky-style: the hook loads a sibling through $0.
+  const globalHooks = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-ghooks-"));
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-home-"));
+  t.after(() => { fs.rmSync(globalHooks, { recursive: true, force: true }); fs.rmSync(fakeHome, { recursive: true, force: true }); });
+  fs.writeFileSync(path.join(fakeHome, ".gitconfig"), `[core]\n\thooksPath = ${globalHooks}\n`);
+  fs.writeFileSync(path.join(globalHooks, "h"), `touch "${path.join(repoDir, "global-sibling-ran")}"\n`);
+  fs.writeFileSync(path.join(globalHooks, "pre-commit"), `#!/bin/sh\n. "$(dirname "$0")/h"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(globalHooks, "prepare-commit-msg"), `#!/bin/sh\nprintf '\\nGlobal-Hook: ran\\n' >> "$1"\n`, { mode: 0o755 });
+  const saved = { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
+  process.env.HOME = fakeHome; delete process.env.XDG_CONFIG_HOME;
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  const run = (dir, args) => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull } });
+  const w = await worktreeAdd({ repoDir, session: "glob1", defaultBranch: "main" });
+  const hooksDir = path.join(repoDir, ".git", "vyre-hooks", "glob1");
+  assert.ok(fs.existsSync(path.join(hooksDir, "pre-commit")), "the global pre-commit is wrapped into the session's hooks");
+  assert.ok(!fs.lstatSync(path.join(hooksDir, "pre-commit")).isSymbolicLink(), "a wrapper that runs the original by absolute path, not a symlink");
+  fs.writeFileSync(path.join(w.path, "n.md"), "x\n");
+  run(w.path, ["add", "n.md"]);
+  run(w.path, ["-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "-m", "with global hooks"]);
+  assert.ok(fs.existsSync(path.join(repoDir, "global-sibling-ran")), "the person's global pre-commit ran and found its sibling through $0");
+  const msg = run(w.path, ["log", "-1", "--format=%B"]);
+  assert.match(msg, /Global-Hook: ran/);
+  assert.match(msg, /^Vyre-Session: glob1$/m);
+  // trailer off: no trailer, the original prepare-commit-msg still runs
+  const w2 = await worktreeAdd({ repoDir, session: "glob2", defaultBranch: "main", trailer: false });
+  fs.writeFileSync(path.join(w2.path, "m.md"), "x\n");
+  run(w2.path, ["add", "m.md"]);
+  run(w2.path, ["-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "-m", "no trailer"]);
+  const msg2 = run(w2.path, ["log", "-1", "--format=%B"]);
+  assert.match(msg2, /Global-Hook: ran/);
+  assert.doesNotMatch(msg2, /Vyre-Session/);
+});
+
 test("worktreeAdd: with no known account identity the commit keeps git's own author but still carries the trailer", async t => {
   const repoDir = makeClonedRepo(t);
   const w = await worktreeAdd({ repoDir, session: "anon1", defaultBranch: "main" });

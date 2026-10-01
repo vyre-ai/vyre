@@ -489,7 +489,7 @@ export default {
         checkModuleCaller("github.session.worktree", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) return null;
-        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, identity: await identityFor(project) });
+        return worktreeAdd({ repoDir: repo.home, session, defaultBranch: repo.defaultBranch, identity: await identityFor(project), trailer: !(ctx.config && ctx.config.githubSessionTrailer === false) });
       },
     });
 

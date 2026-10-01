@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { gitAsync, gitWithAskpass } from "../../lib/git-safe.js";
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
@@ -160,44 +161,67 @@ function ensureExcluded(repoDir) {
 }
 
 /**
- * What a session's commits say about who made them (PLAN M3, reviewer N4): the connected account's
- * own name and email when one is known (set per worktree, so the repo's and the person's own git
- * config are untouched), and a `Vyre-Session: <id>` trailer on every commit, so the person can audit
- * which session wrote what. The trailer comes from a prepare-commit-msg hook in a per-session hooks
- * folder that links the repo's own hooks, so a repo's existing hooks still run. Idempotent.
- * @param {{ repoDir: string, dest: string, id: string, identity?: { name: string, email: string } | null }} p
+ * The hooks folder git would run for this repo: core.hooksPath as the person has it set anywhere
+ * (repo, global, system), else the repo's own hooks folder. Read with a plain `git config --get`
+ * (it runs nothing); `gitAsync` is not used because it forces the hooks path to /dev/null.
+ * @param {string} repoDir @param {string} commonDir
  */
-async function stampWorktree({ repoDir, dest, id, identity }) {
+function effectiveHooksDir(repoDir, commonDir) {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_/.test(k)));
+  const r = spawnSync("git", ["-C", repoDir, "config", "--includes", "--get", "core.hooksPath"], { encoding: "utf8", env, timeout: 5000 });
+  const v = r.status === 0 ? String(r.stdout || "").trim() : "";
+  if (!v) return path.join(commonDir, "hooks");
+  return path.isAbsolute(v) ? v : path.resolve(repoDir, v.replace(/^~(?=\/|$)/, process.env.HOME || "~"));
+}
+
+/**
+ * What a session's commits say about who made them (PLAN M3, reviewer N4): the connected account's
+ * own name and email when one is known, and (unless turned off) a `Vyre-Session: <id>` trailer on
+ * every commit, so the person can audit which session wrote what.
+ *
+ * It writes to the repo's own config: `extensions.worktreeConfig = true` (so each worktree can carry
+ * its own user.name, user.email and core.hooksPath; an older libgit2 or JGit may refuse a repo with
+ * that extension), and a per-worktree config file inside the repo's git folder. Nothing in the
+ * person's own config, global or local, is changed. The per-worktree hooks folder holds a small
+ * wrapper for every hook the person's effective hooks folder has (global ones included), each
+ * running the original by its absolute path so hooks that find their siblings from $0 keep working,
+ * plus the trailer's prepare-commit-msg, which then runs the original prepare-commit-msg too.
+ * Idempotent.
+ * @param {{ repoDir: string, dest: string, id: string, identity?: { name: string, email: string } | null, trailer?: boolean }} p
+ */
+async function stampWorktree({ repoDir, dest, id, identity, trailer = true }) {
   const common = await gitAsync(repoDir, ["rev-parse", "--path-format=absolute", "--git-common-dir"]);
   if (!common.ok) return;
   const commonDir = common.stdout.trim();
-  // Per-worktree config needs this switch on the repo once; it changes nothing else.
   await gitAsync(repoDir, ["config", "extensions.worktreeConfig", "true"]);
   if (identity && identity.name && identity.email) {
     const clean = v => String(v).replace(/[\r\n<>]/g, " ").trim().slice(0, 200);
     await gitAsync(dest, ["config", "--worktree", "user.name", clean(identity.name)]);
     await gitAsync(dest, ["config", "--worktree", "user.email", clean(identity.email)]);
   }
-  const set = await gitAsync(repoDir, ["config", "--local", "--get", "core.hooksPath"]);
-  const own = set.ok && set.stdout.trim() ? path.resolve(repoDir, set.stdout.trim()) : path.join(commonDir, "hooks");
+  const own = effectiveHooksDir(repoDir, commonDir);
   const hooksDir = path.join(commonDir, "vyre-hooks", id);
+  fs.rmSync(hooksDir, { recursive: true, force: true });
   fs.mkdirSync(hooksDir, { recursive: true });
+  const quoted = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
   try {
     for (const name of fs.readdirSync(own)) {
-      if (name === "prepare-commit-msg" || name.endsWith(".sample")) continue;
-      const link = path.join(hooksDir, name);
-      try { fs.rmSync(link, { force: true }); fs.symlinkSync(path.join(own, name), link); } catch { /* a hook that cannot be linked is skipped */ }
+      if (name.endsWith(".sample") || (trailer && name === "prepare-commit-msg")) continue;
+      const orig = path.join(own, name);
+      try { if (!fs.statSync(orig).isFile()) continue; } catch { continue; }
+      fs.writeFileSync(path.join(hooksDir, name), `#!/bin/sh\nexec ${quoted(orig)} "$@"\n`, { mode: 0o755 });
     }
   } catch { /* the repo has no hooks folder */ }
-  const quoted = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
-  const hook = `#!/bin/sh
+  if (trailer) {
+    const hook = `#!/bin/sh
 # Written by Vyre for session ${id}: stamps each commit with the session that made it, then runs the repo's own prepare-commit-msg if it has one.
 git interpret-trailers --in-place --if-exists doNothing --where end --trailer ${quoted(`Vyre-Session: ${id}`)} "$1" 2>/dev/null || true
 orig=${quoted(path.join(own, "prepare-commit-msg"))}
 if [ -x "$orig" ]; then exec "$orig" "$@"; fi
 exit 0
 `;
-  fs.writeFileSync(path.join(hooksDir, "prepare-commit-msg"), hook, { mode: 0o755 });
+    fs.writeFileSync(path.join(hooksDir, "prepare-commit-msg"), hook, { mode: 0o755 });
+  }
   await gitAsync(dest, ["config", "--worktree", "core.hooksPath", hooksDir]);
 }
 
@@ -211,9 +235,9 @@ async function dropHooks(repoDir, id) {
  * A worktree and branch for one session: `<repoDir>/.sessions/<safe-id>` on `vyre/<safe-id>`.
  * No token needed; a worktree is a local git operation on a repo already cloned. `identity` is the
  * connected account's name and email, when known.
- * @param {{ repoDir: string, session: string, defaultBranch: string, identity?: { name: string, email: string } | null }} p
+ * @param {{ repoDir: string, session: string, defaultBranch: string, identity?: { name: string, email: string } | null, trailer?: boolean }} p
  */
-export async function worktreeAdd({ repoDir, session, defaultBranch, identity = null }) {
+export async function worktreeAdd({ repoDir, session, defaultBranch, identity = null, trailer = true }) {
   const id = safeSegment(session, "session id");
   ensureExcluded(repoDir);
   const dest = path.join(repoDir, ".sessions", id);
@@ -221,13 +245,13 @@ export async function worktreeAdd({ repoDir, session, defaultBranch, identity = 
   // Unarchive: the session's worktree was removed but its branch (and any commits on it) stays, so
   // an existing branch is checked out as it is, never reset to the default branch. A worktree that
   // is still there is returned as it is.
-  if (fs.existsSync(dest)) { await stampWorktree({ repoDir, dest, id, identity }); return { path: dest, branch }; }
+  if (fs.existsSync(dest)) { await stampWorktree({ repoDir, dest, id, identity, trailer }); return { path: dest, branch }; }
   const have = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
   const r = await gitAsync(repoDir, have.ok
     ? ["worktree", "add", dest, branch]
     : ["worktree", "add", dest, "-b", branch, defaultBranch]);
   if (!r.ok) throw fail(`git worktree add failed: ${r.stderr.trim().slice(0, 300) || "no output"}`, "worktree_failed");
-  await stampWorktree({ repoDir, dest, id, identity });
+  await stampWorktree({ repoDir, dest, id, identity, trailer });
   return { path: dest, branch };
 }
 
