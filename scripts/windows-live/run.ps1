@@ -71,6 +71,10 @@ foreach ($line in ($stText -split "`n" | Where-Object { $_ })) { Result ("selfte
 
 # ---- 3. launch for real, drive it through its debug port ------------------------------------------------
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--disable-gpu --remote-debugging-port=9222"
+# The environment variable was ignored by this runner's WebView2 (153): set the policy too (the documented machine-wide way).
+$pol = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments"
+New-Item -Path $pol -Force | Out-Null
+New-ItemProperty -Path $pol -Name "Vyre.exe" -Value "--disable-gpu --remote-debugging-port=9222" -PropertyType String -Force | Out-Null
 Remove-Item "$env:APPDATA\run.vyre.app\pairing.json", "$env:APPDATA\run.vyre.app\device.key" -ErrorAction SilentlyContinue
 $app = Start-Process $exe -PassThru
 $first = WaitPage "*first-run.html*" 90
