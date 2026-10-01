@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### release: the app-out step seals an export built with a base URL
+
+- apps/app builds with `experiments.baseUrl: "/app"`, so its index.html names `/app/_expo/static/js/web/entry-<hash>.js` while the files are keyed `_expo/static/js/web/...`. `relay/app/release.js` `entriesOf` now strips leading folders until the path is one of the build's own files, so `build-app-out` seals the real export (found by launch's dry run; checked against the real app-web artifact). Test fixture with `/app/` paths added. Not solved here: the built app still asks for `/app/assets/...` at run time (fonts, images), which app.vyre.run does not serve (see the note to tailnet and launch).
+
 #### release: the hosted phone app is sealed and signed by one script
 
 - `scripts/build-app-out.mjs` turns the phone web export (`apps/app`'s `expo export -p web`) into what app.vyre.run serves: the fixed loader at the root and the build at `v/<sha>/`, each with its signed manifest, signed with the release key from `VYRE_SIGNING_KEY` (PKCS8 PEM, from the environment only; a key that is not the pinned `RELEASE_KEY` is refused), every folder verified before it returns. `--throwaway` signs with a fresh key for a dry run. `relay/app/release.js` now takes a PEM key as well as a raw key file. The release workflow runs it and uploads `app-out` (see test/build-app-out.test.js).

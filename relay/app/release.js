@@ -40,10 +40,19 @@ export function readTree(dir) {
   return out;
 }
 
-/** The entry scripts and styles the build's index.html loads, in order. */
+/**
+ * The entry scripts and styles the build's index.html loads, in order, as the keys of `files`. An export
+ * built with a base URL (apps/app sets experiments.baseUrl "/app") writes `/app/_expo/static/js/...` in its
+ * index.html while the files are keyed `_expo/static/js/...`: leading folders are stripped until the path is
+ * one of the build's own files.
+ */
 export function entriesOf(html, files) {
   const out = [];
-  for (const m of String(html).matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="\/?([^"?#]+)"/g)) if (m[1] in files && /\.(m?js|css)$/.test(m[1])) out.push(m[1]);
+  for (const m of String(html).matchAll(/<(?:script[^>]*\ssrc|link[^>]*\shref)="\/?([^"?#]+)"/g)) {
+    let p = m[1];
+    while (!(p in files) && p.includes("/")) p = p.slice(p.indexOf("/") + 1);
+    if (p in files && /\.(m?js|css)$/.test(p) && !out.includes(p)) out.push(p);
+  }
   return out;
 }
 
