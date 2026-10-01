@@ -335,8 +335,28 @@ jobs:
         if: always()
         with: { name: results-update-refusals, path: results, retention-days: 14 }
 
+  j1b:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j1b')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - run: sh scripts/build-site.sh
+      - name: J1b, naming the box from a terminal
+        run: sh scripts/matrix/j1b-cli.sh results/j1b
+      - name: Diagnostics
+        if: failure()
+        run: tail -20 results/j1b/install.log; for f in results/j1b/*.log results/j1b/*.err; do echo "== $f"; head -c 500 "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j1b, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
+    needs: [j1b, linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
     if: always()
     runs-on: ubuntu-24.04
     steps:
