@@ -23,11 +23,11 @@ import { openSheet } from "../../js/sheet.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { renderUnified } from "../lib/diff.js";
 import { ensureCss, shell, chip, problemText } from "./kit.js";
-import { artifactFrame } from "./artifact-frame.js";
+import { artifactFrame, INTERACTIVE_LINE, interactiveByKind } from "./artifact-frame.js";
 import { providerName } from "../../js/provider-mark.js";
 
 /** Every artifacts tool the viewer calls, and the render route, in one place. */
-export const TOOLS = { get: "artifacts.get", versions: "artifacts.versions", share: "artifacts.share" };
+export const TOOLS = { get: "artifacts.get", versions: "artifacts.versions", share: "artifacts.share", log: "artifacts.activity.log" };
 /** Where the box serves an artifact version's rendered page (opaque origin, its own CSP). @param {string} id @param {number} v */
 export const renderSrc = (id, v) => `/v1/artifacts/content?id=${encodeURIComponent(id)}&v=${encodeURIComponent(String(v))}`;
 
@@ -245,7 +245,7 @@ export function artifactView(data, ctx = {}, o = {}) {
     if (r.error) return { error: failure(r.error) };
     const d = /** @type {any} */ (r.data);
     const t = typeof d === "string" ? d : d?.content ?? d?.text ?? "";
-    return { text: String(t), type: String(d?.type ?? d?.kind ?? "").toLowerCase(), title: d?.title, media: d?.media ?? null };
+    return { text: String(t), type: String(d?.type ?? d?.kind ?? "").toLowerCase(), title: d?.title, media: d?.media ?? null, interactive: typeof d?.interactive === "boolean" ? d.interactive : null };
   }
 
   async function show() {
@@ -277,12 +277,16 @@ export function artifactView(data, ctx = {}, o = {}) {
         h("a", { class: "btn btn-ghost btn-sm", href: mediaSrc(a.id, true), download: "" }, "Download")));
     }
     if (TEXT_KINDS.has(S.type)) return put(body, h("div", { class: "cv-art-md md" }, renderMarkdown(cur.text)));
-    const frame = artifactFrame({ src: renderSrc(a.id, v), title: S.title, onBlank: () => {} });
+    // The box says whether the page runs its own code; an older box that does not is read by kind (a page or an app does).
+    const interactive = cur.interactive ?? interactiveByKind(S.type);
+    const frame = artifactFrame({ src: renderSrc(a.id, v), title: S.title, interactive,
+      // It navigated itself away: the frame is blanked here, and the box is told THAT it happened (not where; the host cannot be read).
+      onBlank: () => { if (interactive) attempt(TOOLS.log, { id: a.id, kind: "navigated-away" }).catch(() => {}); } });
     S.guard = frame.guard;
     // Drawn by the Deck, outside the frame: whatever the page shows inside its border, even a look-alike of
     // Vyre, sits under this line (reviewer-2 M2: the frame's content is always untrusted and labelled).
     const by = a.agent || (typeof ctx.agent === "string" ? ctx.agent : ctx.agent?.name);
-    put(body, h("p", { class: "cv-art-origin" }, by ? `Made by ${by}. ` : "Made by an agent. ", "It runs on its own and is not part of Vyre."), frame);
+    put(body, h("p", { class: "cv-art-origin" }, by ? `Made by ${by}. ` : "Made by an agent. ", "It runs on its own and is not part of Vyre."), interactive ? h("p", { class: "cv-art-runs" }, INTERACTIVE_LINE) : null, frame);
   }
 
   /** @param {number} v */

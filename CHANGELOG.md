@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: static artifacts run no script, interactive ones say so
+
+- The artifact frame's sandbox is now empty for a static kind (doc, report, dashboard, diagram, deck, image, video, audio) and `allow-scripts` only when the box marks the artifact `interactive` (a page or an app; an older box that says nothing is read by kind). Never allow-same-origin, top-navigation, popups, forms or downloads. An interactive artifact shows one fixed line under the origin line, "Runs its own code and can reach the internet", with no dialog. When it navigates itself away (the frame is already blanked), the Deck tells the box that it happened with `artifacts.activity.log {id, kind: "navigated-away"}`; the destination cannot be read, so none is sent.
+
 #### chat: generated media shows inline
 
 - An artifact of kind image, video or audio (a provider's own generation, artifacts 5ae43ad5) draws inline in the reply instead of a file row: the picture, player or audio bar straight from the box's own content route (`/v1/artifacts/content?id=`, no frame, since the box serves it with its own type, nosniff and a sandbox policy), a caption row with Open and Download, and "Made by <agent> · provider, model" and "Asked for: <prompt>" from `artifacts.get`'s media block, read once. A load that fails says "This item is no longer in the project." The viewer shows the same media at full size. The prompt is text, never markup. Copy link waits: media has no public link in 0.2.0.

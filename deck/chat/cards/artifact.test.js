@@ -304,3 +304,26 @@ test("Use in…: lists the providers with a signed-in account, and choosing one 
   assert.deepEqual(seen, [{ id: "m1", title: "Red door", provider: "codex", name: "Codex" }]);
   assert.equal(v.of("threads.switch").length + v.of("artifacts.media.copy").length, 0, "the card itself calls neither, and nothing switches the session");
 });
+
+test("an interactive page says it runs its own code under the origin line and logs THAT it navigated away; a static kind has neither", async () => {
+  const { artifactView } = await import("./artifact.js");
+  const { text: t, $: q } = await import("../../test/fake-dom.js");
+  const mk = async (kind, interactive) => {
+    const v = vyred({ [TOOLS.versions]: { versions: [{ version: 1 }] }, [TOOLS.get]: { kind, text: "<p>x</p>", ...(interactive === undefined ? {} : { interactive }) }, [TOOLS.log]: {} });
+    const view = artifactView({ artifact: "p1", version: 1, kind, title: "T" }, {}, {});
+    await settle();
+    return { v, view };
+  };
+  const page = await mk("page", true);
+  assert.match(t(page.view.el), /Runs its own code and can reach the internet/);
+  assert.equal(q(page.view.el, "iframe").getAttribute("sandbox"), "allow-scripts");
+  q(page.view.el, "iframe").dispatchEvent(new /** @type {any} */ (globalThis).Event("load"));
+  q(page.view.el, "iframe").dispatchEvent(new /** @type {any} */ (globalThis).Event("load"));
+  await settle();
+  assert.deepEqual(page.v.of(TOOLS.log).map(c => c.input), [{ id: "p1", kind: "navigated-away" }]);
+  const deck = await mk("deck", false);
+  assert.doesNotMatch(t(deck.view.el), /Runs its own code/);
+  assert.equal(q(deck.view.el, "iframe").getAttribute("sandbox"), "");
+  const old = await mk("page", undefined);
+  assert.match(t(old.view.el), /Runs its own code/, "an older box that says nothing: a page is read as interactive");
+});

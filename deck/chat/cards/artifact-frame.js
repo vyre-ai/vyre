@@ -16,8 +16,14 @@
 
 import { h } from "../../js/dom.js";
 
-/** The one sandbox token list. Never add allow-same-origin, allow-top-navigation, allow-forms or allow-popups. */
+/** The sandbox token lists. A static kind (doc, report, dashboard, diagram, deck, media) runs no script at all; only a page or app the box
+ * marks `interactive` gets allow-scripts. Never add allow-same-origin, allow-top-navigation, allow-forms, allow-popups or allow-downloads. */
 export const SANDBOX = "allow-scripts";
+export const SANDBOX_STATIC = "";
+/** The one fixed line under an interactive artifact: no dialog, said every time. */
+export const INTERACTIVE_LINE = "Runs its own code and can reach the internet";
+/** Whether a kind runs its own code when the box does not say: only a page or an app. @param {string} type */
+export const interactiveByKind = type => type === "page" || type === "app";
 /** What the person reads when the page tried to leave. */
 export const NAVIGATED = "This page tried to open another site";
 const BLANK = "about:blank";
@@ -48,12 +54,12 @@ export function guardFrame(frame, { onBlank } = {}) {
  * A guarded, sandboxed frame for one artifact page. `src` is the artifacts render route's URL
  * (a path on the box, never something the artifact chose). onBlank is called after the frame is
  * blanked; the returned element is a wrapper whose content swaps to the plain line.
- * @param {{ src: string, title: string, onBlank?: () => void }} o
+ * @param {{ src: string, title: string, interactive?: boolean, onBlank?: () => void }} o
  * @returns {HTMLElement & { guard: ReturnType<typeof guardFrame> }}
  */
 export function artifactFrame(o) {
   const wrap = /** @type {any} */ (h("div", { class: "cv-art-frame" }));
-  const frame = h("iframe", { class: "cv-art-iframe", sandbox: SANDBOX, title: o.title, referrerpolicy: "no-referrer", loading: "eager" });
+  const frame = h("iframe", { class: "cv-art-iframe", sandbox: o.interactive === false ? SANDBOX_STATIC : SANDBOX, title: o.title, referrerpolicy: "no-referrer", loading: "eager" });
   wrap.guard = guardFrame(frame, { onBlank: () => {
     wrap.replaceChildren(h("p", { class: "cv-art-note", role: "alert" }, NAVIGATED));
     o.onBlank?.();

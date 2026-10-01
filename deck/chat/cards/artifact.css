@@ -59,3 +59,4 @@
 .cv-art-mediaview .cv-art-media { max-height: none; }
 .cv-art-usemenu { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .cv-art-usemenu[hidden] { display: none; }
+.cv-art-runs { margin: 0; padding: 4px 16px; font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); color: var(--label); }
