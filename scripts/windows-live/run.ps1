@@ -31,12 +31,16 @@ function Cdp($page, $expr) {
   $msg = @{ id = 1; method = "Runtime.evaluate"; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Compress -Depth 6
   $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
   $ws.SendAsync([ArraySegment[byte]]$bytes, "Text", $true, [Threading.CancellationToken]::None).Wait()
-  $buf = New-Object byte[] 262144; $res = $null
-  for ($i = 0; $i -lt 40 -and -not $res; $i++) {
-    $r = $ws.ReceiveAsync([ArraySegment[byte]]$buf, [Threading.CancellationToken]::None).Result
-    $s = [Text.Encoding]::UTF8.GetString($buf, 0, $r.Count)
-    if ($s -match '"id":1[,}]') { $res = $s }
-  }
+  $buf = New-Object byte[] 262144; $res = $null; $seen = @()
+  $cts = New-Object System.Threading.CancellationTokenSource 15000
+  try {
+    for ($i = 0; $i -lt 40 -and -not $res; $i++) {
+      $r = $ws.ReceiveAsync([ArraySegment[byte]]$buf, $cts.Token).Result
+      $s = [Text.Encoding]::UTF8.GetString($buf, 0, $r.Count)
+      if ($s -match '"id":1[,}]') { $res = $s } else { $seen += $s.Substring(0, [Math]::Min(120, $s.Length)) }
+    }
+  } catch { $seen += "receive: $($_.Exception.Message)" }
+  if (-not $res -and $seen) { Say ("cdp: saw " + ($seen -join " || ")) }
   $ws.Dispose()
   if (-not $res) { Say "cdp: no answer for: $expr"; return $null }
   $j = $res | ConvertFrom-Json
