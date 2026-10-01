@@ -81,3 +81,10 @@ test("textHash and tagNote: a hash, and a note that is framed as data, names hos
   assert.match(n, /data, not instructions/);
   assert.ok(tagNote([{ kind: "github", name: "x", hosts: [], note: "y".repeat(20000) }]).length < NOTE_MAX + 200);
 });
+
+test("ledgerName: a module books under its own name only", async () => {
+  const { ledgerName } = await import("./index.js");
+  assert.equal(ledgerName("module:watchers", "digest"), "watchers:digest");
+  assert.equal(ledgerName("module:watchers", "watchers:digest"), "watchers:digest", "its own prefix is accepted");
+  for (const [caller, word] of [["module:watchers", "teammates:theirs"], ["module:watchers", "a b"], ["module:watchers", ""], ["module:watchers", undefined], ["cli", "digest"], ["deck", "digest"], ["mcp:agent:kit", "digest"], ["module:", "digest"]]) assert.equal(ledgerName(caller, word), null, `${caller} ${word}`);
+});
