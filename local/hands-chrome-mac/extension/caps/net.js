@@ -160,7 +160,7 @@ async function enableSession(ctx, t, session) {
 /** Every child session the tab has now gets capture. Cheap when nothing is new. @param {any} ctx @param {TabNet} t */
 export function syncSessions(ctx, t) {
   const kids = typeof ctx.cdp.children === "function" ? ctx.cdp.children(t.tab) : [];
-  const fresh = kids.filter((/** @type {any} */ k) => isGuardTarget(k) && !t.sessions.has(k.sessionId));
+  const fresh = kids.filter((/** @type {any} */ k) => isGuardTarget(k) && !t.sessions.has(k.sessionId) && !(/** @type {any} */ (t).closed && /** @type {any} */ (t).closed.has(k.sessionId)));
   for (const k of fresh) { t.sessions.add(k.sessionId); (t.sessionTypes || (t.sessionTypes = new Map())).set(k.sessionId, String(k.type || "")); }
   return Promise.all(fresh.map((/** @type {any} */ k) => enableSession(ctx, t, k.sessionId)));
 }
@@ -269,7 +269,7 @@ function handle(ctx, t, method, p, session) {
     return;
   }
   if (method === "Target.detachedFromTarget") {
-    if (p.sessionId) { t.sessions.delete(p.sessionId); const st = /** @type {any} */ (t).sticky; if (st) st.kids.delete(p.sessionId); }
+    if (p.sessionId) { t.sessions.delete(p.sessionId); if (/** @type {any} */ (t).closed) /** @type {any} */ (t).closed.delete(p.sessionId); const st = /** @type {any} */ (t).sticky; if (st) st.kids.delete(p.sessionId); }
     return;
   }
   if (method === "Network.requestWillBeSent") {
@@ -798,7 +798,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
           for (const [k, v] of (eg.kidSessions || [])) {
             if (!t.sessions.has(k)) continue;
             // Chrome has no Fetch interception on a dedicated worker, and the browser rules cannot tell a worker's request from the page's: a worker the script made does not outlive the call.
-            if (/worker/.test(String(v))) { eg.closedWorkers = (eg.closedWorkers || 0) + 1; await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "self.close()", returnByValue: true }, k)); t.sessions.delete(k); }
+            if (/worker/.test(String(v))) { eg.closedWorkers = (eg.closedWorkers || 0) + 1; await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "self.close()", returnByValue: true }, k)); t.sessions.delete(k); (/** @type {any} */ (t).closed || (/** @type {any} */ (t).closed = new Set())).add(k); }
             else kids.set(k, v);
           }
           /** @type {any} */ (t).sticky = { tag: /** @type {any} */ (t).evalTag, allowed: new Set(eg.allowed), first: new Set(eg.first), kids, hosts: (eg.dnrArgs && eg.dnrArgs.initiatorHosts) || (prev ? prev.hosts : []) };

@@ -770,3 +770,22 @@ test("egress guard: every new document made while it is up gets the worker refus
   await eg.stop();
   assert.deepEqual(k.calls("Page.removeScriptToEvaluateOnNewDocument").map(c => c.params.identifier), ["nd-1"]);
 });
+
+test("egress guard: a worker the guard closed is never asked to enable Fetch again (the dead session would never answer)", async () => {
+  const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  k.push(1, "Target.attachedToTarget", { sessionId: "S-DEAD", waitingForDebugger: false, targetInfo: { targetId: "D", type: "worker", url: "blob:https://app.example/w" } });
+  // the browser still lists the child until it detaches
+  k.children.push({ sessionId: "S-DEAD", targetId: "D", type: "worker", url: "blob:https://app.example/w" });
+  await new Promise(r => setTimeout(r, 10));
+  const before = k.sent.filter(s => s.session === "S-DEAD" && s.method === "Fetch.enable").length;
+  await eg.stop();
+  assert.ok(k.sent.some(x => x.session === "S-DEAD" && x.method === "Runtime.evaluate" && x.params.expression === "self.close()"), "it was closed");
+  const afterStop = k.sent.filter(x => x.session === "S-DEAD" && x.method === "Fetch.enable").length;
+  await egressGuard(k.ctx, 1).then(g => g.stop());
+  assert.equal(k.sent.filter(x => x.session === "S-DEAD" && x.method === "Fetch.enable").length, afterStop, "no Fetch.enable to the closed worker in the next guard");
+  assert.ok(before >= 0);
+});
