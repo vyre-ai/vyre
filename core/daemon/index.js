@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import * as config from "../config/index.js";
 import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
+import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice } from "../modules/index.js";
@@ -59,6 +60,8 @@ export function moduleRoots(root) {
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
+  // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
+  assertDaemonHost({ root, real: isRealHome(root) });
   // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
   // nothing on screen: every dialog gate reads the environment, so say it there.
   // VYRE_ALLOW_DIALOGS=1 is a person's deliberate custom home (core/config/dialogs.js).
@@ -544,6 +547,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
     if (c && c.ok) person = { id: c.id, kind: c.kind };
+    // The credential this box issued, for a device whose key was since removed: said once, in plain
+    // words, with its own code (only the holder of the real credential gets it, person.js check).
+    else if (c && c.removed) return send(res, 401, { error: { code: "device_removed", message: c.why } });
     // A bad bearer is refused outright; a lapsed cookie is only a device, and the tool decides.
     else if (c && String(req.headers.authorization || "").startsWith("Vyre ")) return send(res, 401, { error: { code: "person_session_required", message: c.why } });
   }

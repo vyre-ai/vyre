@@ -37,7 +37,7 @@ export async function callTool(name, input = {}, proof) {
     if (body && "data" in body && !body.error) return { data: body.data };
     return { error: { code: body?.error?.code || "http_" + res.status, message: body?.error?.message || res.statusText, ...(body?.error?.methods ? { methods: body.error.methods } : {}) } };
   } catch {
-    return { error: { code: "offline", message: "vyred did not answer" } };
+    return { error: { code: "offline", message: "The box did not answer" } };
   }
 }
 
@@ -66,8 +66,8 @@ export async function passkeyProof(tool, input) {
     const res = await fetch("/v1/presence/challenge", { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": CALLER },
       body: JSON.stringify({ tool, input, method: "passkey" }) });
     c = await res.json();
-  } catch { throw Object.assign(new Error("vyred did not answer"), { code: "offline" }); }
-  if (!c || c.error || !c.data?.webauthn) throw Object.assign(new Error(c?.error?.message || "vyred gave no passkey challenge"), { code: c?.error?.code || "no_challenge" });
+  } catch { throw Object.assign(new Error("The box did not answer"), { code: "offline" }); }
+  if (!c || c.error || !c.data?.webauthn) throw Object.assign(new Error(c?.error?.message || "The box gave no passkey challenge"), { code: c?.error?.code || "no_challenge" });
   const w = c.data.webauthn;
   const cred = /** @type {PublicKeyCredential | null} */ (await navigator.credentials.get({ publicKey: {
     challenge: fromB64url(w.challenge), rpId: w.rpId, userVerification: "required", timeout: w.timeout || 60_000,

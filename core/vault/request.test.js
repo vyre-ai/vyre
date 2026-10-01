@@ -431,3 +431,31 @@ test("Gmail's raw message: every To, Cc and Bcc address is a recipient, folded l
   assert.deepEqual(gate.calls.find(c => c.tool === "gate.request").input.to, ["dana@harlowlegal.com", "sam@harlowlegal.com", "kit@harlowlegal.com", "bcc@harlowlegal.com"]);
   assert.match(gate.items.get(r.held).draft.summary, /^Send as harlow-gmail to dana@harlowlegal\.com, sam@harlowlegal\.com, kit@harlowlegal\.com, bcc@harlowlegal\.com · POST gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\/send$/);
 });
+
+test("a model reads through a credential only inside its scope: an agent in project B cannot read project A's mailbox", async t => {
+  const { net, ask, cred, audit } = await mk(t);
+  await cred("mailbox-a", { ...GRAPH, scope: { projects: ["project-a"], agents: "*" } });
+  await cred("mailbox-open", { ...GRAPH, scope: { projects: "*", agents: "*" } });
+  await cred("mailbox-none", GRAPH);
+  const read = (credential, caller, meta) => ask({ credential, method: "GET", url: "https://graph.microsoft.com/v1.0/me/messages" }, caller, meta);
+  // Project B's agent is refused project A's credential, before any network call.
+  await assert.rejects(read("mailbox-a", "mcp:agent:kit", { agent: "kit", thread: "t-1", project: "project-b" }), /not available to the agent kit/);
+  assert.equal(net.calls.length, 0, "no request was made");
+  assert.ok(audit().some(e => e.action === "api-request" && !e.ok && /outside the credential's scope/.test(e.why)), "the refusal is audited");
+  // A session bound to project B (no named agent) is refused too.
+  await assert.rejects(read("mailbox-a", "mcp:thread:t-2", { thread: "t-2", project: "project-b" }), /not available to this project/);
+  // Project A's own agent reads, with no prompt.
+  assert.equal((await read("mailbox-a", "mcp:agent:kit", { agent: "kit", thread: "t-1", project: "project-a" })).kind, "read");
+  // A credential with no scope is for the person and the assistant only.
+  await assert.rejects(read("mailbox-none", "mcp:agent:kit", { agent: "kit", thread: "t-1", project: "project-a" }), /not available to the agent kit/);
+  // "*" on both is everyone.
+  assert.equal((await read("mailbox-open", "mcp:agent:kit", { agent: "kit", project: "project-b" })).kind, "read");
+  // The person's surfaces, an unnamed session with no project, and the assistant keep full reach.
+  for (const [who, meta] of [["cli", {}], ["deck", {}], ["mcp", {}], ["mcp:agent:assistant", { agent: "assistant", agentKind: "assistant", project: "project-b" }]]) {
+    assert.equal((await read("mailbox-none", who, meta)).kind, "read", who);
+  }
+  // A scope that names other agents excludes this one even inside its project.
+  await cred("mailbox-juno", { ...GRAPH, scope: { projects: "*", agents: ["juno"] } });
+  await assert.rejects(read("mailbox-juno", "mcp:agent:kit", { agent: "kit", project: "project-a" }), /not available/);
+  assert.equal((await read("mailbox-juno", "mcp:agent:juno", { agent: "juno", project: "project-a" })).kind, "read");
+});

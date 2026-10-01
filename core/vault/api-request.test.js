@@ -116,3 +116,15 @@ test("presets name exact hosts, never a wildcard, and presetFor finds the family
 test("no preset silently classifies a known write as a read (the safety net this depends on)", () => {
   for (const p of PRESETS) assert.notEqual(p.kind, "read", `${p.method} ${p.path} must not be classified read`);
 });
+
+test("scopeAllows fails closed: a caller naming no agent or no project is let in only by '*', never by a list", async () => {
+  const { scopeAllows } = await import("./api-request.js");
+  const one = { scope: { projects: ["project-a"], agents: ["kit"] } };
+  assert.equal(scopeAllows(one, { agent: "kit", project: "project-a" }), true);
+  assert.equal(scopeAllows(one, { agent: "kit" }), false, "no project does not match a list");
+  assert.equal(scopeAllows(one, { project: "project-a" }), false, "no agent does not match a list");
+  assert.equal(scopeAllows(one, {}), false);
+  assert.equal(scopeAllows({ scope: { projects: "*", agents: "*" } }, {}), true, "* is everyone");
+  assert.equal(scopeAllows({ scope: { projects: "*", agents: ["kit"] } }, { project: "p" }), false);
+  assert.equal(scopeAllows({}, { agent: "kit", project: "p" }), false, "no scope is no one");
+});

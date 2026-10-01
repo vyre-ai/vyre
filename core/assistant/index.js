@@ -13,8 +13,9 @@
 // same path core/waiting already uses to read across four owners into one list.
 
 import { glance } from "./glance.js";
-import { capabilities, render } from "./manifest.js";
+import { capabilities, render, promptBlock } from "./manifest.js";
 import { welcomeOf } from "./welcome.js";
+import { handoffPush } from "./handoff.js";
 
 const STATE_KEY = "last_digest_day";
 const DAILY_DAY = "daily_day";
@@ -136,11 +137,13 @@ export default {
     });
 
     ctx.tool("assistant.capabilities", {
-      description: "What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text for the prompt.",
-      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"] }, compact: { type: "boolean" } } },
+      description: "What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text; prompt: true returns it as the quoted block the assistant's own prompt carries.",
+      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"] }, compact: { type: "boolean" }, prompt: { type: "boolean" } } },
       run: async (i = {}, meta = {}) => {
-        await gate(meta);
+        // agents asks for the prompt block when it starts the assistant's thread; it may read this and nothing else here.
+        if (!(meta.caller === "module:agents" && i.prompt === true)) await gate(meta);
         const cap = await capabilities(asCall, i.area);
+        if (i.prompt) return { text: promptBlock(cap) };
         return i.compact ? { text: render(cap) } : cap;
       },
     });
@@ -252,6 +255,20 @@ export default {
       }
     });
 
-    return { async stop() { stopped = true; off(); } };
+    // One notification per handoff the assistant started: its teammate's request ended.
+    const offHand = ctx.events.on("summon.finished", async e => {
+      try {
+        const p = e && e.payload;
+        if (!p || !p.reply_to) return;
+        const [t, l] = await Promise.all([ctx.call("threads.get", { thread: p.reply_to, limit: 1 }), ctx.call("agents.list", {})]);
+        const agent = t.data && t.data.thread && t.data.thread.agent;
+        const list = Array.isArray(l.data) ? l.data : [];
+        const mine = Boolean(agent && list.some(a => a && a.kind === "assistant" && a.name === agent));
+        const push = handoffPush(p, mine);
+        if (push) ctx.events.emit("push.proactive", push);
+      } catch (err) { ctx.log(`assistant: handoff notice failed: ${/** @type {Error} */ (err).message}`); }
+    });
+
+    return { async stop() { stopped = true; off(); offHand(); } };
   },
 };

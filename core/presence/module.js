@@ -173,11 +173,11 @@ export default {
           } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey"), { code: "denied" });
           const k = input.key;
           if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
-          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y } });
+          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null });
           ctx.events.emit("presence.signed-in", { id: s.id, node: label });
           return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
         }
-        const s = people.start({ node, kind: "cookie", label });
+        const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };
       },
