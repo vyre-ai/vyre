@@ -23,7 +23,8 @@ function Shot($name) {
 }
 
 # ---- Chrome DevTools helpers: the app's WebView2 exposes a debug port in this run only --------------------
-function Pages { try { Invoke-RestMethod http://127.0.0.1:9222/json -TimeoutSec 5 } catch { @() } }
+# Unrolled one target at a time: Invoke-RestMethod hands back a JSON array as ONE object, which made two open pages look like one page with array-valued fields.
+function Pages { try { $r = Invoke-RestMethod http://127.0.0.1:9222/json -TimeoutSec 5; foreach ($x in $r) { $x } } catch { } }
 function PageLike($pat) { Pages | Where-Object { $_.type -eq "page" -and $_.url -like $pat } | Select-Object -First 1 }
 function Cdp($page, $expr) {
   $ws = New-Object System.Net.WebSockets.ClientWebSocket
