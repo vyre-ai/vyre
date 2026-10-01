@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### fix: the app typecheck
+
+- `PlanItem` (the plan checklist's row) declares `seq?`, like every other item the session core sorts by, so `deck/chat/core/session-state.js` typechecks in the app. The app's slash-command runner (`apps/app/src/session/Composer.tsx`) accepts the new `undo` command and says it works in the Deck for now, as it does for `/find` and `/goal`.
+
 #### fix: three reds in rc-0.2's node run
 
 - The plan checklist's CSS used the raw `--signal` colour; it now uses `--text` and `--text-2` (the tokens test). `deck/chat/core/answer-with.js` had a model alias spelled in a comment, which the cohesion drift scan counts as a copy of the model list; reworded. The service worker's install list (`deck/sw.js`) now keeps `/chat/gate-lines.js`, `/js/provider-mark.js`, `/js/provider-art.js`, `/chat/undo-sheet.js` and `/chat/core/answer-with.js`, which the shell imports, so the phone shell works offline.
