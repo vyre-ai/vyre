@@ -312,8 +312,6 @@ export async function startCore(o) {
         log(`vyre-core: ${tool} ${String(input.name || "")} for the Capsule (pid ${c.pid}), proved by ${p.method}`);
         return send(res, 200, { data: await vaults.plain[tool](input, "capsule") });
       }
-      // A first-party module's own item (vyred names the module, core checks the item's origin and that it is unverified): no proof.
-      if (tool === "vault.delete" && header === undefined && input && typeof input.asModule === "string") return send(res, 200, { data: await vaults.deleteOwn(input) });
       if (vaults.write[tool]) {
         const p = await prove(tool, input, header);
         if (!p.ok) return refused(p);

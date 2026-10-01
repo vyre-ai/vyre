@@ -101,25 +101,6 @@ export function openVault({ db, dataDir, log = () => {}, emit = () => {}, testKd
       return vault.release({ name: input.name, field: input.field, watcher: input.watcher || "" }, `module:${mod}`);
     },
 
-    /**
-     * A first-party module deletes an item it made: vyred names the module it vouched for (asModule), the item must still be unverified
-     * (the person has not taken it over) and its recorded origin must be that module. No proof: the person's own action in the module
-     * asked for it. Core cannot tell vyred from another process with the owner's uid, so the most a forged asModule reaches is an
-     * unverified item whose origin names that module, which only an unverified put ever writes.
-     * @param {{ name?: string, asModule?: string }} input
-     */
-    deleteOwn: async input => {
-      const mod = String(input.asModule || "");
-      if (!/^[a-z][a-z0-9-]{0,63}$/.test(mod)) throw fail("asModule must be a module name");
-      const r = /** @type {any} */ (vault.row(String(input.name || "")));
-      if (!r) throw fail(`no item named ${input.name}`);
-      if (trust.verified(r.name)) throw fail(`${r.name} is verified (it is yours now): deleting it needs your proof`, "presence_required");
-      if (r.origin !== `module:${mod}`) throw fail(`${r.name} was not made by ${mod}, so ${mod} cannot delete it`, "denied");
-      const out = vault.remove({ name: r.name }, `module:${mod}`);
-      trust.drop(r.name);
-      return out;
-    },
-
     revoke: async (input, by) => vault.revoke({ name: input.name, module: input.module, watcher: input.watcher }, by),
 
     write: {
