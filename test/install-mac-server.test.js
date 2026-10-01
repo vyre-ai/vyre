@@ -551,20 +551,25 @@ after(() => {
   }
 });
 
-test("install-mac-server.sh: it says in plain words whether FileVault is on or off, and only reads it", t => {
-  for (const [out, re, not] of [["FileVault is On.", /FileVault is on\. After a power cut the Mac waits/, /FileVault is off/], ["FileVault is Off.", /FileVault is off\. After a power cut the Mac starts by itself/, /FileVault is on/]]) {
+test("install-mac-server.sh: it says in plain words what a power cut does (FileVault and autorestart), and only reads them", t => {
+  const cases = /** @type {[string, string, RegExp[], RegExp[]][]} */ ([
+    ["FileVault is On.", " autorestart            0", [/FileVault is on\. After a power cut the Mac waits/, /is off, so after a power cut the Mac stays off until someone presses its power button/, /System Settings, under Energy/], [/vault stays locked/]],
+    ["FileVault is Off.", " autorestart            1", [/FileVault is off\. Anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password\./, /is on, so the Mac switches itself back on/], [/waits for someone to unlock/]],
+  ]);
+  for (const [fvOut, pmOut, yes, no] of cases) {
     const m = sys(t);
-    const fd = path.join(m.base, "bin", "fdesetup");
-    fs.writeFileSync(fd, `#!/bin/sh\necho "fdesetup $*" >>"${path.join(m.base, "calls.log")}"\necho "${out}"\n`, { mode: 0o755 });
-    const r = run({ ...m.env, VYRE_FDESETUP: fd }, ["--yes", "--system"]);
+    const fd = path.join(m.base, "bin", "fdesetup"), pm = path.join(m.base, "bin", "pmset");
+    fs.writeFileSync(fd, `#!/bin/sh\necho "fdesetup $*" >>"${path.join(m.base, "calls.log")}"\necho "${fvOut}"\n`, { mode: 0o755 });
+    fs.writeFileSync(pm, `#!/bin/sh\necho "pmset $*" >>"${path.join(m.base, "calls.log")}"\necho "System-wide power settings:"\necho "${pmOut}"\n`, { mode: 0o755 });
+    const r = run({ ...m.env, VYRE_FDESETUP: fd, VYRE_PMSET: pm }, ["--yes", "--system"]);
     assert.equal(r.status, 0, r.stderr + r.stdout);
-    assert.match(r.stdout, re);
-    assert.doesNotMatch(r.stdout, not);
-    assert.deepEqual(m.calls().split("\n").filter(l => l.startsWith("fdesetup")), ["fdesetup status"], "status only, never another subcommand");
+    for (const re of yes) assert.match(r.stdout, re);
+    for (const re of no) assert.doesNotMatch(r.stdout, re);
+    assert.deepEqual(m.calls().split("\n").filter(l => /^(fdesetup|pmset)/.test(l)), ["fdesetup status", "pmset -g"], "read-only commands only: never a setter");
   }
   // An answer it cannot read says nothing rather than guessing.
   const q = sys(t);
-  const fd = path.join(q.base, "bin", "fdesetup"); fs.writeFileSync(fd, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-  const r = run({ ...q.env, VYRE_FDESETUP: fd }, ["--yes", "--system"]);
-  assert.doesNotMatch(r.stdout, /FileVault/);
+  for (const n of ["fdesetup", "pmset"]) fs.writeFileSync(path.join(q.base, "bin", n), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  const r = run({ ...q.env, VYRE_FDESETUP: path.join(q.base, "bin", "fdesetup"), VYRE_PMSET: path.join(q.base, "bin", "pmset") }, ["--yes", "--system"]);
+  assert.doesNotMatch(r.stdout, /FileVault|power failure/);
 });

@@ -567,14 +567,22 @@ capsule_note() {
   esac
 }
 
-# filevault_note: read-only. FileVault decides what happens after a power cut, so the person is told which
-# way theirs is set, in the same words as the setup screen. Never changed here (VYRE_FDESETUP: tests).
-filevault_note() {
+# power_note: read-only, never set. What happens after a power cut depends on two settings the person owns:
+# FileVault (asks to be unlocked at the screen) and "Start up automatically after a power failure" (pmset
+# autorestart, off by default on a Mac mini). Said in plain words, in the same words as the setup screen.
+# VYRE_FDESETUP and VYRE_PMSET are for the tests.
+power_note() {
   [ "$DRY" = 0 ] || return 0
   fv=$("${VYRE_FDESETUP:-/usr/bin/fdesetup}" status 2>/dev/null || true)
+  ar=$("${VYRE_PMSET:-/usr/bin/pmset}" -g 2>/dev/null | sed -n 's/^ *autorestart *\([01]\).*/\1/p' | head -n 1 || true)
   case "$fv" in
     *"FileVault is On"*) say "FileVault is on. After a power cut the Mac waits for someone to unlock it at the screen, and Vyre is off until then." ;;
-    *"FileVault is Off"*) say "FileVault is off. After a power cut the Mac starts by itself and Vyre comes back, but anyone who takes the Mac can read what Vyre keeps on it." ;;
+    *"FileVault is Off"*) say "FileVault is off. Anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password." ;;
+    *) : ;;
+  esac
+  case "$ar" in
+    0) say "\"Start up automatically after a power failure\" is off, so after a power cut the Mac stays off until someone presses its power button. You can turn it on in System Settings, under Energy." ;;
+    1) say "\"Start up automatically after a power failure\" is on, so the Mac switches itself back on after a power cut." ;;
     *) : ;;
   esac
 }
@@ -667,13 +675,13 @@ main() {
     capsule_note
     say "Vyre is running. Back in your browser, it will find this Mac."
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
-    filevault_note
+    power_note
   else
     write_plist
     start_service
     say "Vyre is running. Back in your browser, it will find this Mac."
     say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
-    filevault_note
+    power_note
   fi
 }
 

@@ -51,7 +51,8 @@ echo "::endgroup::"
 
 # FileVault: read in plain words, never changed.
 echo "$install_out" | grep -qE "FileVault is (on|off)\." || bad "the installer did not say whether FileVault is on or off"
-ok "the installer states FileVault ($(echo "$install_out" | grep -oE 'FileVault is (on|off)\.' | head -n 1)) and only read it"
+echo "$install_out" | grep -q "Start up automatically after a power failure" || bad "the installer did not say what a power cut does"
+ok "the installer states FileVault and the power-failure setting in words ($(echo "$install_out" | grep -oE 'FileVault is (on|off)\.' | head -n 1)) and only read them"
 
 # Account and tree.
 dscl . -read /Users/_vyre UniqueID >/dev/null || bad "no _vyre account"
@@ -86,7 +87,7 @@ codesign -dvvv "$app" 2>&1 | grep -q 'Authority=Vyre Core Capsule' || bad "the C
 [ "$(stat -f %Su "$base/signing")" = root ] && [ "$(stat -f %Lp "$base/signing")" = 700 ] || bad "the signing folder is not root's 0700"
 if cat "$base/signing/vyre-core.keychain-db" >/dev/null 2>&1; then bad "the owner can read core's signing keychain"; fi
 security find-certificate -c "Vyre Core Capsule" /Library/Keychains/System.keychain >/dev/null 2>&1 || bad "the signing certificate is not in the System keychain while installed"
-sudo security list-keychains -d user | grep -q vyre-core.keychain || bad "core's keychain is not on root's search list while installed"
+sudo env HOME=/var/root security list-keychains -d user | grep -q vyre-core.keychain || bad "core's keychain is not on root's search list while installed"
 ok "Vyre.app is signed by core's identity (requirement: $(echo "$req" | cut -c1-110)); its key folder is root-only"
 
 # core answers.
@@ -165,7 +166,7 @@ if dscl . -read /Users/_vyre >/dev/null 2>&1; then bad "_vyre is still there"; f
 [ ! -e "/Library/LaunchDaemons/com.vyre.core.plist" ] || bad "core's plist is still there"
 [ ! -e "$base/signing" ] || bad "the signing identity is still there"
 if security find-certificate -c "Vyre Core Capsule" /Library/Keychains/System.keychain >/dev/null 2>&1; then bad "the signing certificate is still in the System keychain after uninstall"; fi
-if sudo security list-keychains -d user | grep -q vyre-core.keychain; then bad "root's keychain search list still names core's keychain"; fi
+if sudo env HOME=/var/root security list-keychains -d user | grep -q vyre-core.keychain; then bad "root's keychain search list still names core's keychain"; fi
 [ ! -e "$base/.signing-cert-retry" ] || bad "a certificate removal is still pending after uninstall: $(cat "$base/.signing-cert-retry")"
 [ ! -e "$VYRE_SERVER_DIR" ] || bad "the app folder is still there"
 ok "uninstall --purge removed the daemons, the account and the files"
