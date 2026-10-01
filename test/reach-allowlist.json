@@ -470,10 +470,6 @@
    "module": "context",
    "default": "limited by callers in code"
   },
-  "events.catalog": {
-   "module": "events",
-   "default": "open to any caller"
-  },
   "files.deliver": {
    "module": "files",
    "default": "limited by callers in code"
@@ -1095,102 +1091,6 @@
    "module": "learn",
    "default": "open to any caller"
   },
-  "link.call": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.events": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.find": {
-   "module": "link",
-   "default": "limited by callers in code"
-  },
-  "link.health": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.hello": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.macs": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.macs.call": {
-   "module": "link",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "link.pair": {
-   "module": "link",
-   "default": "limited by callers in code"
-  },
-  "link.pair.approve": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.pair.deny": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.pair.poll": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.pair.request": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.peer-of": {
-   "module": "link",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "link.peers": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.pending": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.remote": {
-   "module": "link",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "link.reply": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.serve": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.signin": {
-   "module": "link",
-   "default": "limited by callers in code"
-  },
-  "link.signout": {
-   "module": "link",
-   "default": "limited by callers in code"
-  },
-  "link.status": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.unpair": {
-   "module": "link",
-   "default": "open to any caller"
-  },
-  "link.upload": {
-   "module": "link",
-   "default": "open to any caller",
-   "internal": true
-  },
   "mail.accounts": {
    "module": "mail",
    "default": "open to any caller"
@@ -1452,19 +1352,6 @@
    "module": "memory",
    "default": "limited by callers in code"
   },
-  "mentions.kinds": {
-   "module": "mentions",
-   "default": "limited by callers in code"
-  },
-  "mentions.resolve": {
-   "module": "mentions",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "mentions.search": {
-   "module": "mentions",
-   "default": "limited by callers in code"
-  },
   "names.check": {
    "module": "names",
    "default": "open to any caller"
@@ -1657,148 +1544,6 @@
   },
   "planner.update": {
    "module": "planner",
-   "default": "limited by callers in code"
-  },
-  "presence.capsule.pin": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.code": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.covered": {
-   "module": "presence",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "presence.enroll": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.grant.mint": {
-   "module": "presence",
-   "default": "open to any caller",
-   "internal": true
-  },
-  "presence.keys": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.person.revoke": {
-   "module": "presence",
-   "default": "limited by callers in code"
-  },
-  "presence.person.sessions": {
-   "module": "presence",
-   "default": "limited by callers in code"
-  },
-  "presence.person.start": {
-   "module": "presence",
-   "default": "limited by callers in code"
-  },
-  "presence.person.status": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.remove": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.session.close": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "presence.session.open": {
-   "module": "presence",
-   "default": "open to any caller"
-  },
-  "projects.access.check": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.access.clear": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.access.grant": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.access.list": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.access.migrate": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.access.revoke": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.add-threads": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.add-workspace": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.archive": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.catalog": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.context": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.create": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.history": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.list": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.move": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.of": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.reach": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.remove-threads": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.rename": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.threads": {
-   "module": "projects",
-   "default": "open to any caller"
-  },
-  "projects.watchers.add": {
-   "module": "projects",
-   "default": "limited by callers in code"
-  },
-  "projects.watchers.remove": {
-   "module": "projects",
    "default": "limited by callers in code"
   },
   "providers.list": {
@@ -2001,14 +1746,6 @@
   "relay.web.release": {
    "module": "relay",
    "default": "open to any caller"
-  },
-  "releases.cert": {
-   "module": "releases",
-   "default": "limited by callers in code"
-  },
-  "releases.sign": {
-   "module": "releases",
-   "default": "limited by callers in code"
   },
   "screen.context": {
    "module": "screen",
@@ -2260,46 +1997,6 @@
   },
   "suggest.query": {
    "module": "suggest",
-   "default": "limited by callers in code"
-  },
-  "sync.consent": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.delete": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.delete.import": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.scan": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.send": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.upload.cancel": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.upload.chunk": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.upload.finish": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.upload.plan": {
-   "module": "sync",
-   "default": "limited by callers in code"
-  },
-  "sync.upload.start": {
-   "module": "sync",
    "default": "limited by callers in code"
   },
   "system.echo": {
