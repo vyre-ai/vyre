@@ -31,7 +31,7 @@ test("create writes the watcher owned by the teammate, and the duty is on", asyn
   assert.equal(d.enabled, true);
   assert.equal(d.started, true);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0][0], "watchers.create");
+  assert.equal(calls[0][0], "watchers.duty.create");
   assert.deepEqual(calls[0][1].owner, { kind: "teammate", teammate: tm.agent });
   assert.equal(calls[0][1].name, d.watcher);
   assert.ok(d.watcher.startsWith("duty-reviewer-"));
@@ -48,27 +48,27 @@ test("a proposal is off with no watcher until it is turned on; then pause and re
   await assert.rejects(api.runNow(d.id), /off/);
   const on = await api.update(d.id, { enabled: true });
   assert.equal(on.started, true);
-  assert.deepEqual(calls.map(c => c[0]), ["watchers.create"]);
+  assert.deepEqual(calls.map(c => c[0]), ["watchers.duty.create"]);
   await api.update(d.id, { enabled: false });
   await api.update(d.id, { enabled: true });
-  assert.deepEqual(calls.map(c => c[0]), ["watchers.create", "watchers.pause", "watchers.resume"]);
+  assert.deepEqual(calls.map(c => c[0]), ["watchers.duty.create", "watchers.pause", "watchers.duty.resume"]);
   await api.runNow(d.id);
-  assert.equal(calls.at(-1)[0], "watchers.run");
+  assert.equal(calls.at(-1)[0], "watchers.duty.run");
 });
 
 test("editing a running duty updates its watcher; delete removes it, and a watcher already gone does not strand the row", async t => {
   const { api, calls } = setup(t);
   const d = await api.create(tm, { when: "daily 07:00", instruction: "Morning pass.", by: "cli" });
   await api.update(d.id, { instruction: "Morning pass over goals.", act: true });
-  assert.equal(calls.at(-1)[0], "watchers.update");
+  assert.equal(calls.at(-1)[0], "watchers.duty.update");
   assert.equal(calls.at(-1)[1].instruction, "Morning pass over goals.");
   assert.equal((await api.remove(d.id)).deleted, true);
-  assert.equal(calls.at(-1)[0], "watchers.delete");
+  assert.equal(calls.at(-1)[0], "watchers.duty.delete");
   assert.equal(api.list(tm.agent).length, 0);
 });
 
 test("when watchers refuses, no duty row is left behind; bad input is refused", async t => {
-  const { api } = setup(t, { failOn: "watchers.create" });
+  const { api } = setup(t, { failOn: "watchers.duty.create" });
   await assert.rejects(api.create(tm, { when: "daily 07:00", instruction: "x", by: "cli" }), /watchers: no such tool/);
   assert.equal(api.list(tm.agent).length, 0);
   await assert.rejects(api.create(tm, { when: "", instruction: "x", by: "cli" }), /trigger/);
@@ -81,7 +81,7 @@ test("removeAll clears a teammate's duties and their watchers", async t => {
   await api.create(tm, { when: "thread.finished", instruction: "b", by: "cli" });
   await api.removeAll(tm.agent);
   assert.equal(api.list(tm.agent).length, 0);
-  assert.equal(calls.filter(c => c[0] === "watchers.delete").length, 2);
+  assert.equal(calls.filter(c => c[0] === "watchers.duty.delete").length, 2);
 });
 
 test("news: a duty's new items are read once into the teammate's next request, as nonce'd data, never twice; a proposal has none", async t => {

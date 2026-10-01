@@ -25,6 +25,145 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - said: `watchersIntents` (one file, watchers' recorder with the hash rule) records act_out intents (channel "watchers") for "watch my inbox" (`watchers.preset:<project>/<kind>`) and "turn on the inbox watcher" or "turn it on" (`watchers.create:<project>/<name>@<hash>`). The hash is the one in the card the person was shown, taken by the caller from the card results already in the thread, never a fresh card or list. "Turn it on" binds only to a card shown in the last two assistant turns (`shownTurnsAgo` 0 or 1); a named watcher is not limited by age. Plain asks only, 15 minutes, one use; no match or an ambiguous one records nothing. `test/said-watchers.test.js` runs the real registry asked gate: said after the card the assistant's create succeeds once; an agent-written watcher with no words, a changed hash (even after the folder was edited), another watcher or thread, or a lapsed yes is refused.
 - assistant and planner: every tool now says its reach. The eight assistant tools and the planner tools an agent may use (add, list, get, ringing, update, done, snooze, dismiss, delete, agenda, upcoming, calendar sync and create, parse) are "anyone", written deliberately: each limits its caller in code (the assistant tools to the person and the assistant; the planner to an agent's own items, with calendar invites held at the Gate). planner.settings is "person".
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
+- watchers.list, card, logs, test, pause and items now show an agent only the projects it is granted
+  (reviewer-2): each declares `projectArg`, and the tool filters by the registry's `meta.reach` (a
+  person, a module and a hook see all; an agent with no known grant sees none). `watchers.pause`
+  records who paused ("paused by <agent>"), so a person sees it was an agent. `core/watchers/shown.js`
+  notes that "shown to the thread" means "shown to the person" only because every surface draws the card.
+
+- The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
+  it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<project>/
+  <name>@<hash>` for "turn on the mail watcher" and `watchers.preset:<project>/<kind>` for "watch my
+  inbox". `watchers.create.target` and `watchers.preset.target` (reach modules) answer those keys for
+  the asked gate; create answers one only when the call carries the hash of the code now in the
+  folder, so a made-up hash, no hash, or code edited after the yes is refused. `watchers.shown
+  {thread}` (reach modules, for sessions) answers the cards a thread was shown with the hash each
+  carried WHEN IT WAS SHOWN, from a record `watchers.card` and `watchers.preset` write for the calling
+  thread, never recomputed from the folder, so card A shown then an edit still reads A. `watchers.list`
+  rows carry `hash` and `title`. After a refusal in words (no wall) the wall is found again on the next
+  run.
+- Every watchers tool names its reach (ADR 0047): reads and `watchers.pause` are anyone's (stopping
+  is the safe direction); `watchers.create` and `watchers.preset` are asked, so a model turns a
+  watcher on only when the person's own words asked for it, after the card; `watchers.resume`,
+  `watchers.delete` and `watchers.run` are the person's; `watchers.hook` is the webhook's. The duty
+  operations moved to `watchers.duty.create`, `.update`, `.delete`, `.run` and `.resume`, reach
+  modules (the teammates module's, for a duty a person turned on), so a model's asked gate never
+  stands in a teammate's way; `core/team/duties.js` calls the new names. `watchers.create` no longer
+  takes owner, when or instruction. `watchers.preset` is no longer limited to the person and the
+  assistant: asked covers a model. `core/watchers/reach.test.js` checks all of it against the real
+  registry.
+- `vyre uninstall --system`: if the AppArmor profile will not unload, it says the profile file is
+  removed but the profile may stay loaded until the next reboot.
+
+- The macOS wall is `(deny default)` with Apple's BSD baseline (`bsd.sb`) and only what node needs:
+  exec of the node binary and nothing else, reads of the watcher's folder, node and its parents'
+  names, no writes (but /dev/null), no signals to others, no network. A child cannot run pbpaste,
+  open, osascript or any other program, and cannot list the keychains or ~/Library. Its probe now
+  tries each of those (reviewer-2). Every test that spawns a child or listens skips on a Mac unless
+  GITHUB_ACTIONS is true (`lib/sandbox/test-host.js`), not on a bare CI=1.
+
+- The box's wall for watchers: a `spawner` candidate for `lib/sandbox/wall.js`, used when a spawner
+  socket exists and its client has `spawnAsWatcher` (launch's pool-uid wall). A launched child cannot
+  read the person's folders, so the watcher's files are handed to it over its channel and written
+  into its own private TMPDIR, the only place node's permission flags let it read or write. It is
+  probed like the others, with the child's own attempts; a spawner that refuses (its rule is not in
+  place) is a refusal in words, not a failed watcher. Frozen edge: `core/watchers -> core/spawner`.
+
+- The wall: a watcher child runs where it can reach nothing but its parent: no network (no
+  loopback, no unix socket), a view of the filesystem with only its own folder, the node binary and
+  the system libraries (nothing of the home or run directories), no sight of or signal to other
+  processes, no inherited fds. Linux: bubblewrap (`--unshare-all --die-with-parent`); macOS: a
+  `sandbox-exec` profile (network, signals, writes and the home, temp and run areas denied).
+  `lib/sandbox/wall.js` probes each wall with the child's own attempts (a TCP listener, a unix
+  socket, a file in the home directory, a signal to a same-user process, and a read of its folder
+  that must work) and accepts it only if all hold. No wall, no watcher: the refusal says the machine
+  cannot keep a watcher off the network, with the one fix (install bubblewrap; on Ubuntu 23.10 and
+  later, the AppArmor profile that lets bwrap use user namespaces, which `vyre up --system` installs
+  and `vyre uninstall --system` removes; the profile lets any user on that machine create user
+  namespaces through bwrap). A watcher refused this way is not counted as failing or
+  paused and is tried again in an hour. The channel to the child is lines of JSON on stdin and
+  stdout, at most 1 MB a line and 64 MB in all; anything else on it fails the run; the child's
+  console and `log()` go to stderr. Dry runs report `wall`. `core/watchers/isolation.test.js` and
+  the `watchers-isolation` workflow prove it against a real vyred on Ubuntu (no bubblewrap,
+  restricted, with the installer's profile) and macOS runners.
+- Presets for a repo (`kind: "repo"`: issues and pull requests of an owner/name, with or without a
+  GitHub credential), a Slack channel (`kind: "slack"`: new messages, by channel id) and a public
+  feed (`kind: "feed"`: RSS, Atom or JSON feed, with a conditional request so an unchanged feed
+  costs one 304). Each is written off with its card like mail and calendar, files short quoted
+  notes marked as from outside, filters by a plain text match with no model, and starts quietly
+  (repo and Slack file nothing on the first run; the feed files up to its latest matches once and
+  never twice). Schedules are never faster than 15 minutes (Slack 5).
+
+- Calendar preset: `watchers.preset {kind: "calendar", project, credential, calendar?, match?, days?,
+  when?}` writes an off-by-default watcher that reads the next N days of a Google Calendar through
+  `vault.request` (GET only), starts quietly (the first run files nothing), then files a short note
+  for each new or changed event that matches, by a plain text match with no model. `watcher.json`
+  gains `params`, a small object of a preset's settings.
+
+- Mail preset hardening (reviewer-2): a Message-ID the sender chose is searched in Gmail only when
+  it is a plain id (never OR, from:, quotes), and the message found must carry exactly that id;
+  `gmailId` from the push is used when present. A duty files at most 25 items per push.
+  `watchers.preset` is the person's or their assistant's, and refuses a name that already exists.
+
+- `watchers.resume {name, hash?}` takes the card's hash and refuses with "changed after its card
+  was shown" when the code moved; with no hash it still resumes unchanged code (a code change
+  since it was turned on is refused either way).
+
+- Mail preset: `watchers.preset {kind: "mail", project, credential}` writes a watcher (fixed code)
+  that runs on `vault.push`, reads each pushed message's sender, subject and first lines through
+  `vault.request` with the person's Google api-credential (a read, through the vault, scoped to
+  that watcher by its grant), asks a model for a yes or no against the person's own words on what
+  counts as important, and files only the important ones as short quoted notes marked as from
+  outside. It is left off with its card and the exact grant command; `watchers.create {name, hash}`
+  turns it on. `net.<host>.credential` names an api-credential the vault calls with itself (reads
+  only), beside `net.<host>.vault` for a plain item Vyre attaches. A filed item's `quote` goes into
+  the taught fact in quotation marks.
+
+- `watchers.card {name}`: what the person sees before turning a watcher on. Three plain lines
+  (when, check, do) from the author's `summary` in `watcher.json` (or derived for a duty and for a
+  summary-less watcher), plus facts Vyre works out from the folder itself and never from the
+  summary: hosts it reads, credentials attached per host, whether it can act, model cost cap. It
+  returns the code's hash; `watchers.create {name, hash}` refuses if the code moved since the card.
+
+- `ask(prompt)` for watchers: a model judgment with no tools (through `threads.quick`), only when `watcher.json` declares `ask: { dailyUsd }`. The budget is
+  tallied per watcher per day for that cap, while the dollars reach core/spend by themselves (the
+  quick session's thread.finished) and the provider's own cap is checked first with spend.check;
+  with the ledger off a watcher cannot ask; 20 asks and 8000 characters per run; a prompt
+  that carries an attached credential is refused; the reply is scrubbed.
+
+- A duty on `push <connection>` runs on vault's `vault.push` event: one item per message id, only
+  for projects the connection's `scope` covers (no scope, no run), keeping no sender or subject.
+
+- lib/sandbox follow-ups from review: a redirect may not leave the watcher's declared hosts; a
+  credential goes to the exact declared host over https only and is dropped when a redirect changes
+  origin; one overall deadline per fetch; the credential is scrubbed from response headers; 6to4
+  relay anycast and site-local IPv6 are refused; hosts under `net` are exact names, not subdomains;
+  a dry run reports `networkIsolated` (false unless vyred runs as root with the sandbox user).
+
+- Raw vault values no longer reach a watcher (reviewer-2 H1). `needs` is refused in `watcher.json`
+  and `vault.fetch` in a watcher is refused; a credential goes under `net` and the parent attaches
+  it to that host's requests. A watcher reads only the hosts it lists under `net` (none listed means
+  no network). The parent scrubs an attached credential, and its base64, hex and URL forms, from
+  the response, the logs and the error.
+
+- Duties on the watchers runtime: `watchers.create {name: "duty-<role>-<id>", project, owner:
+  {kind: "teammate", teammate}, when, instruction, act}` writes a watcher folder from plain words
+  (fixed template code, never model-written), turns it on and files one item per firing.
+  `watchers.update`, `watchers.delete` and `watchers.run` complete the set; duty calls are refused
+  unless they come from the teammates module or the person. `when` reads an event
+  (`thread.finished`, with optional `where k=v`), a schedule (`daily 07:00`, `weekdays 09:30`,
+  `hourly`, `every 30 minutes`, cron; never faster than 5 minutes) or `push <connection>` (runs on
+  the `vault.push` event, which vault has yet to emit). `watcher.json` gains `owner`, `instruction`,
+  `act` and `when`; `watcher.deleted` is a new event.
+
+- `lib/sandbox` (watchers, shared with platform's module host): a sandboxed child has no network of
+  its own and reaches the web through its parent's `fetch`, GET and HEAD only, ports 80 and 443,
+  public addresses only (private, CGNAT, Tailscale, loopback, link-local and IPv6 forms that
+  embed an IPv4 are refused after DNS and on every redirect; the connection goes to the checked
+  address). When vyred is root the child runs as the `vyre-sandbox` uid (`VYRE_SANDBOX_UID`).
+- `watcher.json` gains `net`: the hosts a watcher reads, each with an optional vault item the
+  parent attaches to that host's requests only. A watcher's own `Authorization` header is
+  dropped; the credential never reaches the watcher's code.
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
 
 - test: the reach suite is tighter. A callers list counts as a limit only when it names neither mcp nor harness (82 tools whose list admits a model are labelled and must declare a reach); `reach: "anyone"` needs a reason in test/reach-anyone.json, and a mutating-verb tool needs a reason that names a guard; reach-module-calls now covers local and lib and fails on a computed tool name outside test/reach-computed-calls.json; reach-dump keeps both roles and a tool the box and local define differently needs a line in test/reach-roles.json. link.pair, link.unpair, link.signout, presence.person.revoke, projects.move and projects.watchers.add and remove are reach person; projects.access.revoke and projects.add-workspace stay anyone because the agents, github and sync modules call them.
