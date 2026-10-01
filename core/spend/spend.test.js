@@ -121,12 +121,13 @@ test("spend: an agent, module or automation is held at a provider's cap before a
   const { spendCheck } = await import("../switchboard/index.js");
   const capped = { call: async () => ({ data: { capped: true, line: "Claude spend today reached $5.00 of the $5.00 daily cap, so this is paused. Raise it: vyre spend raise claude <dollars>" } }) };
   const open_ = { call: async () => ({ data: { capped: false } }) };
-  for (const who of ["mcp:agent:juno", "module:agents", "module:planner", "harness:agent:kit", "hook", "tailnet:agent:kit"]) {
+  // A thread claim is held like an agent's (a session starting sessions or sending is autonomous work, and a label may not dodge the cap by its spelling or case).
+  for (const who of ["mcp:agent:juno", "module:agents", "module:planner", "harness:agent:kit", "hook", "tailnet:agent:kit", "mcp:thread:t_42", "MCP:Thread:t_42", "harness:thread:t_42"]) {
     await assert.rejects(() => spendCheck(capped, who, "claude"), e => e.code === "spend_capped" && /Raise it/.test(e.message), who);
     await spendCheck(open_, who, "claude");
   }
-  // The person's own surfaces, and their own Claude session (an mcp or harness caller with no agent claim), are never held.
-  for (const who of ["cli", "deck", "capsule", "local", "tailnet:phone", "mcp", "mcp:thread:t_42", "harness"]) await spendCheck(capped, who, "claude");
+  // The person's own surfaces, and a plain mcp or harness caller with no agent or thread claim, are never held.
+  for (const who of ["cli", "deck", "capsule", "local", "tailnet:phone", "mcp", "harness"]) await spendCheck(capped, who, "claude");
   // A ledger that is down lets work through, and says so once a day in the log.
   const logged = [];
   const down = { call: async () => { throw new Error("no spend module"); }, log: m => logged.push(m) };
