@@ -59,7 +59,7 @@ const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8"
 function site(base, { images = true, pin = true } = {}) {
   const dir = path.join(base, "site");
   fs.mkdirSync(dir, { recursive: true });
-  const compose = pin ? `image: \${VYRE_IMAGE:-${DIGEST}}\ncomputer: ${COMPUTER}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
+  const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n  computer:\n    image: ${COMPUTER}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
     "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
@@ -178,7 +178,24 @@ test("install-box.sh v2: every image the released compose.yml starts must be pin
   fs.writeFileSync(sumsFile, fs.readFileSync(sumsFile, "utf8").replace(/^[0-9a-f]{64}(  compose\.yml)$/m, `${h}$1`));
   const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /not pinned by digest \(tailscale\/tailscale:stable\)/);
+  assert.match(r.stderr, /not pinned by digest \(image: tailscale\/tailscale:stable\)/);
+});
+
+test("install-box.sh v2: a variable or a comment cannot stand in for a pinned image line", t => {
+  for (const [why, add] of [["a variable with the digest as its default", `  ts:\n    image: \${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale@sha256:${"c".repeat(64)}}\n`],
+    ["a tag with the digest in a comment", `  ts:\n    image: tailscale/tailscale:stable # @sha256:${"c".repeat(64)}\n`]]) {
+    const b = box(t);
+    const url = site(b.base);
+    const file = path.join(url.replace("file://", ""), "compose.yml");
+    const text = fs.readFileSync(file, "utf8") + add;
+    fs.writeFileSync(file, text);
+    const sumsFile = path.join(path.dirname(file), "SHA256SUMS");
+    fs.writeFileSync(sumsFile, fs.readFileSync(sumsFile, "utf8").replace(/^[0-9a-f]{64}(  compose\.yml)$/m, `${crypto.createHash("sha256").update(text).digest("hex")}$1`));
+    const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes"]);
+    assert.notEqual(r.status, 0, why);
+    assert.match(r.stderr, /not pinned by digest/, why);
+    assert.ok(!b.calls().includes("docker pull"), `${why}: nothing was pulled`);
+  }
 });
 
 test("install-box.sh v2: the install line as shown (curl | VYRE_CODE=... sh) hands sh the code", t => {

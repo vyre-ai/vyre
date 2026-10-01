@@ -12,7 +12,7 @@ const unix = p => new Promise(r => { const s = net.connect(p); s.on("connect", (
 const can = f => { try { f(); return "yes"; } catch (e) { return e.code; } };
 (async () => {
   console.log(JSON.stringify({
-    uid: process.getuid(), groups: process.getgroups(), env: Object.keys(process.env).sort(),
+    uid: process.getuid(), groups: process.getgroups(), capBnd: (require("fs").readFileSync("/proc/self/status", "utf8").match(/^CapBnd:\\s*([0-9a-f]+)/m) || [])[1], env: Object.keys(process.env).sort(),
     loopback: await tcp("127.0.0.1", Number(process.argv[1])), public: await tcp("1.1.1.1", 443), unix: await unix("/run/vyre/spawner.sock"),
     work: can(() => fs.readdirSync("/work")), vyreHome: can(() => fs.readdirSync("/home/vyre")), vault: can(() => fs.readdirSync("/var/lib/vyre-secrets")),
     ownHome: can(() => fs.writeFileSync(process.env.HOME + "/note", "x")),

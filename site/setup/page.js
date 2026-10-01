@@ -84,6 +84,6 @@ const supported = async () => {
   await subtle.generateKey({ name: "X25519" }, false, ["deriveBits"]);
   return true;
 };
-const flow = createFlow({ supported, client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
+const flow = createFlow({ supported, pinRelay: true, client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
 render(flow.state, { doc: document, root, actions });
 addEventListener("pagehide", () => flow.stop());

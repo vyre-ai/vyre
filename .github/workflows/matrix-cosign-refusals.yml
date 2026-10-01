@@ -1,0 +1,35 @@
+# J2c (vault, with launch): the installer's image-signature refusals with a REAL local TLS registry and the real cosign:
+# an unsigned image, a wrong-identity signature (real keyless, from this workflow), a plain-key signature and a missing digest.
+# Push to work/vault-cosign or dispatch it. Runs on a throwaway runner only: it edits /etc/hosts and the system CA store.
+name: matrix-cosign-refusals
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/vault-cosign"]
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: matrix-cosign-refusals-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  refusals:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+      - name: J2c, the cosign refusals
+        run: bash scripts/matrix/j2c-cosign-refusals.sh site/box results/cosign-refusals
+      - name: Diagnostics
+        if: failure()
+        run: tail -30 results/cosign-refusals/install.log results/cosign-refusals/sign-*.log 2>/dev/null; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-cosign-refusals, path: results, retention-days: 14 }

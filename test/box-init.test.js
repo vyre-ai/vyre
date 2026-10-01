@@ -32,7 +32,7 @@ test("box: the image's ENTRYPOINT is tini, and its CMD the spawner, which runs t
   // ADR 0032: the spawner (root, capabilities dropped) runs core/daemon/loop.sh as uid vyre.
   // The watcher wall's entry script runs first and replaces itself with the spawner (core/spawner/wall-entry.sh).
   assert.match(df, /^CMD \["\/bin\/sh", "\/opt\/vyre\/core\/spawner\/wall-entry\.sh"\]$/m);
-  assert.match(read("core/spawner/wall-entry.sh"), /exec \/usr\/bin\/setpriv --bounding-set=-net_admin,-setpcap "\$node_bin" "\$here\/main\.js"/);
+  assert.match(read("core/spawner/wall-entry.sh"), /exec \/usr\/bin\/setpriv --bounding-set=-net_admin "\$node_bin" "\$here\/main\.js"/);
   assert.match(read("core/spawner/main.js"), /daemon", "loop\.sh"/);
   assert.match(df, /apt-get install[^\n]*\btini\b/);
 });
@@ -73,7 +73,7 @@ test("box: the watcher wall: iptables is in the image, NET_ADMIN is the vyre ser
   for (const name of Object.keys(all)) if (name !== "vyre" && name !== "tailscale") assert.ok(!/NET_ADMIN|SETPCAP/.test(capsOf(name)), `${name} must not hold NET_ADMIN or SETPCAP`);
   // The step order: install and probe first, then the drop, then the spawner; a container that cannot drop does not run watchers.
   const entry = read("core/spawner/wall-entry.sh");
-  assert.ok(entry.indexOf("wall.js") < entry.indexOf("--bounding-set=-net_admin,-setpcap"), "the wall is installed before NET_ADMIN is dropped");
+  assert.ok(entry.indexOf("wall.js") < entry.indexOf("--bounding-set=-net_admin"), "the wall is installed before NET_ADMIN is dropped");
   assert.match(entry, /could not drop NET_ADMIN, so no watcher will be started/);
   // vyred starts under setpriv --inh-caps=-all as uid vyre: no capability reaches it.
   assert.match(read("core/spawner/main.js"), /"--inh-caps=-all", "--",\s*\n?\s*"\/bin\/sh", "-c", 'umask 002; exec "\$@"', "sh", "\/bin\/sh", LOOP/);
@@ -82,4 +82,13 @@ test("box: the watcher wall: iptables is in the image, NET_ADMIN is the vyre ser
 test("box: /work is closed to every uid but vyre and the shared group (2770), in the image and for a volume made before", () => {
   assert.match(read("box/Dockerfile"), /chown 1000:1002 \/work && chmod 2770 \/work/);
   assert.match(read("core/spawner/main.js"), /chmod", "o-rwx", WORK/);
+});
+
+test("box: every base image a Dockerfile builds from is pinned by digest (FROM and COPY --from), so a source build cannot be handed other bytes", () => {
+  for (const f of ["box/Dockerfile", "core/computers/image/Dockerfile"]) {
+    const text = read(f);
+    const refs = [...text.matchAll(/^FROM\s+(\S+)/gm)].map(m => m[1]).concat([...text.matchAll(/^COPY\s+--from=(\S+)/gm)].map(m => m[1]));
+    assert.ok(refs.length > 0, `${f} has a FROM`);
+    for (const r of refs) if (!/^build\d*$|^[a-z]+$/.test(r) || r.includes("/") || r.includes(":")) assert.match(r, /@sha256:[0-9a-f]{64}$/, `${f}: ${r} is not pinned by digest`);
+  }
 });

@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { installRules, probe, holdsNetAdmin, readStatus, writeStatus, ruleArgs } from "./wall.js";
+import { installRules, probe, holdsNetAdmin, readStatus, writeStatus, ruleArgs, abstractListeners, recheck } from "./wall.js";
 import { serve } from "./server.js";
 import { spawnAsAgent, spawnAsWatcher } from "./client.js";
 import { SCRATCH } from "../../test/scratch.mjs";
@@ -142,4 +142,53 @@ test("watcher spawn: an empty environment but HOME and TMPDIR, no env, fd3, acco
   await assert.rejects(spawnAsWatcher(["/bin/sh", "-c", "true"], { socket: w.socket, ro: ["relative/path"] }), /ro is a short list of absolute paths/);
   await assert.rejects(spawnAsWatcher(["/bin/sh", "-c", "true"], { socket: w.socket, cwd: "/etc" }), /cwd must be under a watcher folder/);
   assert.equal(w.srv.live(), 0, "no refusal left anything running or a uid taken");
+});
+
+test("wall: an abstract unix socket listening in the namespace fails the probe, since a watcher uid can reach any of them", async () => {
+  const table = [
+    "Num       RefCount Protocol Flags    Type St Inode Path",
+    "0000000000000000: 00000002 00000000 00010000 0001 01 12345 @tailscale-abstract",
+    "0000000000000000: 00000002 00000000 00010000 0001 01 12346 /run/some/file.sock",
+    "0000000000000000: 00000003 00000000 00000000 0001 03 12347 @a-connected-end-not-listening",
+    "0000000000000000: 00000002 00000000 00010000 0001 01 12348",
+  ].join("\n");
+  assert.deepEqual(abstractListeners(table), ["@tailscale-abstract"], "only listening abstract sockets count");
+  assert.deepEqual(abstractListeners("Num RefCount\n"), []);
+  const refused = { unixSocket: "/x", attempt: async kind => (kind === "unix" ? "EACCES" : "ECONNREFUSED") };
+  assert.equal((await probe({ ...refused, abstract: () => [] })).ok, true);
+  const bad = await probe({ ...refused, abstract: () => ["@leak"] });
+  assert.equal(bad.ok, false);
+  assert.match(bad.why, /an abstract unix socket listens in this network namespace \(@leak\)/);
+});
+
+test("wall: recheck runs the probe against a socket it makes and removes, and reports a probe that cannot run as not ok", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-recheck-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  let seen = null;
+  const ok = await recheck({ dir, probe: async o => { seen = o.unixSocket; assert.ok(fs.existsSync(o.unixSocket), "the closed socket is there while probing"); return { ok: true, why: "", results: {} }; } });
+  assert.deepEqual(ok, { ok: true, why: "" });
+  assert.ok(seen && !fs.existsSync(seen), "and gone afterwards");
+  assert.deepEqual(await recheck({ dir, probe: async () => ({ ok: false, why: "a watcher uid was not stopped (public address: connected)", results: {} }) }), { ok: false, why: "a watcher uid was not stopped (public address: connected)" });
+  assert.match((await recheck({ dir, probe: async () => { throw new Error("no setpriv"); } })).why, /could not be checked: no setpriv/);
+});
+
+test("watcher spawn: the wall is re-probed before every spawn, a failed probe refuses it in plain words, and the next good probe lets one through", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-reprobe-"));
+  const socket = path.join(dir, "s.sock"), status = path.join(dir, "wall.json");
+  writeStatus({ ok: true, why: "" }, status);
+  let probes = 0, verdict = { ok: true, why: "" };
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 0, gid: 0, groups: [] }, wrap: argv => argv,
+    watcher: { min: 3000, max: 3002, home: path.join(dir, "watch"), allow: ["/bin/sh"], status: () => readStatus(status), reprobe: async () => { probes++; return verdict; },
+      wrap: argv => argv, makeDir: d => fs.mkdirSync(d, { recursive: true }), wipe: (h) => fs.rmSync(h, { recursive: true, force: true }) } });
+  t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  assert.equal((await exited(await spawnAsWatcher(["/bin/sh", "-c", "exit 0"], { socket }))).code, 0);
+  assert.equal(probes, 1, "probed before the first spawn");
+  // The tailscale container was recreated alone: the rule is gone while the status file still says ok.
+  verdict = { ok: false, why: "a watcher uid was not stopped (public address: connected)" };
+  await assert.rejects(spawnAsWatcher(["/bin/sh", "-c", "exit 0"], { socket }), /the watcher wall is not in place: a watcher uid was not stopped \(public address: connected\)/);
+  assert.equal(probes, 2);
+  assert.equal(srv.live(), 0, "nothing was started or reserved");
+  verdict = { ok: true, why: "" };
+  assert.equal((await exited(await spawnAsWatcher(["/bin/sh", "-c", "exit 0"], { socket }))).code, 0);
+  assert.equal(probes, 3, "and every spawn probes");
 });

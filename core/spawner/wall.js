@@ -8,7 +8,7 @@
 //   2. probe it: as a pool uid, connect to a loopback listener, to a public address, and to a unix socket closed to it;
 //      every attempt must be refused;
 //   3. write { ok, why, at, ... } to /run/vyre/wall.json (root's file, in a folder vyred reads but cannot write);
-//   4. the entry script then drops NET_ADMIN (and SETPCAP) from the bounding set and starts the spawner, which refuses a
+//   4. the entry script then drops NET_ADMIN from the bounding set and starts the spawner, which re-probes before every watcher and refuses a
 //      watcher spawn while ok is false and refuses outright when it still holds NET_ADMIN.
 // The spawner itself never holds NET_ADMIN while it serves; only this one-shot step does.
 
@@ -44,7 +44,7 @@ export function installRules({ min = POOL.min, max = POOL.max, run } = {}) {
 /**
  * Try, as a pool uid, what the wall must stop. Each attempt is a short-lived node child; the verdict is only the
  * error code, never the network's own words. Run as root (it switches uid with setpriv).
- * @param {{ uid?: number, setpriv?: string, node?: string, unixSocket: string, publicHost?: string, attempt?: (kind: string, target: string) => Promise<string> }} o
+ * @param {{ uid?: number, setpriv?: string, node?: string, unixSocket: string, publicHost?: string, abstract?: () => string[], attempt?: (kind: string, target: string) => Promise<string> }} o
  * @returns {Promise<{ ok: boolean, why: string, results: Record<string, string> }>}
  */
 export async function probe(o) {
@@ -74,7 +74,26 @@ export async function probe(o) {
   if (!refusedTcp(results.loopback)) bad.push(`loopback: ${results.loopback}`);
   if (!refusedTcp(results.public)) bad.push(`public address: ${results.public}`);
   if (!refusedUnix(results.unix)) bad.push(`unix socket: ${results.unix}`);
+  const abstract = (o.abstract || abstractListeners)();
+  if (abstract.length) { results.abstract = abstract.slice(0, 3).join(" "); bad.push(`an abstract unix socket listens in this network namespace (${abstract.slice(0, 3).join(", ")}), which a watcher could reach`); }
   return { ok: bad.length === 0, why: bad.length ? `a watcher uid was not stopped (${bad.join("; ")})` : "", results };
+}
+
+/**
+ * The abstract-namespace unix sockets listening in this network namespace. They belong to the namespace, not to a file, so a watcher
+ * uid can connect to any of them whatever the mode of a folder or the iptables rule says; the wall holds only while none listens.
+ * /proc/net/unix: Num RefCount Protocol Flags Type St Inode Path, listening sockets carry Flags 00010000 and an abstract path starts with "@".
+ * @param {string} [text]
+ */
+export function abstractListeners(text) {
+  let t = text;
+  if (t === undefined) { try { t = fs.readFileSync("/proc/net/unix", "utf8"); } catch { return []; } }
+  const out = [];
+  for (const line of t.split("\n").slice(1)) {
+    const f = line.trim().split(/\s+/);
+    if (f.length >= 8 && f[7].startsWith("@") && (parseInt(f[3], 16) & 0x10000) !== 0) out.push(f[7]);
+  }
+  return out;
 }
 
 /** Is NET_ADMIN still in this process's bounding set? @param {string} [statusText] */
@@ -100,6 +119,26 @@ export function writeStatus(v, file = STATUS) {
   const tmp = `${file}.${process.pid}.new`;
   fs.writeFileSync(tmp, JSON.stringify({ ...v, at: Math.floor(Date.now() / 1000) }) + "\n", { mode: 0o644 });
   fs.renameSync(tmp, file);
+}
+
+/**
+ * The same probe again, from the serving spawner (root, no NET_ADMIN needed: it only connects as a pool uid), before a watcher is spawned.
+ * The rule lives in a network namespace this container shares with another (tailscale's), so it can vanish without this container restarting.
+ * It never touches the rule: when it fails the spawn is refused and the next container start reinstalls and re-probes.
+ * @param {{ dir?: string, probe?: typeof probe }} [o] @returns {Promise<{ ok: boolean, why: string }>}
+ */
+export async function recheck({ dir = path.dirname(STATUS), probe: doProbe = probe } = {}) {
+  const socket = path.join(dir, `wall-recheck-${process.pid}.sock`);
+  let server;
+  try {
+    try { fs.rmSync(socket, { force: true }); } catch { /* none */ }
+    server = net.createServer(c => c.destroy());
+    await new Promise((res, rej) => { server.once("error", rej); server.listen(socket, () => res(undefined)); });
+    fs.chmodSync(socket, 0o600);
+    const p = await doProbe({ unixSocket: socket });
+    return { ok: p.ok, why: p.why };
+  } catch (e) { return { ok: false, why: `the wall could not be checked: ${/** @type {Error} */ (e).message}` }; }
+  finally { try { server?.close(); fs.rmSync(socket, { force: true }); } catch { /* gone */ } }
 }
 
 /** The one-shot step, as root with NET_ADMIN: install, probe, record. Never throws; a failure is recorded as not ok. */
