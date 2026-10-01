@@ -4,7 +4,7 @@
   "description": "One short line for Claude Code's status line: what needs the user, the box, the assistant.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "statusline.line", "reach": "anyone" }] },
+  "does": { "tools": ["statusline.line"] },
   "watches": { "emits": [] },
   "shows": { "cli": ["statusline"] },
   "needs": {},
