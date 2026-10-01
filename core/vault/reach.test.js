@@ -17,9 +17,9 @@ import { tempHome, writeModule, present } from "../../test/helpers.js";
 /** Reach "person" in the manifests: reviewer-2's six first, then the rest of the sweep. */
 const PERSON = [
   "vault.emergency.remove", "vault.lock", "vault.account.lock", "vault.pass.revoke", "vault.ssh.forget", "vault.agent.revoke",
-  "vault.emergency.deny", "vault.device.sync", "vault.vaults.sync", "google.open",
+  "vault.emergency.deny", "vault.offboard", "vault.device.sync", "vault.vaults.sync", "google.open",
   "vault.delete", "vault.approve", "vault.revert", "vault.rotate", "vault.device.revoke", "vault.emergency.add", "vault.emergency.request",
-  "vault.connections.grant", "gate.said.add", "connectors.disconnect",
+  "vault.connections.grant", "gate.said.add",
 ];
 
 const PROBE = `export default { async start(ctx) {

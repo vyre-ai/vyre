@@ -28,5 +28,5 @@ for (const role of ["box", "local"]) {
   await d.stop();
 }
 fs.rmSync(root0, { recursive: true, force: true });
-// Exit only after the pipe has taken it all: process.exit() on a pipe drops what is still buffered (the test reads this through one).
+// Exit only once the pipe has taken every byte: a large write followed by exit(0) is cut short.
 process.stdout.write(JSON.stringify(Object.values(out)), () => process.exit(0));

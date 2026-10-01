@@ -45,7 +45,7 @@
       { "name": "vault.emergency.list", "reach": "anyone" },
       { "name": "vault.emergency.request", "reach": "person" },
       { "name": "vault.emergency.status", "reach": "person" },
-      { "name": "vault.offboard", "reach": "anyone" },
+      { "name": "vault.offboard", "reach": "person" },
       { "name": "vault.backup", "reach": "anyone" },
       { "name": "vault.restore", "reach": "anyone" },
       { "name": "vault.device.code", "reach": "anyone" },

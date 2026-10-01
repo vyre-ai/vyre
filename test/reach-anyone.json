@@ -3,15 +3,15 @@
  "tools": {
   "artifacts.archive": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.create": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.delete": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.diff": {
    "module": "artifacts",
@@ -19,7 +19,7 @@
   },
   "artifacts.export": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.get": {
    "module": "artifacts",
@@ -31,7 +31,7 @@
   },
   "artifacts.move": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.public.status": {
    "module": "artifacts",
@@ -39,7 +39,7 @@
   },
   "artifacts.restore": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check via reach()/target(): restoring writes a new version of an artifact the caller may reach, never an overwrite"
   },
   "artifacts.search": {
    "module": "artifacts",
@@ -47,39 +47,27 @@
   },
   "artifacts.share": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "outward post: held at the Gate; an agent call that the person did not ask for is refused fail-closed (the PL-M2 stopgap, core/artifacts); own-scope check via reach()/target()"
   },
   "artifacts.undelete": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check via reach()/target(): the caller must reach the artifact it brings back"
   },
   "artifacts.unshare": {
    "module": "artifacts",
-   "reason": "read-only, scoped by the module itself"
+   "reason": "own-scope check via reach()/target(): takes a public link down, the safe direction"
   },
   "artifacts.update": {
    "module": "artifacts",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-scope check: scopeOf(meta) limits an agent to its own project or what it made, never the person's own artifacts; the person and modules reach all (core/artifacts scopeOf). Least sure: the artifacts owner confirms each tool calls it"
   },
   "artifacts.versions": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
-  "connectors.calendar.today": {
-   "module": "connectors",
-   "reason": "read-only: names and states, never a value"
-  },
-  "connectors.catalog": {
-   "module": "connectors",
-   "reason": "read-only: names and states, never a value"
-  },
-  "connectors.list": {
-   "module": "connectors",
-   "reason": "read-only: names and states, never a value"
-  },
-  "connectors.mention.search": {
-   "module": "connectors",
-   "reason": "callers list in code (capsule, cli, deck, local): no model caller"
+  "chrome.point": {
+   "module": "chrome",
+   "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
   },
   "events.catalog": {
    "module": "events",
@@ -227,11 +215,11 @@
   },
   "link.pair.poll": {
    "module": "link",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "tailnetLogin(caller) check plus a secret compared in constant time and the asking node pinned (peer.stableId): the link key goes once to the node that asked"
   },
   "link.pair.request": {
    "module": "link",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "tailnetLogin(caller) check in the tool: only the owner's own device over the tailnet may start a pairing, the code shows on that device only, and pending requests are capped"
   },
   "link.peers": {
    "module": "link",
@@ -289,38 +277,6 @@
    "module": "mail",
    "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
-  "mcp.add": {
-   "module": "mcp",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "mcp.call": {
-   "module": "mcp",
-   "reason": "held at the Gate: a read runs, anything else is held until the person approves; scope check by the caller's thread or agent"
-  },
-  "mcp.remove": {
-   "module": "mcp",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "mcp.restart": {
-   "module": "mcp",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "mcp.servers": {
-   "module": "mcp",
-   "reason": "read-only: names and states, never a value"
-  },
-  "mcp.test": {
-   "module": "mcp",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
-  "mcp.tools": {
-   "module": "mcp",
-   "reason": "read-only: names and states, never a value"
-  },
-  "mcp.update": {
-   "module": "mcp",
-   "reason": "callers list in code (capsule, cli, deck, local, module): no model caller"
-  },
   "presence.capsule.pin": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
@@ -349,10 +305,6 @@
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },
-  "presence.session.close": {
-   "module": "presence",
-   "reason": "read-only, scoped by the module itself"
-  },
   "presence.session.open": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
@@ -373,17 +325,9 @@
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local"
   },
-  "projects.access.revoke": {
-   "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local, module"
-  },
-  "projects.add-workspace": {
-   "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local, module"
-  },
   "projects.archive": {
    "module": "projects",
-   "reason": "callers limited in code to capsule, cli, deck, local, module"
+   "reason": "callers list in code (cli, local, capsule, deck, module; no mcp), person-only by the floor; module:agents and presence archive on the person's behalf"
   },
   "projects.catalog": {
    "module": "projects",
@@ -435,7 +379,7 @@
   },
   "sync.delete": {
    "module": "sync",
-   "reason": "callers limited in code to capsule, cli, deck, local"
+   "reason": "callers list in code (cli, local, deck, capsule) and a preview unless confirm: true. Weak on its own: confirm is caller-supplied and cli or local is only as strong as the socket label, so a detached child could claim cli. The socket-trust inversion (a person label only from the owner's login session) closes that; its tests include a detached child claiming cli with confirm:true, which must be refused"
   },
   "sync.delete.import": {
    "module": "sync",
@@ -471,7 +415,7 @@
   },
   "undo.run": {
    "module": "undo",
-   "reason": "PENDING: mutating, no mechanical guard: the owner names the guard it relies on"
+   "reason": "own-action check in the tool: the person, or whoever did the action (sameActor); the inverse runs as module:undo, never as the person, and only a declared inverse that is not outward or person-only is replayed"
   },
   "vault.account.create": {
    "module": "vault",
@@ -515,7 +459,7 @@
   },
   "vault.clipboard.clear": {
    "module": "vault",
-   "reason": "clears only the clipboard when it still holds the copied value; no secret read or written"
+   "reason": "guard in code: it clears only a clipboard that still holds the value vyred copied (hash compared first); no secret read or written"
   },
   "vault.codes": {
    "module": "vault",
@@ -672,10 +616,6 @@
   "vault.need": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller"
-  },
-  "vault.offboard": {
-   "module": "vault",
-   "reason": "presence proof: revoking every pass a person holds needs a person's touch; the assistant offers it when someone leaves and waits for it (module.test.js pins it offered to Claude); callers list in code"
   },
   "vault.pass.accept": {
    "module": "vault",

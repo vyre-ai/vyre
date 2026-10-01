@@ -92,7 +92,7 @@ test("connect: add, list, test and remove MCP servers, granting their vault item
   const http = await startFakeMcpHttp(t, { requireAuth: `Bearer ${token}` });
   const web = await vyre(v.root, ["connect", "add", "mcp", "tracker", "--url", http.url, "--auth", "bearer", "--item", "tracker-token"]);
   assert.equal(web.code, 0, web.all);
-  assert.match(web.out, /added tracker · mcp http · every project · every agent/);
+  assert.match(web.out, /added tracker · mcp http · you and the assistant only/);
   assert.match(web.out, /granted tracker-token to mcp/);
   assert.match(web.out, /ok tracker has 6 tools/);
 
@@ -109,7 +109,7 @@ test("connect: add, list, test and remove MCP servers, granting their vault item
   assert.match(list.out, /local-tracker\s+mcp stdio\s+running\s+6 tools/);
   assert.match(list.out, /env gh-token · projects harlow-site · agents juno/);
   assert.match(list.out, /tracker\s+mcp http\s+running\s+6 tools/);
-  assert.match(list.out, /bearer tracker-token · every project · every agent/);
+  assert.match(list.out, /bearer tracker-token · you and the assistant only/);
 
   const tested = await vyre(v.root, ["connect", "test", "tracker"]);
   assert.equal(tested.code, 0, tested.all);

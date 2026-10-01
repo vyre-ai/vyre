@@ -29,13 +29,13 @@ export const DEFAULTS = Object.freeze({ logs: "on", shots: false, maxMB: 100, fi
  *   2 dom      the page's controls with refs, and batches of them (snapshot, act, fill, batch, ghl, wait)
  *   3 devtools DOM, styles, scripts, console and network, for pages that resist (inspect, sources, console, net, eval)
  *   4 ax       the accessibility tree (snapshot with role and name only, then act by role and name)
- *   5 vision   a screenshot the model reads, last
+ *   5 vision   a screenshot the model reads, last, and chrome_point to act on a point of it
  * @param {string} tool @param {any} [args]
  */
 export function rungOf(tool, args) {
   const t = String(tool).replace(/^chrome[._]/, "");
   if (t === "api") return 1;
-  if (t === "screenshot") return 5;
+  if (t === "screenshot" || t === "point") return 5;
   if (["inspect", "sources", "console", "net", "eval"].includes(t)) return 3;
   if (["snapshot", "act", "fill", "batch", "ghl", "wait", "tabs", "click", "type", "open", "state"].includes(t)) return 2;
   return 0;
@@ -46,8 +46,8 @@ export function nextRung(rung) {
   return ({
     1: "the site's API did not answer: read the page with chrome_snapshot and act on it (rung 2)",
     2: "the page's controls did not work: look at the DOM, console and network with chrome_inspect, chrome_console, chrome_net (rung 3), or find it by role and name from a chrome_snapshot (rung 4)",
-    3: "devtools did not explain it: find the control by its role and name (rung 4), or take a chrome_screenshot and read it (rung 5)",
-    4: "the accessibility tree did not have it: take a chrome_screenshot and read it (rung 5)",
+    3: "devtools did not explain it: find the control by its role and name (rung 4), or take a chrome_screenshot, read it, and act on it with chrome_point (rung 5)",
+    4: "the accessibility tree did not have it: take a chrome_screenshot, read it, and act on it with chrome_point (rung 5)",
     5: "there is no lower rung: tell the person what you see and ask",
   })[/** @type {1|2|3|4|5} */ (rung)] || "";
 }
