@@ -21,7 +21,15 @@ Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on
 
 - **The server** is a Linux machine with Docker, or a Mac that stays on.
 - **Tailscale** is required. The free plan is enough.
-- **Your Mac** gets Vyre Lumen with `vyre capsule install`, which builds it on your Mac from the package. Nothing is downloaded for it.
+- **Your Mac** (Node 22.5 or newer, Tailscale signed in) pairs with your server and gets Vyre Lumen:
+
+```
+npm install -g https://vyre.run/box/vyre.tgz
+vyre up
+vyre capsule install
+```
+
+`vyre capsule install` builds Vyre Lumen on your Mac from the package; nothing is downloaded for it.
 
 Prefer the terminal on a Linux server? The setup page's line is `curl -fsSL https://vyre.run/install.sh | sh`. Step by step: [Install](docs/get-started/install.md).
 
