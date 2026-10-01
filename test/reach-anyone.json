@@ -69,9 +69,145 @@
    "module": "chrome",
    "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
   },
+  "computers.checkout": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer, and the assistant is exempt as the user's own path; it only starts or thaws a computer the agent already has"
+  },
+  "computers.get": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer; read-only"
+  },
+  "computers.giveback": {
+   "module": "computers",
+   "reason": "in-code guard: ownSurface refuses an ordinary agent, so an agent cannot end a person's take-over"
+  },
+  "computers.limits": {
+   "module": "computers",
+   "reason": "in-code guard: an agent that is not the assistant is refused inside (the user sets limits); a person and the assistant pass"
+  },
+  "computers.list": {
+   "module": "computers",
+   "reason": "own-scope check: an agent sees only its own computer; the assistant and a person see all (read-only)"
+  },
+  "computers.pause": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer; it only pauses that computer's own hands"
+  },
+  "computers.release": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer; it gives a screen back"
+  },
+  "computers.restart": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer; a new container on the same home"
+  },
+  "computers.resume": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer; it only resumes that computer's own hands"
+  },
+  "computers.stop": {
+   "module": "computers",
+   "reason": "own-scope check: resolve() limits an agent to its own computer; its home volume stays and the next checkout starts it again"
+  },
+  "computers.takeover": {
+   "module": "computers",
+   "reason": "in-code guard: ownSurface refuses an ordinary agent claiming a person's surface; the lease and the keyboard checks follow"
+  },
+  "computers.watch": {
+   "module": "computers",
+   "reason": "in-code guard: ownSurface refuses an ordinary agent (it is not a person's screen); it only hands out a one-use ticket, and refuses a computer that died"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
+  },
+  "files.dirs": {
+   "module": "files",
+   "reason": "read-only: names of folders inside the files roots through the guard (no dot folders, no secrets), no content"
+  },
+  "files.drive.audit": {
+   "module": "files",
+   "reason": "owner check inside: reach(ctx).all is required, an agent is refused; it reports and changes nothing"
+  },
+  "files.drive.candidates": {
+   "module": "files",
+   "reason": "scope check: a scoped caller sees only granted folders; read-only"
+  },
+  "files.drive.list": {
+   "module": "files",
+   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; read-only"
+  },
+  "files.drive.local": {
+   "module": "files",
+   "reason": "scope check: a named agent gets a local path only for a box path inside its grant; read-only"
+  },
+  "files.drive.measure": {
+   "module": "files",
+   "reason": "scope check: a scoped caller may measure only inside its granted folders (real path checked); read-only"
+  },
+  "files.drive.read": {
+   "module": "files",
+   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; read-only"
+  },
+  "files.drive.search": {
+   "module": "files",
+   "reason": "scope check: a named agent searches only the intersection of each share and its granted folders; read-only"
+  },
+  "files.drive.status": {
+   "module": "files",
+   "reason": "scope check: a named agent sees only the shares inside its granted projects; read-only"
+  },
+  "files.fetch": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only, and a restricted agent never reaches the other machine"
+  },
+  "files.preview": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
+  },
+  "files.recent": {
+   "module": "files",
+   "reason": "read-only: the folders sessions worked in lately, through the guard"
+  },
+  "files.search": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to the folders of the projects it is granted; secrets and dot folders are refused by the files guard"
+  },
+  "files.stat": {
+   "module": "files",
+   "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
+  },
+  "glass.files.download": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.list": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.mkdir": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.move": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.preview": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.stat": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.trash": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
+  },
+  "glass.files.upload": {
+   "module": "glass",
+   "reason": "own-scope check: filesFor() lets an agent name only its own computer as the target, never the box or another agent's (tested for every files tool and caller spelling)"
   },
   "link.call": {
    "module": "link",
