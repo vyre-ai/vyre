@@ -640,6 +640,8 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
   const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /an update run by root ignores these settings from .*\.env and vyre\.env .*: .*VYRE_COMPUTERS_CAP_ADD.*/s, "nothing is dropped silently");
+  assert.ok(!/ignores these settings[^\n]*(tskey|keep|SYS_ADMIN=)/.test(r.out), "names only, never values");
   const composeCalls = rawCalls(b).filter(c => c.startsWith("compose "));
   assert.ok(composeCalls.length >= 3, composeCalls.join("\n"));
   for (const c of composeCalls) {
