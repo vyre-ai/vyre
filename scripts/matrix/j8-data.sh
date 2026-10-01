@@ -39,7 +39,7 @@ PASS=$(head -c 18 /dev/urandom | base64 | tr -d '=+/\n' | cut -c1-20)
 cd $DIR
 printf '%s\n%s\n' "$PASS" "$PASS" | docker compose exec -T vyre vyre backup /home/vyre/.vyre/backups/export.tar.gz >"$OUT/backup.log" 2>&1
 rc=$?; docker compose cp vyre:/home/vyre/.vyre/backups/export.tar.gz "$OUT/export.tar.gz" >/dev/null 2>&1; cd - >/dev/null
-printf '%s\n' "$PASS" >"$RUNNER_TEMP/export.key"; chmod 600 "$RUNNER_TEMP/export.key"
+sudo chmod 644 "$OUT/export.tar.gz" 2>/dev/null; printf '%s\n' "$PASS" >"$RUNNER_TEMP/export.key"; chmod 600 "$RUNNER_TEMP/export.key"
 [ $rc -eq 0 ] && [ -s "$OUT/export.tar.gz" ] && rec 8.2-export ok "$(stat -c %s "$OUT/export.tar.gz") bytes" || rec 8.2-export false "rc $rc: $(tail -2 "$OUT/backup.log")"
 if tar -tzf "$OUT/export.tar.gz" >/dev/null 2>&1; then rec 8.2b-export-sealed false "the export opens as a plain archive; it must be sealed"; else rec 8.2b-export-sealed ok; fi
 grep -q "$PASS" "$OUT/backup.log" && rec 8.2c-passphrase-not-echoed false "the passphrase is in the CLI output" || rec 8.2c-passphrase-not-echoed ok
