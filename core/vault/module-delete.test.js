@@ -55,7 +55,7 @@ test("a first-party module deletes its own item without presence, and nothing el
 test("an added module that lists vault.delete in needs.tools is refused it (not_declared), and the item stays", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
-  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery.", does: { tools: [{ name: "bakery.del", reach: "anyone" }] }, needs: { tools: ["vault.delete", "vault.list"] } }, MODULE("bakery"));
+  writeModule(path.join(root, "modules"), "bakery", { vyre: "1", description: "A bakery.", does: { tools: [{ name: "bakery.put", reach: "anyone" }, { name: "bakery.del", reach: "anyone" }] }, needs: { tools: ["vault.delete", "vault.list"] } }, MODULE("bakery"));
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   assert.equal((await d.registry.call("vault.put", { name: "persons-key", value: "p" }, "local")).error, undefined);
