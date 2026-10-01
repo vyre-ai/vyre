@@ -1,0 +1,23 @@
+# Throwaway proof, never landed: launch's box spawner and image with watchers' spawner wall candidate,
+# probe and runner, on a real container.
+name: watcher-wall-joint
+on:
+  push:
+    branches: ["work/watchers-box-proof"]
+permissions:
+  contents: read
+jobs:
+  joint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: bash scripts/watcher-wall-joint-proof.sh results
+      - name: Diagnostics
+        if: failure()
+        run: docker logs jointbox 2>&1 | tail -30; cat results/run.json results/build.log 2>/dev/null | tail -20
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-joint, path: results, retention-days: 14 }
