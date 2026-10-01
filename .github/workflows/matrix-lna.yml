@@ -1,0 +1,51 @@
+# T1 (e2e2): Local Network Access, a public page reaching a local address, in headed browsers on hosted runners.
+name: matrix-lna
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/e2e2-lna"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-lna-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lna:
+    name: lna-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: A throwaway tunnel tool
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then curl -fsSLo cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared; else brew install cloudflared >/dev/null 2>&1; ln -sf "$(command -v cloudflared)" cloudflared; fi
+      - name: The local server, the public page and the tunnel
+        run: |
+          node scripts/matrix/lna-servers.mjs > ports.json &
+          for i in $(seq 1 50); do [ -s ports.json ] && break; sleep 0.2; done
+          LOCAL=$(node -p 'JSON.parse(require("fs").readFileSync("ports.json","utf8")).local'); PUB=$(node -p 'JSON.parse(require("fs").readFileSync("ports.json","utf8")).public')
+          (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:$PUB > cf.log 2>&1 &)
+          for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1); [ -n "$URL" ] && break; sleep 1; done
+          echo "LOCAL=http://127.0.0.1:$LOCAL" >> "$GITHUB_ENV"; echo "PUBLIC=$URL" >> "$GITHUB_ENV"
+      - name: Chrome, headed
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get install -y xvfb >/dev/null 2>&1; (Xvfb :99 -screen 0 1280x900x24 &); export DISPLAY=:99; CHROME=google-chrome
+          else CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"; fi
+          "$CHROME" --version | tee chrome-version.txt
+          ("$CHROME" --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run --use-mock-keychain --password-store=basic about:blank >/dev/null 2>&1 &)
+          for i in $(seq 1 100); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.3; done
+      - name: T1, what Chrome does
+        run: node scripts/matrix/lna.mjs --public "$PUBLIC" --local "$LOCAL" --device "chrome-${{ runner.os }}" --out results/lna
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "results-lna-${{ matrix.os }}", path: results, retention-days: 14 }
