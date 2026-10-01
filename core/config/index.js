@@ -91,12 +91,34 @@ export function socketPath(root, { platform = process.platform } = {}) {
  */
 function pipeToken(root) {
   const file = path.join(root, "pipe-token");
-  try { return fs.readFileSync(file, "utf8").trim(); } catch {}
+  const read = () => { try { return fs.readFileSync(file, "utf8").trim(); } catch { return ""; } };
+  const have = read();
+  if (have) return have;
   fs.mkdirSync(root, { recursive: true });
   ownerOnly(root);
   const token = crypto.randomBytes(16).toString("hex");
-  fs.writeFileSync(file, token, { mode: 0o600 });
-  return token;
+  // Created exclusively: vyred and a client reading the same home at the same moment must end up with ONE
+  // token. A plain write let each make its own and the last writer win, so the one that read first held a
+  // pipe name the other never listened on (a flaky "vyred did not create its socket" on a loaded runner).
+  try {
+    fs.writeFileSync(file, token, { mode: 0o600, flag: "wx" });
+    return token;
+  } catch (e) {
+    if (/** @type {any} */ (e).code !== "EEXIST") throw e;
+  }
+  // The other writer created it first and may not have written yet: wait for its token.
+  for (let i = 0; i < 100; i++) {
+    const t = read();
+    if (t) return t;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+  }
+  // Still empty: its writer died between creating and writing. An empty file that old is nobody's
+  // token; remove it and make one (once), so a crash cannot wedge every later start.
+  try { if (fs.statSync(file).size === 0 && Date.now() - fs.statSync(file).mtimeMs > 2000) fs.rmSync(file, { force: true }); } catch {}
+  try { fs.writeFileSync(file, token, { mode: 0o600, flag: "wx" }); return token; } catch {}
+  const t = read();
+  if (t) return t;
+  throw new Error(`${file} exists but holds no token`);
 }
 
 /** A folder's real path; for one not made yet, its nearest existing parent's real path plus the rest. */
