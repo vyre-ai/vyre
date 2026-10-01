@@ -1,14 +1,15 @@
 #!/bin/bash
 # J2c: the installer's image-signature refusals against a REAL install and a REAL local TLS registry, on a throwaway CI runner only.
 #   bash scripts/matrix/j2c-cosign-refusals.sh <box-dir> <out-dir>
-# <box-dir> is the candidate as build-site.sh makes it (site/box). The candidate is installed the way a person does (built from vyre.tgz),
-# filled with data, and then install-box.sh is run in PULLED mode against releases whose release.json names an image by digest:
+# <box-dir> is the candidate as build-site.sh makes it (site/box). Part A: on a clean host, the real install-box.sh in PULLED mode
+# against releases whose release.json names an image by digest (install-box.sh leaves a running install alone, so a refusal is
+# shown on a host with nothing installed, and the proof is that nothing is). Part B: `vyre update` on an installed, filled box.
+# The cases:
 #   1. an image with no signature at all
 #   2. an image signed by the wrong identity (a real keyless signature from THIS workflow, which is not Vyre's release workflow)
 #   3. an image signed with an ordinary key (a signature exists, but not from the release workflow's identity)
 #   4. a digest the registry does not hold (a tag moved away, an image deleted)
-# Each must be refused with a plain message, the box must still run the same version with the same data, and the refused image must
-# not have been pulled. The registry is a local registry:2 with TLS, serving ghcr.io through /etc/hosts and a test CA; the real
+# Each must be refused with a plain message, and the refused image must not have been pulled (and, in part B, version and data stay). The registry is a local registry:2 with TLS, serving ghcr.io through /etc/hosts and a test CA; the real
 # install-box.sh and real cosign run unchanged. Honest limits, stated in the results: (a) the cosign image the installer runs is a
 # rebuild of the pinned one (the real binary copied out of it) that carries the test CA and a hosts line, through the installer's own
 # test-only VYRE_COSIGN_IMAGE override, because the pinned image has no way to trust a test CA; (b) a POSITIVE control (an image signed by
@@ -30,15 +31,7 @@ mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
 : >"$OUT/pids"
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; for i in $(seq 1 50); do curl -fs "http://127.0.0.1:$2/VERSION" >/dev/null && return 0; sleep 0.2; done; }
 
-# ---- 1 the baseline: a real install with data
-serve "$BOX" 18180
 V0=$(tr -d ' \r\n' <"$BOX/VERSION")
-if VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
-else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
-vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
-vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
-seen && mem && rec 2-seed ok || rec 2-seed false "seed not readable"
-SUMS0=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
 
 # ---- 2 the cosign the installer runs: the real binary, the real pinned image's, carrying the test CA (see the header)
 COSIGN_PIN=$(sed -n 's/^COSIGN_IMAGE=\${VYRE_COSIGN_IMAGE:-\(.*\)}$/\1/p' "$BOX/install-box.sh")
@@ -69,7 +62,8 @@ up=0; for i in $(seq 1 60); do curl -fs --cacert "$P/ca.crt" https://ghcr.io/v2/
 mkimg() { # mkimg N -> prints ghcr.io/vyre-ai/vyre@sha256:...
   d="$WORK/img$1"; mkdir -p "$d"; printf 'FROM busybox:1.36\nRUN echo "case %s" > /case\n' "$1" >"$d/Dockerfile"
   docker build -q -t "ghcr.io/vyre-ai/vyre:case$1" "$d" >/dev/null 2>"$OUT/mkimg$1.log" && docker push "ghcr.io/vyre-ai/vyre:case$1" >>"$OUT/mkimg$1.log" 2>&1 || { tail -5 "$OUT/mkimg$1.log" >&2; getent hosts ghcr.io >&2; docker logs --tail 5 vyre-testreg >&2; return 1; }
-  docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/vyre-ai/vyre:case$1"
+  r=$(docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/vyre-ai/vyre:case$1") || return 1
+  docker rmi -f "ghcr.io/vyre-ai/vyre:case$1" >/dev/null 2>&1; docker rmi -f "$r" >/dev/null 2>&1; echo "$r"
 }
 R1=$(mkimg 1); R2=$(mkimg 2); R3=$(mkimg 3)
 [ -n "$R1" ] && [ -n "$R2" ] && [ -n "$R3" ] && rec 5-images ok "$R1" || { rec 5-images false "could not build and push the test images"; exit 1; }
@@ -88,19 +82,52 @@ mkrel() { # mkrel NAME REF
   files=$(awk '{print $2}' "$BOX/SHA256SUMS"; echo release.json)
   (cd "$d" && for f in $(printf '%s\n' $files | sort -u); do sha256sum "$f"; done >SHA256SUMS)
 }
-refused() { # refused STEP REF WANT_REGEX
+refused() { # refused STEP REF WANT_REGEX: a clean host stays clean
   PORT=$((PORT + 1)); mkrel "rel-$1" "$2"; serve "$WORK/rel-$1" $PORT
   out=$(VYRE_BOX_URL="http://127.0.0.1:$PORT/" VYRE_COSIGN_IMAGE=vyre-cosign-test:1 sh "$BOX/install-box.sh" --yes </dev/null 2>&1); rc=$?
-  ready; v=$(hv); s=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
   pulled=no; docker image inspect "$2" >/dev/null 2>&1 && pulled=yes
-  if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && [ "$s" = "$SUMS0" ] && seen && mem && [ $pulled = no ] && printf '%s' "$out" | grep -qi 'cosign could not verify.*Nothing was installed' && printf '%s' "$out" | grep -qiE "$3"; then
+  left=no; [ -e "$DIR/compose.yml" ] || [ -n "$(docker ps -aq --filter label=com.docker.compose.project=vyre 2>/dev/null)" ] && left=yes
+  if [ $rc -ne 0 ] && [ $pulled = no ] && [ $left = no ] && printf '%s' "$out" | grep -qi 'cosign could not verify.*Nothing was installed' && printf '%s' "$out" | grep -qiE "$3"; then
     rec "$1" ok "$(printf %s "$out" | tail -2)"
-  else rec "$1" false "rc $rc, runs '$v' (want $V0), stack sha same $([ "$s" = "$SUMS0" ] && echo yes || echo no), pulled $pulled: $(printf %s "$out" | tail -4)"; fi
+  else rec "$1" false "rc $rc, pulled $pulled, left behind $left: $(printf %s "$out" | tail -4)"; fi
 }
 refused 7-unsigned "$R1" 'no signatures|no matching signatures|not found|MANIFEST'
 refused 8-wrong-identity "$R2" 'expected identit|identity|certificate-identity'
 refused 9-key-signature "$R3" 'no matching signatures|certificate|expected identit'
 refused 10-digest-not-held "$R4" 'MANIFEST_UNKNOWN|not found|no such|unknown'
+
+# ---- part B: `vyre update` on an installed, filled box. It does not run cosign: its trust is the signed SHA256SUMS (which lists
+# release.json and compose.yml, the digests) and a digest-pinned pull. So what it can refuse is a digest the registry does not hold.
+# the baseline: a real install with data
+serve "$BOX" 18180
+V0=$(tr -d ' \r\n' <"$BOX/VERSION")
+if VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
+else rec B1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
+vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
+vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
+seen && mem && rec B2-seed ok || rec B2-seed false "seed not readable"
+SUMS0=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
+
+ST=/var/lib/vyre-update
+sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
+node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
+GOODPUB=$(cat "$WORK/good.pub")
+mkupd() { # mkupd NAME REF: a newer release, signed by the throwaway key, naming REF for the box image
+  mkrel "$1" "$2"; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"
+  sed -i 's/"version":"[^"]*"/"version":"9.9.9-e2e.1"/' "$d/release.json"
+  (cd "$d" && for f in $(awk '{print $2}' SHA256SUMS | sort -u); do sha256sum "$f"; done >SHA256SUMS)
+  node -e 'const c=require("crypto"),fs=require("fs");const d=process.argv[1];const sums=fs.readFileSync(d+"/SHA256SUMS");fs.writeFileSync(d+"/SHA256SUMS.sig",c.sign(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),sums]),c.createPrivateKey(fs.readFileSync(process.argv[2]))).toString("base64")+"\n");' "$d" "$WORK/good.pem"
+}
+askupd() { PORT=$((PORT + 1)); serve "$WORK/$1" $PORT
+  sudo sh -c "printf 'update\n' >$ST/request/request"
+  out=$(sudo env "VYRE_DIR=$DIR" "VYRE_BOX_URL=http://127.0.0.1:$PORT/" VYRE_RELEASES_API= "VYRE_RELEASE_KEY=$GOODPUB" VYRE_UPDATE_MIN_GAP=0 VYRE_UPDATE_WAIT=300 "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
+mkupd upd-missing "$R4"; askupd upd-missing; ready; v=$(hv)
+if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem; then rec B3-update-digest-not-held ok "$(printf %s "$out" | tail -1)"
+else rec B3-update-digest-not-held false "rc $rc, runs '$v' (want $V0): $(printf %s "$out" | tail -4)"; fi
+# What the update does with a properly SIGNED release that names an UNSIGNED image: recorded as it is, not asserted as a refusal.
+mkupd upd-unsigned "$R1"; askupd upd-unsigned; ready; v=$(hv)
+if [ $rc -eq 0 ] && [ "$v" = 9.9.9-e2e.1 ]; then rec B4-update-unsigned-image-FINDING ok "ACCEPTED: update installs a digest the signed release names without a cosign check"
+else rec B4-update-unsigned-image-FINDING ok "refused (rc $rc, runs '$v'): $(printf %s "$out" | tail -1)"; fi
 rec 11-positive-control ok "NOT RUN: an image signed by Vyre's release workflow cannot be made locally; it needs a real signed release"
 
 while read -r p; do kill "$p" 2>/dev/null; done <"$OUT/pids"
