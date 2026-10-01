@@ -53,7 +53,7 @@ export function centerFn(selector) {
   if (r.width === 0 && r.height === 0) return null;
   const x = r.left + r.width / 2, y = r.top + r.height / 2;
   // Only where the click would land on it: a control still sliding in, or covered, is not there yet (the caller looks again).
-  const hit = document.elementFromPoint(x, y);
+  const hit = typeof document.elementFromPoint === "function" ? document.elementFromPoint(x, y) : el;
   if (!hit || !(el === hit || el.contains(hit))) return null;
   return { x, y };
 }
