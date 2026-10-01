@@ -366,6 +366,20 @@ export class Switchboard {
     if (st && st.turn && payload && payload.turn === undefined && /^(thread|ask)\./.test(type) && type !== "thread.stopped") payload = { ...payload, turn: st.turn };
     // Which provider ran a tool call, so a card draws its own tool names and a mixed thread reads right.
     if (type === "thread.tool" && payload && payload.phase === "started" && payload.provider === undefined) payload = { ...payload, provider: (st && st.launch && st.launch.provider) || "claude" };
+    // Who wrote it: the provider, model and account on every turn, reply, usage and finish event, so a chat draws the reply's own icon and memory can
+    // tag the turn (provider is set at launch and never empty; model is what the provider reported, null until it has).
+    if (/^thread\.(turn|text|thinking|usage|finished)$/.test(type) && payload && payload.provider === undefined && !(type === "thread.text" && payload.message === "vyre")) {
+      // Read from the row at most every 2 s per thread: text deltas are frequent, and the model changes only at init or a switch.
+      const now = Date.now();
+      let tag = this.tags && this.tags.get(thread);
+      if (!tag || now - tag.at > 2000 || type === "thread.turn") {
+        const rec = this.record(thread);
+        tag = rec ? { at: now, provider: rec.provider || "claude", model: rec.model || null, account: rec.account || null } : null;
+        if (!this.tags) this.tags = new Map();
+        if (tag) this.tags.set(thread, tag); else this.tags.delete(thread);
+      }
+      if (tag) payload = { ...payload, provider: tag.provider, model: tag.model, account: tag.account };
+    }
     // The server's clock on every piece of text (ms epoch), for a surface's words-per-second meter.
     if ((type === "thread.text" || type === "thread.thinking") && payload && payload.t === undefined) payload = { ...payload, t: Date.now() };
     const ev = this.emitRaw(type, payload, thread, project);
@@ -539,7 +553,8 @@ export class Switchboard {
       }
       const purpose = purposeOf(o, w.project);
       // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
-      if (!o.model) {
+      // The models table is Claude's (aliases like opus); another provider's model is the one it reports, so none is recorded until then.
+      if (!o.model && provider === "claude") {
         const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }

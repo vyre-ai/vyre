@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(threads): every thread.turn, thread.text, thread.thinking, thread.usage and thread.finished event carries provider, model and account (model is what the provider reported, null until it has); a non-Claude thread no longer records Claude's alias ("opus") as its model. A sign-in nobody finishes ends at its time limit and reports failure, so the account row it created is removed; accounts.list says needs: sign-in for a login that never signed in. scripts/proof-box.mjs: a vyred for the real-account runs on the test box with a test presence verifier.
+
 - feat(threads): a GitHub project's session gets its commit identity and hooks in its process environment on every launch and resume (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_*, one GIT_CONFIG_* entry for the hooks folder), only those keys; an existing GIT_CONFIG_COUNT in vyred's environment is appended to, never overwritten. projectDefinesMcp is replaced by the assistant's projectCodexConfig (any project .codex/config.toml, or one that cannot be checked, counts) and MCP approvals are denied by default when the shortcut is off.
 
 - feat(sessions): Codex pins workspace-write (else read-only), never "agent" (Auto review: a model decides and no question reaches Vyre); Codex's MCP tool approval is drawn as the server it is for, and Vyre's own server is let through only when no project .codex/config.toml (any TOML form: table, array table, inline, dotted) defines an MCP server; a whole command line from Grok Build runs through /bin/sh -c, still through the floor. From the assistant's spike S1 (fdb3e3ee7), reviewed and hardened by sessions.
