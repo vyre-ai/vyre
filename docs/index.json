@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":335,"tool":830,"event":335,"config":240,"env":183,"screen":19,"concept":43},
+  "counts": {"command":335,"tool":830,"event":335,"config":239,"env":183,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -127,7 +127,6 @@
     {"kind":"tool","name":"chrome.install","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeinstall","module":"chrome","mentions":[]},
     {"kind":"tool","name":"chrome.interject","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromeinterject","module":"chrome","mentions":[{"page":"adr/0049-deep-chrome-control.md","line":96,"anchor":"oversight"}]},
     {"kind":"event","name":"chrome.interjected","definedIn":"local/hands-chrome-mac/oversight.js","page":"reference/events.md#chrome","module":"chrome","mentions":[]},
-    {"kind":"config","name":"chrome.learn","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"chrome.learnVisitMs","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"chrome.login","definedIn":"local/hands-chrome-mac/index.js","page":"reference/tools.md#chromelogin","module":"chrome","mentions":[]},
     {"kind":"config","name":"chrome.nativeHost","definedIn":"local/hands-chrome-mac/index.js","page":null,"mentions":[]},
