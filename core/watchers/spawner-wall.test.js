@@ -7,8 +7,9 @@ import { spawn } from "node:child_process";
 import { spawnerCandidate } from "./spawner-wall.js";
 import { probe } from "../../lib/sandbox/index.js";
 import { runOnce } from "./run.js";
+import { skipOffRunner } from "../../lib/sandbox/test-host.js";
 
-const offMac = process.platform === "darwin" && !process.env.CI ? "spawns children: on a runner, not on the person's Mac" : false;
+const offMac = skipOffRunner();
 const test = (name, fn) => nodeTest(name, { skip: offMac }, fn);
 
 test("no spawner, no candidate: a missing client, an old one, or one with no socket", async () => {

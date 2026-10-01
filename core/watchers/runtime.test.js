@@ -3,14 +3,15 @@
 // projects and Memory stubbed, so every rule in the brief can be driven by hand.
 
 import { test as nodeTest } from "node:test";
-// Real watcher children and loopback servers: a runner or the test box, never the person's Mac.
-const offMac = process.platform === "darwin" && !process.env.CI ? "runs real children and listeners: on a runner, not on the person's Mac" : false;
+// Real watcher children and loopback servers: a hosted runner, never the person's Mac.
+const offMac = skipOffRunner();
 const test = (name, fn) => nodeTest(name, { skip: offMac }, fn);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { EventEmitter } from "node:events";
 import http from "node:http";
 import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+import { skipOffRunner } from "../../lib/sandbox/test-host.js";
 testHooks.wall = OPEN_WALL;   // these tests are not about the wall; wall.test.js and isolation.test.js are
 import path from "node:path";
 import { open } from "../store/index.js";
@@ -684,7 +685,7 @@ test("watchers: with no wall a watcher is never run, says why in words, and is n
 });
 
 test("watchers: under the machine's real wall a watcher still runs, reads its folder, and gets nothing else", async t => {
-  if (process.platform === "darwin" && !process.env.CI) return t.skip("the wall probe listens on sockets; it runs on a runner, not on the person's Mac");
+  if (offMac) return t.skip(offMac);
   const { getWall } = await import("../../lib/sandbox/index.js");
   const found = await getWall();
   if (!found.wall) return t.skip(`no wall here: ${found.why}`);

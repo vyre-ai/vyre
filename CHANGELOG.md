@@ -21,7 +21,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   that must work) and accepts it only if all hold. No wall, no watcher: the refusal says the machine
   cannot keep a watcher off the network, with the one fix (install bubblewrap; on Ubuntu 23.10 and
   later, the AppArmor profile that lets bwrap use user namespaces, which `vyre up --system` installs
-  and `vyre uninstall --system` removes). A watcher refused this way is not counted as failing or
+  and `vyre uninstall --system` removes; the profile lets any user on that machine create user
+  namespaces through bwrap). A watcher refused this way is not counted as failing or
   paused and is tried again in an hour. The channel to the child is lines of JSON on stdin and
   stdout, at most 1 MB a line and 64 MB in all; anything else on it fails the run; the child's
   console and `log()` go to stderr. Dry runs report `wall`. `core/watchers/isolation.test.js` and

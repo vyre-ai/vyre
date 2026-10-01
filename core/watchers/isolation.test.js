@@ -22,7 +22,8 @@ import * as config from "../config/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { getWall } from "../../lib/sandbox/index.js";
 
-const on = process.env.VYRE_WALL_CHECK === "1";
+import { skipOffRunner } from "../../lib/sandbox/test-host.js";
+const on = process.env.VYRE_WALL_CHECK === "1" && !skipOffRunner();
 const expect = process.env.VYRE_EXPECT_WALL || "";
 const TAILNET = process.env.VYRE_TEST_TAILNET_ADDR || "";
 

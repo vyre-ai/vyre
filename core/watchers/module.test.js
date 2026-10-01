@@ -2,11 +2,14 @@
 // The watchers module inside a real vyred: the real vault with a grant per watcher, real projects
 // and Memory, a watcher that reads a local feed, and the webhook route.
 
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
+const test = (name, fn) => nodeTest(name, { skip: offMac }, fn);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
+import { skipOffRunner } from "../../lib/sandbox/test-host.js";
+const offMac = skipOffRunner();
 testHooks.wall = OPEN_WALL;   // these tests are not about the wall; wall.test.js and isolation.test.js are
 import path from "node:path";
 import { start } from "../daemon/index.js";
