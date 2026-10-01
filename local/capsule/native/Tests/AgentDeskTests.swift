@@ -138,7 +138,7 @@ let agentDeskSuite = Suite("agent desk") { t in
         t.eq(VJ.s(got?.ask?["ask"]), "a1")
         t.eq(VJ.s(got?.ask?["decision"]), "deny")
         t.eq(VJ.s(got?.ask?["surface"]), "capsule")
-        t.eq(got?.note, "Vyre needs proof that a person accepted this, which the Capsule cannot give yet. Do it in the Deck, or with vyre learn accept 7. It is still waiting.")
+        t.eq(got?.note, "Vyre needs proof that a person accepted this, which Lumen cannot give yet. Do it in the Deck, or with vyre learn accept 7. It is still waiting.")
         t.ok(got?.stays == true)
     }
 }

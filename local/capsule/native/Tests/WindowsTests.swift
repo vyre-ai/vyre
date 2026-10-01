@@ -103,7 +103,7 @@ let windowsSuite = Suite("windows") { t in
             let start = CGRect(x: 100, y: 100, width: 500, height: 400)
             let f = FakeWindows(screens: [MAIN], win: ("7:1", start))
             let p = WindowsProvider(access: f); p.allowed = { true }
-            t.eq(run(p, .restore), .failed("Nothing to restore: the Capsule has not moved this window."))
+            t.eq(run(p, .restore), .failed("Nothing to restore: Lumen has not moved this window."))
             _ = run(p, .maximize)
             t.eq(f.win?.frame, MAIN)
             t.eq(run(p, .restore), .close(nil))

@@ -593,7 +593,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
 
     /// Why voice cannot start, from voice.status, or nil when it can.
     nonisolated static func cannotTalk(_ error: String?, _ status: [String: Any]) -> String? {
-        if let e = error { return e.contains("no_such_tool") || e.contains("no such tool") ? "vyred has no voice module; it needs a vyred with local/voice" : e }
+        if let e = error { return e.contains("no_such_tool") || e.contains("no such tool") ? "Vyre has no voice module; it needs a newer Vyre with local/voice" : e }
         if status["key"] as? Bool == true { return nil }
         switch status["key_state"] as? String {
         case "not_granted": return "The speech key is saved but voice may not use it yet. Allow it in the vault."
@@ -650,7 +650,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
                          _ run: @escaping @MainActor (SightExtension) async -> ActionOutcome) -> CapsuleCommand {
         CapsuleCommand(id: "sight:\(id)", title: title, keywords: keywords, icon: .symbol(symbol, .stone), subtitle: subtitle,
                        actions: [ResultAction(id: "run", title: title, symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
-                           guard let self else { return .failed("the Capsule is closing") }
+                           guard let self else { return .failed("Lumen is closing") }
                            return await run(self)
                        }])
     }

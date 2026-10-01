@@ -47,7 +47,7 @@ public func vyredSocketPath(_ env: [String: String] = ProcessInfo.processInfo.en
 }
 
 /// The words a call fails with when the Capsule would need to prove a person is at the Mac.
-public let presenceNotBuilt = "This needs you at the Mac. Presence from the Capsule is not built yet."
+public let presenceNotBuilt = "This needs you at the Mac. Presence from Lumen is not built yet."
 
 // MARK: - Time, injectable so backoff is tested without waiting
 
@@ -274,9 +274,9 @@ enum VyHTTP {
     /// {data} or {error}, as vyred answers, never a throw.
     static func result(_ r: Result<(Int, Data), Failure>, timeout: TimeInterval) -> VyredResult {
         switch r {
-        case .failure(.unreachable): return .failure(code: "unreachable", message: "vyred is not running")
-        case .failure(.timeout): return .failure(code: "timeout", message: "vyred did not answer within \(Int(timeout * 1000))ms")
-        case .failure(.broken): return .failure(code: "unreachable", message: "vyred closed the connection")
+        case .failure(.unreachable): return .failure(code: "unreachable", message: "Vyre is not running")
+        case .failure(.timeout): return .failure(code: "timeout", message: "Vyre did not answer within \(Int(timeout * 1000))ms")
+        case .failure(.broken): return .failure(code: "unreachable", message: "Vyre closed the connection")
         case .success(let (_, body)):
             guard let j = VJ.decode(body) as? [String: Any] else {
                 return .failure(code: "bad_response", message: String(String(decoding: body, as: UTF8.self).prefix(200)))
@@ -404,7 +404,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
             DispatchQueue.global(qos: .userInitiated).async { k.resume(returning: VyHTTP.exchange(socket: socket, method: "GET", path: route, body: nil, timeout: timeout)) }
         }
         guard case .success(let (_, body)) = r else { return (nil, VyHTTP.result(r, timeout: timeout).error) }
-        guard let j = OJ.parse(body) else { return (nil, "vyred's answer was not JSON") }
+        guard let j = OJ.parse(body) else { return (nil, "Vyre's answer was not JSON") }
         if let e = j["error"] { return (nil, e["message"]?.string ?? e.string ?? "It did not work.") }
         return (j["data"] ?? .null, nil)
     }

@@ -44,10 +44,10 @@ let hotkeyReportSuite = Suite("hotkey report") { t in
     t.test("the words name the cause and the chord that still works") {
         let chord = MainActor.assumeIsolated { CapsuleApp.pretty("option+space") }
         t.eq(HotkeyReport.message(.noPermission, chord: chord),
-             "Input Monitoring is off, so Control twice is off. ⌥Space still opens the Capsule.")
+             "Input Monitoring is off, so Control twice is off. ⌥Space still opens Lumen.")
         let none = HotkeyReport.message(.noPermission, chord: nil)
-        t.ok(none.hasSuffix("No other hot key is set, so open the Capsule from the menu bar."), none)
+        t.ok(none.hasSuffix("No other hot key is set, so open Lumen from the menu bar."), none)
         t.ok(HotkeyReport.message(.tapDisabled, chord: "⌥Space").contains("could not be turned back on"))
-        t.ok(HotkeyReport.message(.tapFailed, chord: "⌥Space").contains("would not let the Capsule listen"))
+        t.ok(HotkeyReport.message(.tapFailed, chord: "⌥Space").contains("would not let Lumen listen"))
     }
 }

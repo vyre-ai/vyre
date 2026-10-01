@@ -204,7 +204,7 @@ struct OfflineBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Text("Offline").font(Theme.label).foregroundColor(Theme.ash)
-            Text(model.startingVyre ? "Starting Vyre on this Mac…" : "vyred is not running on this Mac. Results here are from this Mac.")
+            Text(model.startingVyre ? "Starting Vyre on this Mac…" : "Vyre is not running on this Mac. Results here are from this Mac.")
                 .font(Theme.subtitle).foregroundColor(Theme.bone).lineLimit(1)
             Spacer()
             if model.startingVyre {

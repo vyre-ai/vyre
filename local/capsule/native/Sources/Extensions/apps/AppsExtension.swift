@@ -214,7 +214,7 @@ final class AppsExtension: CapsuleExtension {
     // MARK: Enter
 
     func send(_ text: String, to target: MentionTarget, in parent: MentionTarget?, query: Query) async -> ActionOutcome {
-        guard let v = vyred else { return .failed("vyred is not running.") }
+        guard let v = vyred else { return .failed("Vyre is not running.") }
         guard v.has("apps.route") else { return .failed("The apps module is not on this Vyre yet.") }
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let app = appName(parent ?? target) else { return .failed("\(target.label) is not an app Vyre knows.") }

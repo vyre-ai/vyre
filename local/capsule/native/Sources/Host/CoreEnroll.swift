@@ -147,7 +147,7 @@ enum CoreEnroll {
                 return Outcome(enrolled: false, words: why)
             }
             let fp = presence.enrolled.flatMap { fingerprint(publicKey: $0.publicKey) }
-            return Outcome(enrolled: true, words: fp.map { "This Capsule is your key. Fingerprint \($0)." } ?? "This Capsule is your key.")
+            return Outcome(enrolled: true, words: fp.map { "This Lumen is your key. Fingerprint \($0)." } ?? "This Lumen is your key.")
         }
     }
 }

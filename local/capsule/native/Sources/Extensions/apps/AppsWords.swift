@@ -15,7 +15,7 @@ final class AppsWordsProvider: ResultProvider, @unchecked Sendable {
     private let vyred: VyredLink
     init(vyred: VyredLink) { self.vyred = vyred }
 
-    var sendsQuery: String? { "vyred on this Mac (apps), for words like \"timer 10 min\"" }
+    var sendsQuery: String? { "Vyre on this Mac (apps), for words like \"timer 10 min\"" }
 
     /// The first words of an app phrase. Anything else is not asked about.
     nonisolated static func looksLikeApps(_ text: String) -> Bool {

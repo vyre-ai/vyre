@@ -33,7 +33,7 @@ import AppKit
         app.addItem(servicesItem)
         NSApplication.shared.servicesMenu = services
         app.addItem(.separator())
-        add(app, "Close Capsule", #selector(MenuActions.closeCapsule(_:)), "q", target: actions)
+        add(app, "Close Lumen", #selector(MenuActions.closeCapsule(_:)), "q", target: actions)
         sub(main, app)
 
         let edit = NSMenu(title: "Edit")

@@ -128,7 +128,7 @@ final class AgentRows: ResultProvider, @unchecked Sendable {
             if let name = Watches.watchWords(query.text), let t = w.thread(named: name) {
                 out.append(ResultItem(id: "watch:\(t.id)", kind: "watch", title: "Watch \(t.label)", subtitle: "a notification when it is done or asks",
                                       icon: .symbol("eye", .bone), section: .vyre, score: 1.8, actions: [ResultAction(id: "watch", title: "Watch", symbol: "eye") { [weak w] _, _ in
-                                          await w?.watch(t) ?? .failed("The Capsule closed.")
+                                          await w?.watch(t) ?? .failed("Lumen closed.")
                                       }]))
             }
             if let g = VyRx.groups("^(?:tell|ask)\\s+(?:the\\s+)?(.+?)(?:\\s+thread)?\\s+to\\s+(.+)$", query.text.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -137,7 +137,7 @@ final class AgentRows: ResultProvider, @unchecked Sendable {
                 out.append(ResultItem(id: "drive:\(t.id)", kind: "drive", title: "Tell \(t.label): \(words)", subtitle: "sent as you, then watched",
                                       icon: .symbol("arrowshape.turn.up.right", .signal), section: .vyre, score: 1.85,
                                       actions: [ResultAction(id: "send", title: "Send and watch", symbol: "paperplane") { [weak w] _, _ in
-                                          await w?.drive(t, words) ?? .failed("The Capsule closed.")
+                                          await w?.drive(t, words) ?? .failed("Lumen closed.")
                                       }], sendsTo: t.label))
             }
             return out

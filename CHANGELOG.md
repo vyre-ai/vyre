@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: every string a person reads now says Vyre and Lumen, never "vyred" or "Capsule" (menu, popover, errors, key and hot key messages, the thread name "Lumen: ...", the Keychain label, the enrolled device name "Lumen on <Mac>"). Code names, file names, `vyre capsule` and protocol strings stay. A new suite (UserFacingWordsTests) reads the sources and fails on any such word in a string literal.
 - Lumen: the menu popover says "Vyre is running" and "Vyre is not running", not "vyred" (no internal names in the UI).
 - Lumen oversight panel: follows the contract capsule-sight shipped (chrome.plan, chrome.step, chrome.voice by run) instead of the hands.plan, hands.step and hands.voice events I had assumed, which never fire. Pause, resume, stop, retext and steer go to chrome.pause, chrome.resume, chrome.stop, chrome.plan.edit and chrome.interject (hands.* for a run a hands.* event named). A failed step shows with a cross. chrome.finished {run, ok} closes a run: at once when ok is false, after the usual linger otherwise. Stop, resume and say now carry the card's run, so with more than one run open a card cannot act on another run (chrome.* take an optional run, work/capsule-sight 9970841c).
 - Docs: Lumen 0.2 ships self-signed and not notarized; the Capsule page says macOS may ask for permissions again after an update, and the real-Mac checklist adds speed, icon and motion, unlock, and oversight and voice steps. Deep glass moves to 0.2.1 (Bone tint ships).

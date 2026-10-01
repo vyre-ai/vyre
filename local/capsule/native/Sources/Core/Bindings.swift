@@ -152,7 +152,7 @@ public struct Bindings: Equatable, Sendable {
 
     public mutating func setHotkey(_ raw: String, id: String, title: String) -> String? {
         guard let s = HotkeySpec.normal(raw) else { return "That is not a shortcut. Hold Command, Option or Control with a key." }
-        if HotkeySpec.isReserved(s) { return "\(HotkeySpec.pretty(s)) is used by macOS or by the Capsule itself." }
+        if HotkeySpec.isReserved(s) { return "\(HotkeySpec.pretty(s)) is used by macOS or by Lumen itself." }
         if let other = byHotkey(s), other.id != id { return "\(HotkeySpec.pretty(s)) already runs \(other.title)." }
         update(id, title) { $0.hotkey = s }
         return nil

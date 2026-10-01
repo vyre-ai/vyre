@@ -307,7 +307,7 @@ extension CapsuleModel {
 
     /// What a computer-use session is told, after the user's words.
     nonisolated static let computerUseBrief = """
-    You were started from the Vyre Capsule to do this on the user's Mac. Use the hands.* tools \
+    You were started from Vyre Lumen to do this on the user's Mac. Use the hands.* tools \
     (observe, find, act, commit) and screen.* to see and act; every action is shown on screen and \
     the user can stop it with Esc. Anything that sends, posts, pays or deletes goes through the \
     Gate and waits for the user's Touch ID: do not try to get around it. Say in one line what you \

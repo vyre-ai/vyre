@@ -103,7 +103,7 @@ let agentRouteSuite = Suite("agent route") { t in
             await MainActor.run { m.didHide() }
             return sub
         }
-        t.eq(got ?? nil, "The assistant and agents come with the switchboard, which this vyred is not running yet.")
+        t.eq(got ?? nil, "The assistant and agents come with the switchboard, which this Vyre is not running yet.")
     }
 
     t.test("under an answer: ⏎ opens the follow-up box, which types into the same thread; ⌘⏎ asks sonnet; Copy copies the answer") {
