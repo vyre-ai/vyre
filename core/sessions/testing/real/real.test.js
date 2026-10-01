@@ -15,7 +15,7 @@ const load = (prov, file) => fs.readFileSync(path.join(dir, prov, file), "utf8")
 for (const prov of ["codex", "grok"]) {
   test(`${prov}: every captured stream parses, starts with the handshake and ends each turn with a prompt result`, () => {
     const files = fs.readdirSync(path.join(dir, prov)).filter(f => f.endsWith(".ndjson")).sort();
-    assert.deepEqual(files.map(f => f.replace(/^\d+-/, "").replace(".ndjson", "")), ["handshake", "turn-plain", "turn-command-outside-workspace", "turn-vyre-mcp-tool", "turn-plan-and-edit"]);
+    assert.deepEqual(files.map(f => f.replace(/^\d+-/, "").replace(".ndjson", "")), ["handshake", "turn-plain", "turn-command-outside-workspace", "turn-vyre-mcp-tool", "turn-plan-and-edit", ...(prov === "codex" ? ["turn-plan-mode"] : [])]);
     const hs = load(prov, files[0]);
     assert.equal(hs[0].dir, "out");
     assert.equal(hs[0].msg.method, "initialize");
@@ -23,7 +23,7 @@ for (const prov of ["codex", "grok"]) {
     assert.ok(hs.some(x => x.dir === "in" && x.msg.result && x.msg.result.sessionId), "session/new answered");
     for (const f of files.slice(1)) {
       const turn = load(prov, f);
-      assert.equal(turn[0].msg.method, "session/prompt", f);
+      assert.equal(turn[0].msg.method, f.includes("plan-mode") ? "session/set_config_option" : "session/prompt", f);
       assert.ok(turn.some(x => x.dir === "in" && x.msg.result && x.msg.result.stopReason), `${f} ends in a prompt result`);
       assert.ok(turn.every((x, i) => i === 0 || x.t >= turn[i - 1].t), `${f} is in time order`);
     }
@@ -31,6 +31,7 @@ for (const prov of ["codex", "grok"]) {
 
   test(`${prov}: nothing of the machine or the account is in the fixtures`, () => {
     const all = fs.readdirSync(path.join(dir, prov)).filter(f => f.endsWith(".ndjson")).map(f => fs.readFileSync(path.join(dir, prov, f), "utf8")).join("\n");
+    assert.doesNotMatch(all, /ChatGPT (Plus|Pro|Team|Business|Enterprise|Free)|"email":"[^"]*","plan":"(?!plan")|"(agentId|agentInstanceId|instanceId|userId|accountId)":"(?!0{8}-)/);
     assert.doesNotMatch(all, /\/home\/(?!user\b)[a-z]|\/Users\/|\/srv\/|Bearer (?!\[token\])[A-Za-z0-9]|\bsk-[A-Za-z0-9]{12,}|eyJ[A-Za-z0-9_-]{10,}\./);
   });
 }
@@ -43,4 +44,16 @@ test("what each CLI shows for a plan-and-edit turn that Vyre can draw: Grok's di
   assert.ok(grok.some(u => u.kind === "edit"), "an edit tool call");
   const codex = load("codex", "02-turn-command-outside-workspace.ndjson").map(x => x.msg.params && x.msg.params.update).filter(Boolean);
   assert.ok(codex.some(u => blocks(u).some(c => c.type === "terminal")), "a terminal content block");
+});
+
+test("codex in plan collaboration mode: the plan is one agent message plus a switch_mode permission question, never a `plan` session update", () => {
+  const wire = load("codex", "05-turn-plan-mode.ndjson");
+  const updates = wire.filter(x => x.dir === "in" && x.msg.params && x.msg.params.update).map(x => x.msg.params.update);
+  assert.ok(!updates.some(u => u.sessionUpdate === "plan"), "no plan update");
+  assert.ok(updates.some(u => u.sessionUpdate === "agent_message_chunk" && /-plan$/.test(u.messageId)), "the plan arrives as a message whose id ends in -plan");
+  const q = wire.find(x => x.dir === "in" && x.msg.method === "session/request_permission").msg.params;
+  assert.equal(q.toolCall.kind, "switch_mode");
+  assert.equal(q.toolCall.title, "Implement this plan?");
+  assert.match(q.toolCall.rawInput.plan, /hello\.txt/);
+  assert.deepEqual(q.options.map(o => [o.optionId, o.kind]), [["implement_plan", "allow_once"], ["revise_plan", "reject_once"]]);
 });
