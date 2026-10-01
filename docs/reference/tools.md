@@ -471,11 +471,12 @@ One paragraph: what's waiting on you, how many agents are working, and any patte
 
 ### `assistant.capabilities`
 
-What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text for the prompt.
+What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text; prompt: true returns it as the quoted block the assistant's own prompt carries.
 
 - Input:
   - `area` one of "tools", "connectors", "devices", "agents", "providers"
   - `compact` boolean
+  - `prompt` boolean
 - Callers: any caller
 
 ### `assistant.daily`
@@ -8341,10 +8342,11 @@ Change the speech provider, whether replies are spoken, or the voice. The key it
 
 ### `voice.speak`
 
-Say a reply aloud through the speech provider. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.
+Say a reply aloud through the speech provider. Pass reply: true for the assistant's written reply; it is made speakable first (no code, tables or links, cut at a sentence). A surface calls it when the person's own question was spoken, never for a typed one. Returns a one-time ticket; GET /v1/voice/speech?ticket= on vyred's socket streams the audio (audio/mpeg) to the caller holding it.
 
 - Input:
   - `text` string, required
+  - `reply` boolean: The text is a written reply: code, tables and links are left out, and a long one is cut at a sentence with a note that the rest is on screen.
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `voice.status`

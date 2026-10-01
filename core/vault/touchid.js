@@ -33,6 +33,7 @@ export async function enclaveCall(helper, req) {
     lines(child.stdout, msg => finish(msg, null));
     child.on("error", () => finish(null, new Error("the Touch ID helper could not start")));
     child.on("close", () => finish(null, new Error("the Touch ID helper ended without an answer")));
+    child.stdin.on("error", () => {}); // the close handler above answers for a helper that never read the request
     child.stdin.end(JSON.stringify(req) + "\n");
   });
 }
