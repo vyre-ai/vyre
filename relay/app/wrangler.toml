@@ -4,6 +4,8 @@
 name = "vyre-app"
 main = "worker.js"
 compatibility_date = "2026-09-01"
+workers_dev = false
+routes = [{ pattern = "app.vyre.run", custom_domain = true }]
 
 [assets]
 directory = "../../app-out"
@@ -11,5 +13,3 @@ binding = "ASSETS"
 run_worker_first = true
 not_found_handling = "none"
 
-workers_dev = false
-routes = [{ pattern = "app.vyre.run", custom_domain = true }]
