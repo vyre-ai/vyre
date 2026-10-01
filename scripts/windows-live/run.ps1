@@ -27,7 +27,7 @@ function Pages { try { Invoke-RestMethod http://127.0.0.1:9222/json -TimeoutSec 
 function PageLike($pat) { Pages | Where-Object { $_.type -eq "page" -and $_.url -like $pat } | Select-Object -First 1 }
 function Cdp($page, $expr) {
   $ws = New-Object System.Net.WebSockets.ClientWebSocket
-  $ws.ConnectAsync([Uri]$page.webSocketDebuggerUrl, [Threading.CancellationToken]::None).Wait()
+  try { $ws.ConnectAsync([Uri]$page.webSocketDebuggerUrl, [Threading.CancellationToken]::None).Wait() } catch { Say ("cdp: connect to {0} failed: {1}" -f $page.webSocketDebuggerUrl, $_.Exception.InnerException.Message) }
   $msg = @{ id = 1; method = "Runtime.evaluate"; params = @{ expression = $expr; returnByValue = $true; awaitPromise = $true } } | ConvertTo-Json -Compress -Depth 6
   $bytes = [Text.Encoding]::UTF8.GetBytes($msg)
   $ws.SendAsync([ArraySegment[byte]]$bytes, "Text", $true, [Threading.CancellationToken]::None).Wait()
