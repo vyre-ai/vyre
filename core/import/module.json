@@ -4,7 +4,7 @@
   "description": "Discover this device's Claude Code sessions, choose what to import, and follow the import stage by stage (docs/design/import.md).",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["import.scan", "import.plan", "import.start", "import.stop", "import.cancel", "import.status"] },
+  "does": { "tools": [{ "name": "import.scan", "reach": "anyone" }, { "name": "import.plan", "reach": "anyone" }, { "name": "import.start", "reach": "anyone" }, { "name": "import.stop", "reach": "person" }, { "name": "import.cancel", "reach": "person" }, { "name": "import.status", "reach": "anyone" }] },
   "watches": { "emits": ["import.progress"] },
   "shows": { "cli": [] },
   "needs": {},

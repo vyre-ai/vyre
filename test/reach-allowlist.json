@@ -1005,30 +1005,6 @@
    "module": "hooks",
    "default": "open to any caller"
   },
-  "import.cancel": {
-   "module": "import",
-   "default": "limited by callers in code"
-  },
-  "import.plan": {
-   "module": "import",
-   "default": "limited by callers in code"
-  },
-  "import.scan": {
-   "module": "import",
-   "default": "limited by callers in code"
-  },
-  "import.start": {
-   "module": "import",
-   "default": "limited by callers in code"
-  },
-  "import.status": {
-   "module": "import",
-   "default": "limited by callers in code"
-  },
-  "import.stop": {
-   "module": "import",
-   "default": "limited by callers in code"
-  },
   "learn.accept": {
    "module": "learn",
    "default": "limited by callers in code"
