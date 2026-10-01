@@ -11,29 +11,50 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "capsule-win run to take the installer from (blank: the newest green one on this branch)"
+        description: "capsule-win run to take the installer from (blank: build it in this run)"
         required: false
         type: string
 permissions:
   contents: read
   actions: read
 jobs:
+  # The installer is built IN this run by the same reusable capsule-win workflow a release uses (artifact app-windows-<this commit>), so a branch
+  # that has no earlier green capsule-win run, or a run on another event, never leaves this job with an empty run id. Giving run_id skips
+  # the build and takes that run's installer instead.
+  build:
+    if: ${{ inputs.run_id == '' }}
+    uses: ./.github/workflows/capsule-win.yml
+    permissions:
+      contents: read
   live:
+    needs: build
+    if: ${{ always() && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: The installer from a capsule-win build
+      - name: The installer, from this run's build
+        if: ${{ inputs.run_id == '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: app-windows-${{ github.sha }}
+          path: ${{ runner.temp }}/installer
+      - name: The installer, from the capsule-win run you named
+        if: ${{ inputs.run_id != '' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $id = "${{ inputs.run_id }}"
-          if (-not $id) { $id = gh run list --workflow capsule-win.yml --branch "${{ github.ref_name }}" --status success --limit 1 --json databaseId --jq '.[0].databaseId' }
           $sha = gh run view $id --json headSha --jq .headSha
+          if (-not $sha) { throw "no capsule-win run $id" }
           "capsule-win run $id on $sha"
           gh run download $id -n "app-windows-$sha" -D "$env:RUNNER_TEMP\installer"
+      - name: Find the installer
+        shell: pwsh
+        run: |
           $f = Get-ChildItem "$env:RUNNER_TEMP\installer\Vyre_*_x64-setup.exe" | Select-Object -First 1
+          if (-not $f) { throw "no Vyre_*_x64-setup.exe in $env:RUNNER_TEMP\installer" }
           "VYRE_INSTALLER=$($f.FullName)" >> $env:GITHUB_ENV
           "OUT_DIR=$env:RUNNER_TEMP\live-out" >> $env:GITHUB_ENV
       - name: Install, pair with the testbox box, and check
