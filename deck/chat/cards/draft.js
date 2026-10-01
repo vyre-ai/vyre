@@ -18,6 +18,7 @@
 // fields under `draft` (or on the ask). Mail: {from?, to, cc, subject, body, attach:[{name,size}]}.
 // Invite: {title, start, end, tz?, attendees:[{name, availability?}], place, notes}.
 
+import { failureLine } from "../gate-lines.js";
 import { kbd } from "../../js/platform.js";
 import { h, put, isPhone } from "../../js/dom.js";
 import { queued } from "../../js/api.js";
@@ -107,7 +108,7 @@ export function draftCard(ask, ctx = {}) {
     // Refused (no proof, a cancelled passkey, a bad edit): nothing left, the edits stay.
     if (r.error) { state.problem = r.error; draw(); return; }
     // Approved but the sender failed: it stays held with the edit, and the card says why.
-    if (r.data?.state === "failed") { state.failed = String(r.data.error || "the sender failed"); draw(); return; }
+    if (r.data?.state === "failed") { state.failed = failureLine(r.data.error, r.data.reached); draw(); return; }
     state.done = "sent"; draw();
   }
 
@@ -218,7 +219,7 @@ export function draftCard(ask, ctx = {}) {
           ? [field("title", "Title"), when_(), field("attendees", "People"), availability(), field("place", "Where"), field("notes", "Message", { multi: true })]
           : [Array.isArray(ask.accounts) && ask.accounts.length > 1 && c.from ? h("div", { class: "cv-dr-row" }, h("span", { class: "cv-dr-key" }, "From"), h("span", { class: "cv-dr-val mono" }, untrusted(c.from, 200))) : null,
             field("to", "To", { mono: true }), field("cc", "Cc", { mono: true }), field("subject", "Subject"), field("body", "Message", { multi: true }), attachments()])),
-      state.failed ? h("div", { class: "cv-dr-note" }, h("span", { class: "cv-mark cv-mark-failed", "aria-hidden": "true" }), `It came back held: ${state.failed}. Send tries again.`) : null,
+      state.failed ? h("div", { class: "cv-dr-note" }, h("span", { class: "cv-mark cv-mark-failed", "aria-hidden": "true" }), state.failed) : null,
       h("div", { class: "gate-actions cv-ask-actions cv-dr-actions" }, primary,
         cover ? h("span", { class: "cv-dr-cover", "aria-live": "polite" }, cover) : h("span", { class: "cv-dr-cover", "aria-live": "polite" }),
         h("button", { class: "btn btn-ghost cv-ask-btn cv-dr-discard", type: "button", "data-act": "discard", disabled: !!state.busy, "aria-keyshortcuts": "D", onclick: discard },

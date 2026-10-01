@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### gate: held and settled sends say more
+
+- A held send that failed now says whether it may have gone out anyway ("Check the app before you send again"), did not go out, or just stayed held, from the sender's own `reached` read. A sent item says where it went, and "You said to, so it went without asking" when your own words covered it; one you changed says so; a discarded one says nothing was sent. Words live in `deck/chat/gate-lines.js`, used by the held card (`gate-item.js`) and the draft card.
+
 #### pairing: say so when the relay did not confirm the code
 
 - `relay.pair.ticket` can return `confirmed: false` (an older relay never acknowledges a registration). The "Add a Windows PC" card and the Wink card then add "The relay did not confirm this code. If the PC does not finish, make a new one." once about 30 seconds pass without a finished pairing. Nothing shows when `confirmed` is true or absent. The ticket works either way.
