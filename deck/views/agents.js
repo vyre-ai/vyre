@@ -127,7 +127,7 @@ async function list(ctx) {
     /** @type {HTMLElement} */ (headRow.firstChild).id = "ag-list-h";
     if (listErr) {
       put(setup);
-      put(sub, "Agents are kept by the switchboard.");
+      put(sub, "Agents could not be read from the box.");
       put(rows, headRow, empty("No agents can be listed.", listErr));
       return;
     }
@@ -392,7 +392,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
   function draw(listErr) {
     const w = getWorld();
     const all = getAll();
-    if (listErr) return [h("p", { class: "agp-sum" }, "Agents are kept by the switchboard."), empty("No agents can be listed.", listErr)];
+    if (listErr) return [h("p", { class: "agp-sum" }, "Agents could not be read from the box."), empty("No agents can be listed.", listErr)];
     const assistant = all.find(a => a.kind === "assistant");
     const ordered = [assistant, ...all.filter(a => a.kind !== "assistant")].filter(Boolean);
     const working = ordered.filter(isWorking);
@@ -643,7 +643,7 @@ function drawJob(sec, a, w, stub, listErr) {
   const view = () => {
     const edit = h("button", { type: "button", class: "link ab-edit", disabled: stub, onclick: () => editing() }, "Edit");
     put(sec, sectionHead("ab-job", "Job", stub ? null : edit),
-      stub ? empty(`${a.name}'s job is kept by the switchboard.`, listErr)
+      stub ? empty(`${a.name}'s job could not be read from the box.`, listErr)
         : a.instructions ? h("p", { class: "ab-job" }, a.instructions)
         : h("div", { class: "ab-job" }, h("span", { class: "faint" }, "No instructions yet."), action("Write its job", () => editing())),
       stub ? null : h("div", { class: "ab-where" }, h("span", { class: "small faint" }, "Works in"), where),
@@ -747,13 +747,13 @@ function watcherRow(x, w) {
  * report if there is one.
  */
 function drawUsage(sec, a, stub, listErr, ctx) {
-  if (stub) { put(sec, sectionHead("ab-usage", "Usage"), empty(`${a.name}'s usage is kept by the switchboard.`, listErr)); return; }
+  if (stub) { put(sec, sectionHead("ab-usage", "Usage"), empty(`${a.name}'s usage could not be read from the box.`, listErr)); return; }
   const body = h("div");
   put(sec, sectionHead("ab-usage", "Usage"), body);
   const draw = async () => {
     const r = await attempt("agents.usage", { agent: a.name });
     if (!ctx.alive()) return;
-    if (r.error) { put(body, empty(`${a.name}'s usage is kept by the switchboard.`, r.error)); return; }
+    if (r.error) { put(body, empty(`${a.name}'s usage could not be read from the box.`, r.error)); return; }
     const list = Array.isArray(r.data) ? r.data : [];
     const u = list.find(x => x.agent === a.name) || list[0];
     if (!u || (!u.turns && !u.last_at)) { put(body, h("div", { class: "empty" }, `${a.name} has not run yet.`)); return; }
@@ -786,7 +786,7 @@ function drawUsage(sec, a, stub, listErr, ctx) {
 function drawModel(sec, a, stub, listErr) {
   const status = h("span", { class: "small muted", role: "status" });
   if (stub) {
-    put(sec, sectionHead("ab-model", "Model"), empty(`${a.name}'s model is kept by the switchboard.`, listErr));
+    put(sec, sectionHead("ab-model", "Model"), empty(`${a.name}'s model could not be read from the box.`, listErr));
     return;
   }
   const models = MODELS.some(m => m.id === a.model) || !a.model ? MODELS : [...MODELS, { id: a.model, name: a.model }];
@@ -857,7 +857,7 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
   const status = h("div", { class: "small muted ab-comp-status", role: "status" });
   const c = cr.data;
   const right = c ? h("span", { class: "code faint" }, c.state || "none") : null;
-  if (stub) { put(aside, sectionHead("ab-comp", "Computer"), empty(`Whether ${a.name} has a computer is kept by the switchboard.`, listErr)); return; }
+  if (stub) { put(aside, sectionHead("ab-comp", "Computer"), empty(`Whether ${a.name} has a computer could not be read from the box.`, listErr)); return; }
   if (!a.computer) {
     const give = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (give).disabled = true;

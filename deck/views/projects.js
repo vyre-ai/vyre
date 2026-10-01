@@ -31,7 +31,7 @@ import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
 
 const enc = encodeURIComponent;
-const TABS = [["threads", "Threads"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
+const TABS = [["threads", "Threads"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
 
 /** @param {any} ctx */
 export default async function projects(ctx) {
@@ -230,12 +230,13 @@ async function board(ctx) {
   if (tab === "brief") { put(root, header, briefTab(ctx, p, cx, sw.error)); return; }
   if (tab === "files") { put(root, header, filesTab(ctx, p, items)); return; }
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
+  if (tab === "team") { const box = h("div", { class: "pj-page" }); put(root, header, box); const m = await import("./project-team.js"); if (ctx.alive()) await m.drawTeam(box, ctx, p); return; }
 
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
     h("div", { class: "lbl pj-threads-l" }, "Threads"),
     items.length ? items.map(it => threadItem(it, it.id === selected, hrefFor(it.id), needs.current()))
-      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. The switchboard module is not running, so one cannot start here.")
+      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. Sessions are not available on this box, so one cannot start here.")
       : h("div", { class: "empty pj-none" }, "No threads yet.", startThreadInline(p)),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
   drawList();
@@ -319,7 +320,7 @@ function newThreadButton(ctx, p, swErr) {
       h("div", { class: "code faint ellipsis" }, "In ", base(p.home)),
       ta,
       h("div", { class: "nt-actions" }, go_, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => toggle(false) }, "Cancel")),
-      swErr?.missing ? h("div", { class: "small faint" }, "The switchboard module is not running, so this will not start yet.") : null,
+      swErr?.missing ? h("div", { class: "small faint" }, "Sessions are not available on this box, so this will not start yet.") : null,
       status);
     ta.focus();
   };
@@ -789,7 +790,7 @@ function heldBlock(a, threadId) {
       settle(el, opt.label);
     } catch (e) {
       const err = /** @type {any} */ (e);
-      put(status, err.missing ? "The switchboard module is not running, so this cannot be answered here yet." : String(err.message));
+      put(status, err.missing ? "Sessions are not available on this box, so this cannot be answered here yet." : String(err.message));
       // The box cannot forward answers to this Mac (needs.js): the line says where, no buttons.
       if (err.elsewhere) put(buttons);
       else for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
@@ -861,7 +862,7 @@ function drawComposer(ctx, box, o) {
   const note = h("div", { class: "small faint th-note", role: "status" });
   const take = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: async () => {
     const r = await attempt("threads.lease", { thread: o.id, surface: "deck" });
-    if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
+    if (r.error) { put(note, r.error.missing ? "Sessions are not available on this box." : String(r.error.message)); return; }
     holder = r.data?.holder || r.data?.surface || "deck";
     draw();
     if (holder === "deck") input.focus();
@@ -873,7 +874,7 @@ function drawComposer(ctx, box, o) {
     send.disabled = input.disabled;
     input.placeholder = o.swMissing ? "Replies are off here" : other ? `${holder} is typing` : o.agent ? `Reply to ${o.agent}` : o.recorded ? "Reply to carry this thread on" : "Reply";
     take.hidden = !other || o.swMissing;
-    put(note, o.swMissing ? "The switchboard module is not running, so this thread cannot take a reply from the Deck."
+    put(note, o.swMissing ? "Sessions are not available on this box, so this thread cannot take a reply from the Deck."
       : other ? `The ${holder} has the keyboard. You can read along, or take it.` : "");
   };
   const form = h("form", { class: "th-box", onsubmit: async (/** @type {Event} */ e) => {
@@ -883,13 +884,13 @@ function drawComposer(ctx, box, o) {
     send.disabled = true;
     if (holder !== "deck") {
       const l = await attempt("threads.lease", { thread: o.id, surface: "deck" });
-      if (l.error) { put(note, l.error.missing ? "The switchboard module is not running." : String(l.error.message)); send.disabled = false; return; }
+      if (l.error) { put(note, l.error.missing ? "Sessions are not available on this box." : String(l.error.message)); send.disabled = false; return; }
       holder = l.data?.holder || l.data?.surface || "deck";
       if (holder !== "deck") { draw(); return; }
     }
     const r = await queued("threads.send", { thread: o.id, text });
     send.disabled = false;
-    if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
+    if (r.error) { put(note, r.error.missing ? "Sessions are not available on this box." : String(r.error.message)); return; }
     // threads.send answers {sent:false,...} rather than an error when the lease was taken back
     // between the check above and this call.
     if (r.data && r.data.sent === false) { holder = r.data.holder || null; draw(); return; }
