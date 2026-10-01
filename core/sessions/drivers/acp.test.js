@@ -13,7 +13,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
-import { projectCodexConfig, seedTampered, promptTokens, acpProvider, askFor, mediaOf } from "./acp.js";
+import { projectCodexConfig, seedTampered, promptTokens, acpProvider, askFor, mediaOf, modelsOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
 import { codexProvider } from "./codex.js";
 
@@ -253,6 +253,25 @@ test("acp: a turn's tokens come from the prompt response (Codex's usage, Grok's 
   assert.deepEqual(promptTokens(null), {});
   assert.deepEqual(promptTokens({ usage: { inputTokens: "x" } }), {});
   assert.equal(promptTokens({ usage: { inputTokens: 10, cachedReadTokens: 50, outputTokens: 1 } }).input_tokens, 0, "never negative");
+});
+
+test("acp: Codex's plan question (switch_mode) is a question card with the plan text and two buttons, Implement and Revise, answered as the matching option", async t => {
+  for (const [how, answer, want] of [["Implement", a => ({ behavior: "allow", updatedInput: { ...a.request.input, answers: { "Implement this plan?": "Implement" } } }), "plan: implement_plan"],
+    ["Revise", a => ({ behavior: "allow", updatedInput: { ...a.request.input, answers: { "Implement this plan?": "Revise" } } }), "plan: revise_plan"],
+    ["declined", () => ({ behavior: "deny", message: "no" }), "plan: revise_plan"]]) {
+    const w = world(t);
+    const s = open(w);
+    s.proc.write({ type: "user", message: { role: "user", content: "planask" } });
+    const ask = await s.until(m => m.type === "control_request", `the plan question (${how})`);
+    assert.equal(ask.request.tool_name, "AskUserQuestion");
+    const q = ask.request.input.questions[0];
+    assert.deepEqual([q.question, q.header, q.multiSelect, q.options.map(o => o.label)], ["Implement this plan?", "Plan", false, ["Implement", "Revise"]]);
+    assert.equal(q.options[0].preview, "1. Create hello.txt.\n2. Read it back.\n", "the plan text is on the Implement button");
+    s.proc.write({ type: "control_response", response: { request_id: ask.request_id, response: answer(ask) } });
+    await s.until(m => m.type === "result", "the result");
+    assert.match(s.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), new RegExp(want), how);
+    await s.proc.stop(500);
+  }
 });
 
 test("acp: fs/read_text_file goes past the floor first: a vault path is refused and its bytes never leave the disk", async t => {
@@ -634,4 +653,24 @@ test("mediaOf over the real Grok video capture: exactly the video file is media,
   const mp4 = fs.readFileSync(path.join(dir, "video.mp4"));
   assert.equal(mp4.subarray(4, 8).toString("latin1"), "ftyp", "the captured video is a real mp4");
   assert.ok(mp4.length < 20 * 1024 * 1024);
+});
+
+test("acp: the init message carries the models the agent offers (id and label only) and the plan its sign-in named, never an email", async t => {
+  const w = world(t, { authMethod: methods => methods.find(m => m.id === "chat-gpt")?.id || null });
+  const s = open(w, { env: { ...w.env, FAKE_ACP_AUTH: "ok", FAKE_ACP_MODELS: "1", FAKE_ACP_PLAN: "SuperGrok" } });
+  const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  assert.deepEqual(init.models, [{ id: "m1", label: "Model 1" }, { id: "m2", label: "Model 2" }, { id: "c1", label: "Codex 1" }, { id: "c2", label: "Codex 2" }]);
+  assert.equal(init.plan, "SuperGrok");
+  assert.ok(!JSON.stringify(init).includes("someone@example.com"));
+  assert.deepEqual(modelsOf({}), []);
+  await s.proc.stop(500);
+});
+
+test("acp: a command's exit code arrives as data on the tool result, from Grok's rawOutput and Codex's terminal_exit", async t => {
+  const w = world(t);
+  const s = open(w);
+  await s.say("exitcode");
+  const done = s.got.filter(m => m.type === "user").flatMap(m => m.message.content).filter(b => b.type === "tool_result");
+  assert.deepEqual(done.map(b => [b.tool_use_id, b.exit_code, b.is_error]), [["g1", 1, false], ["c1", 2, false]]);
+  await s.proc.stop(500);
 });

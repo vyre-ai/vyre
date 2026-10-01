@@ -134,3 +134,10 @@ test("transcripts: a title skips command echoes and injected context", t => {
   const f = write(dir, "-x/s.jsonl", [user("<command-name>/clear</command-name>"), user("ok"), user("Fix the Northwind invoice total"), claude("done")]);
   assert.equal(read(f)?.title, "Fix the Northwind invoice total");
 });
+
+test("transcripts: an assistant turn carries the model that wrote it, a person's turn none", t => {
+  const dir = path.join(tempHome(t), "transcripts");
+  const f = write(dir, "-tmp-p/m1.jsonl", [user("hello"), claude("hi", { message: { role: "assistant", model: "claude-opus-4-1", content: [{ type: "text", text: "hi" }] } })]);
+  const turns = read(f).turns;
+  assert.deepEqual(turns.map(x => [x.role, x.model ?? null]), [["user", null], ["assistant", "claude-opus-4-1"]]);
+});
