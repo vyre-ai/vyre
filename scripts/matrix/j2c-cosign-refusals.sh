@@ -68,7 +68,7 @@ up=0; for i in $(seq 1 60); do curl -fs --cacert "$P/ca.crt" https://ghcr.io/v2/
 # ---- 4 the images, by digest
 mkimg() { # mkimg N -> prints ghcr.io/vyre-ai/vyre@sha256:...
   d="$WORK/img$1"; mkdir -p "$d"; printf 'FROM busybox:1.36\nRUN echo "case %s" > /case\n' "$1" >"$d/Dockerfile"
-  docker build -q -t "ghcr.io/vyre-ai/vyre:case$1" "$d" >/dev/null && docker push -q "ghcr.io/vyre-ai/vyre:case$1" >/dev/null || return 1
+  docker build -q -t "ghcr.io/vyre-ai/vyre:case$1" "$d" >/dev/null 2>"$OUT/mkimg$1.log" && docker push "ghcr.io/vyre-ai/vyre:case$1" >>"$OUT/mkimg$1.log" 2>&1 || { tail -5 "$OUT/mkimg$1.log" >&2; getent hosts ghcr.io >&2; docker logs --tail 5 vyre-testreg >&2; return 1; }
   docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/vyre-ai/vyre:case$1"
 }
 R1=$(mkimg 1); R2=$(mkimg 2); R3=$(mkimg 3)
