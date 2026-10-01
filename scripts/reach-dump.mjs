@@ -28,5 +28,5 @@ for (const role of ["box", "local"]) {
   await d.stop();
 }
 fs.rmSync(root0, { recursive: true, force: true });
-process.stdout.write(JSON.stringify(Object.values(out)));
-process.exit(0);
+// Exit only once the pipe has taken everything: a large dump cut off at the pipe's size otherwise (about 146 KB on a Linux runner).
+process.stdout.write(JSON.stringify(Object.values(out)), () => process.exit(0));
