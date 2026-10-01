@@ -4,6 +4,10 @@
 # with screenshots. See scripts/windows-live/run.ps1.
 name: windows-live
 on:
+  # workflow_dispatch only works once this file is on the default branch; until then, changing
+  # scripts/windows-live/RUN on a branch runs it.
+  push:
+    paths: ["scripts/windows-live/RUN"]
   workflow_dispatch:
     inputs:
       run_id:
