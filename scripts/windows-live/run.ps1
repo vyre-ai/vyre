@@ -152,6 +152,8 @@ if ($first) {
     if (-not $paired) { Say ("first-run page state after Pair: err='{0}' status='{1}'" -f (Cdp $first "document.getElementById('err').textContent"), (Cdp $first "document.getElementById('seed').textContent")) }
     Result "finish-pair" $paired $(if ($paired) { "pinned $($j.address), link route $($j.link.route.Substring(0,6))..., device $($j.link.device)" } else { "no pairing record with a link" })
     Shot "04-after-pair"
+    Say ("after pair: Vyre running={0}; pages: {1}" -f [bool](Get-Process Vyre -ErrorAction SilentlyContinue), ((Pages | ForEach-Object { $_.url }) -join ", "))
+    try { Get-WinEvent -FilterHashtable @{ LogName = "Application"; StartTime = (Get-Date).AddMinutes(-15) } -MaxEvents 40 -ErrorAction Stop | Where-Object { $_.Message -match "Vyre" } | Select-Object -First 4 | ForEach-Object { Say ("eventlog: {0} {1}" -f $_.ProviderName, ($_.Message -replace "\s+", " ").Substring(0, [Math]::Min(300, $_.Message.Length))) } } catch { Say "no event log entries for Vyre" }
 
     # ---- 6. the link window: tray's "Open Vyre Drive" is the same event --------------------------------------
     $link = WaitPage "*link.html*" 60
