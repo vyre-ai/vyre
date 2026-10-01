@@ -111,7 +111,7 @@ test("mcp: stdio, http and sse servers, with credentials that reach only their o
 test("mcp: an agent's outward call is held, edited by the person, and reaches the server as approved; a rejected one never does", async t => {
   const v = await vyred(t);
   const log = path.join(v.root, "chat.log");
-  assert.equal((await v.cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal((await v.cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   const juno = v.agent("juno", "t-1");
 
   const held = await juno("mcp.call", { server: "chat", tool: "send_message", arguments: { to: "dana@harlowlegal.com", text: "The form is on staging." } });
@@ -296,7 +296,7 @@ test("mcp: several instances of one server, each with its own credential", async
 test("mcp: hold and on_behalf are for modules only", async t => {
   const v = await vyred(t);
   const log = path.join(v.root, "chat.log");
-  assert.equal((await v.cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal((await v.cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   const mod = (tool, input = {}) => v.d.registry.call(tool, input, "module:mail", {});
   const gateGet = async id => (await v.cli("gate.get", { id })).data;
   const behalf = { thread: "t-9", agent: "kit" };
@@ -385,7 +385,7 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
   t.after(() => d.stop());
   const log = path.join(root, "chat.log");
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
-  assert.equal((await cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  assert.equal((await cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
   const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
