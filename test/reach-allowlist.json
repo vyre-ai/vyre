@@ -586,6 +586,16 @@
    "module": "files",
    "default": "callers admit a model"
   },
+  "gate.offer": {
+   "module": "gate",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "gate.route": {
+   "module": "gate",
+   "default": "internal or hook in code",
+   "internal": true
+  },
   "github.accounts": {
    "module": "github",
    "default": "limited by callers in code"
@@ -760,6 +770,11 @@
   "goals.set": {
    "module": "goals",
    "default": "callers admit a model"
+  },
+  "google.release": {
+   "module": "google",
+   "default": "internal or hook in code",
+   "internal": true
   },
   "hands-desktop.act": {
    "module": "hands-desktop",
@@ -959,6 +974,11 @@
   "learn.stats": {
    "module": "learn",
    "default": "open to any caller"
+  },
+  "mail.release": {
+   "module": "mail",
+   "default": "internal or hook in code",
+   "internal": true
   },
   "mcp.add": {
    "module": "mcp",
@@ -1184,92 +1204,6 @@
    "module": "memory",
    "default": "callers admit a model"
   },
-  "names.check": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.claim": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.claim-code": {
-   "module": "names",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "names.connect": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.domain.check": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.domain.serve": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.fallback": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.owner": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.recover": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.recover.code": {
-   "module": "names",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "names.release": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "names.status": {
-   "module": "names",
-   "default": "open to any caller"
-  },
-  "network.funnel.status": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.add": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.check": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.enable": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.list": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.guests.remove": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.tailscale.login": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.tailscale.peers": {
-   "module": "network",
-   "default": "open to any caller"
-  },
-  "network.tailscale.status": {
-   "module": "network",
-   "default": "open to any caller"
-  },
   "onboard.claude": {
    "module": "onboard",
    "default": "open to any caller"
@@ -1466,122 +1400,6 @@
   "recall.watch": {
    "module": "recall",
    "default": "limited by callers in code"
-  },
-  "relay.device.presence": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.devices.ask-trust": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.devices.bind": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.devices.list": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.devices.node": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.devices.path": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.devices.remove": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.devices.rename": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.devices.tailnet": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.devices.trust": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.disable": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.enable": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.join": {
-   "module": "relay",
-   "default": "limited by callers in code"
-  },
-  "relay.pair.first": {
-   "module": "relay",
-   "default": "limited by callers in code"
-  },
-  "relay.pair.start": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.pair.ticket": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.route.id": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.route.sign": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.setup.begin": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.setup.claim": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.setup.claim-token": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.setup.end": {
-   "module": "relay",
-   "default": "internal or hook in code",
-   "internal": true
-  },
-  "relay.setup.status": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.status": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.tailnet.status": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.web.pin": {
-   "module": "relay",
-   "default": "open to any caller"
-  },
-  "relay.web.release": {
-   "module": "relay",
-   "default": "open to any caller"
   },
   "screen.context": {
    "module": "screen",
@@ -2232,6 +2050,141 @@
   "update.status": {
    "module": "update",
    "default": "open to any caller"
+  },
+  "vault.agent.grant": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.api.send": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.connections.list": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.connections.revoke": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.credential.tokens": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.device.sync": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.generate": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.grant": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.grants.status": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.import": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.import.preview": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.mention.resolve": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.offboard": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.pass.accept": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.pass.create": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.pending": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.person.add": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.relay": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.release": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.request": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.rotation": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.said.add": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.list": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.match": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.record": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.said.revoke": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.ssh.generate": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.sweep": {
+   "module": "vault",
+   "default": "callers admit a model"
+  },
+  "vault.use.check": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.use.note": {
+   "module": "vault",
+   "default": "internal or hook in code",
+   "internal": true
+  },
+  "vault.vaults.sync": {
+   "module": "vault",
+   "default": "callers admit a model"
   },
   "vitals.advice": {
    "module": "vitals",

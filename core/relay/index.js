@@ -573,6 +573,8 @@ export default {
       description: "Make a QR code that pairs one more device with this box through the relay. The code works once, for 10 minutes; making a new one voids the last.",
       input: obj(),
       presence: { summary: async () => "Pair a new device with this box" },
+      // The surfaces, the owner's own devices, and a module (onboard runs this step); owner() below refuses a model, an agent, a hook, a guest and anonymous.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "module"],
       run: async (_, meta = {}) => { owner(meta.caller, meta, "pairing a device"); return mint(false); },
     });
 
