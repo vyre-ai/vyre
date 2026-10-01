@@ -106,7 +106,7 @@ public final class WindowsProvider: ResultProvider, ImmediateResults, @unchecked
         switch l {
         case .restore:
             lock.lock(); let old = before[win.id]; lock.unlock()
-            guard let old else { return .failed("Nothing to restore: the Capsule has not moved this window.") }
+            guard let old else { return .failed("Nothing to restore: Lumen has not moved this window.") }
             target = old
         case .nextDisplay, .previousDisplay:
             guard screens.count > 1 else { return .failed("There is only one display.") }

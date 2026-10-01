@@ -77,7 +77,7 @@ extension CapsuleModel {
         commandRun = run
         autoTask?.cancel()
         guard let cli = cliOverride ?? VyreCLI.locate(home: home) else {
-            run.finish(nil, failure: "The Capsule could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
+            run.finish(nil, failure: "Lumen could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
             return
         }
         Task { @MainActor in
@@ -92,7 +92,7 @@ extension CapsuleModel {
     func startFirstItem(_ argv: [String]) -> ResultItem {
         let up = argv.first == "up"
         return ResultItem(id: "cli:start", kind: "cli", title: up ? "Start Vyre" : "Start Vyre first",
-                          subtitle: up ? "vyred is not running on this Mac. Return starts it." : "vyre \(argv.joined(separator: " ")) needs vyred, which is not running. Return starts it.",
+                          subtitle: up ? "Vyre is not running on this Mac. Return starts it." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not running. Return starts it.",
                           icon: .symbol("power", .stone), section: .top, score: 2,
                           actions: [ResultAction(id: "start", title: "Start Vyre", symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
                               await MainActor.run { self?.startVyre() }

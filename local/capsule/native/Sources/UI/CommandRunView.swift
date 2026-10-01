@@ -36,7 +36,7 @@ struct CommandRunView: View {
         case 2?: return "usage"
         case 3?: return "needs you"
         case 4?: return "vault locked"
-        case 5?: return "vyred down"
+        case 5?: return "Vyre down"
         case let c?: return "failed (\(c))"
         case nil: return run.failure == nil ? "stopped" : "failed"
         }

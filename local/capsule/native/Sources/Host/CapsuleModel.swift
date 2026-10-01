@@ -661,7 +661,7 @@ public final class CapsuleModel: ObservableObject {
         selected = was.flatMap { id in flat.firstIndex { $0.id == id } } ?? 0
         if !rows.isEmpty { line = nil }
         else if let chip = nestingChip { line = "Nothing called that in \(chip.label)." }
-        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "vyred is not running. Start Vyre: Return on an empty Capsule." }
+        else { line = vyred.isUp ? "Nothing called that in Vyre yet." : "Vyre is not running. Start Vyre: Return on an empty Lumen." }
     }
 
     /// Candidates for the `@` words, and the words left over as the message. The whole text is
@@ -786,7 +786,7 @@ public final class CapsuleModel: ObservableObject {
         let icon: IconSpec = c.kind == .app ? (appTargets[c.id]?.icon ?? .symbol("app")) : .symbol(symbol, isLive(c) ? .signal : .bone)
         return ResultItem(id: "at:\(c.kind.rawValue):\(c.id)", kind: "mention", title: c.label, subtitle: sub, icon: icon,
                           section: .vyre, score: 1, actions: [ResultAction(id: "pick", title: "Pick", symbol: "at") { [weak self] _, _ in
-                              await self?.pick(c) ?? .failed("The Capsule closed.")
+                              await self?.pick(c) ?? .failed("Lumen closed.")
                           }])
     }
 
@@ -825,7 +825,7 @@ public final class CapsuleModel: ObservableObject {
         return ResultItem(id: "send:\(c.id)", kind: "ask", title: "Send to \(c.label)", subtitle: words, icon: appTargets[c.id]?.icon ?? .mark,
                           section: .vyre, score: 0,
                           actions: [ResultAction(id: "send", title: "Send", symbol: "paperplane") { [weak self] _, _ in
-                              await self?.send(words, to: c, in: p) ?? .failed("The Capsule closed.")
+                              await self?.send(words, to: c, in: p) ?? .failed("Lumen closed.")
                           }], sendsTo: via)
     }
 
@@ -946,7 +946,7 @@ public final class CapsuleModel: ObservableObject {
         if !computerUse, context == nil, model == models.quick, let out = await askIQ(words) { return out }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
-            return .failed("Could not make the Capsule's folder: \(error.localizedDescription)")
+            return .failed("Could not make Lumen's folder: \(error.localizedDescription)")
         }
         asked = words
         // What memory showed for these same words goes with the question, and only that.
@@ -966,7 +966,7 @@ public final class CapsuleModel: ObservableObject {
             guard let t = thread else { early.append(e); return }
             if e.thread == t, let r = self.reply { self.reply = VyState.applyReply(r, e) }
         }
-        let name = (computerUse ? "Capsule, doing: " : "Capsule: ") + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
+        let name = (computerUse ? "Lumen, doing: " : "Lumen: ") + String(words.split(whereSeparator: \.isWhitespace).joined(separator: " ").prefix(40))
         doing = computerUse
         // Computer use is a full session: the Vyre plugin brings hands.* and screen.*, the floor
         // and the Gate. A question is a lean one on the fast model.
@@ -978,7 +978,7 @@ public final class CapsuleModel: ObservableObject {
         let r = await vyred.call("threads.start", input, presence: false)
         pending = false
         if let why = Bridge.explain(r) { asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
-        guard let d = r.data as? [String: Any], let id = d["id"].map({ "\($0)" }) else { asked = nil; return .failed("vyred did not say which thread it started.") }
+        guard let d = r.data as? [String: Any], let id = d["id"].map({ "\($0)" }) else { asked = nil; return .failed("Vyre did not say which thread it started.") }
         thread = id
         keeper.startedQuick(id)
         var rep = VyState.reply(id)

@@ -181,7 +181,7 @@ struct MenuBarPopover: View {
             .padding(.horizontal, 14).padding(.bottom, 10)
             VStack(alignment: .leading, spacing: 6) {
                 status(health.vyredUp ? "Vyre is running" : "Vyre is not running", ok: health.vyredUp,
-                       sub: health.vyredUp ? nil : "Start Vyre below, or press Return in the Capsule")
+                       sub: health.vyredUp ? nil : "Start Vyre below, or press Return in Lumen")
                 if let l = health.link {
                     status("Box \(l.path)", ok: l.dot == .direct, sub: l.handshake)
                 } else if let why = health.linkWhy {
@@ -192,7 +192,7 @@ struct MenuBarPopover: View {
             Rule()
             VStack(spacing: 2) {
                 if !health.vyredUp, let start { PopoverButton(title: "Start Vyre", hint: nil, action: start) }
-                PopoverButton(title: "Open Capsule", hint: hotkeys, action: open)
+                PopoverButton(title: "Open Lumen", hint: hotkeys, action: open)
                 if canTurnOnControl { PopoverButton(title: "Turn on Control twice…", hint: nil, action: turnOnControl) }
             }
             .padding(6)

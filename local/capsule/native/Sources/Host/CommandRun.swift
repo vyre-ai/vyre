@@ -87,7 +87,7 @@ public enum CLIRun {
     /// Why a verb is not run from the Capsule, or nil. Only the ones that would take the terminal
     /// or this app itself.
     public static func refused(_ argv: [String]) -> String? {
-        if argv.first == "capsule" { return "This is the Capsule already. Its settings are in the menu bar mark." }
+        if argv.first == "capsule" { return "This is Lumen already. Its settings are in the menu bar mark." }
         if argv.first == "voice", argv.dropFirst().first == "--send" { return "To talk to a session from here, pick it with @ and press Option-Return." }
         return nil
     }
@@ -193,7 +193,7 @@ extension CapsuleModel {
         Task { @MainActor [vyred] in
             var cli = self.cliOverride
             if cli == nil { cli = await Self.cliPath(vyred) }
-            guard let cli else { run.finish(nil, failure: vyred.isUp ? "This vyred does not say where its CLI is (it needs a newer vyred)." : "Start Vyre first: vyred is not running, so its commands cannot run."); return }
+            guard let cli else { run.finish(nil, failure: vyred.isUp ? "This Vyre does not say where its CLI is (it needs a newer Vyre)." : "Start Vyre first: Vyre is not running, so its commands cannot run."); return }
             let code = await self.exec(run, cli: cli, args: argv + ["--view"], frames: true)
             // A CLI without --view: a usage exit and no frames. Only then, once more, plainly.
             if code == 2, run.views.isEmpty, !run.stopped {

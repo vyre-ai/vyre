@@ -107,7 +107,7 @@ enum Listen {
     /// A 404 means the vyred running has no voice module; the rest pass on as the link said them.
     static func failure(_ f: VyredStreamFailure) -> TalkFailure {
         f.code == "not_found"
-            ? TalkFailure(code: "no_voice", message: "vyred has no voice module; it needs a vyred with local/voice")
+            ? TalkFailure(code: "no_voice", message: "Vyre has no voice module; it needs a newer Vyre with local/voice")
             : TalkFailure(code: f.code, message: f.message)
     }
 }
@@ -249,7 +249,7 @@ final class Talker: @unchecked Sendable {
         }
     }
 
-    private func streamClosed() { if !settled { finish(.failed("vyred closed the stream")) } }
+    private func streamClosed() { if !settled { finish(.failed("Vyre closed the stream")) } }
 
     private func finish(_ e: Event) {
         guard !settled else { return }

@@ -158,7 +158,7 @@ public extension VyredLink {
     }
     func stream(_ path: String, onMessage: @escaping @Sendable ([String: Any]) -> Void,
                 onClose: @escaping @Sendable () -> Void) async -> Result<VyredStream, VyredStreamFailure> {
-        .failure(VyredStreamFailure(code: "refused", message: "This link to vyred has no streams."))
+        .failure(VyredStreamFailure(code: "refused", message: "This link to Vyre has no streams."))
     }
 }
 

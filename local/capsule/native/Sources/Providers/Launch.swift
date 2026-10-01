@@ -42,7 +42,7 @@ public enum Launch {
 
     /// Open a file, a folder or an allowed URL with its default app.
     public static func open(_ url: URL) async -> ActionOutcome {
-        guard allowed(url) else { return .failed("The Capsule does not open that.") }
+        guard allowed(url) else { return .failed("Lumen does not open that.") }
         if url.isFileURL {
             guard FileManager.default.fileExists(atPath: url.path) else { return .failed("That file is gone.") }
             if url.pathExtension.lowercased() == "app" { return await openApp(url) }

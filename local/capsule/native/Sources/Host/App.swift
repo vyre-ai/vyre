@@ -179,7 +179,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
 
     func plainMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "Open Capsule", action: #selector(openCapsule), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Open Lumen", action: #selector(openCapsule), keyEquivalent: "").target = self
         addWaitingItem(menu)
         menu.addItem(.separator())
         if !hotkeys.doubleControl {
@@ -221,6 +221,6 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     @objc func openCapsule() { panel.show(front: PanelController.frontApp()) }
     @objc func turnOnDoubleControl() { hotkeys.requestDoubleControl() }
 
-    /// The Lumen lens as a template image, so the menu bar tints it for light and dark.
+    /// Lumen lens as a template image, so the menu bar tints it for light and dark.
     static func menuBarMark() -> NSImage { LumenMark.menuBarImage() }
 }

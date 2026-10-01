@@ -114,7 +114,7 @@ final class KeychainKeyStore: PresenceKeyStore {
     func save(_ handle: Data) -> Bool {
         delete()
         let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: Self.service,
-                                kSecAttrAccount as String: account, kSecAttrLabel as String: "Vyre Capsule presence key",
+                                kSecAttrAccount as String: account, kSecAttrLabel as String: "Vyre Lumen presence key",
                                 kSecValueData as String: handle]
         return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
     }
@@ -213,7 +213,7 @@ public final class CapsulePresence {
     func proof(tool: String, input: [String: Any], summary: String? = nil) async -> Result<String, VyredFailure> {
         guard dialogsAllowed() else { return .failure(VyredFailure("Proving you are here is off under tests.")) }
         if enrolled == nil, let why = await enroll() { return .failure(VyredFailure(why)) }
-        guard let key = enrolled else { return .failure(VyredFailure("The Capsule's key is not enrolled.")) }
+        guard let key = enrolled else { return .failure(VyredFailure("Lumen's key is not enrolled.")) }
         let context = makeContext()
         context.localizedCancelTitle = "Not now"
         // The reviewer's nit on a4e3e171: one Touch ID must never be usable for a third signature.
@@ -237,7 +237,7 @@ public final class CapsulePresence {
         store.delete()
         if let why = await enroll() { return .failure(VyredFailure(why)) }
         guard let key2 = enrolled, let priv2 = loadPrivate(context: context), let header2 = Self.header(tool: tool, input: input, key: priv2, keyId: key2.id, ts: now()) else {
-            return .failure(VyredFailure("The Capsule's key could not be made on this Mac. Remove it in Settings and enroll again."))
+            return .failure(VyredFailure("Lumen's key could not be made on this Mac. Remove it in Settings and enroll again."))
         }
         // Best-effort cleanup, never blocking this call's result: drop the dead row so
         // presence_keys does not pile up one entry per broken key (the reviewer's LOW, 28 Sep).
@@ -305,15 +305,15 @@ public final class CapsulePresence {
     /// installer's one-time code (Host/CoreEnroll.swift), or vyred with Touch ID.
     func enroll(client: VyredClient, header: String) async -> String? {
         guard let made = Self.makeDeviceKey(secureEnclave: hasSecureEnclave()) else {
-            return "The Capsule could not make a key on this Mac."
+            return "Lumen could not make a key on this Mac."
         }
-        guard store.save(made.handle) else { return "The Capsule could not keep its key in your keychain." }
+        guard store.save(made.handle) else { return "Lumen could not keep its key in your keychain." }
         let pub = PresenceCanonical.b64url(made.der)
-        let r = await client.call("presence.enroll", ["kind": "capsule", "name": "Capsule on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
+        let r = await client.call("presence.enroll", ["kind": "capsule", "name": "Lumen on \(Host.current().localizedName ?? "this Mac")", "public_key": pub, "alg": -7],
                                  timeout: 120, headers: ["x-vyre-presence": header])
         guard let d = r.data as? [String: Any], let id = VJ.nonEmpty(d["id"]) else {
             store.delete()
-            return Bridge.explain(r).map { "The Capsule's key was not enrolled: \($0)" } ?? "The Capsule's key was not enrolled."
+            return Bridge.explain(r).map { "Lumen's key was not enrolled: \($0)" } ?? "Lumen's key was not enrolled."
         }
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data = try? JSONEncoder().encode(Enrolled(id: id, publicKey: pub)) { try? data.write(to: file, options: .atomic) }
