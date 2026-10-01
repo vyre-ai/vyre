@@ -284,6 +284,23 @@ for (const hibernateEveryEvent of [false, true]) {
     assert.equal(live(rt, b.route), 1);
   });
 
+  test(`the box's 4401 'device removed' reaches the device as it is said, and nothing else the box writes does${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent });
+    const b = await box(rt);
+    const ready = await b.s.json();
+    for (const [code, reason, want] of [[CLOSE.refused, "device removed", { code: CLOSE.refused, reason: "device removed" }],
+      [CLOSE.refused, "not a paired device", { code: CLOSE.boxGone, reason: "box closed the connection" }]]) {
+      const dev = sock(rt, `/v1/device?route=${b.route}`);
+      await dev.open();
+      const { c } = await b.s.json();
+      const data = sock(rt, `/v1/box?route=${b.route}&c=${c}&t=${ready.ticket}`);
+      await data.open();
+      await rt.settle();
+      data.ws.close(code, reason);
+      assert.deepEqual(await dev.closed(), want);
+    }
+  });
+
   test(`a box that reconnects is told which connections are still waiting${mode}`, async t => {
     const rt = world(t, { hibernateEveryEvent });
     const b = await box(rt);

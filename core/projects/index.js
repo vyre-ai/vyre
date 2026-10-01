@@ -184,7 +184,7 @@ export default {
     // Rename and archive are the person's, and their agent's on their behalf: a session in that project.
     const ownOrSession = async (meta, slug) => {
       // The person's assistant acts for them across every project (vyred's verified identity, meta.agentKind).
-      // TODO(P17): also require the person's own words asked for it (gate.said.match) once the Gate lands.
+      // TODO(P17): also require the person's own words asked for it (vault.said.match) once the Gate lands.
       if (meta.agentKind === "assistant") return;
       if (OWNER.includes(String(meta.caller || "").split(":")[0]) && !isAgent(meta.caller)) return;
       const t = meta.thread && await ctx.call("threads.get", { thread: meta.thread }).catch(() => null);

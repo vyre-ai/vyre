@@ -65,6 +65,10 @@
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
+  "chrome.point": {
+   "module": "chrome",
+   "reason": "an agent needs the computer-use grant (requireGrant) and a posted plan (oversight guard); the URL floor refuses blind pages and password and OTP frames; an agent's call carries asked false, so an outward act holds at the Gate"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"

@@ -11,6 +11,7 @@ import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
 import { MASK } from "./index.js";
+import { settingTo, settingIntents } from "../../lib/said/setting.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
 async function world(t, { disable = [] } = {}) {
@@ -473,25 +474,37 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
   const agent = "mcp:agent:kit", meta = { thread: "t_asked" };
   const req = (/** @type {any} */ input, /** @type {any} */ m = meta) => d.registry.call("settings.request", input, agent, m);
 
-  // No gate to ask yet: refused, in words the agent can pass on.
+  // Nothing the person said yet: refused, in words the agent can pass on.
   let r = await req({ key: k.key, value: want });
   assert.equal(r.error?.code, "denied");
   assert.match(r.error.message, /changes only when the person asks for it/);
 
-  /** @type {any[]} */ const asked = [];
-  let answer = { matched: false };
-  d.registry.tools.set("gate.said.match", { module: "vault", description: "", input: { type: "object" }, callers: null, internal: false, hook: false, presence: false,
-    run: async (/** @type {any} */ i) => { asked.push(i); return answer; } });
+  // The real vault keeps what the person said; sessions record it from a `said` row.
+  const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "use this setting", ...i }, "module:sessions");
+  const to = (/** @type {any} */ v, level = "account") => settingTo({ key: k.key, value: v, level });
+  assert.ok(!(await say({ thread: "t_other", kind: "setting", to: [to(want)] })).error, "recorded for another thread");
   r = await req({ key: k.key, value: want });
-  assert.equal(r.error?.code, "denied", "the person's words didn't ask for it");
-  assert.deepEqual({ thread: asked[0].thread, kind: asked[0].kind, key: asked[0].key }, { thread: "t_asked", kind: "setting", key: k.key },
-    "the gate is asked about the calling thread, never a thread the agent names");
+  assert.equal(r.error?.code, "denied", "words in another thread don't count");
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [k.key] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask that names only the key covers no value");
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [to(!want)] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask for the opposite value doesn't count");
+  assert.ok(!(await say({ thread: "t_asked", kind: "setting", to: [settingTo({ key: "some.other.key", value: want, level: "account" })] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask that names a different key doesn't count");
+  assert.ok(!(await say({ thread: "t_asked", kind: "send", to: [to(want)] })).error);
+  r = await req({ key: k.key, value: want });
+  assert.equal(r.error?.code, "denied", "an ask of another kind doesn't count");
+  assert.equal((await c("settings.get", { key: k.key })).data.value, k.default, "none of those changed it");
 
-  answer = { matched: true, said: { id: "said_1", turn: 3 } };
+  const asked = await say({ thread: "t_asked", kind: "setting", to: [to(want)] });
+  assert.ok(!asked.error, JSON.stringify(asked.error));
   r = await req({ key: k.key, value: want });
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.equal(asked.at(-1).thread, "t_asked");
   assert.equal((await c("settings.get", { key: k.key })).data.value, want);
+  assert.equal((await req({ key: k.key, value: want })).error?.code, "denied", "one ask, one change: it was used up");
   assert.equal((await req({ key: k.key, value: want }, {})).error?.code, "denied", "outside a conversation: refused");
 
   // The direct path stays the person's.
@@ -499,7 +512,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 
   const log = (await c("settings.changes", { key: k.key })).data;
   assert.equal(log[0].by, agent);
-  assert.equal(log[0].said, "said_1");
+  assert.equal(log[0].said, asked.data.id, "the change carries the intent that covered it");
   assert.equal(log[0].undone, false);
 
   const u = await c("settings.undo", { change: log[0].id });
@@ -508,4 +521,30 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
   assert.equal((await c("settings.changes", { key: k.key })).data.find((/** @type {any} */ x) => x.id === log[0].id).undone, true);
   assert.equal((await c("settings.undo", { change: log[0].id })).error?.code, "bad_input", "once");
   assert.equal((await d.registry.call("settings.undo", { change: log[0].id }, agent, meta)).error?.code, "denied", "undo is the person's");
+});
+
+test("the recorder's string for a setting ask is the one settings.request asks for, value and level included (reviewer-2's alignment check)", { timeout: 30_000 }, async t => {
+  const { c, d } = await world(t);
+  const keys = (await c("settings.schema")).data.keys;
+  // A plain on/off setting that is set per project, worded the way a person would say it.
+  let found = null;
+  for (const x of keys) {
+    if (x.type !== "bool" || !x.levels.includes("project") || !x.label || x.secret || x.confirm || x.security === "loosens") continue;
+    const r = settingIntents(`Turn on ${String(x.label).toLowerCase()} in this project.`, keys, { project: "northwind" });
+    if (r.intents.length === 1 && r.intents[0].to[0].startsWith(`${x.key}=`)) { found = { x, intents: r.intents }; break; }
+  }
+  assert.ok(found, "a bool project setting the recorder can name");
+  const { x: m, intents } = found;
+  assert.ok(!(await c("agents.create", { name: "kit", projects: ["northwind"] })).error);
+  const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "a setting ask", ...i }, "module:sessions");
+  const agent = "mcp:agent:kit";
+  const req = (/** @type {any} */ input) => d.registry.call("settings.request", input, agent, { thread: "t_rec" });
+  assert.ok(!(await say({ thread: "t_rec", kind: intents[0].kind, to: intents[0].to })).error);
+  // The recorder's ask was for `true` at the project level. Wrong value, wrong level: refused, the intent untouched.
+  assert.equal((await req({ key: m.key, value: false, level: "project", project: "northwind" })).error?.code, "denied", "the opposite value");
+  assert.equal((await req({ key: m.key, value: true, level: "account" })).error?.code, "denied", "another level");
+  // The exact ask: allowed once.
+  const ok = await req({ key: m.key, value: true, level: "project", project: "northwind" });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+  assert.equal((await req({ key: m.key, value: true, level: "project", project: "northwind" })).error?.code, "denied", "used up");
 });

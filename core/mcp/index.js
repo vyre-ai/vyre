@@ -63,6 +63,11 @@ export default {
       // runs as module:mcp, which would lose them, so the hub puts them in the request itself.
       request: async input => data(await ctx.call("gate.request", input)),
       item: async id => data(await ctx.call("gate.get", { id })),
+      agentKind: async agent => {
+        const list = data(await ctx.call("agents.list", {}));
+        const a = (Array.isArray(list) ? list : []).find(x => x.name === agent);
+        return a ? String(a.kind || "") : null;
+      },
       agentProjects: async agent => {
         const list = data(await ctx.call("agents.list", {}));
         const a = (Array.isArray(list) ? list : []).find(x => x.name === agent);
@@ -103,7 +108,7 @@ export default {
     };
 
     ctx.tool("mcp.add", {
-      description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
+      description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } (none means you and the assistant only; a named agent needs a scope that names it, or a #tag on its thread) and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
       run: (input, meta) => { refuseProcess(input, meta); return hub.add(input); },

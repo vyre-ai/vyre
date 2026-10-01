@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow } from "../extension/shared/sk/site-knowledge.js";
+import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow, applyRung } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
 export function createSiteStore({ dataDir, now: clock = Date.now, env = process.env }) {
@@ -54,6 +54,13 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
     report(i) {
       const key = String(i && i.origin || "");
       if (!keyOk(key)) return { error: { code: "bad_request", message: "not an origin" } };
+      // Which rung of the page ladder worked on a page template: the store does the counting on its own clock (two visits, one count per window).
+      if (i && i.template !== undefined) {
+        const rec = read(key) || emptyRecord(key);
+        const next = applyRung(rec, { template: String(i.template), rung: Number(i.rung), lowerFailed: i.lowerFailed === true }, now());
+        if (next !== rec) write(next);
+        return { data: { rung: true, rev: next.rev } };
+      }
       if (!["controls", "api", "frames", "flows"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
       const rec = read(key);
       const list = rec && rec[i.part];

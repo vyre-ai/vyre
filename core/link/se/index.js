@@ -35,6 +35,7 @@ function run(file, args, ms, stdin) {
       const e = /** @type {any} */ (err);
       resolve({ code: err ? (typeof e.code === "number" ? e.code : null) : 0, out: String(stdout || "").trim() });
     });
+    child.stdin?.on("error", () => {}); // EPIPE when the helper exits before it reads: its exit code says what happened
     child.stdin?.end(stdin || "");
   });
 }

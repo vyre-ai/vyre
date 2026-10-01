@@ -921,3 +921,13 @@ test("steps: a sign-in link that is not Tailscale's is shown as a refusal with t
     assert.ok(!root.all().some(e => e.tag === "a" && /evil\\.example/.test(String(e.attrs.href))), "the link is never an anchor");
   } finally { flow.stop(); }
 });
+
+test("a browser with no X25519 stops at the start with a named message, not a server error", async t => {
+  const w = await world(t);
+  const flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, supported: async () => { throw new Error("NotSupportedError"); } });
+  await flow.begin();
+  assert.equal(flow.state.stage, "stopped");
+  assert.equal(flow.state.error.code, "browser");
+  assert.match(flow.state.error.message, /Chrome 133/);
+  flow.stop();
+});
