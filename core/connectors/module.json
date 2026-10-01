@@ -16,7 +16,7 @@
       "connectors.connect",
       "connectors.connect.finish",
       "connectors.connect.cancel",
-      "connectors.disconnect", "connectors.scope",
+      "connectors.disconnect", { "name": "connectors.scope", "reach": "person" },
       "connectors.calendar.today",
       "connectors.mention.search",
       "connectors.mention.resolve",
