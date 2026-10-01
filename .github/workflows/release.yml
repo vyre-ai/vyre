@@ -433,7 +433,10 @@ jobs:
         with:
           name: app-web
           path: apps/app/dist
-      - name: Seal and sign the hosted phone app (scripts/build-app-out.mjs)
+      - name: Seal and sign the hosted phone app (scripts/build-app-out.mjs), for a stable release only
+        # The hosted app's release manifest takes x.y.z only (relay/app/manifest.js SEMVER), and app.vyre.run serves stable releases: a prerelease
+        # (beta, rc) builds no app-out, so the first real prerelease (v0.2.0-rc.1, run 36914914382) failed here with "not a release manifest".
+        if: env.CHANNEL == 'stable'
         env:
           VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
         run: |
@@ -443,6 +446,7 @@ jobs:
             node scripts/build-app-out.mjs --dist apps/app/dist --release "$VERSION" --out app-out --throwaway
           fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: env.CHANNEL == 'stable'
         with:
           name: ${{ env.PUBLISH == 'true' && 'app-out' || 'app-out-dryrun' }}
           path: app-out
