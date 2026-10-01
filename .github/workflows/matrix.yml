@@ -355,8 +355,50 @@ jobs:
         if: always()
         with: { name: results-j1b, path: results, retention-days: 14 }
 
+  j5:
+    name: j5-${{ matrix.os }}
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j5')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: J5, the pairing steps an agent can walk (5.1, 5.6, 5.9)
+        run: node scripts/matrix/j5.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "results-j5-${{ matrix.os }}", path: results, retention-days: 14 }
+
+  cosign:
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'cosign')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate, with the unstripped wrapper the cosign cases need
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+      - name: J2c, the cosign refusals
+        run: bash scripts/matrix/j2c-cosign-refusals.sh site/box results/cosign-refusals
+      - name: Diagnostics
+        if: failure()
+        run: tail -30 results/cosign-refusals/install.log results/cosign-refusals/sign-*.log 2>/dev/null; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-cosign-refusals, path: results, retention-days: 14 }
+
   report:
-    needs: [j1b, linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
+    needs: [j5, cosign, j1b, linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
     if: always()
     runs-on: ubuntu-24.04
     steps:
