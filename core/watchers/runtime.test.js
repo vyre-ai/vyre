@@ -2,7 +2,10 @@
 // The runtime on its own: a real store and real child processes, with the clock, the vault,
 // projects and Memory stubbed, so every rule in the brief can be driven by hand.
 
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
+// Real watcher children and loopback servers: a runner or the test box, never the person's Mac.
+const offMac = process.platform === "darwin" && !process.env.CI ? "runs real children and listeners: on a runner, not on the person's Mac" : false;
+const test = (name, fn) => nodeTest(name, { skip: offMac }, fn);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { EventEmitter } from "node:events";
