@@ -123,7 +123,7 @@ test("spend: an agent, module or automation is held at a provider's cap before a
   const open_ = { call: async () => ({ data: { capped: false } }) };
   // A thread claim is held like an agent's (a session starting sessions or sending is autonomous work, and a label may not dodge the cap by its spelling or case).
   for (const who of ["mcp:agent:juno", "module:agents", "module:planner", "harness:agent:kit", "hook", "tailnet:agent:kit", "mcp:thread:t_42", "MCP:Thread:t_42", "harness:thread:t_42"]) {
-    await assert.rejects(() => spendCheck(capped, who, "claude"), e => e.code === "spend_capped" && /Raise it/.test(e.message), who);
+    await assert.rejects(() => spendCheck(capped, who, "claude"), e => e.code === "spend_capped" && /Raise it/.test(e.message) && /A model cannot raise it: tell the person/.test(e.message), who);
     await spendCheck(open_, who, "claude");
   }
   // The person's own surfaces, and a plain mcp or harness caller with no agent or thread claim, are never held.

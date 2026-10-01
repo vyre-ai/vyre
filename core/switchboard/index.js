@@ -2336,7 +2336,7 @@ export async function spendCheck(ctx, caller, provider) {
   try { r = await ctx.call("spend.check", { provider: String(provider || "claude") }); } catch (e) { why = /** @type {Error} */ (e).message; }
   const d = r && (r.data || r);
   if (r && r.error) why = String(r.error.message || r.error.code || "an error");
-  if (d && d.capped === true) throw Object.assign(new Error(String(d.line || "the daily spend cap for this provider is reached")), { code: "spend_capped" });
+  if (d && d.capped === true) throw Object.assign(new Error(`${String(d.line || "the daily spend cap for this provider is reached")} A model cannot raise it: tell the person, who can raise it in one tap or with spend.raise.`), { code: "spend_capped" });
   if (why || !d || typeof d.capped !== "boolean") {
     const day = new Date().toISOString().slice(0, 10);
     if (spendDown.day !== day) { spendDown.day = day; try { ctx.log?.(`spend: the ledger did not answer (${why || "no answer"}); agents and automation are not held at a cap until it does`); } catch { /* a log never fails a send */ } }
