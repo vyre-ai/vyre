@@ -387,7 +387,7 @@
   },
   "watchers.test": {
    "module": "watchers",
-   "reason": "guard: a dry run files nothing; an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
+   "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
   }
  }
 }
