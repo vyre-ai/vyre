@@ -78,16 +78,18 @@ R4="ghcr.io/vyre-ai/vyre@sha256:$(printf '0%.0s' $(seq 1 64))"
 mkrel() { # mkrel NAME REF
   d="$WORK/$1"; rm -rf "$d"; mkdir -p "$d"; cp -R "$BOX"/. "$d"/
   sed -i "s|\${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}|$2|" "$d/compose.yml"
+  # the installer wants every image pinned (it never pulls tailscale before cosign), so it gets a placeholder digest; an update pulls it, so it stays
+  [ "${3:-}" = unpinned ] || sed -i "s|\${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}|tailscale/tailscale@sha256:$(printf 'a%.0s' $(seq 1 64))|" "$d/compose.yml"
   printf '{"version":"%s","channel":"stable","box":{"ref":"%s"}}\n' "$V0" "$2" >"$d/release.json"
   files=$(awk '{print $2}' "$BOX/SHA256SUMS"; echo release.json)
   (cd "$d" && for f in $(printf '%s\n' $files | sort -u); do sha256sum "$f"; done >SHA256SUMS)
 }
 refused() { # refused STEP REF WANT_REGEX: a clean host stays clean
-  PORT=$((PORT + 1)); mkrel "rel-$1" "$2"; serve "$WORK/rel-$1" $PORT
+  PORT=$((PORT + 1)); mkrel "rel-$1" "$2" ${4:-}; serve "$WORK/rel-$1" $PORT
   out=$(VYRE_BOX_URL="http://127.0.0.1:$PORT/" VYRE_COSIGN_IMAGE=vyre-cosign-test:1 sh "$BOX/install-box.sh" --yes </dev/null 2>&1); rc=$?
   pulled=no; docker image inspect "$2" >/dev/null 2>&1 && pulled=yes
   left=no; [ -e "$DIR/compose.yml" ] || [ -n "$(docker ps -aq --filter label=com.docker.compose.project=vyre 2>/dev/null)" ] && left=yes
-  if [ $rc -ne 0 ] && [ $pulled = no ] && [ $left = no ] && printf '%s' "$out" | grep -qi 'cosign could not verify.*Nothing was installed' && printf '%s' "$out" | grep -qiE "$3"; then
+  if [ $rc -ne 0 ] && [ $pulled = no ] && [ $left = no ] && printf '%s' "$out" | grep -qiE "${5:-cosign could not verify.*Nothing was installed}" && printf '%s' "$out" | grep -qiE "$3"; then
     rec "$1" ok "$(printf %s "$out" | tail -2)"
   else rec "$1" false "rc $rc, pulled $pulled, left behind $left: $(printf %s "$out" | tail -4)"; fi
 }
@@ -96,6 +98,7 @@ refused 8-wrong-identity "$R2" 'expected identit|identity|certificate-identity'
 refused 9-key-signature "$R3" 'no matching signatures|certificate|expected identit'
 refused 10-digest-not-held "$R4" 'MANIFEST_UNKNOWN|not found|no such|unknown|no signatures'
 
+refused 12-moving-tag "$R1" 'not pinned by digest' unpinned 'Nothing was installed'
 # ---- part B: `vyre update` on an installed, filled box. It does not run cosign: its trust is the signed SHA256SUMS (which lists
 # release.json and compose.yml, the digests) and a digest-pinned pull. So what it can refuse is a digest the registry does not hold.
 # the baseline: a real install with data
@@ -118,7 +121,7 @@ sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemc
 node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
 GOODPUB=$(cat "$WORK/good.pub")
 mkupd() { # mkupd NAME REF: a newer release, signed by the throwaway key, naming REF for the box image
-  mkrel "$1" "$2"; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"
+  mkrel "$1" "$2" unpinned; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"
   sed -i 's/"version":"[^"]*"/"version":"9.9.9-e2e.1"/' "$d/release.json"
   fl=$(awk '{print $2}' "$d/SHA256SUMS" | sort -u)
   (cd "$d" && for f in $fl; do sha256sum "$f"; done >SHA256SUMS)
