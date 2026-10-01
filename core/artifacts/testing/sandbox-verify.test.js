@@ -7,7 +7,7 @@ import { startServer, hostilePage, SECRET_COOKIE } from "./sandbox-server.mjs";
 const ok = name => ({ name, ok: true, detail: "blocked: SecurityError" });
 const CONTROL = { cookie: "vyre_session=S3CRET-COOKIE; vyre_lax=S3CRET-LAX", storage: "S3CRET-STORAGE", fetch: "S3CRET-API" };
 const HELD = { framed: [{ origin: "null", mode: "framed", results: [ok("read document.cookie"), ok("fetch the Vyre API with cookies")] }], outer: [ok("outer reads the frame's document")], control: CONTROL, ua: "Safari" };
-const SERVER_OK = { hits: { ctlfetch: 1, ctlimg: 1, ctlbeacon: 1, navmeta: 1, navloc: 1, navext: 1 }, cookies: { navmeta: [""], navloc: ["vyre_lax"], navext: [""] }, urls: { navmeta: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navloc: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navext: [{ len: 8040, data: 8000, host: "localhost:8123" }] }, api: [{ via: "ctlfetch", cookie: true }] };
+const SERVER_OK = { hits: { ctlfetch: 1, ctlimg: 1, ctlbeacon: 1, navmeta: 1, navloc: 1, navext: 1, navanchor: 1, navdownload: 1 }, cookies: { navmeta: [""], navloc: ["vyre_lax"], navext: [""] }, urls: { navmeta: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navloc: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navext: [{ len: 8040, data: 8000, host: "localhost:8123" }] }, api: [{ via: "ctlfetch", cookie: true }] };
 
 test("verify: a held sandbox passes, and every kind of leak is named", () => {
   const held = verify(HELD, { results: [ok("read document.cookie")] }, SERVER_OK);
@@ -39,7 +39,7 @@ test("the hostile page is served with the real artifact headers, and the server 
   for (const part of ["sandbox allow-scripts", "default-src 'none'", "connect-src 'none'", "form-action 'none'", "frame-ancestors 'self'"]) assert.ok(csp.includes(part), part);
   assert.ok(!/allow-same-origin/.test(csp), "never allow-same-origin");
   assert.match(h.body, /document\.cookie/);
-  for (const attack of ["target = \"_blank\"", "a.download", "f.method = \"post\"", "WebSocket", "sendBeacon"]) assert.ok(h.body.includes(attack), attack);
+  for (const attack of ["target = \"_blank\"", "f.method = \"post\"", "WebSocket", "sendBeacon"]) assert.ok(h.body.includes(attack), attack);
   const srv = await startServer();
   t.after(() => srv.close());
   const deck = await fetch(srv.url + "/");
@@ -52,10 +52,10 @@ test("the hostile page is served with the real artifact headers, and the server 
   assert.match(deckHtml, /sandbox="allow-scripts allow-same-origin" src="\/a\/control"/, "the negative control frame");
   const ctl = await fetch(srv.url + "/a/control");
   assert.equal(ctl.headers.get("content-security-policy"), null, "the control has no CSP");
-  for (const variant of ["navmeta", "navloc", "navext"]) {
+  for (const variant of ["navmeta", "navloc", "navext", "navanchor", "navdownload"]) {
     const nav = await fetch(srv.url + "/a/hostile?mode=" + variant);
     assert.match(nav.headers.get("content-security-policy"), /sandbox allow-scripts/);
-    assert.match(await nav.text(), variant === "navmeta" ? /http-equiv="refresh"/ : /location\.href/);
+    assert.match(await nav.text(), variant === "navmeta" ? /http-equiv="refresh"/ : /location\.href|\.click\(\)/);
     assert.ok((await (await fetch(srv.url + "/a/hostile?mode=" + variant)).text()).includes("x".repeat(8000)), "each carries 8 KB in its address");
   }
   const art = await fetch(srv.url + "/a/hostile?mode=framed");

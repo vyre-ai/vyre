@@ -37,7 +37,7 @@ export function verify(report, top, server) {
   // script) and no header forbids it (the CSP navigate-to directive is gone). Whatever the page holds can leave in the
   // address. This prints exactly what arrives: how many requests, how long the address was, the destination host, and
   // which cookies went with it. The run fails only if the Strict session cookie goes along.
-  const SELF_NAV = new Set(["navmeta", "navloc", "navext"]);
+  const SELF_NAV = new Set(["navmeta", "navloc", "navext", "navanchor", "navdownload"]);
   const cookiesOf = (/** @type {string} */ k) => (server.cookies && server.cookies[k]) || [];
   const urlsOf = (/** @type {string} */ k) => (server.urls && server.urls[k]) || [];
   for (const k of SELF_NAV) {

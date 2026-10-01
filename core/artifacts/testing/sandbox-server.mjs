@@ -60,7 +60,6 @@ const HOSTILE = String.raw`
   await tag("stylesheet", () => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = sink("/v1/beacon") + "css"; return l; });
   await tag("iframe src", () => { const f = document.createElement("iframe"); f.src = sink("/v1/beacon") + "iframe"; return f; });
   await attack("popup by an anchor with target=_blank", () => new Promise(res => { const a = document.createElement("a"); a.href = sink("/v1/beacon") + "blank"; a.target = "_blank"; document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
-  await attack("download by an anchor with the download attribute", () => new Promise(res => { const a = document.createElement("a"); a.href = sink("/v1/beacon") + "download"; a.download = "x.json"; document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
   await attack("popup by form target=_blank", () => new Promise(res => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "formblank"; f.method = "post"; f.target = "_blank"; document.body.appendChild(f); try { f.submit(); } catch {} setTimeout(() => res("tried"), 800); }));
   await tag("form submit", () => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "form"; f.method = "post"; setTimeout(() => { try { f.submit(); } catch {} }, 50); return f; });
   await tag("object data", () => { const o = document.createElement("object"); o.data = sink("/v1/beacon") + "object"; return o; });
@@ -78,7 +77,9 @@ const HOSTILE = String.raw`
 
 /** The hostile artifact as Vyre serves it: the author's HTML, under pageHeaders(). */
 export function hostilePage(variant = "main") {
-  // main: the full attack. navmeta and navloc: a page that navigates ITSELF away (a meta refresh, a script):
+  // main: the full attack. navmeta, navloc, navext, navanchor and navdownload: a page that navigates ITSELF away (a meta refresh,
+  // a script, a script clicking a link, a script clicking a link with the download attribute: a sandbox without
+  // allow-downloads still lets the click navigate the frame, as the first run in Chrome and Safari showed):
   // the sandbox allows a frame to navigate itself and no header forbids it (the Deck blanks a frame that
   // loads twice), so the server is reached; what must hold is that no cookie goes with it and the
   // response is unreadable.
@@ -86,6 +87,8 @@ export function hostilePage(variant = "main") {
   const D = "x".repeat(8000);
   const body = variant === "navmeta" ? `<meta http-equiv="refresh" content="0;url=/v1/beacon?via=navmeta&d=${D}"><p>moving</p>`
     : variant === "navloc" ? `<p>moving</p><script>location.href = '/v1/beacon?via=navloc&d=${D}';</script>`
+    : variant === "navanchor" ? `<a id="a" href="/v1/beacon?via=navanchor&d=${D}">go</a><script>document.getElementById("a").click();</script>`
+    : variant === "navdownload" ? `<a id="a" href="/v1/beacon?via=navdownload&d=${D}" download="x.json">go</a><script>document.getElementById("a").click();</script>`
     : variant === "navext" ? `<p>moving</p><script>location.href = 'http://localhost:' + location.port + '/v1/beacon?via=navext&d=${D}';</script>`
     : `<h1>Hostile artifact</h1><script>${HOSTILE}</script>`;
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hostile</title></head><body>${body}</body></html>`;
@@ -142,7 +145,7 @@ function deckPage() {
     if (e.source !== f.contentWindow || !e.data || !e.data.vyreProof) return;
     framed.push({ origin: e.origin, ...e.data.vyreProof });
     // The pages that navigate themselves away run after the main attack, each in its own sandboxed frame.
-    for (const v of ["navmeta", "navloc", "navext"]) { const n = document.createElement("iframe"); n.sandbox = "allow-scripts"; n.src = "/a/hostile?mode=" + v; document.body.appendChild(n); }
+    for (const v of ["navmeta", "navloc", "navext", "navanchor", "navdownload"]) { const n = document.createElement("iframe"); n.sandbox = "allow-scripts"; n.src = "/a/hostile?mode=" + v; document.body.appendChild(n); }
     setTimeout(() => finish("message"), 2500);
   });
   setTimeout(() => finish("timeout"), 25000);
@@ -166,7 +169,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
     if (u.pathname === "/a/control") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return void res.end(controlPage()); }
     if (u.pathname === "/a/hostile") {
       const mode = u.searchParams.get("mode");
-      const h = hostilePage(mode === "navmeta" || mode === "navloc" || mode === "navext" ? mode : "main");
+      const h = hostilePage(["navmeta", "navloc", "navext", "navanchor", "navdownload"].includes(String(mode)) ? mode : "main");
       res.writeHead(200, h.headers);
       return void res.end(h.body);
     }
