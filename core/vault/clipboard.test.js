@@ -68,9 +68,13 @@ test("helper path: closing the helper's stdin clears what it copied (a crash sti
   const clip = new Clipboard({ helper: new Helper({ name: "clip", dir, command: f.helpers.clip }), platform: "darwin", timers: timers() });
   await clip.copy(canary());
   clip.stopChild();
-  const st = () => JSON.parse(fs.readFileSync(f.state.clip, "utf8"));
-  await until(() => st().eofCleared === true);
-  assert.equal(st().hash, null);
+  // The fake helper rewrites its state file; a read can land on an empty or half-written file (seen on a hosted runner), so a read that does
+  // not parse is retried, never counted as the answer.
+  const st = () => { try { return JSON.parse(fs.readFileSync(f.state.clip, "utf8")); } catch { return null; } };
+  await until(() => { const s = st(); return Boolean(s) && s.eofCleared === true; });
+  let last = null;
+  await until(() => { last = st(); return last !== null; });
+  assert.equal(/** @type {any} */ (last).hash, null);
 });
 
 test("pbcopy fallback: stdin in, hash kept, compare with pbpaste before clearing", async t => {
