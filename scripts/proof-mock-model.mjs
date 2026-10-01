@@ -31,7 +31,7 @@ export function mockModel(script) {
       const hasToolResult = api === "responses"
         ? (Array.isArray(j.input) && j.input.some(x => x && /function_call_output|custom_tool_call_output|local_shell_call_output/.test(String(x.type))))
         : (Array.isArray(j.messages) && j.messages.some(m => m && m.role === "tool"));
-      seen.push({ method: req.method, url: path, api, model: j.model, stream: j.stream, toolNames: toolNames.slice(0, 12), hasToolResult, auth: Boolean(req.headers.authorization) });
+      seen.push({ method: req.method, url: path, api, model: j.model, stream: j.stream, keys: Object.keys(j).slice(0, 14), toolNames: toolNames.slice(0, 14), toolTypes: [...new Set(tools.map(t => t.type))], toolChoice: j.tool_choice, hasToolResult, auth: Boolean(req.headers.authorization) });
       if (req.method !== "POST" || !api) { res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { message: `mock: no ${req.method} ${req.url}` } })); return; }
       const step = script({ api, body: j, hasToolResult, toolNames, tools }) || { text: "OK" };
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
