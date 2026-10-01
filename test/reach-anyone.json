@@ -411,7 +411,7 @@
   },
   "threads.answer": {
    "module": "threads",
-   "reason": "callers list in code (cli, local, deck, capsule) plus the link: callers a paired Mac federates through (the box's answer to a Mac's ask) and modules answering the box's own asks; PERSON_ONLY at the socket peer check, so a model's shell never answers; a model never approves a permission in the tool"
+   "reason": "callers list in code (cli, local, deck, capsule) plus the link: callers a paired Mac federates through (the box's answer to a Mac's ask) and modules answering the box's own asks; PERSON_ONLY at the socket peer check, so a model's shell never answers; a model never approves a permission in the tool; any installed module may answer an ask (module is on the callers list): a module is the person's own installed code, and a call traced to the session that raised the ask is refused"
   },
   "threads.archive": {
    "module": "threads",
