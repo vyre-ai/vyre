@@ -73,6 +73,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - platform modules declare an explicit reach: link, projects, presence, sync, mentions, releases and events (74 tools). Tools whose code already restricts `callers` keep `anyone` (the list governs), internal and module-only tools are `modules`, person-surface-only tools are `person`; the mutating presence and link tools stay `anyone` because they are HUMAN_ONLY (a presence proof) or PERSON_ONLY by name. `presence.test.js` reads tool names from object entries, and `sync-send.test.js` expects `no_such_tool` for a surface calling a `modules` tool.
 
 - test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
+- A verified Vyre thread session (a chat session: `meta.thread`, no peer keys, no stored grant) sees
+  only its own thread's project's watchers, through `threads.get`, as sessions' `sessionMay` does;
+  none if the thread has no project or the lookup fails. Tested through the real module and registry.
+
+- A plain model session (the person's own Claude Code through MCP, no verified thread or agent) now
+  sees only its folder's project's watchers, like sessions narrows its thread reads: vyred sets
+  `meta.peerSession` and `meta.peerCwd` for it (sessions' work), and the watchers tools resolve the
+  folder with `projects.of`; where the OS will not say who or where, or the folder is in no project, it
+  sees none. A person, a module and a hook still see all. Covered through the real module and
+  registry in `core/watchers/reach.test.js`.
+
+- A test through the real watchers module and the real registry (`core/watchers/reach.test.js`): an
+  agent with a grant to one project lists, reads cards, logs and items of, and pauses only that
+  project's watchers (`not_found` for another's); an agent with no grant sees none; a person and an
+  agent granted everything see all. `core/watchers/scope.js` records the open question for plain
+  model sessions (they see every project's watchers today).
+
+- watchers.list, card, logs, test, pause and items now show an agent only the projects it is granted
+  (reviewer-2): each declares `projectArg`, and the tool filters by the registry's `meta.reach` (a
+  person, a module and a hook see all; an agent with no known grant sees none). `watchers.pause`
+  records who paused ("paused by <agent>"), so a person sees it was an agent. `core/watchers/shown.js`
+  notes that "shown to the thread" means "shown to the person" only because every surface draws the card.
+
 - The person's own words can now let the assistant act on watchers (reach asked had no recorder, so
   it could never pass). The assistant's `lib/said/watchers.js` records `watchers.create:<project>/
   <name>@<hash>` for "turn on the mail watcher" and `watchers.preset:<project>/<kind>` for "watch my
@@ -209,6 +232,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - settings.loosened: when an agent changes a guard because the person asked (settings.request, a loosening key or a change that needed a confirm, a reset of a loosening key included), settings emits `settings.loosened { change, key, label, level, project|device|session?, by, said }` with no value. core/push turns it into a loud `notice` push (not in the daily budget, rings through quiet hours, on by default) with the fixed sentence "<label> changed, as you asked. Undo" and the path /settings?change=<id>; the change's Undo (settings.undo) needs no proof.
 #### test: the chat contract knows thread.plan
+- team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
 
 - `test/chat-sessions-contract.test.js` listed events the Deck listens for that nothing emits by name; `thread.plan` (the plan checklist) is built by `core/switchboard/translate.js` as an event object, which that scan does not see, so it joins AHEAD_EVENTS with the reason. Found by a run of the contract tests on the test box.
 
@@ -310,6 +334,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - Settings, Connections, Add a GitHub account: under "Sign in with GitHub", "Paste a token instead" opens a password field (autocomplete and spellcheck off) and "Connect with this token", which calls `github.connect {name, token}`. The token is cleared from the field once sent and never drawn. On success the form closes and a toast says the login and, when GitHub said, "reaches N repos"; on failure GitHub's own message is shown as it came. A one-line hint says a fine-grained token can reach fewer repos than signing in.
 - The project Team tab turns a duty on or off through teammates' `team.duties.enable` and `team.duties.disable` (a click on a person's surface is the asking), not `team.duties.update`.
+
+- test: a tool must declare an explicit `reach`. test/reach-explicit.test.js reads every module.json and fails on a tool with no `reach` that is not in test/reach-allowlist.json (799 tools today: 457 open to any caller by default, 342 limited only by `callers` in code), and on an allowlist line that is stale, so each owner shrinks the list by writing `{ "name", "reach" }`. The registry default is unchanged.
 
 - eval (iq): the real-use memory test, on Vyre's own sessions only (the user approved it, 1 Oct 2026). `scripts/real-use-extract.mjs` reads Claude Code transcripts whose cwd is under a folder and writes a scrubbed corpus: it keeps only the person's typed turns, teammate messages and assistant text (meta messages such as CLAUDE.md and the memory index, system reminders, tool results and thinking are dropped first), redacts with recall's rules and the vault's shapes plus emails, addresses, home paths, the owner's handle and session temp paths, drops a session that names a client or a private matter more than twice and replaces a passing mention with [client]. `scripts/eval-realuse.mjs` generates about 50 specific-fact questions from that corpus (each expected string must appear verbatim in its session, in at most two sessions, and not in the question), then runs four arms on one model, none, a simulated Claude auto memory, Vyre's memory.ask and the full context, scored by the expected strings, under a hard spend cap (REALUSE_CAP_USD, default $5) and the key's own usage before and after. eval-bar gains a `real` world read from a file. The corpus is data a caller holds and is never part of the repository. Tests: `scripts/real-use-extract.test.js`, `scripts/lib/realuse.test.js`. The `memory-realuse` workflow (environment `eval`, runs on the test box's own runner) reads the corpus from the fixed folder on the test box, so it never leaves the test box; it uploads only a results table and a list of session ids, dates and sizes, and wipes the corpus, questions, replies and ledger when a run ends (`step: gen` keeps them so the questions can be read on the test box first).
 - grok: the meter spike's "Internal error" on OpenRouter was a retired model id. `x-ai/grok-code-fast-1` is no longer on OpenRouter (its list now has grok-4.x and `x-ai/grok-build-0.1`), OpenRouter answers a retired id with a 400, and Grok Build shows that as "Internal error" on every turn while session/new still succeeds: reproduced against the real Grok CLI with an endpoint that rejects the model (the retired-model case fails every turn, the title request's own unknown model, `grok-4.6`, does not). The proofs use `x-ai/grok-build-0.1`, and `scripts/lib/eval-openrouter.js` `modelListed()` asks OpenRouter's public model list first, so a retired slug stops the run with its name instead of "Internal error" and spends nothing.

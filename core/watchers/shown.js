@@ -3,7 +3,11 @@
 // The person's "turn it on" is recorded against that hash (lib/said/watchers.js), so what they agreed to
 // is the code they saw. It is written when watchers.card or watchers.preset serves a card to a thread and
 // never recomputed from the folder when read: an agent that shows card A, edits the folder, and waits for
-// "turn it on" must not get its new hash recorded (reviewer-2). In memory only: after a restart no card
+// "turn it on" must not get its new hash recorded (reviewer-2).
+//
+// Coupling to know about: "shown to this thread" is taken to mean "shown to the person" only because the
+// Deck (and the other surfaces) draw the card of every watchers.card or watchers.preset result in a thread.
+// A surface that did not draw it would make this log say more than the person saw. In memory only: after a restart no card
 // counts as shown, which can only mean a yes is refused, never that one is spent on code unseen.
 
 const MAX_THREADS = 200, MAX_PER_THREAD = 50;
