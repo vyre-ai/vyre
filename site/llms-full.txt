@@ -36,16 +36,16 @@ Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, Op
 Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Direction (not a promise of dates)
-- 0.2.1 Hardening: Touch ID for sensitive terminal actions, fixes, real-device passes, giving one task to two models.
-- 0.2.2 Sessions: version history for every project without git, one writer per file, memory carried across resets and model switches, group chats where people and agents are equal participants, Wink identity cards, one screen kit.
-- 0.2.3 Scale: many sessions on one server with a fair-share scheduler, your own computer lending spare compute to run only your own work, Chrome for many agents.
+- 0.2.1 Hardening: Touch ID for sensitive terminal actions, fixes, real-device passes.
+- 0.2.2 Sessions: version history for every project without git, one writer per file, memory that Vyre owns and carries across resets and model switches, giving one task to two models, group chats where people and agents are equal participants, Wink identity cards, one screen kit.
+- 0.2.3 Scale: many sessions on one server with a fair-share scheduler, your own computer lending spare compute to run only your own work, Chrome for many agents, idle sessions that sleep when memory runs low.
 - 0.2.5 Spaces: your space holds all your devices and compute, shared spaces for teams with quotas by grant, add any server or cloud machine.
-- Modules in parallel: automation, texts and email, a CRM with Vyre's own screens, documents from templates, e-signature, all sharing one contact and one event stream.
+- Modules in parallel: automation, texts and email, a CRM with Vyre's own screens, documents from templates, e-signature, and project management where a task's owner can be a person or an agent, all sharing one contact and one event stream. Underneath is one kind of project holding people, chats, files, memory, stages and tasks, so any team can design its own workflow.
 
 ## Known gaps in 0.2.0
 - Interactive artifacts in Safari on Mac and iPhone can be sent your sign-in cookie by a page that navigates itself; the fix is planned for 0.2.1.
-- Touch ID prompts for terminal commands, "give it to two", per-model blocks, Chrome API-first routing and parallel tabs are planned for 0.2.1.
-- Spaces for teams, memory rollover and sleeping idle sessions are planned for 0.2.5.
+- Touch ID prompts for terminal commands, Chrome API-first routing and a signature-checked first Windows install are planned for 0.2.1.
+- "Give it to two", per-model blocks and Vyre-owned memory across resets are planned for 0.2.2; sleeping idle sessions for 0.2.3; spaces for teams for 0.2.5.
 - The Mac app is built on your Mac, not downloaded. The Windows app is not code-signed yet.
 - Face ID pairing and the removed-phone wipe still need a pass on real phones.
 See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.
