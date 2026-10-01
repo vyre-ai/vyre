@@ -198,7 +198,10 @@ test("redteam G-D2: a model cannot claim the person's own confirmation, and a wr
   assert.equal(gmail.got.length, 0, "nothing reached the sender");
   // Positive control: the same request with a fresh, matching claim from the capsule's own surface does send, so a world where
   // everything errors cannot look green.
-  const ok = await reg("gate.request", { ...req, asked: fresh() }, "capsule");
+  // It has its own subject and body, so it cannot collide with any held request above.
+  const control = MAIL({ content: { subject: "Intake form (positive control)", body: "Hi Dana. This one is confirmed by the person. Alex" } });
+  const controlHash = inputHash({ kind: control.kind, via: control.via, to: [control.to], content: control.content });
+  const ok = await reg("gate.request", { ...control, asked: { surface: "capsule", hash: controlHash, at: Date.now() } }, "capsule");
   assert.equal(ok.data && ok.data.state, "sent", JSON.stringify(ok));
   assert.equal(gmail.got.length, 1);
 });
