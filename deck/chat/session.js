@@ -781,6 +781,7 @@ export function mountSession(container, opts) {
       case "tool": return (it.name === "team_ask" || it.name === "team.ask") ? handoffCard({ ...asBlock(it), project: record.current?.project || opts.project || null }) : toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
+      case "plan": return planEl(it);
       case "ask": return askEl(it);
       case "steer": return steerEl(it);
       case "shell": return shellEl(it);
@@ -799,6 +800,16 @@ export function mountSession(container, opts) {
     const nel = makeEl(it);
     nel._sig = s;
     return nel;
+  }
+
+  /** The agent's own checklist, as it stands: "Plan · 2 of 5 done", each step marked done, running or waiting. */
+  function planEl(it) {
+    const done = it.items.filter(x => x.status === "done").length;
+    return h("div", { class: "cv-row cv-plan", role: "group", "aria-label": `Plan, ${done} of ${it.items.length} done` },
+      h("div", { class: "cv-plan-head" }, h("span", { class: "lbl" }, "Plan"), h("span", { class: "cv-plan-n" }, `${done} of ${it.items.length} done`)),
+      h("ol", { class: "cv-plan-list" }, it.items.map(x => h("li", { class: "cv-plan-step", "data-status": x.status, "aria-label": `${x.text}, ${x.status === "done" ? "done" : x.status === "running" ? "in progress" : "not started"}` },
+        h("span", { class: "cv-plan-mark", "aria-hidden": "true" }, x.status === "done" ? icon("check", 12) : null),
+        h("span", { class: "cv-plan-text" }, x.text)))));
   }
 
   /** Where typed words joined a running turn: "Steered at step 2 · 14:32", or "Steering" until it reads them. */
@@ -891,7 +902,7 @@ export function mountSession(container, opts) {
   }
   const dayRule = d => h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" }));
   const sideOfItem = it => it.kind === "user" ? "user" : it.kind === "turn" ? "turn"
-    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" ? null : "assistant";
+    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" || it.kind === "plan" ? null : "assistant";
 
   /** A fold row for a run of tool calls. */
   function runEl(r) {

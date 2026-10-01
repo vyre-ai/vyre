@@ -906,3 +906,15 @@ test("thread.artifact draws one card row per version, and never folds into a run
   assert.equal(rows.length, 2);
   assert.deepEqual(rows[0].render, { kind: "artifact", id: "a1", thread: T, version: 1, type: "report", title: "Q3 report", agent: null, at: 5 });
 });
+
+test("thread.plan is one row kept where it first appeared and updated in place; an empty or malformed list takes nothing away", () => {
+  const s = createSession(T);
+  applyEvent(s, { type: "thread.plan", at: 1, payload: { items: [{ text: "read menu", status: "running" }, { text: "write it", status: "pending" }] } });
+  applyEvent(s, { type: "thread.tool", at: 2, payload: { call: "c1", name: "Read", phase: "started" } });
+  const out = applyEvent(s, { type: "thread.plan", at: 3, payload: { items: [{ text: "read menu", status: "done" }, { text: "write it", status: "running" }, { text: "", status: "done" }, { text: "send", status: "weird" }] } });
+  assert.deepEqual(keys(s), ["plan", "t:c1"]);
+  assert.ok([...out].includes("plan"));
+  assert.deepEqual(/** @type {any} */ (s.items[0]).items, [{ text: "read menu", status: "done" }, { text: "write it", status: "running" }, { text: "send", status: "pending" }]);
+  applyEvent(s, { type: "thread.plan", at: 4, payload: { items: [] } });
+  assert.equal(/** @type {any} */ (s.items[0]).items.length, 3);
+});

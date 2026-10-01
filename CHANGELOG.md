@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: the agent's plan shows as a checklist
+
+- `thread.plan` (Claude's todo list, or a provider's own plan) was dropped by the Deck. The shared session core (`deck/chat/core/session-state.js`) now keeps it as one "plan" row where it first appeared and updates it in place; the chat draws it as "Plan, 2 of 5 done" with each step done, in progress or not started. An empty or malformed list never clears a plan already shown. A cold open gets it from the stored events the same way.
+
 #### gate: held and settled sends say more
 
 - A held send that failed now says whether it may have gone out anyway ("Check the app before you send again"), did not go out, or just stayed held, from the sender's own `reached` read. A sent item says where it went, and "You said to, so it went without asking" when your own words covered it; one you changed says so; a discarded one says nothing was sent. Words live in `deck/chat/gate-lines.js`, used by the held card (`gate-item.js`) and the draft card.

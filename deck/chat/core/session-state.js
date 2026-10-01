@@ -94,11 +94,12 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
  * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
+ * @typedef {{ key: string, kind: "plan", items: { text: string, status: "pending"|"running"|"done" }[], at?: number }} PlanItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
  *   decision?: string|null, summary?: string|null, answers?: any, at?: number, seq?: number }} AskItem
  * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number,
  *   local?: boolean, answered?: boolean, echoed?: boolean }} ShellItem
- * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem|ShellItem} Item
+ * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|PlanItem|AskItem|SteerItem|ShellItem} Item
  * @typedef {{ ask: string, kind: string, tool: string|null, state: "open"|"answered"|"cancelled", decision: string|null, at: number|null }} Ask
  * @typedef {{ uuid: string|null, text: string, queued: number|string|null, at: number|null, local?: boolean }} Queued
  * @typedef {{ content: string, status: string, activeForm?: string }} Todo
@@ -1121,6 +1122,17 @@ export function applyEvent(s, e) {
     // Thinking as its own event: the same row as thread.text kind "reasoning".
     case "thread.thinking": onText(s, { ...p, kind: "reasoning", notice: undefined }, at, e, out); break;
     case "thread.tool": onTool(s, p, at, out); break;
+    // The agent's checklist, whole each time: one row, updated in place. An empty list takes nothing away.
+    case "thread.plan": {
+      const items = (Array.isArray(p.items) ? p.items : []).filter((/** @type {any} */ x) => x && typeof x.text === "string" && x.text)
+        .map((/** @type {any} */ x) => ({ text: String(x.text), status: x.status === "done" || x.status === "running" ? x.status : "pending" }));
+      if (!items.length) break;
+      const old = /** @type {PlanItem|undefined} */ (s.byKey.get("plan"));
+      if (old) old.items = items;
+      else insert(s, /** @type {PlanItem} */ ({ key: "plan", kind: "plan", items, ...(at !== undefined ? { at } : {}) }));
+      out.add("plan");
+      break;
+    }
     // An artifact the agent made or changed (AR2): one card per version, drawn by cards/artifact.js.
     case "thread.artifact": {
       if (!p.artifact) break;
