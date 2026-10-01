@@ -553,3 +553,37 @@ test("watchers: a preset never overwrites a watcher that exists, and a message f
   await rt.createPreset({ kind: "mail", project: "harlow-legal", credential: "google-personal" });
   await assert.rejects(rt.createPreset({ kind: "mail", project: "harlow-legal", credential: "other" }), /already exists/);
 });
+
+test("watchers: the calendar preset starts quiet, then files only new or changed events that match, through the vault's read", async t => {
+  const calls = [];
+  const events = { items: [
+    { id: "e1", status: "confirmed", updated: "2026-03-02T10:30:00Z", summary: "Deposition: Smith v Jones", location: "Courthouse", start: { dateTime: "2026-03-05T09:00:00-08:00" }, htmlLink: "https://calendar.google.com/e1", description: "Bring exhibits" },
+    { id: "e2", status: "confirmed", updated: "2026-03-02T10:31:00Z", summary: "Dentist", start: { dateTime: "2026-03-05T12:00:00-08:00" }, htmlLink: "https://calendar.google.com/e2" },
+    { id: "e3", status: "cancelled", updated: "2026-03-02T10:32:00Z", summary: "Deposition cancelled" },
+  ] };
+  const request = async i => { calls.push(i); return { kind: "read", status: 200, headers: {}, body: JSON.stringify(events) }; };
+  const { rt, clock } = setup(t, { request });
+  const made = await rt.createPreset({ kind: "calendar", project: "harlow-legal", credential: "google-personal", match: ["Deposition", "court"], days: 7 });
+  assert.equal(made.name, "calendar-harlow-legal");
+  assert.equal(made.state, "draft");
+  assert.deepEqual(made.facts.reads, ["www.googleapis.com"]);
+  assert.match(made.facts.cost, /^No model cost/);
+  assert.match(made.lines.check, /deposition, court/);
+  await rt.create("calendar-harlow-legal", { hash: made.hash });
+  await rt.settle();
+  assert.equal(calls.length, 0, "the first run only notes where to start");
+  assert.equal(rt.items({ name: "calendar-harlow-legal" }).length, 0);
+
+  clock.now = new Date("2026-03-02T11:00:00").getTime();
+  rt.tick(); await rt.settle();
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].method === "GET" && /updatedMin=/.test(calls[0].url) && /singleEvents=true/.test(calls[0].url));
+  const items = rt.items({ name: "calendar-harlow-legal" });
+  assert.equal(items.length, 1, "only the matching, uncancelled event is filed");
+  assert.match(items[0].title, /Deposition: Smith v Jones$/);
+
+  await assert.rejects(rt.createPreset({ kind: "calendar", project: "harlow-legal", credential: "g", days: 99 }), /days is 1 to 60/);
+  await assert.rejects(rt.createPreset({ kind: "calendar", project: "harlow-legal", credential: "g", label: "x", when: "every 5 minutes" }), /at most every 15 minutes/);
+  await assert.rejects(rt.createPreset({ kind: "calendar", project: "harlow-legal", credential: "g", label: "y", match: ["a".repeat(61)] }), /up to 10 short words/);
+  await assert.rejects(rt.createPreset({ kind: "nope", project: "harlow-legal" }), /there is mail, calendar/);
+});

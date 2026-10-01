@@ -94,8 +94,8 @@ export default {
       run: async ({ name }) => rt.card(name),
     });
     ctx.tool("watchers.preset", {
-      description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional). Files short quoted notes for the important mail a Gmail push announces; sends nothing. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
-      input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" } } },
+      description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. Neither sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
+      input: { type: "object", required: ["kind", "project"], properties: { kind: str, project: str, credential: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str } },
       run: async (i, meta = {}) => {
         // The person, or their assistant on their word (verified agent kind, never the caller string).
         if (!isPerson(meta.caller) && /** @type {any} */ (meta).agentKind !== "assistant") throw Object.assign(new Error("a preset watcher is set up by the person or their assistant"), { code: "denied" });

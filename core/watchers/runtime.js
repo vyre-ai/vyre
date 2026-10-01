@@ -23,7 +23,7 @@ import * as cron from "./cron.js";
 import * as folder from "./folder.js";
 import { runOnce, normalize } from "./run.js";
 import { parseWhen } from "./when.js";
-import { mailPreset } from "./presets.js";
+import { buildPreset } from "./presets.js";
 import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
@@ -265,12 +265,10 @@ export class Runtime {
    * A preset watcher, from a few plain fields: written, hashed as dry-run (there is no live fetch to
    * try), and left OFF with its card, so one tap turns it on. The grant the vault needs comes back
    * as the exact command, since a module's use of an api-credential is the person's to allow.
-   * @param {{ kind: string, project: string, credential: string, connection?: string, instruction?: string, dailyUsd?: number }} o
+   * @param {{ kind: string, project: string, credential?: string, [k: string]: any }} o
    */
   async createPreset(o) {
-    if (o.kind !== "mail") throw new Error(`no preset "${o.kind}"; there is mail`);
-    if (typeof o.credential !== "string" || !o.credential) throw new Error("a mail preset needs credential: the name of the Google api-credential in the vault");
-    const p = mailPreset({ project: String(o.project || ""), credential: o.credential, connection: o.connection, instruction: o.instruction, dailyUsd: o.dailyUsd });
+    const p = buildPreset(o);
     if (!(await this.project(o.project))) throw new Error(`no project "${o.project}"; vyre projects lists them`);
     const dir = path.join(this.d.dir, p.name);
     if (this.row(p.name)?.enabled || fs.existsSync(dir)) throw new Error(`${p.name} already exists; watchers.card shows it`);
@@ -280,7 +278,7 @@ export class Runtime {
     const f = folder.read(this.d.dir, p.name);
     if (f.problems.length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(f.problems.join("; ")); }
     this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
-      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, "event", f.hash, this.now());
+      ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, f.spec ? f.spec.schedule : "event", f.hash, this.now());
     return { ...this.card(p.name), grant: `vyre vault grant ${o.credential} watchers --watcher ${p.name}` };
   }
 

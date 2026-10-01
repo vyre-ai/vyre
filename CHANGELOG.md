@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Calendar preset: `watchers.preset {kind: "calendar", project, credential, calendar?, match?, days?,
+  when?}` writes an off-by-default watcher that reads the next N days of a Google Calendar through
+  `vault.request` (GET only), starts quietly (the first run files nothing), then files a short note
+  for each new or changed event that matches, by a plain text match with no model. `watcher.json`
+  gains `params`, a small object of a preset's settings.
+
 - Mail preset hardening (reviewer-2): a Message-ID the sender chose is searched in Gmail only when
   it is a plain id (never OR, from:, quotes), and the message found must carry exactly that id;
   `gmailId` from the push is used when present. A duty files at most 25 items per push.
