@@ -3,7 +3,7 @@
  "tools": {
   "agents.ask": {
    "module": "agents",
-   "reason": "guard(): only the assistant talks to other agents; onboard asks as a module"
+   "reason": "guard() refuses non-assistant agent labels; modelMay refuses a plain mcp or harness caller with no verified thread or agent; sessions, the verified assistant, the person and modules pass (onboard asks as a module)"
   },
   "agents.create": {
    "module": "agents",
@@ -11,11 +11,11 @@
   },
   "agents.history": {
    "module": "agents",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
   "agents.list": {
    "module": "agents",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "read-only: names, kinds and project grants; guard() refuses non-assistant agent labels"
   },
   "agents.resume": {
    "module": "agents",
@@ -23,15 +23,15 @@
   },
   "agents.rollover": {
    "module": "agents",
-   "reason": "guard(): only the assistant (and the person); core/assistant calls it as a module"
+   "reason": "caller allowlist: module:assistant or the person's own surfaces only"
   },
   "agents.stop": {
    "module": "agents",
-   "reason": "guard(): only the assistant stops agents; the person via the surfaces"
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules stop an agent; a session or a plain caller is refused"
   },
   "agents.threads": {
    "module": "agents",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
   "agents.update": {
    "module": "agents",
@@ -39,7 +39,7 @@
   },
   "agents.usage": {
    "module": "agents",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
   "artifacts.archive": {
    "module": "artifacts",
@@ -127,39 +127,39 @@
   },
   "harness.brief": {
    "module": "harness",
-   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
   },
   "harness.enrich": {
    "module": "harness",
-   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
   },
   "harness.learn": {
    "module": "harness",
-   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
   },
   "harness.rules": {
    "module": "harness",
-   "reason": "the session's own hook shim calls it as caller harness for its own thread; each acts only on that thread"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
   },
   "harness.stop": {
    "module": "harness",
-   "reason": "callers list: only the session's own Stop hook (caller harness) reaches it, and it acts on that hook's own thread only (own-scope check)"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
   },
   "harness.touched": {
    "module": "harness",
-   "reason": "read-only"
+   "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified, only a session id this Vyre has no thread record of; person and module callers are not hooks"
   },
   "hooks.delivery": {
    "module": "hooks",
-   "reason": "read-only (hooks.delivery bodies: the route's own senders' data, shown as untrusted)"
+   "reason": "callers check in the tool: any mcp, harness or agent caller is refused (a webhook body is untrusted data for the owner's watchers); guests and the internet are refused by reader()"
   },
   "hooks.list": {
    "module": "hooks",
-   "reason": "read-only"
+   "reason": "read-only: open routes with vault item names, never values; reader() refuses guests and the internet"
   },
   "hooks.status": {
    "module": "hooks",
-   "reason": "read-only"
+   "reason": "read-only: the listener and what Funnel publishes; reader() refuses guests and the internet"
   },
   "link.call": {
    "module": "link",
@@ -327,11 +327,11 @@
   },
   "sessions.accounts.add": {
    "module": "sessions",
-   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked; the assistant passes unasked by askedOnly, with any scope it names (open question to the lead, 1 Oct)"
+   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
   },
   "sessions.accounts.bind": {
    "module": "sessions",
-   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
   },
   "sessions.accounts.list": {
    "module": "sessions",
@@ -339,11 +339,11 @@
   },
   "sessions.accounts.remove": {
    "module": "sessions",
-   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
   },
   "sessions.accounts.signin": {
    "module": "sessions",
-   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+   "reason": "askedOnly(): runs for a person's own surface, or when meta.asked says the person's own words asked; the assistant, modules and other agents get not_asked; an asked add with no scope covers only the request's project"
   },
   "sessions.limits.get": {
    "module": "sessions",
@@ -427,107 +427,107 @@
   },
   "threads.archive": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.asks": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.bind": {
    "module": "threads",
-   "reason": "callers limited to harness (the SessionStart hook); it binds a session to its own process"
+   "reason": "callers list (harness) plus a check in the daemon route: the pid must be the caller's own process or one above it, where the OS can tell; claudeOf needs a running claude; a live session bound to another process is refused"
   },
   "threads.commands": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "read-only: the slash commands a thread offers"
   },
   "threads.delete": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.effort": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.fork": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.get": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.interrupt": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.items": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.lease": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.list": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "guard() refuses non-assistant agent labels; the rows are filtered by sessionMay (a session sees its own project's threads and its children)"
   },
   "threads.model": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.queue": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.release": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.rewind": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.send": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed; modules call it (keyboard, glass, agents) so it cannot be person or asked"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; modules call it (keyboard, glass, agents), so it cannot be person"
   },
   "threads.send-now": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.start": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; a session's start of a child records it as the parent"
   },
   "threads.stop": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed; agents.stop stops threads through it as module:agents"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; agents.stop stops threads through it as module:agents"
   },
   "threads.switch": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.tasks": {
    "module": "threads",
-   "reason": "read-only (agents.history, threads.* reads are guard()ed to the assistant too)"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.thinking": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.unarchive": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent never mutates; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
   "threads.unwatch": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "threads.watch": {
    "module": "threads",
-   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
+   "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain caller is not narrowed on reads"
   },
   "undo.list": {
    "module": "undo",

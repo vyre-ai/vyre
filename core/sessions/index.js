@@ -52,16 +52,14 @@ const ACP_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_acp (thread TEXT PRIM
 CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, messages TEXT NOT NULL)`;
 
 /**
- * "asked" reach, enforced here until the kernel's own check (P17) lands: the tool runs for the
- * person, for a first-party module and for the assistant; any other agent only when meta.asked says
- * the person's own words in their own turn asked for exactly this. Otherwise refused, no prompt.
+ * "asked" reach, enforced here until the kernel's own check (P17) lands: the tool runs for a person's own
+ * surface; anyone else (an agent, the assistant, a module) only when meta.asked says the person's own words in their
+ * own turn asked for exactly this. Otherwise refused, no prompt (lead's ruling, 1 Oct).
  * @param {any} meta @param {string} what
  */
 export function askedOnly(meta, what) {
   const m = meta || {};
   if (isPerson(m)) return;
-  if (m.firstParty && String(m.caller || "").startsWith("module:")) return;
-  if (m.agentKind === "assistant") return;
   if (m.asked) return;
   throw Object.assign(new Error(`${what} runs only when the person asked for it; nothing in their own words asked for this`), { code: "not_asked" });
 }
@@ -267,7 +265,16 @@ export default {
     tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
-      async (i, meta) => { askedOnly(meta, "Adding an account"); if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i); });
+      async (i, meta) => {
+        askedOnly(meta, "Adding an account");
+        // Not a person's surface: the account covers the project the request came from, never every project.
+        if (i.scope === undefined && !isPerson(meta || {})) {
+          const th = meta && typeof meta.thread === "string" ? await ctx.call("threads.get", { thread: meta.thread, limit: 1 }).catch(() => null) : null;
+          const project = th && th.data && th.data.thread && th.data.thread.project;
+          i = { ...i, scope: { projects: project ? [String(project)] : [], agents: "*" } };
+        }
+        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i);
+      });
 
     // ---- signing in (each provider's own login, run as the account; Vyre never sees the token)
     const signins = new Signins({ spawn: (bin, args, { account }) => {

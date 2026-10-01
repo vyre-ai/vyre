@@ -252,6 +252,15 @@ export default {
       if (m && get(m[1])?.kind !== "assistant") throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
 
+    // A model's call (mcp or harness) is judged by what vyred verified, never the label: the verified assistant passes; a plain caller with
+    // no verified thread and no agent never mutates; stopping an agent is the assistant's or the person's, not another session's.
+    const modelMay = (meta, { sessionOk = false } = {}) => {
+      const m = meta || {};
+      if (!/^(?:mcp|harness)(?::|$)/.test(String(m.caller || ""))) return true;
+      if (m.agent) return m.agentKind === "assistant";
+      return sessionOk && typeof m.thread === "string" && m.thread !== "";
+    };
+
     // For vyred only: the stored grant of an agent vyred has already verified (its thread's own
     // socket, or a vouched key), attached to meta so a tool that scopes by project reads what the
     // agent is really granted, never a filter the caller's own input or env carries.
@@ -337,8 +346,10 @@ export default {
       input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
-      run: async (i, { caller }) => {
+      run: async (i, meta0) => {
+        const { caller } = meta0;
         guard(caller, "talk to other agents");
+        if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
         // The person typing an ask is the person choosing to spend, so the daily spend cap (core/spend) does not hold it;
@@ -432,14 +443,16 @@ export default {
     ctx.tool("agents.threads", {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, { caller }) => { guard(caller, "read other agents"); must(agent); return use("threads.list", { agent }); },
+      run: async ({ agent }, meta) => { const { caller } = meta; guard(caller, "read other agents"); if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads another agent's threads"), { code: "denied" }); must(agent); return use("threads.list", { agent }); },
     });
 
     ctx.tool("agents.usage", {
       description: "What each agent has used: turns, threads, time, tokens and cost (all of it, and on the API key), its budget and what is left, and the last rate-limit report. since: ms since epoch. With no agent, every agent, and agent null for threads no agent ran.",
       input: { type: "object", properties: { agent: { type: "string" }, since: { type: "integer" } } },
-      run: async ({ agent, since }, { caller }) => {
+      run: async ({ agent, since }, meta) => {
+        const { caller } = meta;
         guard(caller, "read other agents' usage");
+        if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads other agents' usage"), { code: "denied" });
         if (agent) must(agent);
         const rows = await use("threads.usage", { ...(agent ? { agent } : {}), ...(since ? { since } : {}) });
         const used = new Map(rows.map(r => [r.agent, r]));
@@ -460,8 +473,10 @@ export default {
     ctx.tool("agents.history", {
       description: "Past conversations with an agent (or every agent): what was asked, the answer, when, and the thread, newest last. before: an exchange id, for the page before it.",
       input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
-      run: async ({ agent, limit, before }, { caller }) => {
+      run: async ({ agent, limit, before }, meta) => {
+        const { caller } = meta;
         guard(caller, "read other agents' conversations");
+        if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads other agents' conversations"), { code: "denied" });
         if (agent) must(agent);
         return use("threads.history", { ...(agent ? { agent } : {}), ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
       },
@@ -491,8 +506,9 @@ export default {
     ctx.tool("agents.stop", {
       description: "Stop every running thread of an agent. Its record and transcripts stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
-      run: async ({ agent }, { caller }) => {
+      run: async ({ agent }, { caller, ...meta }) => {
         guard(caller, "stop agents");
+        if (!modelMay({ caller, ...meta })) throw Object.assign(new Error("stopping an agent is the assistant's or the person's, not another session's"), { code: "denied" });
         must(agent);
         const ts = await use("threads.list", { agent });
         const stopped = [];

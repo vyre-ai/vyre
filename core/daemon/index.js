@@ -23,7 +23,7 @@ import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
-import { peerPid, peerHosting, insideClaude, processTable, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, ancestry, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -725,6 +725,15 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       if (!live) { live = true; res.writeHead(200, { "content-type": "application/x-ndjson", "cache-control": "no-store" }); }
       res.write(JSON.stringify({ draft: d }) + "\n");
     } : null;
+    // threads.bind names a claude process: it must be the caller's own, or one above it (the hook runs under its claude). A session
+    // cannot bind another running claude's pid and so take its key. Where the OS cannot say who is calling, the tool's own claudeOf check stands.
+    if (socket && name === "threads.bind" && input && Number.isInteger(Number(input.pid))) {
+      const caller_pid = await peerPid(req.socket).catch(() => null);
+      if (caller_pid) {
+        const mine = ancestry(caller_pid, processTable()).chain.map(c => c.pid);
+        if (!mine.includes(Number(input.pid))) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process, not another's" } });
+      }
+    }
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

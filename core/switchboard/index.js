@@ -2381,29 +2381,34 @@ export default {
       return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
     };
     /**
-     * A model session of the person (caller mcp:thread:<id> or harness:thread:<id>, no agent named) reaches its own thread, the
-     * threads it started, and the threads of its own project; never another project's, and never a cwd-only thread of the
-     * person's that is none of those. An agent keeps its own rules (guard, mayReach), the assistant and the person reach all.
-     * Without this a prompt-injected session could stop, delete, rewind or read any other session (reviewer-2, 1 Oct).
-     * @param {any} meta @param {string|undefined} target a thread id
+     * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
+     *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;
+     *  - a plain mcp or harness caller with no verified thread and no agent: refused on every mutating tool;
+     *  - a session (thread, no agent): mutates only its own thread and the threads it started; reads those and its own project's.
+     * Other agents keep guard() and mayReach. Without this a prompt-injected session could stop, delete, rewind or read any other
+     * session (reviewer-2 and the lead, 1 Oct).
+     * @param {any} meta @param {string|undefined} target a thread id @param {boolean} mutating
      */
-    const sessionMay = (meta, target) => {
+    const sessionMay = (meta, target, mutating) => {
       const m = meta || {};
       const caller = String(m.caller || "");
-      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller) || agentOf(caller) || m.agentKind === "assistant" || typeof m.thread !== "string" || !m.thread) return true;
+      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
+      if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
+      if (typeof m.thread !== "string" || !m.thread) return !mutating;
       if (typeof target !== "string" || !target || target === m.thread) return true;
       const t = sb.record(target);
       if (!t) return true; // unknown: the tool's own not-found answers
       if (sb.lineage(target).includes(m.thread)) return true;
+      if (mutating) return false;
       const me = sb.record(m.thread);
       return Boolean(me && me.project && t.project === me.project);
     };
-    const SESSION_SCOPED = new Set(["threads.delete", "threads.archive", "threads.unarchive", "threads.stop", "threads.interrupt", "threads.rewind", "threads.fork",
-      "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.items", "threads.get", "threads.asks",
-      "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
-    const scoped = (name, run) => SESSION_SCOPED.has(name)
+    const SESSION_MUTATING = new Set(["threads.start", "threads.delete", "threads.archive", "threads.unarchive", "threads.stop", "threads.interrupt", "threads.rewind",
+      "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.lease", "threads.release"]);
+    const SESSION_READS = new Set(["threads.fork", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
+    const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
       ? async (i, meta, ...rest) => {
-        if (!sessionMay(meta, i && i.thread)) throw Object.assign(new Error("a session reaches its own thread, the threads it started and its own project's threads"), { code: "denied" });
+        if (!sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name))) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
         return run(i, meta, ...rest);
       }
       : run;
@@ -2565,7 +2570,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); return Array.isArray(rows) ? rows.filter(r => sessionMay(meta, r && r.id)) : rows; }
+        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); return Array.isArray(rows) ? rows.filter(r => sessionMay(meta, r && r.id, false)) : rows; }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
