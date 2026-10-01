@@ -488,7 +488,7 @@ export default {
 
     ctx.tool("github.session.env", {
       internal: true,
-      description: "Sessions only: the environment a session's process must carry so its commits are made as the connected account (GIT_AUTHOR_*, GIT_COMMITTER_*) and run its hooks (GIT_CONFIG_COUNT, KEY, VALUE for core.hooksPath), with no repo config written. Answers { env } (empty on a git older than 2.31, where the worktree's own config carries it, or when the project has no repo). Safe to call on every launch and resume.",
+      description: "Sessions only: the environment a session's process must carry so its commits are made as the connected account (GIT_AUTHOR_*, GIT_COMMITTER_*) and run its hooks (GIT_CONFIG_COUNT, KEY, VALUE for core.hooksPath), with no repo config written. Answers { env } (empty on a git older than 2.31, where the worktree's own config carries it, or when the project has no repo). Safe to call on every launch and resume. The identity and the Vyre-Session trailer are an audit aid, not a control: a model can unset GIT_* in its own shell. The hooks it names act only for this project's repo; any other repo the session touches runs its own.",
       input: obj({ project: str, session: str }, ["project", "session"]),
       callers: ["module"],
       run: async ({ project, session }, meta = {}) => {
