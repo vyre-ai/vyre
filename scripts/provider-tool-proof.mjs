@@ -339,6 +339,8 @@ function scrubWire(text, paths) {
     .replace(/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, "[jwt]");
 }
 const realIdx = process.argv.indexOf("--real-home");
+// Real accounts, real spend: never a Mac (the person's own machine), whatever the home path says.
+if (realIdx > 0 && process.platform === "darwin") { console.error("provider-tool-proof: --real-home runs real turns on signed-in accounts and is for the Linux test box only, not a Mac."); process.exit(2); }
 const capIdx = process.argv.indexOf("--capture");
 const capture = capIdx > 0 ? path.resolve(process.argv[capIdx + 1]) : null;
 const realHome = realIdx > 0 ? process.argv[realIdx + 1] : null;
