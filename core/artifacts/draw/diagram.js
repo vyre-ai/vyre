@@ -4,9 +4,13 @@
 // here; any other Mermaid type, or a line the parser can't read, is an error block with the
 // parser's line and the source. SVG artifacts are cleaned (svg.js) and shown as an image. Static:
 // zoom and the Source toggle are radio and checkbox inputs, no script runs.
+// The design is the agent's: a line `%%theme {json}` sets colours (canvas, node, decision, stroke,
+// edge, text, group) and a font, and Mermaid's own `style`, `classDef`, `class` and `:::name` colour
+// single nodes (fill, stroke, stroke-width, stroke-dasharray, color). Checked in theme.js.
 
 import { esc } from "../render.js";
 import { cleanSvg, removedSentence } from "./svg.js";
+import { themeCss, colorOf, lengthOf } from "./theme.js";
 
 /** @param {string} title @param {string} body */
 const state = (title, body) => `<div class="state" role="status"><b>${esc(title)}</b><span>${body}</span></div>`;
@@ -41,9 +45,26 @@ function readNode(s, line) {
     if (body.startsWith('"')) { const q = body.indexOf('"', 1); end = q < 0 ? -1 : body.indexOf(close, q + 1); }
     else end = body.indexOf(close);
     if (end < 0) throw new MermaidError(line, `expected ${close} to close ${id}${open}`);
-    return { id, label: cleanLabel(body.slice(0, end)), shape, rest: body.slice(end + close.length) };
+    return { id, label: cleanLabel(body.slice(0, end)), shape, ...withClass(body.slice(end + close.length)) };
   }
-  return { id, label: undefined, shape: undefined, rest };
+  return { id, label: undefined, shape: undefined, ...withClass(rest) };
+}
+
+/** A `:::name` right after a node. @param {string} rest */
+function withClass(rest) { const m = /^:::([A-Za-z0-9_-]+)/.exec(rest); return m ? { rest: rest.slice(m[0].length), cls: m[1] } : { rest, cls: undefined }; }
+
+/** Mermaid's `fill:#f9f,stroke:#333,stroke-width:4px` to checked attributes. @param {string} text */
+function styleProps(text) {
+  /** @type {Record<string,string>} */ const o = {};
+  for (const part of text.split(",")) {
+    const m = /^\s*([a-z-]+)\s*:\s*(.+?)\s*$/i.exec(part);
+    if (!m) continue;
+    const k = m[1].toLowerCase(), v = m[2];
+    if (k === "fill" || k === "stroke" || k === "color") { const c = colorOf(v); if (c) o[k] = c; }
+    else if (k === "stroke-width") { const w = lengthOf(v.replace(/px$/i, ""), 0, 12); if (w) o[k] = String(parseFloat(w)); }
+    else if (k === "stroke-dasharray" && /^[\d. ]{1,20}$/.test(v)) o[k] = v.trim();
+  }
+  return o;
 }
 
 const EDGE_TEXT = /^\s*(<?)(--|==|-\.)\s+([^|>=]*?[^\s|>=-])\s+(-->|---|==>|===|\.->|-\.-|--x|--o)(?![\w-])/;
@@ -54,11 +75,16 @@ function edgeStyle(op) { return { dashed: op.includes("."), thick: op.includes("
 
 /**
  * @param {string} text
- * @returns {{ dir: string, nodes: Map<string, any>, edges: any[], groups: any[] }}
+ * @returns {{ dir: string, nodes: Map<string, any>, edges: any[], groups: any[], theme: any }}
  */
 export function parseFlow(text) {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
   let dir = "TD", seenHead = false;
+  /** @type {any} */ let theme = null;
+  for (const l of lines) { const m = /^\s*%%theme\s+(\{.*\})\s*$/.exec(l); if (m && !theme) try { theme = JSON.parse(m[1]); } catch {} }
+  /** @type {Record<string, Record<string,string>>} */ const classDefs = {};
+  /** @type {Map<string, string[]>} */ const classOf = new Map();
+  /** @type {Map<string, Record<string,string>>} */ const styleOf = new Map();
   /** @type {Map<string, any>} */ const nodes = new Map();
   /** @type {any[]} */ const edges = [], groups = [], stack = [];
   const touch = (/** @type {any} */ n) => {
@@ -66,6 +92,7 @@ export function parseFlow(text) {
     if (!cur) { cur = { id: n.id, label: n.label ?? n.id, shape: n.shape || "rect" }; nodes.set(n.id, cur); }
     else if (n.label !== undefined) { cur.label = n.label; cur.shape = n.shape || cur.shape; }
     for (const g of stack) g.members.add(n.id);
+    if (n.cls) classOf.set(n.id, [...(classOf.get(n.id) || []), n.cls]);
     return cur;
   };
   for (let li = 0; li < lines.length; li++) {
@@ -78,7 +105,11 @@ export function parseFlow(text) {
         if (!h) throw new MermaidError(no, "the diagram must start with graph or flowchart and a direction, such as flowchart TD");
         dir = (h[1] || "TD").toUpperCase(); if (dir === "TB") dir = "TD"; seenHead = true; continue;
       }
-      if (/^(classDef|class|style|linkStyle|click|direction|accTitle|accDescr)\b/.test(stmt)) continue;
+      let sm;
+      if ((sm = /^style\s+([A-Za-z0-9_]+)\s+(.+)$/.exec(stmt))) { styleOf.set(sm[1], { ...(styleOf.get(sm[1]) || {}), ...styleProps(sm[2]) }); continue; }
+      if ((sm = /^classDef\s+([A-Za-z0-9_,-]+)\s+(.+)$/.exec(stmt))) { for (const name of sm[1].split(",")) classDefs[name] = { ...(classDefs[name] || {}), ...styleProps(sm[2]) }; continue; }
+      if ((sm = /^class\s+([A-Za-z0-9_,]+)\s+([A-Za-z0-9_-]+)\s*$/.exec(stmt))) { for (const id of sm[1].split(",")) classOf.set(id, [...(classOf.get(id) || []), sm[2]]); continue; }
+      if (/^(linkStyle|click|direction|accTitle|accDescr)\b/.test(stmt)) continue;
       const sg = /^subgraph\s+(.*)$/.exec(stmt);
       if (sg) {
         const raw = sg[1].trim(), b = /^([A-Za-z0-9_]+)\s*\[(.*)\]$/.exec(raw);
@@ -113,7 +144,8 @@ export function parseFlow(text) {
   }
   if (!seenHead) throw new MermaidError(1, "the diagram is empty");
   if (stack.length) throw new MermaidError(lines.length, "a subgraph is missing its end");
-  return { dir, nodes, edges, groups };
+  for (const [id, n] of nodes) n.look = { ...Object.assign({}, ...(classOf.get(id) || []).map(c => classDefs[c] || {})), ...(styleOf.get(id) || {}) };
+  return { dir, nodes, edges, groups, theme };
 }
 
 const CH = 6.9;
@@ -241,10 +273,12 @@ function svgFlow(g) {
   }
   for (const [id, b] of box) {
     const n = g.nodes.get(id), lines = sizeOf(n).lines, cx = b.x + b.w / 2, cy = b.y + b.h / 2;
-    if (n.shape === "diamond") body.push(`<path class="dn dec" d="M${cx} ${b.y}L${b.x + b.w} ${cy}L${cx} ${b.y + b.h}L${b.x} ${cy}Z"/>`);
-    else if (n.shape === "circle") body.push(`<ellipse class="dn" cx="${cx}" cy="${cy}" rx="${b.w / 2}" ry="${b.h / 2}"/>`);
-    else body.push(`<rect class="dn" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${n.shape === "stadium" ? b.h / 2 : 9}"/>`);
-    body.push(`<text class="dt" text-anchor="middle" x="${cx}" y="${cy - (lines.length - 1) * 7.5 + 4}">${lines.map((l, i) => `<tspan x="${cx}" dy="${i ? 15 : 0}">${esc(l)}</tspan>`).join("")}</text>`);
+    const lk = n.look || {}, fill = lk.fill || (n.shape === "diamond" ? "var(--hover)" : "var(--panel)"), stroke = lk.stroke || "var(--rs)";
+    const at = ` fill="${fill}" stroke="${stroke}" stroke-width="${lk["stroke-width"] || 1.5}"${lk["stroke-dasharray"] ? ` stroke-dasharray="${lk["stroke-dasharray"]}"` : ""}`;
+    if (n.shape === "diamond") body.push(`<path class="dn" d="M${cx} ${b.y}L${b.x + b.w} ${cy}L${cx} ${b.y + b.h}L${b.x} ${cy}Z"${at}/>`);
+    else if (n.shape === "circle") body.push(`<ellipse class="dn" cx="${cx}" cy="${cy}" rx="${b.w / 2}" ry="${b.h / 2}"${at}/>`);
+    else body.push(`<rect class="dn" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${n.shape === "stadium" ? b.h / 2 : 9}"${at}/>`);
+    body.push(`<text class="dt" text-anchor="middle"${lk.color ? ` style="fill:${lk.color}"` : ""} x="${cx}" y="${cy - (lines.length - 1) * 7.5 + 4}">${lines.map((l, i) => `<tspan x="${cx}" dy="${i ? 15 : 0}">${esc(l)}</tspan>`).join("")}</text>`);
   }
   body.push(...labels);
   const w = Math.ceil(maxX - minX + M * 2), h = Math.ceil(maxY - minY + M * 2);
@@ -287,7 +321,7 @@ function svgSeq(s) {
   for (const it of s.items) {
     if (it.note !== undefined) {
       const xa = /** @type {number} */ (xs.get(it.a)), xb = it.b ? /** @type {number} */ (xs.get(it.b)) : xa, w = Math.max(Math.abs(xb - xa) + 80, it.note.length * 6.6 + 20), x = Math.min(xa, xb) - (w - Math.abs(xb - xa)) / 2;
-      rows.push(`<rect class="dn" x="${x}" y="${y - 12}" width="${w}" height="26" rx="6"/><text class="dt" style="font-weight:400" text-anchor="middle" x="${x + w / 2}" y="${y + 5}">${esc(it.note)}</text>`);
+      rows.push(`<rect class="dn" fill="var(--panel)" stroke="var(--rs)" stroke-width="1.5" x="${x}" y="${y - 12}" width="${w}" height="26" rx="6"/><text class="dt" style="font-weight:400" text-anchor="middle" x="${x + w / 2}" y="${y + 5}">${esc(it.note)}</text>`);
       y += 40; continue;
     }
     const xa = /** @type {number} */ (xs.get(it.from)), xb = /** @type {number} */ (xs.get(it.to));
@@ -304,7 +338,7 @@ function svgSeq(s) {
   for (const id of ids) {
     const x = /** @type {number} */ (xs.get(id)), label = /** @type {string} */ (s.parts.get(id)), w = Math.max(84, label.length * 7 + 24);
     body.push(`<line class="seqlife" x1="${x}" x2="${x}" y1="${TOP + HD}" y2="${bottom}"/>`);
-    body.push(`<rect class="dn" x="${x - w / 2}" y="${TOP}" width="${w}" height="${HD}" rx="9"/><text class="dt" text-anchor="middle" x="${x}" y="${TOP + 20}">${esc(label)}</text>`);
+    body.push(`<rect class="dn" fill="var(--panel)" stroke="var(--rs)" stroke-width="1.5" x="${x - w / 2}" y="${TOP}" width="${w}" height="${HD}" rx="9"/><text class="dt" text-anchor="middle" x="${x}" y="${TOP + 20}">${esc(label)}</text>`);
   }
   body.push(...rows);
   const w = X0 * 2 + (ids.length - 1) * COL, h = bottom + 18;
@@ -326,7 +360,9 @@ function figure(src, d) {
  * @param {string} title @param {string} src
  */
 export function drawMermaid(title, src) {
-  const head = `<h1>${esc(title)}</h1>`;
+  /** @type {any} */ let theme = null;
+  for (const l of src.split("\n")) { const m = /^\s*%%theme\s+(\{.*\})\s*$/.exec(l); if (m && !theme) try { theme = JSON.parse(m[1]); } catch {} }
+  const head = themeCss(theme) + `<h1>${esc(title)}</h1>`;
   if (!src.trim()) return head + state("Nothing to draw yet", "The diagram source is empty.");
   try {
     const first = (src.replace(/%%.*$/gm, "").split("\n").map(l => l.trim()).find(Boolean) || "").split(/\s+/)[0].toLowerCase();

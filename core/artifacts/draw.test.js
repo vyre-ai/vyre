@@ -127,3 +127,90 @@ test("every typed page is static: no script, no network, tokens only, both colou
     assert.ok(!/\burl\(/.test(p.html), `${format}: nothing loads`);
   }
 });
+
+// ---- the design is the agent's (user ruling, 1 Oct): style freedom, not network freedom ---------
+
+import { themeCss, colorOf, fontOf, dataImageOf } from "./draw/theme.js";
+import { pageHeaders } from "./render.js";
+
+const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+test("theme values: colours, fonts and data images pass; anything that could load or escape is dropped", () => {
+  for (const ok of ["#fff", "#0e0d0cff", "rebeccapurple", "rgb(1, 2, 3)", "hsl(200 50% 40% / .5)", "oklch(60% .1 200)", "linear-gradient(135deg, #102a43, #243b53)"]) assert.equal(colorOf(ok), ok, ok);
+  for (const bad of ["url(https://evil/x.png)", "red;}body{display:none", "#fff\;", "var(--x)", "expression(1)", "red /* x */", 'rgb(1,2,3)"', "javascript:1", "linear-gradient(url(x), #000)", "<b>", { a: 1 }, ""]) assert.equal(colorOf(bad), null, String(bad));
+  assert.equal(fontOf("Georgia, serif"), "'Georgia', serif");
+  assert.equal(fontOf("Inter, system-ui"), "'Inter', system-ui");
+  for (const bad of ["a;}x{", "a'b", 'a"b', "url(x)", "a{b}"]) assert.equal(fontOf(bad), null, bad);
+  assert.equal(dataImageOf(PNG), PNG);
+  for (const bad of ["https://evil/x.png", "data:text/html;base64,AAAA", "data:image/png;base64,AA AA", "javascript:1"]) assert.equal(dataImageOf(bad), null, bad);
+  const css = themeCss({ background: "#fff8e7", text: "#222", accent: "red;}x{", font: "Georgia, serif", dark: { background: "#101820", text: "#eee" } });
+  assert.match(css, /--panel:#fff8e7/);
+  assert.match(css, /prefers-color-scheme:dark\)\{:root\{[^}]*--panel:#101820/);
+  assert.ok(!css.includes("red;}"), "a bad value is dropped, never repaired");
+  assert.equal(themeCss("nope"), "");
+});
+
+test("chart: an agent's theme, series colours, markers, dashes and height survive; Vyre's palette is only the default", () => {
+  const spec = { type: "line", x: "month", height: 260, stats: false, legend: false, title: "Pipeline",
+    theme: { background: "#fff8e7", text: "#222222", font: "Georgia, serif", series: ["#c0392b", "#1a7f37", "#2455a4"] },
+    series: ["referrals", { key: "consults", marker: "diamond", dash: "dotted" }, { key: "signed", color: "#ff00aa", marker: "none" }] };
+  const rows = ROWS.map((r, i) => ({ ...r, signed: i }));
+  const h = drawChart("T", JSON.stringify(spec), JSON.stringify(rows));
+  assert.match(h, /<style>:root\{[^}]*--hover:color-mix\([^}]*--panel:#fff8e7;[^}]*--text:#222222/, "surfaces are derived from the theme, so Vyre's greys never show through");
+  assert.match(h, /--font:'Georgia', serif/);
+  assert.match(h, /stroke="#c0392b"/);
+  assert.match(h, /stroke="#1a7f37"[^>]*stroke-dasharray="1\.5 4"/, "the agent's dash");
+  assert.match(h, /stroke="#ff00aa"/, "a series' own colour beats the theme's");
+  assert.match(h, /viewBox="0 0 308 260"/, "its height");
+  assert.ok(!h.includes('class="stats"') && !h.includes('class="legend"'), "stats and legend can be switched off");
+  const many = drawChart("M", JSON.stringify({ x: "m", series: [..."abcde"].map((k, i) => ({ key: k, color: `#00${i}00${i}` })) }), JSON.stringify([{ m: 1, a: 1, b: 2, c: 3, d: 4, e: 5 }]));
+  assert.ok(!text(many).includes("Showing"), "with its own colours an agent draws up to eight series");
+  const hostile = drawChart("H", JSON.stringify({ x: "m", series: [{ key: "a", color: "red\" onload=\"x" }], theme: { background: "url(https://evil/x)" } }), JSON.stringify([{ m: 1, a: 1 }]));
+  assert.ok(!hostile.includes("onload") && !hostile.includes("evil"), "hostile values never reach the page");
+});
+
+test("deck: a theme, per-slide backgrounds, data-URI images and a brand mark survive", () => {
+  const md = `@theme {"bg":"#102a43","text":"#f0f4f8","font":"Georgia, serif","logo":{"src":"${PNG}","position":"top-right","size":9,"alt":"Harlow"}}\n# Q3\n\n---\n@slide {"bg":"#c0392b","color":"#ffffff","align":"center","valign":"top","image":"${PNG}","fit":"contain"}\n# Chapter\n\n---\n@slide {"bg":"red;}x{","image":"https://evil/x.png","font":"a;}b"}\n# Plain`;
+  const h = drawDeck("D", md);
+  assert.match(h, /^<style>:root\{[^}]*--slide:#102a43/);
+  assert.match(h, /--font:'Georgia', serif/);
+  assert.match(h, /<img class="logo tr" alt="Harlow" src="data:image\/png;base64,/);
+  assert.match(h, /style="background:#c0392b;background-image:url\(data:image\/png;base64,[^)]+\);background-size:contain;[^"]*--text:#ffffff[^"]*--align:center;--valign:flex-start"/);
+  assert.ok(!h.includes("evil") && !h.includes("red;}") && !h.includes("a;}b"), "bad slide values are dropped");
+  assert.match(text(h), /Plain/, "the slide still draws without them");
+});
+
+test("mermaid: %%theme and Mermaid's own style, classDef and ::: colour the diagram", () => {
+  const h = drawMermaid("M", `%%theme {"canvas":"#101820","node":"#1f2a37","text":"#f5f5f5","edge":"#9fb3c8","font":"Georgia, serif"}\nflowchart TD\n A[Start]:::hot --> B{Ok?}\n B --> C[End]\n classDef hot fill:#c0392b,stroke:#7b241c,stroke-width:3px,color:#fff\n style C fill:#1a7f37,stroke-dasharray:4 2\n style B fill:url(https://evil/x)`);
+  assert.match(h, /^<style>:root\{[^}]*--bg:#101820;--panel:#1f2a37/);
+  assert.match(h, /<rect class="dn" [^>]*fill="#c0392b" stroke="#7b241c" stroke-width="3"/);
+  assert.match(h, /fill="#1a7f37"[^>]*stroke-dasharray="4 2"/);
+  assert.match(h, /style="fill:#fff"/, "node text colour");
+  assert.ok(!/fill="url\(https/.test(h) && !h.replace(/<pre[\s\S]*?<\/pre>/, "").includes("evil"), "a url fill is dropped");
+  assert.match(h, /<path class="dn" [^>]*fill="var\(--hover\)"/, "unstyled nodes keep Vyre's tokens");
+});
+
+test("svg: an agent's styles, style element, gradients and data-URI brand mark stay; loads and escapes go", () => {
+  const src = `<svg width="200" height="100" viewBox="0 0 200 100"><style>.t{fill:#c0392b;font-family:Georgia}@media (prefers-color-scheme:dark){.t{fill:#fff}}</style><defs><linearGradient id="g"><stop offset="0" stop-color="#102a43"/><stop offset="1" stop-color="#243b53"/></linearGradient><filter id="f"><feGaussianBlur stdDeviation="2"/></filter></defs><rect width="200" height="100" fill="url(#g)" style="stroke:#fff;stroke-width:2"/><text class="t" x="10" y="50" filter="url(#f)">Brand</text><image href="${PNG}" x="150" y="5" width="40" height="40"/><use href="#g"/></svg>`;
+  const { svg, removed } = cleanSvg(src);
+  assert.deepEqual(removed, { scripts: 0, links: 0, other: 0 }, "nothing unsafe in it");
+  for (const keep of ["<style>.t{fill:#c0392b", "linearGradient", 'fill="url(#g)"', 'style="stroke:#fff;stroke-width:2"', "<feGaussianBlur", `href="${PNG}"`, 'filter="url(#f)"']) assert.ok(svg.includes(keep), keep);
+  const bad = cleanSvg(`<svg><style>@import url(https://evil/x.css);.a{fill:red}</style><style>.b{background:url(https://evil/i.png)}</style><rect style="fill:url(https://evil/x)" width="1" height="1"/><image href="https://evil/i.png"/><image href="data:image/svg+xml;base64,AAAA"/><use href="https://evil/s.svg#a"/><rect fill="red" width="1" height="1"/></svg>`);
+  assert.ok(!bad.svg.includes("evil") && !bad.svg.includes("@import") && !bad.svg.includes("<image") && !bad.svg.includes("<use"), bad.svg);
+  assert.ok(bad.svg.includes('<rect fill="red"'), "the safe shape stays");
+  assert.ok(bad.removed.other >= 3 && bad.removed.links >= 3, JSON.stringify(bad.removed));
+});
+
+test("markdown documents take an @theme line; pages and apps keep their own CSS", () => {
+  const p = page({ title: "Memo", format: "markdown", files: { "index.md": '@theme {"background":"#fff8e7","text":"#222","font":"Georgia, serif","code":"#eee","accent":"#c0392b"}\n# Memo\n\nBody' } });
+  assert.match(p.html, /--doc-bg:#fff8e7/);
+  assert.ok(!p.html.includes("@theme"), "the directive line is not shown");
+  assert.match(p.html, /<h1>Memo<\/h1>/);
+  const author = '<!doctype html><html><head><style>body{background:#0b3d2e;color:#f7f3e8;font-family:"Fraunces",Georgia,serif}.hero{background:url(data:image/png;base64,AAAA)}</style></head><body><h1 class="hero">Mine</h1></body></html>';
+  const q = page({ title: "Mine", format: "html", files: { "index.html": author } });
+  assert.equal(q.html, author, "an agent's page is served exactly as written");
+  assert.equal(q.scripts, true);
+  const csp = pageHeaders({ scripts: true, framedBy: "self" })["content-security-policy"];
+  for (const ok of ["style-src 'unsafe-inline'", "img-src data: blob:", "font-src data:"]) assert.ok(csp.includes(ok), ok);
+  for (const no of ["connect-src 'none'", "default-src 'none'", "form-action 'none'", "sandbox allow-scripts"]) assert.ok(csp.includes(no), no);
+});

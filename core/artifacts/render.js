@@ -13,6 +13,7 @@ import { TOKENS, CHART_CSS, DIAGRAM_CSS, DECK_CSS } from "./draw/style.js";
 import { drawChart } from "./draw/chart.js";
 import { drawMermaid, drawSvg } from "./draw/diagram.js";
 import { drawDeck } from "./draw/deck.js";
+import { docTheme } from "./draw/theme.js";
 
 /** @typedef {"doc"|"report"|"page"|"dashboard"|"diagram"|"deck"|"app"} Kind */
 /** @typedef {"markdown"|"html"|"mermaid"|"svg"|"chart"|"slides"} Format */
@@ -131,13 +132,13 @@ export function markdown(md) {
   return out.join("\n");
 }
 
-const STYLE = `:root{color-scheme:light dark;--bg:#F4F1EA;--text:#141311;--text2:#4A463F;--rule:#DCD7CC;--code:#F0EDE5}
-@media (prefers-color-scheme:dark){:root{--bg:#0E0D0C;--text:#F1EEE6;--text2:#B3AEA4;--rule:#2B2926;--code:#121110}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/22px -apple-system,"Helvetica Neue",Arial,sans-serif;overflow-wrap:anywhere}
+const STYLE = `:root{color-scheme:light dark;--bg:#F4F1EA;--text:#141311;--t2:#4A463F;--rule:#DCD7CC;--code:#F0EDE5}
+@media (prefers-color-scheme:dark){:root{--bg:#0E0D0C;--text:#F1EEE6;--t2:#B3AEA4;--rule:#2B2926;--code:#121110}}
+*{box-sizing:border-box}body{margin:0;background:var(--doc-bg,var(--bg));color:var(--text);font:15px/22px var(--font,-apple-system,"Helvetica Neue",Arial,sans-serif);overflow-wrap:anywhere}h1,h2,h3,h4{font-family:var(--hfont,inherit)}
 main{max-width:820px;margin:0 auto;padding:32px 16px 64px}h1,h2,h3{line-height:1.25}a{color:inherit}
 pre,code{font:13px/18px ui-monospace,Menlo,monospace;background:var(--code);border-radius:4px}pre{padding:12px;overflow:auto}code{padding:1px 4px}pre code{padding:0}
 table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border-bottom:1px solid var(--rule);padding:6px 8px;text-align:left}
-blockquote{margin:0;padding-left:12px;border-left:3px solid var(--rule);color:var(--text2)}hr{border:0;border-top:1px solid var(--rule)}`;
+blockquote{margin:0;padding-left:12px;border-left:3px solid var(--rule);color:var(--t2)}hr{border:0;border-top:1px solid var(--rule)}`;
 
 /** The network ban a page carries itself, for a copy opened with no server headers (a download).
  * A meta tag can't set `sandbox`, but it does stop every request out. @param {string} html */
@@ -150,8 +151,8 @@ export function withMetaCsp(html) {
   return `<!doctype html><head>${tag}</head>${html}`;
 }
 
-/** @param {string} title @param {string} body */
-const shell = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main></body></html>`;
+/** @param {string} title @param {string} body @param {string} [extra] a theme style element */
+const shell = (title, body, extra = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${STYLE}</style>${extra}</head><body><main>${body}</main></body></html>`;
 
 /**
  * An artifact's content as one page. For html it is the author's own page, unchanged (its
@@ -162,7 +163,7 @@ const shell = (title, body) => `<!doctype html><html lang="en"><head><meta chars
 export function page({ title, format, files }) {
   const main = files[MAIN_FILE[format]] || "";
   if (format === "html") return { html: main, scripts: true };
-  if (format === "markdown") return { html: shell(title, markdown(main)), scripts: false };
+  if (format === "markdown") { const t = docTheme(main); return { html: shell(title, markdown(t.md), t.css), scripts: false }; }
   // The typed kinds are drawn by Vyre from tokens only (draw/, app-design's artifact-renderers).
   if (format === "slides") return { html: typed(title, DECK_CSS, drawDeck(title, main)), scripts: false };
   if (format === "svg") return { html: typed(title, DIAGRAM_CSS, drawSvg(title, main)), scripts: false };

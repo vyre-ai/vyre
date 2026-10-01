@@ -5,7 +5,7 @@
 
 export const TOKENS = `:root{color-scheme:light dark;--bg:#F4F1EA;--panel:#FBFAF6;--hover:#EEEAE2;--rule:#DCD7CC;--rs:#C9C3B7;--text:#141311;--t2:#4A463F;--label:#6B665D;--focus:#141311;--s1:#141311;--s2:#6B665D;--bo:#CFC9BD;--ink:#F4F1EA;--slide:#FBFAF6}
 @media (prefers-color-scheme:dark){:root{--bg:#0E0D0C;--panel:#161513;--hover:#1E1C1A;--rule:#2B2926;--rs:#3A3733;--text:#F1EEE6;--t2:#B3AEA4;--label:#8C877D;--focus:#F1EEE6;--s1:#F1EEE6;--s2:#A9A398;--bo:#3F3A35;--ink:#0E0D0C;--slide:#0E0D0C}}
-*{box-sizing:border-box}body{margin:0;background:var(--panel);color:var(--text);font:13px/18px "Instrument Sans",-apple-system,"Helvetica Neue",Arial,sans-serif;overflow-wrap:anywhere}
+*{box-sizing:border-box}body{margin:0;background:var(--panel);color:var(--text);font:13px/18px var(--font,"Instrument Sans",-apple-system,"Helvetica Neue",Arial,sans-serif);overflow-wrap:anywhere}h1,h2,h3{font-family:var(--hfont,inherit)}
 .pbody{padding:14px 16px 16px}h1{font-size:15px;line-height:20px;margin:0 0 10px}.lab{font-size:11px;color:var(--label)}
 .state{border:1px solid var(--rule);border-left:2px solid var(--rs);border-radius:10px;padding:12px 14px;margin:0 0 12px}.state b{display:block;font-size:13px;margin-bottom:2px}.state span{color:var(--t2);font-size:12px}
 pre.src{font:12px/18px ui-monospace,Menlo,monospace;background:var(--bg);border:1px solid var(--rule);border-radius:8px;padding:10px 12px;margin:8px 0 0;overflow:auto;white-space:pre}
@@ -32,12 +32,13 @@ input.z{position:absolute;opacity:0;pointer-events:none}
 input.z:focus-visible~.ctl label{outline:1px solid var(--focus)}
 #z-100:checked~.fig svg{width:var(--w)}#z-150:checked~.fig svg{width:calc(var(--w)*1.5)}#z-200:checked~.fig svg{width:calc(var(--w)*2)}#z-fit:checked~.fig svg{width:max(100%,calc(var(--w)*.84));max-width:none}
 .srcpane{display:none}#src:checked~.srcpane{display:block}#src:checked~.fig{display:none}
-.dn{fill:var(--panel);stroke:var(--rs);stroke-width:1.5}.dn.dec{fill:var(--hover)}.dt{font:600 12px -apple-system,"Helvetica Neue",Arial,sans-serif;fill:var(--text)}.de{stroke:var(--t2);stroke-width:1.5;fill:none}.de.thick{stroke-width:2.6}.dl{font:11px -apple-system,Arial,sans-serif;fill:var(--label)}.dg{fill:none;stroke:var(--rule);stroke-dasharray:4 3}.dgt{font:11px -apple-system,Arial,sans-serif;fill:var(--label)}.dah{stroke:var(--t2);fill:none;stroke-width:1.5}
+.dt{font:600 12px -apple-system,"Helvetica Neue",Arial,sans-serif;fill:var(--text)}.de{stroke:var(--t2);stroke-width:1.5;fill:none}.de.thick{stroke-width:2.6}.dl{font:11px -apple-system,Arial,sans-serif;fill:var(--label)}.dg{fill:none;stroke:var(--rule);stroke-dasharray:4 3}.dgt{font:11px -apple-system,Arial,sans-serif;fill:var(--label)}.dah{stroke:var(--t2);fill:none;stroke-width:1.5}
 .dlg{fill:var(--bg);opacity:.85}.seqlife{stroke:var(--rule);stroke-dasharray:4 3}`;
 
 export const DECK_CSS = `.deck{container-type:normal}.stage{position:relative}
 .slide{container-type:inline-size;aspect-ratio:16/9;background:var(--slide);border:1px solid var(--rule);border-radius:10px;overflow:hidden;position:relative}
-.slide .sc{position:absolute;inset:0;padding:9cqw;display:flex;flex-direction:column;justify-content:center;gap:2.4cqw}
+.slide .sc{position:absolute;inset:0;padding:var(--pad,9cqw);display:flex;flex-direction:column;justify-content:var(--valign,center);gap:2.4cqw;text-align:var(--align,left);align-items:var(--ai,stretch)}
+.slide .logo{position:absolute;z-index:1;height:auto;margin:3cqw}.slide .logo.tl{top:0;left:0}.slide .logo.tr{top:0;right:0}.slide .logo.bl{bottom:0;left:0}.slide .logo.br{bottom:0;right:0}
 .slide h1{font-size:7.4cqw;line-height:1.1;margin:0;font-weight:600}.slide h2{font-size:5.2cqw;line-height:1.15;margin:0;font-weight:600}.slide h3{font-size:4cqw;margin:0;font-weight:600}
 .slide p,.slide li{font-size:3.3cqw;line-height:1.4;color:var(--t2);margin:0}.slide ul,.slide ol{margin:0;padding-left:4cqw;display:flex;flex-direction:column;gap:1.2cqw}
 .slide .eyebrow{font-size:2.4cqw;color:var(--label)}.slide .big{font-size:20cqw;line-height:1;font-weight:600;margin:0;color:var(--text)}.slide blockquote{margin:0;font-size:4.6cqw;line-height:1.3;color:var(--text);border:0;padding:0}

@@ -4,13 +4,18 @@
 // tiles and a Table tab every chart has. Pure and static: the tabs are radio inputs, the hover is
 // CSS, nothing runs a script.
 //
-// Spec (JSON): { "type": "line" | "bar", "x": "month", "series": ["referrals", {"key": "consults", "name": "Consults"}],
-//   "title": "...", "unit": "%" }. Missing x is the first column; missing series are the numeric columns.
+// Spec (JSON): { "type": "line" | "bar", "x": "month", "series": ["referrals", {"key": "consults", "name": "Consults",
+//   "color": "#c0392b", "dash": "solid|dashed|dotted", "marker": "circle|square|triangle|diamond|none"}],
+//   "title": "...", "height": 220, "stats": false, "legend": false, "theme": { "background": "#fff", "text": "#111",
+//   "font": "Georgia, serif", "series": ["#c0392b", "#2c7"], "dark": {...} } }.
+// Missing x is the first column; missing series are the numeric columns. The design is the agent's:
+// theme colours and fonts, per-series colour, dash and marker; Vyre's own look is only the default.
 // Data (JSON): an array of row objects, or { "rows": [...] }.
 
 import { esc } from "../render.js";
+import { themeCss, colorOf, lengthOf } from "./theme.js";
 
-const MAX_SERIES = 3, MAX_ROWS = 500;
+const MAX_SERIES = 3, MAX_COLORED = 8, MAX_ROWS = 500;
 const nf = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 /** @param {unknown} v */ const num = v => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
 /** @param {unknown} v */ const show = v => (v == null ? "" : num(v) !== null && typeof v !== "string" ? nf.format(/** @type {number} */ (v)) : String(v));
@@ -44,23 +49,45 @@ export function readChart(specText, dataText) {
   const given = Array.isArray(spec.series) ? spec.series : null;
   /** @type {{ key: string, name: string }[]} */
   const series = (given || cols.filter(c => c !== x && rows.some((/** @type {any} */ r) => num(r[c]) !== null))).map((/** @type {any} */ s) => typeof s === "string" ? { key: s, name: s.charAt(0).toUpperCase() + s.slice(1) } : { key: String(s && s.key), name: String((s && (s.name || s.key)) || "") });
+  const palette = Array.isArray(spec.theme && spec.theme.series) ? spec.theme.series : [];
+  series.forEach((s, i) => {
+    const raw = given && typeof given[i] === "object" && given[i] ? given[i] : {};
+    const color = colorOf(raw.color) || colorOf(palette[i]);
+    if (color) /** @type {any} */ (s).color = color;
+    if (typeof raw.dash === "string") /** @type {any} */ (s).dash = raw.dash;
+    if (typeof raw.marker === "string") /** @type {any} */ (s).marker = raw.marker;
+    const w = lengthOf(raw.width, 1, 8); if (w) /** @type {any} */ (s).width = parseFloat(w);
+  });
   for (const s of series) if (!cols.includes(s.key)) return { error: ["Cannot draw this chart", `The data file has no column <code>${esc(s.key)}</code>. The table view still shows what is there.`], rows, cols };
   if (!series.length) return { error: ["Cannot draw this chart", "There is no numeric column to draw. The table view still shows what is there."], rows, cols };
   return { spec, rows, cols, x, series };
 }
 
-const MARKS = [
-  (/** @type {number} */ cx, /** @type {number} */ cy) => `<circle class="ring" cx="${cx}" cy="${cy}" r="4" fill="var(--s1)"/>`,
-  (/** @type {number} */ cx, /** @type {number} */ cy) => `<rect class="ring" x="${cx - 4}" y="${cy - 4}" width="8" height="8" rx="2" fill="var(--s2)"/>`,
-  (/** @type {number} */ cx, /** @type {number} */ cy) => `<path class="ring" d="M${cx} ${cy - 5}L${cx + 5} ${cy + 4}L${cx - 5} ${cy + 4}Z" stroke-linejoin="round" fill="var(--bo)" style="stroke:var(--t2)"/>`,
-];
-const DASH = ["", "6 4", "1.5 4"];
-const COLOR = ["var(--s1)", "var(--s2)", "var(--t2)"];
+/** @type {Record<string, (cx: number, cy: number, fill: string) => string>} */
+const MARKERS = {
+  circle: (cx, cy, f) => `<circle class="ring" cx="${cx}" cy="${cy}" r="4" fill="${f}"/>`,
+  square: (cx, cy, f) => `<rect class="ring" x="${cx - 4}" y="${cy - 4}" width="8" height="8" rx="2" fill="${f}"/>`,
+  triangle: (cx, cy, f) => `<path class="ring" d="M${cx} ${cy - 5}L${cx + 5} ${cy + 4}L${cx - 5} ${cy + 4}Z" stroke-linejoin="round" fill="${f}"/>`,
+  diamond: (cx, cy, f) => `<path class="ring" d="M${cx} ${cy - 5}L${cx + 5} ${cy}L${cx} ${cy + 5}L${cx - 5} ${cy}Z" stroke-linejoin="round" fill="${f}"/>`,
+  none: () => "",
+};
+const DEFAULT_MARK = ["circle", "square", "triangle"];
+const DASHES = /** @type {Record<string,string>} */ ({ solid: "", dashed: "6 4", dotted: "1.5 4" });
+const DEFAULT_DASH = ["solid", "dashed", "dotted"];
+const DEFAULT_COLOR = ["var(--s1)", "var(--s2)", "var(--t2)"];
+
+/** How series i is drawn: the agent's choice, else Vyre's default. @param {any} s @param {number} i */
+const looks = (s, i) => ({
+  color: s.color || DEFAULT_COLOR[i % 3],
+  dash: DASHES[s.dash] !== undefined ? DASHES[s.dash] : DASHES[DEFAULT_DASH[i % 3]],
+  marker: MARKERS[s.marker] ? s.marker : DEFAULT_MARK[i % 3],
+  width: s.width || 2,
+});
 
 /** @param {any} c @param {string} aria */
 function svgChart(c, aria) {
   const { rows, x, series, spec } = c;
-  const W = 308, H = 190, L = 4, R = 76, T = 14, B = 26;
+  const W = 308, H = lengthOf(spec.height, 120, 600) ? parseFloat(/** @type {string} */ (lengthOf(spec.height, 120, 600))) : 190, L = 4, R = 76, T = 14, B = 26;
   const pw = W - L - R, ph = H - T - B;
   const vals = series.map((/** @type {any} */ s) => rows.map((/** @type {any} */ r) => num(r[s.key])));
   const top = niceMax(Math.max(0, ...vals.flat().filter((/** @type {any} */ v) => v !== null)));
@@ -79,19 +106,27 @@ function svgChart(c, aria) {
       if (v === null) return;
       const bx = xAt(i) - (k * (bw + gap) - gap) / 2 + si * (bw + gap), by = yAt(Math.max(v, 0)), bh = Math.max(1, yAt(0) - by);
       const last = i === n - 1;
-      const fill = k === 1 ? (last ? "var(--s1)" : "var(--bo)") : COLOR[si];
-      out.push(`<path d="M${bx} ${by + bh}V${by + 4}a4 4 0 0 1 4 -4H${bx + bw - 4}a4 4 0 0 1 4 4V${by + bh}Z" fill="${fill}"${si === 2 ? ' style="stroke:var(--t2)" stroke-dasharray="2 2"' : ""}/>`);
+      const lk = looks(s, si), custom = Boolean(s.color);
+      const fill = k === 1 ? (last || custom ? lk.color : "var(--bo)") : lk.color;
+      const faded = k === 1 && custom && !last ? ' fill-opacity=".45"' : "";
+      out.push(`<path d="M${bx} ${by + bh}V${by + 4}a4 4 0 0 1 4 -4H${bx + bw - 4}a4 4 0 0 1 4 4V${by + bh}Z" fill="${fill}"${faded}${si === 2 && !custom ? ' style="stroke:var(--t2)" stroke-dasharray="2 2"' : ""}/>`);
       if (last && k === 1) out.push(`<text class="v" x="${bx + bw / 2}" y="${by - 4}" text-anchor="middle">${esc(nf.format(v))}</text>`);
     }));
   } else {
+    /** @type {{ x: number, y: number, v: string, name: string }[]} */ const ends = [];
     series.forEach((/** @type {any} */ s, /** @type {number} */ si) => {
       const pts = vals[si].map((/** @type {number|null} */ v, /** @type {number} */ i) => v === null ? null : [xAt(i), yAt(v)]).filter(Boolean);
       if (!pts.length) return;
-      out.push(`<path d="M${pts.map((/** @type {any} */ p) => p.join(" ")).join("L")}" fill="none" stroke="${COLOR[si]}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${DASH[si] ? ` stroke-dasharray="${DASH[si]}"` : ""}/>`);
-      for (const p of /** @type {number[][]} */ (pts)) out.push(MARKS[si](p[0], p[1]));
+      const lk = looks(s, si);
+      out.push(`<path d="M${pts.map((/** @type {any} */ p) => p.join(" ")).join("L")}" fill="none" stroke="${lk.color}" stroke-width="${lk.width}" stroke-linecap="round" stroke-linejoin="round"${lk.dash ? ` stroke-dasharray="${lk.dash}"` : ""}/>`);
+      for (const p of /** @type {number[][]} */ (pts)) out.push(MARKERS[lk.marker](p[0], p[1], lk.color));
       const end = /** @type {number[]} */ (pts[pts.length - 1]), lastV = vals[si][vals[si].length - 1];
-      out.push(`<text class="v" x="${end[0] + 9}" y="${end[1] - 1}">${esc(show(lastV))}</text><text class="nm" x="${end[0] + 9}" y="${end[1] + 10}">${esc(s.name.slice(0, 12))}</text>`);
+      ends.push({ x: end[0], y: end[1], v: show(lastV), name: s.name.slice(0, 12) });
     });
+    // Direct labels at the line ends, nudged apart when two lines finish close together.
+    ends.sort((a, b) => a.y - b.y);
+    let floor = -Infinity;
+    for (const e of ends) { const y = Math.max(e.y, floor + 24); floor = y; out.push(`<text class="v" x="${e.x + 9}" y="${y - 1}">${esc(e.v)}</text><text class="nm" x="${e.x + 9}" y="${y + 10}">${esc(e.name)}</text>`); }
   }
   // One chip per x: hover, or keyboard focus, lists every series at that point.
   rows.forEach((/** @type {any} */ r, /** @type {number} */ i) => {
@@ -126,15 +161,17 @@ function table(cols, rows) {
  */
 export function drawChart(title, specText, dataText) {
   const c = /** @type {any} */ (readChart(specText, dataText));
-  const head = `<h1>${esc(c.spec && c.spec.title ? String(c.spec.title) : title)}</h1>`;
+  const head = themeCss(c.spec && c.spec.theme) + `<h1>${esc(c.spec && c.spec.title ? String(c.spec.title) : title)}</h1>`;
   if (c.empty) return head + state("Nothing to draw yet", "The agent made this dashboard but has not added its data.");
   if (c.error) return head + state(c.error[0], c.error[1]) + (c.rows ? table(c.cols, c.rows) : "");
-  const drawn = c.series.slice(0, MAX_SERIES);
-  const extra = c.series.length > MAX_SERIES ? `<div class="note">Showing ${MAX_SERIES} of ${c.series.length} series. The table has all of them.</div>` : "";
+  // Three series told apart by line style; an agent that gives its own colours may draw up to eight.
+  const limit = c.series.every((/** @type {any} */ s) => s.color) ? MAX_COLORED : MAX_SERIES;
+  const drawn = c.series.slice(0, limit);
+  const extra = c.series.length > limit ? `<div class="note">Showing ${limit} of ${c.series.length} series. The table has all of them.</div>` : "";
   const cc = { ...c, series: drawn };
-  const legend = `<div class="legend">${drawn.map((/** @type {any} */ s, /** @type {number} */ i) => `<span><svg viewBox="0 0 24 10" aria-hidden="true"><line x1="0" x2="24" y1="5" y2="5" stroke="${COLOR[i]}" stroke-width="2"${DASH[i] ? ` stroke-dasharray="${DASH[i]}"` : ""}/></svg>${esc(s.name)}</span>`).join("")}</div>`;
+  const legend = `<div class="legend">${drawn.map((/** @type {any} */ s, /** @type {number} */ i) => `<span><svg viewBox="0 0 24 10" aria-hidden="true"><line x1="0" x2="24" y1="5" y2="5" stroke="${looks(s, i).color}" stroke-width="2"${looks(s, i).dash ? ` stroke-dasharray="${looks(s, i).dash}"` : ""}/></svg>${esc(s.name)}</span>`).join("")}</div>`;
   return `${head}<input class="r" type="radio" name="vt" id="vt-chart" checked><input class="r" type="radio" name="vt" id="vt-table">
 <div class="tabs"><label for="vt-chart">Chart</label><label for="vt-table">Table</label></div>
-<div class="pane-chart">${stats(cc)}${svgChart(cc, `${title}: ${drawn.map((/** @type {any} */ s) => s.name).join(", ")} by ${c.x}`)}${legend}${extra}</div>
+<div class="pane-chart">${c.spec.stats === false ? "" : stats(cc)}${svgChart(cc, `${title}: ${drawn.map((/** @type {any} */ s) => s.name).join(", ")} by ${c.x}`)}${c.spec.legend === false ? "" : legend}${extra}</div>
 <div class="pane-table">${table(c.cols, c.rows)}</div>`;
 }
