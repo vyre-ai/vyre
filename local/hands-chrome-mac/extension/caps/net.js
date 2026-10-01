@@ -542,6 +542,9 @@ async function stopRequest(send, id, reason) {
 /** Run first in every document made while a guard is up (see egressGuard). */
 const NO_WORKERS_SRC = `(() => { const no = function () { throw new Error("Vyre held this: a script may not start a worker"); }; for (const k of ["Worker", "SharedWorker"]) { try { Object.defineProperty(window, k, { value: no, configurable: false, writable: false }); } catch (e) {} } try { if (navigator.serviceWorker) navigator.serviceWorker.register = no; } catch (e) {} })();`;
 
+/** A breadcrumb of what the guard last did, for the harness to read when a call hangs. @param {any} t @param {string} what */
+const mark = (t, what) => { try { (t.trail || (t.trail = [])).push([Date.now() % 1000000, what]); if (t.trail.length > 40) t.trail.shift(); } catch { /* */ } };
+
 const bounded = (promise, ms = 500) => Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(res => setTimeout(res, ms))]);
 
 async function stickyJudge(t, p, session) {
@@ -715,7 +718,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   // (measured in CI). Two layers instead: a declarativeNetRequest session rule for this tab (every frame, no page cooperation,
   // set above) and the page shim in outbound.js for the plain forms, which also reports what it refused.
   // New children start PAUSED while the guard is up: interception goes on before they run a line. If the tab would not accept that, the guard says so (a frame could start unpaused).
-  if (eg.depth === 1 && !eg.noFetch && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await ctx.cdp.setPause(tab, true); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
+  if (eg.depth === 1 && !eg.noFetch && ctx.cdp && typeof ctx.cdp.setPause === "function") { const okPause = await Promise.race([ctx.cdp.setPause(tab, true), new Promise(res => setTimeout(() => res(false), 2500))]); if (!okPause) eg.pauseWhy = "a new frame could start before the guard reached it"; }
   const failed = eg.noFetch ? [] : await syncFetch(ctx, t);
   eg.failedSessions = failed || [];
   // A child frame that would not take the interception is a way out: the script does not run, and the guard is taken down again.
@@ -725,7 +728,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   }
   // PROOF OF LIFE: the interception is confirmed live in the frame the script will run in (an Image and a fetch to an unroutable host are paused) or the script does not run.
   if (!eg.noFetch && !(await probeGuard(ctx, t, eg, frame))) {
-    if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+    if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(tab, false), 2500); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
     throw refuse("blocked", "the network guard could not be confirmed live in this frame (a probe request was not intercepted), so a script is not run on it" + (opts && opts.diag ? ` [diag ${JSON.stringify({ paused: eg.pausedCount || 0, seen: [...(eg.probeSeen || [])], netSeen: eg.netSeen || [], sw: [...(eg.probeSw || [])], skipped: eg.probeSkipped || 0, sessions: [...t.sessions].length, failed: eg.failedSessions || [], rule: eg.rule })}]` : ""));
   }
   // A frame a service worker controls has no Fetch interception (so no size cap or third-party budget either): it rests on the browser-level rules alone. Those must have been proven by
@@ -733,7 +736,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   // so a script cannot send an unbounded amount to a third party on the page's list.
   if (eg.swFrames && eg.swFrames.length && !eg.noFetch) {
     const fail = async (/** @type {string} */ why) => {
-      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {}); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
+      if (--eg.depth <= 0) { const rule = eg.rule; t.egress = null; if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(tab, false), 2500); if (ctx.dnr) await ctx.dnr.unblock(rule ?? null); await syncFetch(ctx, t); }
       throw refuse("blocked", why);
     };
     if (!eg.dnrTested) await fail("a service worker answers this page's requests and this browser cannot test the network rules against it, so a script is not run on it");
@@ -746,7 +749,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     eg.allowed = new Set(eg.first);
   }
   // From here on the script runs: a frame or worker that attaches now was made by it (or by the page while it ran).
-  eg.live = true;
+  eg.live = true; mark(t, "start:live");
   // A same-origin frame the script makes starts with a window of its own that the page shim never saw: its Worker would be an unguarded route out. Every new document made while the guard is up
   // gets the same refusal before any script of it runs (removed again at stop). Not used in the test-only DNR-alone mode.
   if (!eg.noFetch && eg.depth === 1) { try { const nd = await bounded(ctx.cdp.send(tab, "Page.addScriptToEvaluateOnNewDocument", { source: NO_WORKERS_SRC })); eg.newDoc = nd && nd.identifier; } catch { /* the shim and the closing of a worker at return remain */ } }
@@ -762,7 +765,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
     diag: () => ({ paused: eg.pausedCount || 0, probe: [...(eg.probeSeen || [])], allowed: { ...prov }, decisions: (eg.decisions || []).slice(0, 40), sessions: [...t.sessions].map(k => ({ session: String(k).slice(-6), fetch: !(eg.failedSessions || []).includes(k) })), denied: [...denied] }),
     async stop() {
       if (done) return [];
-      done = true;
+      done = true; mark(t, "stop:begin");
       // A BARRIER, not a clock: a worker or frame the script made is announced to us by the browser (Target.attachedToTarget) and may still be on its way when the script returns. A command answered
       // by the browser process queues behind every event the browser has already sent, so what the script created before it returned has attached by the time these answer.
       if (eg.depth <= 1 && !eg.noFetch) {
@@ -770,6 +773,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
         await bounded(ctx.cdp.send(tab, "Runtime.evaluate", { expression: "1", returnByValue: true }));
         await new Promise(r => setTimeout(r, 0));
         if (eg.newDoc) await bounded(ctx.cdp.send(tab, "Page.removeScriptToEvaluateOnNewDocument", { identifier: eg.newDoc }));
+        mark(t, "stop:barrier-done");
       }
       // A request judged blocked whose failRequest never took is tried once more now, while Fetch is still on: once it is off the request would be released to the network.
       for (const sr of (eg.stuck || []).splice(0)) {
@@ -799,12 +803,15 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
           }
           /** @type {any} */ (t).sticky = { tag: /** @type {any} */ (t).evalTag, allowed: new Set(eg.allowed), first: new Set(eg.first), kids, hosts: (eg.dnrArgs && eg.dnrArgs.initiatorHosts) || (prev ? prev.hosts : []) };
         }
-        t.egress = null;
-        if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(tab, false).catch(() => {});
+        t.egress = null; mark(t, "stop:egress-null");
+        if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(tab, false), 2500);
         // A child that could not be guarded was held paused; it starts running now, and the browser-level rules stay up while it does (a worker's first fetch runs within milliseconds of its release).
         if (eg.failed) await new Promise(r => setTimeout(r, 400));
+        mark(t, "stop:pause-done");
         if (ctx.dnr) await ctx.dnr.unblock(rule ?? null);
+        mark(t, "stop:dnr-off");
         await syncFetch(ctx, t);
+        mark(t, "stop:syncfetch-done");
       }
       return blocked;
     },
@@ -816,7 +823,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
 async function clearSticky(ctx, t) {
   const st = t.sticky; if (!st) return;
   t.sticky = null;
-  if (!t.egress) { if (ctx.cdp && typeof ctx.cdp.setPause === "function") await ctx.cdp.setPause(t.tab, false).catch(() => {}); await syncFetch(ctx, t); }
+  if (!t.egress) { if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(t.tab, false), 2500); await syncFetch(ctx, t); }
 }
 /** A main-frame navigation ends it; a sub-frame's document load does not. @param {any} ctx @param {any} t @param {string} frameId */
 async function clearStickyIfTop(ctx, t, frameId) {
@@ -950,7 +957,7 @@ const ops = {
     const all = [...t.recs.values()].filter(r => tier(r.url) !== "blind").filter(m);
     const frames = all.some(r => r.frame) ? await frameList(ctx, tab) : [];
     const rows = all.slice(-limit).map(r => redact.request({ ...summary(r), ...frameIndex(frames, r) }));
-    return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows, ...(trust.diag === true && /** @type {any} */ (t).lastGuard ? { lastGuard: /** @type {any} */ (t).lastGuard } : {}), ...(trust.diag === true ? { sticky: /** @type {any} */ (t).sticky ? { kids: [...(/** @type {any} */ (t).sticky.kids)], judged: /** @type {any} */ (t).sticky.judged || 0, hosts: /** @type {any} */ (t).sticky.hosts || [], allowed: [...(/** @type {any} */ (t).sticky.allowed)] } : null } : {}) };
+    return { count: rows.length, matched: all.length, buffered: t.recs.size, requests: rows, ...(trust.diag === true && /** @type {any} */ (t).lastGuard ? { lastGuard: /** @type {any} */ (t).lastGuard } : {}), ...(trust.diag === true ? { trail: /** @type {any} */ (t).trail || [] } : {}), ...(trust.diag === true ? { sticky: /** @type {any} */ (t).sticky ? { kids: [...(/** @type {any} */ (t).sticky.kids)], judged: /** @type {any} */ (t).sticky.judged || 0, hosts: /** @type {any} */ (t).sticky.hosts || [], allowed: [...(/** @type {any} */ (t).sticky.allowed)] } : null } : {}) };
   },
 
   async "net.get"(args, ctx) {

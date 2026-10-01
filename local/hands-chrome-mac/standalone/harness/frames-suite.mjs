@@ -345,7 +345,7 @@ async function main() {
           "window.open": `(() => { try { window.open(${L} + 'open'); } catch (e) {} return 1; })()`,
         });
         for (const [name, expression] of Object.entries(escapes)) {
-          const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression }));
+          const r = await step(`escape attempt: ${name}`, () => mcp.call("chrome_eval", { tab, frame: "b.localhost", expression })).catch(async (/** @type {any} */ e) => { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE HUNG " + JSON.stringify({ name, trail: nl.trail, sticky: nl.sticky ? { kids: nl.sticky.kids.length } : null })); } catch { /* diag only */ } throw e; });
           console.log("[frames-suite] ESCAPE " + JSON.stringify({ name, held: r.held, contained: r.contained, why: String(r.why || r.error || "").slice(0, 140), ...(r.diag ? { diag: JSON.stringify(r.diag).slice(0, 1500) } : {}), ...(r.egress ? { egress: JSON.stringify(r.egress).slice(0, 400) } : {}) }));
           await sleep(/^(deferred|late worker)/.test(name) ? 3800 : 500);
           if ((await state()).collected.length !== before) { try { const nl = await mcp.call("chrome_net", { action: "list", tab, limit: 1 }); console.log("[frames-suite] ESCAPE LEAKED GUARD " + JSON.stringify({ name, lastGuard: nl.lastGuard, sticky: nl.sticky })); const got = (await state()).collected; console.log("[frames-suite] ESCAPE LEAKED SERVER " + JSON.stringify(got.slice(before).map((/** @type {any} */ c) => JSON.stringify(c).slice(0, 300)))); } catch (e) { console.log("[frames-suite] ESCAPE LEAKED diag failed " + String(e && e.message || e).slice(0, 200)); } }
