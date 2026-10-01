@@ -4,7 +4,7 @@
 /**
  * @param {{ framed?: any[], outer?: any[], ua?: string } | null} report the Deck stand-in's report (framed run)
  * @param {{ results?: any[], ua?: string } | null} top the hostile page's own results when opened at the top level, or null when not run
- * @param {{ hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string }[]>, api: { via: string, cookie: boolean }[] }} server
+ * @param {{ hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string, sf?: string }[]>, api: { via: string, cookie: boolean }[] }} server
  * @returns {{ failures: string[], lines: string[] }}
  */
 export function verify(report, top, server) {
@@ -42,7 +42,7 @@ export function verify(report, top, server) {
   const urlsOf = (/** @type {string} */ k) => (server.urls && server.urls[k]) || [];
   for (const k of SELF_NAV) {
     const u = urlsOf(k)[0];
-    lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}`);
+    lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}, Sec-Fetch ${u.sf || "not recorded"}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}`);
     if (cookiesOf(k).some(c => /vyre_session/.test(c))) failures.push(`self-navigation ${k} carried the Strict session cookie`);
   }
   // The server's own count: nothing else the hostile page tried may have reached it, and nothing carried the cookie.

