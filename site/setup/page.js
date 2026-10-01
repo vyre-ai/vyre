@@ -16,7 +16,7 @@ const RELAY = "wss://relay.vyre.run";
 const root = document.getElementById("setup");
 
 const actions = {
-  begin: () => flow.begin(),
+  begin: machine => flow.begin(machine),
   setName: text => flow.setName(text),
   claim: () => flow.claim(),
   confirmWords: () => flow.confirmWords(),

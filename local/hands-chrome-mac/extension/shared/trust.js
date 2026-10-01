@@ -2,15 +2,16 @@
 // trust: what a caller has been APPROVED for, kept apart from what it ASKS for. Approvals (asked, writeOk, a release signature, the module's write budget)
 // travel in a separate object the host fills from the real caller; they are never in `args`, and an args value that carries one of these keys at any depth is refused.
 
-/** @typedef {{ asked?: boolean, writeOk?: boolean, release?: { sig?: string, signature?: string }, diag?: boolean, noFetch?: boolean, writeBudget?: { create?: number, edit?: number, origin?: string, tab?: number, tabOrigin?: string } }} Trust */
+/** @typedef {{ asked?: boolean, writeOk?: boolean, release?: { sig?: string, signature?: string }, diag?: boolean, noFetch?: boolean, failEnable?: boolean, writeBudget?: { create?: number, edit?: number, origin?: string, tab?: number, tabOrigin?: string } }} Trust */
 /** Keys that mean "approved". They may appear in trust only. */
-export const TRUST_KEYS = Object.freeze(["asked", "writeOk", "release", "writeBudget", "diag", "noFetch"]);
+export const TRUST_KEYS = Object.freeze(["asked", "writeOk", "release", "writeBudget", "diag", "noFetch", "failEnable"]);
 /** The trust the host sent, cut down to what it may contain. @param {any} t @returns {Trust} */
 export function cleanTrust(t) {
   if (!t || typeof t !== "object") return {};
   const out = /** @type {Trust} */ ({});
   if (t.asked === true) out.asked = true;
   if (t.noFetch === true) out.noFetch = true; // the harness only
+  if (t.failEnable === true) out.failEnable = true; // the harness only: force Fetch.enable to fail on frames, to check the guard's answer
   if (t.diag === true) out.diag = true; // the harness only: the guard's diagnostics go to the stage, never back to a model
   if (t.writeOk === true) out.writeOk = true;
   if (t.release && typeof t.release === "object") out.release = { ...(typeof t.release.sig === "string" ? { sig: t.release.sig.slice(0, 200) } : {}), ...(typeof t.release.signature === "string" ? { signature: t.release.signature.slice(0, 200) } : {}) };

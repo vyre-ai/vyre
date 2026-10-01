@@ -69,6 +69,11 @@ UPD_DONE=0
 # Vyre's release key (Ed25519, SPKI DER, base64), pinned here and never taken from a download. VYRE_RELEASE_KEY
 # replaces it for tests only, as VYRE_WRAPPER and VYRE_RELEASES_API do; the path unit's environment is its own.
 RELEASE_KEY=${VYRE_RELEASE_KEY:-MCowBQYDK2VwAyEAKXSdujH7tO/gscXCJZmYCjB+Cv1sVlOfdgLNedMR7FU=}
+# The cosign that checks the release's images before an update pulls them: the same pins as scripts/install-box.sh (a test keeps the two
+# equal), cosign itself by digest so a moved tag cannot swap it, and the identity the release workflow of this repo on a version tag.
+COSIGN_IMAGE=${VYRE_COSIGN_IMAGE:-ghcr.io/sigstore/cosign/cosign@sha256:b03690aa52bfe94054187142fba24dc54137650682810633901767d8a3e15b31}
+COSIGN_ID='^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
+COSIGN_ISSUER=https://token.actions.githubusercontent.com
 # state STATE STAGE [MESSAGE]: one small JSON file, written whole and renamed into place.
 state() {
   [ "${UPD_TRACK:-0}" = 1 ] || return 0
@@ -448,6 +453,33 @@ roll_back() {
   die "rolled back to the release before; the database is as it was before the update"
 }
 
+# verify_release_images: a box that pulls its image (no build) pulls only what the signed release names. The release's release.json names the
+# images by digest, the released compose.yml must pin exactly those (and nothing by a moving tag), and each is checked with cosign against
+# the release workflow's identity before anything on this box changes. A pull that cannot be checked is refused, never skipped.
+verify_release_images() {
+  if [ ! -f "$tmp/release.json" ]; then
+    die "this release has no release.json, so the image it pulls cannot be verified; nothing was changed. (A box that builds from source updates without it.)"
+  fi
+  rj=$(tr -d '\n' <"$tmp/release.json")
+  box_ref=$(printf '%s' "$rj" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  computer_ref=$(printf '%s' "$rj" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
+  [ -n "$box_ref" ] || die "release.json names no image digest for the box, so it cannot be verified; nothing was changed"
+  unpinned=$(sed -n 's/^ *image: *//p' "$tmp/compose.yml" | grep -v '@sha256:[0-9a-f]\{64\}' || true)
+  [ -z "$unpinned" ] || die "the release's compose.yml starts an image that is not pinned by digest ($(printf '%s' "$unpinned" | head -n 1)); nothing was changed"
+  for ref in $box_ref $computer_ref; do
+    printf '%s' "$ref" | grep -Eq '^ghcr\.io/vyre-ai/[a-z-]+@sha256:[0-9a-f]{64}$' || die "release.json names an image that is not a ghcr.io/vyre-ai digest; nothing was changed"
+    grep -qF "$ref" "$tmp/compose.yml" || die "the release's compose.yml does not pin $ref, which release.json names; nothing was changed"
+  done
+  stage verifying-images
+  for ref in $box_ref $computer_ref; do
+    if ! docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$tmp/cosign.err"; then
+      sed 's/^/  /' "$tmp/cosign.err" >&2
+      die "cosign could not verify $ref against Vyre's release workflow; nothing was changed"
+    fi
+  done
+  say "images checked against Vyre's release workflow"
+}
+
 update() {
   CHANNEL=${VYRE_CHANNEL:-stable}
   TO=""
@@ -521,6 +553,7 @@ update() {
       die "this box runs $cur, and $VERSION updates from $min or newer: run vyre update --to $min first"
     fi
   fi
+  if [ "$BUILD" = 0 ]; then verify_release_images; fi
   if [ "$BUILD_SRC" = 1 ]; then unpack_src; fi
 
   # Now the box changes: back up, keep what runs, then swap in the new files.
@@ -674,7 +707,10 @@ updater() {
       # The units and the ready file are root's: a person's uninstall asks for root, as install does, and says so when it cannot.
       if [ "$(id -u)" != 0 ] && [ ! -w "$units" ]; then
         { [ -f "$units/$un.path" ] || [ -f "$units/$un.service" ]; } || return 0
-        if [ -t 0 ]; then sudo "$WRAPPER" updater remove; else sudo -n "$WRAPPER" updater remove; fi && return 0
+        # Root runs the wrapper only when it is root's and nobody else can write it (VYRE_WRAPPER can point anywhere).
+        if own_ok "$WRAPPER" "${VYRE_ROOT_UID:-0}" strict; then
+          if [ -t 0 ]; then sudo "$WRAPPER" updater remove; else sudo -n "$WRAPPER" updater remove; fi && return 0
+        fi
         echo "vyre: the update units $un.path and $un.service are still on this server; remove them with: sudo $WRAPPER updater remove" >&2
         return 1
       fi

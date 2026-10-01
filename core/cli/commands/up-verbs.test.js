@@ -141,7 +141,7 @@ test("name: status, check, claim, ts.net and release reach the names tools; usag
   const calls = await fakeVyred(t, root, {
     "names.status": async () => ({ data: state }),
     "names.check": async ({ name }) => ({ data: name === "taken" ? { name, valid: true, available: false, why: "someone else has it" } : { name, valid: true, available: true, address: `https://${name}.vyre.run` } }),
-    "names.claim": async ({ name }) => { state = { ...state, address: `https://${name}.vyre.run`, phase: "claiming" }; return { data: state }; },
+    "names.claim": async ({ name }) => { state = { ...state, address: `https://${name}.vyre.run`, phase: "claiming" }; return { data: { ...state, recoveryCode: "abcd-efgh" } }; },
     "names.fallback": async () => { state = { ...state, address: "https://box.example-tail.ts.net", phase: "serving" }; return { data: state }; },
     "names.release": async () => ({ error: { code: "presence_required", message: "releasing the name needs you here" } }),
   });
@@ -156,7 +156,11 @@ test("name: status, check, claim, ts.net and release reach the names tools; usag
 
   const claim = await run(root, ["name", "claim", "alex", "--json"]);
   assert.equal(claim.code, 0, claim.out);
-  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", owner: "alex@example.com" });
+  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", owner: "alex@example.com", recoveryCode: "abcd-efgh" });
+  // Text mode prints the one-time code too (it was dropped before): once, with the plain line to store it.
+  const claimText = await run(root, ["name", "claim", "alex"]);
+  assert.match(claimText.out, /Recovery code: abcd-efgh/);
+  assert.match(claimText.out, /shown once and cannot be shown again/);
   const ts = await run(root, ["name", "ts.net"]);
   assert.equal(ts.code, 0, ts.out);
   assert.match(ts.out, /https:\/\/box\.example-tail\.ts\.net · serving · owner alex@example\.com/);
@@ -174,7 +178,7 @@ test("name: status, check, claim, ts.net and release reach the names tools; usag
 
   assert.deepEqual(calls.map(c => [c.tool, c.input]), [
     ["names.status", {}], ["names.status", {}], ["names.check", { name: "alex" }], ["names.check", { name: "taken" }],
-    ["names.claim", { name: "alex" }], ["names.fallback", {}], ["names.release", {}],
+    ["names.claim", { name: "alex" }], ["names.claim", { name: "alex" }], ["names.fallback", {}], ["names.release", {}],
   ], "usage mistakes never reach vyred");
   assert.ok(calls.every(c => c.caller === "cli"));
 });
