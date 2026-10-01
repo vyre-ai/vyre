@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import * as config from "../../core/config/index.js";
+import { callerKind } from "../../core/modules/index.js";
 import { listener, LOCAL } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
 import { spoken } from "./spoken.js";
@@ -25,7 +26,7 @@ const MAX_SPEAK = 2000;
 /** How long a speech ticket waits to be redeemed before its audio is dropped. */
 const TICKET_MS = 30_000;
 
-const kindOf = caller => String(caller || "").replace(/[\s:]agent:.*$/s, "");
+const kindOf = callerKind;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void>, idle(): { streams: number, tickets: number } }> }} */
 export default {
