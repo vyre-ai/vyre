@@ -13,7 +13,7 @@
 // same path core/waiting already uses to read across four owners into one list.
 
 import { glance } from "./glance.js";
-import { capabilities, render } from "./manifest.js";
+import { capabilities, render, promptBlock } from "./manifest.js";
 import { welcomeOf } from "./welcome.js";
 import { handoffPush } from "./handoff.js";
 
@@ -137,11 +137,13 @@ export default {
     });
 
     ctx.tool("assistant.capabilities", {
-      description: "What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text for the prompt.",
-      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"] }, compact: { type: "boolean" } } },
+      description: "What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text; prompt: true returns it as the quoted block the assistant's own prompt carries.",
+      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"] }, compact: { type: "boolean" }, prompt: { type: "boolean" } } },
       run: async (i = {}, meta = {}) => {
-        await gate(meta);
+        // agents asks for the prompt block when it starts the assistant's thread; it may read this and nothing else here.
+        if (!(meta.caller === "module:agents" && i.prompt === true)) await gate(meta);
         const cap = await capabilities(asCall, i.area);
+        if (i.prompt) return { text: promptBlock(cap) };
         return i.compact ? { text: render(cap) } : cap;
       },
     });
