@@ -509,7 +509,7 @@ export default {
     const idIn = { type: "object", required: ["id"], properties: { id: str } };
 
     ctx.tool("artifacts.create", {
-      description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, plus its data). It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
+      description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, {type: line or bar, x: the column for the x axis, series: [column names]}, plus its data as a list of rows; at most three series are drawn, and every chart has a table). A diagram in Mermaid is drawn as a flowchart or a sequence diagram; any other Mermaid type is shown as its source. An SVG is cleaned of scripts and links. A deck is Markdown, one slide per block split by a line of ---, with a Notes: line for speaker notes, a line of ... to split two columns, and images only as data URIs. The design is yours: a chart spec takes a theme (background, text, font, series colours) and per-series color, dash, marker and height; a deck takes an @theme line (bg, text, font, logo as a data URI) and an @slide line per slide (bg, image, color, align, valign); a Mermaid diagram takes a %%theme line and its own style and classDef; an SVG keeps its styles, gradients and data-URI images; a Markdown document takes an @theme line; a page or app is your own HTML and CSS. Colours, fonts and images are checked, never network: nothing loads from outside. It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
       input: { type: "object", required: ["kind", "content"], properties: {
         kind: { type: "string", enum: Object.keys(KINDS) }, format: { type: "string", enum: Object.keys(MAIN_FILE) },
         title: str, content: str, data: {}, project: str, message: str } },
@@ -781,7 +781,8 @@ export default {
       input: { type: "object", required: ["on"], properties: { on: { type: "boolean" } } },
       examples: [{ on: true }],
       run: async (i, meta) => {
-        if (!isPerson(meta) && !(meta && meta.asked)) throw refuse("turning public links on or off waits for the person's own ask", "not_asked");
+        // Reach "person": the registry refuses everyone else; this stays as the second lock.
+        if (!isPerson(meta)) throw refuse("only the person turns public links on or off, in Settings", "denied");
         if (Object.keys(i).some(k => k !== "on")) throw refuse("public.set takes only on; the address is the network setup's", "bad_input");
         const srv = serverState();
         if (i.on && !srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");

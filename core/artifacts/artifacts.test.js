@@ -111,7 +111,8 @@ test("artifacts: kinds, formats, dashboards and limits are checked", async t => 
   const svg = await ok("artifacts.create", { kind: "diagram", format: "svg", title: "Flow", content: "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>" });
   const ex = await ok("artifacts.export", { id: svg.id, as: "page" });
   assert.ok(!ex.body.includes("<script>"), "an SVG is only ever an image");
-  assert.match(ex.body, /<img class="svg"/);
+  assert.match(ex.body, /<img alt="Flow"/);
+  assert.match(ex.body, /Vyre removed a script from this SVG/, "the page says what was removed");
 });
 
 test("artifacts: the private view is served at an opaque origin, to the person only", async t => {
@@ -188,7 +189,7 @@ test("artifacts: public links, served by a separate process, pinned to a version
   const { port } = await shareServer(t, home);
   const a = await ok("artifacts.create", { project: "harlow-legal", kind: "report", title: "Intake report, October", content: "# Intake\n\nNew matters: 46." });
   assert.equal((await call("artifacts.share", { id: a.id })).error.code, "public_off");
-  assert.equal((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error.code, "not_asked", "an agent turns public links on only when asked");
+  assert.notEqual((await call("artifacts.public.set", { on: true }, "mcp:agent:juno", { thread: "t1" })).error, undefined, "an agent never turns public links on, only the person does");
   const on = await ok("artifacts.public.set", { on: true });
   assert.equal(on.available, true);
   // The registry holds an outward call from anyone but the person (held_unavailable until the Gate
@@ -389,6 +390,8 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   assert.equal((await juno("artifacts.versions", { id: far.id })).error, undefined);
   assert.equal((await juno("artifacts.get", { id: near.id })).error.code, "not_found", "exactly that item");
   assert.equal((await juno("artifacts.update", { id: far.id, content: "changed" })).error.code, "not_found", "read only");
+  assert.equal((await juno("artifacts.move", { id: far.id, project: "harlow-legal" })).error.code, "not_found", "a read grant never moves, archives, shares or deletes it");
+  for (const tool of ["artifacts.archive", "artifacts.delete", "artifacts.share", "artifacts.export"]) assert.notEqual((await juno(tool, { id: far.id })).error, undefined, tool);
   assert.equal((await juno("artifacts.get", { id: far.id }, "t9")).error.code, "not_found", "only that thread");
   assert.equal((await juno("artifacts.search", { q: "Lease" })).data?.length ?? 0, 0, "search stays in scope");
   await assert.rejects(asVyre("artifacts.mention.resolve", { id: near.id, thread: "t1" }, "mentions"), /only Vyre's session and assistant/, "the mentions core forwards the caller, it does not record");

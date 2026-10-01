@@ -5,9 +5,15 @@
 // `sandbox`, so even a page opened directly never gets the address's cookies or passkey session,
 // can't set a cookie, and can't reach the box or the internet (plans/artifacts.md 3.4, AR2/AR3).
 //
-// The drawing of docs, decks, diagrams and dashboards here is the plain first version: escaped
-// Markdown, an SVG shown only as an image, Mermaid and chart specs as their source and a table.
-// app-design's renderers replace these looks; the security rules stay.
+// Documents are escaped Markdown here. Decks, diagrams (Mermaid, SVG) and dashboards are drawn by
+// Vyre in draw/ (app-design's artifact-renderers): static pages, no script, tokens only. The
+// security rules below hold for all of them.
+
+import { TOKENS, CHART_CSS, DIAGRAM_CSS, DECK_CSS } from "./draw/style.js";
+import { drawChart } from "./draw/chart.js";
+import { drawMermaid, drawSvg } from "./draw/diagram.js";
+import { drawDeck } from "./draw/deck.js";
+import { docTheme } from "./draw/theme.js";
 
 /** @typedef {"doc"|"report"|"page"|"dashboard"|"diagram"|"deck"|"app"} Kind */
 /** @typedef {"markdown"|"html"|"mermaid"|"svg"|"chart"|"slides"} Format */
@@ -126,14 +132,13 @@ export function markdown(md) {
   return out.join("\n");
 }
 
-const STYLE = `:root{color-scheme:light dark;--bg:#F4F1EA;--text:#141311;--text2:#4A463F;--rule:#DCD7CC;--code:#F0EDE5}
-@media (prefers-color-scheme:dark){:root{--bg:#0E0D0C;--text:#F1EEE6;--text2:#B3AEA4;--rule:#2B2926;--code:#121110}}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/22px -apple-system,"Helvetica Neue",Arial,sans-serif;overflow-wrap:anywhere}
+const STYLE = `:root{color-scheme:light dark;--bg:#F4F1EA;--text:#141311;--t2:#4A463F;--rule:#DCD7CC;--code:#F0EDE5}
+@media (prefers-color-scheme:dark){:root{--bg:#0E0D0C;--text:#F1EEE6;--t2:#B3AEA4;--rule:#2B2926;--code:#121110}}
+*{box-sizing:border-box}body{margin:0;background:var(--doc-bg,var(--bg));color:var(--text);font:15px/22px var(--font,-apple-system,"Helvetica Neue",Arial,sans-serif);overflow-wrap:anywhere}h1,h2,h3,h4{font-family:var(--hfont,inherit)}
 main{max-width:820px;margin:0 auto;padding:32px 16px 64px}h1,h2,h3{line-height:1.25}a{color:inherit}
 pre,code{font:13px/18px ui-monospace,Menlo,monospace;background:var(--code);border-radius:4px}pre{padding:12px;overflow:auto}code{padding:1px 4px}pre code{padding:0}
 table{border-collapse:collapse;width:100%;display:block;overflow-x:auto}th,td{border-bottom:1px solid var(--rule);padding:6px 8px;text-align:left}
-blockquote{margin:0;padding-left:12px;border-left:3px solid var(--rule);color:var(--text2)}hr{border:0;border-top:1px solid var(--rule)}
-section.slide{border:1px solid var(--rule);border-radius:12px;padding:24px;margin:0 0 16px}img.svg{max-width:100%;height:auto}`;
+blockquote{margin:0;padding-left:12px;border-left:3px solid var(--rule);color:var(--t2)}hr{border:0;border-top:1px solid var(--rule)}`;
 
 /** The network ban a page carries itself, for a copy opened with no server headers (a download).
  * A meta tag can't set `sandbox`, but it does stop every request out. @param {string} html */
@@ -146,8 +151,8 @@ export function withMetaCsp(html) {
   return `<!doctype html><head>${tag}</head>${html}`;
 }
 
-/** @param {string} title @param {string} body */
-const shell = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main>${body}</main></body></html>`;
+/** @param {string} title @param {string} body @param {string} [extra] a theme style element */
+const shell = (title, body, extra = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${STYLE}</style>${extra}</head><body><main>${body}</main></body></html>`;
 
 /**
  * An artifact's content as one page. For html it is the author's own page, unchanged (its
@@ -158,24 +163,16 @@ const shell = (title, body) => `<!doctype html><html lang="en"><head><meta chars
 export function page({ title, format, files }) {
   const main = files[MAIN_FILE[format]] || "";
   if (format === "html") return { html: main, scripts: true };
-  if (format === "markdown") return { html: shell(title, markdown(main)), scripts: false };
-  if (format === "slides") {
-    const slides = main.split(/\n-{3,}\n/).map(s => `<section class="slide">${markdown(s)}</section>`).join("");
-    return { html: shell(title, slides), scripts: false };
-  }
-  if (format === "svg") {
-    // Only ever an image: an SVG drawn by <img> runs no script and loads nothing.
-    const src = `data:image/svg+xml;base64,${Buffer.from(main, "utf8").toString("base64")}`;
-    return { html: shell(title, `<h1>${esc(title)}</h1><img class="svg" alt="${esc(title)}" src="${src}">`), scripts: false };
-  }
-  if (format === "mermaid") return { html: shell(title, `<h1>${esc(title)}</h1><pre><code>${esc(main)}</code></pre>`), scripts: false };
-  // chart: the data as a table under its title, until the chart renderer lands.
-  let rows = [];
-  try { const d = JSON.parse(files[DATA_FILE] || "[]"); rows = Array.isArray(d) ? d : Array.isArray(d.rows) ? d.rows : []; } catch {}
-  const cols = rows.length && rows[0] && typeof rows[0] === "object" ? Object.keys(rows[0]).slice(0, 12) : [];
-  const table = cols.length ? `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.slice(0, 500).map(r => `<tr>${cols.map(c => `<td>${esc(r && r[c] != null ? String(r[c]) : "")}</td>`).join("")}</tr>`).join("")}</tbody></table>` : "<p>No data yet.</p>";
-  return { html: shell(title, `<h1>${esc(title)}</h1>${table}`), scripts: false };
+  if (format === "markdown") { const t = docTheme(main); return { html: shell(title, markdown(t.md), t.css), scripts: false }; }
+  // The typed kinds are drawn by Vyre from tokens only (draw/, app-design's artifact-renderers).
+  if (format === "slides") return { html: typed(title, DECK_CSS, drawDeck(title, main)), scripts: false };
+  if (format === "svg") return { html: typed(title, DIAGRAM_CSS, drawSvg(title, main)), scripts: false };
+  if (format === "mermaid") return { html: typed(title, DIAGRAM_CSS, drawMermaid(title, main)), scripts: false };
+  return { html: typed(title, CHART_CSS, drawChart(title, main, files[DATA_FILE] || "[]")), scripts: false };
 }
+
+/** A typed kind's page: the shared tokens, its own styles, and the body Vyre drew. @param {string} title @param {string} css @param {string} body */
+const typed = (title, css, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${TOKENS}\n${css}</style></head><body><div class="pbody">${body}</div></body></html>`;
 
 /** Title from content when none was given: the first Markdown heading, the HTML title, or null. @param {string} text */
 export function titleOf(text) {
