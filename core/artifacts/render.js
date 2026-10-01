@@ -15,17 +15,20 @@ import { drawMermaid, drawSvg } from "./draw/diagram.js";
 import { drawDeck } from "./draw/deck.js";
 import { docTheme } from "./draw/theme.js";
 
-/** @typedef {"doc"|"report"|"page"|"dashboard"|"diagram"|"deck"|"app"} Kind */
-/** @typedef {"markdown"|"html"|"mermaid"|"svg"|"chart"|"slides"} Format */
+/** @typedef {"doc"|"report"|"page"|"dashboard"|"diagram"|"deck"|"app"|"image"|"video"|"audio"} Kind */
+/** @typedef {"markdown"|"html"|"mermaid"|"svg"|"chart"|"slides"|"png"|"jpeg"|"webp"|"gif"|"mp4"|"webm"|"mp3"|"wav"|"ogg"|"m4a"} Format */
 
 /** Which formats each kind takes; the first is its default. @type {Record<Kind, Format[]>} */
 export const KINDS = {
   doc: ["markdown"], report: ["markdown"], deck: ["slides", "markdown"],
   page: ["html"], app: ["html"], diagram: ["mermaid", "svg"], dashboard: ["chart"],
+  // Generated media: one file, registered rather than written as text (media.js lists what is accepted).
+  image: ["png", "jpeg", "webp", "gif"], video: ["mp4", "webm"], audio: ["mp3", "wav", "ogg", "m4a"],
 };
 
 /** The file an artifact of a format keeps its content in. @type {Record<Format, string>} */
-export const MAIN_FILE = { markdown: "index.md", slides: "slides.md", html: "index.html", mermaid: "diagram.mmd", svg: "diagram.svg", chart: "chart.json" };
+export const MAIN_FILE = { markdown: "index.md", slides: "slides.md", html: "index.html", mermaid: "diagram.mmd", svg: "diagram.svg", chart: "chart.json",
+  png: "media.png", jpeg: "media.jpeg", webp: "media.webp", gif: "media.gif", mp4: "media.mp4", webm: "media.webm", mp3: "media.mp3", wav: "media.wav", ogg: "media.ogg", m4a: "media.m4a" };
 /** A dashboard's data, beside its chart spec. */
 export const DATA_FILE = "data.json";
 

@@ -11,6 +11,7 @@ import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { backup, restore, INCLUDE, DATA_PARTS, checkEntries } from "../names/backup.js";
 import { uninstallPlan } from "../names/system.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const PASSPHRASE = "correct horse battery staple";
 const FAST = { sealParams: { N: 1024, r: 8, p: 1 }, chunk: 4096 };
@@ -60,6 +61,13 @@ test("AR8: artifacts, versions, tags and files survive backup and restore, and t
   const pub = path.join(a, "data", "artifacts", "public");
   fs.mkdirSync(pub, { recursive: true });
   fs.writeFileSync(path.join(pub, ".server.json"), JSON.stringify({ pid: 4242, uid: 1, port: 7311 }));
+  // A generated image rides along: its bytes, its hash and its provenance.
+  const capDir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "bk-")));
+  t.after(() => fs.rmSync(capDir, { recursive: true, force: true }));
+  await old.asVyre("artifacts.capture.register", { thread: "t1", dir: capDir });
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("image body ".repeat(500))]);
+  fs.writeFileSync(path.join(capDir, "harbour.png"), PNG);
+  const img = await old.asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png", provider: "grok", model: "grok-imagine", prompt: "a harbour at dusk" });
   const before = {
     list: (await old.ok("artifacts.list", { archived: false })).map(x => x.id).sort(),
     versions: (await old.ok("artifacts.versions", { id: report.id })).map(v => v.version),
@@ -86,6 +94,10 @@ test("AR8: artifacts, versions, tags and files survive backup and restore, and t
   const d = await nu.ok("artifacts.diff", { id: report.id, from: 1, to: 2 });
   assert.match(d.diff, /^\+New matters: 46\.$/m, "the diff works across the restore");
   const gd = await nu.ok("artifacts.get", { id: dash.id });
+  const gi = await nu.ok("artifacts.get", { id: img.id });
+  assert.deepEqual([gi.media.provider, gi.media.model, gi.media.prompt, gi.media.sha256], ["grok", "grok-imagine", "a harbour at dusk", img.media.sha256], "a generated image's provenance came back");
+  const chunk = await nu.asVyre("artifacts.media.read", { id: img.id, offset: 0 });
+  assert.ok(Buffer.from(chunk.bytes_b64, "base64").equals(PNG), "and its bytes");
   assert.deepEqual(JSON.parse(gd.files["data.json"]), [{ m: "a", v: 1 }, { m: "b", v: 3 }], "a dashboard's data file came back");
   assert.match((await nu.ok("artifacts.get", { id: deck.id })).files["slides.md"], /data:image\/png;base64,iVBORw0KGgo=/, "a deck's image came back");
   assert.equal((await nu.ok("artifacts.list", { archived: true })).some(x => x.id === parked.id), true, "archived stays archived");

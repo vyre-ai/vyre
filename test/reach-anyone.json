@@ -29,6 +29,14 @@
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself"
   },
+  "artifacts.media.copy": {
+   "module": "artifacts",
+   "reason": "own-scope check: reach() with the read option (own project or a # tag) on the artifact, and the file is copied only into the caller's own registered artifacts folder (the folder must still be the registered one); it never writes anywhere else and never changes the artifact"
+  },
+  "artifacts.media.read": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag), and the tool refuses any caller that is not the person or a first-party module"
+  },
   "artifacts.move": {
    "module": "artifacts",
    "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted; an agent may move only into its own project"
