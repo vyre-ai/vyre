@@ -288,3 +288,19 @@ test("video and audio take controls; a failed load says the item is gone in word
   $(vid, "video").dispatchEvent(new /** @type {any} */ (globalThis).Event("error"));
   assert.match(text(vid), /no longer in the project/);
 });
+
+test("Use in…: lists the providers with a signed-in account, and choosing one asks the session (never the card) to switch, copy and tag", async () => {
+  const { usableProviders } = await import("./artifact.js");
+  assert.deepEqual(usableProviders([{ provider: "claude", accounts: [] }, { provider: "codex", accounts: [{ signed_in: true }] }, { provider: "grok", accounts: [{ signed_in: false }] }, { id: "codex" }]).map(x => x.provider), ["claude", "codex"]);
+  const v = vyred({ [TOOLS.get]: { kind: "image", media: {} }, "providers.list": [{ provider: "claude", accounts: [] }, { provider: "codex", accounts: [{ signed_in: true }] }] });
+  const el = /** @type {any} */ (artifactCard({ kind: "artifact", id: "m1", title: "Red door", type: "image" }, {}));
+  const seen = [];
+  el.addEventListener("deck:media-use", e => seen.push(e.detail));
+  const use = $$(el, "button").find(b => text(b) === "Use in…");
+  use.dispatchEvent(new /** @type {any} */ (globalThis).Event("click")); await settle();
+  const items = $$(el, "[role=menuitem]");
+  assert.deepEqual(items.map(b => text(b)), ["Claude", "Codex"]);
+  items[1].dispatchEvent(new /** @type {any} */ (globalThis).Event("click"));
+  assert.deepEqual(seen, [{ id: "m1", title: "Red door", provider: "codex", name: "Codex" }]);
+  assert.equal(v.of("threads.switch").length + v.of("artifacts.media.copy").length, 0, "the card itself calls neither");
+});

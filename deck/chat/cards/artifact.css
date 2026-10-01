@@ -57,3 +57,5 @@
 .cv-art-prompt { font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px); color: var(--text-2); overflow-wrap: anywhere; }
 .cv-art-mediaview { display: grid; gap: 8px; padding: 12px 16px; justify-items: start; }
 .cv-art-mediaview .cv-art-media { max-height: none; }
+.cv-art-usemenu { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.cv-art-usemenu[hidden] { display: none; }

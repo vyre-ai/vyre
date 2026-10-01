@@ -124,7 +124,7 @@ const COMMANDS_RETRY_MS = 15_000;
  * onRecall: a "From your past sessions" row was tapped (recall.related's own hit shape) - opening
  * and rendering that session at its seq is the caller's job; without onRecall the hint never shows.
  * @returns {{ el: HTMLElement, focus: () => void, stop: () => void, setMachine: (m: string|null) => void, setBusy: (on: boolean) => void,
- *   setText: (text: string, note?: string) => void, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
+ *   setText: (text: string, note?: string) => void, tag: (v: { kind: string, id: string, name: string }) => string, editQueued: (q: { uuid: string|null, queued?: any, text: string }) => void,
  *   key: (e: KeyboardEvent) => boolean, keyUp: (e: KeyboardEvent) => boolean, draw: () => void, value: () => string }}
  */
 export function mountComposer(opts) {
@@ -1229,6 +1229,7 @@ export function mountComposer(opts) {
       if (was && !busy) queueToggle = false;
       drawChips();
     },
+    tag: v => tagUI.add(v),
     setText: (t, why) => { setValue(String(t ?? "")); if (why) say(why); ta.focus(); },
     stop: () => { flushDraft(); voiceSession?.stop(); stopVoiceElapsed(); clearSilenceTimers(); window.removeEventListener("blur", onWindowBlur); clearTimeout(hintTimer); for (const off of offs) off(); clearTimeout(leaseTimer); clearTimeout(fileTimer); clearTimeout(holdTimer); menu.close(); },
   };

@@ -24,6 +24,7 @@ import { renderMarkdown } from "../lib/markdown.js";
 import { renderUnified } from "../lib/diff.js";
 import { ensureCss, shell, chip, problemText } from "./kit.js";
 import { artifactFrame } from "./artifact-frame.js";
+import { providerName } from "../../js/provider-mark.js";
 
 /** Every artifacts tool the viewer calls, and the render route, in one place. */
 export const TOOLS = { get: "artifacts.get", versions: "artifacts.versions", share: "artifacts.share" };
@@ -51,6 +52,19 @@ export function mediaEl(type, id, title) {
 export function madeLine(m) {
   const who = [m?.provider, m?.model].filter(x => typeof x === "string" && x).join(", ");
   return who;
+}
+
+/** The providers a person can hand media to: those with a signed-in account (Claude always counts), as { provider, name }. @param {any} rows providers.list's answer */
+export function usableProviders(rows) {
+  const list = Array.isArray(rows) ? rows : Array.isArray(rows?.providers) ? rows.providers : [];
+  const out = [];
+  for (const r of list) {
+    const id = String(r?.provider ?? r?.id ?? "").toLowerCase();
+    if (!id || out.some(x => x.provider === id)) continue;
+    const accounts = Array.isArray(r?.accounts) ? r.accounts : [];
+    if (id === "claude" || accounts.some((/** @type {any} */ a) => a?.signed_in !== false && a?.signedIn !== false)) out.push({ provider: id, name: providerName(id) });
+  }
+  return out;
 }
 
 /** Kinds drawn natively as Markdown; everything else goes to the frame. */
@@ -132,14 +146,30 @@ export function artifactCard(data, ctx = {}) {
     el.classList.add("cv-art-mediablock");
     const made = h("div", { class: "cv-art-meta ellipsis" }, by ? `Made by ${by}` : "");
     const prompt = h("div", { class: "cv-art-prompt" });
+    const saved = h("div", { class: "cv-art-meta ellipsis" });
+    const menu = h("div", { class: "cv-art-usemenu", role: "menu", "aria-label": "Use in", hidden: true });
+    const useBtn = h("button", { class: "btn btn-ghost btn-sm", type: "button", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": `Use ${a.title} in another model`, onclick: async () => {
+      if (!menu.hidden) { menu.hidden = true; useBtn.setAttribute("aria-expanded", "false"); return; }
+      menu.hidden = false; useBtn.setAttribute("aria-expanded", "true");
+      put(menu, h("span", { class: "cv-art-meta" }, "Reading your accounts…"));
+      const r = await attempt("providers.list", {});
+      const opts = r.error ? [] : usableProviders(r.data);
+      put(menu, opts.length ? opts.map(o => h("button", { class: "btn btn-ghost btn-sm", type: "button", role: "menuitem", onclick: () => {
+        menu.hidden = true; useBtn.setAttribute("aria-expanded", "false");
+        el.dispatchEvent(new CustomEvent("deck:media-use", { bubbles: true, detail: { id: a.id, title: a.title, provider: o.provider, name: o.name } }));
+      } }, o.name)) : h("span", { class: "cv-art-meta" }, "Could not read your accounts. Try again."));
+    } }, "Use in…");
+    // Which project it is saved in: the session that holds this card says (data-project), read once it is attached.
+    queueMicrotask(() => { const pr = /** @type {any} */ (el.closest?.("[data-project]"))?.getAttribute?.("data-project"); if (pr) put(saved, `Saved in ${pr}`); });
     put(el,
       mediaEl(a.type, a.id, a.title),
       h("div", { class: "cv-art-cap" },
-        h("div", { class: "cv-art-text" }, h("div", { class: "cv-art-title ellipsis" }, a.title), made),
+        h("div", { class: "cv-art-text" }, h("div", { class: "cv-art-title ellipsis" }, a.title), made, saved),
         h("div", { class: "cv-art-actions" },
           h("button", { class: "btn btn-sm", type: "button", "aria-label": `Open ${a.title}`, onclick: () => openArtifact(data, ctx) }, "Open"),
+          useBtn,
           h("a", { class: "btn btn-ghost btn-sm", href: mediaSrc(a.id, true), download: "", "aria-label": `Download ${a.title}` }, "Download"))),
-      prompt);
+      menu, prompt);
     // Who made it and from what words: artifacts.get's media block, read once; the card stands without it.
     attempt(TOOLS.get, { artifact: a.id }).then(r => {
       const m = /** @type {any} */ (r.data)?.media;
