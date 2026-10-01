@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Disconnecting GitHub now deletes its token from the vault, and says so plainly when it cannot, instead of quietly leaving a live token behind. The account stays listed after a failure so you can retry.
+
 - team.add leaves PERSON_ONLY (it is reach asked, recorded by lib/said/team.js, so the session socket must not refuse it before the gate); presence.session.close is reach person; the reach-anyone check rejects "read-only" for more mutating verbs (share, restore, pause, upload, push and others), and the reasons for artifacts.share, restore, undelete, unshare, sync.delete and projects.archive name their real guards.
 
 - test: the reach suite is tighter. A callers list counts as a limit only when it names neither mcp nor harness (82 tools whose list admits a model are labelled and must declare a reach); `reach: "anyone"` needs a reason in test/reach-anyone.json, and a mutating-verb tool needs a reason that names a guard; reach-module-calls now covers local and lib and fails on a computed tool name outside test/reach-computed-calls.json; reach-dump keeps both roles and a tool the box and local define differently needs a line in test/reach-roles.json. link.pair, link.unpair, link.signout, presence.person.revoke, projects.move and projects.watchers.add and remove are reach person; projects.access.revoke and projects.add-workspace stay anyone because the agents, github and sync modules call them.

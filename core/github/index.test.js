@@ -43,7 +43,7 @@ function makeRepo(t, origin) {
  * and a fake `threads.get` backed by `existingThreads` (a set of ids `checkedThreadId` treats as
  * real chats - everything else answers not-found, the same as a made-up id would for real).
  */
-async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false, interruptIn } = {}) {
+async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingThreads = new Set(), failCreate = false, failAddWorkspace = false, interruptIn, vaultDelete } = {}) {
   const db = new DatabaseSync(":memory:");
   t.after(() => db.close());
   const tools = new Map(), events = [], calls = [], mcpRows = [];
@@ -68,6 +68,7 @@ async function world(t, { projectsRows = [], tokens = {}, projectsDir, existingT
       }
       if (toolName === "mcp.remove") { const i = mcpRows.findIndex(r => r.name === input.name); if (i >= 0) mcpRows.splice(i, 1); return { data: { removed: i >= 0 } }; }
       if (toolName === "vault.list") return { data: { items: [] } };
+      if (toolName === "vault.delete") return vaultDelete ? vaultDelete(input) : { data: { deleted: input.name } };
       if (toolName === "vault.put") return { data: { name: input.name } };
       if (toolName === "mcp.test") return { data: { ok: true } };
       if (toolName === "vault.grant") return { data: { grant: { status: "active" } } };
@@ -834,6 +835,28 @@ test("github.connect with a pasted token: checked with GitHub, saved under the a
   assert.equal(JSON.stringify((await w.as("deck")("github.accounts", {})).data).includes(tok), false);
   assert.equal(w.mcpRows[0].auth.item, "github-work", "the hosted MCP row follows the account");
   assert.equal((await w.as("mcp:agent:kit")("github.connect", { name: "evil", token: tok })).error.code, "denied");
+});
+
+test("github.remove: the token item is deleted from the vault first; a refusal is said plainly and keeps the account; an item already gone is fine", async t => {
+  const w = await world(t);
+  seedAccount(w.db, { name: "home", login: "alex" });
+  const r = await w.as("deck")("github.remove", { name: "home" });
+  assert.deepEqual(r.data, { removed: true });
+  assert.deepEqual(w.calls.filter(c => c.tool === "vault.delete").map(c => c.input), [{ name: "github-home" }]);
+  assert.deepEqual((await w.as("deck")("github.accounts", {})).data, []);
+
+  const refused = await world(t, { vaultDelete: () => ({ error: { code: "denied", message: "vault.delete is not available to module callers" } }) });
+  seedAccount(refused.db, { name: "home", login: "alex" });
+  const f = await refused.as("deck")("github.remove", { name: "home" });
+  assert.equal(f.error.code, "vault_delete_failed");
+  assert.match(f.error.message, /could not delete the saved GitHub token/);
+  assert.match(f.error.message, /github-home/);
+  assert.equal((await refused.as("deck")("github.accounts", {})).data.length, 1, "still connected, so the person can retry");
+  assert.equal(refused.events.some(e => e.type === "github.removed"), false);
+
+  const gone = await world(t, { vaultDelete: i => ({ error: { code: "failed", message: `no item named ${i.name}` } }) });
+  seedAccount(gone.db, { name: "home", login: "alex" });
+  assert.deepEqual((await gone.as("deck")("github.remove", { name: "home" })).data, { removed: true });
 });
 
 test("github.mcp.sync / github.remove: each connected account gets GitHub's hosted MCP row (bound item, no file writes), a second account a distinct name, sync is idempotent, and removing the account removes its row", async t => {

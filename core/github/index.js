@@ -195,14 +195,20 @@ export default {
     });
 
     ctx.tool("github.remove", {
-      description: "Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
+      description: "Disconnect a GitHub account: deletes its token from the vault, drops its hosted MCP row and removes the account. If the token cannot be deleted it says so and keeps the account. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
       run: async ({ name }) => {
         const acct = accounts.get(name);
         if (!acct) return { removed: false };
+        // The token item goes first, and a refusal is said plainly: swallowing it left a live token in
+        // the vault after the person disconnected. "No item" means it is already gone. On any other
+        // failure the account stays listed so the person can retry or remove the item themselves.
+        const del = await ctx.call("vault.delete", { name: acct.item }).catch(e => ({ error: { message: String(e && e.message || e) } }));
+        if (del.error && !/no item named|not_found/i.test(`${del.error.code || ""} ${del.error.message || ""}`)) {
+          throw fail(`could not delete the saved GitHub token (${String(del.error.message || del.error.code).slice(0, 160)}); ${name} is still connected. Try again, or delete the vault item ${acct.item} yourself.`, "vault_delete_failed");
+        }
         await dropHosted(acct);
-        await ctx.call("vault.delete", { name: acct.item }).catch(() => {});
         accounts.remove(name);
         ctx.events.emit("github.removed", { name });
         return { removed: true };

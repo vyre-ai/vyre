@@ -2018,7 +2018,7 @@ Where a pull request on the project's primary repo stands: open, merged or close
 
 ### `github.remove`
 
-Disconnect a GitHub account: removes Vyre's own vault item and account row. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.
+Disconnect a GitHub account: deletes its token from the vault, drops its hosted MCP row and removes the account. If the token cannot be deleted it says so and keeps the account. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.
 
 - Input:
   - `name` string, required
