@@ -1454,6 +1454,14 @@
    "module": "onboard",
    "default": "open to any caller"
   },
+  "projects.access.revoke": {
+   "module": "projects",
+   "default": "limited by callers in code"
+  },
+  "projects.add-workspace": {
+   "module": "projects",
+   "default": "limited by callers in code"
+  },
   "providers.list": {
    "module": "providers",
    "default": "open to any caller"
