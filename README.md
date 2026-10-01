@@ -7,24 +7,22 @@
 
 **Your agents live on your server. Reach them from your Mac or your phone.**
 
-Vyre is an open-source, self-hosted home for Claude Code agents. They run on a server you own, keep working when your laptop is closed, and answer when you press Option-Space on your Mac or open Vyre on your phone.
+Vyre is an open-source, self-hosted home for your AI agents. They run on a server you own and keep working when your laptop is closed. On your Mac you reach them with Vyre Lumen: press Option-Space in any app, ask, and send work to an agent. On your phone, open Vyre from your Home Screen.
 
-Your API keys stay in an encrypted vault on that server. Anything that sends a message, posts or pays waits for your Touch ID or Face ID.
+Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model for each session, or add @codex or @grok to ask another one for a single message. Your keys stay in an encrypted vault on your server, and anything that sends a message, posts or pays waits for your Touch ID or Face ID.
 
 <picture>
-  <img src="docs/images/readme/capsule-ask.png" alt="The Mac Capsule's command bar answering &quot;what is on the Northwind Bakery menu&quot; from a past session, with that session linked below the answer" width="600">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-now.dark.png">
+  <img src="docs/using/shots/deck-now.png" alt="The Deck's Now page: what needs you, and which agents are working, for the Harlow Legal and Northwind Bakery projects" width="640">
 </picture>
 
-## Install
+## Set up
 
-On the Linux server that will run your agents:
+Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI, connecting Tailscale and adding your phone.
 
-```
-curl -fsSL https://vyre.run/install.sh | sh
-vyre up
-```
-
-On your Mac, with Tailscale installed and signed in:
+- **The server** is a Linux machine with Docker, or a Mac that stays on.
+- **Tailscale** is required. The free plan is enough.
+- **Your Mac** (Node 22.5 or newer, Tailscale signed in) pairs with your server and gets Vyre Lumen:
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz
@@ -32,56 +30,71 @@ vyre up
 vyre capsule install
 ```
 
-`vyre up` connects your Mac to your server. `vyre capsule install` builds the Capsule on your Mac; nothing is downloaded for it. Vyre never changes your Mac's Tailscale settings. Step by step: [Install](docs/get-started/install.md).
+`vyre capsule install` builds Vyre Lumen on your Mac from the package; nothing is downloaded for it.
 
-## On your Mac: the Capsule
+The line the setup page shows is `curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh`, where the code is the one on the page. (`curl -fsSL https://vyre.run/install.sh | sh` is the same install without a code, for the terminal only.) Step by step: [Install](docs/get-started/install.md).
 
-Press Option-Space in any app. Ask a question, send work to one of your agents, or run a `vyre` command. Answers show which past session they came from, and the Capsule knows which project you are working in.
+## On your Mac: Vyre Lumen
+
+Press Option-Space in any app. Ask a question, send work to one of your agents, or run a `vyre` command. Answers show which past session they came from, and Lumen knows which project you are working in.
+
+
+## On your phone
+
+Vyre on your phone is the web app, added to your Home Screen from your server's address. Your phone needs Tailscale signed in. The setup page shows a ring to scan with your phone to pair it, shows your server's name and fingerprint, and pairs only after you tap Pair.
 
 <picture>
-  <img src="docs/images/readme/capsule-chip.png" alt="The Capsule's project chip: 'Ask Vyre, find, or run' with the current project, Northwind Bakery, shown at the top right" width="420">
+  <img src="docs/images/readme/wink-confirm.png" alt="The phone's pairing success screen, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
 </picture>
 
-## On your phone: pair by scanning your avatar
+## On Windows
 
-Open [phone.vyre.run](https://phone.vyre.run) and point the camera at the ring around your avatar on your Mac or in the browser. Your phone shows your server's name and fingerprint, and pairs only after you tap Pair. After that you can follow sessions, answer your agents' questions and approve actions from your phone.
+There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, and it updates itself. Its installer, VyreSetup.exe, comes with each release on GitHub.
 
-<picture>
-  <img src="docs/images/readme/wink-confirm.png" alt="Wink's success screen on a phone, framed by the device's edge: the scanned owner avatar, 'Paired with kit as alex's iPhone', and the code a1b2 c3d4" width="360">
-</picture>
+## Your agents, your accounts
 
-## On your server: your agents
-
-- **Sessions that outlive your laptop.** Claude Code runs on the server, so closing the lid doesn't stop the work.
+- **Sessions that belong to Vyre, not to one model.** A session keeps its memory and files when you change the model. Choose the provider, account, model and effort from the picker in the composer, or add `@codex` or `@grok` to a single message and the session stays where it is. A line in the thread says "Switched to Grok" when it changes, and each reply carries its provider's own mark.
+- **Images and video.** What a model generates is saved in the project as an artifact, with its provider, prompt and session, and shows up in a Generated folder in Drive. "Use in" hands an image to another model.
+- **Artifacts.** Documents, charts, diagrams and decks run with no scripts. An interactive page says "Runs its own code and can reach the internet" before it runs. In Safari, on a Mac or an iPhone, a page that navigates itself is a known gap that is fixed in 0.2.1: until then open interactive pages only from agents you trust. See [Known gaps](docs/known-gaps.md).
 - **Memory across sessions.** Vyre searches what you and your agents said before and shows the session each answer came from.
-- **Teammates.** Give each project its own named agents. They keep their own notes and pick up where they left off.
-- **GitHub.** Sign in with a short code, start a project from one of your repos, or add a repo to a project. Each session works in its own copy of the repo, so parallel sessions don't collide.
-- **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it with one command.
-- **Desktops on your tailnet.** After a one-time Tailscale setup on your server, a Linux or Windows desktop you pair joins your tailnet on its own. Macs follow in 0.1.2.
+- **Teammates.** Give each project its own named agents with their own duties and notes; they pick up where they left off.
+- **GitHub.** Connect with a short code. Commits carry your identity, and each session works in its own copy of the repo, so parallel sessions don't collide.
+- **Watchers.** Small jobs that watch for something and tell you, scoped to the project that made them.
+- **Agent computers.** An agent that gets its own computer is held to that computer, and only you can resume a paused one.
+- **Vyre for Chrome.** An extension that lets your agents use Chrome in a tab group of their own. It learns how sites work so later runs are faster, which you can see and forget under Memory, and it says plainly what it does not block. See [Learning](docs/using/learning.md).
+- **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it. Pairing a device, revealing a secret, and anything that sends, posts or pays waits for Touch ID or Face ID. A spend cap limits what agents can spend.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/readme/deck-chat.dark.png">
-  <img src="docs/images/readme/deck-chat.png" alt="The Deck showing the Weekly planning thread in the Harlow Legal project: your avatar and Vyre's reply avatar in the thread, the Harlow Legal project tile in the header, and both projects' tiles in the sidebar" width="720">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-chat.dark.png">
+  <img src="docs/using/shots/deck-chat.png" alt="The Deck showing a session in the Harlow Legal project, with the thread and each reply's author" width="640">
 </picture>
+
+## Updates
+
+Releases are signed (an Ed25519 signature on the release files, and cosign on the server image) and Vyre checks both before it installs one. The stable channel ignores prereleases.
 
 ## What stays private
 
 - Your keys, memory and sessions stay on your server.
-- Your prompts go to Anthropic's API through Claude Code, the same as when you run Claude Code on its own.
-- Your server opens no port to the internet. Your Mac reaches it over Tailscale.
-- A phone you pair by scanning reaches your server through our relay at relay.vyre.run. That traffic is end-to-end encrypted, so the relay can see that your phone and server talk, and when, but never what is said or your keys.
+- Your prompts go to the provider you choose (Anthropic, OpenAI, xAI or OpenRouter), the same as when you use that provider on its own.
+- Your server publishes no port to the internet. You reach it over Tailscale.
+- Vyre's relay at relay.vyre.run carries setup progress and phone pairing. That traffic is end-to-end encrypted, so the relay can see that a server and a device talk, and when, but never what they say.
+
+## Not in 0.2.0
+
+Coming in 0.2.1: Touch ID prompts for terminal commands that need them, the Safari fix above, faster Chrome routing and parallel tabs, "give it to two" (one question, two models, side by side) and per-provider blocks for each model's plans and diffs. Coming in 0.2.5: Spaces (team spaces and sharing between people), memory rollover, and putting idle sessions to sleep.
 
 ## Questions
 
-**What is Vyre?** A daemon and a Claude Code plugin that give your Claude Code agents a permanent home on a server you own, plus the Capsule for your Mac and an app for your phone. It doesn't fork Claude Code, so Claude Code updates reach you directly.
+**What is Vyre?** A daemon and a set of apps that give your AI agents a permanent home on a server you own: Vyre Lumen for your Mac, an app for your phone and one for Windows. It runs your Claude, Codex and Grok agents with your own accounts.
 
-**What do I need?** A Linux server (a VPS, a home server or a spare machine), a Mac, Tailscale, and a Claude account. Your phone is optional.
+**What do I need?** A server (a Linux machine with Docker, or a Mac that stays on), Tailscale, and an account with at least one of Claude, Codex, Grok or OpenRouter. Your phone, your Mac and a Windows PC are each optional.
 
-**What does it cost?** Vyre is free and open source under Apache 2.0. You pay Anthropic for Claude as you do today.
+**What does it cost?** Vyre is free and open source under Apache 2.0. You pay your AI providers as you do today.
 
-**Is it secure?** Your server opens no public port, your keys are encrypted at rest, phone traffic through the relay is end-to-end encrypted, and every send, post, payment or new device needs your Touch ID or Face ID. Details: [Security](docs/security/index.md).
+**Is it secure?** Your server publishes no port, your keys are encrypted at rest, relay traffic is end-to-end encrypted, and every send, post, payment or new device needs your Touch ID or Face ID. Releases are signed.
 
-**How do I add my phone?** Open phone.vyre.run on the phone, scan the ring around your avatar, check the name and fingerprint, and tap Pair.
+**How do I add my phone?** Open the setup page or your server's address on the phone, scan the ring, check the name and fingerprint, and tap Pair.
 
 ## Develop
 

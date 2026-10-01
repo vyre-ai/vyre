@@ -5,6 +5,18 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### 0.2.0 (2 Oct 2026)
+
+- Landing page, start page, llms.txt and the 404 page now describe 0.2.0: the Capsule is Vyre Lumen,
+  setup starts at vyre.run/setup, the hero names Claude, Codex, Grok and OpenRouter from your own
+  subscriptions, and there is a new "Your accounts, any model" section (the model picker, @codex and
+  @grok, the "Switched to" line, generated images and video). The Windows app and the Windows tab are
+  new. The "coming" chips and the 0.1.1 wording are gone; what is not in 0.2.0 is listed on the start
+  page and in the FAQ.
+- The start page is rewritten around the setup page's steps (check words, name, recovery code, AI
+  sign-in, Tailscale, phone, open your server), then the Mac (`vyre capsule install`), the phone and
+  Windows.
+
 ### The module story, "Make it yours" (2026-09-28)
 
 - The lead asked for the landing page's "Make it yours" section to tell the module/Lego story

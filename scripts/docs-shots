@@ -156,7 +156,10 @@ esac
 
 /** The environment every vyred and vyre here runs with. */
 const worldEnv = (home, bins, extra = {}) => {
-  const env = { ...process.env, VYRE_NO_DIALOGS: "1", VYRE_DECK_FIXTURES: "1", NO_COLOR: "1", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
+  const env = { ...process.env, VYRE_NO_DIALOGS: "1", VYRE_DECK_FIXTURES: "1", NO_COLOR: "1",
+    // vyred's existing test mode (core/daemon/peer.js peerHosting): a world over a temp home may run under a hosted parent (a CI runner, an ssh login)
+    // without the person-only tools asking for a presence proof. Shipped code never turns it on, and it never touches ~/.vyre.
+    VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: process.env.NODE_TEST_CONTEXT || "docs-shots", VYRE_TAILSCALE_BIN: bins.ts, VYRE_CLAUDE_BIN: bins.claude,
     NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --import=${PRELOAD}`.trim(), VYRE_TMPDIR: SCRATCH, ...extra };
   if (home) env.VYRE_HOME = home;
   delete env.CLOUDFLARE_VYRE_TOKEN;

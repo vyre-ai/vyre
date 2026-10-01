@@ -124,6 +124,17 @@ its source turns. **Now** shows **Memory learned today**, each fact with its sou
 > The Memory view could not read the graph from Vyre. Choose **Try again**. If it keeps failing,
 > check that Vyre runs (`vyre status`) and that the memory module started (`vyre modules`).
 
+## See what Vyre has learned about a site
+
+When Vyre for Chrome learns how a website works, the Deck lists it under **Memory**, on the
+**Sites** tab. Open a site to see what Vyre kept: the flows that worked, the controls it knows how
+to find, the site's own API calls and its notes. Each row has **Wrong?**, which forgets just that
+item. **Forget** on a site removes everything Vyre learned about it. Neither asks first, because
+each can be undone for 24 hours: the line says "Forgot ... Undo", and **Recently forgotten** at
+the bottom lists what can still be brought back, on any device.
+
+![The Sites tab in Memory: Harlow CRM with its host, its family, and what Vyre for Chrome has learned about it, with a Forget button.](shots/deck-memory-sites.png)
+
 ## How projects keep memory apart
 
 Memory is kept in **rooms**: one per project, and `unfiled` for sessions in no project. A room's
