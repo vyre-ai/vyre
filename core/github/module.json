@@ -8,7 +8,7 @@
       {"name": "github.connect", "reach": "person"},
       {"name": "github.connect.cancel", "reach": "person"},
       {"name": "github.mcp.sync", "reach": "person"},
-      {"name": "github.accounts", "reach": "person"},
+      {"name": "github.accounts", "reach": "anyone"},
       {"name": "github.remove", "reach": "person"},
       {"name": "github.repos", "reach": "anyone"},
       {"name": "github.project", "reach": "person"},
