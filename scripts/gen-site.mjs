@@ -8,7 +8,8 @@
 //   node scripts/gen-site.mjs --og DIR   also writes DIR/<slug>.html, one 1200x630 card per page, for scripts/gen-og.sh
 //
 // It never writes the served installers (install.sh, i, w, box/*) or the setup page (setup/*), and it leaves /start alone.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -17,6 +18,9 @@ const site = resolve(here, '..', 'site');
 const SITE = 'https://vyre.run';
 const VERSION = '0.2.0';
 const MODIFIED = new Date().toISOString().slice(0, 10);
+// A hash of each asset goes in its URL, so a deploy never meets a stale copy in a browser cache (see site/_headers).
+const hash = (f) => createHash('sha256').update(readFileSync(join(site, f))).digest('hex').slice(0, 10);
+const CSS_V = `/v2.css?v=${hash('v2.css')}`, JS_V = `/v2.js?v=${hash('v2.js')}`;
 const FONTS = 'https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap';
 const ogDir = process.argv.includes('--og') ? resolve(process.argv[process.argv.indexOf('--og') + 1]) : null;
 
@@ -51,13 +55,14 @@ function nav(slug) {
   const links = NAV.map(([t, h]) => {
     const cur = (slug === 'direction' && h === '/direction/') ? ' aria-current="page"' : '';
     return `<a href="${h}"${cur}>${t}</a>`;
-  }).join('') + `<a href="${REPO}">GitHub</a><a class="star" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star on GitHub</span></a>`;
+  }).join('');
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="/" aria-label="Vyre, home">${MARK}${WORD}</a>
     <nav class="nav-links" id="links" aria-label="Main">${links}</nav>
     <div class="nav-end">
+      <a class="star-pill" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star</span></a>
       <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
       <a class="btn btn-fill btn-sm" href="/setup/">Set up Vyre</a>
       <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
@@ -131,9 +136,9 @@ function page({ slug, path, title, desc, body, ld = [], ogTitle, ogSub, type = '
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preload" as="style" href="${FONTS}" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="${FONTS}"></noscript>
-  <link rel="stylesheet" href="/v2.css">
+  <link rel="stylesheet" href="${CSS_V}">
   <script>document.documentElement.className='js'</script>
-  <script src="/v2.js" defer></script>
+  <script src="${JS_V}" defer></script>
 </head>
 <body>
 ${nav(slug)}
@@ -750,7 +755,7 @@ page({
 {
   const html404 = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
-<link rel="preload" as="style" href="${FONTS}" onload="this.onload=null;this.rel='stylesheet'"><link rel="stylesheet" href="/v2.css"><script src="/v2.js" defer></script></head>
+<link rel="preload" as="style" href="${FONTS}" onload="this.onload=null;this.rel='stylesheet'"><link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defer></script></head>
 <body>${nav('404')}<main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/setup/">Set up Vyre</a></div></div></main>${FOOT}</body></html>
 `;
   writeFileSync(join(site, '404.html'), html404);

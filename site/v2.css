@@ -339,12 +339,12 @@ section.sec { padding: clamp(72px, 10vw, 136px) 0 0; }
 
 /* CTA pairs under a centred heading sit centred */
 .hero .btn-row, .closing .btn-row { justify-content: center; }
-/* Star on GitHub: our own markup, no count */
-.nav-links a.star { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; margin-left: 4px; border: 1px solid var(--line-2); border-radius: 999px; font-size: 11px; }
-.nav-links a.star:hover { border-color: var(--accent); }
-.star-ic { flex: none; color: var(--accent); }
+/* Star on GitHub: our own markup, no count. One pill, the toggle's height and border. */
+.star-pill { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 14px; border: 1px solid var(--line); color: var(--ink); text-decoration: none; font: 500 12px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; }
+.star-pill:hover { background: var(--sunk); }
+.star-pill .star-ic { display: block; color: var(--accent); }
+.star-pill span { display: block; line-height: 1; }
+.star-ic { flex: none; }
 .btn .star-ic { color: currentColor; }
 .foot a.star-link { display: inline-flex; align-items: center; gap: 7px; }
 .foot a.star-link .star-ic { color: var(--accent); }
-@media (max-width: 880px) { .nav-links a.star { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; margin: 0; padding: 16px 0; font-size: 12px; } }
-@media (max-width: 1080px) and (min-width: 881px) { .nav-links a.star span { display: none; } .nav-links a.star { padding: 8px 10px; } }
