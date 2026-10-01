@@ -7,7 +7,7 @@
     "tools": [
       { "name": "computers.list", "reach": "anyone" }, { "name": "computers.get", "reach": "anyone" }, { "name": "computers.checkout", "reach": "anyone" }, { "name": "computers.release", "reach": "anyone" }, { "name": "computers.stop", "reach": "anyone" }, { "name": "computers.restart", "reach": "anyone" }, { "name": "computers.limits", "reach": "anyone" },
       { "name": "computers.stats", "reach": "modules" },
-      { "name": "computers.pause", "reach": "anyone" }, { "name": "computers.resume", "reach": "anyone" }, { "name": "computers.takeover", "reach": "person" }, { "name": "computers.giveback", "reach": "person" }, { "name": "computers.watch", "reach": "anyone" },
+      { "name": "computers.pause", "reach": "anyone" }, { "name": "computers.resume", "reach": "anyone" }, { "name": "computers.takeover", "reach": "anyone" }, { "name": "computers.giveback", "reach": "anyone" }, { "name": "computers.watch", "reach": "anyone" },
       { "name": "computers.endpoint", "reach": "modules" }, { "name": "computers.may-act", "reach": "modules" }, { "name": "computers.helper", "reach": "modules" }, { "name": "computers.shield", "reach": "modules" },
       { "name": "computers.egress.status", "reach": "anyone" }, { "name": "computers.egress.set", "reach": "person" },
       { "name": "computers.tailnet.status", "reach": "person" }, { "name": "computers.tailnet.set", "reach": "person" }, { "name": "computers.node.agent", "reach": "modules" },
