@@ -11,8 +11,43 @@
 
 import { Screen } from "./screen.js";
 import { makeHelper, ScreenError } from "./runner.js";
+import { callerKind, agentClaim } from "../../core/modules/index.js";
 
 const CALLERS = ["cli", "local", "mcp", "module"];
+
+const PEOPLE = ["cli", "local", "deck", "capsule"];
+/**
+ * Who is asking, as far as the screen is concerned: null for the person's own surfaces (cli, local, deck, capsule) and for modules; `plan: true` for an agent (a claim in any spelling, or a
+ * caller kind that is none of the person's) which must hold the grant AND have a posted plan; `plan: false` for a plain model session of the person's own (mcp, no agent claim), which
+ * needs the one-time grant but no plan (a prompt-injected session in the person's own terminal is the case this stops; after the one grant it is hands-free).
+ * @param {any} meta @returns {{ agent: string, plan: boolean } | null}
+ */
+function whoOf(meta) {
+  const claim = agentClaim(meta && meta.caller) || (meta && meta.agent ? String(meta.agent) : null);
+  if (claim) return { agent: claim, plan: true };
+  const kind = callerKind(meta && meta.caller);
+  if (kind === "mcp") return { agent: PLAIN_MCP, plan: false };
+  return [...PEOPLE, "module"].includes(kind) ? null : { agent: `caller:${kind}`, plan: true };
+}
+/** The grant name of a plain model session (hands.grant.add { agent: "mcp" }): one grant, then no prompts. */
+const PLAIN_MCP = "mcp";
+
+/**
+ * The screen can hold mail, bank pages and passwords, so a model sees it only with the person's computer-use grant (hands.grant.add, theirs to give), and an agent also inside a posted plan
+ * (chrome.plan, checked through chrome.plan.check), as it drives Chrome. The person's own surfaces ("ask about my screen") and modules are not asked.
+ * @param {any} ctx @param {any} meta
+ */
+async function agentGate(ctx, meta) {
+  const who = whoOf(meta);
+  if (!who) return;
+  const { agent } = who;
+  const g = /** @type {any} */ (await ctx.call("hands.grant.list", {}).catch(() => null));
+  const granted = g && !g.error && Array.isArray(g.data) && g.data.some((/** @type {any} */ x) => x.agent === agent);
+  if (!granted) throw new ScreenError("denied", `${agent === PLAIN_MCP ? "this model session" : agent} is not granted to use this Mac, so it cannot see the screen. Grant it once with hands.grant.add${agent === PLAIN_MCP ? ` { agent: "mcp" }` : ""} or ask the person to.`);
+  if (!who.plan) return;
+  const p = /** @type {any} */ (await ctx.call("chrome.plan.check", { agent }).catch(() => null));
+  if (!(p && !p.error && p.data && p.data.planned === true)) throw new ScreenError("plan_first", "post your plan first with chrome.plan (a short list of steps), then look at the screen.");
+}
 
 /** @param {any} meta */
 function localOnly(meta) {
@@ -36,7 +71,7 @@ export default {
         textMax: { type: "integer", description: "Most characters of visible text, 0-20000. Default 4000." },
       } },
       callers: CALLERS,
-      run: async (input, meta) => { localOnly(meta); return screen.context(input); },
+      run: async (input, meta) => { localOnly(meta); await agentGate(ctx, meta); return screen.context(input); },
     });
 
     // A path, not base64. A window on a Retina display is a few megabytes of PNG, and base64 in
@@ -47,7 +82,7 @@ export default {
       description: "Take a screenshot now, of the front window (default) or the main display (window: false). Returns the path of a PNG in a private folder that is deleted after 60 seconds, plus its width and height; read the file to see it. Needs the Screen Recording grant. Refused, with blind naming why, where screen.context is blind. Local callers only.",
       input: { type: "object", properties: { window: { type: "boolean", description: "Only the front window. Default true." } } },
       callers: CALLERS,
-      run: async (input, meta) => { localOnly(meta); return screen.shot(input); },
+      run: async (input, meta) => { localOnly(meta); await agentGate(ctx, meta); return screen.shot(input); },
     });
 
     return { async stop() { await screen.stop(); } };

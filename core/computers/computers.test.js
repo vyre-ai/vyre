@@ -262,8 +262,8 @@ test("computers: the owner takes and hands back the keyboard with no passkey; an
   assert.equal((await s.cli("gate.approve", { id: "g1" })).error?.code, "presence_required", "the floor still holds");
   assert.equal((await s.cli("computers.takeover", { agent: "kit", surface: "deck:laptop" })).data.surface, "deck:laptop");
   assert.equal(s.h.keyboard.canType("kit", "deck:laptop"), true);
-  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
-  assert.match((await s.kit("computers.giveback", { surface: "deck:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen|not available to mcp callers/);
+  assert.match((await s.kit("computers.giveback", { surface: "deck:laptop" })).error.message, /is an agent, not a person's screen|not available to mcp callers/);
   assert.deepEqual((await s.cli("computers.giveback", { agent: "kit", surface: "deck:laptop" })).data, { agent: "kit", handed_back: true });
 });
 
@@ -272,11 +272,11 @@ test("computers: an agent cannot claim a surface, so it cannot end someone else'
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
   // kit's own hands, refused mid-take-over, try to give the keyboard back to itself.
   const gone = await s.kit("computers.giveback", { surface: "glass:laptop" });
-  assert.match(gone.error.message, /is an agent, not a person's screen/);
+  assert.match(gone.error.message, /is an agent, not a person's screen|not available to mcp callers/);
   assert.equal(s.h.keyboard.canType("kit", "glass:laptop"), true, "the take-over is still held");
   // Same for taking over in the first place, and for watching as a surface it is not.
-  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
-  assert.match((await s.kit("computers.watch", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen|not available to mcp callers/);
+  assert.match((await s.kit("computers.watch", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen|not available to mcp callers/);
   // The real surface can still give it back.
   assert.deepEqual((await s.cli("computers.giveback", { agent: "kit", surface: "glass:laptop" })).data, { agent: "kit", handed_back: true });
 });
@@ -531,8 +531,8 @@ test("computers: tailnet is off by default; status says so, and whether the key 
 test("computers: tailnet.set and status are the owner's, refused to agents and the assistant; set is saved to config", async t => {
   const s = await boot(t);
   for (const as of [s.kit, s.juno]) {
-    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /not available to mcp callers/);
-    assert.match((await as("computers.tailnet.status")).error.message, /not available to mcp callers/);
+    assert.match((await as("computers.tailnet.set", { enabled: true })).error.message, /is an agent|not available to mcp callers/);
+    assert.match((await as("computers.tailnet.status")).error.message, /is an agent|not available to mcp callers/);
   }
   assert.ok(s.d.registry.tools.get("computers.tailnet.set")?.presence, "computers.tailnet.set does not declare presence");
   const ok = await s.cli("computers.tailnet.set", { enabled: true });
@@ -547,7 +547,7 @@ test("computers: tailnet.set and status are the owner's, refused to agents and t
 test("computers: idle hand-back is 5 min by default, the owner's to change, live, and ends a take-over with why idle", async t => {
   const s = await boot(t);
   assert.deepEqual((await s.cli("computers.handback.status")).data, { minutes: 5, choices: [0, 2, 5, 15], warn_s: 10 });
-  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /not available to mcp callers/);
+  assert.match((await s.kit("computers.handback.set", { minutes: 0 })).error.message, /is an agent|not available to mcp callers/);
   assert.ok((await s.cli("computers.handback.set", { minutes: 7 })).error, "a minutes value that is not a choice was saved");
   await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
   const ok = await s.cli("computers.handback.set", { minutes: 2 });

@@ -366,7 +366,7 @@ test("failures say which frame they looked in, the page snippet comes from that 
 test("eval: `frame` picks where the script runs (index, id or a piece of the origin); the guard shim goes in and comes out of that same frame", async () => {
   /** @type {any[]} */ const seen = [];
   const w = await world({ userEval: (/** @type {string} */ id, /** @type {string} */ expr) => {
-    seen.push([id, expr === passwordFieldScript ? "password" : (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) ? "install" : expr === guardCollect ? "collect" : expr]);
+    seen.push([id, expr === passwordFieldScript ? "password" : (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) ? "install" : expr === guardCollect ? "collect" : String(expr).replace(/\n\/\/# sourceURL=vyre-eval-\S+$/, "")]);
     if (expr === passwordFieldScript) return { result: { type: "boolean", value: false } };
     if (expr === guardInstall || String(expr).endsWith(guardInstallWrites)) return { result: { type: "boolean", value: true } };
     if (expr === guardCollect) return { result: { type: "object", value: [] } };

@@ -153,7 +153,10 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
     /** @param {string} id @param {string} [why] */ stepFailed: (id, why) => step("failed", id, why),
 
     /** The run is over: forget the plan so the next run must post its own. @param {string} agent */
-    finish(agent) {
+    finish(agent, { ok = true } = {}) {
+      const p = /** @type {any} */ (plans.get(agent));
+      // The run is over: Lumen's panel closes on this (a run that never finishes keeps it open).
+      emit("chrome.finished", { agent, ...(p && p.thread ? { thread: p.thread } : {}), ok: ok !== false });
       plans.delete(agent);
       if (active === agent) { active = null; if (state === "planning" || state === "running") state = "idle"; }
       return { ok: true };
@@ -183,6 +186,7 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
       state = "stopped";
       stoppedBy = by;
       emit("chrome.stopped", { agent: active, by });
+      if (active) { const p = /** @type {any} */ (plans.get(active)); emit("chrome.finished", { agent: active, ...(p && p.thread ? { thread: p.thread } : {}), ok: false, stopped: true }); }
       return Promise.resolve(push({ event: "stop", by })).catch(() => false).then(() => {
         const ms = Math.max(0, now() - t0);
         latencies.push(ms);
@@ -217,6 +221,8 @@ export function createOversight({ emit: rawEmit = () => {}, push = () => false, 
      * @param {string|null|undefined} agent the named agent, or null for a person's own call
      * @param {string} [caller] @returns {{ interjection?: string }}
      */
+    /** Whether this agent has posted a plan (chrome.plan) and the person has not stopped Vyre: what other modules ask before they show an agent the person's screen. @param {string} agent */
+    planned(agent) { return state !== "stopped" && plans.has(agent); },
     guard(agent, caller) {
       if (state === "stopped") throw refuse("stopped", "the person stopped Vyre in Chrome. Ask them, then wait for chrome.resume before acting again.");
       if (state === "waiting_input") throw refuse("waiting_input", `waiting for the person: ${question || "they were asked a question"}`);

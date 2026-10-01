@@ -14,6 +14,7 @@
 // Starting costs nothing: it listens on a private socket and waits. No extension connected means
 // tools say so on the call, in words that say what to do.
 
+import { createLearnSwitch } from "./learn-switch.js";
 import crypto from "node:crypto";
 import path from "node:path";
 import fs from "node:fs";
@@ -121,15 +122,17 @@ export default {
     /** @type {Map<number, string>} the last URL seen for each tab, so an op is judged before it is sent */
     const urls = new Map();
 
-    /** Learning what each site looks like is OFF until the person turns it on (config learn, or the memory.site.learn setting), while the store's privacy review is open. */
-    const learnOn = () => (typeof cfg.learn === "function" ? cfg.learn() : cfg.learn) === true;
+    /** Learning what each site looks like is ON by default and switched off by the memory.site.learn setting or config learn: false (learn-switch.js). */
+    const learning = createLearnSwitch({ cfg, call: (tool, input) => ctx.call(tool, input) });
+    const refreshLearn = () => learning.refresh();
+    const learnOn = () => learning.on();
     /** How long a "visit" is, for the two-visit evidence: 30 minutes unless the person's config says otherwise (a test knob; a shorter window only makes "seen twice" come sooner). */
     const visitMs = () => { const v = typeof cfg.learnVisitMs === "function" ? cfg.learnVisitMs() : cfg.learnVisitMs; return Number.isFinite(v) && v >= 1000 ? Math.round(v) : 30 * 60_000; };
     let lastSiteConfig = "";
     /** The extension learns only while the person's switch is on: tell it whenever the switch (or the window) changes, at its hello and at the next call after. */
     const syncSiteConfig = () => { const c = JSON.stringify({ learn: learnOn(), visitMs: visitMs() }); if (c === lastSiteConfig) return; lastSiteConfig = c; void bridge.push({ event: "site.config", ...JSON.parse(c) }); };
     const off = bridge.on(e => {
-      if (e.event === "hello") { emit("chrome.connected", { version: e.version || null, browser: e.browser || null }); lastSiteConfig = ""; syncSiteConfig(); }
+      if (e.event === "hello") { emit("chrome.connected", { version: e.version || null, browser: e.browser || null }); lastSiteConfig = ""; void learning.refresh(true).then(syncSiteConfig); }
       else if (e.event === "disconnected") emit("chrome.disconnected", {});
       // A second connection took over from the live extension. A quiet notice for the panel to show
       // if it wants to, never a prompt: the person may simply have restarted Chrome.
@@ -137,18 +140,18 @@ export default {
       // The extension saw the person stop Vyre in the browser itself.
       else if (e.event === "stop") oversight.stop({ by: "esc" });
       // The extension asks for what Vyre knows about a site, and sends what it learned (Vyre Memory's memory.site.*, or files in standalone).
-      else if (e.event === "site.want" && learnOn()) {
-        void (async () => {
+      else if (e.event === "site.want") {
+        void (async () => { await refreshLearn(); if (!learnOn()) return;
           const r = /** @type {any} */ (await ctx.call("memory.site.get", { origin: String(e.origin || ""), ...(Number.isInteger(e.since_rev) ? { since_rev: e.since_rev } : {}) }).catch(() => null));
           const d = r && !r.error ? r.data : null;
           if (d && d.origin && typeof d.origin === "object") void bridge.push({ event: "site.card", origin: String(e.origin), card: d.origin, rev: d.rev });
         })();
       }
-      else if (e.event === "site.report" && learnOn()) {
-        void (async () => { if (typeof e.template === "string") { await ctx.call("memory.site.report", { origin: String(e.origin || ""), template: String(e.template).slice(0, 200), rung: Number(e.rung), lowerFailed: e.lowerFailed === true }).catch(() => null); return; } await ctx.call("memory.site.report", { origin: String(e.origin || ""), part: String(e.part || ""), id: String(e.id || ""), outcome: e.outcome === "ok" ? "ok" : "miss" }).catch(() => null); })();
+      else if (e.event === "site.report") {
+        void (async () => { await refreshLearn(); if (!learnOn()) return; if (typeof e.template === "string") { await ctx.call("memory.site.report", { origin: String(e.origin || ""), template: String(e.template).slice(0, 200), rung: Number(e.rung), lowerFailed: e.lowerFailed === true }).catch(() => null); return; } await ctx.call("memory.site.report", { origin: String(e.origin || ""), part: String(e.part || ""), id: String(e.id || ""), outcome: e.outcome === "ok" ? "ok" : "miss" }).catch(() => null); })();
       }
-      else if (e.event === "site.put" && learnOn()) {
-        void (async () => {
+      else if (e.event === "site.put") {
+        void (async () => { await refreshLearn(); if (!learnOn()) return;
           const r = /** @type {any} */ (await ctx.call("memory.site.put", { origin: String(e.origin || ""), target: "origin", patch: e.patch }).catch(() => null));
           if (r && r.data && r.data.accepted) emit("chrome.site-learned", { origin: String(e.origin), rev: r.data.rev });
         })();
@@ -274,6 +277,7 @@ export default {
         if (process.env.VYRE_CHROME_TEST && process.env.VYRE_CHROME_TEST_NOFETCH === "1" && inTempDir(process.env.VYRE_CHROME_HOME)) trust.noFetch = true;
         // Test only, same two conditions: while a file named test-failenable exists in the temp profile, Fetch.enable fails on every FRAME the guard meets (to see what the guard does with a child it cannot reach).
         if (process.env.VYRE_CHROME_TEST && inTempDir(process.env.VYRE_CHROME_HOME) && fs.existsSync(path.join(String(process.env.VYRE_CHROME_HOME), "test-failenable"))) trust.failEnable = true;
+        await refreshLearn();
         syncSiteConfig();
         const summary = summarize(op, input);
         /** @type {any} */
@@ -601,14 +605,14 @@ export default {
       });
 
     tool("chrome.plan", "Post what you are about to do in the person's Chrome, as a short list of steps ({id, text, risk?}), before your first action: they see it and can interject or stop. Then report each step with step and status (running, done, failed), and finish when the run is over.",
-      obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, agent: str }),
+      obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, ok: { ...bool, description: "With finish: false when the run ended in failure. Default true." }, agent: str }),
       async (i, meta) => {
         const agent = agentOf(meta.caller);
         await requireGrant(agent);
         const name = agent || (i.agent ? String(i.agent) : "you");
         return via.run(meta, async () => {
           if (Array.isArray(i.steps)) return oversight.plan(name, i.steps, { thread: meta.thread, title: i.title });
-          if (i.finish) { showPresence({ done: true }); return oversight.finish(name); }
+          if (i.finish) { showPresence({ done: true }); return oversight.finish(name, { ok: i.ok !== false }); }
           if (i.step) return i.status === "done" ? oversight.stepDone(i.step) : i.status === "failed" ? oversight.stepFailed(i.step, i.why) : oversight.stepStarted(i.step);
           throw Object.assign(new Error("bad_request: give steps to post a plan, or step and status to report one"), { code: "bad_request" });
         }).catch(e => { throw wrapErr(e); });
@@ -635,6 +639,15 @@ export default {
       (i, m) => via.run(m, async () => oversight.voice({ run: i.run, text: i.text, final: i.final === true })).catch(e => { throw wrapErr(e); }), { callers: PEOPLE });
 
     // The Gate's own call once the person approved a held act.
+    // Asked by other modules (screen) before they show an agent the person's screen: has this agent posted a plan, and is Vyre not stopped? Only modules call it.
+    ctx.tool("chrome.plan.check", {
+      internal: true,
+      description: "Whether an agent has posted a plan and the person has not stopped Vyre. Internal: other modules ask it before showing an agent the person's screen.",
+      input: obj({ agent: str }, ["agent"]),
+      callers: ["module"],
+      run: async (/** @type {any} */ input) => ({ planned: oversight.planned(String(input && input.agent || "")) }),
+    });
+
     ctx.tool("chrome.release", {
       internal: true,
       description: "The Gate's own call once a person approved a held act in Chrome: sends it again with the page signature it was held under, and the extension refuses it (changed) if the page moved since. Never called directly.",
@@ -735,5 +748,6 @@ export function guide(dir, id, browsers) {
     "Then run chrome.status: it should say connected.",
     "Two bars in Chrome are normal and cannot be hidden. On every start, Chrome warns about developer-mode extensions. While Vyre works in a tab, Chrome says the extension started debugging this browser; it goes away when Vyre lets go of the tab.",
     "Esc stops Vyre at once, and it waits for you before doing anything else.",
+    "Agents can run a script in a page you are signed in to. While it runs, and for what it leaves running (a timer, a frame it made) until the page changes, Vyre stops it from sending anything to a site the page does not already use; a worker it made is closed when the call returns. Limit: a script cannot be held beyond that, so an agent you do not trust should not be given a page with your logins in it.",
   ].join("\n");
 }

@@ -1418,7 +1418,7 @@ export default {
       /** @type {any} */ let r;
       /** @type {any[]} */ let blocked = [];
       /** @type {any[]} */ let outside = [];
-      try { r = await run(frame, args.expression, { awaitPromise: true, timeout: 10_000 }); }
+      try { r = await run(frame, egress && egress.tag ? `${args.expression}\n//# sourceURL=${egress.tag}` : args.expression, { awaitPromise: true, timeout: 10_000 }); }
       finally {
         if (guarded) { const c = await run(frame, guardCollect, {}).catch(() => null); { const bv = c && c.result && c.result.value; blocked = Array.isArray(bv) ? bv : []; } }
         if (egress) outside = await egress.stop().catch(() => []);

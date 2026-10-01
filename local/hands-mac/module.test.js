@@ -16,7 +16,7 @@ import { fakeApp } from "./fake.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 test("module: the manifest is valid under the loader's rules", () => {
-  assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"))), []);
+  assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")), { firstParty: true }), []);
 });
 
 test("module: starts in the Registry, registers its tools, and act observes again", async t => {

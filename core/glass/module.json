@@ -13,10 +13,10 @@
       {"name": "glass.files.stat", "reach": "anyone"},
       {"name": "glass.files.preview", "reach": "anyone"},
       {"name": "glass.files.download", "reach": "anyone"},
-      {"name": "glass.files.upload", "reach": "anyone"},
-      {"name": "glass.files.move", "reach": "anyone"},
-      {"name": "glass.files.mkdir", "reach": "anyone"},
-      {"name": "glass.files.trash", "reach": "anyone"}
+      {"name": "glass.files.upload", "reach": "person"},
+      {"name": "glass.files.move", "reach": "person"},
+      {"name": "glass.files.mkdir", "reach": "person"},
+      {"name": "glass.files.trash", "reach": "person"}
     ] },
   "watches": { "emits": [
     "glass.opened", "glass.closed", "glass.taken", "glass.released",

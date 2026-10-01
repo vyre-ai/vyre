@@ -7,7 +7,7 @@ import net from "./extension/caps/net.js";
 import dev from "./extension/caps/devtools.js";
 import api from "./extension/caps/api.js";
 import { createFrames } from "./extension/lib/frames.js";
-import { makeCtx, request, realisticFrameTree } from "./devtools-kit.js";
+import { navigateAway, makeCtx, request, realisticFrameTree } from "./devtools-kit.js";
 import { guardInstall, guardInstallWrites, guardCollect } from "./extension/shared/outbound.js";
 import { T } from "./test-support/trust.js";
 
@@ -163,6 +163,7 @@ test("egress guard: a fetch to a fresh origin from inside a child is held, its o
     if (x.includes("querySelectorAll('iframe, frame')")) return { result: { value: [] } };
     if (x.includes("getEntriesByType")) return { result: { value: session === "S-APP" ? [APP_API + "/known"] : [] } };
     if (x.includes("visible")) return { result: { value: false } };
+    if (x === "1" || x === "self.close()") return { result: { value: 1 } }; // the guard's own barrier
     seen.ran = true;
     // the script inside the builder frame talks to its own API host and to a stranger
     k.push(1, "Fetch.requestPaused", { requestId: "own", request: { url: APP_API + "/known", method: "GET" }, resourceType: "Fetch" }, "S-APP");
@@ -177,6 +178,9 @@ test("egress guard: a fetch to a fresh origin from inside a child is held, its o
   assert.equal(k.calls("Fetch.failRequest").filter((/** @type {any} */ c) => !c.params.requestId.startsWith("probe")).length, 1, "nothing else failed");
   assert.deepEqual(k.callsIn("Fetch.continueRequest", "S-APP").map(s => s.params.requestId).sort(), ["own", "own2"], "the frame's own origins go through, on its session");
   for (const s of [undefined, "S-APP", "S-INNER"]) assert.ok(k.sent.some(x => x.method === "Fetch.enable" && x.session === s), `Fetch on for ${s || "top"}`);
+  // Fetch stays on after the call (the sticky guard judges what the script left running) until the page navigates.
+  assert.ok(!k.sent.some(x => x.method === "Fetch.disable"), "not switched off while the sticky guard stands");
+  await navigateAway(k, 1);
   for (const s of [undefined, "S-APP", "S-INNER"]) assert.ok(k.sent.some(x => x.method === "Fetch.disable" && x.session === s), `Fetch restored for ${s || "top"}`);
   assert.equal(k.ctx.dnr.removed.length, 1, "the tab rule is lifted");
   assert.ok(k.sent.some(x => x.params && String(x.params.expression).endsWith(guardInstallWrites) && x.session === "S-APP"), "the send-hold shim is in the same frame as the script");

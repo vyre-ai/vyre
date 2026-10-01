@@ -247,7 +247,7 @@ test("glass: an agent caller cannot name a person's surface", async t => {
     ["glass.take", { target: "computer:kit", surface: "phone:pocket" }],
     ["glass.release", { target: "computer:kit", surface: "phone:pocket" }]])) {
     const r = await s.kit(tool, input);
-    assert.match(r.error?.message || "", /not available to mcp callers/, tool);
+    assert.match(r.error?.message || "", /an agent cannot act as a person's screen|not available to mcp callers/, tool);
   }
   assert.equal(s.computers.calls.filter(c => /watch|takeover|giveback/.test(c.tool)).length, 0, "nothing reached computers");
 });
@@ -566,5 +566,5 @@ test("glass: taking and handing back the keyboard need no passkey, private or no
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
   assert.equal((await s.deck("glass.take", { target: "computer:kit", surface: "deck:laptop", private: true })).data.private, true, "sign in privately follows the same rule");
   assert.equal((await s.deck("glass.release", { target: "computer:kit", surface: "deck:laptop" })).data.released, true);
-  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /not available to mcp callers/);
+  assert.match((await s.kit("glass.take", { target: "computer:kit", surface: "deck:laptop" })).error.message, /an agent cannot act as a person's screen|not available to mcp callers/);
 });
