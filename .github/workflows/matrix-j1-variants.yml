@@ -26,6 +26,8 @@ jobs:
           - { variant: podman, runner: ubuntu-24.04 }
           - { variant: slow, runner: ubuntu-24.04 }
           - { variant: twice, runner: ubuntu-24.04 }
+          - { variant: hostile, runner: ubuntu-24.04 }
+          - { variant: cgnat, runner: ubuntu-24.04 }
           - { variant: plain, runner: ubuntu-24.04 }
           - { variant: pwchrome, runner: ubuntu-24.04, chrome: playwright }
     steps:

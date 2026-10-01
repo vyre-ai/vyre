@@ -44,6 +44,15 @@ try {
   r.step("1.2-install-line", okLine, { why: okLine ? undefined : hide(line).slice(0, 200), shot: await shot("setup-install") });
   if (!okLine) throw new Error("no install line");
 
+  // 1.2b A hostile box (J1_HOSTILE): someone who copied the install line from a screenshot runs it on their own
+  // server first. It is installed to another folder and not started, but it opens the relay mailbox for this code
+  // and writes its own lines there. The real server's run follows. The page must either still reach the real
+  // server or stop with a plain "start again"; it must never show the hostile box as the server.
+  if (process.env.J1_HOSTILE) {
+    const h = spawnSync("sh", ["-c", line], { env: { ...process.env, ...extraEnv, VYRE_DIR: "/srv/vyre-other", VYRE_NO_UP: "1" }, encoding: "utf8" });
+    r.step("1.2b-hostile-box-ran-first", "fake", { why: `a second server with the same line, exit ${h.status} (stand-in for someone holding the screenshot)` });
+  }
+
   // 1.3 run the line on the runner, as a person pastes it
   const t0 = Date.now();
   const words = await new Promise(resolve => {

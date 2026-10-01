@@ -54,6 +54,8 @@ docker run --rm -v vyre_vyre-home:/home/vyre -e R="$RELAY_BOX_WS" -e N="$NAMES_B
 #                             the installer has to turn it away in plain words and start nothing
 #   slow                      the link to the page and the installer is 1 Mbit with 100 ms each way (tc on the runner)
 #   twice                     the install line pasted a second time changes nothing
+#   hostile                   another server runs the same line first (someone with a screenshot)
+#   cgnat                     no new inbound connection reaches the runner's uplink
 VARIANT=${J1_VARIANT:-}
 SHIM=""
 case "$VARIANT" in
@@ -76,6 +78,15 @@ case "$VARIANT" in
     sudo tc qdisc add dev "$IFACE" root netem delay 100ms 2>>"$OUT/tc.err" || echo "j1.sh: could not delay $IFACE" >&2
     sudo tc qdisc show >"$OUT/tc.txt" 2>&1 ;;
   twice) export J1_TWICE=1 ;;
+  hostile) export J1_HOSTILE=1 ;;
+  cgnat)
+    # A server behind carrier-grade NAT: nothing can open a connection to it from outside. Everything the journey needs
+    # (the relay, the name directory, the tailnet's control plane) is reached by the box dialling out, so dropping every
+    # NEW inbound connection on the runner's uplink must change nothing. (The stand-ins listen on the runner's address
+    # for the box's container, which is not the uplink.)
+    IFACE=$(ip route get 1.1.1.1 | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
+    sudo iptables -I INPUT -i "$IFACE" -m conntrack --ctstate NEW -j DROP
+    sudo iptables -L INPUT -n -v >"$OUT/iptables.txt" 2>&1 ;;
 esac
 
 PATHV=$PATH; [ -z "$SHIM" ] || PATHV=$SHIM:$PATH
