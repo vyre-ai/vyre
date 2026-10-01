@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { plan, install, uninstall, apply, buildPlists, plistXml, flipCurrent, signCapsule, launchCapsule, RUNTIME, LABELS } from "./installer.js";
+import { plan, install, uninstall, apply, buildPlists, plistXml, flipCurrent, signCapsule, launchCapsule, mintTypedCode, RUNTIME, LABELS } from "./installer.js";
 import { strictProblems } from "./strict.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
@@ -445,4 +445,14 @@ test("launchCapsule: the owner's screen session gets the Capsule, the code goes 
   assert.ok(!JSON.stringify([s.args, s.o]).includes(CODE), "the code is in no argument and no environment");
   assert.deepEqual(s.chunks, [CODE], "exactly the code, on stdin");
   assert.deepEqual(s.o.env, { PATH: "/usr/bin:/bin:/usr/sbin:/sbin" });
+});
+
+test("mintTypedCode asks core for the 10-minute code as _vyre, and fails loudly when core prints none", () => {
+  /** @type {any[]} */ const calls = [];
+  const run = (cmd, args) => { calls.push([cmd, args]); return "T7QX2M 1999999999\n"; };
+  assert.deepEqual(mintTypedCode({ ownerUid: 501 }, { run }), { code: "T7QX2M", expires: 1999999999 });
+  assert.deepEqual(calls[0][1].slice(0, 3), ["-n", "-u", "_vyre"]);
+  assert.equal(calls[0][1].at(-1), "--typed");
+  assert.ok(calls[0][1].includes("VYRE_CORE_OWNER=501"));
+  assert.throws(() => mintTypedCode({ ownerUid: 501 }, { run: () => "" }), /no typed code|did not print/);
 });

@@ -492,6 +492,20 @@ export function install(opts, seams = {}) {
   return { code, expires: Number(expires) || 0 };
 }
 
+/**
+ * A typed enrolment code (10 minutes), for a Mac with nobody at its screen: the person types it into
+ * the Capsule themselves. It is the one code that is shown, so it is minted only when the handoff
+ * could not run, and it enrols the first Capsule key and nothing else, like the fd 3 code.
+ * @param {{ ownerUid: number }} o @param {{ run?: Run }} [seams] @returns {{ code: string, expires: number }}
+ */
+export function mintTypedCode({ ownerUid }, seams = {}) {
+  const run = seams.run || defaultRun;
+  const out = run("/usr/bin/sudo", ["-n", "-u", ACCOUNT, "/usr/bin/env", "-i", `PATH=${SAFE_PATH}`, `VYRE_CORE_OWNER=${ownerUid}`, RUNTIME.node, RUNTIME.mainJs, "code", "--typed"]);
+  const [code, expires] = String(out).trim().split(/\s+/);
+  if (!code) throw new Error("vyre-core did not print a typed code");
+  return { code, expires: Number(expires) || 0 };
+}
+
 // ---------------------------------------------------------------------------------------------
 // uninstall
 

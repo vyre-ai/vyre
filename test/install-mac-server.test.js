@@ -324,7 +324,8 @@ const sock = path.join(base, "vyre-core.sock"); fs.writeFileSync(sock, "");
 fs.writeFileSync(path.join(base, "core.json"), JSON.stringify({ socket: sock, uid: 400 }));
 spawn(flag("--vyred-wrapper"), [], { detached: true, stdio: "ignore" }).unref();
 console.log("  ok  installed");
-${o.noEnrol ? "" : `console.log("VYRE_CORE_CAPSULE=" + (process.env.FAKE_CAPSULE || "no-screen"));`}
+${o.noEnrol ? "" : `if ((process.env.FAKE_CAPSULE || "no-screen") === "no-screen") console.log("VYRE_CORE_TYPED=T7QX2M");
+console.log("VYRE_CORE_CAPSULE=" + (process.env.FAKE_CAPSULE || "no-screen"));`}
 `);
   execFileSync("tar", ["-czf", path.join(site, "vyre.tgz"), "-C", path.dirname(pkg), "vyre"]);
   const kp = crypto.generateKeyPairSync("ed25519");
@@ -534,7 +535,10 @@ test("install-mac-server.sh: the enrolment code never reaches this script; the r
     const r = run({ ...m.env, FAKE_CAPSULE: status }, ["--yes", "--system"]);
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.match(r.stdout, re, status);
-    assert.ok(!/VYRE_CORE_/.test(r.stdout), "the status line is consumed, not echoed");
+    assert.ok(!/VYRE_CORE_/.test(r.stdout), "the status lines are consumed, not echoed");
+    // The typed code is shown only when nobody is at the screen, once, and never written anywhere.
+    assert.equal(r.stdout.includes("T7QX2M"), status === "no-screen", status);
+    assert.ok(!m.calls().includes("T7QX2M") && !fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8").includes("T7QX2M"));
   }
 });
 

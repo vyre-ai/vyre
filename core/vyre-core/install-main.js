@@ -14,12 +14,14 @@
 // Output: one line per step, "  ok  <name>", on stdout. For `install`, the LAST line on stdout is
 //   VYRE_CORE_CAPSULE=launched|no-screen|no-capsule
 // and nothing follows it. The one-time enrolment code is handed to the Capsule on fd 3 here and is
-// never printed, written or logged. Errors go to stderr with exit status 1.
+// never printed, written or logged. Only when nobody is at the screen, the line before it is
+//   VYRE_CORE_TYPED=<code>
+// a 10-minute code the person types into the Capsule themselves. Errors go to stderr with exit status 1.
 // Everything except `install --dry-run` refuses to run unless the uid is 0.
 
 import fs from "node:fs";
 import path from "node:path";
-import { install, uninstall, apply, plan, launchCapsule } from "./installer.js";
+import { install, uninstall, apply, plan, launchCapsule, mintTypedCode } from "./installer.js";
 
 // The installer makes root-owned trees other accounts must read (core runs as _vyre): a caller's
 // umask (the install script's root step uses 077 for its scratch folder) must not narrow them.
@@ -72,6 +74,8 @@ try {
       const { code } = install(opts, { step: say });
       // The code goes straight to the Capsule (fd 3, in the owner's screen session) and is never printed.
       const status = launchCapsule({ ownerUid: opts.ownerUid, ownerName: opts.ownerName, code });
+      // Nobody at the screen: the person types a code into the Capsule themselves. The one code that is shown.
+      if (status === "no-screen") process.stdout.write(`VYRE_CORE_TYPED=${mintTypedCode({ ownerUid: opts.ownerUid }).code}\n`);
       process.stdout.write(`VYRE_CORE_CAPSULE=${status}\n`);
     }
   } else if (cmd === "uninstall") {

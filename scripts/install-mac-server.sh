@@ -82,6 +82,7 @@ GH_SHA256_ARM64=da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e
 GH_SHA256_AMD64=b245f24eb2bf5f75b426b4c26da3651a107f8d5b6f4fddfbfccc5679041378b3
 GH_BIN=""
 CAPSULE_STATUS=""
+TYPED_CODE=""
 
 # The Node bundled for the system service: the official Node 22 LTS darwin tarball, pinned by version
 # and sha256. Both sums are the lines for node-v22.23.3-darwin-{arm64,x64}.tar.gz in
@@ -546,7 +547,9 @@ system_install() {
   case "$out" in *VYRE_CORE_CAPSULE=*) ;; *) out=""; die "the root installer did not finish; nothing was enrolled" ;; esac
   CAPSULE_STATUS=${out##*VYRE_CORE_CAPSULE=}
   CAPSULE_STATUS=$(printf '%s' "$CAPSULE_STATUS" | tr -cd 'a-z-')
-  printf '%s\n' "$out" | grep -v '^VYRE_CORE_CAPSULE=' || true
+  # Only with nobody at the screen: a typed code, shown on purpose, for the person to type into the Capsule.
+  TYPED_CODE=$(printf '%s\n' "$out" | sed -n 's/^VYRE_CORE_TYPED=\([A-Za-z0-9]*\)$/\1/p' | head -n 1)
+  printf '%s\n' "$out" | grep -v -e '^VYRE_CORE_CAPSULE=' -e '^VYRE_CORE_TYPED=' || true
   out=""
   step "the system service is installed"
 }
@@ -557,7 +560,10 @@ capsule_note() {
   case "$CAPSULE_STATUS" in
     launched) step "the Capsule is opening to enrol this Mac" ;;
     no-capsule) say "  note  this release has no Capsule app yet, so there is no Capsule to enrol" ;;
-    *) say "  note  nobody is signed in at this Mac's screen, so the Capsule was not opened; run this install line again from Terminal on the Mac for a fresh code" ;;
+    *)
+      say "  note  nobody is signed in at this Mac's screen, so the Capsule was not opened."
+      if [ -n "$TYPED_CODE" ]; then say "        When you are at this Mac, open Vyre and type this code (it works for 10 minutes, once): $TYPED_CODE"; fi
+      TYPED_CODE="" ;;
   esac
 }
 
