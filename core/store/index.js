@@ -20,7 +20,9 @@ export function open(file) {
   let db;
   try {
     db = new DatabaseSync(file);
-    db.exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000; PRAGMA foreign_keys=ON;");
+    // busy_timeout FIRST: switching to WAL itself needs a lock, and with the timeout not yet set a second
+    // process opening the same file (the installer's `code` command while the daemon starts) failed at once with "database is locked".
+    db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   } finally { process.umask(old); }
   fs.chmodSync(file, 0o600);
   db.exec(`CREATE TABLE IF NOT EXISTS _migrations (
