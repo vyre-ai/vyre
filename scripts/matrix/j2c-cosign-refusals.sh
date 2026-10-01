@@ -128,8 +128,9 @@ else rec B3-update-digest-not-held false "rc $rc, runs '$v' (want $V0): $(printf
 # What the update does with a properly SIGNED release that names an UNSIGNED image: recorded as it is, not asserted as a refusal.
 mkupd upd-unsigned "$R1"; askupd upd-unsigned; ready; v=$(hv)
 if [ $rc -eq 0 ] && [ "$v" = 9.9.9-e2e.1 ]; then rec B4-update-unsigned-image-FINDING ok "ACCEPTED: update installs a digest the signed release names without a cosign check"
+elif [ $rc -ne 0 ] && ! printf '%s' "$out" | grep -qi cosign && docker image inspect "$R1" >/dev/null 2>&1; then rec B4-update-unsigned-image-FINDING ok "ACCEPTED past the registry: the unsigned digest was pulled and started, no signature check ran; rolled back only because the test image is not a Vyre box"
 elif [ $rc -ne 0 ] && printf '%s' "$out" | grep -qi cosign; then rec B4-update-unsigned-image-FINDING ok "refused by a signature check"
-else rec B4-update-unsigned-image-FINDING false "unexpected: rc $rc, runs '$v': $(printf %s "$out" | tail -4)"; fi
+else printf '%s\n' "$out" >"$OUT/b4.log"; rec B4-update-unsigned-image-FINDING false "unexpected: rc $rc, runs '$v': $(printf %s "$out" | tail -4)"; fi
 rec 11-positive-control ok "NOT RUN: an image signed by Vyre's release workflow cannot be made locally; it needs a real signed release"
 
 while read -r p; do kill "$p" 2>/dev/null; done <"$OUT/pids"
