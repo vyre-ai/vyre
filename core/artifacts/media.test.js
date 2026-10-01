@@ -12,6 +12,7 @@ import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { MEDIA, mediaFormatOf, parseRange, MAX_MEDIA } from "./media.js";
+import { _test } from "./index.js";
 
 const THREADS = `
   const T = { t1: { project: "harlow-legal", agent: "juno", provider: "grok" }, t2: { project: "harlow-legal", agent: "kit", provider: "codex" }, t3: { project: "northwind", agent: "nia", provider: "codex" } };
@@ -26,6 +27,9 @@ const settle = () => new Promise(r => setTimeout(r, 400));
 const folder = t => { const d = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "media-"))); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
 
 async function boot(t) {
+  const was = { debounce: _test.mediaDebounce, caps: _test.mediaCaps };
+  _test.mediaDebounce = 20;
+  t.after(() => { _test.mediaDebounce = was.debounce; _test.mediaCaps = was.caps; });
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "threads", { does: { tools: ["threads.get"] } }, THREADS);
@@ -196,4 +200,87 @@ test("media: the same project permission as every artifact, a # tag grants one i
   assert.equal((await ok("artifacts.get", { id: made.id })).media.provider, "grok");
   // Writing an image as text is not how it is made.
   assert.match((await call("artifacts.create", { kind: "image", content: "x" })).error.message, /saved as a file/);
+});
+
+test("media: the copy-out never follows what an agent planted: a link at the file's name or at the folder's, and Vyre's own folder is the only one it writes in", async t => {
+  const { call, asVyre } = await boot(t);
+  const d1 = folder(t), d2 = folder(t), victim = folder(t);
+  await asVyre("artifacts.capture.register", { thread: "t1", dir: d1 });
+  await asVyre("artifacts.capture.register", { thread: "t2", dir: d2 });
+  fs.writeFileSync(path.join(d1, "harbour.png"), PNG);
+  const made = await asVyre("artifacts.media.register", { thread: "t1", name: "harbour.png" });
+  const secret = path.join(victim, "config.json");
+  fs.writeFileSync(secret, '{"keep":"me"}');
+  const kit = (tool, input) => call(tool, input, "mcp:agent:kit", { thread: "t2" });
+  // 1. a link planted at the file's own name inside from-artifacts
+  fs.mkdirSync(path.join(d2, "from-artifacts"), { mode: 0o755 });
+  fs.symlinkSync(secret, path.join(d2, "from-artifacts", `${made.id}.png`));
+  const r1 = await kit("artifacts.media.copy", { id: made.id });
+  assert.equal(r1.error?.code, "denied", JSON.stringify(r1));
+  assert.equal(fs.readFileSync(secret, "utf8"), '{"keep":"me"}', "the target is untouched");
+  // 2. the folder itself is a link to somewhere the agent wants overwritten
+  fs.rmSync(path.join(d2, "from-artifacts"), { recursive: true });
+  const elsewhere = path.join(victim, "dir");
+  fs.mkdirSync(elsewhere);
+  fs.symlinkSync(elsewhere, path.join(d2, "from-artifacts"));
+  const r2 = await kit("artifacts.media.copy", { id: made.id });
+  assert.equal(r2.error?.code, "denied", JSON.stringify(r2));
+  assert.deepEqual(fs.readdirSync(elsewhere), [], "nothing was written through the link");
+  // 3. a plain file where the folder should be
+  fs.rmSync(path.join(d2, "from-artifacts"));
+  fs.writeFileSync(path.join(d2, "from-artifacts"), "not a folder");
+  assert.ok((await kit("artifacts.media.copy", { id: made.id })).error, "refused");
+  fs.rmSync(path.join(d2, "from-artifacts"));
+  // Cleared, it works, and the folder is Vyre's (0755), the file 0644.
+  const done = (await kit("artifacts.media.copy", { id: made.id })).data;
+  assert.ok(fs.readFileSync(done.path).equals(PNG));
+  assert.equal(fs.statSync(path.join(d2, "from-artifacts")).mode & 0o777, 0o755);
+  assert.equal(fs.statSync(done.path).mode & 0o777, 0o644);
+});
+
+test("media: a project and a thread each have a cap, with a plain refusal; and a file is settled before it is read, once", async t => {
+  const { ok, asVyre, events } = await boot(t);
+  const dir = folder(t), dir2 = folder(t);
+  await asVyre("artifacts.capture.register", { thread: "t1", dir });
+  await asVyre("artifacts.capture.register", { thread: "t2", dir: dir2 });
+  _test.mediaCaps = { project: PNG.length * 2 + 10, thread: PNG.length + 10 };
+  fs.writeFileSync(path.join(dir, "a.png"), PNG);
+  await asVyre("artifacts.media.register", { thread: "t1", name: "a.png" });
+  fs.writeFileSync(path.join(dir, "b.png"), Buffer.concat([PNG, Buffer.from("b")]));
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", name: "b.png" }), /this conversation's generated media is at its limit/);
+  // The other thread of the same project still has room under the thread cap, then the project cap bites.
+  fs.writeFileSync(path.join(dir2, "c.png"), Buffer.concat([PNG, Buffer.from("c")]));
+  await asVyre("artifacts.media.register", { thread: "t2", name: "c.png" });
+  fs.writeFileSync(path.join(dir2, "d.png"), Buffer.concat([PNG, Buffer.from("dd")]));
+  _test.mediaCaps = { project: PNG.length * 2 + 10, thread: 1e9 };
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t2", name: "d.png" }), /this project's generated media is at its limit \(0\.0 GB\)|this project's generated media is at its limit/);
+  assert.equal((await ok("artifacts.list", { kind: "image" })).length, 2, "nothing half-kept after a refusal");
+  // A burst of folder events for one file is one artifact, read once it has settled.
+  _test.mediaCaps = { project: 1e9, thread: 1e9 };
+  fs.writeFileSync(path.join(dir, "burst.png"), PNG);
+  for (let i = 0; i < 12; i++) events.emit("sessions", "floor.wrote", { thread: "t1", path: path.join(dir, "burst.png"), bytes: PNG.length });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal((await ok("artifacts.list", { kind: "image" })).filter(x => x.media.session === "t1" && x.title === "burst").length, 1);
+});
+
+test("media: a big file is read without holding the thread, and a deleted item is not kept by the browser", async t => {
+  const { reg, asVyre } = await boot(t);
+  const dir = folder(t);
+  await asVyre("artifacts.capture.register", { thread: "t1", dir });
+  const big = Buffer.alloc(24 * 1024 * 1024, 5);
+  MP4.copy(big);
+  fs.writeFileSync(path.join(dir, "long.mp4"), big);
+  let worst = 0, last = Date.now();
+  const tick = setInterval(() => { const now = Date.now(); worst = Math.max(worst, now - last); last = now; }, 5);
+  const made = await asVyre("artifacts.media.register", { thread: "t1", name: "long.mp4" });
+  clearInterval(tick);
+  assert.equal(made.media.bytes, big.length);
+  assert.ok(worst < 400, `the event loop was held for ${worst} ms while a 24 MB file was kept`);
+  const first = await serve(reg, made.id, { range: "bytes=0-3" });
+  assert.equal(first.headers["cache-control"], "private, no-cache", "revalidated each time, so a deleted item is not served from the cache");
+  assert.equal(first.headers.etag, `"${made.media.sha256}"`);
+  const route = reg.routes.get("/v1/artifacts/content");
+  const res = { status: 0, writeHead(s) { this.status = s; }, end() {} };
+  await route({ method: "GET", headers: { "if-none-match": `"${made.media.sha256}"` } }, res, { caller: "deck", url: new URL(`http://x/v1/artifacts/content?id=${made.id}`) });
+  assert.equal(res.status, 304);
 });
