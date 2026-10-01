@@ -390,6 +390,7 @@ export function launchCapsule({ ownerUid, ownerName, code }, seams = {}) {
   const child = (seams.spawn || spawn)("/bin/launchctl",
     ["asuser", String(ownerUid), "/usr/bin/sudo", "-n", "-u", ownerName, "/bin/sh", "-c", 'exec "$0" 3<&0 0</dev/null >/dev/null 2>&1', RUNTIME.current + `/${CAPSULE_APP}/Contents/MacOS/${path.basename(CAPSULE_APP, ".app")}`],
     { stdio: ["pipe", "ignore", "ignore"], detached: true, env: { PATH: SAFE_PATH } });
+  child.stdin.on("error", () => {}); // the Capsule may close its end first
   child.stdin.end(code);
   child.unref();
   return "launched";

@@ -429,7 +429,7 @@ test("launchCapsule: the owner's screen session gets the Capsule, the code goes 
   const app = path.join(f.root, RUNTIME.current, "Vyre.app", "Contents", "MacOS", "Vyre");
   const CODE = "K7QX2M";
   /** @type {any[]} */ const spawned = [];
-  const fakeSpawn = (cmd, args, o) => { const chunks = []; spawned.push({ cmd, args, o, chunks }); return { stdin: { end: (c) => chunks.push(c) }, unref() {} }; };
+  const fakeSpawn = (cmd, args, o) => { const chunks = []; spawned.push({ cmd, args, o, chunks }); return { stdin: { end: (c) => chunks.push(c), on() {} }, unref() {} }; };
   const aqua = (managed) => (cmd, args) => { if (args.includes("managername")) { if (!managed) throw new Error("no session"); return "Aqua\n"; } return ""; };
   const owner = { ownerUid: 501, ownerName: "alice", code: CODE };
   assert.equal(launchCapsule(owner, { run: aqua(true), root: f.root, spawn: fakeSpawn }), "no-capsule", "a release with no app");

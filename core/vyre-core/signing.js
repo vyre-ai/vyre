@@ -165,7 +165,9 @@ export function removeIdentity({ dir, run, systemKeychain = SYSTEM_KEYCHAIN }) {
     try {
       const listed = String(run(SECURITY, ["list-keychains", "-d", "user"])).split("\n").map((l) => l.trim().replace(/^"|"$/g, "")).filter(Boolean);
       if (listed.includes(keychain)) {
-        run(SECURITY, ["list-keychains", "-d", "user", "-s", ...listed.filter((k) => k !== keychain)]);
+        // `-s` with no keychains does nothing, and root's list may have been only ours (it is empty to begin with on a runner): leave the system keychain, root's ordinary one.
+        const rest = listed.filter((k) => k !== keychain);
+        run(SECURITY, ["list-keychains", "-d", "user", "-s", ...(rest.length ? rest : [systemKeychain])]);
         const after = String(run(SECURITY, ["list-keychains", "-d", "user"]));
         if (after.includes(keychain)) listNote = `root's keychain list still names ${keychain} after the update; list was: ${listed.join(" | ")}`;
       }

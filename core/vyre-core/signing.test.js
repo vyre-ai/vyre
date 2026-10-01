@@ -114,3 +114,18 @@ test("signing: an identity codesign would not list as valid fails at install, wi
   assert.throws(() => ensureIdentity({ dir, run }), /not valid for code signing.*0 valid identities found/);
   assert.ok(!fs.existsSync(path.join(dir, "identity.json")), "nothing recorded");
 });
+
+test("signing: when core's keychain was the only one on root's list, uninstall puts the system keychain there, since an empty list cannot be set", t => {
+  const dir = dirOf(t), f = fake();
+  const kc = path.join(dir, "vyre-core.keychain-db");
+  let list = `    "${kc}"\n`;
+  const run = (/** @type {string} */ cmd, /** @type {string[]} */ args) => {
+    if (cmd.endsWith("security") && args[0] === "list-keychains" && args.length === 3) return list;
+    if (cmd.endsWith("security") && args[0] === "list-keychains" && args[3] === "-s") { if (args.length < 5) return ""; list = args.slice(4).map(k => `    "${k}"\n`).join(""); return ""; }
+    return f.run(cmd, args);
+  };
+  ensureIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
+  const r = removeIdentity({ dir, run, systemKeychain: "/tmp/System.keychain" });
+  assert.equal(r.listNote, null);
+  assert.ok(!list.includes(kc) && list.includes("/tmp/System.keychain"), list);
+});
