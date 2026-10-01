@@ -133,10 +133,6 @@
    "module": "settings",
    "why": "pending"
   },
-  "team.add": {
-   "module": "team",
-   "why": "pending"
-  },
   "threads.answer": {
    "module": "threads",
    "why": "pending"
