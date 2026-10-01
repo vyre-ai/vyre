@@ -344,6 +344,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             // same as chat's tap-to-talk. ⌘⏎/⇧⏎ are left alone -- only a plain ⏎ means "send".
             if !shift, !cmd { _ = extensions?.stopTalking() }
             // Offline with an empty box: ⏎ is the Offline line's "Start Vyre".
+            // A setting an agent changed on your word, shown under the empty box: Return undoes it.
+            if !shift, !cmd, model.loosenedShown, model.groups.isEmpty { Task { await model.undoLoosened() }; return true }
             if !shift, !cmd, model.returnStartsVyre() { return true }
             // A question: ⏎ asks (or keeps the answer and opens the follow-up box), ⌘⏎ thinks deeper.
             if !shift, model.handleReturn(command: cmd) { return true }

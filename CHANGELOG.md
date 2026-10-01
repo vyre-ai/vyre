@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: when an agent changes a guard because you asked ("Auto-approve edits changed, as you asked."),
+  Lumen shows that line under the empty box with Undo (Return); Undo puts the setting back and needs no
+  proof. A notification says it too if Lumen is hidden.
 - Lumen: when a vault command comes back "locked", Lumen shows one row, "Unlock the vault on this Mac";
   Return asks for Touch ID (once, and not at all inside a live proof), unlocks the vault, and carries on
   with the list or action that failed. It never unlocks ahead of time. A Mac with no Touch ID reader asks for the vault password in the panel instead (one secure field, cleared as it is sent).

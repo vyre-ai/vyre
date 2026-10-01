@@ -198,3 +198,34 @@ func unlockVaultAccount(_ vyred: VyredClient, password: String?) async -> String
     if let why = Bridge.explain(r) { return why }
     return nil
 }
+
+/// A setting an agent changed because the person asked ("Auto-approve edits changed, as you asked."), with Undo.
+struct LoosenedNotice: Equatable {
+    var change: String
+    var label: String
+    var at: Date
+    var words: String { "\(label) changed, as you asked." }
+}
+
+extension CapsuleModel {
+    /// settings.loosened { change, key, label, ... }: show the fixed words and Undo until it is undone, dismissed or old.
+    func noticeLoosened(_ payload: [String: Any]) {
+        guard let change = VJ.nonEmpty(payload["change"]) else { return }
+        let label = VJ.nonEmpty(payload["label"]) ?? VJ.nonEmpty(payload["key"]) ?? "A setting"
+        let n = LoosenedNotice(change: change, label: label, at: Date())
+        loosened = n
+        if !isShown() { Notifier.shared.post(title: "Lumen", body: n.words) }
+        objectWillChange.send()
+    }
+
+    /// Undo needs no proof: settings.undo {change}.
+    func undoLoosened() async {
+        guard let n = loosened else { return }
+        let r = await vyred.call("settings.undo", ["change": n.change], presence: false)
+        if let why = Bridge.explain(r) { line = why; return }
+        loosened = nil
+        flash("\(n.label) is back as it was")
+    }
+
+    var loosenedShown: Bool { text.isEmpty && loosened.map { Date().timeIntervalSince($0.at) < 600 } == true }
+}

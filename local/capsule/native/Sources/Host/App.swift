@@ -23,6 +23,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     /// Commands modules declare for the Capsule (ViewCommandsProvider.swift).
     let viewCommands: ViewCommandsProvider
     var viewSub: VyredSubscription?
+    var loosenedSub: VyredSubscription?
     /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
     lazy var planner = PlannerBanners(vyred: vyred)
     /// Clipboard, contacts, modules, Glass and watches (Agent/AgentWiring.swift).
@@ -124,6 +125,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         if !headless { planner.start() }
         // A module says its commands changed: read them again (never polled).
         viewSub = vyred.on("capsule.changed") { [weak self] _ in self?.viewCommands.read(force: true) }
+        loosenedSub = vyred.on("settings.loosened") { [weak self] e in self?.model.noticeLoosened(e.payload) }
         enrolWithCore()
         if !headless { LumenOpen.showIfFirst() }
         // Once the launch has settled, draw the panel once in the dark (never shown): the first summon is then warm.

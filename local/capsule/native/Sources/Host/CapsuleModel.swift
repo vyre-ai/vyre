@@ -111,6 +111,8 @@ public final class CapsuleModel: ObservableObject {
     /// The module command open in the box (ViewMode.swift), and where commands come from.
     @Published var viewSession: ViewSession?
     var viewProvider: ViewCommandsProvider?
+    /// A setting an agent changed because the person asked, until undone or old (ViewMode.swift).
+    @Published var loosened: LoosenedNotice?
     /// How the vault is unlocked (a test gives its own): nil on success, else the words.
     lazy var unlocker: (String?) async -> String? = { [unowned self] pw in await unlockVaultAccount(self.vyred, password: pw) }
     /// Whether this Mac has Touch ID to use (a test gives its own).
