@@ -1182,6 +1182,33 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual([g.count, g.k0, g.k1], ["2", "user.useConfigOnly", "core.hooksPath"], "the existing entry stays at 0 and the hooks entry is 1");
   });
 
+  test(`${driver}: sessions.files.read: a file in an account's own folder is read as the account and written where the module says; a link, an outside path and a person's call are refused`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const acct = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
+    const home = path.join(w.root, "accounts", acct.id);
+    const dir = path.join(home, ".grok", "sessions", "x", "images"); fs.mkdirSync(dir, { recursive: true });
+    const bytes = Buffer.from(Array.from({ length: 70000 }, (_, i) => (i * 7) % 256));
+    fs.writeFileSync(path.join(dir, "1.jpg"), bytes, { mode: 0o600 });
+    const dest = fs.mkdtempSync(path.join(SCRATCH, "files-read-"));
+    t.after(() => fs.rmSync(dest, { recursive: true, force: true }));
+    const read = (p, to = path.join(dest, "out.jpg"), caller = "module:vyred") => w.d.registry.call("sessions.files.read", { account: acct.id, file: p, to }, caller);
+    const rel = ".grok/sessions/x/images/1.jpg";
+    const ok = await read(rel);
+    assert.equal(ok.error, undefined, JSON.stringify(ok));
+    assert.equal(ok.data.size, bytes.length);
+    assert.ok(fs.readFileSync(path.join(dest, "out.jpg")).equals(bytes));
+    assert.equal(ok.data.sha256, crypto.createHash("sha256").update(bytes).digest("hex"));
+    assert.equal(fs.statSync(path.join(dest, "out.jpg")).mode & 0o777, 0o644);
+    fs.symlinkSync("/etc/hostname", path.join(dir, "link.jpg"));
+    const refused = { ".grok/sessions/x/images/link.jpg": "denied", "/etc/hostname": "bad_input", ".grok/../.codex/auth.json": "bad_input", "accounts/x": "bad_input", ".ssh/id_rsa": "bad_input", ".grok/sessions/x/images/none.jpg": "denied" };
+    for (const [bad, code] of Object.entries(refused)) {
+      const r = await read(bad, path.join(dest, "no.jpg"));
+      assert.equal(r.error && r.error.code, code, bad);
+      assert.ok(!fs.existsSync(path.join(dest, "no.jpg")), "nothing written");
+    }
+    assert.equal((await w.tool("sessions.files.read", { account: acct.id, file: rel, to: path.join(dest, "p.jpg") })).error.code, "no_such_tool", "a person cannot call it");
+  });
+
   test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
     const w = await boot(t, { driver });
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet

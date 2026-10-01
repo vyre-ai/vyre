@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(sessions): sessions.files.read (internal): a regular file under .grok or .codex in an account's own folder is read as that account (its uid on a box; no links, inside the HOME, 100 MB cap) and written where a module says, so a generated image a provider leaves as an owner-only file can be saved as an artifact. The provider study is in team/0.2/study-providers.md.
+
 - feat(threads): every thread.turn, thread.text, thread.thinking, thread.usage and thread.finished event carries provider, model and account (model is what the provider reported, null until it has); a non-Claude thread no longer records Claude's alias ("opus") as its model. A sign-in nobody finishes ends at its time limit and reports failure, so the account row it created is removed; accounts.list says needs: sign-in for a login that never signed in. scripts/proof-box.mjs: a vyred for the real-account runs on the test box with a test presence verifier.
 
 - feat(threads): a GitHub project's session gets its commit identity and hooks in its process environment on every launch and resume (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_*, one GIT_CONFIG_* entry for the hooks folder), only those keys; an existing GIT_CONFIG_COUNT in vyred's environment is appended to, never overwritten. projectDefinesMcp is replaced by the assistant's projectCodexConfig (any project .codex/config.toml, or one that cannot be checked, counts) and MCP approvals are denied by default when the shortcut is off.
