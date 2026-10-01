@@ -1173,6 +1173,10 @@
    "module": "team",
    "reason": "read-only; owner check in code: the requester, the teammate or the person"
   },
+  "threads.answer": {
+   "module": "threads",
+   "reason": "callers list in code (cli, local, deck, capsule) plus the link: callers a paired Mac federates through (the box's answer to a Mac's ask) and modules answering the box's own asks; PERSON_ONLY at the socket peer check, so a model's shell never answers; a model never approves a permission in the tool"
+  },
   "threads.archive": {
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
