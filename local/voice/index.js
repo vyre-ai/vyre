@@ -15,7 +15,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import * as config from "../../core/config/index.js";
-import { listener, LOCAL } from "./listen.js";
+import { callerKind } from "../../core/modules/index.js";
+import { listener, LOCAL, isAgentCaller } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
 import { spoken } from "./spoken.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
@@ -25,7 +26,7 @@ const MAX_SPEAK = 2000;
 /** How long a speech ticket waits to be redeemed before its audio is dropped. */
 const TICKET_MS = 30_000;
 
-const kindOf = caller => String(caller || "").replace(/[\s:]agent:.*$/s, "");
+const kindOf = callerKind;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void>, idle(): { streams: number, tickets: number } }> }} */
 export default {
@@ -55,7 +56,7 @@ export default {
     // never uses either, whatever surface it is wrapped in (the lead, 28 Sep). core/projects's
     // own isAgent() convention, since callers: LOCAL matches by the bare kind and would let it
     // through otherwise.
-    const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
+    const isAgent = caller => /(?:^|[\s:])(?:agent|thread):/i.test(String(caller || ""));
     const refuseAgent = meta => {
       if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw new VoiceError("denied", "an agent cannot use the person's mic or speech key");
     };
@@ -145,7 +146,7 @@ export default {
     ctx.route("speech", (req, res, { caller, url }) => {
       const ticket = url.searchParams.get("ticket") || "";
       const x = tickets.get(ticket);
-      if (req.method !== "GET" || !LOCAL.includes(kindOf(caller)) || !x) {
+      if (req.method !== "GET" || isAgentCaller(caller) || !LOCAL.includes(kindOf(caller)) || !x) {
         res.writeHead(req.method !== "GET" ? 405 : 404, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: { code: "not_found", message: "no such speech ticket here" } }));
         return;
