@@ -305,7 +305,7 @@ test("acp: a seed file is written 0600 in the account's HOME at every start, rep
   const w = world(t);
   const home = fs.mkdtempSync(path.join(SCRATCH, "acp-home-"));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
-  const toml = grokConfigToml({ id: "proof", model: "x-ai/grok-code-fast-1", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" });
+  const toml = grokConfigToml({ id: "proof", model: "x-ai/grok-build-0.1", baseUrl: "https://openrouter.ai/api/v1", envKey: "OPENROUTER_API_KEY" });
   assert.match(toml, /env_key = "OPENROUTER_API_KEY"/);
   assert.ok(!/sk-/.test(toml), "no key in the file");
   assert.throws(() => grokConfigToml({ model: "m", baseUrl: "http://plain", envKey: "K" }), /https/);
