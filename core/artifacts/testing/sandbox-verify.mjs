@@ -4,7 +4,7 @@
 /**
  * @param {{ framed?: any[], outer?: any[], ua?: string } | null} report the Deck stand-in's report (framed run)
  * @param {{ results?: any[], ua?: string } | null} top the hostile page's own results when opened at the top level, or null when not run
- * @param {{ hits: Record<string, number>, cookies?: Record<string, string[]>, api: { via: string, cookie: boolean }[] }} server
+ * @param {{ hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string }[]>, api: { via: string, cookie: boolean }[] }} server
  * @returns {{ failures: string[], lines: string[] }}
  */
 export function verify(report, top, server) {
@@ -33,12 +33,16 @@ export function verify(report, top, server) {
     ok(ctl.fetch === "S3CRET-API", "with the sandbox off fetch reaches the Vyre API");
     ok((reached.ctlfetch || 0) >= 1 && (reached.ctlimg || 0) >= 1 && (reached.ctlbeacon || 0) >= 1, `with the sandbox off fetch, img and beacon reach the server (${["ctlfetch", "ctlimg", "ctlbeacon"].map(k => `${k}=${reached[k] || 0}`).join(", ")})`);
   }
-  // The pages that navigate themselves away are the one thing a sandbox without allow-top-navigation permits and
-  // no header forbids: the server IS reached, and what must hold is that the session cookie does not go with it.
-  const SELF_NAV = new Set(["navmeta", "navloc"]);
+  // FINDING, not a pass: a sandbox without allow-top-navigation still lets a frame navigate ITSELF (a meta refresh, a
+  // script) and no header forbids it (the CSP navigate-to directive is gone). Whatever the page holds can leave in the
+  // address. This prints exactly what arrives: how many requests, how long the address was, the destination host, and
+  // which cookies went with it. The run fails only if the Strict session cookie goes along.
+  const SELF_NAV = new Set(["navmeta", "navloc", "navext"]);
   const cookiesOf = (/** @type {string} */ k) => (server.cookies && server.cookies[k]) || [];
+  const urlsOf = (/** @type {string} */ k) => (server.urls && server.urls[k]) || [];
   for (const k of SELF_NAV) {
-    lines.push(`info self-navigation ${k}: ${reached[k] || 0} request(s), cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}`);
+    const u = urlsOf(k)[0];
+    lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}`);
     if (cookiesOf(k).some(c => /vyre_session/.test(c))) failures.push(`self-navigation ${k} carried the Strict session cookie`);
   }
   // The server's own count: nothing else the hostile page tried may have reached it, and nothing carried the cookie.

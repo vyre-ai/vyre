@@ -1,6 +1,10 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
  "tools": {
+  "artifacts.activity": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
+  },
   "artifacts.archive": {
    "module": "artifacts",
    "reason": "own-scope check: reach() in core/artifacts/index.js runs on the artifact's own project for the caller (an agent reaches only its thread's project or what it made; a # tag grants read of one item only), and an agent's writes are marked untrusted"

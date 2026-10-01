@@ -7,14 +7,16 @@ import { startServer, hostilePage, SECRET_COOKIE } from "./sandbox-server.mjs";
 const ok = name => ({ name, ok: true, detail: "blocked: SecurityError" });
 const CONTROL = { cookie: "vyre_session=S3CRET-COOKIE; vyre_lax=S3CRET-LAX", storage: "S3CRET-STORAGE", fetch: "S3CRET-API" };
 const HELD = { framed: [{ origin: "null", mode: "framed", results: [ok("read document.cookie"), ok("fetch the Vyre API with cookies")] }], outer: [ok("outer reads the frame's document")], control: CONTROL, ua: "Safari" };
-const SERVER_OK = { hits: { ctlfetch: 1, ctlimg: 1, ctlbeacon: 1, navmeta: 1, navloc: 1 }, cookies: { navmeta: [""], navloc: ["vyre_lax"] }, api: [{ via: "ctlfetch", cookie: true }] };
+const SERVER_OK = { hits: { ctlfetch: 1, ctlimg: 1, ctlbeacon: 1, navmeta: 1, navloc: 1, navext: 1 }, cookies: { navmeta: [""], navloc: ["vyre_lax"], navext: [""] }, urls: { navmeta: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navloc: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navext: [{ len: 8040, data: 8000, host: "localhost:8123" }] }, api: [{ via: "ctlfetch", cookie: true }] };
 
 test("verify: a held sandbox passes, and every kind of leak is named", () => {
   const held = verify(HELD, { results: [ok("read document.cookie")] }, SERVER_OK);
   assert.deepEqual(held.failures, []);
   assert.match(held.lines.join("\n"), /nothing the hostile page tried reached it/);
   assert.match(held.lines.join("\n"), /with the sandbox off the page reads the cookie/);
-  assert.match(held.lines.join("\n"), /self-navigation navloc: 1 request\(s\), cookies carried: vyre_lax/, "the self-navigation cookies are reported, not hidden");
+  const finding = held.lines.join("\n");
+  assert.match(finding, /FINDING self-navigation navloc: 1 request\(s\) reached the server; address length 8040, data carried 8000 bytes, destination host 127\.0\.0\.1:8123; cookies carried: vyre_lax/, "what leaves is reported, not hidden");
+  assert.match(finding, /FINDING self-navigation navext: 1 request\(s\) reached the server; address length 8040, data carried 8000 bytes, destination host localhost:8123/, "and a different origin too");
   const leaky = verify({ ...HELD, framed: [{ origin: "http://127.0.0.1:8123", results: [{ name: "read document.cookie", ok: false, detail: "LEAKED vyre_session" }] }] }, null,
     { hits: { ...SERVER_OK.hits, fetch: 1, hijack: 1, blank: 1 }, cookies: { navmeta: ["vyre_session"] }, api: [{ via: "fetch", cookie: true }] });
   const f = leaky.failures.join("\n");
@@ -50,10 +52,11 @@ test("the hostile page is served with the real artifact headers, and the server 
   assert.match(deckHtml, /sandbox="allow-scripts allow-same-origin" src="\/a\/control"/, "the negative control frame");
   const ctl = await fetch(srv.url + "/a/control");
   assert.equal(ctl.headers.get("content-security-policy"), null, "the control has no CSP");
-  for (const variant of ["navmeta", "navloc"]) {
+  for (const variant of ["navmeta", "navloc", "navext"]) {
     const nav = await fetch(srv.url + "/a/hostile?mode=" + variant);
     assert.match(nav.headers.get("content-security-policy"), /sandbox allow-scripts/);
     assert.match(await nav.text(), variant === "navmeta" ? /http-equiv="refresh"/ : /location\.href/);
+    assert.ok((await (await fetch(srv.url + "/a/hostile?mode=" + variant)).text()).includes("x".repeat(8000)), "each carries 8 KB in its address");
   }
   const art = await fetch(srv.url + "/a/hostile?mode=framed");
   assert.equal(art.headers.get("content-security-policy"), csp);

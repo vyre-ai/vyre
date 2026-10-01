@@ -27,6 +27,8 @@
       { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
       { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "person" },
       { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },
+      { "name": "artifacts.activity.log", "summary": "record that an interactive artifact navigated away", "reach": "person" },
+      { "name": "artifacts.activity", "summary": "what an interactive artifact has done: navigated away", "reach": "anyone" },
       { "name": "artifacts.media.register", "summary": "keep an image, video or sound a provider made, with its prompt and session", "reach": "modules" },
       { "name": "artifacts.media.read", "summary": "the bytes of a media artifact, in chunks, for Vyre's own surfaces", "reach": "anyone" },
       { "name": "artifacts.media.copy", "summary": "put a media artifact in your own folder so you can open the file", "reach": "anyone" },

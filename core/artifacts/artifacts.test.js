@@ -404,3 +404,19 @@ test("artifacts: a # tag lets one thread read exactly one artifact, in any proje
   await ok("artifacts.delete", { id: far.id });
   assert.equal((await juno("artifacts.get", { id: far.id })).error.code, "not_found");
 });
+
+test("artifacts: an interactive artifact is flagged, and a frame that loads twice is recorded in its activity by the person's surfaces only", async t => {
+  const { ok, call } = await boot(t);
+  const page = await ok("artifacts.create", { kind: "app", title: "Counter", content: "<!doctype html><p>hi</p>" });
+  const doc = await ok("artifacts.create", { kind: "doc", content: "# Notes" });
+  assert.equal(page.interactive, true, "a page or an app runs its own code");
+  assert.equal(doc.interactive, false, "a document runs none");
+  assert.deepEqual(await ok("artifacts.activity", { id: page.id }), []);
+  assert.equal((await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away", host: "Example.com" })).host, "example.com");
+  await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away" });
+  const act = await ok("artifacts.activity", { id: page.id });
+  assert.deepEqual(act.map(a => [a.kind, a.host]), [["navigated-away", null], ["navigated-away", "example.com"]]);
+  assert.equal((await call("artifacts.activity.log", { id: doc.id, kind: "navigated-away" })).error.code, "bad_input", "a document runs no code to navigate");
+  assert.equal((await call("artifacts.activity.log", { id: page.id, kind: "navigated-away" }, "mcp:agent:juno", { thread: "t1" })).error !== undefined, true, "a model never writes the person's activity log");
+  assert.equal((await ok("artifacts.activity.log", { id: page.id, kind: "navigated-away", host: "bad host;x" })).host, null, "a host is a hostname or nothing");
+});

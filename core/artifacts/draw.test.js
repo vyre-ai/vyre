@@ -124,6 +124,7 @@ test("every typed page is static: no script, no network, tokens only, both colou
     const p = page({ title: "T", format, files: f });
     assert.equal(p.scripts, false, format);
     assert.ok(!/<script|javascript:|https?:\/\//i.test(p.html.replace(/xmlns="http:\/\/www\.w3\.org\/2000\/svg"/g, "")), `${format}: no script or remote reference`);
+    assert.ok(!/http-equiv|<meta[^>]*refresh|<form|<a\s[^>]*target/i.test(p.html), `${format}: nothing that navigates by itself`);
     assert.match(p.html, /prefers-color-scheme:dark/, `${format}: paper and dark`);
     assert.ok(!/\burl\(/.test(p.html), `${format}: nothing loads`);
   }

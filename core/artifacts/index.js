@@ -88,6 +88,11 @@ export const MIGRATIONS = [
   `
   ALTER TABLE artifacts_items ADD COLUMN media TEXT;
   `,
+  // What an interactive artifact did that the person may want to know: it navigated away (a second load of its frame).
+  `
+  CREATE TABLE artifacts_activity (artifact TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
+  CREATE INDEX artifacts_activity_artifact ON artifacts_activity (artifact, at);
+  `,
 ];
 
 /** Seams for tests only, never reachable from outside this process: vyred's own uid, and a hook
@@ -166,6 +171,8 @@ export default {
       created_at: r.created_at, updated_at: r.updated_at, archived_at: r.archived_at ?? null, deleted_at: r.deleted_at ?? null,
       share: shareOf(r),
       media: r.media ? JSON.parse(r.media) : null,
+      // A page or an app runs its own code and can send the browser anywhere (nothing in a header stops it).
+      interactive: r.format === "html",
     });
     const row = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM artifacts_items WHERE id = ?").get(id));
     const versionRow = (/** @type {string} */ id, /** @type {number} */ n) => /** @type {any} */ (db.prepare("SELECT * FROM artifacts_versions WHERE artifact = ? AND n = ?").get(id, n));
@@ -377,6 +384,7 @@ export default {
         db.prepare("DELETE FROM artifacts_versions WHERE artifact = ?").run(r.id);
         db.prepare("DELETE FROM artifacts_capture_files WHERE artifact = ?").run(r.id);
         db.prepare("DELETE FROM artifacts_grants WHERE artifact = ?").run(r.id);
+        db.prepare("DELETE FROM artifacts_activity WHERE artifact = ?").run(r.id);
         db.prepare("DELETE FROM artifacts_items WHERE id = ?").run(r.id);
       }
     };
@@ -619,7 +627,7 @@ export default {
     const idIn = { type: "object", required: ["id"], properties: { id: str } };
 
     ctx.tool("artifacts.create", {
-      description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, {type: line or bar, x: the column for the x axis, series: [column names]}, plus its data as a list of rows; at most three series are drawn, and every chart has a table). A diagram in Mermaid is drawn as a flowchart or a sequence diagram; any other Mermaid type is shown as its source. An SVG is cleaned of scripts and links. A deck is Markdown, one slide per block split by a line of ---, with a Notes: line for speaker notes, a line of ... to split two columns, and images only as data URIs. The design is yours: a chart spec takes a theme (background, text, font, series colours) and per-series color, dash, marker and height; a deck takes an @theme line (bg, text, font, logo as a data URI) and an @slide line per slide (bg, image, color, align, valign); a Mermaid diagram takes a %%theme line and its own style and classDef; an SVG keeps its styles, gradients and data-URI images; a Markdown document takes an @theme line; a page or app is your own HTML and CSS. Colours, fonts and images are checked, never network: nothing loads from outside. It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
+      description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, {type: line or bar, x: the column for the x axis, series: [column names]}, plus its data as a list of rows; at most three series are drawn, and every chart has a table). A diagram in Mermaid is drawn as a flowchart or a sequence diagram; any other Mermaid type is shown as its source. An SVG is cleaned of scripts and links. A deck is Markdown, one slide per block split by a line of ---, with a Notes: line for speaker notes, a line of ... to split two columns, and images only as data URIs. The design is yours: a chart spec takes a theme (background, text, font, series colours) and per-series color, dash, marker and height; a deck takes an @theme line (bg, text, font, logo as a data URI) and an @slide line per slide (bg, image, color, align, valign); a Mermaid diagram takes a %%theme line and its own style and classDef; an SVG keeps its styles, gradients and data-URI images; a Markdown document takes an @theme line; a page or app is your own HTML and CSS. Colours, fonts and images are checked, never network: nothing loads from outside. An interactive page or app (HTML) runs your code in a locked frame, but it can still send the browser to another address and put anything it contains into that address, which no header stops: put nothing in one that the person has not chosen to send to the internet, and prefer a document, report, dashboard, diagram or deck, which run no code. It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
       input: { type: "object", required: ["kind", "content"], properties: {
         kind: { type: "string", enum: Object.keys(KINDS) }, format: { type: "string", enum: Object.keys(MAIN_FILE) },
         title: str, content: str, data: {}, project: str, message: str } },
@@ -942,6 +950,34 @@ export default {
       },
     });
 
+
+
+    // ---- activity: what an interactive artifact did ---------------------------------------------
+
+    ctx.tool("artifacts.activity.log", {
+      description: "Record that an interactive artifact (a page or an app) navigated away: the Deck sees its frame load a second time. The person's own surfaces call this, never a model. The destination host is recorded when the surface can tell, and a cross-origin frame's destination usually can't be read, so it is often unknown.",
+      input: { type: "object", required: ["id", "kind"], properties: { id: str, kind: { type: "string", enum: ["navigated-away"] }, host: str } },
+      examples: [{ id: "a_3fK2x9LqWm1p", kind: "navigated-away", host: "example.com" }],
+      run: async (i, meta) => {
+        if (!isPerson(meta)) throw refuse("only the person's own surfaces record this", "denied");
+        const r = await reach(i.id, meta);
+        if (r.format !== "html") throw refuse("only a page or an app runs its own code", "bad_input");
+        const host = typeof i.host === "string" && /^[A-Za-z0-9.-]{1,255}$/.test(i.host.trim()) ? i.host.trim().toLowerCase() : "";
+        db.prepare("INSERT INTO artifacts_activity (artifact, at, kind, detail) VALUES (?,?,?,?)").run(r.id, now(), i.kind, host);
+        db.prepare("DELETE FROM artifacts_activity WHERE artifact = ? AND rowid NOT IN (SELECT rowid FROM artifacts_activity WHERE artifact = ? ORDER BY at DESC LIMIT 200)").run(r.id, r.id);
+        return { id: r.id, recorded: i.kind, host: host || null };
+      },
+    });
+
+    ctx.tool("artifacts.activity", {
+      description: "What an interactive artifact has done that the person may want to know, newest first: today only that it navigated away.",
+      input: { type: "object", required: ["id"], properties: { id: str, limit: { type: "integer", minimum: 1, maximum: 200 } } },
+      examples: [{ id: "a_3fK2x9LqWm1p" }],
+      run: async (i, meta) => {
+        const r = await reach(i.id, meta, { read: true });
+        return /** @type {any[]} */ (db.prepare("SELECT at, kind, detail FROM artifacts_activity WHERE artifact = ? ORDER BY at DESC LIMIT ?").all(r.id, i.limit || 50)).map(a => ({ at: a.at, kind: a.kind, host: a.detail || null }));
+      },
+    });
 
     // ---- generated media: the tools ------------------------------------------------------------
 
