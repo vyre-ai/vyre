@@ -10,7 +10,7 @@
     "tools": [
       { "name": "vault.put", "reach": "anyone" },
       { "name": "vault.list", "reach": "anyone" },
-      { "name": "vault.delete", "reach": "person" },
+      { "name": "vault.delete", "reach": "anyone" },
       { "name": "vault.grant", "reach": "anyone" },
       { "name": "vault.revoke", "reach": "anyone" },
       { "name": "vault.pending", "reach": "anyone" },

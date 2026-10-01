@@ -18,7 +18,7 @@ import { tempHome, writeModule, present } from "../../test/helpers.js";
 const PERSON = [
   "vault.emergency.remove", "vault.lock", "vault.account.lock", "vault.pass.revoke", "vault.ssh.forget", "vault.agent.revoke",
   "vault.emergency.deny", "vault.offboard", "vault.device.sync", "vault.vaults.sync", "google.open",
-  "vault.delete", "vault.approve", "vault.revert", "vault.rotate", "vault.device.revoke", "vault.emergency.add", "vault.emergency.request",
+  "vault.approve", "vault.revert", "vault.rotate", "vault.device.revoke", "vault.emergency.add", "vault.emergency.request",
   "vault.connections.grant", "gate.said.add",
 ];
 

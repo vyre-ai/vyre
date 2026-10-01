@@ -481,6 +481,10 @@
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local, tailnet): no model caller; presence proof required"
   },
+  "vault.delete": {
+   "module": "vault",
+   "reason": "callers list in code (surfaces and module): a person's surface needs a presence proof; a first-party module may delete only an item whose origin is that module (set by vyred at put, a refusal otherwise), and an added module is refused (not_declared)"
+  },
   "vault.device.approve": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"

@@ -17,8 +17,6 @@ const SKIP = new Set(["node_modules", ".git", "testing"]);
 const PERSON_PROXY = new Set([
   // A tolerated refusal: the switchboard asks mentions.search and, when a module is refused it, falls back to vault by name (core/switchboard/said.js).
   "switchboard:mentions.search",
-  // github's disconnect deletes its token item with a module call and swallows the refusal (.catch). vault.delete never admitted a module (its callers list has none), so the item stays; the github owner moves it to a vault-side removal.
-  "github:vault.delete",
 ]);
 
 function* files(dir) {
