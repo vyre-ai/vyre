@@ -90,17 +90,18 @@ vyre updater status 2>&1 | grep -q installed && rec 3-updater ok || rec 3-update
 
 # H1/H2 (both modes): root never interprets what a person can write as compose configuration. An override file and a COMPOSE_FILE in .env are
 # refused before anything is fetched, whatever else is set, and the box is exactly as it was.
-rootreq() { sudo sh -c "printf 'update\\n' >$ST/request/request"; out=$(sudo "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; ready; }
+rootreq() { sudo sh -c "printf 'update\\n' >$ST/request/request"; out=$(sudo "$(command -v vyre)" update-from-request 2>&1 </dev/null); rc=$?; }
 printf 'services:\n  vyre:\n    privileged: true\n' | sudo tee "$DIR/compose.override.yml" >/dev/null
 rootreq; hv_now=$(hv)
 if [ $rc -ne 0 ] && [ "$hv_now" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -q 'does not read override files' && printf '%s' "$(statusf)" | grep -q '"state":"failed"'; then rec H1-override-file-refused ok "$(printf %s "$out" | tail -1)"
 else rec H1-override-file-refused false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -2)"; fi
 sudo rm -f "$DIR/compose.override.yml"
 printf 'COMPOSE_FILE=/tmp/evil.yml\n' | sudo tee -a "$DIR/.env" >/dev/null
-rootreq; hv_now=$(hv)
+rootreq
+# (the person's own compose reads that .env too, so it is put right before anything is read back)
+sudo sed -i '/^COMPOSE_FILE=\/tmp\/evil.yml$/d' "$DIR/.env"; ready; hv_now=$(hv)
 if [ $rc -ne 0 ] && [ "$hv_now" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -q 'COMPOSE_FILE is set in'; then rec H2-compose-file-in-env-refused ok "$(printf %s "$out" | tail -1)"
 else rec H2-compose-file-in-env-refused false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -2)"; fi
-sudo sed -i '/^COMPOSE_FILE=\/tmp\/evil.yml$/d' "$DIR/.env"
 
 if [ "$MODE" = stripped ]; then
   # S1 the shipped wrapper is the release build: it names none of the test overrides
