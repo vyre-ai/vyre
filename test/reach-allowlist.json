@@ -127,30 +127,6 @@
    "module": "assistant",
    "default": "open to any caller"
   },
-  "capsule.act": {
-   "module": "capsule",
-   "default": "limited by callers in code"
-  },
-  "capsule.commands": {
-   "module": "capsule",
-   "default": "limited by callers in code"
-  },
-  "capsule.report": {
-   "module": "capsule",
-   "default": "limited by callers in code"
-  },
-  "capsule.show": {
-   "module": "capsule",
-   "default": "open to any caller"
-  },
-  "capsule.status": {
-   "module": "capsule",
-   "default": "open to any caller"
-  },
-  "capsule.view": {
-   "module": "capsule",
-   "default": "limited by callers in code"
-  },
   "chrome.act": {
    "module": "chrome",
    "default": "open to any caller"
