@@ -16,10 +16,13 @@ The Deck is served at one HTTPS address on the tailnet:
 
 | Address | When | Certificate |
 |---|---|---|
-| `https://vyre.tail1234.ts.net` | the default; your box's Tailscale name | `tailscale cert`; needs HTTPS turned on for your tailnet in the Tailscale admin console ([how](../get-started/tailscale.md#5-turn-on-https-certificates)) |
-| `https://alex.vyre.run` | when you claim a `vyre.run` name | Let's Encrypt, by DNS challenge |
+| `https://alex.vyre.run` | the default after setup at vyre.run/setup: a name you claim there | Let's Encrypt, by DNS challenge |
+| your own domain, such as `https://vyre.harlowlegal.example` | when you bring a domain at the end of setup | Let's Encrypt, by DNS challenge through a record you add |
+| `https://vyre.tail1234.ts.net` | when you choose the box's Tailscale name instead | `tailscale cert`; needs HTTPS turned on for your tailnet in the Tailscale admin console ([how](../get-started/tailscale.md#5-turn-on-https-certificates)) |
 
-A `vyre.run` name is an A record pointing at the box's tailnet IPv4 address (a `100.x` address). It resolves on the public internet, but nothing off your tailnet can reach it. Today the record is written with your own Cloudflare token for the zone (`CLOUDFLARE_VYRE_TOKEN` in `~/.vyre/env`, or the vault item `cloudflare-vyre-token`). The hosted name directory at `api.vyre.run` is not built yet.
+A `vyre.run` name is an A record pointing at the box's tailnet IPv4 address (a `100.x` address). It resolves on the public internet, but nothing off your tailnet can reach it. The name is claimed through Vyre's hosted name directory, with a recovery code shown once. For your own domain, you add two records, an A record to the box's tailnet address and an `_acme-challenge` CNAME, and Vyre checks both before it serves the domain. Setting a `CLOUDFLARE_VYRE_TOKEN` of your own for the `vyre.run` zone is no longer how a name is made.
+
+Tailscale is required: the address only answers on your tailnet, and setup walks you through joining it. The relay (see below) carries setup and pairing, not your day-to-day traffic.
 
 ```
 vyre name                 # this box's address, its phase and its owner
@@ -39,7 +42,7 @@ vyred terminates TLS itself on the tailnet interface and runs `tailscale whois` 
 - whois names a node other than the box itself;
 - the node is not tagged, and its login equals `network.owner`.
 
-Anything else gets `403 not_owner`. A served request reaches tools as the caller `tailnet:<login>`.
+Anything else gets `403 not_owner`. A served request reaches tools as the caller `tailnet:<login>`: a device of yours, not yet you. Tools that act as you, and the ones that need a person present, also need a person session, made by signing in with a passkey on that device (see [presence](presence.md)).
 
 No identity header is read. `Tailscale-User-*`, `X-Forwarded-*` and `x-vyre-caller` from the network change nothing.
 
@@ -50,7 +53,7 @@ The browser is not trusted blindly either. `Host` must be the box's name or tail
 
 ## The owner
 
-The box serves one Tailscale login, `network.owner`. When the box joins your tailnet during onboarding, the owner becomes the login that owns the node. A node signed in with an auth key is tagged and has no user; the onboarding page then shows a one-time claim link on the tailnet address, and the first login to open it becomes the owner.
+The box serves one Tailscale login, `network.owner`. When the box joins your tailnet during setup, the owner becomes the login that owns the node. A node signed in with an auth key is tagged and has no user; the page then shows a one-time claim link on the tailnet address, and the first login to open it becomes the owner.
 
 ```
 vyre owner                        # who the owner is
@@ -60,6 +63,10 @@ vyre owner alex@example.com       # change it (on the box's own terminal)
 ## Tailnet identity is not presence
 
 `tailnet:alex@example.com` proves which device and login sent a request. It does not prove that alex is at that device: Claude Code on alex's Mac is on the same tailnet as the same login. So a tailnet caller gets no pass on tools that need a person. The Deck proves [presence](presence.md) with a passkey like every other surface.
+
+## The relay
+
+Setup at vyre.run/setup, and pairing a phone or a Windows PC by QR code or words, go through a relay: the box dials out to it, and your browser or device meets the box there over an end-to-end encrypted channel, so nothing is opened on your router and no address has to be typed. The relay cannot read what passes through it. A device paired this way is `device:<id>` and, like a tailnet device, is not you until you sign in on it. Once Tailscale is joined and the name is claimed, setup sends you to your address and the setup page is no longer used. See [ADR 0026](../adr/0026-relay.md).
 
 ## The network settings
 

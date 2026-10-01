@@ -12,8 +12,8 @@ Lumen is Vyre's command bar on the Mac. Press Control twice, anywhere, and a bar
 wide opens over whatever app you are in, where Spotlight would. One box does two jobs: it finds
 local things (apps, settings, files, contacts, sums) the way Spotlight does, and it sends words
 to your assistant, an agent or a running session. It also holds the list of what is waiting on
-you: permission questions from sessions and drafts held at the Gate. The vyred on your Mac runs
-it (a module with role `local`). Local search keeps working when vyred or your box is down.
+you: permission questions from sessions and drafts held at the Gate. The Vyre on your Mac runs
+it. Local search keeps working when Vyre or your box is down.
 
 ::: demo capsule
 Type in Lumen and it finds your threads, projects and agents, and offers to ask your assistant about the rest.
@@ -49,27 +49,29 @@ Type in Lumen and it finds your threads, projects and agents, and offers to ask 
    ```
 
    ```output
-     Capsule open · ⌥Space, or Control twice once it is allowed · ~/.vyre/capsule/Vyre.app
+     Lumen open · ⌥Space, or Control twice once it is allowed · ~/.vyre/capsule/Vyre.app
    ```
 
-   `vyre capsule` builds the app first if it is missing or out of date, and starts vyred first if
+   `vyre capsule` builds the app first if it is missing or out of date, and starts Vyre first if
    it is not running. `vyre up` on a Mac also opens the
-   Lumen when it is installed; `vyre up --no-capsule` starts vyred without it.
+   Lumen when it is installed; `vyre up --no-capsule` starts Vyre without it.
 
 3. Allow double-Control (next section). Until then, Option-Space opens it.
 
-Lumen lives in the menu bar. Click its mark for a menu that says whether anything is
-waiting on you, whether double-Control works, and whether vyred is running.
+Lumen lives in the menu bar as "Vyre Lumen". Click its mark for a small panel that shows who you
+are, whether Vyre is running (with a **Start Vyre** button when it is not), how your box is
+reached, and buttons to open Lumen, turn on Control twice and quit.
 
 ## Allow double-Control
 
 The double-Control listener needs Input Monitoring, and macOS grants it to `Vyre.app`. Option-Space
 needs no permission, so it always works.
 
-1. Click Lumen's mark in the menu bar. If it reads "Control twice opens it", you are done.
-2. If it reads "Double-Control is off", open System Settings, Privacy and Security, Input
-   Monitoring, and turn on Vyre.
-3. Press Control twice. Lumen opens with the caret in the box.
+1. Click Lumen's mark in the menu bar. If the panel offers **Turn on Control twice**, press it,
+   or open System Settings, Privacy and Security, Input Monitoring, and turn on Vyre.
+2. Press Control twice. Lumen opens with the caret in the box.
+
+When Control twice is off, Lumen says so in plain words and names the key that still opens it.
 
 Only two bare taps of Control within 450 ms count, so Control-C and Control-arrow keep working.
 
@@ -88,7 +90,7 @@ Type in the box without `@`. One list ranks:
 - a definition: `define ledger`;
 - files and folders, through Spotlight's index (`mdfind`), and up to three files from your box
   once a box is paired;
-- your agents, projects and threads, from vyred;
+- your agents, projects and threads, from Vyre;
 - logins from the [Vault](vault.md) (see below);
 - clipboard history: type `clipboard`, `clip` or `paste`. Enter puts the item back on the
   clipboard; you paste it with Command-V. Items that look like secrets are never kept, and a
@@ -137,9 +139,9 @@ to leave it off. Nothing about the screen is sent without the chip on show, and 
 Type `@` to name one. It completes agents, projects and threads:
 
 - `@juno what is left on the intake form?` asks the agent juno, in its current thread
-  (`agents.ask`). If your words match one of juno's other threads, "Sends to" offers that one
+  . If your words match one of juno's other threads, "Sends to" offers that one
   too.
-- `@harlow-intake run the tests` types into that session as you (`threads.send`). While you type
+- `@harlow-intake run the tests` types into that session as you. While you type
   you hold the session's keyboard (its lease). If another surface holds it, Lumen says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.
@@ -167,8 +169,8 @@ you choose.
 2. Pick the item:
    - **A permission question**: Allow or Deny. Command-Enter allows.
    - **A held draft** (an email, for example): To, Subject and body read as text and become
-     editable when you click them. Command-Enter sends exactly what is on screen, through
-     `gate.approve`. Discard drops it. Escape leaves a field.
+     editable when you click them. Command-Enter sends exactly what is on screen.
+     Discard drops it. Escape leaves a field.
 
 ## Open Glass
 
@@ -193,21 +195,21 @@ agent, or `glass box` for the box's files. See [Glass](glass.md).
 | Command-Enter | send a held draft, allow an ask, or take a session's keyboard |
 | Escape | hide Lumen and give the keyboard back to the app behind |
 
-## When vyred or the box is down
+## When Vyre or the box is down
 
-When vyred on your Mac is not running, everything that came from it is cleared from Lumen
+When Vyre on your Mac is not running, everything that came from it is cleared from Lumen
 and it says so. Apps, settings, files, sums and the clipboard keep working. When your box is out
 of reach, box features say the box is not reachable; they never hang.
 
-## Start it with vyred
+## Start it with Vyre
 
-Add a `capsule` key to `~/.vyre/config.json`, then restart vyred (`vyre down`, then `vyre up`):
+Add a `capsule` key to `~/.vyre/config.json`, then restart Vyre (`vyre down`, then `vyre up`):
 
 ```json
 { "capsule": { "autostart": true } }
 ```
 
-vyred then runs `vyre capsule --hidden` each time it starts, which builds Lumen if needed
+Vyre then runs `vyre capsule --hidden` each time it starts, which builds Lumen if needed
 and starts it hidden in the menu bar.
 
 ## What it will not do

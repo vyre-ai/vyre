@@ -1,6 +1,6 @@
 ---
 title: Windows
-summary: Use a Windows PC as a device on Vyre, the Deck in a browser, the PWA, the CLI and the Claude Code plugin, pointed at a Linux server, and set up that server itself inside WSL2.
+summary: Use a Windows PC as a device on Vyre with the Windows app, the Deck in a browser, the CLI and the Claude Code plugin, pointed at your Linux server, or run that server itself inside WSL2.
 audience: users
 owner: windows
 status: draft
@@ -8,10 +8,11 @@ status: draft
 
 # Windows
 
-"Server" and "device" are defined in ADR 0038 (terminology; link added once it merges); in short,
-a Windows PC is a device, same as a Mac or a phone, and the server is Linux only, including one
-inside WSL2 on a Windows PC (below). There is no native Windows server and no Windows Capsule
-yet; both are 0.2 work (see [ADR 0037](../adr/0037-windows.md)).
+A Windows PC is a device, the same as a Mac or a phone. Vyre has a Windows app for it (a tray icon,
+a hotkey panel, notifications, start at logon and self-update), and the Deck, the web app, the CLI
+and the Claude Code plugin all work there too. The server your devices connect to is a Linux
+machine (including one inside WSL2 on a Windows PC, below) or a Mac that stays on. There is no
+native Windows server (see [ADR 0037](../adr/0037-windows.md)).
 
 ## As a device, against a server
 
@@ -27,18 +28,15 @@ Everything that is plain web or plain Node already works on Windows with no spec
 - **Claude Code with the Vyre plugin** (`harness/`): install Claude Code for Windows and the
   plugin the same way as on a Mac.
 
-What is missing, and how it fails: anything that is really the Capsule (the global hotkey,
-screen context, "do ..." computer use, voice) is Mac-only today. `vyre capsule` on Windows says
-so plainly (`The Capsule runs on macOS. On this machine, use vyre or the Deck.`) rather than doing
-nothing silently. A command that reaches for a Capsule-only tool on the server (`vyre sideview`
-or `vyre voice`) answers with the tool not being there, since those modules only start on a Mac;
-treat that as "not built for this device yet," not a bug to chase.
+What is missing, and how it fails: Lumen, the Mac command bar with screen context, "do ..."
+computer use and voice, runs only on a Mac. `vyre capsule` on Windows says so plainly (`Lumen runs
+on macOS. On this machine, use vyre or the Deck.`) rather than doing nothing silently. A command
+that reaches for a Mac-only tool on the server (`vyre sideview` or `vyre voice`) answers with the
+tool not being there, since those parts only start on a Mac; treat that as "not built for this
+device yet," not a bug to chase.
 
-Two current rough edges, tracked for 0.1.x:
-- The CLI opens a browser for you (signing in, a one-time link, a recovery kit) with `cmd /c
-  start`. If nothing opens, copy the address it prints instead, that always works.
-- A brand-new install defaults its role to a device (`local`), the same as a Mac; `vyre config
-  set role local` fixes it by hand on an older install that guessed wrong.
+If the CLI cannot open a browser for you (signing in, a one-time link, a recovery kit), copy the
+address it prints instead, which always works.
 
 ## As a server, inside WSL2
 
@@ -52,35 +50,34 @@ completely unchanged.
    fine).
 2. Install Docker Desktop for Windows with the WSL2 backend enabled, or Docker Engine directly
    inside the WSL2 distribution.
-3. Inside the WSL2 shell, follow the ordinary Linux server setup: [Box care](box-care.md) and
+3. Inside the WSL2 shell, follow the ordinary Linux server setup at <https://vyre.run/setup>
+   ([Install](../get-started/install.md)), then [Box care](box-care.md) and
    [Tailscale](tailscale.md), unchanged.
 4. Everything past that point, Tailscale, the Deck, other devices connecting in, behaves like
    any other Linux server; WSL2 is invisible to them.
 
-Once `vyred` is running this way, live command completion (`suggest`) and the computer-use status
-strip (`sight`) already work, unmodified, the same as on a Linux server anywhere else: neither
-depends on macOS. That's the fastest way to feel a Windows-hosted server come alive.
-
-This is not yet exercised on real Windows hardware; it is tested as far as possible on GitHub's
-`windows-latest` CI runners (which do not have WSL2), and needs a hands-on pass on an actual
-Windows PC before calling it done.
+This path has not been run on a real Windows PC with WSL2. Its parts are tested on GitHub's
+`windows-latest` runners, which do not have WSL2.
 
 ## Multiple Windows PCs, one person
 
 Same story as multiple Macs: each device pairs into your tailnet and gets its own device identity,
 so "which device is mine" and pushing an answer to "this PC" work the same way federation between
 a Mac and a server already does (see [ADR 0021](../adr/0021-box-reads-the-mac.md) and
-[ADR 0032](../adr/0032-person-and-device.md)), a future Windows Capsule would just be one more
+[ADR 0032](../adr/0032-person-and-device.md)), the Windows app is one more
 federated device, not a special case.
 
-## What's next (0.2)
-
-A native Windows Capsule (a Tauri shell, most likely, see the plan) with its own hotkey, screen
-context through Windows UI Automation, computer use, voice, and Windows Credential
-Manager/Windows Hello standing in for the Keychain/Touch ID. None of this exists yet. Track it
-under `windows` in `docs/work/`.
-
 ## The Windows app
+
+The app's installer, `VyreSetup.exe`, is on the latest release at
+<https://github.com/vyre-ai/vyre/releases>, and `scripts/install-windows.ps1` (the script behind
+`$env:VYRE_CODE='...'; irm https://vyre.run/w | iex`) checks it against the release's published
+checksums before it runs. The app lives in the system tray. Alt+Space opens a small panel
+anywhere in Windows; if another app already holds Alt+Space, Vyre uses Ctrl+Alt+Space and tells
+you once. The panel shows the same Deck your server
+serves, at its address, and the app shows a notification for what needs you. It can start at
+logon, and it updates itself. It pairs with your server by a code shown as a QR and 13 words.
+There is no Windows version of the Mac's screen context, computer use or voice yet.
 
 The Windows app is not signed with a Windows certificate yet, so Windows may say it does not
 recognize the app. Choose More info, then Run anyway.

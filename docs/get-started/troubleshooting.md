@@ -18,7 +18,7 @@ Start with `vyre doctor`, on the Mac or on the server:
 vyre doctor
 ```
 
-It checks vyred, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
+It checks that Vyre is running, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
 phone on the tailnet, the box's address, a passkey for that address, pairing, Claude on the box and
 Lumen, in under two seconds. Each line is a check that passed, failed (with the one thing to
 do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
@@ -29,8 +29,8 @@ If that does not explain it, these show more:
 ::: tabs
 ::: tab On a server
 ```
-vyre status                 # is vyred running, and what is it running
-vyre logs                   # follow vyred's output
+vyre status                 # is Vyre running, and what is it running
+vyre logs                   # follow Vyre's output
 docker compose -p vyre ps   # are the tailscale and vyre containers up
 ```
 
@@ -42,17 +42,62 @@ vyre modules                # every module, and whether it started
 vyre link                   # paired with the box, and does the box answer
 ```
 
-`vyred`'s own output is in `~/.vyre/logs/vyred.out`, and its daily log in `~/.vyre/logs/` (one file a day, such as `2026-09-27.log`).
+Vyre's own output is in `~/.vyre/logs/vyred.out`, and its daily log in `~/.vyre/logs/` (one file a day, such as `2026-09-27.log`).
 :::
 
-A healthy `vyre status` looks like this:
+A healthy `vyre status` says Vyre is running, with its version, its role, how long it has been up
+and how many modules are running. A failed module adds `· 1 failed (vyre modules)` to the second
+line.
 
-```output
-  vyred running · 0.0.1 · box · pid 4242 · up 380s
-  17 modules running
-```
+## Setup at vyre.run/setup
 
-A failed module adds `· 1 failed (vyre modules)` to the second line.
+### "This browser is too old for the setup."
+
+The setup page needs Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer or Firefox 130 or newer. "This browser could not make the key the setup needs" means the same: try a current one.
+
+### "This page could not reach Vyre's relay."
+
+The setup page talks to your server through Vyre's relay. Check your connection, and that a work network or a browser extension is not blocking `vyre.run`, then press **Start again**.
+
+### "This code has expired. Start again."
+
+The code in the install line works for one hour and one server. Open <https://vyre.run/setup> again. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first. Your data stays.
+
+### "Two servers used this code." or "Another server already used this code."
+
+A code works for one server, and the first one to use it wins. If that was not your server, someone else had the line. Close the page and start again from <https://vyre.run/setup>. This is also why the page shows four words: they must match the ones your server's terminal printed.
+
+### "The four words did not match, so that was not your server."
+
+Close the page and start again. Do not use a line you did not copy from your own page.
+
+### "The progress lines arrived out of order" or "did not check out"
+
+Something between the server and the page altered or replayed the progress. The install itself is not harmed. Press **Start again**; if you pasted the same line twice, run `vyre uninstall --keep-data` first.
+
+### The page says "Waiting for your server"
+
+The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Your server is ready.` If the installer stopped, the last line says why (Docker, `/dev/net/tun`, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
+
+### "that name is reserved", or the address is not free
+
+Pick another name. Service names such as `app`, `login` and `vault`, well-known company names and look-alikes of them are not given out, and a name someone else holds is not free.
+
+### You did not save the recovery code
+
+It is shown once, and only on that page, so nothing can show it again. It matters only if you reinstall: with it, a reinstall takes this address back. The address itself keeps working.
+
+### Tailscale says "Waiting for approval in your Tailscale admin"
+
+Your tailnet asks an admin to approve each new device. Open [Machines](https://login.tailscale.com/admin/machines), open the new server's menu and approve it, or ask whoever runs the tailnet.
+
+### "The address could not be published" or "the certificate could not be made"
+
+The page shows the reason it was given. If Tailscale is connected and this stays, run `vyre name` on the server for where the address stands, and see [Tailscale, from zero](tailscale.md#when-something-is-wrong).
+
+### The link to open your server expired
+
+It works once, for two minutes. Press **Get a new link** on the setup page, and open it in the browser you will use with your server, on a computer that is on your tailnet.
 
 ## Setting up the server from the Mac
 
@@ -104,20 +149,17 @@ You skipped **Your address**. The Deck is served only at your address, never on 
 
 ### You want a `<you>.vyre.run` address
 
-The default address is your tailnet's name, `https://vyre.<tailnet>.ts.net`, and needs nothing extra. A `<you>.vyre.run` name needs a Cloudflare token for the `vyre.run` zone until the hosted name directory exists; without one, `vyre name claim` says "no Cloudflare token for the vyre.run zone". To give `vyred` the token on a Docker box:
+The six screens on the SSH path give the address as your tailnet's name, `https://vyre.<tailnet>.ts.net`, which needs nothing extra but Tailscale's HTTPS certificates. To have a `<you>.vyre.run` name, run this on the server:
 
 ```
-cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env
-chmod 600 /srv/vyre/vyre.env
-nano /srv/vyre/vyre.env      # uncomment CLOUDFLARE_VYRE_TOKEN= and paste the token
-vyre update                  # recreates the vyre container so it reads the file
+vyre setup --name alex --yes
 ```
 
-Without Docker, the token goes in `~/.vyre/env`. To go back to the tailnet name, run `vyre name ts.net` on the box.
+It claims `alex.vyre.run` for good, waits for the address and its certificate, and prints a recovery code once: store it somewhere safe. `vyre name check alex` tells you first whether the name is free. To go back to the tailnet name, run `vyre name ts.net` on the server. The setup page at vyre.run/setup does the same claim in your browser.
 
 ### Your address does not open
 
-Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. Once the address works, the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
 
 ## The box
 
@@ -127,16 +169,15 @@ The host's `vyre` wrapper looks for the stack in `/srv/vyre`. Either the install
 
 ### "vyre: vyred did not come up; see: vyre logs"
 
-The containers started but `vyred` did not answer within a minute. Run `vyre logs` and read the last lines. Fix what it names, then run `vyre up` again.
+The containers started but Vyre did not answer within a minute. Run `vyre logs` and read the last lines. Fix what it names, then run `vyre up` again.
 
 ### Start over, keeping your data
 
 ```
-curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall
-curl -fsSL https://vyre.run/install.sh | sh
+vyre uninstall --keep-data
 ```
 
-The volumes, and with them the vault, Claude's sign-in and your projects, stay. Add `--purge` to the uninstall to delete them too; it asks first.
+Then paste a fresh install line from <https://vyre.run/setup>. `--keep-data` leaves the volumes, and with them the vault, your AI sign-ins and your projects. `--delete-data` removes them too; without either flag, `vyre uninstall` asks. Before deleting data, `vyre backup` saves everything.
 
 ### "the service unit is out of date" (without Docker)
 
@@ -146,7 +187,7 @@ After an upgrade of a systemd install, `vyre up` asks you to rewrite the units. 
 
 ### "vyred did not start"
 
-`vyre up` or another command could not start this Mac's `vyred`. It prints the log file; read it (`~/.vyre/logs/vyred.out`). Node must be 22.5 or newer (`node --version`).
+`vyre up` or another command could not start Vyre on this Mac. It prints the log file; read it (`~/.vyre/logs/vyred.out`). Node must be 22.5 or newer (`node --version`).
 
 ### "your box ... did not answer from here"
 
@@ -167,14 +208,9 @@ The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tail
 
 The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
 
-### "The Mac that is asking cannot approve itself."
+### "The Mac that is asking can approve itself only with a passkey."
 
-You approved the pairing in the Deck on the Mac you are pairing. The box takes the approval only from another of your devices. Open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
-
-> [!GAP]
-> The Deck approves a pairing, but not from the Mac being paired. Approve it from your phone
-> (or another device on your tailnet) with your passkey. See
-> [known gaps](../known-gaps.md#approving-a-mac-in-the-deck).
+You approved the pairing in the Deck on the Mac you are pairing, without a passkey made on that Mac. The box takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
 
 ### "That code does not match. Check the code on the Mac and try again."
 
@@ -186,7 +222,7 @@ The Deck on the box lists the paired Mac's sessions while the Mac is awake and o
 
 ## Lumen
 
-### "The Capsule is built with Apple's Command Line Tools, which are not installed"
+### "Lumen is built with Apple's Command Line Tools, which are not installed"
 
 `vyre capsule` builds Lumen on this Mac. Run `xcode-select --install`, then `vyre capsule install`.
 
@@ -196,7 +232,7 @@ Lumen signed ad hoc is a new identity to macOS after each rebuild (an npm update
 
 ### Control twice does nothing
 
-Click Lumen's icon in the menu bar. A line starting `Double-Control is off:` says why. Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` so it opens wired to this Mac's `vyred`. Option-Space opens it meanwhile; it needs no permission.
+Click Lumen's icon in the menu bar. A line starting `Double-Control is off:` says why. Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` to open it again. Option-Space opens it meanwhile; it needs no permission.
 
 ### "the Capsule is not installed: vyre capsule install"
 
@@ -218,7 +254,7 @@ Search by meaning needs a local model of about 130 MB. Vyre fetches it into `~/.
 
 ### The vault says it is locked, or asks for presence
 
-`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code vyred writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Deck, it is your passkey.
+`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code Vyre writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Deck, it is your passkey.
 
 ### An agent stopped: budget
 

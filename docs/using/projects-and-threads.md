@@ -9,7 +9,7 @@ status: stable
 # Projects and threads
 
 A **thread** is a Claude Code session. A **project** is a home folder, the other folders it owns,
-the threads in it, its people and its watchers. Vyre uses projects to decide what a thread is
+the threads in it, its people, its watchers and its teammates. Vyre uses projects to decide what a thread is
 told when it starts (the project's **brief**) and which memory it may draw on. Nothing from one
 project's threads or memory reaches another project's brief, so two clients' work stays apart.
 
@@ -45,7 +45,7 @@ Paths are relative to the home folder. New projects are made in `projectsDir` (d
 also looks for markers under `roots`. A box that already has projects in `~/Vyre/projects` keeps
 them there until you move them yourself: `vyre projects move --dry-run` lists what would move, what
 would be skipped and why, and changes nothing; `vyre projects move` then moves each home once,
-leaves a link at each old folder so older sessions still resume, and asks you to restart vyred, which
+leaves a link at each old folder so older sessions still resume, and asks you to restart Vyre, which
 then uses `/work/projects`. The real move stays off until it has been tried on a copy of a box: it
 runs only with `VYRE_PROJECTS_MOVE=1` set, or `"projects": { "move": "enabled" }` in config.json.
 Sessions come from the folders
@@ -140,14 +140,14 @@ doing, and headlines from the project's memory, in about 2,400 characters. A thr
 when it needs it. The tool is `projects.context`.
 
 > [!WHY] How does a thread get the brief?
-> The Harness's SessionStart hook prints it into every thread that starts in a project folder.
-> `vyre resume` and `vyre start` load the Harness with `--plugin-dir`, so the hook adds it; only
-> when the Harness is missing do they pass the brief with `--append-system-prompt` instead. Never
-> both, or Claude would read it twice.
+> Vyre's Claude Code plugin prints it into every thread that starts in a project folder, from a
+> start hook. `vyre resume` and `vyre start` load the plugin with `--plugin-dir`, so the hook adds
+> it; only when the plugin is missing do they pass the brief with `--append-system-prompt` instead.
+> Never both, or Claude would read it twice.
 
 In the Deck, `/projects/<slug>` is the project board: threads and the brief on the left, the open
-thread in the centre, and the files it touched on the right, with tabs for the brief, files and
-memory.
+thread in the centre, and the files it touched on the right, with tabs for **Threads**, **Team**,
+**Brief**, **Files** and **Memory**.
 
 ![The Harlow Legal board: its threads and brief on the left, the open thread with a box to carry it on, and the files it touched on the right](shots/deck-project.png)
 
@@ -181,7 +181,7 @@ list when piped, and works the same over SSH. See [agents](agents.md) for the ag
 
 ## Headless threads
 
-vyred can also run a thread itself, headless, so it outlives every window. Any surface can watch
+Vyre can also run a thread itself, headless, so it outlives every window. Any surface can watch
 it, and one surface at a time holds its keyboard.
 
 ```sh
@@ -198,6 +198,44 @@ permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `thr
 `threads.asks`, `threads.answer` and `threads.stop`. For every flag, see
 [Drive a running session](cli.md#drive-a-running-session).
 
+## Teammates in a project
+
+A **teammate** is a role in one project, like `design` or `backend`, with its own notes. It belongs to
+that project: it is made there and works on that project's folder. Any session in the project can
+send it work, and you can too. The full page is [Teammates](teammates.md).
+
+In the Deck, the **Team** tab of a project's board lists its teammates with their state and queue.
+Open one to read what it is doing now, its last result and its notes, and to set who fills the role,
+edit its charter, and see and switch its duties. **Add a teammate** takes a role and, if you like, a
+line on what work goes to it. A checkbox, **Steer new work to teammates**, controls whether Vyre
+points ongoing work in this project at its teammates. From the terminal:
+
+```sh
+vyre team                              # this project's teammates, states and queues
+vyre team add design --brief "visual design and UI copy"
+vyre team ask design "Make the intake form calmer"
+```
+
+A teammate's standing duties are [watchers](watchers.md#standing-duties-are-watchers-too) it owns,
+so they stay inside the project too.
+
+## Connect GitHub to a project
+
+Connect GitHub once in the Deck, under **Connections**: **Sign in with GitHub** shows a short code,
+you type it on GitHub's own page, and Vyre keeps the token in the [Vault](vault.md). Then:
+
+- **New project**, **From a GitHub repo** picks a repo, clones it fresh and makes the project. It
+  never touches an existing folder.
+- On an existing project's board, **Repos** says which of the project's folders are connected to
+  GitHub, and **Add a repo** clones another repo into a new folder of the project.
+
+In a project that is a git repo with a connected account, a session works in its own folder under the
+project's `.sessions`, and its commits are made as you: the author and committer are the connected account's name and email, or the
+account's GitHub noreply address when GitHub shows no email. Every commit also carries a
+`Vyre-Session: <id>` line, so you can see which session wrote it; set `session_trailer` to
+`false` in the `github` section of `config.json` to leave it off. The name and the line are for auditing, not a lock: a model
+that runs its own shell can change them, so read a session's commits before you merge them.
+
 ## Which surface does what
 
 | Task | Terminal | Deck | Lumen | Chat | Claude |
@@ -207,6 +245,7 @@ permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `thr
 | Pick threads | `vyre pick`, `vyre unpick` | Add to a project | | | `projects.add-threads` |
 | Search sessions | `vyre threads <words>` | the search box in the header | `@` a thread | | `projects.catalog`, `recall.search` |
 | Read the brief | `vyre context` | Brief tab | | | `projects.context` |
+| Add or ask a teammate | `vyre team add`, `vyre team ask` | Team tab | | | `team.add`, `team.ask` |
 | Resume or start in Claude Code | `vyre resume`, `vyre start` | | | | |
 | Type into a thread | `vyre threads send` | open a thread | `@` a thread | `/chat/<project>/<thread>` | `threads.send` |
 | Start a headless thread | `vyre threads start` | New thread | `@` a project | | `threads.start` |

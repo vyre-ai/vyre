@@ -20,7 +20,7 @@ people and links.
 Anything Vyre shows you in **gold** (the Recall colour) came from memory or the search index, not
 from a model's words: a matched quote in search results, a fact, a fact's source thread, your own
 correction. When text is gold you can ask where it came from, and Vyre can show you the turn.
-This is floor rule 7: anything Vyre tells you, it can show the source of. The gold appears in the
+Vyre holds itself to one rule here: anything it tells you, it can show the source of. The gold appears in the
 terminal (`vyre recall`, `vyre memory`, `vyre why`), in the Deck's Memory view and Now page, in
 Chat next to a thread, and in Lumen when memory answers.
 
@@ -53,7 +53,7 @@ In the Deck, the search box at the top (Command-K) runs the same search:
 
 ### Keep the index up to date
 
-vyred indexes on its own: a session a moment after each Claude Code turn ends, and every folder
+Vyre indexes on its own: a session a moment after each Claude Code turn ends, and every folder
 every 5 minutes (`recall.every` in `config.json`; 0 turns the timer off). `vyre index` indexes
 new and changed sessions now.
 
@@ -66,7 +66,7 @@ With no query, `vyre recall` says how much is indexed and whether search can ran
 ```
 
 > [!WHY] Why does the first search after an install only match words?
-> Search by meaning needs a small embedding model. vyred downloads it once (23 MB) into
+> Search by meaning needs a small embedding model. Vyre downloads it once (23 MB) into
 > `~/.vyre/models` and embeds your sessions in the background. Until that finishes, recall
 > searches full text only, and `vyre status` says "downloading the search model".
 
@@ -121,8 +121,8 @@ its source turns. **Now** shows **Memory learned today**, each fact with its sou
 ![Memory in the Deck as a map: rooms for Northwind Bakery and Harlow Legal with Sam Okafor, Dana Reyes, their things and threads, and each fact as a gold dot](shots/deck-memory.png)
 
 > [!SNAG] The Deck says "Memory is not available."
-> The Memory view could not read the graph from vyred. Choose **Try again**. If it keeps failing,
-> check that vyred runs (`vyre status`) and that the memory module started (`vyre modules`).
+> The Memory view could not read the graph from Vyre. Choose **Try again**. If it keeps failing,
+> check that Vyre runs (`vyre status`) and that the memory module started (`vyre modules`).
 
 ## How projects keep memory apart
 
@@ -132,6 +132,10 @@ session in that project draw only on that room, so nothing from one client's pro
 another's. The main graph, across every room, is visible only to you on your own surfaces (the
 terminal, the Deck, Lumen), to the assistant, and to an agent granted every project.
 `--project <slug>` reads one room; `--project unfiled` reads the room of no project.
+
+A [teammate's](teammates.md) notes are not part of this graph. They are a text file the teammate keeps for
+itself, shown in the project's **Team** tab. Its sessions are ordinary sessions in the project, so
+search finds them and they feed the project's room like any other.
 
 ## Correct a fact
 
@@ -166,7 +170,7 @@ vyre memory mute "Old Vendor Inc"   # never offered
 vyre memory mute "Old Vendor Inc" --off
 ```
 
-Pin and mute are `memory.pin` and `memory.mute`. While you type a prompt, the Harness's Enrich hook
+Pin and mute are `memory.pin` and `memory.mute`. While you type a prompt, Vyre's Claude Code plugin
 asks `memory.relevant` for the few facts worth adding, and adds nothing when nothing in the prompt
 is known.
 

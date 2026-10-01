@@ -9,8 +9,8 @@ status: stable
 # Tips
 
 Vyre does a lot, and most of it is a key or a command away. Tips teach it one line at a time, in
-the place you are already working: a key in Lumen while you use Lumen, a command
-after you run its neighbour in the terminal, a feature you have never opened when you pause.
+the place you are already working. In 0.2.0 that place is the terminal: a command after you run
+its neighbour.
 
 A tip is one short line with the key or command in it, like this:
 
@@ -18,17 +18,16 @@ A tip is one short line with the key or command in it, like this:
 
 ## Where tips show
 
-| Surface | Where | When |
-| --- | --- | --- |
-| Lumen | a dim line under the empty box | when you open it and pause |
-| Deck and Chat | a small chip at the foot of the view | while you use that view, or when you pause |
-| Phone | a line in the Places sheet | when you open it |
-| CLI | one dim `tip:` line after a command finishes | after an interactive command that worked |
-| Glass | never during a take-over | |
+In 0.2.0 tips show in the terminal: one dim `tip:` line after an interactive `vyre` command
+that worked. The CLI prints it on stderr, and never with `--json`, when the output is piped,
+after an error, or after `vyre up`, `vyre down` and `vyre tips` themselves. Set `VYRE_NO_TIPS=1`
+to silence it for one shell.
+
+Tips do not show in Lumen, the Deck or the phone yet. Every tip already says which surface it
+is for, so they can appear there later without a change to the tips you have dismissed.
 
 A tip never takes focus, never covers what you are reading, and never uses the colour Vyre keeps
-for things that need you. The CLI prints its line on stderr, and never with `--json`, when the
-output is piped, or after an error.
+for things that need you.
 
 ## Which tip you get
 
@@ -52,15 +51,14 @@ The choice is fixed by these rules, never by chance, so the same moment gives th
   running or you are typing.
 - At most one tip per screen every 30 minutes, two minutes apart across all your screens, and six
   a day in all.
-- A tip shows at most twice. Press **Show me** or run its command and it is done for good.
-- Press **×** on a tip and it never comes back. **Hide tips about this** hides every tip about
-  that part of Vyre.
+- A tip shows at most twice, and once you use what it teaches it is done for good.
+- A tip you dismissed never comes back until you run `vyre tips reset`.
 
 ## After an update
 
-When Vyre moves to a new version, the tips that came with it count as new. `vyre update` prints up
-to five "New in" lines after the changelog, and the Deck shows one quiet card in Now that goes
-away in one tap. Run `vyre tips new` to see the list again. A module you added from outside gets
+When Vyre moves to a new version, the tips that came with it count as new. `vyre update` prints
+"New in" lines after the update, one for each new tip. Run `vyre tips new` to see the list
+again. A module you added from outside gets
 the same treatment when its own version moves.
 
 ## Turn tips off, or bring them back
@@ -69,23 +67,13 @@ Settings has a **Tips** group:
 
 - **Show tips**: on by default. Off hides every tip, on every device.
 - **Time between tips**: 15, 30, 60 or 240 minutes.
-- **Show tips again**: brings back every tip you dismissed or used.
 
-From the terminal, put a `tips` block in config.json, and bring every tip back with a call:
+You can set the same two in `config.json`, and bring every tip you dismissed or used back with
+`vyre tips reset`:
 
 ```json
 { "tips": { "enabled": false, "gap_minutes": 60 } }
 ```
-
-```sh
-vyre call tips.reset
-```
-
-> [!GAP]
-> The Settings hub, and a terminal command for every setting, land with the native-core work;
-> until then the config.json block above is the switch. The surface lines (Lumen, Deck, phone,
-> CLI) arrive with each surface's next release. The tips module, its tools and `vyre tips` are in
-> now.
 
 ## For scripts and agents
 

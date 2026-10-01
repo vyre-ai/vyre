@@ -12,7 +12,7 @@ An agent can have its own computer on your box: a desktop with Chrome and a term
 container. Glass lets you watch that screen live in the [Deck](deck.md), take over the keyboard,
 and browse the computer's files. It also browses the box's own folders. Glass works only from your
 own tailnet, and only you, the tailnet owner, can open it; a guest from another tailnet cannot.
-It runs on the box as the `glass` module. The design is in [ADR 0005](../adr/0005-glass.md), and
+The design is in [ADR 0005](../adr/0005-glass.md), and
 how the screen is streamed in [ADR 0003](../adr/0003-glass-stream.md).
 
 ## Before you start
@@ -63,7 +63,7 @@ wakes where it left off.
 > Deck instead.
 
 > [!SNAG] "The box is not answering."
-> vyred did not answer. Check the box with `vyre status` on it, or `vyre box` from the Mac.
+> Vyre did not answer. Check the box with `vyre status` on it, or `vyre box` from the Mac.
 
 ## Take the keyboard, then hand it back
 
@@ -171,7 +171,7 @@ vyre call computers.checkout '{"agent":"kit"}'
 kit's computer stopped as soon as it started (exit code 3); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the box
 ```
 
-The same message is in vyred's log on the box. Run the `docker logs` command it names for the
+The same message is in Vyre's log on the box. Run the `docker logs` command it names for the
 details.
 
 ## On a phone
@@ -182,6 +182,8 @@ with the same Take over and Hand back. See [Mobile](mobile.md).
 ## What it will not do
 
 - An agent cannot open Glass, take or release a keyboard. Those are for people.
+- Let an agent undo a pause. An agent can pause its own hands, but only you resume them.
+- Let an agent use another agent's computer. Each agent's hands reach its own computer only.
 - It does not show your Mac's screen. Glass is for agents' computers and the box.
 - It never lets two people type at once.
 - The Terminal tab is not in this version.
