@@ -238,6 +238,18 @@ let oversightSuite = Suite("oversight") { t in
         t.eq(link.calls("chrome.pause").count, 0)
     }
 
+    t.test("chrome.finished closes a run: a bad finish at once, a good one after the linger") {
+        MainActor.assumeIsolated {
+            let (_, ext, link) = make()
+            link.emit(plan("r1")); link.emit(plan("r2"))
+            link.emit(ev("chrome.finished", ["run": "r1", "ok": false]))
+            t.eq(ext.model.runs.map { $0.id }, ["r2"])
+            link.emit(ev("chrome.finished", ["run": "r2", "ok": true]))
+            t.ok(ext.isOpen)
+            t.ok(settle { !ext.isOpen }, "closed after the linger")
+        }
+    }
+
     t.test("only a step that has not started can be retexted; empty or unchanged text sends nothing") {
         let link = OvLink()
         _ = MainActor.assumeIsolated { () -> Bool in

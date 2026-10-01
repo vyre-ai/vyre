@@ -10,8 +10,7 @@
 //          chrome.paused|resumed|stopped, and hands.paused|resumed|stopped {run}
 // Tools (the person's own call, no prompt): chrome.pause {run}, chrome.resume, chrome.stop,
 //          chrome.plan.edit {run, step, text}, chrome.interject {from, text}; hands.pause|resume|stop
-//          {run} once a hands.* event has named the run. A finished run emits nothing: it closes
-//          when every step is over.
+//          {run} once a hands.* event has named the run. chrome.finished {run, ok} ends a run; an all-over plan also closes it.
 
 import Foundation
 
@@ -111,6 +110,11 @@ final class OversightModel: ObservableObject {
             put(r, front: false)
         case "chrome.stopped", "hands.stopped":
             drop(run)
+        case "chrome.finished":
+            // The run is over (chrome.plan {finish}, or a stop). A good finish lingers a moment like an all-done
+            // plan; a bad one goes at once.
+            guard runs.contains(where: { $0.id == run }) else { return }
+            if (p["ok"] as? Bool) == false { drop(run) } else { lingerThenDrop(run) }
         case "chrome.paused", "hands.paused":
             guard var r = runs.first(where: { $0.id == run }) else { return }
             r.paused = true
@@ -143,6 +147,17 @@ final class OversightModel: ObservableObject {
                 self.drop(id)
                 if before != self.isActive { self.onPresence?() }
             }
+        }
+    }
+
+    private func lingerThenDrop(_ id: String) {
+        lingering[id]?.cancel()
+        lingering[id] = Task { @MainActor [weak self, linger] in
+            try? await Task.sleep(for: linger)
+            guard !Task.isCancelled, let self else { return }
+            let before = self.isActive
+            self.drop(id)
+            if before != self.isActive { self.onPresence?() }
         }
     }
 
