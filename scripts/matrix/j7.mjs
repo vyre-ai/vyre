@@ -37,9 +37,14 @@ fold("7.1d-hand-back", ["4d"], "the keyboard was handed back, the agent's hands 
 fold("7.1e-agent-cdp", ["4e"], "the agent acts through computerd's authenticated route, no raw Chrome port");
 fold("7.1f-isolation", ["3"], "the image's isolation checks and the browser policy hold on the pool's own container");
 r.step("7.2-three-app-plan-oversight", "by-hand", { why: "needs a model run and the oversight panel (capsule-pro's UI); not scriptable on a runner without a vendor account" });
-fold("7.3-kill-mid-task", ["4f"], "a killed computer is reported stopped, Glass refuses plainly, nothing is left running");
+const kill = lines.filter(l => l.tag === "4f");
+for (const [i, step] of ["7.3a-killed-computer-reported-stopped", "7.3b-glass-says-so-plainly", "7.3c-nothing-left-running"].entries()) {
+  const l = kill[i];
+  if (!l) r.step(step, "skip", { why: "the proof stopped before this step" });
+  else r.step(step, l.ok, { why: l.text.slice(0, 260) });
+}
 const left = spawnSync("docker", ["ps", "-a", "--filter", "name=csproof-", "--format", "{{.Names}}"], { encoding: "utf8" }).stdout.trim();
-r.step("7.3b-no-leftover-containers", left === "", { why: left ? `left behind: ${left.replace(/\n/g, ", ")}` : "the proof's cleanup removed every container" });
+r.step("7.3d-no-leftover-containers", left === "", { why: left ? `left behind: ${left.replace(/\n/g, ", ")}` : "the proof's cleanup removed every container" });
 r.step("7.6-windows-uia", "skip", { why: "not in 0.2 (rehearsal J7.6)" });
 r.step("7.run", run.status === 0, { ms: Date.now() - t0, why: run.status === 0 ? undefined : `proof exit ${run.status}` });
 process.exit(r.failed ? 1 : 0);
