@@ -24,11 +24,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 21 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 34 | 15 | none |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 35 | 15 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 10 | 3 | capsule, cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 11 | 4 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 28 | 3 | capsule, cli, deck |
@@ -61,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 32 | 8 | cli |
-| [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 1 | cli, deck |
+| [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
@@ -169,7 +169,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [34](tools.md#chrome), 1 of them only for other modules
+- Tools: [35](tools.md#chrome), 1 of them only for other modules
 - Emits: [15 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -211,8 +211,8 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [10](tools.md#connectors), 2 of them only for other modules
-- Emits: [3 events](events.md#connectors)
+- Tools: [11](tools.md#connectors), 2 of them only for other modules
+- Emits: [4 events](events.md#connectors)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
 
@@ -578,7 +578,7 @@ One way to read and change every setting, at account, project, device or session
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [10](tools.md#settings), 2 of them only for other modules
-- Emits: [1 events](events.md#settings)
+- Emits: [2 events](events.md#settings)
 - Shows on: cli, deck
 
 ## sideview

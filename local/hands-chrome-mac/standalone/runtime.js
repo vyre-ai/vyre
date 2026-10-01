@@ -40,6 +40,32 @@ export async function createRuntime(o = {}) {
   /** @type {Map<string, any>} */ const tools = new Map();
   /** @type {Map<string, Set<Function>>} */ const listeners = new Map();
   /** @type {Map<string, { content: any, tool: string }>} */ const held = new Map();
+  /** Failures on rungs 2 to 4 by target, in one call chain: a success on the target clears it. @type {Map<string, { n: number, at: number }>} */ const failing = new Map();
+  const CHAIN_MS = 90_000;
+  const targetOf = (/** @type {string} */ name, /** @type {any} */ input) => {
+    const i = input && typeof input === "object" ? input : {};
+    const sel = i.selector || (Array.isArray(i.fields) && i.fields[0] && i.fields[0].selector) || null;
+    const what = sel && typeof sel === "object" ? String(sel.identifier || sel.name || "") : String(i.text || i.label || "");
+    return `${Number.isInteger(i.tab) ? i.tab : "active"}|${what.toLowerCase().slice(0, 80)}`;
+  };
+  /** @param {string} name @param {any} input @param {any} c */
+  async function stepDown(name, input, c) {
+    const rung = rungOf(name);
+    if (rung < 2 || rung > 4 || !/^chrome\.(act|fill|click|type|wait|snapshot|batch)$/.test(name)) return;
+    const key = targetOf(name, input), now = Date.now();
+    for (const [k, v] of failing) if (now - v.at > CHAIN_MS) failing.delete(k);
+    if (c.ok) { failing.delete(key); return; }
+    if (NO_LADDER.has(String(c.error && c.error.code))) return;
+    const cur = failing.get(key) || { n: 0, at: now };
+    cur.n++; cur.at = now; failing.set(key, cur);
+    if (cur.n < 2 || !tools.has("chrome.point") || !tools.has("chrome.screenshot")) return;
+    const tab = c.error && c.error.detail && Number.isInteger(c.error.detail.tab) ? c.error.detail.tab : input && input.tab;
+    // The picture is taken by the same tool the model would use, so the floor, the credential-field refusal and a blind origin all apply: a refusal means no picture and no step-down.
+    const shot = /** @type {any} */ (await run("chrome.screenshot", { ...(Number.isInteger(tab) ? { tab } : {}), format: "jpeg", quality: 30, maxWidth: 640 }, "mcp"));
+    if (!shot || !shot.image || !shot.shot) return;
+    c.error.message = `${c.error.message} | ladder: rungs 1 to 4 have failed on this target twice. The picture attached is the page now (shot ${shot.shot.id}, image ${shot.shot.image.w}x${shot.shot.image.h}): find the thing in it and act with chrome_point {shot, x, y, action} in the picture's own pixels (rung 5). This is a hint for where to look: chrome_point holds and asks exactly as chrome_act does.`;
+    c.error.image = shot.image;
+  }
 
   const events = {
     emit(/** @type {string} */ type, /** @type {any} */ payload) {
@@ -158,6 +184,8 @@ export async function createRuntime(o = {}) {
     const c = /** @type {any} */ (out);
     // The ladder: a failure says which rung it was on and what the next one is.
     if (!c.ok && c.error && rungOf(name)) { const hint = nextRung(rungOf(name)); if (hint && !NO_LADDER.has(String(c.error.code))) c.error.message = `${c.error.message} | ladder: ${hint}`; }
+    // The automatic step-down: the same target failed on rungs 1 to 4 in one call chain, so the error hands over a fresh picture and names chrome_point, and the model does not have to remember it.
+    try { await stepDown(name, input, c); } catch { /* a hint that cannot be made is no second failure */ }
     trace.call({ tool: name, args: input, queueMs, runMs, ok: c.ok, result: c.result, error: c.error });
     // A failure can leave a small screenshot behind, when the person turned that on.
     if (!c.ok && trace.config().shots === true && tools.has("chrome.screenshot") && name !== "chrome.screenshot") {
