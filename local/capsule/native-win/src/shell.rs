@@ -163,6 +163,27 @@ mod tests {
     }
 
     #[test]
+    fn which_branch_an_address_lands_in_is_decided_from_the_parsed_origin() {
+        let pick = |a: &str| pin_from_offer(Some("alex"), Some(a)).map(|c| (c.address, c.own_domain));
+        // On vyre.run, and not alex's: refused, never pinned.
+        assert_eq!(pick("https://mallory.vyre.run"), Err("address_disagrees"));
+        assert_eq!(pick("https://mallory.vyre.run."), Err("address_disagrees"));
+        assert_eq!(pick("https://ALEX2.VYRE.RUN"), Err("address_disagrees"));
+        assert_eq!(pick("https://alex.vyre.run:8443"), Err("address_disagrees"));
+        assert_eq!(pick("https://vyre.run"), Err("address_disagrees"));
+        // Uppercase host is the same name: it is alex's.
+        assert_eq!(pick("https://ALEX.VYRE.RUN"), Ok(("https://alex.vyre.run".into(), false)));
+        // Look-alikes are NOT on vyre.run: they land in the own-domain branch (shown with their host), never the vyre.run one.
+        for lookalike in ["https://vyre.run.evil.com", "https://evilvyre.run", "https://alex.vyre.run.evil.com", "https://xn--vyre-9na.run"] {
+            assert_eq!(pick(lookalike).map(|(_, own)| own), Ok(true), "{lookalike}");
+        }
+        // Userinfo, a path or a non-https scheme never parse as an address at all.
+        for bad in ["https://alex.vyre.run@evil.com", "https://evil.com@alex.vyre.run", "https://alex.vyre.run/chat", "http://alex.vyre.run"] {
+            assert_eq!(pick(bad), Err("bad_address"), "{bad}");
+        }
+    }
+
+    #[test]
     fn windows_tools_run_by_full_path() {
         assert_eq!(system_path(Some("D:\\Win"), "System32\\reg.exe"), "D:\\Win\\System32\\reg.exe");
         assert_eq!(system_path(Some("D:\\Win\\"), "explorer.exe"), "D:\\Win\\explorer.exe");
