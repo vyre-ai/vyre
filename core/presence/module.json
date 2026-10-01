@@ -4,7 +4,7 @@
   "main": "module.js",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "presence.keys", "reach": "anyone" }, { "name": "presence.enroll", "reach": "anyone" }, { "name": "presence.remove", "reach": "anyone" }, { "name": "presence.capsule.pin", "reach": "anyone" }, { "name": "presence.code", "reach": "anyone" }, { "name": "presence.grant.mint", "reach": "modules" }, { "name": "presence.session.open", "reach": "anyone" }, { "name": "presence.session.close", "reach": "anyone" }, { "name": "presence.covered", "reach": "modules" },
+  "does": { "tools": [{ "name": "presence.keys", "reach": "anyone" }, { "name": "presence.enroll", "reach": "anyone" }, { "name": "presence.remove", "reach": "anyone" }, { "name": "presence.capsule.pin", "reach": "anyone" }, { "name": "presence.code", "reach": "anyone" }, { "name": "presence.grant.mint", "reach": "modules" }, { "name": "presence.session.open", "reach": "anyone" }, { "name": "presence.session.close", "reach": "person" }, { "name": "presence.covered", "reach": "modules" },
     { "name": "presence.person.start", "reach": "anyone" }, { "name": "presence.person.status", "reach": "person" }, { "name": "presence.person.sessions", "reach": "anyone" }, { "name": "presence.person.revoke", "reach": "person" }] },
   "watches": { "emits": ["presence.proved", "presence.refused", "presence.enrolled", "presence.removed", "presence.signed-in", "presence.signed-out"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
