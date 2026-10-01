@@ -8449,15 +8449,24 @@ Stop a watcher running until it is resumed.
 
 ### `watchers.preset`
 
-Write a watcher for a common source from a few fields, left off with its card. kind "mail": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional). Files short quoted notes for the important mail a Gmail push announces; sends nothing. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.
+Write a watcher for a common source from a few fields, left off with its card. kind "mail": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind "calendar": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind "repo": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind "slack": project, credential, channel (the channel id), match, when (default every 15 minutes). kind "feed": project, url, match, when (default hourly). None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.
 
 - Input:
   - `kind` string, required
   - `project` string, required
+  - `calendar` string
+  - `channel` string
   - `connection` string
   - `credential` string
   - `dailyUsd` number
+  - `days` integer
   - `instruction` string
+  - `label` string
+  - `match` list of string
+  - `only` string
+  - `repo` string
+  - `url` string
+  - `when` string
 - Callers: any caller
 
 ### `watchers.resume`

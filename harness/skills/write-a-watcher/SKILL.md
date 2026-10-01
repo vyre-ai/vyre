@@ -44,6 +44,13 @@ fits; "watch X and file it into this project" leaves nothing open.
    `"on": "hook.received"` with `"where": { "route": "<route name>" }`; the watcher then runs once
    per verified delivery on that route.
 
+## Check for a preset first
+
+For mail, a calendar, a GitHub repo, a Slack channel or a public feed, do not write code: call
+`watchers_preset` with `kind` (`mail`, `calendar`, `repo`, `slack` or `feed`), the project and the
+few fields it names. It writes the watcher off with a card; show the card, and after the person
+agrees, turn it on with `watchers_create {name, hash}`. Anything else is a custom watcher, below.
+
 ## 2. Credentials come from the Vault, by name, granted to this one watcher
 
 Never put a key, token or password in the watcher, in `watcher.json`, in a command line or in

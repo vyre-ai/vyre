@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { EventEmitter } from "node:events";
 import http from "node:http";
 import { testHooks } from "../../lib/sandbox/index.js";
 import path from "node:path";
@@ -586,4 +587,72 @@ test("watchers: the calendar preset starts quiet, then files only new or changed
   await assert.rejects(rt.createPreset({ kind: "calendar", project: "harlow-legal", credential: "g", label: "x", when: "every 5 minutes" }), /at most every 15 minutes/);
   await assert.rejects(rt.createPreset({ kind: "calendar", project: "harlow-legal", credential: "g", label: "y", match: ["a".repeat(61)] }), /up to 10 short words/);
   await assert.rejects(rt.createPreset({ kind: "nope", project: "harlow-legal" }), /there is mail, calendar/);
+});
+
+test("watchers: the repo and slack presets start quiet, read through the vault, and file only matching changes", async t => {
+  const calls = [];
+  const answers = {
+    "api.github.com": [
+      { number: 7, title: "SQLite migration fails on boot", state: "open", updated_at: "2026-03-02T10:40:00Z", html_url: "https://github.com/harlow-legal/site/issues/7", body: "Stack trace", labels: [{ name: "bug" }] },
+      { number: 8, title: "Update footer", state: "open", updated_at: "2026-03-02T10:41:00Z", html_url: "https://github.com/harlow-legal/site/pull/8", pull_request: {}, labels: [] },
+    ],
+    "slack.com": { ok: true, messages: [{ ts: "1772447000.000100", text: "The court moved the hearing to Friday" }, { ts: "1772447100.000200", text: "lunch?" }, { ts: "1772447200.000300", subtype: "channel_join", text: "joined the court channel" }] },
+  };
+  const request = async i => { calls.push(i); return { kind: "read", status: 200, headers: {}, body: JSON.stringify(answers[new URL(i.url).hostname]) }; };
+  const { rt, clock } = setup(t, { request });
+
+  const repo = await rt.createPreset({ kind: "repo", project: "harlow-legal", repo: "harlow-legal/site", match: ["sqlite"], credential: "github-pat" });
+  assert.equal(repo.name, "repo-harlow-legal-site");
+  assert.deepEqual(repo.facts.reads, ["api.github.com"]);
+  const slack = await rt.createPreset({ kind: "slack", project: "harlow-legal", credential: "slack-bot", channel: "C0123ABCDEF", match: ["court", "hearing"] });
+  assert.equal(slack.name, "slack-c0123abcdef");
+  await rt.create(repo.name, { hash: repo.hash }); await rt.create(slack.name, { hash: slack.hash });
+  await rt.settle();
+  assert.equal(calls.length, 0, "the first run of each only notes where to start");
+
+  clock.now = new Date("2026-03-02T11:00:00").getTime();
+  rt.tick(); await rt.settle();
+  assert.ok(calls.every(c => c.method === "GET"));
+  const r = rt.items({ name: repo.name });
+  assert.equal(r.length, 1); assert.match(r[0].title, /^Issue #7 SQLite migration fails on boot \(open\)$/);
+  const s = rt.items({ name: slack.name });
+  assert.equal(s.length, 1, "the join message and the unrelated one are not filed"); assert.match(s[0].title, /hearing to Friday/);
+
+  await assert.rejects(rt.createPreset({ kind: "repo", project: "harlow-legal", repo: "not a repo" }), /owner\/name/);
+  await assert.rejects(rt.createPreset({ kind: "slack", project: "harlow-legal", credential: "x", channel: "general" }), /channel id/);
+  const open = await rt.createPreset({ kind: "repo", project: "harlow-legal", repo: "vyre-ai/vyre", label: "public" });
+  assert.deepEqual(open.facts.credentials, [], "a public repo needs no credential");
+});
+
+test("watchers: the feed preset reads a public feed through the mediated fetch, files matching entries once, and refuses odd addresses", async t => {
+  const rss = `<?xml version="1.0"?><rss><channel>
+    <item><title>SQLite 4.0 released</title><link>https://news.example/101</link><guid>g101</guid><description><![CDATA[<p>Faster &amp; smaller</p>]]></description><pubDate>Mon, 02 Mar 2026 10:00:00 GMT</pubDate></item>
+    <item><title>A bakery opens</title><link>https://news.example/102</link><guid>g102</guid><description>Bread</description></item></channel></rss>`;
+  const seen = [];
+  testHooks.net = { lookup: async () => ["93.184.216.34"], request: (mod, o, cb) => {
+    seen.push(o);
+    
+    const req = new EventEmitter(); req.destroy = () => {};
+    req.end = () => { const res = new EventEmitter(); res.statusCode = 200; res.headers = { "content-type": "application/rss+xml", etag: "W/\"1\"" }; res.destroy = () => {}; cb(res); queueMicrotask(() => { res.emit("data", Buffer.from(rss)); res.emit("end"); }); };
+    return req;
+  } };
+  t.after(() => { testHooks.net = {}; });
+  const { rt, clock } = setup(t);
+  const made = await rt.createPreset({ kind: "feed", project: "harlow-legal", url: "https://news.example/feed.xml", match: ["sqlite"] });
+  assert.equal(made.name, "feed-news-example");
+  assert.deepEqual(made.facts.reads, ["news.example"]);
+  assert.match(made.facts.cost, /^No model cost/);
+  await rt.create(made.name, { hash: made.hash });
+  await rt.settle();
+  const items = rt.items({ name: made.name });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].title, "SQLite 4.0 released");
+  clock.now = new Date("2026-03-02T11:00:00").getTime();
+  rt.tick(); await rt.settle();
+  assert.equal(rt.items({ name: made.name }).length, 1, "a second run files nothing twice");
+  assert.ok(seen.some(o => o.headers["if-none-match"]), "the second request asks if the feed changed");
+
+  for (const url of ["ftp://x.example/feed", "https://user:pw@x.example/feed", "https://127.0.0.1/feed", "https://x.example:8443/feed", "not a url"]) {
+    await assert.rejects(rt.createPreset({ kind: "feed", project: "harlow-legal", url, label: "bad" + url.length }), /url is/);
+  }
 });

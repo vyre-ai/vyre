@@ -177,6 +177,22 @@ note in that project's memory, marked as from outside so it is never treated as 
 sends and changes nothing. It starts off: you see its card, run the one grant command it shows, and
 turn it on.
 
+## Presets for common sources
+
+`watchers.preset` writes a ready watcher from a few fields. Each starts off with its card, reads
+only, sends and changes nothing, and files short quoted notes marked as from outside.
+
+| Kind | Fields | Reads | Runs |
+|---|---|---|---|
+| `mail` | project, credential | new mail a Gmail push announces | on a push |
+| `calendar` | project, credential, calendar, match, days | new or changed events in the next days | hourly |
+| `repo` | project, repo, credential (optional), match, only | issues and pull requests | every 30 minutes |
+| `slack` | project, credential, channel id, match | new messages in one channel | every 15 minutes |
+| `feed` | project, url, match | a public RSS, Atom or JSON feed | hourly |
+
+`match` is a short list of words; an item must mention one. It is a plain text match, with no
+model, so only `mail` costs anything.
+
 ## The card before you turn it on
 
 Before anything runs on its own, you see a card: when it runs, what it checks, what it does, the

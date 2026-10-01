@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Presets for a repo (`kind: "repo"`: issues and pull requests of an owner/name, with or without a
+  GitHub credential), a Slack channel (`kind: "slack"`: new messages, by channel id) and a public
+  feed (`kind: "feed"`: RSS, Atom or JSON feed, with a conditional request so an unchanged feed
+  costs one 304). Each is written off with its card like mail and calendar, files short quoted
+  notes marked as from outside, filters by a plain text match with no model, and starts quietly
+  (repo and Slack file nothing on the first run; the feed files up to its latest matches once and
+  never twice). Schedules are never faster than 15 minutes (Slack 5).
+
 - Calendar preset: `watchers.preset {kind: "calendar", project, credential, calendar?, match?, days?,
   when?}` writes an off-by-default watcher that reads the next N days of a Google Calendar through
   `vault.request` (GET only), starts quietly (the first run files nothing), then files a short note
