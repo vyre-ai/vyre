@@ -386,3 +386,24 @@ test("hub: no scope means you and the assistant only; an explicit open scope sta
   assert.deepEqual(scopes.d, { projects: ["harlow"], agents: ["kit"] }, "a written scope is never touched");
   void db;
 });
+
+test("hub: a stored scope that will not read is the default (you and the assistant only), never open, and is logged once", async () => {
+  const lines = [];
+  const { hub, db } = fakeHub({ log: m => lines.push(m), agentKind: async a => (a === "helper" ? "assistant" : "agent") });
+  await hub.add({ name: "good", transport: "stdio", command: "node", scope: { projects: "*", agents: "*" } });
+  for (const [name, scope] of [["junk", "not json {"], ["str", '"everyone"'], ["arr", "[]"], ["num", '{"projects":5,"agents":"*"}'], ["mixed", '{"projects":"*","agents":[1]}'], ["nul", "null"]]) {
+    db.prepare("INSERT INTO mcp_servers (name, transport, command, args, auth, scope, tools, added, updated) VALUES (?, 'stdio', 'node', '[]', '{\"type\":\"none\"}', ?, '{}', 1, 1)").run(name, scope);
+  }
+  const DEFAULT = { projects: "*", agents: [], assistant: true };
+  for (const n of ["junk", "str", "arr", "num", "mixed", "nul"]) assert.deepEqual(hub.row(n).scope, DEFAULT, n);
+  assert.deepEqual(hub.row("good").scope, { projects: "*", agents: "*" }, "a readable scope is untouched");
+  // not open to a named agent, open to the person and the assistant
+  const kit = { person: false, agent: "kit", thread: "t-1" };
+  assert.deepEqual((await hub.servers(kit)).map(x => x.name), ["good"]);
+  assert.deepEqual((await hub.servers({ person: false, agent: "helper", thread: "t-1" })).map(x => x.name).sort(), ["arr", "good", "junk", "mixed", "nul", "num", "str"]);
+  assert.equal((await hub.servers(person)).length, 7);
+  // logged once per server, however often it is read
+  hub.row("junk"); hub.row("junk");
+  assert.equal(lines.filter(l => l.startsWith("junk:")).length, 1);
+  assert.ok(lines.every(l => !l.includes("not json")), "the bad value is not in the log");
+});

@@ -417,6 +417,8 @@ export class Hub {
     this.deps = deps;
     /** @type {Map<string, Set<string>>} */
     this.threadGrants = new Map();
+    /** Servers whose stored scope was unreadable, logged once each. @type {Set<string>} */
+    this.badScopes = new Set();
     this.db = deps.db;
     this.creds = deps.creds;
     this.now = deps.now || Date.now;
@@ -427,12 +429,26 @@ export class Hub {
 
   // ---- rows ----
 
+  /**
+   * A stored scope that will not read is the default (you and the assistant only), never open: a damaged row must not hand
+   * a server to every agent. It is logged once per server so the person can find and fix it.
+   * @param {any} r
+   */
+  scopeOf(r) {
+    const ok = v => v === "*" || (Array.isArray(v) && v.every(x => typeof x === "string"));
+    let v = null;
+    try { v = JSON.parse(String(r.scope)); } catch { v = null; }
+    if (v && typeof v === "object" && !Array.isArray(v) && ok(v.projects) && ok(v.agents)) return v;
+    if (!this.badScopes.has(r.name)) { this.badScopes.add(r.name); this.deps.log?.(`${r.name}: the stored scope cannot be read, so the server is for you and the assistant only until it is set again (mcp.update)`); }
+    return { projects: DEFAULT_SCOPE.projects, agents: [...DEFAULT_SCOPE.agents], assistant: true };
+  }
+
   row(name) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM mcp_servers WHERE name = ?").get(String(name || "")));
     if (!r) return null;
     return { name: r.name, transport: r.transport, command: r.command, args: json(r.args, []), cwd: r.cwd, url: r.url,
       headers: json(r.headers, {}), env: json(r.env, {}), vars: json(r.vars, {}), auth: json(r.auth, { type: "none" }),
-      scope: json(r.scope, { projects: "*", agents: "*" }), tools: json(r.tools, {}), idle: r.idle,
+      scope: this.scopeOf(r), tools: json(r.tools, {}), idle: r.idle,
       cache: json(r.tools_cache, null), cachedAt: r.cached_at, lastUsed: r.last_used, added: r.added, updated: r.updated };
   }
 
