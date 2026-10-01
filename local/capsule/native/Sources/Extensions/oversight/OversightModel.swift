@@ -8,8 +8,9 @@
 //          chrome.step {run, id, state}   state todo|current|done|failed|skipped
 //          chrome.voice {run, text, final}   the person's words, as they speak
 //          chrome.paused|resumed|stopped, and hands.paused|resumed|stopped {run}
-// Tools (the person's own call, no prompt): chrome.pause {run}, chrome.resume, chrome.stop,
-//          chrome.plan.edit {run, step, text}, chrome.interject {from, text}; hands.pause|resume|stop
+// Tools (the person's own call, no prompt): chrome.pause|resume|stop {run}, chrome.plan.edit {run, step, text},
+//          chrome.interject {from, text, run}; Chrome has one active run today, so a card for another run is refused
+//          with not_found rather than acting on the active one; hands.pause|resume|stop
 //          {run} once a hands.* event has named the run. chrome.finished {run, ok} ends a run; an all-over plan also closes it.
 
 import Foundation
@@ -172,11 +173,11 @@ final class OversightModel: ObservableObject {
     func pause() {
         guard let r = active else { return }
         let surface = r.viaHands && vyred.has("hands.pause") ? "hands" : "chrome"
-        call("\(surface).\(r.paused ? "resume" : "pause")", surface == "hands" ? ["run": r.id] : r.paused ? [:] : ["run": r.id])
+        call("\(surface).\(r.paused ? "resume" : "pause")", ["run": r.id])
     }
     func stop() {
         guard let r = active else { return }
-        call(r.viaHands && vyred.has("hands.stop") ? "hands.stop" : "chrome.stop", r.viaHands ? ["run": r.id] : [:])
+        call(r.viaHands && vyred.has("hands.stop") ? "hands.stop" : "chrome.stop", ["run": r.id])
     }
 
     /// Retext a step that has not started. An empty or unchanged text changes nothing.
@@ -192,7 +193,7 @@ final class OversightModel: ObservableObject {
     func steer(_ text: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let r = active, !t.isEmpty else { return }
-        call("chrome.interject", ["from": "prompt", "text": t])
+        call("chrome.interject", ["from": "prompt", "text": t, "run": r.id])
     }
 
     private func call(_ tool: String, _ input: [String: Any]) {

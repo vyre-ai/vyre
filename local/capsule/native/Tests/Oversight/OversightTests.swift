@@ -217,8 +217,8 @@ let oversightSuite = Suite("oversight") { t in
         }
         t.eq(ok, true)
         t.eq(link.calls("chrome.pause").first?["run"] as? String, "r1")
-        t.eq(link.calls("chrome.resume").count, 1)
-        t.eq(link.calls("chrome.stop").count, 1)
+        t.eq(link.calls("chrome.resume").first?["run"] as? String, "r1")
+        t.eq(link.calls("chrome.stop").first?["run"] as? String, "r1")
     }
 
     t.test("a failed step ends and shows; a run whose hands.* events named it is paused through hands.*") {
@@ -281,6 +281,7 @@ let oversightSuite = Suite("oversight") { t in
             return true
         }
         t.eq(link.calls("chrome.interject").map { $0["text"] as? String }, ["skip weekends"])
+        t.eq(link.calls("chrome.interject").first?["run"] as? String, "r1")
     }
 
     t.test("a refused call is said in words under the controls, then the window grows to fit it") {
