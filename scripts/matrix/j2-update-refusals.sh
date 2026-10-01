@@ -18,6 +18,9 @@ rec() { # rec STEP ok|false [why]
   echo "$([ "$ok" = true ] && echo pass || echo FAIL)  J2b $1 ${3:-}"
 }
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
+# What the host's own VERSION file says it holds: the release variants share the candidate's vyre.tgz, so the running image's
+# own version does not move with them, and the file the update writes is the honest record.
+hv() { tr -d ' \r\n' <"$DIR/VERSION" 2>/dev/null; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
 mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
@@ -64,7 +67,7 @@ ask() {
 }
 # refused STEP WANT_REGEX: the box is exactly as before
 refused() { # a third word, nostatus: a hand-run update does not write the status file
-  ready; v=$(version); s=$(statusf)
+  ready; v=$(hv); s=$(statusf)
   if [ $rc -ne 0 ] && [ "$v" = "$V0" ] && seen && mem && printf '%s' "$out" | grep -qiE "$2" && { [ "${3:-}" = nostatus ] || printf '%s' "$s" | grep -q '"state":"failed"'; }; then rec "$1" ok "$(printf %s "$out" | tail -1)"
   else rec "$1" false "rc $rc, runs '$v' (want $V0), status '$s': $(printf %s "$out" | tail -3)"; fi
 }
@@ -95,7 +98,7 @@ mk good 9.9.9-e2e.1 good; offer good; ask $PORT ""; refused 5e-pinned-key-defaul
 # 6 downgrade: a correctly signed release older than what the box runs
 mk old 0.0.1-e2e.1 good; offer old; ask $PORT "$GOODPUB"; refused 6-downgrade 'never goes back'
 # 7 positive control: the same signed release, newer, installs and keeps the data
-mk new 9.9.9-e2e.1 good; offer new; ask $PORT "$GOODPUB"; ready; v=$(version); s=$(statusf)
+mk new 9.9.9-e2e.1 good; offer new; ask $PORT "$GOODPUB"; ready; v=$(hv); s=$(statusf)
 if [ $rc -eq 0 ] && [ "$v" = "9.9.9-e2e.1" ] && seen && mem && printf '%s' "$s" | grep -q '"state":"ok"'; then rec 7-signed-update ok "$V0 to $v"
 else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; fi
 # 8 now the floor is 9.9.9: the candidate's own, validly signed version is an old release and is refused
