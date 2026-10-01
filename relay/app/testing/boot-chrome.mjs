@@ -77,7 +77,9 @@ const port = /** @type {any} */ (server.address()).port;
 const c = spawn(CHROME, ["--headless=new", "--disable-gpu", "--no-sandbox", `--user-data-dir=${path.join(tmp, "profile")}`, `http://localhost:${port}/boot.html`], { stdio: "ignore" });
 const end = Date.now() + 60000;
 while (!reports.some(r => r.stage === "app") && Date.now() < end) await new Promise(r => setTimeout(r, 300));
+const exited = new Promise(r => c.once("exit", r));
 c.kill();
+await Promise.race([exited, new Promise(r => setTimeout(r, 10000))]);
 server.close();
 
 const failures = [];
@@ -98,4 +100,4 @@ else {
 }
 if (failures.length) { console.log("FIRST LOAD DID NOT HOLD:\n- " + failures.join("\n- ")); process.exit(1); }
 console.log("First load: the worker took control, adopted the build, and served the /app font and icon with the exact bytes.");
-fs.rmSync(tmp, { recursive: true, force: true });
+await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
