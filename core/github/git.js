@@ -187,6 +187,10 @@ function gitAtLeast(major, minor) {
   return gitVersion[0] > major || (gitVersion[0] === major && gitVersion[1] >= minor);
 }
 
+/** Every hook git runs by name (git's own list) that has no special meaning when absent. */
+const STANDARD_HOOKS = ["applypatch-msg", "pre-applypatch", "post-applypatch", "pre-commit", "pre-merge-commit", "prepare-commit-msg", "commit-msg", "post-commit",
+  "pre-rebase", "post-checkout", "post-merge", "pre-push", "pre-auto-gc", "post-rewrite", "reference-transaction", "post-index-change", "sendemail-validate"];
+const SPECIAL_HOOKS = new Set(["push-to-checkout", "fsmonitor-watchman"]);
 const quoted = v => `'${String(v).replace(/'/g, `'\\''`)}'`;
 const cleanIdent = v => String(v).replace(/[\r\n<>]/g, " ").trim().slice(0, 200);
 
@@ -226,14 +230,21 @@ if [ "$here" != ${quoted(real)} ]; then
   exit 0
 fi
 `;
-  try {
-    for (const name of fs.readdirSync(own)) {
-      if (name.endsWith(".sample") || (trailer && name === "prepare-commit-msg")) continue;
-      const orig = path.join(own, name);
-      try { if (!fs.statSync(orig).isFile()) continue; } catch { continue; }
-      fs.writeFileSync(path.join(hooksDir, name), `${guard(name)}exec ${quoted(orig)} "$@"\n`, { mode: 0o755 });
-    }
-  } catch { /* the repo has no hooks folder */ }
+  // A wrapper for every standard hook, not only the ones this repo has: git looks for
+  // <hooksPath>/<name>, so another repo's pre-commit (or commit-msg, pre-push) would never be found
+  // here otherwise. In this repo a hook it does not have is a no-op. Left out on purpose: the two
+  // whose ABSENCE means something (push-to-checkout replaces git's own update of the worktree,
+  // fsmonitor-watchman is a protocol with output); those are wrapped only when this repo has them.
+  const names = new Set(STANDARD_HOOKS);
+  try { for (const name of fs.readdirSync(own)) if (!name.endsWith(".sample")) names.add(name); } catch { /* the repo has no hooks folder */ }
+  for (const name of names) {
+    if (trailer && name === "prepare-commit-msg") continue;
+    const orig = path.join(own, name);
+    let have = false;
+    try { have = fs.statSync(orig).isFile(); } catch { /* none here */ }
+    if (!have && SPECIAL_HOOKS.has(name)) continue;
+    fs.writeFileSync(path.join(hooksDir, name), `${guard(name)}${have ? `exec ${quoted(orig)} "$@"` : "exit 0"}\n`, { mode: 0o755 });
+  }
   if (trailer) {
     const hook = `${guard("prepare-commit-msg")}git interpret-trailers --in-place --if-exists doNothing --where end --trailer ${quoted(`Vyre-Session: ${id}`)} "$1" 2>/dev/null || true
 orig=${quoted(path.join(own, "prepare-commit-msg"))}

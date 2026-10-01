@@ -184,6 +184,30 @@ test("worktreeAdd: the session's hooks path applies to every git command it runs
   assert.ok(fs.existsSync(path.join(repoA, "pre-commit-ran")));
 });
 
+test("worktreeAdd: a hook another repo has that this repo does not (pre-commit, commit-msg, pre-push) still runs there, and this repo's own commits are unaffected by the missing hook", async t => {
+  _setGitVersion(null);
+  const repoA = makeClonedRepo(t); // no hooks at all
+  const wA = await worktreeAdd({ repoDir: repoA, session: "gap1", defaultBranch: "main", identity: IDENT });
+  const hooksDir = path.join(repoA, ".git", "vyre-hooks", "gap1");
+  for (const name of ["pre-commit", "commit-msg", "pre-push", "post-commit", "pre-merge-commit"]) assert.ok(fs.existsSync(path.join(hooksDir, name)), `a wrapper exists for ${name}`);
+  assert.equal(fs.existsSync(path.join(hooksDir, "push-to-checkout")), false, "a hook whose absence means something is not stubbed");
+  const repoB = makeClonedRepo(t);
+  const hooksB = path.join(repoB, ".git", "hooks");
+  fs.mkdirSync(hooksB, { recursive: true });
+  fs.writeFileSync(path.join(hooksB, "commit-msg"), "#!/bin/sh\necho B-commit-msg-says-no >&2\nexit 1\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(repoB, "b.md"), "x\n");
+  asSession(repoB, ["add", "b.md"], wA.env);
+  assert.throws(() => execFileSync("git", ["-c", "user.email=b@example.com", "-c", "user.name=b", "commit", "-q", "-m", "in B"], { cwd: repoB, encoding: "utf8", stdio: "pipe", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, ...wA.env } }), /B-commit-msg-says-no|commit-msg/, "B's commit-msg runs although A has none");
+  fs.writeFileSync(path.join(hooksB, "pre-commit"), "#!/bin/sh\necho B-pre-commit-says-no >&2\nexit 1\n", { mode: 0o755 });
+  fs.rmSync(path.join(hooksB, "commit-msg"));
+  assert.throws(() => execFileSync("git", ["-c", "user.email=b@example.com", "-c", "user.name=b", "commit", "-q", "-m", "in B"], { cwd: repoB, encoding: "utf8", stdio: "pipe", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: os.devNull, ...wA.env } }), /B-pre-commit-says-no|pre-commit/, "B's pre-commit runs although A has none");
+  // and A, with none of these hooks, commits fine and still gets the trailer
+  fs.writeFileSync(path.join(wA.path, "a.md"), "x\n");
+  asSession(wA.path, ["add", "a.md"], wA.env);
+  asSession(wA.path, ["commit", "-q", "-m", "in A"], wA.env);
+  assert.match(asSession(wA.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: gap1$/m);
+});
+
 test("worktreeAdd: on a git older than 2.31 the same identity and hooks are per-worktree config instead, and no env is returned", async t => {
   _setGitVersion([2, 30]);
   t.after(() => _setGitVersion(null));
