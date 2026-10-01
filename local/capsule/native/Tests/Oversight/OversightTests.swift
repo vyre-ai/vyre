@@ -10,7 +10,7 @@ private final class OvLink: VyredLink, @unchecked Sendable {
     private var tools: Set<String>
     private var log: [(String, [String: Any])] = []
     var failWith: String?
-    init(tools: Set<String> = ["hands.pause", "hands.resume", "hands.stop", "hands.plan.edit", "hands.steer"]) { self.tools = tools }
+    init(tools: Set<String> = ["chrome.pause", "chrome.resume", "chrome.stop", "chrome.plan.edit", "chrome.interject"]) { self.tools = tools }
     var isUp: Bool { true }
     func has(_ tool: String) -> Bool { lock.withLock { tools.contains(tool) } }
     func call(_ tool: String, _ input: [String: Any], presence: Bool) async -> VyredResult {
@@ -73,7 +73,7 @@ private func ev(_ type: String, _ payload: [String: Any], thread: String? = nil)
 
 private func plan(_ run: String = "r1", _ states: [String] = ["done", "done", "current", "todo", "todo"]) -> VyredEvent {
     let texts = ["Create the workflow", "Add a trigger", "Add a 10-minute delay, then an SMS step", "Add the owner filter", "Publish and test"]
-    return ev("hands.plan", ["run": run, "title": "Building the automation",
+    return ev("chrome.plan", ["run": run, "title": "Building the automation",
         "steps": states.enumerated().map { ["id": "s\($0.offset + 1)", "text": texts[$0.offset % texts.count], "state": $0.element] as [String: Any] }])
 }
 
@@ -104,8 +104,8 @@ let oversightSuite = Suite("oversight") { t in
     t.test("nothing shows and no window is made until a plan arrives") {
         MainActor.assumeIsolated {
             let (host, ext, link) = make()
-            link.emit(ev("hands.acted", ["run": "r1"]))
-            link.emit(ev("hands.voice", ["run": "r1", "text": "hello"]))
+            link.emit(ev("chrome.acted", ["run": "r1"]))
+            link.emit(ev("chrome.voice", ["run": "r1", "text": "hello"]))
             t.ok(!ext.isOpen); t.eq(host.floats, 0); t.eq(host.sessions, 0)
             t.eq(ext.runsHidden, nil)
         }
@@ -126,15 +126,15 @@ let oversightSuite = Suite("oversight") { t in
         }
     }
 
-    t.test("hands.step moves one step; an unknown step or run is ignored") {
+    t.test("chrome.step moves one step; an unknown step or run is ignored") {
         MainActor.assumeIsolated {
             let (_, ext, link) = make()
             link.emit(plan())
-            link.emit(ev("hands.step", ["run": "r1", "step": "s3", "state": "done"]))
-            link.emit(ev("hands.step", ["run": "r1", "step": "s4", "state": "current"]))
-            link.emit(ev("hands.step", ["run": "r1", "step": "nope", "state": "done"]))
-            link.emit(ev("hands.step", ["run": "other", "step": "s1", "state": "todo"]))
-            link.emit(ev("hands.step", ["run": "r1", "step": "s5", "state": "bogus"]))
+            link.emit(ev("chrome.step", ["run": "r1", "step": "s3", "state": "done"]))
+            link.emit(ev("chrome.step", ["run": "r1", "step": "s4", "state": "current"]))
+            link.emit(ev("chrome.step", ["run": "r1", "step": "nope", "state": "done"]))
+            link.emit(ev("chrome.step", ["run": "other", "step": "s1", "state": "todo"]))
+            link.emit(ev("chrome.step", ["run": "r1", "step": "s5", "state": "bogus"]))
             let r = ext.model.active
             t.eq(r?.steps.map(\.state), [.done, .done, .done, .current, .todo])
             t.eq(ext.model.runs.count, 1)
@@ -154,9 +154,9 @@ let oversightSuite = Suite("oversight") { t in
         MainActor.assumeIsolated {
             let (_, ext, link) = make()
             link.emit(plan())
-            link.emit(ev("hands.voice", ["run": "r1", "text": "...and skip weekends", "final": false]))
+            link.emit(ev("chrome.voice", ["run": "r1", "text": "...and skip weekends", "final": false]))
             t.eq(ext.model.active?.voice, "...and skip weekends")
-            link.emit(ev("hands.voice", ["run": "r1", "text": "...and skip weekends.", "final": true]))
+            link.emit(ev("chrome.voice", ["run": "r1", "text": "...and skip weekends.", "final": true]))
             t.eq(ext.model.active?.voice, "...and skip weekends.")
             link.emit(plan())
             t.eq(ext.model.active?.voice, nil)
@@ -172,7 +172,7 @@ let oversightSuite = Suite("oversight") { t in
             t.eq(ext.model.runs.count, 0)
             link.emit(plan("r2"))
             t.ok(ext.isOpen)
-            link.emit(ev("hands.stopped", ["run": "r2", "by": "person"]))
+            link.emit(ev("chrome.stopped", ["run": "r2", "by": "person"]))
             t.ok(!ext.isOpen); t.eq(host.window.closes, 2); t.eq(ext.runsHidden, nil)
         }
     }
@@ -192,9 +192,9 @@ let oversightSuite = Suite("oversight") { t in
             let (_, ext, link) = make()
             link.emit(plan("a")); link.emit(plan("b"))
             t.eq(ext.model.active?.id, "b")
-            link.emit(ev("hands.step", ["run": "a", "step": "s4", "state": "current"]))
+            link.emit(ev("chrome.step", ["run": "a", "step": "s4", "state": "current"]))
             t.eq(ext.model.active?.id, "a")
-            link.emit(ev("hands.stopped", ["run": "a"]))
+            link.emit(ev("chrome.stopped", ["run": "a"]))
             t.eq(ext.model.active?.id, "b"); t.ok(ext.isOpen)
         }
     }
@@ -205,20 +205,37 @@ let oversightSuite = Suite("oversight") { t in
             let (_, ext, _) = make(link)
             link.emit(plan())
             ext.model.pause()
-            _ = settle { link.calls("hands.pause").count == 1 }
-            link.emit(ev("hands.paused", ["run": "r1"]))
+            _ = settle { link.calls("chrome.pause").count == 1 }
+            link.emit(ev("chrome.paused", ["run": "r1"]))
             let paused = ext.model.active?.paused == true
             ext.model.pause()
-            _ = settle { link.calls("hands.resume").count == 1 }
-            link.emit(ev("hands.resumed", ["run": "r1"]))
+            _ = settle { link.calls("chrome.resume").count == 1 }
+            link.emit(ev("chrome.resumed", ["run": "r1"]))
             ext.model.stop()
-            _ = settle { link.calls("hands.stop").count == 1 }
+            _ = settle { link.calls("chrome.stop").count == 1 }
             return paused && ext.model.active?.paused == false
         }
         t.eq(ok, true)
+        t.eq(link.calls("chrome.pause").first?["run"] as? String, "r1")
+        t.eq(link.calls("chrome.resume").count, 1)
+        t.eq(link.calls("chrome.stop").count, 1)
+    }
+
+    t.test("a failed step ends and shows; a run whose hands.* events named it is paused through hands.*") {
+        let link = OvLink(tools: ["chrome.pause", "chrome.resume", "chrome.stop", "hands.pause", "hands.resume", "hands.stop"])
+        let ok: Bool? = MainActor.assumeIsolated { () -> Bool in
+            let (_, ext, _) = make(link)
+            link.emit(plan())
+            link.emit(ev("chrome.step", ["run": "r1", "id": "s2", "status": "failed", "state": "failed"]))
+            let failed = ext.model.active?.steps.first(where: { $0.id == "s2" })?.state == .failed
+            link.emit(ev("hands.resumed", ["run": "r1"]))
+            ext.model.pause()
+            _ = settle { link.calls("hands.pause").count == 1 }
+            return failed
+        }
+        t.eq(ok, true)
         t.eq(link.calls("hands.pause").first?["run"] as? String, "r1")
-        t.eq(link.calls("hands.resume").first?["run"] as? String, "r1")
-        t.eq(link.calls("hands.stop").first?["run"] as? String, "r1")
+        t.eq(link.calls("chrome.pause").count, 0)
     }
 
     t.test("only a step that has not started can be retexted; empty or unchanged text sends nothing") {
@@ -231,10 +248,10 @@ let oversightSuite = Suite("oversight") { t in
             ext.model.edit(step: "s4", to: "   ")                 // empty
             ext.model.edit(step: "s4", to: "Add the owner filter") // unchanged
             ext.model.edit(step: "s5", to: "  Publish, then test with two leads  ")
-            _ = settle { link.calls("hands.plan.edit").count == 1 }
+            _ = settle { link.calls("chrome.plan.edit").count == 1 }
             return true
         }
-        let edits = link.calls("hands.plan.edit")
+        let edits = link.calls("chrome.plan.edit")
         t.eq(edits.count, 1)
         t.eq(edits.first?["step"] as? String, "s5")
         t.eq(edits.first?["text"] as? String, "Publish, then test with two leads")
@@ -247,11 +264,11 @@ let oversightSuite = Suite("oversight") { t in
             let (_, ext, _) = make(link)
             link.emit(plan())
             ext.model.steer("   "); ext.model.steer(" skip weekends ")
-            _ = settle { link.calls("hands.steer").count == 1 }
+            _ = settle { link.calls("chrome.interject").count == 1 }
             t.eq(ext.model.active?.steps.count, 5)
             return true
         }
-        t.eq(link.calls("hands.steer").map { $0["text"] as? String }, ["skip weekends"])
+        t.eq(link.calls("chrome.interject").map { $0["text"] as? String }, ["skip weekends"])
     }
 
     t.test("a refused call is said in words under the controls, then the window grows to fit it") {
@@ -270,7 +287,7 @@ let oversightSuite = Suite("oversight") { t in
 
     t.test("controls this vyred cannot honour are not offered") {
         MainActor.assumeIsolated {
-            let (_, ext, _) = make(OvLink(tools: ["hands.stop"]))
+            let (_, ext, _) = make(OvLink(tools: ["chrome.stop"]))
             t.ok(!ext.model.canPause); t.ok(!ext.model.canEdit); t.ok(!ext.model.canSteer)
             let (_, ext2, _) = make()
             t.ok(ext2.model.canPause); t.ok(ext2.model.canEdit); t.ok(ext2.model.canSteer)
@@ -296,8 +313,8 @@ let oversightSuite = Suite("oversight") { t in
             let (host, _, link) = make()
             link.emit(plan())
             let shows = host.window.shows
-            link.emit(ev("hands.step", ["run": "r1", "step": "s3", "state": "done"]))
-            link.emit(ev("hands.step", ["run": "r1", "step": "s4", "state": "current"]))
+            link.emit(ev("chrome.step", ["run": "r1", "step": "s3", "state": "done"]))
+            link.emit(ev("chrome.step", ["run": "r1", "step": "s4", "state": "current"]))
             t.eq(host.window.shows, shows)
         }
     }
@@ -321,7 +338,7 @@ let oversightSuite = Suite("oversight") { t in
             link.emit(plan())
             let h = host.window.frame.height
             host.window.drag(to: NSPoint(x: 300, y: 400))
-            link.emit(ev("hands.stopped", ["run": "r1"]))
+            link.emit(ev("chrome.stopped", ["run": "r1"]))
             link.emit(plan("r2"))
             t.eq(host.window.frame.minX, 300)
             t.eq(host.window.frame.maxY, 400 + h)
@@ -334,7 +351,7 @@ let oversightSuite = Suite("oversight") { t in
             let (host, ext, link) = make()
             link.emit(plan())
             host.window.drag(to: NSPoint(x: 9000, y: 9000))
-            link.emit(ev("hands.stopped", ["run": "r1"]))
+            link.emit(ev("chrome.stopped", ["run": "r1"]))
             link.emit(plan("r2"))
             t.eq(host.window.frame.maxX, SCREEN.maxX - 24)
             _ = ext
@@ -345,11 +362,11 @@ let oversightSuite = Suite("oversight") { t in
         MainActor.assumeIsolated {
             let (host, ext, link) = make()
             link.emit(plan())
-            link.emit(ev("hands.voice", ["run": "r1", "text": "skip weekends"]))
+            link.emit(ev("chrome.voice", ["run": "r1", "text": "skip weekends"]))
             let full = NSHostingView(rootView: OversightView(model: ext.model)).fittingSize
             t.eq(full.width, OversightLayout.width)
             t.eq(host.window.frame.height, full.height)
-            link.emit(ev("hands.paused", ["run": "r1"]))
+            link.emit(ev("chrome.paused", ["run": "r1"]))
             ext.model.collapsed = true
             let small = NSHostingView(rootView: OversightView(model: ext.model)).fittingSize
             t.eq(host.window.frame.height, small.height)

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen oversight panel: follows the contract capsule-sight shipped (chrome.plan, chrome.step, chrome.voice by run) instead of the hands.plan, hands.step and hands.voice events I had assumed, which never fire. Pause, resume, stop, retext and steer go to chrome.pause, chrome.resume, chrome.stop, chrome.plan.edit and chrome.interject (hands.* for a run a hands.* event named). A failed step shows with a cross.
 - Docs: Lumen 0.2 ships self-signed and not notarized; the Capsule page says macOS may ask for permissions again after an update, and the real-Mac checklist adds speed, icon and motion, unlock, and oversight and voice steps. Deep glass moves to 0.2.1 (Bone tint ships).
 - Lumen: when an agent changes a guard because you asked ("Auto-approve edits changed, as you asked."),
   Lumen shows that line under the empty box with Undo (Return); Undo puts the setting back and needs no

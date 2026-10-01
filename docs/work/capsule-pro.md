@@ -138,11 +138,11 @@ stutter, (4) nothing flickers between keystrokes, (5) hiding and reopening is in
 - Text expansion, script commands, AI presets, browser tabs and bookmarks, Focus and Shortcuts, `@` targets from manifests: 0.2.x per the lead.
 
 ## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
-Computer-use oversight panel (capsule-02.html section 11), built against my proposed hands.* contract
+Computer-use oversight panel (capsule-02.html section 11). 2026-10-01: rewired from my proposed hands.plan/step/voice to the real contract on stage (chrome.plan, chrome.step, chrome.voice, chrome.plan.edit, chrome.interject, chrome.pause); before this it could never have opened. Originally built against my proposed hands.* contract
 (CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
-OversightModel (folds hands.plan/step/voice/paused/resumed/stopped by run, taps -> hands.pause/resume/stop/
+OversightModel (folds chrome.plan/step/voice/paused/resumed/stopped by run, taps -> chrome.pause/resume/stop/
 plan.edit/steer, presence:false), OversightView (Bone tokens, Backdrop glass, grip, 6-step window, edit in
-place for todo steps, voice line, steer field, Esc stops, small mode), OversightExtension (opens on hands.plan,
+place for todo steps, voice line, steer field, Esc stops, small mode), OversightExtension (opens on chrome.plan,
 closes on stop or after a 4 s linger when all done, remembers the dragged top-left). Seam additions:
 CapsuleHost.floatingWindow(owner:) and SessionWindow.onMoved (defaults keep every fake host compiling);
 CapsuleSessionWindow(floating: true) is level .floating, movable by background, non-activating.
