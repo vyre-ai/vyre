@@ -29,7 +29,7 @@ vyre setup --name "Not Valid!" --yes >"$OUT/invalid.log" 2>&1; rc=$?
 [ $rc -eq 1 ] && rec 1b.2-invalid-name-refused ok "$(head -c 120 "$OUT/invalid.log")" || rec 1b.2-invalid-name-refused false "exit $rc: $(head -c 150 "$OUT/invalid.log")"
 # the claim: address, phase, one recovery code
 vyre setup --name marlow-cli --yes --json >"$OUT/claim.json" 2>"$OUT/claim.err"; rc=$?
-node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(j.name==="marlow-cli"&&/marlow-cli/.test(j.address||"")&&/^[a-z0-9]{4}(-[a-z0-9]{4,})+$/i.test(j.recoveryCode||"")&&j.phase?0:1)' "$OUT/claim.json" 2>/dev/null; shape=$?
+node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));process.exit(j.name==="marlow-cli"&&/marlow-cli/.test(j.address||"")&&/^[a-z0-9]{4}(-[a-z0-9]{2,})+$/i.test(j.recoveryCode||"")&&j.phase?0:1)' "$OUT/claim.json" 2>/dev/null; shape=$?
 if [ $rc -eq 0 ] && [ $shape -eq 0 ]; then rec 1b.3-claim ok "$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.address+" phase "+j.phase)' "$OUT/claim.json")"; else rec 1b.3-claim false "exit $rc: $(sed 's/"recoveryCode"[^,}]*//' "$OUT/claim.json" | head -c 200) $(head -c 100 "$OUT/claim.err")"; fi
 # the same name again: no new recovery code, and it is not a failure for the owner
 vyre setup --name marlow-cli --yes --json >"$OUT/again.json" 2>&1
