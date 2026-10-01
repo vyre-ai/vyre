@@ -2380,7 +2380,34 @@ export default {
       // The link's words are always the box's surface, whatever the input says.
       return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
     };
-    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
+    /**
+     * A model session of the person (caller mcp:thread:<id> or harness:thread:<id>, no agent named) reaches its own thread, the
+     * threads it started, and the threads of its own project; never another project's, and never a cwd-only thread of the
+     * person's that is none of those. An agent keeps its own rules (guard, mayReach), the assistant and the person reach all.
+     * Without this a prompt-injected session could stop, delete, rewind or read any other session (reviewer-2, 1 Oct).
+     * @param {any} meta @param {string|undefined} target a thread id
+     */
+    const sessionMay = (meta, target) => {
+      const m = meta || {};
+      const caller = String(m.caller || "");
+      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller) || agentOf(caller) || m.agentKind === "assistant" || typeof m.thread !== "string" || !m.thread) return true;
+      if (typeof target !== "string" || !target || target === m.thread) return true;
+      const t = sb.record(target);
+      if (!t) return true; // unknown: the tool's own not-found answers
+      if (sb.lineage(target).includes(m.thread)) return true;
+      const me = sb.record(m.thread);
+      return Boolean(me && me.project && t.project === me.project);
+    };
+    const SESSION_SCOPED = new Set(["threads.delete", "threads.archive", "threads.unarchive", "threads.stop", "threads.interrupt", "threads.rewind", "threads.fork",
+      "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.items", "threads.get", "threads.asks",
+      "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
+    const scoped = (name, run) => SESSION_SCOPED.has(name)
+      ? async (i, meta, ...rest) => {
+        if (!sessionMay(meta, i && i.thread)) throw Object.assign(new Error("a session reaches its own thread, the threads it started and its own project's threads"), { code: "denied" });
+        return run(i, meta, ...rest);
+      }
+      : run;
+    const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run: scoped(name, run), callers, ...extra });
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
 
@@ -2534,10 +2561,11 @@ export default {
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
       { type: "object", properties: { agent: str, all: { type: "boolean" }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." }, machines: { type: "string", enum: ["all", "local"] } } },
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) return sb.list(q);
+        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); return Array.isArray(rows) ? rows.filter(r => sessionMay(meta, r && r.id)) : rows; }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });

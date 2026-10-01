@@ -327,7 +327,7 @@
   },
   "sessions.accounts.add": {
    "module": "sessions",
-   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked"
+   "reason": "askedOnly() in core/sessions: runs for the person, a first-party module and the assistant; any other agent gets not_asked; the assistant passes unasked by askedOnly, with any scope it names (open question to the lead, 1 Oct)"
   },
   "sessions.accounts.bind": {
    "module": "sessions",
@@ -427,7 +427,7 @@
   },
   "threads.archive": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.asks": {
    "module": "threads",
@@ -443,15 +443,15 @@
   },
   "threads.delete": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.effort": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.fork": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.get": {
    "module": "threads",
@@ -459,7 +459,7 @@
   },
   "threads.interrupt": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.items": {
    "module": "threads",
@@ -467,7 +467,7 @@
   },
   "threads.lease": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.list": {
    "module": "threads",
@@ -475,7 +475,7 @@
   },
   "threads.model": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.queue": {
    "module": "threads",
@@ -483,31 +483,31 @@
   },
   "threads.release": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.rewind": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.send": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads; modules call threads.send (keyboard, glass, agents) so it cannot be person or asked"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed; modules call it (keyboard, glass, agents) so it cannot be person or asked"
   },
   "threads.send-now": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.start": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.stop": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads; agents.stop stops threads through it as module:agents"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed; agents.stop stops threads through it as module:agents"
   },
   "threads.switch": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.tasks": {
    "module": "threads",
@@ -515,19 +515,19 @@
   },
   "threads.thinking": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.unarchive": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.unwatch": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "threads.watch": {
    "module": "threads",
-   "reason": "guard() in core/switchboard refuses any agent that is not the assistant; the assistant and the person act on their own project's threads"
+   "reason": "guard() refuses an agent that is not the assistant (mcp:agent:<name>); a model session (mcp:thread or harness:thread, no agent named) reaches only its own thread, the threads it started and its own project's (sessionMay in core/switchboard); the person and the assistant are not narrowed"
   },
   "undo.list": {
    "module": "undo",
