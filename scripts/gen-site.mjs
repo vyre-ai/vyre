@@ -702,7 +702,7 @@ const START = `
     ${eyebrow('Getting started')}
     <h1 class="display">Put Vyre <b>on your server.</b></h1>
     <p class="lead">The steps, in order. The setup page does most of them for you.</p>
-    <p class="sm" style="max-width:42em">Vyre is not on npm yet, so your Mac installs the command line from a tarball on vyre.run, and the Mac app, Vyre Lumen, is built on your Mac rather than downloaded. The server install is checked against a published signature.</p>
+    <p class="sm" style="max-width:42em">Vyre is not on npm yet, so your Mac installs the command line from a tarball on vyre.run, and the Mac app, Vyre Lumen, ${MAC_DMG ? 'is a download from the latest release' : 'is built on your Mac rather than downloaded'}. The server install is checked against a published signature.</p>
   </div>
 </section>
 <section class="sec" style="padding-top:48px"><div class="wrap">
@@ -725,9 +725,9 @@ ${part('02', 'onboarding', 'Finish in your browser', `<ol>
 <li><strong>Open your server.</strong> Your server has its own address. Open it once from the setup page: it asks for your fingerprint, face or a security key, and that makes you its owner.</li></ol>
 <p>Your address only opens from your own devices on your tailnet. Put Tailscale on your Mac and your phone (<a href="https://tailscale.com/download">tailscale.com/download</a>) and sign in with the same account.</p>`)}
 ${part('03', 'mac', 'Your Mac', `<p>Install the command line from the tarball, pair it with your server, then build Vyre Lumen:</p>
-${term('npm i -g https://vyre.run/box/vyre.tgz')}${term('vyre up')}${term('vyre capsule install')}
+${term('npm i -g https://vyre.run/box/vyre.tgz')}${term('vyre up')}${MAC_DMG ? '' : term('vyre capsule install')}
 <p><code>vyre up</code> starts Vyre on this Mac and looks for your server on your tailnet (the Mac must be signed in to Tailscale). It asks the server to pair this Mac and prints a code; approve it in your Deck on your phone, or on another computer on your tailnet, with your passkey. <code>vyre link</code> on the Mac says when it is paired.</p>
-<p><code>vyre capsule install</code> builds Vyre Lumen on this Mac from the package; nothing is downloaded for it. If it says the Command Line Tools are not installed, run <code>xcode-select --install</code>, then run it again. Then open it with <code>vyre capsule</code>.</p>
+${MAC_DMG ? `<p>Download Vyre Lumen for your Mac from <a href="${SITE}/mac/">vyre.run/mac</a>, open the disk image and drag Lumen to Applications. Apple silicon Macs (late 2020 and later) take the aarch64 file; older Macs take x86_64.</p>` : `<p><code>vyre capsule install</code> builds Vyre Lumen on this Mac from the package; nothing is downloaded for it. If it says the Command Line Tools are not installed, run <code>xcode-select --install</code>, then run it again. Then open it with <code>vyre capsule</code>.</p>`}
 <p>Option-Space opens Vyre Lumen from any app by default, with no extra permission. If you turn on Control twice instead from the menu-bar mark, grant Input Monitoring when it asks: macOS needs that permission to see the key. Contacts is optional, for contact results. More on the <a href="/mac/">Mac page</a>.</p>`)}
 ${part('04', 'phone', 'Your phone', `<p>Install Tailscale on your phone and sign in with the same account. Then scan the ring the setup page shows, or open your server’s address in the phone’s browser and add Vyre to your Home Screen. The phone shows your server’s name and fingerprint and pairs only after you tap <em>Pair</em>. Open Vyre from your Home Screen from then on. More on the <a href="/phone/">phone page</a>.</p>`)}
 ${part('05', 'windows', 'Windows', `<p>There is a Windows app for your Windows PC: a tray icon and an Alt+Space panel, and it updates itself. Its installer, <code>VyreSetup.exe</code>, comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The app is not signed yet, so Windows may warn that the publisher is unknown: choose <em>More info</em>, then <em>Run anyway</em>. More on the <a href="/windows/">Windows page</a>.</p>`)}
@@ -737,7 +737,7 @@ ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Chrome.</strong> API-first routing comes next, and parallel tabs for many agents in 0.2.3.</li>
 <li><strong>Two models at once.</strong> “Give it to two” and per-provider blocks for plans and diffs come in 0.2.2, with memory that Vyre carries across resets.</li>
 <li><strong>Scale and teams.</strong> Putting idle sessions to sleep comes in 0.2.3, and spaces for teams in 0.2.5.</li>
-<li><strong>The Mac app is built, not downloaded.</strong> There is no signed Mac download yet; <code>vyre capsule install</code> builds it on your Mac.</li>
+${MAC_DMG ? '<li><strong>The Mac download is not notarized yet.</strong> macOS may ask you to allow it the first time.</li>' : '<li><strong>The Mac app is built, not downloaded.</strong> There is no signed Mac download yet; <code>vyre capsule install</code> builds it on your Mac.</li>'}
 <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li></ul>
 <p>More detail: <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
 ${part('?', 'trouble', 'If something goes wrong', `<ul>
@@ -782,7 +782,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
 
 ## Devices
-- [Mac: Vyre Lumen](${SITE}/mac/): Option-Space ask window, built on your Mac
+- [Mac: Vyre Lumen](${SITE}/mac/): Option-Space ask window, ${MAC_DMG ? 'downloaded from the latest release' : 'built on your Mac'}
 - [Windows: Vyre Lumen](${SITE}/windows/): tray app with an Alt+Space panel
 - [Linux server](${SITE}/linux/): where Vyre runs
 - [Phone](${SITE}/phone/): the Deck installed to the Home Screen
@@ -813,7 +813,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 
 ## Where it runs
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line from ${SITE}/setup/. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
-- Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by \`vyre capsule install\`; self-signed, not notarized. Needs Node 22.5 or newer.
+- Mac: Vyre Lumen, opened with Option-Space (or Control twice). ${MAC_DMG ? 'Downloaded from the latest release' : 'Built on your Mac by `vyre capsule install`'}; ${MAC_DMG ? 'not notarized yet' : 'self-signed, not notarized'}. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Deck installed to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
 - Network: Tailscale is required (free plan is enough). Your address (you.vyre.run, or your own domain) opens only from devices on your tailnet.
@@ -822,7 +822,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 1. Open ${SITE}/setup/ and choose a Linux server or a Mac that stays on.
 2. On the server, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh\`
 3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, connect Tailscale, add your phone.
-4. Mac: \`npm i -g https://vyre.run/box/vyre.tgz\`, then \`vyre up\`, then \`vyre capsule install\`.
+4. Mac: \`npm i -g https://vyre.run/box/vyre.tgz\`, then \`vyre up\`${MAC_DMG ? ', then download Vyre Lumen from ' + SITE + '/mac/' : ', then \`vyre capsule install\`'}.
 5. Windows: download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases and pair with 13 words or a QR code.
 
 ## What it costs
@@ -845,7 +845,7 @@ Sessions, memory and the vault stay on your machines. vyre.run holds your name's
 - Interactive artifacts in Safari on Mac and iPhone can be sent your sign-in cookie by a page that navigates itself; the fix is planned next.
 - Touch ID prompts for terminal commands, Chrome API-first routing and a signature-checked first Windows install are planned next.
 - "Give it to two", per-model blocks and Vyre-owned memory across resets are planned for 0.2.2; sleeping idle sessions for 0.2.3; spaces for teams for 0.2.5.
-- The Mac app is built on your Mac, not downloaded. The Windows app is not code-signed yet.
+- ${MAC_DMG ? 'The Mac download is not notarized yet' : 'The Mac app is built on your Mac, not downloaded'}. The Windows app is not code-signed yet.
 - Face ID pairing and the removed-phone wipe still need a pass on real phones.
 See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.
 
@@ -866,7 +866,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 ## What you must not do
 - Do not run the install line, or anything with a setup code in it, for the user. The code belongs to the user, works once, and is entered in their browser.
 - Do not ask the user to paste secrets, vault values, recovery codes or setup codes into a chat.
-- Do not claim Vyre runs a server on Windows, or that a Mac download exists. Check ${SITE}/llms-full.txt for the current gaps.
+- Do not claim Vyre runs a server on Windows, ${MAC_DMG ? '' : 'or that a Mac download exists. '}Check ${SITE}/llms-full.txt for the current gaps.
 
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
