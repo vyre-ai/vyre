@@ -966,13 +966,17 @@ export default {
     });
 
     ctx.tool("relay.setup.claim", {
-      description: "At the box's own address: check a claim token from the setup page and answer a one-time, five-minute grant for enrolling the first owner passkey from this browser. The challenge is burned by the first try.",
+      description: "At the box's own address: check a claim token from the setup page and answer a one-time, five-minute grant for enrolling the first owner passkey from this browser. The challenge is spent by a good claim or the third wrong try; the same request repeated after a good one answers the same until the two minutes end.",
       input: obj({ token: str, spki: str }, ["token", "spki"]),
       run: async (input, meta = {}) => {
         const c = String(meta.caller || "");
         if (!(ownerDevice(c) && !agentClaim(c)) || (meta && meta.agent)) throw fail("denied", "a claim is made from the owner's own browser at the box's address");
         if (!setup) throw fail("denied", "that claim is not valid");
-        const host = setup.takeClaim({ token: String(input.token || ""), spki: String(input.spki || ""), route: route(), origin: String((meta.peer && meta.peer.origin) || "") });
+        let host;
+        try {
+          host = setup.takeClaim({ token: String(input.token || ""), spki: String(input.spki || ""), route: route(), origin: String((meta.peer && meta.peer.origin) || ""),
+            who: `${c}|${(meta.peer && (meta.peer.stableId || meta.peer.node)) || ""}` });
+        } catch (e) { ctx.log(`relay: a setup claim was refused: ${/** @type {any} */ (e).reason || /** @type {Error} */ (e).message}`); throw e; }
         const r = /** @type {any} */ (await ctx.call("presence.grant.mint", { peer: meta.peer || null, host }));
         if (!r || r.error || !r.data) throw fail("failed", "could not make the grant");
         return { grant: r.data.grant, expires: r.data.expires, rpId: host };

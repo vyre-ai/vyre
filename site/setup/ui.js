@@ -277,8 +277,8 @@ export function render(s, ctx) {
     if (s.stage !== "claim") return [];
     const host = s.named ? `${s.named.name}.vyre.run` : "your server";
     if (cl.phase === "ready" && cl.url) return [
-      el("div", { class: "actions" }, el("a", { class: "btn primary", href: cl.url, rel: "noopener" }, `Open ${host}`)),
-      el("p", { class: "note" }, "This link works once, for two minutes. Open it in the browser you will use with your server."),
+      el("div", { class: "actions" }, el("a", { class: "btn primary", href: cl.url, target: "_blank", rel: "noopener" }, `Open ${host}`)),
+      el("p", { class: "note" }, "This link opens in a new tab and lasts two minutes. Open it in the browser you will use with your server. Keep this tab open: if the link fails, come back here for a new one."),
       el("h2", { class: "sub" }, "Or on your phone"),
       el("div", { class: "qr-slot", "data-role": "qr", role: "img", "aria-label": "A code that opens the same link on your phone" }),
       el("div", { class: "actions" }, button("Get a new link", "quiet", () => actions.mintClaim())),

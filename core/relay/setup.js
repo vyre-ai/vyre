@@ -71,6 +71,10 @@ export class SetupSession {
     this.registered = false;
     /** @type {{ challenge: Buffer, exp: number, host: string } | null} the one live claim challenge */
     this.claim = null;
+    /** @type {{ key: string, who: string, host: string, exp: number } | null} the last good claim, so a repeat of the same request within the challenge's life answers the same */
+    this.claimed = null;
+    /** Wrong tries against the live challenge. */
+    this.claimFails = 0;
     this.ended = false;
     this.onEnd = o.onEnd || (() => {});
     this.clearTimer = o.clearTimer || clearTimeout;
@@ -124,29 +128,45 @@ export class SetupSession {
     if (!this.live) throw Object.assign(new Error("this setup session has ended"), { code: "setup_over" });
     const challenge = crypto.randomBytes(32);
     this.claim = { challenge, exp: this.now() + CLAIM_TTL, host: h };
+    this.claimed = null; this.claimFails = 0;
     return { challenge: challenge.toString("base64url"), exp: this.claim.exp };
   }
 
   /**
-   * Check a claim token made at the address (B4). The challenge is burned by the first try, right or
-   * wrong. It must be live, made for this address (the request's own origin), signed by the page key
-   * the code names, over this box's route. One message for every refusal.
-   * @param {{ token: string, spki: string, route: string, origin: string }} o @returns {string} the address
+   * Check a claim token made at the address (B4). It must be live, made for this address (the request's
+   * own origin), signed by the page key the code names, over this box's route. One message for every
+   * refusal, and the real reason on the error's `reason` for the box's own log.
+   *
+   * The challenge is spent by a good claim, and by the third wrong try. The same request repeated
+   * after a good claim (a reload, a retry, a double send) answers the same address again, from the same
+   * caller and peer, until the challenge's own two minutes end: a duplicate must not strand the person.
+   * @param {{ token: string, spki: string, route: string, origin: string, who?: string }} o @returns {string} the address
    */
   takeClaim(o) {
-    const c = this.claim; this.claim = null;
-    const no = () => Object.assign(new Error("that claim is not valid"), { code: "denied" });
-    if (!c || !this.live || this.now() >= c.exp) throw no();
+    const no = reason => Object.assign(new Error("that claim is not valid"), { code: "denied", reason });
+    const key = sha(`${o.token}|${o.spki}`).toString("hex"), who = String(o.who || "");
+    const g = this.claimed;
+    if (g && this.live && this.now() < g.exp && g.key === key && g.who === who) return g.host;
+    const c = this.claim;
+    if (!c) throw no("no live challenge: it was already used or never made");
+    if (!this.live) throw no("the setup session has ended");
+    if (this.now() >= c.exp) { this.claim = null; throw no("the challenge expired"); }
+    const fail = reason => {
+      if (++this.claimFails >= 3) this.claim = null;
+      return no(reason);
+    };
     const raw = Buffer.from(String(o.token || ""), "base64url"), spki = Buffer.from(String(o.spki || ""), "base64url");
-    if (raw.length !== 96 || !isP256Spki(spki)) throw no();
+    if (raw.length !== 96 || !isP256Spki(spki)) throw fail("the token or key is malformed");
     const fp = setupFingerprint(spki);
-    if (fp.length !== this.fp.length || !crypto.timingSafeEqual(fp, this.fp)) throw no();
+    if (fp.length !== this.fp.length || !crypto.timingSafeEqual(fp, this.fp)) throw fail("not the page key this setup code names");
     let originHost = "";
-    try { const u = new URL(String(o.origin || "")); if (u.protocol !== "https:") throw 0; originHost = u.hostname.toLowerCase(); } catch { throw no(); }
-    if (originHost !== c.host) throw no();
+    try { const u = new URL(String(o.origin || "")); if (u.protocol !== "https:") throw 0; originHost = u.hostname.toLowerCase(); } catch { throw fail("the request did not come from an https address"); }
+    if (originHost !== c.host) throw fail(`the request came from ${originHost}, the link was made for ${c.host}`);
     const challenge = raw.subarray(0, 32), sig = raw.subarray(32);
-    if (challenge.length !== c.challenge.length || !crypto.timingSafeEqual(challenge, c.challenge)) throw no();
-    if (!verifyP256(spki, setupClaimMessage(o.route, c.challenge, c.host), sig)) throw no();
+    if (challenge.length !== c.challenge.length || !crypto.timingSafeEqual(challenge, c.challenge)) throw fail("not the live challenge (an older link)");
+    if (!verifyP256(spki, setupClaimMessage(o.route, c.challenge, c.host), sig)) throw fail("the signature does not verify for this box's route");
+    this.claim = null; this.claimFails = 0;
+    this.claimed = { key, who, host: c.host, exp: c.exp };
     return c.host;
   }
 

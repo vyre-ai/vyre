@@ -1,0 +1,27 @@
+# The passkey page's claim retry (#23) in a fresh headless Chrome profile on a throwaway runner, never a Mac.
+name: passkey-claim
+on:
+  push:
+    paths: ["deck/onboard/passkey/**", "core/relay/setup.js", "deck/test/browser/passkey-claim-chrome.mjs", ".github/workflows/passkey-claim.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: passkey-claim-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  chrome:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Chrome for Testing
+        run: |
+          npx --yes @puppeteer/browsers install chrome@stable --path "$RUNNER_TEMP/cft" | tee "$RUNNER_TEMP/cft.out"
+          echo "CHROME=$(awk '{print $2}' "$RUNNER_TEMP/cft.out" | tail -1)" >> "$GITHUB_ENV"
+      - run: node --test core/relay/setup.test.js
+      - name: The claim retry in Chrome
+        run: node deck/test/browser/passkey-claim-chrome.mjs

@@ -626,12 +626,21 @@ test("claim token: one challenge, burned by the first try, for one route, one ad
   const take = (t, o = {}) => s.takeClaim({ token: t.token, spki: t.spki, route, origin, ...o });
 
   let t = await mint();
-  assert.equal(take(t), "alex.vyre.run");
-  assert.throws(() => take(t), /not valid/, "a token works once");
+  assert.equal(take(t, { who: "me|laptop" }), "alex.vyre.run");
+  assert.equal(take(t, { who: "me|laptop" }), "alex.vyre.run", "the same request repeated (a reload, a double send) answers the same");
+  assert.throws(() => take(t, { who: "me|phone" }), /not valid/, "another peer cannot reuse it");
+  const fresh = await mint();
+  assert.throws(() => take(t, { who: "me|laptop" }), /not valid/, "a new challenge ends the old good claim");
+  assert.equal(take(fresh), "alex.vyre.run");
+  c.advance(120_001);
+  assert.throws(() => take(fresh), /not valid/, "and nothing repeats past the two minutes");
 
   t = await mint();
-  assert.throws(() => take(t, { origin: "https://evil.vyre.run" }), /not valid/, "another address");
-  assert.throws(() => take(t), /not valid/, "and the wrong try burned it");
+  assert.throws(() => take(t, { origin: "https://evil.vyre.run" }), (e) => /not valid/.test(e.message) && /evil.vyre.run/.test(e.reason), "another address, and the reason is kept for the log");
+  assert.equal(take(t), "alex.vyre.run", "one wrong try does not strand the person");
+  t = await mint();
+  for (let i = 0; i < 3; i++) assert.throws(() => take(t, { origin: "https://evil.vyre.run" }), /not valid/);
+  assert.throws(() => take(t), /not valid/, "the third wrong try burns it");
 
   t = await mint();
   assert.throws(() => take(t, { origin: "http://alex.vyre.run" }), /not valid/, "not https");
@@ -672,7 +681,8 @@ test("claim token: the page mints over its channel, the browser at the address c
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.match(r.data.grant, /^[A-Za-z0-9_-]{43}$/);
   assert.equal(r.data.rpId, "alex.vyre.run");
-  assert.ok((await claim(token)).error, "the token was burned");
+  assert.equal((await claim(token)).data.rpId, "alex.vyre.run", "the same request again, from the same caller and peer, answers the same");
+  assert.ok((await claim(token, "tailnet:me@example.com", { ...at, stableId: "n-other" })).error, "another peer cannot use it");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session goes on until onboard ends it");
 
   // the phone: another token for the same address, claimed from its own node

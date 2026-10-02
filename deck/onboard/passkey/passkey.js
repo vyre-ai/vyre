@@ -20,7 +20,11 @@ const root = /** @type {HTMLElement} */ (document.getElementById("pk"));
 const frag = new URLSearchParams(location.hash.slice(1));
 const code = frag.get("e");
 // A setup claim link (#claim=<token>&spki=<key>) is the other way in: the setup page's one-time token, checked by the box.
-const claim = frag.get("claim"), claimKey = frag.get("spki");
+// The link is kept for this tab only (sessionStorage, gone when the tab closes) so a reload tries the same link again
+// instead of stranding the person; the box answers a repeat of a good claim the same until its two minutes end.
+let claim = frag.get("claim"), claimKey = frag.get("spki");
+if (claim && claimKey) { try { sessionStorage.setItem("vyre.claim", JSON.stringify({ claim, claimKey })); } catch { /* private mode: a reload then asks for a new link */ } }
+else if (!code) { try { const k = JSON.parse(sessionStorage.getItem("vyre.claim") || "null"); if (k && k.claim && k.claimKey) { claim = k.claim; claimKey = k.claimKey; } } catch { /* nothing kept */ } }
 if (code || claim) history.replaceState(null, "", location.pathname + location.search);
 /** What the box's relay.setup.claim answered: { grant, expires, rpId }, once the link has been checked. @type {null | { grant: string, rpId: string }} */
 let earned = null;
@@ -96,12 +100,26 @@ function screen() {
   nameIn.focus();
 }
 
-/** The link failed (used, expired, or for another address): say so and where to go. @param {string} why */
+/** The link failed (used, expired, or for another address): say what happened and offer the two ways on. @param {string} why */
 function claimFailed(why) {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "This link did not work."),
-    h("p", { class: "lead" }, `${why} Go back to the setup page and press "Get a new link": each one works once, for two minutes.`));
+    h("p", { class: "lead" }, `${why} Try it once more, or get a new link: each link works for two minutes.`),
+    h("div", { class: "ob-foot" },
+      h("a", { class: "btn", href: "https://vyre.run/setup", target: "_blank", rel: "noopener" }, "Get a new link"),
+      h("div", { class: "grow" }),
+      h("button", { type: "button", class: "btn btn-primary", onclick: () => runClaim() }, "Try again")),
+    h("p", { class: "note" }, "A new link is made on the setup page. If that tab is still open, switch to it and press \"Get a new link\"; if not, open the setup page from the button and sign in again, or run \"sudo vyre up\" on your server for a fresh link."));
+}
+
+function runClaim() {
+  shell(h("div", { class: "lbl" }, "Passkey"), h("h1", { class: "h1" }, "Checking your link"), h("p", { class: "lead" }, "One moment."));
+  call("relay.setup.claim", { token: claim, spki: claimKey }).then(r => {
+    if (!r || !r.grant || !r.rpId) return claimFailed("The server did not accept it.");
+    earned = { grant: String(r.grant), rpId: String(r.rpId) };
+    screen();
+  }, e => claimFailed(String((e && e.message) || "The server did not accept it.").replace(/[.]*$/, ".")));
 }
 
 if (claim) {
@@ -109,14 +127,7 @@ if (claim) {
   if (!canProve()) shell(h("div", { class: "lbl" }, "Passkey"), h("h1", { class: "h1" }, "This browser cannot create a passkey."),
     h("p", { class: "lead" }, "Open the link in Safari or Chrome, or scan its code with a phone."));
   else if (!claimKey) claimFailed("The link is missing part of itself.");
-  else {
-    shell(h("div", { class: "lbl" }, "Passkey"), h("h1", { class: "h1" }, "Checking your link"), h("p", { class: "lead" }, "One moment."));
-    call("relay.setup.claim", { token: claim, spki: claimKey }).then(r => {
-      if (!r || !r.grant || !r.rpId) return claimFailed("The server did not accept it.");
-      earned = { grant: String(r.grant), rpId: String(r.rpId) };
-      screen();
-    }, e => claimFailed(String((e && e.message) || "The server did not accept it.").replace(/[.]*$/, ".")));
-  }
+  else runClaim();
 } else if (!canProve()) {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
