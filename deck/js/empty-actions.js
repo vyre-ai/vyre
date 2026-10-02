@@ -66,7 +66,7 @@ export async function startThread(p, prompt) {
   const input = { project: p.slug, cwd: p.home };
   if (prompt) input.prompt = prompt;
   const r = await attempt("threads.start", input);
-  if (r.error) return { error: r.error.missing ? "Sessions are not available on this box, so a thread cannot start here." : String(r.error.message) };
+  if (r.error) return { error: r.error.missing ? "Sessions are not available on your server, so a thread cannot start here." : String(r.error.message) };
   const id = r.data?.id || r.data?.thread?.id || r.data?.thread;
   return { id: typeof id === "string" ? id : null };
 }

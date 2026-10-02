@@ -22,8 +22,8 @@ export const LOCK = {
 export function lockState(d) {
   if (!d.enabled) return null;
   const keys = d.trusted ? ` Your tailnet trusts ${d.trusted} signing ${d.trusted === 1 ? "key" : "keys"}.` : "";
-  if (d.signed === true) return "Tailnet Lock is on, and this box is signed." + keys;
-  if (d.signed === false) return "Tailnet Lock is on, but this box is not signed yet. Sign it from a device you trust, with tailscale lock sign or in the Tailscale admin console." + keys;
+  if (d.signed === true) return "Tailnet Lock is on, and your server is signed." + keys;
+  if (d.signed === false) return "Tailnet Lock is on, but your server is not signed yet. Sign it from a device you trust, with tailscale lock sign or in the Tailscale admin console." + keys;
   return "Tailnet Lock is on." + keys;
 }
 
@@ -37,8 +37,8 @@ export function lockSteps(d) {
   const c = d.commands || { mac: "tailscale lock", init: `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${d.key || "<box key>"}` };
   return [
     { text: "On your Mac, read its key. It is the one that starts with tlpub:", copy: c.mac },
-    d.key ? { text: "This box's key:", copy: d.key }
-      : { text: `This box did not give its key${d.why ? ` (${d.why})` : ""}. Check again once Tailscale is running here.`, copy: null },
+    d.key ? { text: "Your server's key:", copy: d.key }
+      : { text: `Your server did not give its key${d.why ? ` (${d.why})` : ""}. Check again once Tailscale is running here.`, copy: null },
     { text: "On your Mac, run this, with your Mac's key in place of <mac key>:", copy: c.init },
     { text: "It prints two disablement secrets. Save both in the Vault. Either one turns the lock off if every signing device is lost, and Tailscale support keeps one more.", copy: null },
   ];

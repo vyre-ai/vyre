@@ -48,7 +48,7 @@ export function pairSteps(i) {
     : { id: "install", title: "Home Screen", state: "todo", reason: "Open your browser menu and choose Install app, or Add to Home screen." };
 
   /** @type {Step[]} */ const checks = [
-    { id: "reached", title: "Reached the box", state: "done" },
+    { id: "reached", title: "Reached your server", state: "done" },
     i.https ? { id: "https", title: "HTTPS", state: "done" }
       : { id: "https", title: "HTTPS", state: "failed", reason: "This page is not on https, so passkeys and notifications cannot work. Open the https address your laptop shows." },
     { id: "app", title: "Opened as an app", state: i.standalone ? "done" : "todo" },
