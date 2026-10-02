@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- The phone app and the hosted app wait 90 seconds for the person's Confirm when they pair (the box holds a redeem until the screen it came from confirms; the handshake default was 15 s).
+
 #### the hosted app pairs inside itself: its own card for a handed ticket, and the scanner on first launch
 
 - `app.vyre.run/#pair=<ticket>` (from the camera page) is read once and scrubbed from the address, then the app looks the ticket up AGAIN and shows its OWN confirm card before it redeems anything; the ticket is redeemed only on the tap, by this origin's own device key (`relay/app/loader/pairing.js`, the same screen as wink.vyre.run's, `relay/wink/page.js` with a `ticket` and a `redeem`). With no server yet (the installed app's first launch) the scanner opens in the app itself, never by navigating to wink.vyre.run (on an iPhone that leaves the installed app for a browser sheet). The sealed loader ships the scanner's 20-odd files under their repo paths (`relay/wink/closure.js` finds them) and no Deck API client or shell. Tests in `relay/app/app.test.js` (every import in the sealed tree resolves; `pairing.js` run from the sealed tree with fakes: looked up again, nothing redeemed before the tap, redeemed with the same ticket after it). Not tried on a phone; the passkey enrolment at the app origin is open with platform.
