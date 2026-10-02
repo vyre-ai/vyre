@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { plainSummary, askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
+import { plainSummary, requestFacts, askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
   release, questionAnswers, changesLine, pushTarget, swipeActions, swipeCommit, sheetPrimary, toastFor, heldFor, sheetWho, factRows,
   deferred, snoozes, LATER_MS, SWIPE_HINT } from "./need-rows.js";
 
@@ -266,4 +266,10 @@ test("need-rows: a held request is said in words, never as a raw HTTP request", 
   assert.equal(plainSummary({ kind: "send", via: "mail", summary: "POST https://x.test/send", draft: null }), "Send a request through mail");
   assert.equal(plainSummary({ kind: "send", via: "mail", summary: "Email dana@harlowlegal.com", draft: null }), "Email dana@harlowlegal.com", "a plain summary is kept");
   assert.equal(thirdLine({ kind: "draft", agent: null, project: null, projectName: "Harlow Legal" }), "an agent · Harlow Legal", "no actor known: said honestly, never the assistant");
+});
+
+test("need-rows: a request's card facts are Through, Amount and the account; the raw request is not among them", () => {
+  const g = { kind: "spend", via: "billing", draft: { method: "POST", url: "https://api.example.com/v1/topups", body: JSON.stringify({ account: "northwind-ads", amount_usd: 150 }) } };
+  assert.deepEqual(requestFacts(g), [["Spend", "through billing"], ["Amount", "150 USD"], ["Account", "northwind-ads"]]);
+  assert.deepEqual(requestFacts({ kind: "delete", via: "drive", draft: { method: "DELETE", url: "https://x.test/f" } }), [["Delete", "through drive"]]);
 });

@@ -26,7 +26,7 @@ import { things, count, clock, today, since, when, startOfToday, base, initial, 
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref, elsewhere, fromMac, plainSummary } from "../js/need-rows.js";
+import { sessionHref, elsewhere, fromMac, plainSummary, requestFacts } from "../js/need-rows.js";
 import { threadHref } from "../chat/lib/routes.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
@@ -324,7 +324,11 @@ function heldBody(n, f) {
   // A previous Send was approved but the sender failed: it came back held, with the edit kept.
   return h("div", { class: "need-body" },
     g?.error ? h("p", { class: "need-why need-error" }, `Held again: ${problem(g.error)}`) : null,
-    f.el,
+    // A request (a payment, a deletion, an API call) says what it does in labelled rows; its method, URL and body wait under Details, still editable.
+    g?.draft && (g.draft.url || g.draft.method)
+      ? [h("div", { class: "need-facts" }, requestFacts(g).map(([k, v]) => h("div", { class: "ed-row" }, h("span", { class: "lbl ed-lbl" }, k), h("span", { class: "ed-val" }, v)))),
+        h("details", { class: "need-details" }, h("summary", { class: "small muted" }, "Details"), f.el)]
+      : f.el,
     recalled ? h("div", { class: "need-recalled" }, h("span", { class: "dot recall", "aria-hidden": "true" }),
       h("span", null, g.recalled ? g.recalled : `From memory: ${recalled}`)) : null);
 }

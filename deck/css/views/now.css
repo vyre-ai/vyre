@@ -243,3 +243,6 @@
 .fp-more .fp-cmds { grid-template-columns: 1fr; margin-top: var(--s-2); }
 .now-finish .asst-card { grid-column: 1 / -1; }
 .np-tile:has(.vy-av) { background: none; border: 0; }
+.need-facts .ed-val { font: 400 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); }
+.need-details { margin-top: var(--s-2); }
+.need-details > summary { cursor: pointer; width: max-content; }

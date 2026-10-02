@@ -81,17 +81,37 @@ export function plainSummary(g) {
   const raw = String(g.summary || "");
   const rawish = /^(GET|POST|PUT|PATCH|DELETE)\s+https?:\/\//i.test(raw);
   if (g.kind !== "spend" && g.kind !== "delete" && !rawish) return raw;
-  /** @type {any} */ let body = g.draft?.body;
+  const { amount, target } = requestParts(g);
+  const via = g.via || "a connector";
+  if (g.kind === "delete") return `Delete ${target?.[1] || "something"} through ${via}`;
+  if (g.kind === "spend") return amount ? `Spend ${amount}${target ? ` on ${target[1]}` : ""} through ${via}` : `Spend money through ${via}`;
+  return `Send a request through ${via}`;
+}
+
+/** The amount ("150 USD") and the account, payee or customer ([label, value]) a request's JSON body names, when it names them. @param {{ draft?: Record<string, any>|null } | null | undefined} g */
+function requestParts(g) {
+  /** @type {any} */ let body = g?.draft?.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = null; } }
   const o = body && typeof body === "object" ? body : {};
   const key = Object.keys(o).find(k => /^(amount|total|price|sum)(_(usd|eur|gbp|aud|cad))?$/i.test(k) && Number.isFinite(Number(o[k])));
   const cur = String(key && /_([a-z]{3})$/i.exec(key)?.[1] || o.currency || "").toUpperCase();
   const amount = key ? `${Number(o[key]).toLocaleString("en-US")}${cur ? " " + cur : ""}` : "";
-  const target = ["account", "payee", "customer", "recipient", "name"].map(k => o[k]).find(v => typeof v === "string" && v) || "";
-  const via = g.via || "a connector";
-  if (g.kind === "delete") return `Delete ${target || "something"} through ${via}`;
-  if (g.kind === "spend") return amount ? `Spend ${amount}${target ? ` on ${target}` : ""} through ${via}` : `Spend money through ${via}`;
-  return `Send a request through ${via}`;
+  const LABELS = { account: "Account", payee: "Payee", customer: "Customer", recipient: "Recipient", name: "Name" };
+  const k = Object.keys(LABELS).find(x => typeof o[x] === "string" && o[x]);
+  return { amount, target: k ? /** @type {[string, string]} */ ([/** @type {any} */ (LABELS)[k], o[k]]) : null };
+}
+
+/**
+ * What a held request does as labelled facts, for its card: Through, Amount, Account. The method, URL and body belong in the details.
+ * @param {{ kind?: string, via?: string, draft?: Record<string, any>|null }} g @returns {[string, string][]}
+ */
+export function requestFacts(g) {
+  const { amount, target } = requestParts(g);
+  /** @type {[string, string][]} */
+  const rows = [[g.kind === "delete" ? "Delete" : g.kind === "spend" ? "Spend" : "Request", g.via ? `through ${g.via}` : "through a connector"]];
+  if (amount) rows.push(["Amount", amount]);
+  if (target) rows.push(target);
+  return rows;
 }
 
 /** @param {Item} n */
