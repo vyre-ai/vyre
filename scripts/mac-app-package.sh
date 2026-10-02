@@ -57,16 +57,27 @@ if [ -n "${APPLE_DEVELOPER_ID_P12:-}" ] && [ -n "${APPLE_DEVELOPER_ID_IDENTITY:-
     --sign "$APPLE_DEVELOPER_ID_IDENTITY" --keychain "$kc" "$stage"
   codesign --verify --strict --verbose=2 "$stage"
   signed=developer-id
-  zipfor="$work/notarize.zip"; ditto -c -k --keepParent "$stage" "$zipfor"
+  # notarize <file>: submit and wait, and require the verdict "Accepted" in the output (never trust the exit status alone).
+  notary=""
   if [ -n "${APPLE_NOTARY_KEY_P8:-}" ] && [ -n "${APPLE_NOTARY_KEY_ID:-}" ] && [ -n "${APPLE_NOTARY_ISSUER:-}" ]; then
-    printf %s "$APPLE_NOTARY_KEY_P8" | base64 -d > "$work/key.p8"
-    xcrun notarytool submit "$zipfor" --key "$work/key.p8" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER" --wait
-    xcrun stapler staple "$stage"; notarized=yes
+    printf %s "$APPLE_NOTARY_KEY_P8" | base64 -d > "$work/key.p8"; notary=key
   elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_APP_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-    xcrun notarytool submit "$zipfor" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
-    xcrun stapler staple "$stage"; notarized=yes
+    notary=id
   else
     echo "skip: notarization (no APPLE_NOTARY_KEY_P8/KEY_ID/ISSUER and no APPLE_ID/APP_PASSWORD/TEAM_ID); signed with Developer ID, the app is NOT notarized" >&2
+  fi
+  notarize() {
+    if [ "$notary" = key ]; then
+      xcrun notarytool submit "$1" --key "$work/key.p8" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER" --wait > "$work/notary.log" 2>&1 || { cat "$work/notary.log" >&2; return 1; }
+    else
+      xcrun notarytool submit "$1" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait > "$work/notary.log" 2>&1 || { cat "$work/notary.log" >&2; return 1; }
+    fi
+    cat "$work/notary.log"
+    grep -q "status: Accepted" "$work/notary.log" || { echo "notarization of $1 was not Accepted" >&2; return 1; }
+  }
+  if [ -n "$notary" ]; then
+    zipfor="$work/notarize.zip"; ditto -c -k --keepParent "$stage" "$zipfor"
+    notarize "$zipfor"; xcrun stapler staple "$stage"; notarized=yes
   fi
 else
   echo "skip: Developer ID signing and notarization (no APPLE_DEVELOPER_ID_P12 and APPLE_DEVELOPER_ID_IDENTITY); the app stays ad hoc signed" >&2
@@ -76,8 +87,23 @@ zip="$out/Vyre-Lumen_${version}_${arch}.zip"; dmg="$out/Vyre-Lumen_${version}_${
 ditto -c -k --keepParent "$stage" "$zip"
 mkdir "$work/dmg"; ditto "$stage" "$work/dmg/Vyre Lumen.app"; ln -s /Applications "$work/dmg/Applications"
 hdiutil create -volname "Vyre Lumen" -srcfolder "$work/dmg" -ov -format UDZO "$dmg" >/dev/null
-if [ "$notarized" = yes ]; then xcrun stapler staple "$dmg" || true; fi
+if [ "$signed" = developer-id ]; then
+  # The container is signed too, and notarized and stapled on its own (a ticket for the app inside does not staple to the dmg).
+  codesign --force --timestamp --sign "$APPLE_DEVELOPER_ID_IDENTITY" --keychain "$kc" "$dmg"
+  codesign --verify --strict --verbose=2 "$dmg"
+  if [ "$notarized" = yes ]; then notarize "$dmg"; xcrun stapler staple "$dmg"; fi
+fi
+if [ "$notarized" = yes ]; then
+  # What Gatekeeper will say on a user's Mac, checked here so a release cannot ship a build it would refuse. Any failure stops the script (set -e).
+  spctl -a -t exec -vv "$stage"
+  xcrun stapler validate "$stage"
+  spctl -a -t open --context context:primary-signature -vv "$dmg"
+  xcrun stapler validate "$dmg"
+  gatekeeper=accepted
+else
+  gatekeeper=not-checked
+fi
 cp "$zip" "$out/Vyre-Lumen-${arch}.zip"; cp "$dmg" "$out/Vyre-Lumen-${arch}.dmg"
-echo "lumen app: signed=$signed notarized=$notarized"
+echo "lumen app: signed=$signed notarized=$notarized gatekeeper=$gatekeeper"
 ( cd "$out" && shasum -a 256 Vyre-Lumen*.zip Vyre-Lumen*.dmg )
-printf 'arch=%s\nnode=%s\nsigned=%s\nnotarized=%s\n' "$arch" "$nodev" "$signed" "$notarized" > "$out/mac-app-$arch.status"
+printf 'arch=%s\nnode=%s\nsigned=%s\nnotarized=%s\ngatekeeper=%s\n' "$arch" "$nodev" "$signed" "$notarized" "$gatekeeper" > "$out/mac-app-$arch.status"

@@ -270,9 +270,11 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
 
   # The Lumen Mac app, stable only: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg (and their zips), built inside this run by the reusable
-  # mac-app workflow. It holds no release key. The Apple secrets reach it only on a publish (the same rule as the release key below), so a rehearsal on
-  # a branch never sees them, and each of signing and notarization runs only when its own secret is present and otherwise prints a skip line.
-  # Without them the app is ad hoc signed and the run summary says so.
+  # mac-app workflow. It holds no release key. On a publish it runs in the protected GitHub Environment "apple" (the same approver as the release
+  # environment); that environment holds the Apple secrets, and only the workflow's package step receives them, so a rehearsal on a branch never
+  # sees them. Each of Developer ID signing and notarization runs only when its secret is present and otherwise prints a skip line. A build that is
+  # not Developer ID signed and notarized is checked and uploaded to the run but never goes into dist (the release job below), so an unsigned run
+  # publishes no dmg and the site keeps "built on your Mac".
   mac:
     needs: prepare
     if: needs.prepare.outputs.channel == 'stable'
@@ -281,16 +283,7 @@ jobs:
       contents: read
     with:
       version: ${{ needs.prepare.outputs.version }}
-    secrets:
-      APPLE_DEVELOPER_ID_P12: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_DEVELOPER_ID_P12 || '' }}
-      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_DEVELOPER_ID_P12_PASSWORD || '' }}
-      APPLE_DEVELOPER_ID_IDENTITY: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_DEVELOPER_ID_IDENTITY || '' }}
-      APPLE_NOTARY_KEY_P8: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_NOTARY_KEY_P8 || '' }}
-      APPLE_NOTARY_KEY_ID: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_NOTARY_KEY_ID || '' }}
-      APPLE_NOTARY_ISSUER: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_NOTARY_ISSUER || '' }}
-      APPLE_ID: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_ID || '' }}
-      APPLE_APP_PASSWORD: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_APP_PASSWORD || '' }}
-      APPLE_TEAM_ID: ${{ needs.prepare.outputs.publish == 'true' && secrets.APPLE_TEAM_ID || '' }}
+      sign: ${{ needs.prepare.outputs.publish == 'true' }}
 
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
@@ -437,18 +430,32 @@ jobs:
         with:
           name: mac-app
           path: ${{ runner.temp }}/mac
-      - name: Add the Lumen Mac files to dist (stable only, required, never optional)
+      - name: Add the Lumen Mac files to dist (stable only; only a Developer ID signed, notarized and Gatekeeper-checked build)
         if: env.CHANNEL == 'stable'
         run: |
           # The two stable dmg names are what the site's picker links to; the zips and the versioned names ride along. All are in dist before
-          # SHA256SUMS is made, so all are in the Ed25519-signed list. Whether each was Developer ID signed and notarized is in the status files.
+          # SHA256SUMS is made, so all are in the Ed25519-signed list. The mac job's status files say how each architecture was built: unless BOTH
+          # are signed=developer-id, notarized=yes and gatekeeper=accepted (spctl and stapler validate passed in the package script), nothing goes
+          # into dist, the gate does not ask for a dmg, and the release says why.
+          ok=yes
+          for arch in aarch64 x86_64; do
+            st="$RUNNER_TEMP/mac/mac-app-$arch.status"
+            [ -f "$st" ] || { echo "the Mac build has no status for $arch; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
+            sed "s/^/Mac $arch: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
+            grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st" || ok=no
+          done
+          if [ "$ok" != yes ]; then
+            echo "Mac: no dmg in this release (not Developer ID signed and notarized); the site keeps 'built on your Mac'" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           for arch in aarch64 x86_64; do
             for f in "Vyre-Lumen-$arch.dmg" "Vyre-Lumen-$arch.zip" "Vyre-Lumen_${VERSION}_$arch.dmg" "Vyre-Lumen_${VERSION}_$arch.zip"; do
               [ -f "$RUNNER_TEMP/mac/$f" ] || { echo "the Mac build has no $f; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
               cp "$RUNNER_TEMP/mac/$f" "dist/$f"
             done
-            [ -f "$RUNNER_TEMP/mac/mac-app-$arch.status" ] && sed "s/^/Mac $arch: /" "$RUNNER_TEMP/mac/mac-app-$arch.status" | tee -a "$GITHUB_STEP_SUMMARY"
           done
+          echo "MAC_FLAG=--mac" >> "$GITHUB_ENV"
+          echo "Mac: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, signed, notarized and Gatekeeper-checked" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -476,11 +483,11 @@ jobs:
           cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Gate before anything is signed further or published, the release must be what the updater needs
         run: |
-          MAC_FLAG=""; if [ "$CHANNEL" = stable ]; then MAC_FLAG=--mac; fi
+          # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --setup $MAC_FLAG --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer --setup $MAC_FLAG
+            node scripts/check-release-dist.mjs dist --installer --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

@@ -15,7 +15,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --setup \$MAC_FLAG --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --setup \$\{MAC_FLAG:-\} --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -66,8 +66,9 @@ test("release.yml: the Windows installer is built in this run, required by the r
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
 });
 
-test("release.yml: the Lumen Mac app is stable only, built in this run, required by the release job on stable, and added to dist before SHA256SUMS is made and signed", () => {
+test("release.yml: the Lumen Mac app is stable only, built in this run, and its dmgs reach dist only when Developer ID signed, notarized and Gatekeeper-checked", () => {
   assert.match(yml, /\n  mac:\n    needs: prepare\n    if: needs\.prepare\.outputs\.channel == 'stable'\n    uses: \.\/\.github\/workflows\/mac-app\.yml/);
+  assert.match(yml, /sign: \$\{\{ needs\.prepare\.outputs\.publish == 'true' \}\}/, "the Apple environment is used on a publish only");
   assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac\]/);
   assert.match(yml, /\(needs\.mac\.result == 'success' \|\| needs\.mac\.result == 'skipped'\)/, "a beta or rc run skips the Mac job and still releases");
   const add = yml.indexOf("Add the Lumen Mac files to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
@@ -75,19 +76,37 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, required
   const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
   assert.match(step, /if: env\.CHANNEL == 'stable'/);
   for (const f of ["Vyre-Lumen-$arch.dmg", "Vyre-Lumen-$arch.zip"]) assert.ok(step.includes(f), `${f} is copied into dist`);
-  assert.match(step, /refusing to release without it/);
-  assert.match(yml, /MAC_FLAG=--mac/, "the gate requires the dmgs on stable");
-  // The mac job takes the Apple secrets only on a publish, like the release key, and the release job never sees them.
-  const job = yml.slice(yml.indexOf("\n  mac:\n"), yml.indexOf("\n  app-web:\n"));
-  for (const m of job.matchAll(/^      (APPLE_[A-Z0-9_]+): (.*)$/gm)) assert.match(m[2], /needs\.prepare\.outputs\.publish == 'true' && secrets\.APPLE_[A-Z0-9_]+ \|\| ''/, `${m[1]} only reaches the Mac job on a publish`);
-  assert.equal([...job.matchAll(/^      APPLE_[A-Z0-9_]+:/gm)].length, 9);
-  assert.ok(!yml.slice(yml.indexOf("\n  release:\n")).includes("APPLE_"), "the release job holds no Apple secret");
+  for (const k of ["signed=developer-id", "notarized=yes", "gatekeeper=accepted"]) assert.ok(step.includes(k), `a dmg needs ${k}`);
+  assert.ok(step.indexOf("exit 0") > 0 && step.indexOf("exit 0") < step.indexOf('cp "$RUNNER_TEMP/mac/$f"'), "an unsigned run leaves before anything is copied");
+  assert.match(step, /MAC_FLAG=--mac/, "the gate asks for the dmgs only when they were added");
+  assert.match(yml, /--setup \$\{MAC_FLAG:-\} --pubkey/);
+  // Apple secrets: none in release.yml at all. They live in the "apple" environment and only mac-app.yml's package step receives them.
+  assert.ok(!yml.includes("APPLE_"), "release.yml names no Apple secret");
+  const mac = fs.readFileSync(path.join(REPO, ".github/workflows/mac-app.yml"), "utf8");
+  assert.match(mac, /environment: \$\{\{ inputs\.sign && 'apple' \|\| '' \}\}/);
+  assert.ok(!/\n    secrets:/.test(mac), "mac-app.yml takes no secret from its caller");
+  const pkg = mac.indexOf("- name: Package, sign if there is an identity");
+  const refs = [...mac.matchAll(/secrets\.APPLE_[A-Z0-9_]+/g)].map(m => m.index);
+  assert.equal(refs.length, 9);
+  for (const r of refs) assert.ok(r > pkg && r < mac.indexOf("\n      - name:", pkg + 10), "an Apple secret is read only by the package step");
+  for (const m of mac.matchAll(/^          (APPLE_[A-Z0-9_]+): (.*)$/gm)) assert.match(m[2], /inputs\.sign && secrets\.APPLE_[A-Z0-9_]+ \|\| ''/);
 });
 
-test("release.yml: no step needs a secret or a file that does not exist: the only signing secret is the Ed25519 release key, and minisign is gone", () => {
+test("mac-app-package.sh: skip lines per missing secret, the dmg container signed, notarized and stapled, Gatekeeper checked and failing the build", () => {
+  const sh = fs.readFileSync(path.join(REPO, "scripts/mac-app-package.sh"), "utf8");
+  assert.match(sh, /skip: Developer ID signing and notarization/);
+  assert.match(sh, /skip: notarization/);
+  assert.match(sh, /codesign --force --timestamp --sign "\$APPLE_DEVELOPER_ID_IDENTITY" --keychain "\$kc" "\$dmg"/, "the dmg is signed");
+  assert.match(sh, /notarize "\$dmg"; xcrun stapler staple "\$dmg"/, "the dmg is notarized and stapled");
+  assert.match(sh, /status: Accepted/, "the verdict is read, not just the exit status");
+  for (const c of ['spctl -a -t exec -vv "$stage"', 'xcrun stapler validate "$stage"', 'spctl -a -t open --context context:primary-signature -vv "$dmg"', 'xcrun stapler validate "$dmg"']) assert.ok(sh.includes(c), c);
+  assert.ok(!/stapler staple "\$dmg" \|\| true/.test(sh), "a failed staple is no longer ignored");
+  assert.match(sh, /gatekeeper=%s/, "the status file records the Gatekeeper result");
+});
+
+test("release.yml: no step needs a secret or a file that does not exist: the only secret is the Ed25519 release key, and minisign is gone", () => {
   const secrets = [...new Set([...yml.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map(m => m[1]))];
-  // Plus the Apple credentials, which only the mac job takes (checked in its own test above): they are the person's, and optional.
-  assert.deepEqual(secrets.filter(x => !x.startsWith("APPLE_")), ["VYRE_RELEASE_SIGNING_KEY"]);
+  assert.deepEqual(secrets, ["VYRE_RELEASE_SIGNING_KEY"]);
   assert.ok(!/minisign/i.test(yml), "no minisign step, key or public key reference");
   // Every repo path a step reads exists in the tree (release/notes is optional on a dry run; the publish path checks it itself).
   for (const f of ["release/min_from", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/lock-changes.mjs"]) assert.ok(yml.includes(f) ? fs.existsSync(path.join(REPO, f)) : true, `${f} is referenced and missing`);

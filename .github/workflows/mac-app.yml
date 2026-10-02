@@ -4,8 +4,10 @@
 # needs no terminal and no Node. Uploaded as one workflow
 # artifact called `mac-app`, which the release job pulls into dist/ and lists in SHA256SUMS. This job holds no release key.
 #
-# Developer ID signing and notarization are the person's and optional: with the APPLE_* secrets present the app is signed
-# with the hardened runtime, notarized and stapled; without them it is signed ad hoc and the run says so.
+# Developer ID signing and notarization are the person's and optional. They run only with `sign: true`, which a release passes on a publish:
+# the job then runs in the protected GitHub Environment "apple" (its approver, its secrets), and only the package step receives the APPLE_*
+# secrets. Where a secret is missing the script prints a skip line and the app is signed ad hoc, which a release does not publish. On every
+# other run (a push, a dispatch, a rehearsal) there is no environment and no secret.
 name: mac-app
 on:
   workflow_call:
@@ -14,16 +16,10 @@ on:
         description: The release version, without a leading v. Empty reads package.json.
         type: string
         default: ""
-    secrets:
-      APPLE_DEVELOPER_ID_P12: { required: false }
-      APPLE_DEVELOPER_ID_P12_PASSWORD: { required: false }
-      APPLE_DEVELOPER_ID_IDENTITY: { required: false }
-      APPLE_NOTARY_KEY_P8: { required: false }
-      APPLE_NOTARY_KEY_ID: { required: false }
-      APPLE_NOTARY_ISSUER: { required: false }
-      APPLE_ID: { required: false }
-      APPLE_APP_PASSWORD: { required: false }
-      APPLE_TEAM_ID: { required: false }
+      sign:
+        description: Run in the "apple" environment and sign and notarize with its secrets. A release passes true on a publish.
+        type: boolean
+        default: false
   workflow_dispatch:
   push:
     paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
@@ -36,20 +32,11 @@ jobs:
   mac-app:
     runs-on: macos-latest
     timeout-minutes: 45
+    environment: ${{ inputs.sign && 'apple' || '' }}
     strategy:
       fail-fast: false
       matrix:
         arch: [aarch64, x86_64]
-    env:
-      APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
-      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-      APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
-      APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
-      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
-      APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Version
@@ -79,6 +66,15 @@ jobs:
       - name: Package, sign if there is an identity, notarize if there is a credential
         env:
           VYRE_NODE_TGZ: ${{ steps.node.outputs.tgz }}
+          APPLE_DEVELOPER_ID_P12: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_P12 || '' }}
+          APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_P12_PASSWORD || '' }}
+          APPLE_DEVELOPER_ID_IDENTITY: ${{ inputs.sign && secrets.APPLE_DEVELOPER_ID_IDENTITY || '' }}
+          APPLE_NOTARY_KEY_P8: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_P8 || '' }}
+          APPLE_NOTARY_KEY_ID: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_ID || '' }}
+          APPLE_NOTARY_ISSUER: ${{ inputs.sign && secrets.APPLE_NOTARY_ISSUER || '' }}
+          APPLE_ID: ${{ inputs.sign && secrets.APPLE_ID || '' }}
+          APPLE_APP_PASSWORD: ${{ inputs.sign && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.sign && secrets.APPLE_TEAM_ID || '' }}
         run: sh scripts/mac-app-package.sh "${{ steps.v.outputs.version }}" ${{ matrix.arch }} local/capsule/native/.build/Vyre.app dist-mac
       - name: The dmg mounts and holds the app, the setup files and the pinned Node
         run: |
