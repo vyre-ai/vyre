@@ -104,7 +104,7 @@ for (const hibernateEveryEvent of [false, true]) {
     const ready = await b.s.json();
     assert.equal(ready.t, "ready");
     assert.deepEqual(ready.waiting, []);
-    assert.deepEqual(ready.features, ["registered"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
+    assert.deepEqual(ready.features, ["registered", "revoke"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
 
     const dev = sock(rt, `/v1/device?route=${b.route}`);
     await dev.open();
@@ -646,4 +646,32 @@ test("worker: the setup mailbox holds 64 KB, limits per address and globally, an
   assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-key/);
   const badLoc = await worker.fetch(new Request(`${H}/v1/setup/mbx?loc=short`), rt.env);
   assert.equal(badLoc.status, 400);
+});
+
+test("worker: a box withdraws a ticket it registered (revoke), only its own, and a revoked locator resolves to nothing", async t => {
+  const rt = world(t);
+  const a = await box(rt), b = await box(rt);
+  const ready = await a.s.json();
+  assert.ok(ready.features.includes("revoke"), "the relay says it can withdraw a ticket");
+  await b.s.json();
+  const exp = Date.now() + 5 * 60_000, loc = "r".repeat(43);
+  const sealed = wire.ticketSeal(Buffer.alloc(8, 5), JSON.stringify({ v: 1, name: "alex", relay: BASE, route: a.route, box: "x".repeat(43), exp }));
+  a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: sealed, mac: "b".repeat(43), exp }));
+  assert.equal((await a.s.json()).status, 200);
+  // another box cannot withdraw it
+  b.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.deepEqual(await b.s.json(), { t: "revoked", loc, status: 404 });
+  // its own can, once, and then nothing resolves
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.deepEqual(await a.s.json(), { t: "revoked", loc, status: 200 });
+  const gone = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
+  assert.equal(gone.status, 404);
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.equal((await a.s.json()).status, 404, "a second withdrawal finds nothing");
+  // a setup offer is not a Wink ticket and is not withdrawn this way
+  const sloc = "s".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "setup", loc: sloc, record: sealed, mac: "c".repeat(43), exp }));
+  assert.equal((await a.s.json()).status, 200);
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc: sloc }));
+  assert.equal((await a.s.json()).status, 404);
 });

@@ -90,7 +90,7 @@ class Peer {
  * @param {{ limits?: Partial<typeof LIMITS>, setup?: { maxBoxes?: number, createPerIp?: number }, log?: (event: string, x?: any) => void }} [o]
  */
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = ["registered"];
+export const FEATURES = ["registered", "revoke"];
 
 export function createRelay(o = {}) {
   const limits = { ...LIMITS, ...(o.limits || {}) };
@@ -118,7 +118,7 @@ export function createRelay(o = {}) {
   // ticketSeal): anything that isn't opaque base64url, a plaintext JSON record included, is
   // refused, so this relay never holds a box's name, handle or key in the clear.
   const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
-  /** @type {Map<string, { record: string, mac: string, exp: number, setup?: boolean, contested?: boolean }>} */
+  /** @type {Map<string, { record: string, mac: string, exp: number, route?: string, setup?: boolean, contested?: boolean }>} */
   const pairTickets = new Map();
   const sweepTickets = () => { const now = Date.now(); for (const [loc, t] of pairTickets) if (t.exp <= now) pairTickets.delete(loc); };
   // First writer wins, for a Wink ticket and a setup offer alike (tailnet plan 3.6): a second
@@ -136,6 +136,13 @@ export function createRelay(o = {}) {
     if (cur.record === t.record && cur.mac === t.mac) return 200;
     cur.contested = true;
     return 409;
+  };
+  /** A box withdraws a ticket it registered (a renewal replaces the previous one): only the route that registered it may. @param {string} loc @param {string} route @returns {200|404} */
+  const revokeLoc = (loc, route) => {
+    const t = pairTickets.get(loc);
+    if (!t || t.setup || t.exp <= Date.now() || !t.route || t.route !== route) return 404;
+    pairTickets.delete(loc);
+    return 200;
   };
   const isContested = loc => { const t = pairTickets.get(loc); return Boolean(t && t.exp > Date.now() && t.contested); };
   const contest = (loc, exp) => { const t = pairTickets.get(loc); if (t) t.contested = true; else pairTickets.set(loc, { record: "", mac: "", exp, contested: true }); };
@@ -322,6 +329,12 @@ export function createRelay(o = {}) {
         if (bin2 || !pairRegisterLimit(route)) return;
         let t;
         try { t = JSON.parse(d2.toString()); } catch { return; }
+        if (t?.t === "revoke") {
+          const rloc = String(t.loc || "");
+          if (!/^[A-Za-z0-9_-]{20,64}$/.test(rloc)) return;
+          if (!o.legacyNoAck && !o.dropAck) peer.json({ t: "revoked", loc: rloc, status: revokeLoc(rloc, route) });
+          return;
+        }
         if (t?.t !== "ticket" && t?.t !== "setup") return;
         const setup = t.t === "setup";
         const loc = String(t.loc || ""), record = String(t.record || ""), mac = String(t.mac || "");
@@ -329,7 +342,7 @@ export function createRelay(o = {}) {
         const exp = Math.min(Number(t.exp) || 0, Date.now() + (setup ? SETUP_TTL : TICKET_TTL));
         if (exp <= Date.now()) return;
         // The box hears the outcome: 200, or 409 when another server registered this locator first.
-        const status = registerLoc(loc, { record, mac, exp, ...(setup ? { setup: true } : {}) });
+        const status = registerLoc(loc, { record, mac, exp, route, ...(setup ? { setup: true } : {}) });
         // `legacyNoAck` (tests only) behaves as the relay deployed before 30 Sep did: it stores the ticket and says nothing back.
         if (!o.legacyNoAck && !o.dropAck) peer.json({ t: "registered", loc, status });
       };

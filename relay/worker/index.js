@@ -31,7 +31,7 @@
  */
 export const BOX_AUTH_TAG = "vyre-relay-box-v1";
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = Object.freeze(["registered"]);
+export const FEATURES = Object.freeze(["registered", "revoke"]);
 export const LIMITS = Object.freeze({ waiting: 8, open: 32, buffered: 64, frame: 1 << 20 });
 export const CLOSE = Object.freeze({ boxOffline: 4404, busy: 4429, refused: 4401, replaced: 4409, boxGone: 4410, deviceGone: 4411, tooBig: 1009 });
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
@@ -313,10 +313,18 @@ export class PairTicket {
         await this.ctx.storage.put("t", { ...cur, contested: true });
         return json(200, { status: 409 });
       }
-      await this.ctx.storage.put("t", { record, mac, exp, ...(setup ? { setup: true } : {}) });
+      await this.ctx.storage.put("t", { record, mac, exp, ...(body && typeof body.route === "string" && body.route ? { owner: await sha256b64(body.route) } : {}), ...(setup ? { setup: true } : {}) });
       // A locator nobody ever resolves would otherwise sit in storage forever (reviewer's LOW,
       // 28 Sep): clean it up at its own exp either way, resolved or not.
       await this.alarmAtLeast(exp);
+      return json(200, { status: 200 });
+    }
+    if (request.method === "POST" && url.pathname === "/revoke") {
+      let body;
+      try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+      const t = await this.ctx.storage.get("t");
+      if (!t || t.setup || t.exp <= now || !t.owner || t.owner !== await sha256b64(String((body && body.route) || ""))) return json(200, { status: 404 });
+      await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm();
       return json(200, { status: 200 });
     }
     if (request.method === "POST" && url.pathname === "/resolve") {
@@ -508,7 +516,7 @@ export class RouteRelay {
     const old = this.control();
     if (old) this.end(old, CLOSE.replaced, "replaced by a newer box connection");
     const ticket = b64url(random(18));
-    ws.serializeAttachment({ k: "control", ticket });
+    ws.serializeAttachment({ k: "control", ticket, route: r.route });
     const waiting = this.live("device", x => !(/** @type {any} */ (x).piped)).map(d => /** @type {any} */ (this.role(d)).c);
     this.json(ws, { t: "ready", ticket, waiting, features: [...FEATURES] });
   }
@@ -529,6 +537,19 @@ export class RouteRelay {
     if (typeof message !== "string" || !this.ticketRegAllowed()) return;
     let m;
     try { m = JSON.parse(message); } catch { return; }
+    if (m?.t === "revoke") {
+      // A box withdraws a ticket it registered (a renewal replaces the previous one). Only the route that registered it may.
+      const rloc = String(m.loc || "");
+      if (!/^[A-Za-z0-9_-]{20,64}$/.test(rloc) || !this.env.TICKETS) return;
+      try {
+        const res = await this.env.TICKETS.get(this.env.TICKETS.idFromName(rloc)).fetch("https://ticket/revoke", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route: String(/** @type {any} */ (this.role(ws)).route || "") }),
+        });
+        const out = res.status === 200 ? /** @type {any} */ (await res.json()) : null;
+        if (out) this.json(ws, { t: "revoked", loc: rloc, status: out.status });
+      } catch {}
+      return;
+    }
     if (m?.t !== "ticket" && m?.t !== "setup") return;
     const setup = m.t === "setup";
     const loc = String(m.loc || ""), record = String(m.record || ""), mac = String(m.mac || "");
@@ -537,7 +558,7 @@ export class RouteRelay {
     if (exp <= Date.now() || !this.env.TICKETS) return;
     try {
       const res = await this.env.TICKETS.get(this.env.TICKETS.idFromName(loc)).fetch("https://ticket/register", {
-        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp, setup }),
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp, setup, route: String(/** @type {any} */ (this.role(ws)).route || "") }),
       });
       const out = res.status === 200 ? /** @type {any} */ (await res.json()) : null;
       if (out) this.json(ws, { t: "registered", loc, status: out.status });

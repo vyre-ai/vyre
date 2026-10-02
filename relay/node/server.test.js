@@ -43,7 +43,7 @@ test("a box that signs its route is served, and device frames reach it both ways
   const b = await box(base);
   const ready = await b.s.json();
   assert.equal(ready.t, "ready");
-  assert.deepEqual(ready.features, ["registered"], "the relay says it answers registrations, so a box can tell silence from an older relay");
+  assert.deepEqual(ready.features, ["registered", "revoke"], "the relay says it answers registrations, so a box can tell silence from an older relay");
 
   const dev = sock(`${base}/v1/device?route=${b.route}`);
   await dev.open();
@@ -298,4 +298,30 @@ test("a box that closes a data socket with 4401 'device removed' tells the devic
     data.ws.close(code, reason);
     assert.deepEqual(await dev.closed(), want, `${code} ${reason}`);
   }
+});
+
+test("a box withdraws a ticket it registered (revoke), only its own, never a setup offer, and a revoked locator resolves to nothing", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await box(base), b = await box(base);
+  assert.ok((await a.s.json()).features.includes("revoke"));
+  await b.s.json();
+  const secret = Buffer.alloc(8, 5), exp = Date.now() + 5 * 60_000;
+  const rec = ticketSeal(secret, JSON.stringify({ v: 1, name: "alex" }));
+  const loc = "k".repeat(43), mac = "m".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: rec, mac, exp }));
+  assert.equal((await a.s.json()).status, 200);
+  b.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.deepEqual(await b.s.json(), { t: "revoked", loc, status: 404 });
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.deepEqual(await a.s.json(), { t: "revoked", loc, status: 200 });
+  const gone = await fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  assert.equal(gone.status, 404);
+  const sloc = "j".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "setup", loc: sloc, record: rec, mac, exp: Date.now() + 3_600_000 }));
+  assert.equal((await a.s.json()).status, 200);
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc: sloc }));
+  assert.equal((await a.s.json()).status, 404, "a setup offer is not withdrawn this way");
 });
