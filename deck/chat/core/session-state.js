@@ -830,6 +830,8 @@ function onTool(s, p, at, out) {
   // transcript read patching it in).
   if (p.input !== undefined && item.input === undefined) item.input = p.input;
   if (p.render && typeof p.render === "object") item.render = p.render;
+  // A command's exit code when the provider said one (Codex and Grok over ACP): data, shown on the row.
+  if (typeof p.exit_code === "number" && Number.isInteger(p.exit_code)) /** @type {any} */ (item).exit = p.exit_code;
   out.add(key);
   guess(s, "working");
 }

@@ -19,3 +19,11 @@ test("a run's header wears the provider badge and names provider and model; with
   assert.equal($(none, ".pmark").getAttribute("aria-label"), "Written by Claude");
   assert.equal(none.querySelectorAll(".pmark").length, 1);
 });
+
+test("a finished command with a non-zero exit code says so on its row; exit 0 and no code say nothing", async () => {
+  const { toolCard } = await import("./blocks.js");
+  const mk = exit => text(/** @type {any} */ (toolCard({ kind: "tool", id: "t", tool: "Bash", input: { command: "npm test" }, output: "ok", done: true, ts: 1, ...(exit === undefined ? {} : { exit }) })));
+  assert.match(mk(2), /exit 2/);
+  assert.doesNotMatch(mk(0), /exit/);
+  assert.doesNotMatch(mk(undefined), /exit/);
+});

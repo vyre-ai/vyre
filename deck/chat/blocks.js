@@ -409,7 +409,9 @@ export function toolCard(b) {
     // A call still running counts up ("0:42"), so quiet work never looks stalled; tick() moves it.
     // A todo list's time says nothing.
     const d = b.tool === "TodoWrite" || waiting ? "" : state === "running" && b.ts ? elapsed(Date.now() - b.ts) : duration(b.duration_ms);
-    const word = shown === "failed" ? "failed" : shown === "canceled" ? "stopped" : shown === "waiting" ? "waiting on you" : null;
+    // A command that ended says its exit code when the provider gave one; a non-zero one reads as a failure.
+    const exit = state === "done" && typeof b.exit === "number" && b.exit !== 0 ? b.exit : null;
+    const word = shown === "failed" ? "failed" : shown === "canceled" ? "stopped" : shown === "waiting" ? "waiting on you" : exit !== null ? `exit ${exit}` : null;
     el.setAttribute("data-tool", String(b.tool || ""));
     el.setAttribute("data-state", shown);
     // The body is built the first time it opens, so a long session's closed cards cost nothing.
@@ -432,7 +434,7 @@ export function toolCard(b) {
       h("span", { class: "cv-tool-title", title: title.length > 60 ? title : null }, title),
       h("span", { class: "cv-tool-meta" },
         d ? (timeEl = h("span", { class: "cv-tool-time" }, d)) : null,
-        word ? h("span", { class: "cv-tool-state cv-" + shown }, word) : null),
+        word ? h("span", { class: "cv-tool-state cv-" + (exit !== null ? "failed" : shown) }, word) : null),
     );
     put(el, head, body);
     show();

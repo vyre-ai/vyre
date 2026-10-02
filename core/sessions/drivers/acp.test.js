@@ -350,6 +350,10 @@ test("acp: askFor maps ACP tool kinds onto the floor's tool names and inputs", (
   assert.deepEqual(askFor({ kind: "execute", title: "Run", rawInput: { command: "ls", args: ["-la"] } }), { name: "Bash", input: { command: "ls", args: ["-la"] } });
   assert.deepEqual(askFor({ kind: "edit", title: "Edit a.js", locations: [{ path: "/w/a.js" }] }), { name: "Write", input: { file_path: "/w/a.js" } });
   assert.equal(askFor({ kind: "read", rawInput: { path: "/w/b" } }).input.file_path, "/w/b");
+  // An edit with its diff is asked as that edit: Grok's content [{ type: "diff" }].
+  assert.deepEqual(askFor({ kind: "edit", title: "Edit a.js", locations: [{ path: "/w/a.js" }], content: [{ type: "diff", path: "/w/a.js", oldText: "a\nb\n", newText: "a\nc\n" }] }),
+    { name: "Edit", input: { file_path: "/w/a.js", old_string: "a\nb\n", new_string: "a\nc\n" } });
+  assert.deepEqual(askFor({ kind: "edit", title: "New", content: [{ type: "diff", path: "/w/n.js", oldText: null, newText: "x\n" }] }), { name: "Write", input: { file_path: "/w/n.js", content: "x\n" } });
   assert.equal(askFor({ kind: "think", title: "Thinking" }).name, "Thinking");
 });
 

@@ -928,3 +928,12 @@ test("a reply takes provider and model from its event once, and a reply whose ev
   assert.deepEqual([a.provider, a.model], ["codex", "gpt-5"]);
   assert.deepEqual([b.provider, b.model], [undefined, undefined]);
 });
+
+test("a tool event's exit_code is kept on the row as data, and only a whole number", () => {
+  const s = createSession(T);
+  applyEvent(s, { type: "thread.tool", at: 1, payload: { call: "c1", name: "Bash", phase: "started" } });
+  applyEvent(s, { type: "thread.tool", at: 2, payload: { call: "c1", name: "Bash", phase: "done", exit_code: 2 } });
+  applyEvent(s, { type: "thread.tool", at: 3, payload: { call: "c2", name: "Bash", phase: "done", exit_code: "2" } });
+  assert.equal(/** @type {any} */ (s.byKey.get("t:c1")).exit, 2);
+  assert.equal(/** @type {any} */ (s.byKey.get("t:c2")).exit, undefined);
+});

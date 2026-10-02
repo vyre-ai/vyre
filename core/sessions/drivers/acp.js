@@ -70,6 +70,15 @@ export function askFor(tc) {
   const loc = Array.isArray(tc && tc.locations) && tc.locations[0] && tc.locations[0].path;
   if (name === "Bash") { if (typeof raw.command !== "string") raw.command = [raw.command, ...(Array.isArray(raw.args) ? raw.args : [])].filter(x => typeof x === "string").join(" ") || String(tc.title || ""); }
   else if (["Read", "Write"].includes(name)) { if (typeof raw.file_path !== "string") raw.file_path = String(raw.path || loc || ""); }
+  // An edit that carries its diff (Grok: content [{ type: "diff", path, oldText, newText }]) is asked as the edit it is, so the card draws the real
+  // old and new text instead of a bare file name: an Edit with the two texts, or a Write with the new content when there was no old text.
+  const diff = tc && tc.kind === "edit" && Array.isArray(tc.content) ? tc.content.find((/** @type {any} */ c) => c && c.type === "diff" && typeof c.newText === "string") : null;
+  if (diff) {
+    const file_path = String(diff.path || raw.file_path || loc || "");
+    const cap = (/** @type {string} */ t) => (t.length > 200_000 ? t.slice(0, 200_000) : t);
+    return typeof diff.oldText === "string" && diff.oldText !== "" ? { name: "Edit", input: { file_path, old_string: cap(diff.oldText), new_string: cap(diff.newText) } }
+      : { name: "Write", input: { file_path, content: cap(diff.newText) } };
+  }
   return { name, input: raw };
 }
 

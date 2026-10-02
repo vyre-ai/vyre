@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: a command's exit code, and Grok's edit as a real diff
+
+- A command row that finished with a non-zero exit code now says "exit N" in the failed colour; Codex and Grok report the code and the session core keeps it on the row (`exit_code` on the tool event). Exit 0, or no code, says nothing.
+- Grok's edit permission ask carries the real change: `core/sessions/drivers/acp.js` asks an edit that has a diff as an Edit with the old and new text (or a Write with the new content when there was no old text), so the ask card draws the diff instead of a bare file name. Capped at 200,000 characters each side. The unit test for it runs with the driver's tests on a runner.
+
 #### chat: Codex's plan is a plan card
 
 - Codex sends its plan as a question ("Implement this plan?", Implement or Revise), which showed as a plain question with the plan in a side preview. It now draws as the plan card (title, steps, files), with the plan text from the question. Start building answers Implement; Revise answers Revise and sends the words you wrote as your next message, since Codex stays in plan mode. Claude's mode choice ("Then continue in") and "Keep planning" are not shown for Codex. Any other question is unchanged. Provider-specific blocks beyond this wait on sessions' design.
