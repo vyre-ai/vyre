@@ -326,10 +326,40 @@ export default {
 
     const hashOf = (/** @type {string} */ token) => crypto.createHash("sha256").update(token).digest("hex");
 
+    /**
+     * Publish an image, a video or a sound: its file is copied into the public folder beside a small meta that names it
+     * and says when the link ends. The share server serves exactly that file, with a type it derives itself from the
+     * file's name (never from meta), nosniff and a sandbox. Media has one version. The file is served as it is, so a
+     * photograph's own metadata goes with it.
+     * @param {any} r @param {string} token @param {number|null} expires_at
+     */
+    const publishMedia = async (r, token, expires_at) => {
+      const m = JSON.parse(r.media);
+      const hash = hashOf(token);
+      const dir = path.join(publicDir, hash);
+      const tmp = path.join(publicDir, `.${hash}.${process.pid}`);
+      fs.rmSync(tmp, { recursive: true, force: true });
+      fs.mkdirSync(tmp, { mode: 0o770 });
+      try {
+        const out = path.join(tmp, m.file);
+        await fs.promises.copyFile(store.mediaPath(r.project, r.id, m.file), out);
+        fs.chmodSync(out, 0o640);
+        fs.writeFileSync(path.join(tmp, "meta.json"), JSON.stringify({ expires_at, media: { file: m.file, bytes: m.bytes } }), { mode: 0o640 });
+      } catch (e) { fs.rmSync(tmp, { recursive: true, force: true }); throw e; }
+      let seen = null;
+      try { seen = fs.readFileSync(path.join(dir, "views"), "utf8"); } catch {}
+      if (seen !== null) fs.writeFileSync(path.join(tmp, "views"), seen);
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.renameSync(tmp, dir);
+      fs.rmSync(path.join(publicDir, `${hash}.gone`), { force: true });
+      db.prepare("UPDATE artifacts_shares SET published = ? WHERE artifact = ?").run(r.head, r.id);
+      return r.head;
+    };
+
     /** Write the stripped public snapshot for one version (or the latest). @param {any} r @param {string} token
      * @param {number|null} version @param {number|null} expires_at */
     const publish = async (r, token, version, expires_at) => {
-      if (isMediaFormat(r.format)) throw refuse("public links for images, video and audio arrive in a later update", "not_available");
+      if (isMediaFormat(r.format)) return publishMedia(r, token, expires_at);
       const { files } = await filesAt(r, version ?? r.head);
       const found = findSecrets(Object.values(files).join("\n"));
       if (found.length) throw refuse(`this looks like it holds a secret (${[...new Set(found.map(f => f.kind))].join(", ")} on line ${found.map(f => f.line).join(", ")}); remove it and share again`, "secret_found", { findings: found });
@@ -1040,7 +1070,6 @@ export default {
         if (!isPerson(meta) && !(meta && meta.gate)) throw refuse("sharing publicly waits for the person: ask them, and their own words let it run", "not_asked");
         const r = await reach(i.id, meta);
         if (r.archived_at) throw refuse(`${r.id} is archived; bring it back first`, "archived");
-        if (isMediaFormat(r.format)) throw refuse("public links for images, video and audio arrive in a later update", "not_available");
         if (!kv.get("public_on")) throw refuse("public links are off. Turn them on in Settings, or ask to turn them on", "public_off", { fix: { tool: "artifacts.public.set", input: { on: true } } });
         const srv = serverState();
         if (!srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");

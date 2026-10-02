@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Writable } from "node:stream";
+import { spawn } from "node:child_process";
+import http from "node:http";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -184,7 +186,7 @@ test("media: the same project permission as every artifact, a # tag grants one i
   // A model cannot read the bytes through a tool, nor change the media, nor share it publicly.
   assert.equal((await as("artifacts.media.read", { id: made.id }, "t2")).error.code, "denied");
   assert.match((await as("artifacts.update", { id: made.id, content: "x" }, "t2")).error.message, /one file/);
-  assert.match((await call("artifacts.share", { id: made.id })).error.message, /public links for images, video and audio/);
+  assert.match((await call("artifacts.share", { id: made.id })).error.message, /public links are off/, "a media share follows the same switch as any other");
   assert.match((await ok("artifacts.mention.search", { q: "" }))[0].hint, /image \(image\/png\), made by grok/);
   // The person's surfaces and Vyre's own modules read the bytes in chunks (Drive previews).
   const chunk = await ok("artifacts.media.read", { id: made.id, offset: 0, length: 10 });
@@ -361,4 +363,61 @@ test("media: a file's own size and length are kept, a gallery pages through them
   // The box-wide cap refuses with a plain sentence.
   _test.mediaCaps = { project: 1e12, thread: 1e12, total: use.total_bytes + 10 };
   await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: pngOf(10, 10, 100).toString("base64") }), /generated media on this box is at its limit/);
+});
+
+const PRETEND_VYRED = 99999;
+async function shareServer(t, home) {
+  const dir = path.join(home, "data", "artifacts", "public");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o770 });
+  const script = path.join(import.meta.dirname, "share-server.js");
+  const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${dir}`, `--allow-fs-read=${script}`, `--allow-fs-write=${dir}`, script, "--dir", dir, "--port", "0", "--not-uid", String(PRETEND_VYRED)], { stdio: ["ignore", "pipe", "inherit"] });
+  const port = await new Promise((resolve, reject) => {
+    let out = "";
+    child.stdout.on("data", b => { out += b; const m = /listening (\d+)/.exec(out); if (m) resolve(Number(m[1])); });
+    child.on("exit", c => reject(new Error(`share server exited ${c}`)));
+  });
+  const own = _test.ownUid;
+  _test.ownUid = () => PRETEND_VYRED;
+  t.after(() => { _test.ownUid = own; child.kill("SIGTERM"); });
+  return { port };
+}
+const fetchRaw = (port, p, headers = {}, method = "GET") => new Promise((resolve, reject) => {
+  const req = http.request({ host: "127.0.0.1", port, path: p, method, headers }, res => { const c = []; res.on("data", d => c.push(d)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(c) })); });
+  req.on("error", reject); req.end();
+});
+
+test("media: a public link serves the file with its own type, Range and a sandbox, never as a page, and stops at once", async t => {
+  const { home, ok, asVyre } = await boot(t);
+  const { port } = await shareServer(t, home);
+  const dir = folder(t);
+  await asVyre("artifacts.capture.register", { thread: "t1", dir });
+  fs.writeFileSync(path.join(dir, "clip.mp4"), MP4);
+  const v = await asVyre("artifacts.media.register", { thread: "t1", name: "clip.mp4", title: "Flyover" });
+  await ok("artifacts.public.set", { on: true });
+  const shared = await ok("artifacts.share", { id: v.id });
+  const url = shared.share.path;
+  assert.match(url, /^\/s\/[A-Za-z0-9_-]{24}$/);
+  const full = await fetchRaw(port, url);
+  assert.equal(full.status, 200);
+  assert.equal(full.headers["content-type"], "video/mp4");
+  assert.equal(full.headers["x-content-type-options"], "nosniff");
+  assert.match(full.headers["content-security-policy"], /^sandbox;/);
+  assert.equal(full.headers["cache-control"], "no-store");
+  assert.ok(full.body.equals(MP4), "the bytes are the file");
+  assert.ok(!JSON.stringify(full.headers).includes("harlow") && !JSON.stringify(full.headers).includes(v.id), "nothing names the project or the artifact");
+  const part = await fetchRaw(port, url, { range: "bytes=4-11" });
+  assert.equal(part.status, 206);
+  assert.equal(part.body.toString("latin1"), "ftypmp42");
+  assert.equal((await fetchRaw(port, url, { range: "bytes=99999999-" })).status, 416);
+  assert.equal((await fetchRaw(port, url, {}, "HEAD")).body.length, 0);
+  assert.equal((await fetchRaw(port, url, {}, "POST")).status, 405);
+  // meta.json cannot make the server serve anything else or name its own type.
+  const hash = fs.readdirSync(path.join(home, "data", "artifacts", "public")).find(n => /^[0-9a-f]{64}$/.test(n));
+  const meta = path.join(home, "data", "artifacts", "public", hash, "meta.json");
+  fs.writeFileSync(meta, JSON.stringify({ expires_at: null, media: { file: "../meta.json", mime: "text/html" } }));
+  assert.equal((await fetchRaw(port, url)).status, 404, "a file name that is not media.<ext> is refused");
+  fs.writeFileSync(meta, JSON.stringify({ expires_at: null, media: { file: "media.mp4", mime: "text/html" }, headers: { "content-type": "text/html" } }));
+  assert.equal((await fetchRaw(port, url)).headers["content-type"], "video/mp4", "the type comes from the extension, not meta.json");
+  await ok("artifacts.unshare", { id: v.id });
+  assert.equal((await fetchRaw(port, url)).status, 410, "stopped at once");
 });
