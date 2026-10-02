@@ -87,14 +87,27 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   assert.ok(!/\n    secrets:/.test(mac), "mac-app.yml takes no secret from its caller");
   const pkg = mac.indexOf("- name: Package, sign if there is an identity");
   const refs = [...mac.matchAll(/secrets\.APPLE_[A-Z0-9_]+/g)].map(m => m.index);
-  assert.equal(refs.length, 9);
+  assert.equal(refs.length, 6);
   for (const r of refs) assert.ok(r > pkg && r < mac.indexOf("\n      - name:", pkg + 10), "an Apple secret is read only by the package step");
+  // Its own push and dispatch triggers never sign: `sign` exists only as a workflow_call input, defaulting to false, so no environment and no secret.
+  assert.match(mac, /sign:\n        description: [^\n]*\n        type: boolean\n        default: false/);
+  assert.ok(!/workflow_dispatch:\n    inputs/.test(mac), "dispatch has no input that could turn signing on");
+  const gate = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
+  assert.match(gate, /MAC_SIGNING: \$\{\{ vars\.MAC_SIGNING \}\}/);
+  assert.match(gate, /\[ "\$MAC_SIGNING" = required \]/);
+  assert.ok(gate.indexOf('"$MAC_SIGNING" = required') < gate.indexOf("exit 0"), "a required signing failure is raised before the quiet skip");
   for (const m of mac.matchAll(/^          (APPLE_[A-Z0-9_]+): (.*)$/gm)) assert.match(m[2], /inputs\.sign && secrets\.APPLE_[A-Z0-9_]+ \|\| ''/);
 });
 
 test("mac-app-package.sh: skip lines per missing secret, the dmg container signed, notarized and stapled, Gatekeeper checked and failing the build", () => {
   const sh = fs.readFileSync(path.join(REPO, "scripts/mac-app-package.sh"), "utf8");
   assert.match(sh, /skip: Developer ID signing and notarization/);
+  // No secret is a command-line argument: no -P "$...", no --password, no keychain password from a variable, no Apple ID path.
+  assert.ok(!/-P "\$/.test(sh) && !/--password/.test(sh) && !/security [^\n]*-p "\$/.test(sh) && !/-k "\$pw"/.test(sh), "no password on a command line");
+  assert.match(sh, /-passin env:APPLE_DEVELOPER_ID_P12_PASSWORD/);
+  assert.match(sh, /notarytool store-credentials vyre-notary --key/);
+  assert.match(sh, /notarytool submit "\$1" --keychain-profile vyre-notary --keychain "\$kc"/);
+  assert.ok(!/APPLE_APP_PASSWORD|APPLE_ID\b/.test(sh.replace(/#.*\n/g, "\n")), "no Apple ID password path");
   assert.match(sh, /skip: notarization/);
   assert.match(sh, /codesign --force --timestamp --sign "\$APPLE_DEVELOPER_ID_IDENTITY" --keychain "\$kc" "\$dmg"/, "the dmg is signed");
   assert.match(sh, /notarize "\$dmg"; xcrun stapler staple "\$dmg"/, "the dmg is notarized and stapled");

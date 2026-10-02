@@ -432,6 +432,8 @@ jobs:
           path: ${{ runner.temp }}/mac
       - name: Add the Lumen Mac files to dist (stable only; only a Developer ID signed, notarized and Gatekeeper-checked build)
         if: env.CHANNEL == 'stable'
+        env:
+          MAC_SIGNING: ${{ vars.MAC_SIGNING }}
         run: |
           # The two stable dmg names are what the site's picker links to; the zips and the versioned names ride along. All are in dist before
           # SHA256SUMS is made, so all are in the Ed25519-signed list. The mac job's status files say how each architecture was built: unless BOTH
@@ -444,6 +446,11 @@ jobs:
             sed "s/^/Mac $arch: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
             grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st" || ok=no
           done
+          # The repo variable MAC_SIGNING=required turns "no signed build" from a quiet skip into a failure on a publish, so a missing or expired
+          # certificate cannot ship a release without the Mac files unnoticed. Set it once the Developer ID is in the "apple" environment.
+          if [ "$ok" != yes ] && [ "$PUBLISH" = true ] && [ "$MAC_SIGNING" = required ]; then
+            echo "MAC_SIGNING is required but the Mac build is not Developer ID signed, notarized and Gatekeeper-checked; failing the release"; exit 1
+          fi
           if [ "$ok" != yes ]; then
             echo "Mac: no dmg in this release (not Developer ID signed and notarized); the site keeps 'built on your Mac'" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0

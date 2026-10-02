@@ -72,9 +72,6 @@ jobs:
           APPLE_NOTARY_KEY_P8: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_P8 || '' }}
           APPLE_NOTARY_KEY_ID: ${{ inputs.sign && secrets.APPLE_NOTARY_KEY_ID || '' }}
           APPLE_NOTARY_ISSUER: ${{ inputs.sign && secrets.APPLE_NOTARY_ISSUER || '' }}
-          APPLE_ID: ${{ inputs.sign && secrets.APPLE_ID || '' }}
-          APPLE_APP_PASSWORD: ${{ inputs.sign && secrets.APPLE_APP_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ inputs.sign && secrets.APPLE_TEAM_ID || '' }}
         run: sh scripts/mac-app-package.sh "${{ steps.v.outputs.version }}" ${{ matrix.arch }} local/capsule/native/.build/Vyre.app dist-mac
       - name: The dmg mounts and holds the app, the setup files and the pinned Node
         run: |
