@@ -87,7 +87,7 @@ export function suggestName(text) {
  *     result: null | { domain: string, ok: boolean, cname: { host: string, expected: string, found: string[], ok: boolean }, caa: { present: boolean, ok: boolean|null, optional: boolean } } },
  *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
  *     address: null | { phase: string, why: string|null } },
- *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
+ *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[], keyKind: null|"openai-compatible"|"anthropic-compatible"|"openrouter", keyBusy: boolean },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
  *   skipped: string[], stoppedAt: number, activity: string[],
@@ -109,7 +109,7 @@ export function createFlow(o) {
   const debounceMs = o.debounceMs ?? 350;
   /** @type {FlowState} */
   const blankTs = () => ({ status: null, loginUrl: null, busy: false, error: null, address: null });
-  const blankAi = () => ({ accounts: [] });
+  const blankAi = () => ({ accounts: [], keyKind: null, keyBusy: false });
   const blankClaim = () => ({ phase: "idle", url: null, expiresAt: 0, error: null });
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
@@ -477,8 +477,8 @@ export function createFlow(o) {
     const mine = run;
     const id = `${provider}-${state.ai.accounts.length + 1}`;
     const row = { id, provider, flow: null, step: /** @type {const} */ ("starting"), url: null, code: null, paste: false, error: null };
-    set({ ai: { accounts: [...state.ai.accounts.filter(a => a.provider !== provider || a.step === "done"), row] } });
-    const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
+    set({ ai: { ...state.ai, accounts: [...state.ai.accounts.filter(a => a.provider !== provider || a.step === "done"), row] } });
+    const upd = patch => { if (mine === run) set({ ai: { ...state.ai, accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
     try {
       const r = await chan.call("sessions.accounts.signin", { provider });
       const hosts = o.signinHosts;
@@ -503,13 +503,44 @@ export function createFlow(o) {
     }
   }
 
+  // ---- an API key instead of a login: one of three kinds, checked and stored by the box, never shown again ----
+
+  const KEY_KINDS = /** @type {const} */ (["openai-compatible", "anthropic-compatible", "openrouter"]);
+
+  /** Open (or close) the form for one kind of key. @param {string} kind */
+  function openAiKey(kind) {
+    if (!chan || state.stage !== "ai" || state.ai.keyBusy || !KEY_KINDS.includes(/** @type {any} */ (kind))) return;
+    set({ ai: { ...state.ai, keyKind: state.ai.keyKind === kind ? null : /** @type {any} */ (kind) } });
+  }
+
+  /**
+   * Send a key to the box, which checks it with one small call, puts it in its vault and makes an account bound to its address. The key is held only for this call:
+   * it is never put in the state, an error never carries it, and the form closes on success.
+   * @param {{ kind: string, key: string, base_url?: string, model?: string }} f
+   */
+  async function submitAiKey(f) {
+    if (!chan || state.stage !== "ai" || state.ai.keyBusy || !KEY_KINDS.includes(/** @type {any} */ (f.kind))) return;
+    const mine = run;
+    const id = `key-${f.kind}-${state.ai.accounts.length + 1}`;
+    const key = String(f.key || "").trim();
+    const row = { id, provider: f.kind, flow: null, step: /** @type {const} */ ("waiting"), url: null, code: null, paste: false, error: null };
+    if (key.length < 12 || key.length > 400 || /\s/.test(key)) { set({ ai: { ...state.ai, accounts: [...state.ai.accounts.filter(a => a.provider !== f.kind || a.step === "done"), { ...row, step: "failed", error: "That does not look like an API key." }] } }); return; }
+    set({ ai: { ...state.ai, keyBusy: true, accounts: [...state.ai.accounts.filter(a => a.provider !== f.kind || a.step === "done"), row] } });
+    const upd = (/** @type {any} */ patch, /** @type {any} */ extra = {}) => { if (mine === run) set({ ai: { ...state.ai, ...extra, accounts: state.ai.accounts.map(a => (a.id === id ? { ...a, ...patch } : a)) } }); };
+    try {
+      const input = { kind: f.kind, key, ...(f.base_url && String(f.base_url).trim() ? { base_url: String(f.base_url).trim().slice(0, 300) } : {}), ...(f.model && String(f.model).trim() ? { model: String(f.model).trim().slice(0, 100) } : {}) };
+      await chan.call("sessions.accounts.key", input);
+      upd({ step: "done", error: null }, { keyBusy: false, keyKind: null });
+    } catch (e) { upd({ step: "failed", error: String(/** @type {Error} */ (e).message).split(key).join("[key]").slice(0, 200) }, { keyBusy: false }); }
+  }
+
   /** A code the person pasted back from the provider's page. @param {string} id @param {string} code */
   async function submitAiCode(id, code) {
     const a = state.ai.accounts.find(x => x.id === id);
     const text = String(code || "").trim();
     if (!chan || !a || !a.flow || !a.paste || !text || text.length > 400) return;
     const mine = run;
-    const upd = patch => { if (mine === run) set({ ai: { accounts: state.ai.accounts.map(x => (x.id === id ? { ...x, ...patch } : x)) } }); };
+    const upd = patch => { if (mine === run) set({ ai: { ...state.ai, accounts: state.ai.accounts.map(x => (x.id === id ? { ...x, ...patch } : x)) } }); };
     upd({ step: "waiting", error: null });
     try {
       const r = await chan.call("sessions.accounts.signin", { flow: a.flow, code: text });
@@ -609,7 +640,7 @@ export function createFlow(o) {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
     continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
-    continueToAi, continueToTailscale, skipAi, connectTailscale, startAi, submitAiCode,
+    continueToAi, continueToTailscale, skipAi, connectTailscale, startAi, submitAiCode, openAiKey, submitAiKey,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,
     /** Stop listening (the page is closing). */

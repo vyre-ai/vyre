@@ -5,12 +5,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION } from "./accounts.js";
 
 function fresh(o) {
   const db = new DatabaseSync(":memory:");
   db.exec(ACCOUNTS_MIGRATION);
   db.exec(ACCOUNTS_PENDING_MIGRATION);
+  db.exec(ACCOUNTS_ENDPOINT_MIGRATION);
   return new Accounts(db, o);
 }
 
