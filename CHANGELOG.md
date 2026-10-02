@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### planner: add, edit, finish and delete from the page (#48)
+
+- A quick-add box at the top: type plain words ("alarm 7am", "remind me to call the bank at 6", "todo send the invoice", "note printer code 4471") and see what the planner read ("Alarm · Wake · Tue, 7:00 AM") before pressing Enter; "todo", "task", "note" and "event" at the start say the kind. If the words cannot be placed it says so.
+- Every row of the planner's own (agenda entries, alarms, todos, notes) has Edit, Delete and, where it applies, Done and Pin. Edit turns the row into a small form for the title, notes and a time written in words ("tomorrow 9am"); Enter saves, Esc leaves it as it was. Delete and Done say what happened with an Undo (the planner keeps a deleted item for 30 days). Calendar events stay read-only.
+- Keyboard first: `n` or `/` goes to the add box, arrows or `j`/`k` move between rows, Space or `x` finishes a todo or reminder, `e` or Enter edits, Backspace or Delete deletes, `p` pins a note.
+
 #### deck: the Now page tells the truth (#44)
 
 - "Running" means a turn is in progress: starting, working, or asking you something. An idle thread (ready for your next message) no longer counts as running, so "Two threads are running" no longer appears for threads that are only idle. The count line says "N running · M were active today".
