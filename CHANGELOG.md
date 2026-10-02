@@ -63,6 +63,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - The hosted app's loader page had no web app manifest, icons or iOS tags (`/manifest.json` answered with a redirect to `/`), so Add to Home Screen made a bookmark. The loader now ships `manifest.webmanifest` (standalone, start `/`, the Deck's colours), the Deck's 192, 512 and maskable PNG icons and the apple-touch-icon, all inside the signed loader manifest, and `index.html` links them with the apple-mobile-web-app tags. `release.js loader` copies the icons as bytes; the loader's service worker types them. Test in `relay/app/app.test.js`. Nothing deployed.
 
+- The public site no longer says "vyred" (site/start and site/llms.txt say "Vyre"); `test/site-words.test.js` keeps the internal words out of the site's copy.
+
+- vyre.run carries the new Vyre master icon (app-design's glass mark, approved by the user): favicon (.svg and .ico), 32 px, apple-touch, 192 and 512 px icons, and the links to them on the landing, start and 404 pages. The site is built from main only, so this is the site's icon change alone, without the rest of stage. The social preview (og.png) has the glass master in place of the old flat tile: the same layout and text, the tile area repainted with vyre-master-1024.png at 300 px.
 #### release: the real app-out path is proven with a test key and a stable version
 
 - `test/build-app-out.test.js` runs `scripts/build-app-out.mjs` the way the release does (a signing key from the environment, not `--throwaway`) with a generated test key made the pinned one through a `pinned` seam, release `0.2.0`: the loader and the build seal, both folders verify, both manifests say 0.2.0. A key that is not the pinned one is refused, and so is a prerelease (`0.2.0-rc.1`): the hosted app's manifest, rollback floor and releases.json take plain `x.y.z`, and a prerelease is never served, so the release workflow skips this step for one.
