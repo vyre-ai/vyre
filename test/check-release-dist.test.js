@@ -91,6 +91,19 @@ test("release dist: with --installer the Windows installer must be in the releas
   assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
 });
 
+test("release dist: with --mac the two stable Lumen dmgs must be in the release, listed in SHA256SUMS", t => {
+  const d = dist(t);
+  const problems = check(d, { mac: true });
+  assert.ok(problems.some(p => /Vyre-Lumen-aarch64\.dmg is not in the release/.test(p)));
+  assert.ok(problems.some(p => /Vyre-Lumen-x86_64\.dmg is not in the release/.test(p)));
+  for (const f of ["Vyre-Lumen-aarch64.dmg", "Vyre-Lumen-x86_64.dmg"]) {
+    fs.writeFileSync(path.join(d, f), f);
+    fs.appendFileSync(path.join(d, "SHA256SUMS"), `${crypto.createHash("sha256").update(f).digest("hex")}  ${f}\n`);
+  }
+  assert.deepEqual(check(d, { mac: true }), []);
+  assert.deepEqual(check(dist(t), {}), [], "without the flag nothing is required");
+});
+
 /** Adds setup.json to a dist and lists it in SHA256SUMS, the way the release job does. @param {string} dir @param {string} text */
 function withSetup(dir, text) {
   fs.writeFileSync(path.join(dir, "setup.json"), text);

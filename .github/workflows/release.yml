@@ -110,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh scripts/mac-app-package.sh scripts/mac-app scripts/install-mac-server.sh local/capsule/native/Lumen.entitlements local/capsule/native/build.sh local/capsule/native/Package.swift local/capsule/native/Package.resolved core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
@@ -124,6 +124,8 @@ jobs:
             head -n 300 "$RUNNER_TEMP/lock-changes.txt"
             echo '```'
             if [ "$(wc -l < "$RUNNER_TEMP/lock-changes.txt")" -gt 301 ]; then echo "**The list is cut at 300 lines; read apps/app/package-lock.json's diff.**"; fi
+            # Lumen's Swift sources are built into the app that gets signed, but are too many to read here: say how many files changed.
+            echo "Lumen sources changed since the base: $(git diff --name-only "$base" HEAD -- local/capsule/native/Sources | wc -l | tr -d ' ') files (local/capsule/native/Sources; read them in the full diff or the compare view)"
             # shellcheck disable=SC2086
             if git diff --quiet "$base" HEAD -- $paths; then
               echo "no changes to the signing path"
@@ -269,6 +271,22 @@ jobs:
     with:
       tag: ${{ needs.prepare.outputs.tag }}
 
+  # The Lumen Mac app, stable only: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg (and their zips), built inside this run by the reusable
+  # mac-app workflow. It holds no release key. On a publish it runs in the protected GitHub Environment "apple" (the same approver as the release
+  # environment); that environment holds the Apple secrets, and only the workflow's package step receives them, so a rehearsal on a branch never
+  # sees them. Each of Developer ID signing and notarization runs only when its secret is present and otherwise prints a skip line. A build that is
+  # not Developer ID signed and notarized is checked and uploaded to the run but never goes into dist (the release job below), so an unsigned run
+  # publishes no dmg and the site keeps "built on your Mac".
+  mac:
+    needs: prepare
+    if: needs.prepare.outputs.channel == 'stable'
+    uses: ./.github/workflows/mac-app.yml
+    permissions:
+      contents: read
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      sign: ${{ needs.prepare.outputs.publish == 'true' }}
+
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
   app-web:
@@ -368,9 +386,9 @@ jobs:
           push-to-registry: true
 
   release:
-    needs: [prepare, images, manifests, app-web, windows]
+    needs: [prepare, images, manifests, app-web, windows, mac]
     # manifests is skipped on a dry run; the release job still runs to build and upload the files.
-    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
+    if: always() && needs.prepare.result == 'success' && needs.images.result == 'success' && needs.app-web.result == 'success' && needs.windows.result == 'success' && (needs.mac.result == 'success' || needs.mac.result == 'skipped') && (needs.manifests.result == 'success' || needs.manifests.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # The Ed25519 release key lives only in this environment's secrets; its reviewers (the lead and the
@@ -409,6 +427,44 @@ jobs:
           cp "$RUNNER_TEMP/windows/$exe" "dist/$exe"
           cp "$RUNNER_TEMP/windows/$exe" dist/VyreSetup.exe
           echo "Windows: $exe, from this run's windows job" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: env.CHANNEL == 'stable'
+        with:
+          name: mac-app
+          path: ${{ runner.temp }}/mac
+      - name: Add the Lumen Mac files to dist (stable only; only a Developer ID signed, notarized and Gatekeeper-checked build)
+        if: env.CHANNEL == 'stable'
+        env:
+          MAC_SIGNING: ${{ vars.MAC_SIGNING }}
+        run: |
+          # The two stable dmg names are what the site's picker links to; the zips and the versioned names ride along. All are in dist before
+          # SHA256SUMS is made, so all are in the Ed25519-signed list. The mac job's status files say how each architecture was built: unless BOTH
+          # are signed=developer-id, notarized=yes and gatekeeper=accepted (spctl and stapler validate passed in the package script), nothing goes
+          # into dist, the gate does not ask for a dmg, and the release says why.
+          ok=yes
+          for arch in aarch64 x86_64; do
+            st="$RUNNER_TEMP/mac/mac-app-$arch.status"
+            [ -f "$st" ] || { echo "the Mac build has no status for $arch; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
+            sed "s/^/Mac $arch: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
+            grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st" || ok=no
+          done
+          # The repo variable MAC_SIGNING=required turns "no signed build" from a quiet skip into a failure on a publish, so a missing or expired
+          # certificate cannot ship a release without the Mac files unnoticed. Set it once the Developer ID is in the "apple" environment.
+          if [ "$ok" != yes ] && [ "$PUBLISH" = true ] && [ "$MAC_SIGNING" = required ]; then
+            echo "MAC_SIGNING is required but the Mac build is not Developer ID signed, notarized and Gatekeeper-checked; failing the release"; exit 1
+          fi
+          if [ "$ok" != yes ]; then
+            echo "Mac: no dmg in this release (not Developer ID signed and notarized); the site keeps 'built on your Mac'" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for arch in aarch64 x86_64; do
+            for f in "Vyre-Lumen-$arch.dmg" "Vyre-Lumen-$arch.zip" "Vyre-Lumen_${VERSION}_$arch.dmg" "Vyre-Lumen_${VERSION}_$arch.zip"; do
+              [ -f "$RUNNER_TEMP/mac/$f" ] || { echo "the Mac build has no $f; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
+              cp "$RUNNER_TEMP/mac/$f" "dist/$f"
+            done
+          done
+          echo "MAC_FLAG=--mac" >> "$GITHUB_ENV"
+          echo "Mac: Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, signed, notarized and Gatekeeper-checked" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Pin the images by digest in the released compose.yml (literal lines, as the updater and installer require)
         if: env.PUBLISH == 'true'
         run: |
@@ -436,10 +492,11 @@ jobs:
           cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Gate before anything is signed further or published, the release must be what the updater needs
         run: |
+          # MAC_FLAG is --mac only when the Mac step put signed dmgs in dist (the step above sets it).
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --setup --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --installer --setup ${MAC_FLAG:-} --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer --setup
+            node scripts/check-release-dist.mjs dist --installer --setup ${MAC_FLAG:-}
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
