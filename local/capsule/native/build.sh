@@ -51,7 +51,16 @@ case "$mode" in
     app="$out/Vyre.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     # shellcheck disable=SC2046
-    swiftc -O -target "$target" -o "$app/Contents/MacOS/Vyre" $(sources) "$reg" "$here/Sources/Host/main.swift"
+    if [ "${VYRE_CAPSULE_UNIVERSAL:-}" = 1 ]; then
+      # A release build runs on Apple silicon and Intel Macs: one binary per architecture, joined.
+      for arch in arm64 x86_64; do
+        swiftc -O -target "$arch-apple-macosx14.0" -o "$out/Vyre-$arch" $(sources) "$reg" "$here/Sources/Host/main.swift"
+      done
+      lipo -create -output "$app/Contents/MacOS/Vyre" "$out/Vyre-arm64" "$out/Vyre-x86_64"
+      rm -f "$out/Vyre-arm64" "$out/Vyre-x86_64"
+    else
+      swiftc -O -target "$target" -o "$app/Contents/MacOS/Vyre" $(sources) "$reg" "$here/Sources/Host/main.swift"
+    fi
     # The plist: LSUIElement (menu bar, no Dock icon), usage strings for permissions asked on
     # first use, and whatever extensions add in Sources/Extensions/<name>/Info.plist.part.
     version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$here/../../../package.json" 2>/dev/null | head -1)"

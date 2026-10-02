@@ -1,0 +1,84 @@
+# The Lumen Mac app as release files: a universal Vyre.app, zipped and as a dmg, named like the Windows installers
+# (Vyre-Lumen_<version>_universal.dmg and .zip, and the stable Vyre-Lumen.dmg and .zip). Uploaded as one workflow
+# artifact called `mac-app`, which the release job pulls into dist/ and lists in SHA256SUMS. This job holds no release key.
+#
+# Developer ID signing and notarization are the person's and optional: with the APPLE_* secrets present the app is signed
+# with the hardened runtime, notarized and stapled; without them it is signed ad hoc and the run says so.
+name: mac-app
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release version, without a leading v. Empty reads package.json.
+        type: string
+        default: ""
+    secrets:
+      APPLE_DEVELOPER_ID_P12: { required: false }
+      APPLE_DEVELOPER_ID_P12_PASSWORD: { required: false }
+      APPLE_DEVELOPER_ID_IDENTITY: { required: false }
+      APPLE_NOTARY_KEY_P8: { required: false }
+      APPLE_NOTARY_KEY_ID: { required: false }
+      APPLE_NOTARY_ISSUER: { required: false }
+      APPLE_ID: { required: false }
+      APPLE_APP_PASSWORD: { required: false }
+      APPLE_TEAM_ID: { required: false }
+  workflow_dispatch:
+  push:
+    paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: mac-app-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  mac-app:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+      APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+      APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Version
+        id: v
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+          v="${v#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"; echo "Lumen app version $v"
+      - name: Build Lumen for Apple silicon and Intel
+        run: VYRE_CAPSULE_UNIVERSAL=1 sh local/capsule/native/build.sh app
+      - name: Both architectures are in the binary
+        run: |
+          archs="$(lipo -archs local/capsule/native/.build/Vyre.app/Contents/MacOS/Vyre)"
+          echo "architectures: $archs"
+          case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "not universal: $archs" >&2; exit 1 ;; esac
+      - name: Package, sign if there is an identity, notarize if there is a credential
+        run: sh scripts/mac-app-package.sh "${{ steps.v.outputs.version }}" local/capsule/native/.build/Vyre.app dist-mac
+      - name: The dmg mounts and holds the app
+        run: |
+          dmg="dist-mac/Vyre-Lumen_${{ steps.v.outputs.version }}_universal.dmg"
+          hdiutil verify "$dmg"
+          mnt="$(mktemp -d)"; hdiutil attach "$dmg" -nobrowse -mountpoint "$mnt" >/dev/null
+          test -d "$mnt/Vyre Lumen.app/Contents/MacOS" && echo "dmg holds Vyre Lumen.app"
+          codesign -dv "$mnt/Vyre Lumen.app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
+          hdiutil detach "$mnt" >/dev/null
+      - name: Status
+        run: |
+          cat dist-mac/mac-app.status
+          { echo "### Lumen Mac app"; echo; echo '```'; cat dist-mac/mac-app.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-app
+          path: |
+            dist-mac/Vyre-Lumen*.dmg
+            dist-mac/Vyre-Lumen*.zip
+            dist-mac/mac-app.status
+          retention-days: 14
