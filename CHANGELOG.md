@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A one-click DigitalOcean image (packaging/digitalocean): Ubuntu 24.04 with a firewall, security updates and Docker, whose first boot installs the latest Vyre release only after checking its signature and every file's hash. The Packer template, the first-boot installer, the login banner and the Marketplace listing text are there; nothing is submitted to DigitalOcean yet.
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
