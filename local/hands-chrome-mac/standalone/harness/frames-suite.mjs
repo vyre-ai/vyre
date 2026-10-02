@@ -340,6 +340,9 @@ async function main() {
           ...(NOFETCH ? {} : {
             "deferred timer fetch": `(() => { setTimeout(function () { fetch(${L} + 'timer').catch(function () {}); }, 400); return 1; })()`,
             "deferred promise chain": `(() => { new Promise(function (r) { setTimeout(r, 300); }).then(function () { return fetch(${L} + 'promise'); }).catch(function () {}); return 1; })()`,
+            "deferred string-built: new Function": `(() => { setTimeout(new Function("fetch('" + ${L} + "fnbuilt').catch(function () {})"), 400); return 1; })()`,
+            "deferred string-built: string timer": `(() => { setTimeout("fetch('" + ${L} + "strtimer').catch(function () {})", 400); return 1; })()`,
+            "deferred string-built: direct eval": `(() => { eval("setTimeout(function () { fetch('" + ${L} + "evalbuilt').catch(function () {}); }, 400)"); return 1; })()`,
             "late data: URL worker (fetches 2.5 s later)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { new f.contentWindow.Worker("data:text/javascript," + encodeURIComponent("setTimeout(function () { fetch('" + ${L} + "datalateworker').catch(function () {}); }, 2500);")); } catch (e) {} return 1; })()`,
             "late worker (fetches 2.5 s later)": `(async () => { const f = document.createElement('iframe'); document.body.appendChild(f); try { const b = new f.contentWindow.Blob(["setTimeout(function () { fetch('" + ${L} + "lateworker').catch(function () {}); }, 2500);"]); new f.contentWindow.Worker(f.contentWindow.URL.createObjectURL(b)); } catch (e) {} return 1; })()`,
           }),
