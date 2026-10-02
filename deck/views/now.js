@@ -63,10 +63,15 @@ export default async function now(ctx) {
       // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
       firstKey.el,
       pairing.el,
-      setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, glassMini, working, learned, recentProjects),
     side));
+  // Finish setup (while it is open: install, notifications, a passkey), then Next up, then Recent: the right column's order.
+  const setup = setupCard();
+  const nextUp = h("section", { class: "now-next", "aria-labelledby": "next-h" });
+  put(side, setup, nextUp);
+  const eventsBox = h("div", { class: "now-ev" });
+  side.append(eventsBox);
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
@@ -162,14 +167,27 @@ export default async function now(ctx) {
     if (!ctx.alive()) return;
     const rows = (Array.isArray(r.data) ? r.data : []).filter(t => t && t.id && (t.last || t.started)).sort((a, b) => (b.last || b.started || 0) - (a.last || a.started || 0)).slice(0, 6);
     const hd = h("h2", { class: "lbl", id: "events-h" }, "Recent");
-    if (r.error && r.error.code !== "offline") { put(side, hd, empty("Could not load what happened.", r.error)); return; }
-    put(side, hd, rows.length
+    if (r.error && r.error.code !== "offline") { put(eventsBox, hd, empty("Could not load what happened.", r.error)); return; }
+    put(eventsBox, hd, rows.length
       ? h("div", { class: "now-events" }, rows.map(t => link(threadHref({ id: t.id, project: t.project || null }, null), { class: "now-event" },
         threadAvatar({ agent: t.agent, project: t.project, thread: t.id }, { size: 24 }),
         h("span", { class: "now-event-t ellipsis" }, t.name || t.label || "New chat"),
         h("span", { class: "now-event-w" }, when(t.last || t.started)))))
       : h("div", { class: "empty" }, "Nothing yet. Things your agents do will appear here."));
   };
+  // Next up: the next three things on the planner, from now on. Nothing is drawn while there are none.
+  const drawNext = async () => {
+    const r = await attempt("planner.agenda", {}, { ifPresent: true });
+    if (!ctx.alive()) return;
+    const now = Date.now();
+    const rows = (r.data?.entries || []).filter((/** @type {any} */ e) => e && (e.all_day || (e.at || 0) >= now)).slice(0, 3);
+    if (r.error || !rows.length) { put(nextUp); return; }
+    put(nextUp, h("h2", { class: "lbl", id: "next-h" }, "Next up"),
+      h("div", { class: "now-events" }, rows.map((/** @type {any} */ e) => link("/planner", { class: "now-event" },
+        h("span", { class: "now-event-w now-event-at" }, e.all_day ? "All day" : clock(e.at)),
+        h("span", { class: "now-event-t ellipsis" }, e.title || "Reminder")))));
+  };
+  drawNext();
   drawEvents();
   drawWorking();
   for (const t of ["thread.started", "thread.finished", "thread.stopped", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(() => { void drawWorking(); void drawEvents(); }, 300); });

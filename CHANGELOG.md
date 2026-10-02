@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 5: the Chat pass
+
+- Chat and a project's chats open with the one page header (title, meta line, actions) and list the one thread row; projects in Chat's list draw their emblem on the same row. Every chat still opens in the one thread view.
+- Now's right column is Finish setup (while it is open), Next up (the next three planner entries), then Recent.
+
 #### deck v2, step 5: the Now pass (and the labels, agent faces and width test it carries)
 
 - Now has a right column from 1200 px (it stacks below on a narrower window): Recent, the last six things that happened, one line each with the actor's avatar and the time; a tap opens the thread. Empty: "Nothing yet. Things your agents do will appear here."
