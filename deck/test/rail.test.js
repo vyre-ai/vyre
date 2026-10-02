@@ -159,8 +159,8 @@ test("rail app: the shell mounts the rail, the brand leaves the header, and the 
   // The page being left is hidden on the desk: the new address is current before leave() runs.
   assert.match(app, /current = key;\n(?: *\/\/.*\n)* *if \(was && !again\) leave\(wasKey, was, from, to, backward\);/);
   assert.match(app, /if \(phone\(\) \|\| !installed\(\)\) return;\s*const href = placeForKey/, "no rail keys on the phone, or in a browser tab (they switch the browser's own tabs)");
-  // The phone shell's own header is untouched.
-  assert.match(app, /h\("nav", \{ class: "ph-tabs", "aria-label": "Pages" \}, phLabels\)/);
+  // The phone shell's own header and tab bar (v2).
+  assert.match(app, /h\("nav", \{ class: "tabbar", "aria-label": "Pages" \}, phLabels, moreTab\)/);
   assert.match(read("sw.js"), /"\/js\/rail\.js"/, "kept at install");
   const icons = read("js/icons.js");
   assert.match(icons, /\n {2}planner: '/);
@@ -204,4 +204,14 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
   decl(css, ".rail-lower", /width: 240px; min-width: 0; flex-shrink: 0/);
   decl(css, ".rail-lower", /overflow-x: hidden; overflow-y: auto/);
   assert.doesNotMatch(read("chat/chat.css"), /\.rail-set\b/, "the rail's groups do not share a name with chat's");
+});
+
+test("rail: a label on hover and focus, a labelled rail from 1200 px, and below 720 px the phone layout (the rail is gone)", () => {
+  const css = noComments(read("css/shell-v2.css"));
+  assert.match(css, /\.rail-place:hover \.rail-label, \.rail-place:focus-visible \.rail-label \{ opacity: 1;/);
+  assert.match(css, /@media \(min-width: 1200px\) \{\s*:root\[data-rail="labels"\]/);
+  assert.match(read("js/app.js"), /vyre\.rail"\) === "labels"/);
+  // The phone layout starts below 720, so a 390 screen gets the tab bar and no rail.
+  const deck = noComments(read("css/deck.css"));
+  assert.match(deck, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\s*\.rail \{ display: none; \}/);
 });

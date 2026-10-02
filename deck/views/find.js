@@ -31,6 +31,7 @@
 // crosses 760 px; the desktop column is unchanged.
 
 import { looksLikeQuestion, ask as askMemory } from "../js/memory-ask.js";
+import { parsePrefix, PREFIX_HINT } from "../js/find-prefix.js";
 import { h, put, link, empty, go, back, PHONE_QUERY } from "../js/dom.js";
 import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -45,7 +46,7 @@ const MIN = 2;
 const DEBOUNCE_MS = 150;
 const RECENT_KEY = "vyre.find.recent";
 const RECENT_MAX = 8;
-const SCOPES = [["all", "All"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["run", "Run"]];
+const SCOPES = [["all", "All"], ["chats", "Chats"], ["projects", "Projects"], ["people", "People"], ["files", "Files"], ["memory", "Memory"], ["run", "Run"]];
 const FILE_ICON = { folder: "projects", code: "terminal", text: "lines" };
 
 const why = err => err?.missing
@@ -518,29 +519,68 @@ export default async function find(ctx) {
       results.length > SHOW && !open ? more("files", results.length) : null, away);
   }
 
+  /** Projects whose name or slug has the words, as a phone group. @param {string} q */
+  function phoneProjects(q) {
+    const ws = words(q);
+    const hits = base_.projects.filter(p => hasAll(`${p.name || ""} ${p.slug}`, ws));
+    if (!hits.length) return null;
+    const open = expanded.has("projects");
+    return group("Projects", h("div", { class: "fd-card" }, (open ? hits : hits.slice(0, SHOW)).map(p =>
+      prow({ href: projectHref(p.slug) }, h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon("projects", 20)),
+        h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, hl(p.name || p.slug, q))), chev()))),
+      hits.length > SHOW && !open ? more("projects", hits.length) : null);
+  }
+
+  /** People and agents whose name or instructions have the words. @param {string} q */
+  function phonePeople(q) {
+    const ws = words(q);
+    const hits = base_.agents.filter(a => hasAll(`${a.name} ${a.instructions || ""}`, ws));
+    if (!hits.length) return null;
+    const open = expanded.has("people");
+    return group("People and agents", h("div", { class: "fd-card" }, (open ? hits : hits.slice(0, SHOW)).map(a =>
+      prow({ href: `/agents/${encodeURIComponent(a.name)}` }, h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon("agents", 20)),
+        h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, hl(a.name, q)),
+          h("span", { class: "fd-meta" }, a.kind === "assistant" ? "your assistant" : String(a.instructions || "agent").split("\n")[0])), chev()))),
+      hits.length > SHOW && !open ? more("people", hits.length) : null);
+  }
+
   function drawPhone() {
-    const q = cur.q;
-    if (!q) return drawPhoneIdle();
+    const raw = cur.q;
+    if (!raw) return drawPhoneIdle();
+    // The command bar's prefixes: p projects, t threads, u people. They set the scope for this query.
+    const pf = parsePrefix(raw);
+    const q = pf ? pf.rest : raw;
+    const sc = pf ? pf.scope : scope;
     const long = q.length >= MIN;
-    const all = scope === "all";
+    const all = sc === "all";
     const blocks = [
       all ? phoneAsk(q) : null,
-      all || scope === "run" ? phoneRun(q) : null,
-      long && (all || scope === "memory") ? phoneMemory(q) : null,
-      long && (scope === "memory" || (all && looksLikeQuestion(q))) ? phoneMemoryAsk(q) : null,
-      long && (all || scope === "chats") ? phoneChats(q) : null,
-      long && (all || scope === "files") ? phoneFiles() : null,
+      all || sc === "run" ? phoneRun(q) : null,
+      long && (all || sc === "memory") ? phoneMemory(q) : null,
+      long && (sc === "memory" || (all && looksLikeQuestion(q))) ? phoneMemoryAsk(q) : null,
+      (long || pf) && (all || sc === "chats") ? (pf && !q ? phoneRecent() : phoneChats(q)) : null,
+      (long || pf) && (all || sc === "projects") ? phoneProjects(q) : null,
+      (long || pf) && (all || sc === "people") ? phonePeople(q) : null,
+      long && (all || sc === "files") ? phoneFiles() : null,
     ].filter(Boolean);
     const missing = new Map();
-    for (const [label, r, sc] of [["Chats were not searched.", cur.recall, "chats"], ["Files were not searched.", cur.files, "files"], ["Memory was not searched.", cur.memory, "memory"]]) {
-      if ((all || scope === sc) && r?.error && !missing.has(r.error.module)) missing.set(r.error.module, empty(label, r.error));
+    for (const [label, r, k] of [["Chats were not searched.", cur.recall, "chats"], ["Files were not searched.", cur.files, "files"], ["Memory was not searched.", cur.memory, "memory"]]) {
+      if ((all || sc === k) && r?.error && !missing.has(r.error.module)) missing.set(r.error.module, empty(label, r.error));
     }
-    const wanted = all ? [cur.recall, cur.files, cur.memory] : scope === "chats" ? [cur.recall] : scope === "files" ? [cur.files] : scope === "memory" ? [cur.memory] : [];
+    const wanted = all ? [cur.recall, cur.files, cur.memory] : sc === "chats" ? [cur.recall] : sc === "files" ? [cur.files] : sc === "memory" ? [cur.memory] : [];
     const pending = long && wanted.some(r => !r);
     const nothing = !blocks.length && !pending && !missing.size
-      ? h("p", { class: "fd-pnote" }, long ? `Nothing in ${SCOPES.find(([k]) => k === scope)?.[1] || "here"} matches.` : "Keep typing to search.") : null;
+      ? h("p", { class: "fd-pnote" }, long || pf ? `Nothing in ${SCOPES.find(([k]) => k === sc)?.[1] || "here"} matches.` : "Keep typing to search.") : null;
     put(list, blocks, pending ? h("p", { class: "fd-pnote" }, "Looking…") : null, nothing, [...missing.values()]);
     mark();
+  }
+
+  /** The newest sessions, for `t ` with nothing after it. */
+  function phoneRecent() {
+    const recent = base_.rows.filter(r => r.human || r.live).slice(0, SHOW);
+    return recent.length ? group("Chats", h("div", { class: "fd-card" }, recent.map(r =>
+      prow({ href: threadHref(r) }, h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, title(r)),
+        h("span", { class: "fd-meta" }, [projectOf(r), when(r.last)].filter(Boolean).join(" · "))), chev())))) : null;
   }
 
   function drawPhoneIdle() {
@@ -555,6 +595,7 @@ export default async function find(ctx) {
           h("span", { class: "fd-meta" }, [projectOf(r), when(r.last)].filter(Boolean).join(" · "))),
         chev())))) : null,
       !base_.loaded ? h("p", { class: "fd-pnote" }, "Reading your sessions…") : null,
+      h("p", { class: "fd-pnote fd-hint" }, PREFIX_HINT),
       base_.loaded ? base_.errs.map(([label, err]) => empty(label, err)) : null);
     mark();
   }
@@ -611,11 +652,13 @@ export default async function find(ctx) {
     if (q !== cur.q) { expanded.clear(); hi = -1; }
     cur = { q, n };
     draw();
-    if (q.length < MIN) return;
+    // A prefix (p, t, u) narrows the box; the words after it are what is searched.
+    const sq = parsePrefix(q)?.rest ?? q;
+    if (sq.length < MIN) return;
     const got = key => r => { if (!ctx.alive() || n !== seq) return; /** @type {any} */ (cur)[key] = r; draw(); };
-    attempt("recall.search", { q, limit: 20 }).then(got("recall"));
-    attempt("files.search", { q, limit: 20 }).then(got("files"));
-    attempt("memory.relevant", { text: q, limit: 5 }).then(got("memory"));
+    attempt("recall.search", { q: sq, limit: 20 }).then(got("recall"));
+    attempt("files.search", { q: sq, limit: 20 }).then(got("files"));
+    attempt("memory.relevant", { text: sq, limit: 5 }).then(got("memory"));
   }
 
   input.addEventListener("input", () => {

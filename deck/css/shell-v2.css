@@ -16,6 +16,16 @@
 .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { opacity: 1; transition-delay: 300ms; }
 .rail-place .sm-badge { top: 2px; right: 2px; }
 .rail-avatar { margin-top: var(--s-2); }
+/* The labelled rail: from 1200 px a person may keep the names beside the icons (localStorage vyre.rail = "labels", js/app.js sets html[data-rail]). */
+@media (min-width: 1200px) {
+  :root[data-rail="labels"] { --rail-w: 208px; }
+  :root[data-rail="labels"] .rail { align-items: stretch; padding-left: var(--s-3); padding-right: var(--s-3); }
+  :root[data-rail="labels"] .rail-set { align-items: stretch; }
+  :root[data-rail="labels"] .rail-place { width: auto; justify-content: flex-start; gap: var(--s-3); padding: 0 var(--s-3); }
+  :root[data-rail="labels"] .rail-label { position: static; transform: none; opacity: 1; padding: 0; background: none; border: 0; box-shadow: none; pointer-events: auto; }
+  :root[data-rail="labels"] .rail-place[aria-current="page"]::before { left: -12px; }
+  :root[data-rail="labels"] .rail-place .sm-badge { top: 50%; right: var(--s-3); transform: translateY(-50%); }
+}
 @media (prefers-reduced-motion: reduce) { .rail-place, .rail-label { transition: none; } }
 
 /* ---- page header: title, one meta line, actions at the right; the same on every page ---- */
