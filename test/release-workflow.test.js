@@ -53,7 +53,7 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   const prepare = yml.indexOf("  prepare:"), images = yml.indexOf("\n  images:");
   assert.ok(prepare < i && i < images, "it is a step of the prepare job, which needs no approval");
   const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
-  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js", "scripts/mac-app-package.sh", "scripts/mac-app", "scripts/install-mac-server.sh", "local/capsule/native/Lumen.entitlements"]) assert.ok(step.includes(p), `the diff covers ${p}`);
+  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js", "scripts/mac-app-package.sh", "scripts/mac-app", "scripts/install-mac-server.sh", "local/capsule/native/Lumen.entitlements", "local/capsule/native/build.sh", "local/capsule/native/Package.swift", "local/capsule/native/Package.resolved"]) assert.ok(step.includes(p), `the diff covers ${p}`);
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });
 
@@ -85,6 +85,15 @@ test("release.yml: the Lumen Mac app is stable only, built in this run, and its 
   const mac = fs.readFileSync(path.join(REPO, ".github/workflows/mac-app.yml"), "utf8");
   assert.match(mac, /environment: \$\{\{ inputs\.sign && 'apple' \|\| '' \}\}/);
   assert.ok(!/\n    secrets:/.test(mac), "mac-app.yml takes no secret from its caller");
+  // Build and sign are two jobs: build has no environment and no secret; package (fresh checkout) is the only one with either.
+  const buildJob = mac.slice(mac.indexOf("\n  build:\n"), mac.indexOf("\n  package:\n"));
+  assert.ok(buildJob.length > 100 && !/environment:|secrets\.|APPLE_/.test(buildJob), "the build job holds no environment and no secret");
+  assert.ok(buildJob.includes("build.sh app") && buildJob.includes("upload-artifact"), "the build job builds and uploads the unsigned app");
+  const packageJob = mac.slice(mac.indexOf("\n  package:\n"), mac.indexOf("\n  collect:\n"));
+  assert.match(packageJob, /needs: build\n/);
+  assert.ok(!/build\.sh|swiftc|xcodebuild|npm /.test(packageJob), "no build tool runs in the job that holds the secrets");
+  assert.match(packageJob, /sh scripts\/mac-app-package\.sh/);
+  assert.match(mac, /collect:\n[^\n]*\n    needs: package\n/);
   const pkg = mac.indexOf("- name: Package, sign if there is an identity");
   const refs = [...mac.matchAll(/secrets\.APPLE_[A-Z0-9_]+/g)].map(m => m.index);
   assert.equal(refs.length, 6);
