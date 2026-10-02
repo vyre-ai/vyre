@@ -676,11 +676,11 @@ for (const driver of ["cli", "sdk"]) {
     const r = await w.tool("threads.continue-here", { thread: MAC, surface: "deck" });
     assert.equal(r.error, undefined, JSON.stringify(r));
     assert.deepEqual([r.data.source, r.data.turns, r.data.from, r.data.provider], ["mac", 3, { machine: "Studio Mac", thread: MAC }, "claude"]);
-    assert.match(r.data.notice, /^Continued from Studio Mac: Intake form\. It has the conversation so far \(3 turns\), not Studio Mac's files\.$/);
+    assert.match(r.data.notice, /^Continuing on your server with your Claude account(?: \([^)]+\))?\. Your Mac's files stay on your Mac\.$/);
     const th = (await w.tool("threads.get", { thread: r.data.thread })).data;
     assert.deepEqual(th.thread.continued_from, { machine: "Studio Mac", thread: MAC });
     assert.ok(th.events.some(e => e.type === "thread.continued" && e.payload.source === "mac" && e.payload.from_thread === MAC && e.payload.turns === 3));
-    assert.ok(th.events.some(e => e.type === "thread.text" && e.payload.notice && /^Continued from Studio Mac/.test(e.payload.text)));
+    assert.ok(th.events.some(e => e.type === "thread.text" && e.payload.notice && /^Continuing on your server with your Claude account/.test(e.payload.text)));
     // The history is in front of the person's first words there, quoted as data.
     assert.equal((await w.tool("threads.send", { thread: r.data.thread, text: "and the prices", surface: "deck" })).error, undefined);
     await w.finished(r.data.thread);
@@ -696,7 +696,7 @@ for (const driver of ["cli", "sdk"]) {
     const s = await w.tool("threads.continue-here", { thread: MAC, machine: "Studio Mac", surface: "deck" });
     assert.equal(s.error, undefined, JSON.stringify(s));
     assert.deepEqual([s.data.source, s.data.turns], ["synced", 2]);
-    assert.match(s.data.notice, /Studio Mac was not reachable, so this is its last synced copy\.$/);
+    assert.match(s.data.notice, /Your Mac's files stay on your Mac\. Studio Mac was not reachable, so this is its last synced copy\.$/);
     // Nothing anywhere, or nothing said: a plain refusal and no new thread.
     state.synced = null;
     const n = (await w.tool("threads.list", { all: true })).data.length;
@@ -713,6 +713,21 @@ for (const driver of ["cli", "sdk"]) {
       assert.ok(d.error && ["denied", "not_found", "no_such_tool"].includes(d.error.code), `${caller}: ${JSON.stringify(d.error)}`);
     }
     for (const id of [r.data.thread, s.data.thread]) assert.equal((await w.tool("threads.get", { thread: id })).error, undefined, "both continued threads exist");
+  });
+
+  test(`${driver}: continue-here for a provider with no account on this server points to Settings > Your AI and makes no thread`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    const MAC = "22222222-2222-4333-8444-555555555555";
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "link.macs.call" && input.tool === "recall.thread") return { data: [{ ok: true, mac: "m1", name: "Studio Mac", data: { session: { id: MAC, name: "Grok chat" }, turns: [{ seq: 0, role: "user", text: "hello" }] } }] };
+      if (tool === "link.macs.call" && input.tool === "threads.list") return { data: [{ ok: true, mac: "m1", name: "Studio Mac", data: [{ id: MAC, name: "Grok chat", provider: "grok" }] }] };
+      return realCall(tool, input, caller, meta);
+    };
+    const r = await w.tool("threads.continue-here", { thread: MAC });
+    assert.equal(r.error.code, "account_required");
+    assert.match(r.error.message, /^There is no Grok account on this server yet\. Add one in Settings > Your AI, then carry this session on again\.$/);
   });
 
   test(`${driver}: two switches of one thread at once make one process: the second is busy`, { skip }, async t => {

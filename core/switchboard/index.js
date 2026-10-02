@@ -1710,20 +1710,35 @@ export class Switchboard {
     const provider = String((row && row.provider) || "claude");
     const name = String((row && row.name) || (session && (session.name || session.title)) || src.slice(0, 8)).slice(0, 80);
     const launchOpts = { provider, name: `${name} (continued)`, surface, purpose: "chat", continuedFrom: { machine: from, thread: src } };
+    const needsAccount = e => { const err = /** @type {any} */ (e); return err && err.code === "account_required" ? Object.assign(new Error(`There is no ${providerName(provider)} account on this server yet. Add one in Settings > Your AI, then carry this session on again.`), { code: "account_required" }) : e; };
+    // A provider other than Claude runs only on an account of this server's own (a Mac's accounts are not here).
+    if (provider !== "claude") {
+      let acct = null;
+      try { acct = await this.accountFor({ provider }); } catch (e) { throw needsAccount(e); }
+      if (!acct) throw needsAccount({ code: "account_required" });
+    }
     // The box's own project of that name, else a plain folder of its own: the Mac's folders are not here.
     let made;
-    try { if (row && row.project) made = await this.launch({ ...launchOpts, project: String(row.project) }); } catch (e) { if (/^no project /.test(/** @type {Error} */ (e).message)) made = null; else throw e; }
+    try { if (row && row.project) made = await this.launch({ ...launchOpts, project: String(row.project) }); } catch (e) { if (/^no project /.test(/** @type {Error} */ (e).message)) made = null; else throw needsAccount(e); }
     if (!made) {
       const base = process.env.VYRE_WORK || "/work";
       let dir = base;
       try { if (!fs.statSync(base).isDirectory()) throw new Error("no"); } catch { dir = path.join(this.deps.root || os.tmpdir(), "continued"); fs.mkdirSync(dir, { recursive: true }); }
-      made = await this.launch({ ...launchOpts, cwd: dir });
+      try { made = await this.launch({ ...launchOpts, cwd: dir }); } catch (e) { throw needsAccount(e); }
     }
     const id = made.id;
     const rec = this.must(id);
     const brief = briefOfTurns(spoken, `[Vyre continuation: this conversation was started on ${from} and carries on here, on the box. The files there are not here.`);
     this.carry.set(id, brief);
-    const notice = `Continued from ${from}${name ? `: ${name}` : ""}. It has the conversation so far (${spoken.length} turns), not ${from}'s files.${source === "synced" ? ` ${from} was not reachable, so this is its last synced copy.` : ""}`;
+    // The account it runs on, in plain words: the box's account for that provider and who it is signed in as, when it says.
+    let who = "";
+    try {
+      const l = await this.deps.call("sessions.accounts.list", { provider: rec.provider || provider });
+      const row = l && !l.error && Array.isArray(l.data) ? l.data.find(x => x && x.id === rec.account) : null;
+      const ident = row && ((row.identity && row.identity.email) || row.label);
+      if (ident && !row.synthetic) who = ` (${String(ident).slice(0, 80)})`;
+    } catch { /* the account list is a nicety: the notice stands without it */ }
+    const notice = `Continuing on your server with your ${providerName(rec.provider || provider)} account${who}. Your Mac's files stay on your Mac.${source === "synced" ? ` ${from} was not reachable, so this is its last synced copy.` : ""}`;
     this.emit("thread.text", { message: "vyre", text: notice, done: true, notice: true }, id, rec.project);
     this.emit("thread.continued", { thread: id, from_machine: from, from_thread: src, source, turns: spoken.length, provider }, id, rec.project);
     this.deps.log(`threads: ${id.slice(0, 8)} continues ${src.slice(0, 8)} from ${from} (${source}, ${spoken.length} turns)`);
