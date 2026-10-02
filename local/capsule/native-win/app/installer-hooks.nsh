@@ -21,9 +21,14 @@
   ${If} $UpdateMode <> 1
     RMDir /r "$LOCALAPPDATA\run.vyre.app"
     RMDir /r "$APPDATA\run.vyre.app"
+    ; The helper's own key (sealed), its server pin and its log live in the .vyre folder; the rest of that folder stays.
+    ReadEnvStr $0 USERPROFILE
+    Delete "$0\.vyre\companion.json"
+    Delete "$0\.vyre\pipe-token"
+    Delete "$0\.vyre\core.log"
     ${If} $PassiveMode <> 1
       IfSilent vyre_post_done
-      MessageBox MB_OK|MB_ICONINFORMATION "Vyre is removed from this PC, with its startup task, its local helper and its keys.$\r$\n$\r$\nLeft on purpose: your Vyre server and the history already sent to it, and the .vyre folder in your user folder. This PC still shows as a device on your server until you remove it in Devices."
+      MessageBox MB_OK|MB_ICONINFORMATION "Vyre is removed from this PC, with its startup task, its local helper and its keys.$\r$\n$\r$\nLeft on purpose: your Vyre server and the history already sent to it, and the rest of the .vyre folder in your user folder. This PC stays in Devices on your server until you remove it there."
     ${EndIf}
   ${EndIf}
   vyre_post_done:

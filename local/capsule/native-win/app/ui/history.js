@@ -124,8 +124,8 @@ function choose(result, sendable, whyNot) {
   }
 }
 
-// Progress while an import runs. Asked every 5 seconds, only while this window is showing and only
-// until the run ends: it is the person's own action in front of them.
+// Progress while an import runs. Asked every 5 seconds only while this window is showing and a send is running: it is the person's own
+// action in front of them. It stops the moment the send ends or the window hides, and starts again when the window shows.
 function follow() {
   const text = el("p", "Starting…");
   const stop = button("Stop", async () => {
@@ -133,20 +133,23 @@ function follow() {
     try { await invoke("core_call", { tool: "import.stop", input: {} }); } catch (e) { err.textContent = plainError(e); }
     await tick();
   });
-  const done = button("Done", () => { stopTimer(); scan(); });
+  const done = button("Done", () => { finish(); scan(); });
   done.hidden = true;
   show(el("h2", "Importing"), text, stop, done);
+  let running = true;
+  const finish = () => { running = false; stopTimer(); document.removeEventListener("visibilitychange", onVisible); };
   async function tick() {
-    if (document.visibilityState === "hidden") return;
+    if (!running || document.visibilityState === "hidden") return;
     try {
       const s = await invoke("core_call", { tool: "import.status", input: {} });
       text.textContent = progressText(s.upload) || "Starting…";
-      if (s.upload && s.upload.state !== "sending") { stopTimer(); stop.hidden = true; done.hidden = false; }
+      if (s.upload && s.upload.state !== "sending") { finish(); stop.hidden = true; done.hidden = false; }
     } catch (e) { text.textContent = plainError(e); }
   }
-  stopTimer();
-  timer = setInterval(tick, 5000);
-  tick();
+  const arm = () => { stopTimer(); if (running && document.visibilityState !== "hidden") { timer = setInterval(tick, 5000); tick(); } };
+  const onVisible = () => (document.visibilityState === "hidden" ? stopTimer() : arm());
+  document.addEventListener("visibilitychange", onVisible);
+  arm();
 }
 
 async function scan() {

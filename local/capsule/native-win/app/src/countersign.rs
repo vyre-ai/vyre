@@ -9,7 +9,8 @@
 //!   the app started, held open for as long as the pipe lives (never a stored pid number, so a reused pid cannot
 //!   match). Any other client is disconnected and the app keeps listening, so a process that guesses the name
 //!   cannot take the instance and stop pairing;
-//! - at most two instances exist (the one being served and the one waiting), and a second client waits its turn;
+//! - exactly one instance, ever, reused for every client (a second client gets "pipe busy" and tries again), so no other process of the
+//!   person can sit in front of the core by making an instance of the name;
 //! - one request per connection, one line each way, 4 KB at most, five seconds at most;
 //! - the app builds what it signs itself (`presence_proof`), never bytes the core hands it.
 
@@ -162,7 +163,7 @@ mod imp {
         }
     }
 
-    /// One instance of the pipe: first (the name must be new) or a later one (the name is ours).
+    /// The one instance of the pipe. `first` asks that the name be new (it is, once; a later call in the same process is the squatting check).
     pub fn create(name: &str, first: bool) -> Result<Owned, String> {
         unsafe {
             let sd_text = sddl()?;
@@ -170,7 +171,7 @@ mod imp {
             if ConvertStringSecurityDescriptorToSecurityDescriptorW(sd_text.as_ptr(), SDDL_REVISION_1, &mut sd, std::ptr::null_mut()) == 0 { return Err("Windows would not make the pipe's access list.".into()); }
             let sa = SECURITY_ATTRIBUTES { nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32, lpSecurityDescriptor: sd, bInheritHandle: 0 };
             let open = PIPE_ACCESS_DUPLEX | if first { FILE_FLAG_FIRST_PIPE_INSTANCE } else { 0 };
-            let h = CreateNamedPipeW(wide(name).as_ptr(), open, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 2, 4096, 4096, 0, &sa);
+            let h = CreateNamedPipeW(wide(name).as_ptr(), open, PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096, 4096, 0, &sa);
             LocalFree(sd as _);
             if h == INVALID_HANDLE_VALUE { return Err(if first { "The app's pipe name is already taken, so the local helper was not started.".into() } else { "Windows would not open the app's pipe again.".into() }); }
             Ok(Owned(h))
@@ -198,14 +199,12 @@ mod imp {
         unsafe { WriteFile(h, data.as_ptr(), data.len() as u32, &mut n, std::ptr::null_mut()); FlushFileBuffers(h); }
     }
 
-    pub fn run(pipe: String, first: Owned, child: Owned, stop: std::sync::Arc<std::sync::atomic::AtomicBool>, handler: Handler) {
+    pub fn run(_pipe: String, instance: Owned, child: Owned, stop: std::sync::Arc<std::sync::atomic::AtomicBool>, handler: Handler) {
         let ours = unsafe { GetProcessId(child.0) };
-        let mut current = first;
+        let current = instance;
         loop {
             let connected = unsafe { ConnectNamedPipe(current.0, std::ptr::null_mut()) } != 0 || std::io::Error::last_os_error().raw_os_error() == Some(535); // ERROR_PIPE_CONNECTED
             if stop.load(std::sync::atomic::Ordering::SeqCst) { return; }
-            // Keep the name held by a waiting instance before this client is looked at.
-            let next = match create(&pipe, false) { Ok(n) => n, Err(_) => return };
             if connected {
                 let mut pid = 0u32;
                 let from_child = unsafe { GetNamedPipeClientProcessId(current.0, &mut pid) } != 0 && ours != 0 && pid == ours;
@@ -235,9 +234,11 @@ mod imp {
                     // Write the answer, then let the client close first (a read that ends when it does), so it has read it all before the instance is taken away.
                     watch(&mut || { write_line(current.0, &reply.to_string()); let mut sink = [0u8; 64]; let mut n = 0u32; unsafe { ReadFile(current.0, sink.as_mut_ptr() as *mut _, 64, &mut n, std::ptr::null_mut()) }; true });
                     }
+                // The same instance serves the next client.
                 unsafe { DisconnectNamedPipe(current.0) };
+            } else {
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            current = next;
         }
     }
 }

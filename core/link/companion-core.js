@@ -47,6 +47,12 @@ export function askApp(pipe, request, timeout = 30_000) {
   });
 }
 
+/** A server address is an https origin and nothing else: no credentials, path, query or fragment. @param {any} a */
+const plainOrigin = (a, insecure = false) => { try { const u = new URL(String(a)); return (u.protocol === "https:" || (insecure && u.protocol === "http:")) && !u.username && !u.password && u.pathname === "/" && !u.search && !u.hash && String(a).replace(/\/$/, "") === u.origin; } catch { return false; } };
+
+/** The bytes the box signs to prove itself to a companion core in link.companion.hello's answer. */
+export const helloMessage = ({ box, companion, nonce }) => Buffer.from(["vyre-companion-hello", box, companion, nonce].join("\n"));
+
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
@@ -64,6 +70,10 @@ export function companionCoreSide(ctx, seam = {}) {
   let priv = null;
   /** @type {Promise<void> | null} */
   let joining = null;
+  /** The server proved who it is to this process (hello); nothing but hello goes out before. */
+  let verified = false;
+  /** @type {Promise<void> | null} */
+  let verifying = null;
 
   const pipe = () => seam.pipe || (handoff() && /** @type {any} */ (handoff()).countersign) || null;
   const app = async request => {
@@ -90,6 +100,7 @@ export function companionCoreSide(ctx, seam = {}) {
       const name = String(ctx.config.name || "").slice(0, 64) || "this PC's helper";
       const r = await app({ op: "companion", core: spki, nonce, name });
       if (r.pending) throw fail("pending", "Waiting for you to allow this PC's helper on your Vyre server. Allow it in Devices, then try again.");
+      if (!plainOrigin(r.address, seam.insecure)) throw fail("bad_answer", "the app gave an address that is not your server's");
       if (typeof r.id !== "string" || !r.box || typeof r.box.pub !== "string" || r.box.id !== boxId(r.box.pub) || typeof r.address !== "string") throw fail("bad_answer", "your Vyre server's answer to the join did not check out");
       const sealed = await app({ op: "seal", data: privateKey.export({ format: "der", type: "pkcs8" }).toString("base64url") });
       save({ v: 1, companion: r.id, address: String(r.address), name, box: { pub: r.box.pub, id: r.box.id }, key: { spki, sealed: String(sealed.blob) } });
@@ -117,11 +128,34 @@ export function companionCoreSide(ctx, seam = {}) {
   /** @param {NonNullable<typeof saved>} s */
   const conn = s => connector({ address: s.address, verify: seam.verify || (async ip => (isTailnet(normalize(ip)) ? { stableId: s.box.id } : null)), pinned: () => null, insecure: Boolean(seam.insecure) });
 
+  /**
+   * Before any file name or byte goes out, the server answers hello with its signature (by the key pinned at the join) over this very token's
+   * nonce, so a name, directory or certificate takeover that merely answers cannot receive a transcript. Once per process; refused on any mismatch.
+   * @param {NonNullable<typeof saved>} s
+   */
+  function verifyBox(s) {
+    if (verified) return Promise.resolve();
+    if (!verifying) verifying = (async () => {
+      const t = token(s, "link.companion.hello", {});
+      const nonce = t.split(".")[3];
+      let r;
+      try { r = await conn(s).json("POST", "/v1/tools/link.companion.hello", { token: t }, { timeout: seam.timeout || 15_000 }); }
+      catch (e) { const x = /** @type {any} */ (e); throw fail("box_unreachable", `your server is not reachable from this PC (${x.code || x.message}). Is Tailscale signed in?`); }
+      const d = r.body && r.body.data;
+      if (!d || !d.box || d.box.id !== s.box.id || d.companion !== s.companion) throw fail("not_box", (r.body && r.body.error && r.body.error.message) || "the server at this address is not the one this PC joined, so nothing was sent");
+      let good = false;
+      try { good = typeof d.proof === "string" && crypto.verify(null, helloMessage({ box: s.box.id, companion: s.companion, nonce }), crypto.createPublicKey({ key: Buffer.from(s.box.pub, "base64url"), format: "der", type: "spki" }), Buffer.from(d.proof, "base64url")); } catch { good = false; }
+      if (!good) throw fail("not_box", "the server at this address did not prove it is the one this PC joined, so nothing was sent");
+      verified = true;
+    })().finally(() => { verifying = null; });
+    return verifying;
+  }
+
   /** A JSON tool on the box, as { data } or { error }. */
   async function remote(tool, input = {}) {
     if (!ALLOWED.has(String(tool))) return { error: { code: "denied", message: `${tool} is not something this PC's helper may ask your server` } };
     let s;
-    try { s = await ready(); } catch (e) { const x = /** @type {any} */ (e); return { error: { code: x.code || "no_link", message: x.message } }; }
+    try { s = await ready(); await verifyBox(s); } catch (e) { const x = /** @type {any} */ (e); return { error: { code: x.code || "no_link", message: x.message } }; }
     try {
       const r = await conn(s).json("POST", `/v1/tools/${encodeURIComponent(tool)}`, { ...input, companion: token(s, tool, input) }, { timeout: seam.timeout || 15_000 });
       return r.body;
@@ -135,6 +169,7 @@ export function companionCoreSide(ctx, seam = {}) {
   async function upload(upload, offset, data) {
     if (!UPLOAD_ID.test(String(upload))) throw fail("bad_input", "upload must be the id sync.upload.start gave");
     const s = await ready();
+    await verifyBox(s);
     let r;
     try {
       r = await conn(s).json("POST", `/v1/sync/upload/${encodeURIComponent(upload)}?offset=${encodeURIComponent(String(offset))}`, data,
@@ -180,5 +215,5 @@ export function companionCoreSide(ctx, seam = {}) {
     internal: true,
     run: async ({ upload: id, offset, data }) => upload(id, offset, Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "base64")),
   });
-  return { async stop() { priv = null; } };
+  return { async stop() { priv = null; verified = false; } };
 }
