@@ -215,7 +215,7 @@ extension CapsuleModel {
     func openSource(_ index: Int, opener: (URL) -> Bool = { NSWorkspace.shared.open($0) }) -> Bool {
         guard let url = iqSourceURL(index) else {
             if askedMemory?.sources.indices.contains(index) == true, catalog.box == nil {
-                line = "Vyre chat is on your box, and this Mac is not paired with one."
+                line = "Vyre chat is on your server, and this Mac is not paired with one."
             }
             return false
         }

@@ -618,10 +618,10 @@ public final class CapsuleModel: ObservableObject {
     /// Taildrop a file to the paired box (files.send). vyred's guard decides whether it may
     /// leave (secrets and dotfiles are refused), and its words are shown as they are.
     func sendToBox(_ url: URL) -> ResultAction {
-        ResultAction(id: "send-box", title: "Send to box", symbol: "paperplane", shortcut: KeyShortcut("s", command: true)) { [vyred] _, _ in
+        ResultAction(id: "send-box", title: "Send to server", symbol: "paperplane", shortcut: KeyShortcut("s", command: true)) { [vyred] _, _ in
             let r = await vyred.call("files.send", ["path": url.path], timeout: 120)
             if let d = r.data as? [String: Any], let sent = VJ.nonEmpty(d["sent"]) {
-                return .said("Sent \(sent) to \(VJ.nonEmpty(d["to"]) ?? "your box"). It is in the box's inbox.")
+                return .said("Sent \(sent) to \(VJ.nonEmpty(d["to"]) ?? "your server"). It is in your server's inbox.")
             }
             return .failed("Could not send it: \(Bridge.explain(r) ?? "nothing came back").")
         }

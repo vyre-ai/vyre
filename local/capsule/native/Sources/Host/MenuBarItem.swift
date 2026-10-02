@@ -77,7 +77,7 @@ final class Health: ObservableObject {
 
     var summary: String {
         if !vyredUp { return "Vyre is not running" }
-        if let l = link { return "Box \(l.path)" }
+        if let l = link { return "Server \(l.path)" }
         return "Vyre is running"
     }
 }
@@ -183,9 +183,9 @@ struct MenuBarPopover: View {
                 status(health.vyredUp ? "Vyre is running" : "Vyre is not running", ok: health.vyredUp,
                        sub: health.vyredUp ? nil : "Start Vyre below, or press Return in Lumen")
                 if let l = health.link {
-                    status("Box \(l.path)", ok: l.dot == .direct, sub: l.handshake)
+                    status("Server \(l.path)", ok: l.dot == .direct, sub: l.handshake)
                 } else if let why = health.linkWhy {
-                    status("No box", ok: true, sub: why, quiet: true)
+                    status("No server", ok: true, sub: why, quiet: true)
                 }
             }
             .padding(.horizontal, 14).padding(.bottom, 12)

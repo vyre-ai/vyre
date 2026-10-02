@@ -234,7 +234,7 @@ extension CapsuleModel {
         guard let r = reply, !r.thread.isEmpty else { return }
         guard let box = catalog.box, let url = URL(string: box.hasPrefix("http") ? box : "https://" + box)?
             .appendingPathComponent("chat/thread").appendingPathComponent(r.thread) else {
-            line = "Vyre chat is on your box, and this Mac is not paired with one."
+            line = "Vyre chat is on your server, and this Mac is not paired with one."
             return
         }
         NSWorkspace.shared.open(url)

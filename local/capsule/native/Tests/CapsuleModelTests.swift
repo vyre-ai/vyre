@@ -189,7 +189,7 @@ let taildropSuite = Suite("taildrop") { t in
             }
             return ids + lines + [VJ.s(v.callsOf("files.send").first?["path"])]
         }
-        t.eq(r, ["open", "send-box", "Sent Northwind menu.pdf to box. It is in the box's inbox.",
+        t.eq(r, ["open", "send-box", "Sent Northwind menu.pdf to box. It is in your server's inbox.",
                  "Could not send it: that looks like a secret; it stays on this Mac.", file])
     }
 }

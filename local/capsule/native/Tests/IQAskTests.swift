@@ -331,11 +331,11 @@ let iqAskSuite = Suite("iq ask") { t in
         let ok = MainActor.assumeIsolated { m.openSource(0, opener: { opened = $0; return true }) }
         t.eq(ok, true)
         t.eq(opened?.absoluteString, "https://box.example.ts.net:8443/chat/thread/s1?seq=4")
-        // No box paired: says so, opens nothing.
+        // No server paired: says so, opens nothing.
         MainActor.assumeIsolated { m.catalog = VyreCatalog() }
         let none = MainActor.assumeIsolated { m.openSource(0, opener: { _ in true }) }
         t.eq(none, false)
-        t.eq(MainActor.assumeIsolated { m.line }, "Vyre chat is on your box, and this Mac is not paired with one.")
+        t.eq(MainActor.assumeIsolated { m.line }, "Vyre chat is on your server, and this Mac is not paired with one.")
     }
 
     t.test("corrections (95b2b891): replace shows the fix at once with Undo; wrong and forget too") {

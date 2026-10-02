@@ -28,7 +28,7 @@ public enum Bridge {
         }
         if code == "denied" { return "The rules stopped it: \(message)" }
         // The box runs at most so many sessions at once (ADR 0030): threads.start says busy.
-        if code == "busy" { return message.isEmpty ? "The box is running as many sessions as it allows. Stop one, or try again when one finishes." : message }
+        if code == "busy" { return message.isEmpty ? "Your server is running as many sessions as it allows. Stop one, or try again when one finishes." : message }
         // threads.send knows every session Vyre started, idle ones included (they resume); only a
         // session started in a terminal is not one.
         if message.hasPrefix("no thread ") { return "That session runs in a terminal, not in Vyre, so it cannot be typed into from here. Open it in its terminal, or start a new thread." }
