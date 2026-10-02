@@ -14,6 +14,7 @@ import { call } from "../daemon/client.js";
 import * as config from "../config/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { getWall } from "../../lib/sandbox/index.js";
+import { open as openStore } from "../store/index.js";
 import { skipOffRunner } from "../../lib/sandbox/test-host.js";
 
 const on = process.env.VYRE_WALL_CHECK === "1" && !skipOffRunner();
@@ -74,6 +75,18 @@ test("a person turns on a teammate's duty: the real watcher runs once and files 
   assert.equal(hourlyItems[0].title, "Note anything stale.");
   assert.equal(hourlyItems[0].about, added.agent);
   await ok(person("team.duties.delete", { id: hourly.id }));
+
+  // The wake (0.2.2): a duty that acts, when its watcher files something, queues a request to its teammate from the duty; one that only looks does not.
+  const requestsFrom = from => { const db = openStore(config.paths(root).db); try { return db.prepare("SELECT from_kind, from_label, text FROM team_requests WHERE from_label = ?").all(from); } finally { db.close(); } };
+  assert.deepEqual(requestsFrom(`duty:${made.id}`), [], "a duty that only looks wakes nobody");
+  const acting = await ok(person("team.duties.create", { teammate: added.agent, when: "daily 09:00", instruction: "Say whether this needs a person.", act: true, title: "acting duty" }));
+  await firstItems(acting.watcher, "acting duty");
+  let woke = [];
+  for (let i = 0; i < 20 && !woke.length; i++) { woke = requestsFrom(`duty:${acting.id}`); if (!woke.length) await new Promise(r => setTimeout(r, 500)); }
+  assert.equal(woke.length, 1, "the acting duty queued one request to its teammate");
+  assert.equal(woke[0].from_kind, "duty");
+  assert.match(woke[0].text, /comes from your own duty, not from the person/);
+  await ok(person("team.duties.delete", { id: acting.id }));
 
   // A model cannot reach watchers' own doors either: duty.create is hidden from it, create is asked.
   assert.equal((await as("mcp")("watchers.duty.create", { name: "duty-x-1", project: project.slug, owner: { kind: "teammate", teammate: added.agent }, when: "daily 07:00", instruction: "x" })).error.code, "no_such_tool");
