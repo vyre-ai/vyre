@@ -224,3 +224,4 @@
 @media (min-width: 1000px) and (max-width: 1199px) { .now-cols { display: block; } .now-side { padding-left: 88px; } }
 .now-side > * + * { margin-top: 20px; }
 .now-event-at { width: 56px; text-align: left; }
+.now-next-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }

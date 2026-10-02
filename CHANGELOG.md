@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 5: the Projects shell and the Planner pass
+
+- Projects: the one page header; the board's header wears the project's emblem; a project's chats are the one thread row, and every chat still opens in Chat.
+- Planner (add and edit stay as built in #48): the one page header with the quick-add hint. Now's Next up always links to Planner ("Add something" when nothing is planned), since Planner is no longer a rail place.
+
 #### deck v2, step 5: the Chat pass
 
 - Chat and a project's chats open with the one page header (title, meta line, actions) and list the one thread row; projects in Chat's list draw their emblem on the same row. Every chat still opens in the one thread view.

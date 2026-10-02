@@ -27,6 +27,8 @@ import { renameProject, archiveProject } from "../js/project-actions.js";
 import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
 import { chatCounts, chatsWord } from "../js/chat-counts.js";
+import { threadRow as rowOf } from "../js/thread-row.js";
+import { pageHeader } from "../js/page-header.js";
 
 const enc = encodeURIComponent;
 const TABS = [["threads", "Chats"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
@@ -55,7 +57,7 @@ const peopleText = people => (people || []).map(p => p.name || p.email).filter(B
 
 async function list(ctx) {
   const rows = h("div", { class: "rows pl-rows" });
-  const count_ = h("p", { class: "muted" }, " ");
+  const count_ = h("span", null, " ");
   const form = h("div", { class: "pl-form", hidden: true });
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", onclick: () => toggle(true) }, icon("plus", 14), "New project");
   const ghBtn = h("button", { type: "button", class: "btn", onclick: () => fromGithub() }, icon("branch", 14), "From a GitHub repo");
@@ -64,9 +66,7 @@ async function list(ctx) {
     showArchived = !showArchived; arcBtn.setAttribute("aria-pressed", String(showArchived)); put(arcBtn, showArchived ? "Hide archived" : "Archived"); draw();
   } }, "Archived");
   put(ctx.root, h("div", { class: "pl" },
-    h("div", { class: "pl-head" },
-      h("div", { class: "pl-title" }, h("h1", { class: "h2" }, "Projects"), count_),
-      h("div", { class: "pl-head-actions" }, arcBtn, ghBtn, newBtn)),
+    pageHeader({ title: "Projects", meta: count_, actions: [arcBtn, ghBtn, newBtn] }),
     form, rows));
 
   /** "New project" > "From a GitHub repo": pick, then github.project makes the project (clones
@@ -214,6 +214,7 @@ async function board(ctx) {
   const header = h("div", { class: "pj-head" },
     h("div", { class: "pj-id" },
       link("/projects", { class: "pj-back pj-phone", "aria-label": "All projects" }, icon("right", 14), "Projects"),
+      projectAvatar(slug, { size: 44, cls: "pj-emblem" }),
       nameHead,
       p.org ? h("span", { class: "lbl pj-org" }, p.org) : null,
       ppl.length ? h("span", { class: "pj-people small muted" }, ppl.join(", ")) : null),
@@ -234,7 +235,7 @@ async function board(ctx) {
   // The project's chats, newest first: each opens in Chat. Beside them, the start of the brief.
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
-    items.length ? items.map(it => threadItem(it, false, hrefFor(it.id), needs.current()))
+    items.length ? items.map(it => threadItem(it, false, hrefFor(it.id), needs.current(), slug))
       : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No chats yet. Sessions are not available on this box, so one cannot start here.")
       : h("div", { class: "empty pj-none" }, "No chats yet. ", link(`/chat?new&project=${enc(slug)}`, { class: "link" }, "Start one")),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
@@ -268,9 +269,11 @@ function shortBrief(text) {
   return out.slice(0, 4);
 }
 
-function threadItem(it, on, href, open) {
+function threadItem(it, on, href, open, project = null) {
   const t = it.live;
   const held = t && (t.state === "waiting") && open.some(n => n.thread === t.id);
+  if (project) return rowOf({ href, title: it.name, project, agent: t?.agent || null, thread: it.id, at: it.at, status: t && t.state === "running" ? "running" : null,
+    asks: held ? 1 : 0, turns: it.rec?.turns || 0, human: !t?.agent, current: on, extra: [machineChip(it.rec)] });
   const who = t ? (t.agent || "you") : (it.rec?.agents ? "you with an agent" : "you");
   const state = t ? (held ? null : t.state) : plural(it.rec?.turns || 0, "turn");
   return link(href, { class: "pj-t", "aria-current": on ? "true" : false },

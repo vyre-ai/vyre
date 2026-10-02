@@ -181,8 +181,10 @@ export default async function now(ctx) {
     if (!ctx.alive()) return;
     const now = Date.now();
     const rows = (r.data?.entries || []).filter((/** @type {any} */ e) => e && (e.all_day || (e.at || 0) >= now)).slice(0, 3);
-    if (r.error || !rows.length) { put(nextUp); return; }
-    put(nextUp, h("h2", { class: "lbl", id: "next-h" }, "Next up"),
+    if (r.error && r.error.code === "no_such_tool") { put(nextUp); return; }
+    const hd = h("div", { class: "now-next-h" }, h("h2", { class: "lbl", id: "next-h" }, "Next up"), link("/planner", { class: "link small muted" }, rows.length ? "Planner" : "Add something"));
+    if (r.error || !rows.length) { put(nextUp, hd, h("div", { class: "empty" }, "Nothing planned. Add a reminder or a todo in Planner.")); return; }
+    put(nextUp, hd,
       h("div", { class: "now-events" }, rows.map((/** @type {any} */ e) => link("/planner", { class: "now-event" },
         h("span", { class: "now-event-w now-event-at" }, e.all_day ? "All day" : clock(e.at)),
         h("span", { class: "now-event-t ellipsis" }, e.title || "Reminder")))));
