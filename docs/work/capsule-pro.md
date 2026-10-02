@@ -368,6 +368,10 @@ then `vyre call gate.request "$H"` with N changed each time.
    Start a computer-use task from an agent. Pass: the oversight panel opens top right with the
    plan first, can be dragged, takes a typed note, and Esc waits for the current act. A spoken
    reply plays from a mic turn.
+16. **Deep glass.** Reduce Transparency must be off (System Settings, Accessibility, Display). Put a window that is white on one half and black
+   on the other behind Lumen (any two apps side by side will do), then open Lumen over the line. Pass: the panel's left half is visibly
+   lighter than its right half, text stays readable on both, and the edge reads as glass. Turn Reduce Transparency on: the panel becomes
+   one flat dark (or light) colour and the halves match. GitHub's runner has Reduce Transparency on, so only the flat colour is checked there.
 
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.
