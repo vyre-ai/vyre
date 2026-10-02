@@ -44,3 +44,5 @@ The app no longer has a shared limit on `/v1/pair` or the setup mailbox, so cost
 
 - [ ] Dispatch relay-deploy with `relay=true` and `relay_edge_rule=true` (the token needs Zone WAF Edit on vyre.run). It writes one per-address Cloudflare rate-limit rule on `/v1/pair` and `/v1/setup/mbx`, and prints the rules it wrote. Check the rule in the Cloudflare dashboard.
 - [ ] The relay's Workers and Durable Objects run on a paid plan. Every `/v1/pair` request reaches a ticket object and every random locator on the mailbox creates one, so on the Free plan's daily request cap an outsider could still stop pairing and installs until it resets. The edge rule limits one address; only the paid plan covers a distributed flood.
+- [ ] The edge rule matches the host relay.vyre.run only. `workers_dev` is off in relay/worker/wrangler.toml, so the deployed Worker has no other public address; a staging copy of the Worker, or any other hostname, is not covered by it.
+- [ ] The Zone WAF Edit token (it covers the whole zone) is an environment secret on the protected `deploy` environment with approval, used only by relay-deploy.yml, never a repository-wide secret.

@@ -57,6 +57,7 @@ export async function upsert({ token, zone, dryRun = false, fetch: f = globalThi
 /** @param {number} status @param {string} what */
 function describe(status, what) {
   if (status === 401 || status === 403) return `Cloudflare refused ${what} (HTTP ${status}): the token needs Zone > Zone WAF > Edit on the zone`;
+  if (status === 400 || status === 409 || status === 422) return `Cloudflare answered HTTP ${status} while ${what}: on the Free plan a zone may have only one rate-limiting rule, and it may already have one that this script keeps`;
   return `Cloudflare answered HTTP ${status} while ${what}`;
 }
 
