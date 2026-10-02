@@ -15,7 +15,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer \$android --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -38,9 +38,10 @@ test("release.yml: the step that holds the signing key runs only checked-in scri
   assert.match(step, /node scripts\/sign-manifest\.mjs/);
 });
 
-test("release.yml and capsule-win.yml: every action is pinned by commit sha (the key signs whatever those jobs built)", () => {
+test("release.yml, capsule-win.yml and native-android.yml: every action is pinned by commit sha (the key signs whatever those jobs built)", () => {
   const win = fs.readFileSync(path.join(REPO, ".github/workflows/capsule-win.yml"), "utf8");
-  const loose = [...(yml + "\n" + win).matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
+  const droid = fs.readFileSync(path.join(REPO, ".github/workflows/native-android.yml"), "utf8");
+  const loose = [...(yml + "\n" + win + "\n" + droid).matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
   assert.deepEqual(loose.map(m => `${m[1]}@${m[2]}`), []);
 });
 
@@ -56,16 +57,16 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
 
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
   assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/capsule-win\.yml/);
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows\]/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, android\]/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
 });
 
-test("release.yml: no step needs a secret or a file that does not exist: the only secret is the Ed25519 release key, and minisign is gone", () => {
+test("release.yml: no step needs a secret or a file that does not exist: the secrets are the Ed25519 release key and the four sideload-key ones (the Android step only), and minisign is gone", () => {
   const secrets = [...new Set([...yml.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map(m => m[1]))];
-  assert.deepEqual(secrets, ["VYRE_RELEASE_SIGNING_KEY"]);
+  assert.deepEqual(secrets.sort(), ["ANDROID_SIDELOAD_KEYSTORE_B64", "ANDROID_SIDELOAD_KEYSTORE_PASSWORD", "ANDROID_SIDELOAD_KEY_ALIAS", "ANDROID_SIDELOAD_KEY_PASSWORD", "VYRE_RELEASE_SIGNING_KEY"]);
   assert.ok(!/minisign/i.test(yml), "no minisign step, key or public key reference");
   // Every repo path a step reads exists in the tree (release/notes is optional on a dry run; the publish path checks it itself).
   for (const f of ["release/min_from", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/lock-changes.mjs"]) assert.ok(yml.includes(f) ? fs.existsSync(path.join(REPO, f)) : true, `${f} is referenced and missing`);
@@ -93,4 +94,21 @@ test("release.yml: prepare refuses a release whose package, lockfile and plugin 
   const i = yml.indexOf('the tag says $version but package.json says $pkg');
   assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
   assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
+});
+
+test("release.yml: the Android APK is built unsigned by the reusable workflow for stable only, signed by a checked-in script in the release job before SHA256SUMS, and its secrets reach that one step", () => {
+  assert.match(yml, /\n  android:\n    needs: prepare\n    if: needs\.prepare\.outputs\.channel == 'stable'\n    uses: \.\/\.github\/workflows\/native-android\.yml/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, android\]/);
+  const add = yml.indexOf("- name: Sign the Android APK"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
+  assert.ok(add > 0 && add < sums, "the APK is in dist before the signed list is made");
+  const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
+  assert.ok(!/node -e|python|perl -e/.test(step), "no inline code in a step that sees the sideload key");
+  assert.match(step, /bash scripts\/native\/android-release\.sh/);
+  assert.equal([...yml.matchAll(/secrets\.ANDROID_SIDELOAD_KEYSTORE_B64/g)].length, 1, "the keystore secret is read in exactly one step");
+  assert.match(yml, /--installer \$android --pubkey/, "the gate checks the APK when it is there");
+  const droid = fs.readFileSync(path.join(REPO, ".github/workflows/native-android.yml"), "utf8");
+  const rc = droid.indexOf("  record-cert:");
+  assert.ok(rc > 0 && droid.slice(rc).includes("environment: release") && !/\n    environment:/.test(droid.slice(0, rc)), "only record-cert holds the environment, and nothing before it does");
+  assert.ok(!/secrets\./.test(droid.slice(0, rc)), "the build and dry-sign jobs read no secret");
+  for (const p of ["scripts/native", "docs/native", "apps/app/app.json"]) assert.ok(yml.includes(" " + p), `the approver's signing-path diff covers ${p}`);
 });

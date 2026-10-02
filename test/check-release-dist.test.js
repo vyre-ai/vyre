@@ -90,3 +90,20 @@ test("release dist: with --installer the Windows installer must be in the releas
   assert.ok(check(d, { installer: true }).some(p => /VyreSetup\.exe is not in the release/.test(p)));
   assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
 });
+
+test("release dist: with --android the signed APK must be in the release under both names, as one zip", t => {
+  const d = dist(t);
+  const problems = check(d, { android: true });
+  assert.ok(problems.some(p => /Vyre_0\.2\.0_android\.apk is not in the release/.test(p)));
+  assert.ok(problems.some(p => /Vyre-android\.apk is not in the release/.test(p)));
+  assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
+  /** Rewrite SHA256SUMS over everything in the folder. */
+  const resum = () => fs.writeFileSync(path.join(d, "SHA256SUMS"), fs.readdirSync(d).filter(f => !/^SHA256SUMS|^notes\.md$/.test(f)).sort().map(f => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(d, f))).digest("hex")}  ${f}\n`).join(""));
+  const apk = Buffer.concat([Buffer.from("PK"), Buffer.alloc(200000, 7)]);
+  fs.writeFileSync(path.join(d, "Vyre_0.2.0_android.apk"), apk); fs.writeFileSync(path.join(d, "Vyre-android.apk"), apk); resum();
+  assert.deepEqual(check(d, { android: true }), []);
+  fs.writeFileSync(path.join(d, "Vyre-android.apk"), Buffer.concat([apk, Buffer.from("x")])); resum();
+  assert.ok(check(d, { android: true }).some(p => /not the same bytes/.test(p)));
+  fs.writeFileSync(path.join(d, "Vyre-android.apk"), Buffer.from("tiny")); fs.writeFileSync(path.join(d, "Vyre_0.2.0_android.apk"), Buffer.from("tiny")); resum();
+  assert.ok(check(d, { android: true }).some(p => /not a zip of a plausible size/.test(p)));
+});

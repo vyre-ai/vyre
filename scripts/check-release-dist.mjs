@@ -3,6 +3,7 @@
 // or publishes anything; the rehearsal runs it on a dry run's artifact.
 //   node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--installer] [--pubkey <spki-base64>]
 //   --installer the Windows installer (Vyre_<version>_x64-setup.exe and VyreSetup.exe) must be in the release
+//   --android  the signed Android APK (Vyre_<version>_android.apk and Vyre-android.apk, the same bytes) must be in the release
 //   --pulled   the release carries images: release.json names them by digest and compose.yml pins them (required for a release that boxes pull)
 //   --pubkey   SHA256SUMS.sig must be a valid Ed25519 signature by this key over "vyre-release-sums\n" + SHA256SUMS (the format every updater reads)
 // Exit 0 when everything holds; otherwise every problem is printed, one per line, and the exit is 1.
@@ -16,7 +17,7 @@ const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0
 const REQUIRED = ["install-box.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
 
 /** @param {string} dir @param {{ pulled?: boolean, pubkey?: string }} [o] @returns {string[]} the problems */
-export function check(dir, { pulled = false, pubkey = "", installer = false } = {}) {
+export function check(dir, { pulled = false, pubkey = "", installer = false, android = false } = {}) {
   const problems = [];
   const read = f => { try { return fs.readFileSync(path.join(dir, f)); } catch { return null; } };
   for (const f of REQUIRED) if (read(f) === null) problems.push(`missing ${f}`);
@@ -41,6 +42,18 @@ export function check(dir, { pulled = false, pubkey = "", installer = false } = 
   if (installer) {
     const v = read("VERSION").toString("utf8").trim();
     for (const f of [`Vyre_${v}_x64-setup.exe`, "VyreSetup.exe"]) if (!listed.has(f)) problems.push(`the Windows installer ${f} is not in the release`);
+  }
+
+  // The Android APK, both names, listed in SHA256SUMS, one file's bytes under both names, and a zip (an APK is) that is not tiny.
+  if (android) {
+    const v = read("VERSION").toString("utf8").trim();
+    const names = [`Vyre_${v}_android.apk`, "Vyre-android.apk"];
+    for (const f of names) if (!listed.has(f)) problems.push(`the Android APK ${f} is not in the release`);
+    const [a, b] = names.map(read);
+    if (a && b) {
+      if (!a.equals(b)) problems.push("Vyre-android.apk and the versioned APK are not the same bytes");
+      if (a.length < 100000 || a.subarray(0, 2).toString("latin1") !== "PK") problems.push("the Android APK is not a zip of a plausible size");
+    }
   }
 
   // release.json and VERSION agree; the images are named by digest.
@@ -92,7 +105,7 @@ if (process.argv[1] && process.argv[1].endsWith("check-release-dist.mjs")) {
   const dir = args.find(a => !a.startsWith("--") && args[args.indexOf(a) - 1] !== "--pubkey");
   if (!dir) { console.error("usage: node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--pubkey <spki-base64>]"); process.exit(2); }
   const pubkey = args.includes("--pubkey") ? args[args.indexOf("--pubkey") + 1] : "";
-  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), pubkey });
+  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), android: args.includes("--android"), pubkey });
   for (const p of problems) console.error(`release-dist: ${p}`);
   if (problems.length) process.exit(1);
   console.log(`release-dist: ${dir} is what the updater needs`);
