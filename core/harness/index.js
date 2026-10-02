@@ -99,10 +99,10 @@ export default {
       if (typeof m.thread === "string" && m.thread) { if (String(session) !== m.thread) refuse(); return; }
       // No verified thread. The SessionStart brief only informs (a terminal resuming a live headless thread is warned), so it may name any session.
       // Anything else may not name a session that has its own verified channel: a live headless thread of Vyre's (its socket) or a bound terminal
-      // session (its key). A terminal session that is neither has no way to be verified, and keeps working.
+      // session (its key), or a terminal session with words queued for it (an unverified caller could drain them). A terminal session that is neither has no way to be verified, and keeps working.
       if (brief) return;
       const [claimed, o] = await Promise.all([ask("threads.claimed", { session: String(session) }), ask("threads.origin", { session: String(session) })]);
-      if ((claimed && claimed.headless) || (o && o.bound)) refuse();
+      if ((claimed && claimed.headless) || (o && (o.bound || o.queued))) refuse();
     };
 
     ctx.tool("harness.brief", {

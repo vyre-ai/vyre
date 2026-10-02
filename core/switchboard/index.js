@@ -3273,7 +3273,9 @@ export default {
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
         // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
         const bound = Boolean(sb.sessions.boundPid(String(i.session)));
-        return { session: String(i.session), known: Boolean(rec), bound, human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
+        // Words waiting for a terminal session are the residual stop-before-delete guards: an unverified caller must not drain them.
+        const queued = Number(/** @type {any} */ (sb.db.prepare("SELECT COUNT(*) n FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL").get(String(i.session))).n) > 0;
+        return { session: String(i.session), known: Boolean(rec), bound, queued, human, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
     });
     ctx.tool("threads.lineage", {

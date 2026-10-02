@@ -692,6 +692,23 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   assert.match((await tool("threads.send", { thread: crypto.randomUUID(), text: "hi" })).error.message, /no thread/);
 });
 
+/**
+ * Binds a terminal session to a real process named claude (the way its SessionStart hook does) and returns a caller for the session's
+ * own hooks: they carry its key, so harness.* sees it as the session itself. A bare hook may not name a session with words queued for it.
+ */
+async function bindTerminal(t, root, term) {
+  const bin = path.join(root, "bin-" + term.id);
+  fs.mkdirSync(bin);
+  fs.symlinkSync(process.execPath, path.join(bin, "claude"));
+  const { spawn } = await import("node:child_process");
+  const proc = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+  t.after(() => proc.kill());
+  await new Promise(r => setTimeout(r, 200));
+  const bound = await call("threads.bind", { session: term.id, pid: proc.pid }, { root, caller: "harness", timeout: 20_000 });
+  assert.ok(bound.data.key);
+  return (name, input) => call(name, input, { root, caller: "harness", timeout: 20_000, session: { id: term.id, key: bound.data.key } });
+}
+
 test("queued for a terminal session: the Stop hook hands it over, Claude answers in that session, and the reply comes back as the thread's", async t => {
   const { root, work, tool, launches, transcripts } = await boot(t);
   const s = sse(root);
@@ -699,46 +716,48 @@ test("queued for a terminal session: the Stop hook hands it over, Claude answers
   // A fake session "busy in a terminal": its transcript was written a second ago. Nothing here
   // is a real Claude Code session; the hooks are called the way hook.js calls them.
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
+  const hk = await bindTerminal(t, root, busy);
   const q = (await tool("threads.send", { thread: busy.id, text: "which branch are you on?", surface: "capsule" }, "capsule")).data;
   assert.equal(q.queued, true);
   const queued = await until(() => of(s.got, busy.id, "thread.queued")[0], "thread.queued");
   assert.deepEqual([queued.payload.text, queued.payload.surface], ["which branch are you on?", "capsule"]);
 
   // The session's current turn ends: Stop sends it back to Claude with the message.
-  const stop1 = (await tool("harness.stop", { session: busy.id, text: "Tests pass.", stop_hook_active: false }, "harness")).data;
+  const stop1 = (await hk("harness.stop", { session: busy.id, text: "Tests pass.", stop_hook_active: false })).data;
   assert.deepEqual(stop1, { decision: "block", reason: "Message from the user via the Capsule: which branch are you on?" });
   const sent = await until(() => of(s.got, busy.id, "thread.sent")[0], "thread.sent at hand-over");
   assert.deepEqual([sent.payload.text, sent.payload.via, sent.payload.surface], ["which branch are you on?", "stop", "capsule"]);
   assert.equal(of(s.got, busy.id, "thread.text").length, 0, "the turn before is not the reply");
 
   // Claude answers it; the next Stop carries that answer and lets the session rest.
-  const stop2 = (await tool("harness.stop", { session: busy.id, text: "On main.", stop_hook_active: true }, "harness")).data;
+  const stop2 = (await hk("harness.stop", { session: busy.id, text: "On main.", stop_hook_active: true })).data;
   assert.deepEqual(stop2, { ok: true });
   const reply = await until(() => of(s.got, busy.id, "thread.text")[0], "the reply");
   assert.deepEqual([reply.payload.text, reply.payload.done], ["On main.", true]);
   await until(() => of(s.got, busy.id, "thread.finished")[0], "thread.finished");
-  assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "later" }, "harness")).data, { ok: true }, "nothing more to hand over or reply to");
+  assert.deepEqual((await hk("harness.stop", { session: busy.id, text: "later" })).data, { ok: true }, "nothing more to hand over or reply to");
   assert.equal(of(s.got, busy.id, "thread.text").length, 1);
 
   // Idle in the terminal: the next prompt the user types there carries it.
   await tool("threads.send", { thread: busy.id, text: "also bump the version", surface: "capsule" }, "capsule");
-  const enrich = (await tool("harness.enrich", { session: busy.id, prompt: "run the tests", cwd: work }, "harness")).data;
+  const enrich = (await hk("harness.enrich", { session: busy.id, prompt: "run the tests", cwd: work })).data;
   assert.match(enrich.text, /^Message from the user via the Capsule: also bump the version\n\nThis was sent while the session was idle/);
-  assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "Bumped and tested." }, "harness")).data, { ok: true });
+  assert.deepEqual((await hk("harness.stop", { session: busy.id, text: "Bumped and tested." })).data, { ok: true });
   await until(() => of(s.got, busy.id, "thread.text").some(e => e.payload.text === "Bumped and tested."), "the second reply");
   assert.equal(launches().filter(l => l.argv.includes(busy.id)).length, 0, "no process was started for it");
 });
 
 test("threads.unqueue: a person takes back words not yet handed over; handed-over words stay; a model cannot", async t => {
-  const { work, tool, transcripts } = await boot(t);
+  const { root, work, tool, transcripts } = await boot(t);
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
+  const hk = await bindTerminal(t, root, busy);
   const a = (await tool("threads.send", { thread: busy.id, text: "first", surface: "capsule" }, "capsule")).data;
   const b = (await tool("threads.send", { thread: busy.id, text: "second", surface: "capsule" }, "capsule")).data;
   assert.ok(Number.isInteger(a.queued_id) && b.queued_id > a.queued_id, JSON.stringify(b));
   assert.match((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "mcp")).error.message, /only a person's surface|not available to mcp callers/);
   assert.deepEqual((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "capsule")).data, { unqueued: [a.queued_id] });
   // Only "second" is handed over at the Stop.
-  const stop = (await tool("harness.stop", { session: busy.id, text: "Done.", stop_hook_active: false }, "harness")).data;
+  const stop = (await hk("harness.stop", { session: busy.id, text: "Done.", stop_hook_active: false })).data;
   assert.equal(stop.reason, "Message from the user via the Capsule: second");
   const late = (await tool("threads.unqueue", { thread: busy.id, queued: b.queued_id }, "capsule")).data;
   assert.deepEqual(late.unqueued, []);
