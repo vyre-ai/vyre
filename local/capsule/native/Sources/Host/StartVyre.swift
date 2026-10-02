@@ -73,13 +73,23 @@ public struct BundledSetup: Equatable {
         return e
     }
 
+    /// The whole environment the installer runs with, and nothing inherited: a same-user process can `launchctl setenv` VYRE_BOX_URL,
+    /// VYRE_CORE_BASE, VYRE_NODE_SHA256, VYRE_INSTALL_MAIN, PATH and the like before Lumen starts, and the installer honours them.
+    public func scrubbedEnvironment(_ from: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var e = environment
+        e["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        for k in ["HOME", "USER", "LANG"] { if let v = from[k], !v.isEmpty { e[k] = v } }
+        return e
+    }
+
     /// Nil when this setup is safe to run as the person's install (it ends with one sudo), else the reason it is not. The files must be
     /// ordinary (no links) and writable by nobody but the person. Inside the app, the app's own signature must still verify, so a file
-    /// changed after the build refuses to run. (An ad hoc signature can be redone by whoever changed the file; a Developer ID one cannot
-    /// be redone without that certificate, which is why the release is signed with one.)
+    /// changed after the build refuses to run. This catches a damaged or half-changed app, not a deliberate swap: 0.2.x is self-signed, and an
+    /// ad hoc signature can be redone by whoever changed the file. Nothing inside a bundle the person's own user can write can anchor trust;
+    /// a root-owned copy or a Developer ID requirement (0.2.5) would. vyre-sudo's pins limit what that file can ask sudo to run.
     public func problem(bundle: String? = Bundle.main.bundlePath, runner: (String) -> Bool = BundledSetup.codesignOK) -> String? {
         let fm = FileManager.default
-        for name in ["install-mac-server.sh", "vyre-sudo", "askpass"] + (nodeTgz.map { [($0 as NSString).lastPathComponent] } ?? []) {
+        for name in ["install-mac-server.sh", "vyre-sudo", "vyre-sudo-check", "askpass"] + (nodeTgz.map { [($0 as NSString).lastPathComponent] } ?? []) {
             let path = dir + "/" + name
             guard let a = try? fm.attributesOfItem(atPath: path) else { return "\(name) is missing from the setup" }
             if a[.type] as? FileAttributeType != .typeRegular { return "\(name) is not an ordinary file" }
@@ -149,7 +159,7 @@ extension CapsuleModel {
                 return
             }
             Task { @MainActor in
-                let code = await self.exec(run, cli: ["/bin/sh", setup.script], args: setup.args, frames: false, errorsAlways: true, environment: setup.environment)
+                let code = await self.exec(run, cli: ["/bin/sh", setup.script], args: setup.args, frames: false, errorsAlways: true, environment: setup.scrubbedEnvironment(), replaceEnvironment: true)
                 run.finish(code)
                 if code == 0 { self.vyred.follower.lookNow() }
             }

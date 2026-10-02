@@ -167,11 +167,15 @@ let startVyreSuite = Suite("start vyre") { t in
         echo "  ok  args: $*"
         echo "  ok  sudo: $VYRE_SUDO"
         echo "  ok  node: $VYRE_NODE_URL"
+        echo "  ok  box: ${VYRE_BOX_URL:-unset}"
+        echo "  ok  path: $PATH"
         echo "vyre: pretend failure" >&2
         exit 0
         """
         FileManager.default.createFile(atPath: dir + "/install-mac-server.sh", contents: Data(body.utf8), attributes: [.posixPermissions: 0o755])
         FileManager.default.createFile(atPath: dir + "/node-v22.0.0-darwin-arm64.tar.gz", contents: Data("x".utf8))
+        setenv("VYRE_BOX_URL", "https://evil.example/", 1)
+        defer { unsetenv("VYRE_BOX_URL") }
         MainActor.assumeIsolated {
             let m = offlineModel(v, cli: nil)
             m.setupOverride = BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": dir], resources: nil)
@@ -182,9 +186,18 @@ let startVyreSuite = Suite("start vyre") { t in
             t.ok(text.contains("args: --yes"), text)
             t.ok(text.contains("sudo: \(dir)/vyre-sudo"), "the dialog sudo is the one used")
             t.ok(text.contains("node: file://\(dir)/node-v22.0.0-darwin-arm64.tar.gz"), "the bundled Node, not a download")
+            t.ok(text.contains("box: unset"), "a variable the person's session set (VYRE_BOX_URL) does not reach the installer")
+            t.ok(text.contains("path: /usr/bin:/bin:/usr/sbin:/sbin"), "the installer's PATH is the system's")
             t.eq(m.commandRun?.exit, 0)
             m.vyred.follower.stop()
         }
+    }
+
+    t.test("the installer's environment is built from nothing: the system PATH, the person's HOME USER LANG, and the two setup variables") {
+        let s = BundledSetup(dir: "/x/setup", nodeTgz: "/x/setup/node-v1-darwin-arm64.tar.gz", args: ["--yes"])
+        let e = s.scrubbedEnvironment(["HOME": "/Users/a", "USER": "a", "LANG": "en_US.UTF-8", "VYRE_BOX_URL": "evil", "PATH": "/evil", "VYRE_INSTALL_MAIN": "/evil"])
+        t.eq(e, ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "HOME": "/Users/a", "USER": "a", "LANG": "en_US.UTF-8", "VYRE_SUDO": "/x/setup/vyre-sudo",
+                 "VYRE_NODE_URL": "file:///x/setup/node-v1-darwin-arm64.tar.gz"])
     }
 
     t.test("offline with no vyre and no bundled setup: the old words, nothing is run") {
@@ -204,7 +217,7 @@ let startVyreSuite = Suite("start vyre") { t in
 
     t.test("the bundled setup refuses to run when a file is a link, is writable by others, or the app's signature no longer verifies") {
         let dir = vyScratch("setup-safe-\(UUID().uuidString.prefix(6))")
-        for n in ["install-mac-server.sh", "vyre-sudo", "askpass"] {
+        for n in ["install-mac-server.sh", "vyre-sudo", "vyre-sudo-check", "askpass"] {
             FileManager.default.createFile(atPath: dir + "/" + n, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
         }
         let s = BundledSetup(dir: dir, nodeTgz: nil, args: ["--yes"])

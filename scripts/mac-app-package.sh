@@ -9,7 +9,7 @@
 #
 # The app carries what it needs to set Vyre up with no terminal and no Node on the Mac: in Contents/Resources/setup,
 # scripts/install-mac-server.sh, the pinned Node tarball for this architecture (VYRE_NODE_TGZ, checked here against the
-# checksum pinned inside that script), and the two small sudo helpers. They sit inside the app's signature.
+# checksum pinned inside that script), and the sudo helpers (vyre-sudo, which runs only the installer's root step, pinned by the generated vyre-sudo-check). They sit inside the app's signature.
 #
 # Signing is the person's, and optional. With the Developer ID secrets in the environment the app is signed
 # with the hardened runtime and notarized and stapled; with none, it stays signed with the identity build.sh
@@ -39,7 +39,8 @@ nodev="$(sed -n 's/^NODE_VERSION=//p' "$installer" | head -1)"
 [ "$(shasum -a 256 "$VYRE_NODE_TGZ" | cut -d' ' -f1)" = "$want" ] || { echo "the Node tarball does not match the checksum pinned in install-mac-server.sh" >&2; exit 1; }
 cp "$VYRE_NODE_TGZ" "$setup/node-$nodev-darwin-$na.tar.gz"
 cp "$installer" "$setup/install-mac-server.sh"; cp "$here/mac-app/askpass" "$here/mac-app/vyre-sudo" "$setup/"
-chmod 755 "$setup/install-mac-server.sh" "$setup/askpass" "$setup/vyre-sudo"
+sh "$here/mac-app/make-pins.sh" "$arch" "$setup/vyre-sudo-check"
+chmod 755 "$setup/install-mac-server.sh" "$setup/askpass" "$setup/vyre-sudo" "$setup/vyre-sudo-check"
 printf '{"node":"%s","arch":"%s","nodeSha256":"%s"}\n' "$nodev" "$na" "$want" > "$setup/setup.json"
 
 signed=adhoc; notarized=no

@@ -89,6 +89,7 @@ jobs:
           test -d "$app/Contents/MacOS" && echo "dmg holds Vyre Lumen.app"
           ls -l "$app/Contents/Resources/setup"; cat "$app/Contents/Resources/setup/setup.json"
           test -x "$app/Contents/Resources/setup/install-mac-server.sh"
+          test -x "$app/Contents/Resources/setup/vyre-sudo-check"
           codesign -dv "$app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
           hdiutil detach "$mnt" >/dev/null
       - name: Status
