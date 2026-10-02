@@ -78,6 +78,16 @@ test("sdk options: the same launch the CLI runner turns into flags", () => {
   assert.deepEqual([r.tools, r.strictMcpConfig, r.settingSources, r.extraArgs], [[], true, [], undefined]);
 });
 
+test("optionsFor: the Agent SDK loads only Vyre's own MCP server, strictly, with or without the plugin", () => {
+  const base = { id: "11111111-1111-4111-8111-111111111111", cwd: "/w", env: {} };
+  const withPlugin = optionsFor({ ...base, plugin: "/h" });
+  assert.equal(withPlugin.strictMcpConfig, true);
+  assert.deepEqual(withPlugin.mcpServers, { vyre: { type: "stdio", command: "node", args: ["/h/mcp/run.js"] } });
+  const bare = optionsFor({ ...base });
+  assert.equal(bare.strictMcpConfig, true);
+  assert.deepEqual(bare.mcpServers, {});
+});
+
 test("modes: an answer never hands back bypassPermissions; only a person picks it (Doesn't ask)", () => {
   assert.deepEqual(MODES, ["default", "acceptEdits", "plan"]);
   assert.deepEqual(PERSON_MODES, ["default", "acceptEdits", "plan", "bypassPermissions"]);
@@ -1383,6 +1393,17 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp", {})).error?.code, "denied");
     assert.equal((await w.d.registry.call("agents.ask", { agent: "kit", text: "hi" }, "mcp", {})).error?.code, "denied");
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined, "the verified assistant");
+  });
+
+  test(`${driver}: a session starts strict: Vyre's own MCP server only, so none of the account's claude.ai connectors (Gmail, Drive, Docs) is in its tools`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const l = w.launches().at(-1);
+    assert.ok(l.argv.includes("--strict-mcp-config"), "the launch is strict");
+    assert.deepEqual(l.connectors, [], "what the strict launch leaves of a logged-in account's connectors is nothing");
+    const cfg = JSON.parse(l.argv[l.argv.indexOf("--mcp-config") + 1]);
+    assert.deepEqual(Object.keys(cfg.mcpServers), ["vyre"]);
   });
 
   test(`${driver}: a GitHub project's session gets its commit identity and hooks in its environment on every launch and resume (github.session.env), and only those keys`, { skip }, async t => {

@@ -20,12 +20,12 @@
 //   --resume <id> for an existing one; --plugin-dir <harness> so every thread loads Vyre.
 
 import { spawnSession, killGroup } from "../sessions/spawn.js";
+import { vyreMcpConfig } from "../sessions/mcp-config.js";
 
 /**
  * The command line for a headless session. `system` is the composed system prompt (ADR 0030):
  * appended to Claude Code's own, or replacing it; without it, `append` is appended as before.
- * `tools: "none"` is `--tools ""` (no built-in tools) and `--strict-mcp-config` with no config
- * (no MCP servers). `settings: false` is `--setting-sources ""`: none of the user's settings,
+ * `tools: "none"` is `--tools ""` (no built-in tools). Every session is `--strict-mcp-config` with Vyre's own server only (vyreMcpConfig). `settings: false` is `--setting-sources ""`: none of the user's settings,
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
@@ -40,7 +40,11 @@ export function argsFor(o) {
   // A rewind: resume only up to this entry, as Claude Code's double Esc does (the flag the SDK passes).
   if (o.resumeAt && (o.resume || o.forkFrom)) a.push("--resume-session-at", o.resumeAt);
   for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
-  if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
+  if (o.tools === "none") a.push("--tools", "");
+  // Only Vyre's own MCP server, never what the account or the machine adds: a logged-in Claude loads its claude.ai connectors (Gmail, Drive, Docs, Slack...) into every
+  // session, and those act as the person outside Vyre's Gate. --strict-mcp-config ignores every other source (the account's connectors, user and project servers,
+  // other plugins' servers), and the plugin's own .mcp.json with them, so Vyre's server is named here.
+  a.push("--strict-mcp-config", "--mcp-config", JSON.stringify(vyreMcpConfig(o.plugin)));
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
   if (o.effort) a.push("--effort", o.effort);
