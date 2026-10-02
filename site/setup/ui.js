@@ -15,7 +15,7 @@ export function h(doc, tag, attrs, ...kids) {
 }
 
 /** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
- *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
+ *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, openAiKey: (kind: string) => void, submitAiKey: (f: { kind: string, key: string, base_url?: string, model?: string }) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
  *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
  *   openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void }} Actions */
@@ -198,11 +198,29 @@ export function render(s, ctx) {
 
   // ---- ai: each provider's own sign-in ----
   const providers = [["claude", "Claude"], ["codex", "ChatGPT (Codex)"], ["grok", "Grok"]];
-  const aiKey = s.stage === "ai" ? "a:" + s.ai.accounts.map(a => `${a.id}/${a.step}/${a.url}/${a.code}/${a.error}`).join("|") : "none";
+  const keyKinds = [["openai-compatible", "OpenAI-compatible"], ["anthropic-compatible", "Anthropic-compatible"], ["openrouter", "OpenRouter"]];
+  const aiKey = s.stage === "ai" ? "a:" + s.ai.accounts.map(a => `${a.id}/${a.step}/${a.url}/${a.code}/${a.error}`).join("|") + `|k:${s.ai.keyKind}/${s.ai.keyBusy}` : "none";
   region("ai", aiKey, () => s.stage !== "ai" ? [] : [
     el("div", { class: "providers" }, ...providers.map(([id, label]) => button(`Sign in with ${label}`, "secondary", () => actions.startAi(id)))),
+    el("p", { class: "hint" }, "Or use an API key instead of signing in:"),
+    el("div", { class: "providers" }, ...keyKinds.map(([id, label]) => button(`${label} key`, s.ai.keyKind === id ? "primary" : "secondary", () => actions.openAiKey(id)))),
+    ...(s.ai.keyKind ? [(() => {
+      const kind = s.ai.keyKind, custom = kind !== "openrouter";
+      const field = (name, label, attrs = {}) => el("input", { type: "text", class: "name", name, autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": label, placeholder: label, ...attrs });
+      // type password and autocomplete off: the key is typed once, read once at the click, and never kept in the page's state.
+      const key = field("apikey", "API key", { type: "password", maxlength: "400", autocomplete: "new-password" });
+      const base = custom ? field("base_url", kind === "anthropic-compatible" ? "Address (empty for api.anthropic.com)" : "Address (empty for api.openai.com/v1)", { maxlength: "300", inputmode: "url" }) : null;
+      const model = kind === "openai-compatible" ? field("model", "Model to use (optional)", { maxlength: "100" }) : null;
+      const go = button(s.ai.keyBusy ? "Checking" : "Check and save", "primary", () => { actions.submitAiKey({ kind, key: /** @type {any} */ (key).value, base_url: base ? /** @type {any} */ (base).value : "", model: model ? /** @type {any} */ (model).value : "" }); /** @type {any} */ (key).value = ""; });
+      if (s.ai.keyBusy) go.setAttribute("disabled", "");
+      return el("div", { class: "account", "data-role": "key-form" },
+        el("p", { class: "row-title" }, (keyKinds.find(k => k[0] === kind) || [0, kind])[1]),
+        el("div", { class: "field" }, key), base ? el("div", { class: "field" }, base) : null, model ? el("div", { class: "field" }, model) : null,
+        el("p", { class: "hint" }, "Your server checks the key with one small request, keeps it in its vault, and never shows it again."),
+        el("div", { class: "actions" }, go));
+    })()] : []),
     ...s.ai.accounts.map(a => {
-      const label = (providers.find(p => p[0] === a.provider) || [0, a.provider])[1];
+      const label = ((providers.concat(keyKinds)).find(p => p[0] === a.provider) || [0, a.provider])[1];
       const kids = [el("p", { class: "row-title" }, label)];
       if (a.step === "starting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Starting the sign-in"));
       if (a.step === "code" || a.step === "url") {
@@ -214,8 +232,8 @@ export function render(s, ctx) {
           kids.push(el("div", { class: "field" }, input), el("div", { class: "actions" }, go));
         }
       }
-      if (a.step === "waiting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Finishing the sign-in"));
-      if (a.step === "done") kids.push(el("p", { class: "hint" }, `${label} is signed in.`));
+      if (a.step === "waiting") kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), a.id.startsWith("key-") ? "Checking the key" : "Finishing the sign-in"));
+      if (a.step === "done") kids.push(el("p", { class: "hint" }, a.id.startsWith("key-") ? `${label} key saved.` : `${label} is signed in.`));
       if (a.error) kids.push(el("p", { class: "warn", role: "alert" }, a.error));
       return el("div", { class: "account" }, ...kids);
     }),

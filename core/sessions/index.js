@@ -16,7 +16,7 @@
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
 import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, KINDS as ACCOUNT_KINDS } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_PRIVACY_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, endpointOk, KINDS as ACCOUNT_KINDS } from "./accounts.js";
 import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
@@ -90,6 +90,7 @@ export default {
     const db = ctx.store.db;
     // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
+    try { db.prepare("SELECT base_url, model FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_ENDPOINT_MIGRATION); }
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
     /** Does the vault hold an item by this name? null when the vault cannot say (not running, locked). Never its value. */
@@ -208,18 +209,22 @@ export default {
     // the tiny core/providers module since a tool name must start with its own module's name
     // (core/modules/index.js's validation) and "providers" is not this module's name; this is the
     // internal snapshot that module calls through ctx.call.
-    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }];
+    const PROVIDERS = [{ id: "claude", label: "Claude" }, { id: "codex", label: "Codex" }, { id: "grok", label: "Grok" }, { id: "openrouter", label: "OpenRouter" }, { id: "openai-compatible", label: "OpenAI-compatible" }];
     // Codex (through codex-acp) and Grok (its own ACP mode) run on the one generic ACP driver, each
     // with strictest-approval flags at every start and its own sign-in in the account's HOME.
     const acpSessions = provider => ({
       get: id => { const r = /** @type {any} */ (db.prepare("SELECT agent_session FROM sessions_acp WHERE thread = ? AND provider = ?").get(String(id), provider)); return r ? String(r.agent_session) : undefined; },
       set: (id, a) => { db.prepare("INSERT INTO sessions_acp (thread, provider, agent_session) VALUES (?,?,?) ON CONFLICT(thread) DO UPDATE SET agent_session = excluded.agent_session").run(String(id), provider, String(a)); },
     });
+    // The plain API-key chat driver, its conversation kept here so a resume carries on: OpenRouter, and "OpenAI-compatible" (any chat endpoint the person gives a
+    // key and an address for, on the setup screen). Both share the one store, keyed by thread.
+    const chatStore = {
+      get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
+      set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } };
     const drivers = { codex: codexProvider({ sessions: acpSessions("codex") }), grok: grokProvider({ sessions: acpSessions("grok") }),
-      // The last rung: a plain API-key driver, its conversation kept here so a resume carries on.
-      openrouter: openrouterProvider({ ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: {
-        get: id => { const r = /** @type {any} */ (db.prepare("SELECT messages FROM sessions_openrouter WHERE thread = ?").get(String(id))); try { return r ? JSON.parse(String(r.messages)) : undefined; } catch { return undefined; } },
-        set: (id, m) => { db.prepare("INSERT INTO sessions_openrouter (thread, messages) VALUES (?,?) ON CONFLICT(thread) DO UPDATE SET messages = excluded.messages").run(String(id), JSON.stringify(m)); } } }) };
+      // The last rung: a plain API-key driver.
+      openrouter: openrouterProvider({ ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: chatStore }),
+      "openai-compatible": openrouterProvider({ id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }) };
     for (const [name, driver] of Object.entries(drivers)) ctx.provider(name, driver);
     /** The models a provider's accounts last reported (most recent first wins), and the plan one account reported. */
     const providerModels = provider => {
@@ -381,6 +386,47 @@ export default {
       const acctHome = usesSpawner() ? path.join(process.env.VYRE_ACCOUNTS_HOME || "/home/acct", String(account.uid)) : /** @type {string} */ (home);
       return spawnSession(bin, args, { cwd: acctHome, env: { PATH: process.env.PATH, ...(home ? { HOME: home } : {}), TERM: "dumb", NO_COLOR: "1", BROWSER: "none" }, ...(usesSpawner() && account.uid != null ? { account: { uid: account.uid, shared: false } } : {}) });
     } });
+    // ---- an API key instead of a login: "Sign in to your AI" on the setup screen takes one of three kinds. The key goes into the Vault (never shown again), is checked with
+    // one cheap read-only call to the address it will be used with, and becomes an api-key account bound to that address.
+    const KEY_KINDS = /** @type {Record<string, { provider: string, label: string, base: string|null, custom: boolean }>} */ ({
+      "openai-compatible": { provider: "openai-compatible", label: "OpenAI-compatible", base: "https://api.openai.com/v1", custom: true },
+      "anthropic-compatible": { provider: "claude", label: "Anthropic-compatible", base: "https://api.anthropic.com", custom: true },
+      openrouter: { provider: "openrouter", label: "OpenRouter", base: "https://openrouter.ai/api/v1", custom: false },
+    });
+    /** One cheap, read-only call that proves the key works at the address (no model is run, nothing is spent). Redirects are refused so the key never follows one elsewhere. */
+    const checkKey = async (/** @type {string} */ kind, /** @type {string} */ base, /** @type {string} */ key) => {
+      const doFetch = globalThis.fetch;
+      const url = kind === "anthropic-compatible" ? `${base.replace(/\/v1$/, "")}/v1/models` : kind === "openrouter" ? "https://openrouter.ai/api/v1/auth/key" : `${base}/models`;
+      const headers = kind === "anthropic-compatible" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { authorization: `Bearer ${key}` };
+      const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 15_000);
+      try {
+        const r = await doFetch(url, { headers, redirect: "error", signal: ac.signal });
+        if (r.status === 401 || r.status === 403) throw Object.assign(new Error("the service refused that key"), { code: "bad_input" });
+        if (!r.ok) throw Object.assign(new Error(`the service answered ${r.status} when the key was checked`), { code: "bad_input" });
+      } catch (e) {
+        if (/** @type {any} */ (e).code === "bad_input") throw e;
+        throw Object.assign(new Error(/** @type {any} */ (e).name === "AbortError" ? "the service did not answer in time" : "could not reach the service to check the key"), { code: "bad_input" });
+      } finally { clearTimeout(timer); }
+    };
+    tool("sessions.accounts.key", "Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault and never returned or shown again; the account is bound to its address. Only the person (or their own words) adds one.",
+      { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str } },
+      async (i, meta) => {
+        askedOnly(meta, "Adding an API key");
+        const k = KEY_KINDS[String(i.kind)];
+        if (!k) throw Object.assign(new Error("kind is openai-compatible, anthropic-compatible or openrouter"), { code: "bad_input" });
+        const key = String(i.key || "").trim();
+        if (key.length < 12 || key.length > 400 || /[\s\u0000-\u001f\u007f]/.test(key)) throw Object.assign(new Error("that does not look like an API key"), { code: "bad_input" });
+        const base = k.custom ? endpointOk(i.base_url || k.base) : /** @type {string} */ (k.base);
+        if (!k.custom && i.base_url) throw Object.assign(new Error("OpenRouter has one address; leave base_url out"), { code: "bad_input" });
+        await checkKey(String(i.kind), base, key);
+        const id = crypto.randomBytes(6).toString("hex");
+        const item = `ai-key-${k.provider}-${id}`;
+        const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, grants: ["threads", "agents"] });
+        if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
+        const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
+        const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
+        return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
+      });
     tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
       { type: "object", properties: { provider: str, label: str, account: str, flow: str, code: str } },
       async (i, meta) => {

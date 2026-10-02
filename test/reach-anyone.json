@@ -981,6 +981,10 @@
    "module": "sessions",
    "reason": "askedOnly(): a non-person (the verified assistant, or on meta.asked) binds only to the project the request came from, never an agent, a default or '*', and never finishes a pending account; the person's surface sets anything wider and confirms any pending account"
   },
+  "sessions.accounts.key": {
+   "module": "sessions",
+   "reason": "askedOnly(): runs for a person's own surface (the setup page's channel is one), or on meta.asked; an agent, the assistant or a module is refused with not_asked (no assistant allowance: a key is a credential). The key is checked with one cheap call, stored in the Vault by the sessions module and never returned; the account is bound to its address, which must be https or this machine and carry no login."
+  },
   "sessions.accounts.list": {
    "module": "sessions",
    "reason": "read-only (an agent sees accounts without their vault item names)"

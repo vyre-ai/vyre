@@ -346,6 +346,11 @@ function stepsBox(script = {}) {
       f.polls++;
       return f.provider === "claude" ? { step: f.done ? "done" : "url" } : { step: f.polls >= 2 ? "done" : "code" };
     }
+    if (tool === "sessions.accounts.key") {
+      box.calls.push([tool, input]);
+      if (input.key === "sk-refused-key-123456") throw new Error("the service refused that key: sk-refused-key-123456");
+      return { account: "acct1", provider: input.kind, checked: true };
+    }
     if (tool === "names.status") { box.calls.push([tool, input]); if (!st.namesPhase) throw Object.assign(new Error("no such tool"), { status: 404 }); return { name: "harlow-legal-server", phase: st.namesPhase, why: st.namesWhy || null }; }
     if (tool === "relay.setup.claim-token") { box.calls.push([tool, input]); if (st.claimFails) throw new Error("this setup session has ended"); return { challenge: crypto.randomBytes(32).toString("base64url"), exp: Date.now() + (st.claimMs ?? 120_000), route: "r".repeat(26) }; }
     if (tool === "relay.pair.ticket") { box.calls.push([tool, input]); if (st.ticketMade) throw Object.assign(new Error("the setup page has already made its one pairing ticket"), { code: "denied" }); st.ticketMade = true; return { ticket: "AAECAwQFBgc", expiresAt: Date.now() + (st.ticketMs ?? 300_000), connected: true }; }
@@ -999,4 +1004,34 @@ test("the setup page's own code makes no request to a private address: its only 
     assert.ok(!/XMLHttpRequest|sendBeacon|new EventSource/.test(text), `${f} opens a request of another kind`);
     assert.ok(!/["'`](?:https?|wss?):\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1)/.test(text.replace(/\/\/.*$/gm, "")), `${f} names a private address`);
   }
+});
+
+test("steps: an API key is sent once, never kept in the page's state, and an error never carries it", async t => {
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  flow.continueToAi();
+  flow.openAiKey("nope");
+  assert.equal(flow.state.ai.keyKind, null, "only the three kinds open");
+  flow.openAiKey("openai-compatible");
+  assert.equal(flow.state.ai.keyKind, "openai-compatible");
+  flow.openAiKey("openai-compatible");
+  assert.equal(flow.state.ai.keyKind, null, "the same kind again closes it");
+  flow.openAiKey("openai-compatible");
+  await flow.submitAiKey({ kind: "openai-compatible", key: "short" });
+  assert.equal(flow.state.ai.accounts.at(-1).step, "failed");
+  assert.ok(!box.calls.some(c => c[0] === "sessions.accounts.key"), "a key that cannot be one never leaves the page");
+  await flow.submitAiKey({ kind: "openai-compatible", key: "sk-refused-key-123456", base_url: "https://llm.example.org/v1" });
+  const failed = flow.state.ai.accounts.at(-1);
+  assert.equal(failed.step, "failed");
+  assert.ok(!JSON.stringify(flow.state).includes("sk-refused-key-123456"), "neither the state nor the error holds the key");
+  assert.equal(flow.state.ai.keyBusy, false);
+  await flow.submitAiKey({ kind: "openai-compatible", key: "sk-good-key-1234567890", base_url: "https://llm.example.org/v1", model: "m1" });
+  const call = box.calls.filter(c => c[0] === "sessions.accounts.key").at(-1);
+  assert.deepEqual(call[1], { kind: "openai-compatible", key: "sk-good-key-1234567890", base_url: "https://llm.example.org/v1", model: "m1" });
+  assert.equal(flow.state.ai.accounts.at(-1).step, "done");
+  assert.equal(flow.state.ai.keyKind, null, "the form closes on success");
+  assert.ok(!JSON.stringify(flow.state).includes("sk-good-key-1234567890"), "the saved key is not in the state");
+  flow.continueToTailscale();
+  assert.equal(flow.state.stage, "tailscale", "a saved key counts as one AI to go on with");
+  flow.stop();
 });

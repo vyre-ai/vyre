@@ -20,12 +20,12 @@ const IDLE_MS = 60_000;                // no data for this long ends the turn
 /** https, or plain http to this machine only (a test double). @param {string} u */
 const okBase = u => { try { const x = new URL(u); return x.protocol === "https:" || (x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname)); } catch { return false; } };
 
-/** @param {{ baseUrl?: string, idleMs?: number, model?: string, fetch?: typeof fetch, store?: { get(id: string): any[]|undefined, set(id: string, messages: any[]): void } }} [entry] */
+/** @param {{ id?: string, keyEnv?: string, baseUrl?: string, idleMs?: number, model?: string, fetch?: typeof fetch, store?: { get(id: string): any[]|undefined, set(id: string, messages: any[]): void } }} [entry] */
 export function openrouterProvider(entry = {}) {
   const memory = new Map();
   const store = entry.store || { get: id => memory.get(id), set: (id, m) => { memory.set(id, m); } };
   return {
-    id: "openrouter",
+    id: entry.id || "openrouter",
     driver: "http",
     capabilities: { streaming: true, resume: true, interrupt: true, modes: false, steering: false, usage: "detailed", rewind: false, process: false, tools: false },
     /** @param {any} o */
@@ -36,10 +36,13 @@ export function openrouterProvider(entry = {}) {
 /** @param {any} entry @param {any} store @param {any} o */
 function runChat(entry, store, o) {
   const doFetch = entry.fetch || globalThis.fetch;
-  const key = String((o.env && o.env.OPENROUTER_API_KEY) || "");
-  const base = String(entry.baseUrl || BASE).replace(/\/+$/, "");
-  // The model is the one the person chose (a launch's, or the routing entry's): never a default that spends on their behalf.
-  const model = String(o.model || entry.model || "");
+  const key = String((o.env && o.env[entry.keyEnv || "OPENROUTER_API_KEY"]) || "");
+  // An account may name its own endpoint and model (the setup screen's "OpenAI-compatible": a key plus a base URL): https, or this machine only; anything else
+  // is ignored here, so a bad value can never send the key somewhere else.
+  const acctBase = o.env && o.env.VYRE_API_BASE_URL && okBase(String(o.env.VYRE_API_BASE_URL)) ? String(o.env.VYRE_API_BASE_URL) : "";
+  const base = String(acctBase || entry.baseUrl || BASE).replace(/\/+$/, "");
+  // The model is the one the person chose (a launch's, or the routing entry's, or the one saved with the account): never a default that spends on their behalf.
+  const model = String(o.model || (o.env && o.env.VYRE_API_MODEL) || entry.model || "");
   /** @type {{ role: string, content: string }[]} */
   const history = o.resume ? [...(store.get(o.id) || [])] : [];
   const queue = /** @type {string[]} */ ([]);

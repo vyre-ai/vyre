@@ -2557,6 +2557,7 @@ export default {
       codex: { "api-key": "OPENAI_API_KEY" },
       grok: { "api-key": "XAI_API_KEY" },
       openrouter: { "api-key": "OPENROUTER_API_KEY" },
+      "openai-compatible": { "api-key": "OPENAI_COMPAT_API_KEY" },
     });
     const accountEnv = async (/** @type {any} */ a) => {
       if (a.kind === "login") return { auth: "subscription", env: {} };
@@ -2564,7 +2565,12 @@ export default {
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
       const v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads (vyre vault grant ${a.vault_item} threads)`), { code: "no_credential" });
-      return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v) } };
+      // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
+      // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
+      const own = {};
+      if (a.base_url) { if (a.provider === "claude") own.ANTHROPIC_BASE_URL = String(a.base_url); else own.VYRE_API_BASE_URL = String(a.base_url); }
+      if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model);
+      return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v), ...own } };
     };
     // On a box the spawner puts each account in its own uid's HOME. Elsewhere a provider that
     // keeps its login in HOME (not Claude, whose transcripts Vyre reads from the user's own) gets
