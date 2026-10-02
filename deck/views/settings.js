@@ -13,7 +13,7 @@
 // per group under "Sessions and Claude"; ?key=<key> scrolls to one and highlights it.
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules, canProve, on } from "../js/api.js";
+import { attempt, modules, canProve, on, hasTool } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { personAvatar, readSystem } from "../js/avatars.js";
@@ -625,7 +625,10 @@ async function drawDevices(el, ctx) {
   if (!ctx.alive()) return;
   // #65: every device has a name the person can change here; a rename anywhere (device.renamed) changes it on screen.
   /** @type {Map<string, any>} */ const fields = new Map();
+  // Never a control that errors: a name is editable only when this server has the tool that saves it.
+  const canRename = { relay: await hasTool("relay.devices.rename"), mac: await hasTool("link.rename"), server: await hasTool("system.rename"), computer: false };
   const nameField = (/** @type {"relay"|"mac"|"server"|"computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name, /** @type {boolean} */ allowEmpty = false) => {
+    if (!canRename[kind]) return h("span", { class: "rn-name" }, name);
     const f = renameField({ name, allowEmpty, label: "Rename", save: async n => { const c = renameCall(kind, id, n); return attempt(c.tool, c.input); } });
     fields.set(kind + ":" + id, f);
     return f;

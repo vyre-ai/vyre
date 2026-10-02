@@ -15,7 +15,7 @@
 // is picked at render and redrawn when the width crosses 760 px; the desktop list is unchanged.
 
 import { h, put, link, head, empty, PHONE_QUERY } from "../js/dom.js";
-import { attempt, on, snapshot } from "../js/api.js";
+import { attempt, on, snapshot, hasTool } from "../js/api.js";
 import { renameField } from "../js/rename-field.js";
 import { pageHeader } from "../js/page-header.js";
 import { icon } from "../js/icons.js";
@@ -933,7 +933,11 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
       spec("Processor", `${c.cpus ?? "?"} core${c.cpus === 1 ? "" : "s"}`),
       spec("Memory", `${c.memory_gb ?? "?"} GB`),
       spec("Screen", size.w ? `${size.w} × ${size.h}` : "?"),
-      spec("Name", renameField({ name: c.label || `${who}'s computer`, label: "Rename computer", save: async n => attempt("computers.rename", { computer: who, name: n }) })),
+      (() => { // The pencil appears only when this server has computers.rename.
+        const dd = h("span", { class: "rn-name" }, c.label || `${who}'s computer`);
+        hasTool("computers.rename").then(yes => { if (yes) dd.replaceWith(renameField({ name: c.label || `${who}'s computer`, label: "Rename computer", save: async n => attempt("computers.rename", { computer: who, name: n }) })); });
+        return spec("Name", dd);
+      })(),
       spec("Watching", c.viewers ? `${c.viewers} ${c.viewers === 1 ? "screen" : "screens"}` : "Nobody", c.paused ? `${who}'s hands are paused.` : null)),
     h("div", { class: "ab-row-acts ab-comp-acts" }, limits, restart), box, status);
 }
