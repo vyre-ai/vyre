@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { companionSide, coreFingerprint, WINDOW_MS } from "./companion.js";
+import { companionSide, coreFingerprint, WINDOW_MS, tokenMessage, boxId, inputDigest } from "./companion.js";
 
 const APP = "abcdefgabcdefgab", WEB = "bcdefgabcdefgabc", KEYID = "kh1";
 const spki = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
@@ -18,10 +18,11 @@ function world() {
   const devices = new Map([[APP, { kind: "app", trusted: true, pairedAt: clock.t - 60_000, presenceKey: KEYID, removed: false }], [WEB, { kind: "web", trusted: true, pairedAt: clock.t - 60_000, presenceKey: "kh2", removed: false }]]);
   const tools = new Map(), events = [];
   const ctx = { tool: (n, d) => tools.set(n, d), events: { emit: (t, p) => events.push([t, p]), on: () => () => {} } };
-  const side = companionSide(ctx, { db, now: () => clock.t, deviceInfo: async id => devices.get(id) || null });
+  const boxPub = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const side = companionSide(ctx, { db, now: () => clock.t, box: () => ({ pub: boxPub, name: "alex" }), deviceInfo: async id => devices.get(id) || null });
   const call = (tool, input, caller = `device:${APP}`, meta = {}) => tools.get(tool).run(input, { caller, person: { id: "ps1" }, presence: { method: "device", keyId: KEYID }, ...meta });
   const ask = (extra = {}, caller, meta) => call("link.companion.pair", { core: spki(), name: "alex's PC core", nonce: crypto.randomBytes(12).toString("base64url"), ts: clock.t, ...extra }, caller, meta);
-  return { db, clock, devices, tools, events, side, call, ask };
+  return { db, clock, devices, tools, events, side, call, ask, boxPub };
 }
 const refusal = async (p, re) => assert.rejects(p, e => re.test(e.message));
 
@@ -101,4 +102,75 @@ test("companion: at most 5 attempts from a device in 10 minutes, and the core's 
   w.clock.t += 10 * 60_000 + 1;
   assert.ok((await w.ask()).id);
   assert.match(coreFingerprint(spki()), /^[a-z2-7]{4} [a-z2-7]{4}$/);
+});
+
+// ---- the call proof: the core's own key signs every call ----
+
+/** A core with its own P-256 key, paired as a companion; sign() makes a call token the way the core does. */
+async function pairedCore(w) {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const core = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const r = await w.call("link.companion.pair", { core, name: "alex's PC core", nonce: crypto.randomBytes(12).toString("base64url"), ts: w.clock.t });
+  const sign = (tool, input = {}, o = {}) => {
+    const ts = o.ts ?? w.clock.t, nonce = o.nonce ?? crypto.randomBytes(12).toString("base64url"), id = o.id ?? r.id;
+    const sig = crypto.sign("sha256", tokenMessage({ box: o.box ?? boxId(w.boxPub), companion: id, ts, nonce, tool, input }), { key: o.key ?? privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    return `c1.${id}.${ts}.${nonce}.${sig}`;
+  };
+  return { id: r.id, boxPin: r.box, sign, privateKey };
+}
+const verify = (w, token, tool, input) => w.tools.get("link.companion.verify").run({ token, tool, input }, {});
+
+test("companion call: pairing hands the core the box's key to pin, and a token signed by the core's own key verifies once", async () => {
+  const w = world();
+  const c = await pairedCore(w);
+  assert.equal(c.boxPin.pub, w.boxPub);
+  assert.equal(c.boxPin.id, boxId(w.boxPub));
+  const hello = await w.tools.get("link.companion.hello").run({ token: c.sign("link.companion.hello", {}) }, {});
+  assert.deepEqual([hello.paired, hello.companion, hello.device, hello.box.id], [true, c.id, APP, boxId(w.boxPub)]);
+  const t = c.sign("sync.upload.start", { path: "a.jsonl", bytes: 3, hash: "h" });
+  assert.equal((await verify(w, t, "sync.upload.start", { path: "a.jsonl", bytes: 3, hash: "h" })).id, c.id);
+  await refusal(verify(w, t, "sync.upload.start", { path: "a.jsonl", bytes: 3, hash: "h" }), /nonce was already used/);
+});
+
+test("companion call: another key, another call, another input, another box, or another time is refused", async () => {
+  const w = world();
+  const c = await pairedCore(w);
+  const input = { upload: "u1", offset: 0 };
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+  await refusal(verify(w, c.sign("sync.upload.cancel", input, { key: other }), "sync.upload.cancel", input), /signature/);
+  await refusal(verify(w, c.sign("sync.upload.cancel", input), "sync.upload.finish", input), /signature/);
+  await refusal(verify(w, c.sign("sync.upload.cancel", input), "sync.upload.cancel", { ...input, upload: "u2" }), /signature/);
+  await refusal(verify(w, c.sign("sync.upload.cancel", input, { box: boxId("another box") }), "sync.upload.cancel", input), /signature/);
+  await refusal(verify(w, c.sign("sync.upload.cancel", input, { ts: w.clock.t - 3 * 60_000 }), "sync.upload.cancel", input), /two minutes/);
+  await refusal(verify(w, c.sign("sync.upload.cancel", input, { ts: w.clock.t + 3 * 60_000 }), "sync.upload.cancel", input), /two minutes/);
+  await refusal(verify(w, "nope", "sync.upload.cancel", input), /not a companion token/);
+  await refusal(verify(w, c.sign("sync.upload.cancel", input, { id: crypto.randomUUID() }), "sync.upload.cancel", input), /no such companion/);
+  // none of those spent a nonce: the honest call still works
+  assert.ok((await verify(w, c.sign("sync.upload.cancel", input), "sync.upload.cancel", input)).id);
+});
+
+test("companion call: a chunk's bytes are signed as bytes, so one changed byte or a string for a buffer is refused", async () => {
+  const w = world();
+  const c = await pairedCore(w);
+  const data = Buffer.from("line one\nline two\n");
+  const t = c.sign("sync.upload.chunk", { upload: "u1", offset: 0, data });
+  await refusal(verify(w, t, "sync.upload.chunk", { upload: "u1", offset: 0, data: Buffer.from("line one\nline twO\n") }), /signature/);
+  assert.ok((await verify(w, c.sign("sync.upload.chunk", { upload: "u1", offset: 0, data }), "sync.upload.chunk", { upload: "u1", offset: 0, data })).id);
+  assert.equal(inputDigest({ data: Buffer.from("x") }), inputDigest({ data: "x" }), "a string counts as its UTF-8 bytes");
+});
+
+test("companion call: checked on every call: a removed or limited app device, a revoked companion, or a gone parent stops it at once", async () => {
+  const w = world();
+  const c = await pairedCore(w);
+  const go = () => verify(w, c.sign("link.companion.hello", {}), "link.companion.hello", {});
+  assert.ok((await go()).id);
+  w.devices.set(APP, { ...w.devices.get(APP), trusted: false });
+  await refusal(go(), /app device is limited/);
+  w.devices.set(APP, { ...w.devices.get(APP), trusted: true });
+  assert.ok((await go()).id, "trusted again, the same companion works again");
+  w.devices.set(APP, { ...w.devices.get(APP), removed: true });
+  await refusal(go(), /app device is gone/);
+  w.devices.set(APP, { ...w.devices.get(APP), removed: false });
+  await w.call("link.companion.remove", { id: c.id });
+  await refusal(go(), /no such companion/);
 });
