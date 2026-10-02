@@ -236,3 +236,15 @@ test("client: resolveTicket opens a record the box sealed, with WebCrypto (the p
   assert.equal(r.offer.secret, ticketDerive("sec", ticket).toString("base64url"));
   assert.notEqual(ticketSeal(ticket, "same"), ticketSeal(ticket, "same"), "a fresh random nonce each seal, never a fixed one");
 });
+
+import { sameRelay } from "./client.js";
+
+test("client: a relay named inside a record must be the relay that served it: same scheme and host, nothing else in it", () => {
+  assert.equal(sameRelay("wss://relay.vyre.run", "wss://relay.vyre.run"), true);
+  assert.equal(sameRelay("wss://relay.vyre.run/", "wss://relay.vyre.run/"), true);
+  assert.equal(sameRelay("ws://127.0.0.1:9", "ws://127.0.0.1:9"), true, "a local relay in a test");
+  for (const bad of ["wss://evil.example", "wss://relay.vyre.run.evil.example", "wss://relay.vyre.run@evil.example", "wss://user:pw@relay.vyre.run", "wss://relay.vyre.run/path", "wss://relay.vyre.run?x=1", "wss://relay.vyre.run#x", "ws://relay.vyre.run", "https://relay.vyre.run", "relay.vyre.run", ""]) {
+    assert.equal(sameRelay(bad, "wss://relay.vyre.run"), false, bad);
+  }
+  assert.equal(sameRelay("wss://relay.vyre.run", "ws://relay.vyre.run"), false, "the scheme must match too");
+});

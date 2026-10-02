@@ -15,6 +15,31 @@ VYRE_CLAUDE_BIN pointing at a fake, `nice -n 15`). The full suite and eval recor
 GitHub hosted runners (push work/iq). Never testbox (it is the user's server), never vyred or
 `vyre` on the Mac.
 
+## The sealed world
+The open world (test/fixtures/iq02-open.js, test/eval/iq02-open.json) is what memory is tuned against.
+The sealed world is a second world nobody tunes against, so the bar can say whether memory learned the
+shape of the problem or only the open world: test/fixtures/iq02-sealed.js, test/eval/iq02-sealed.json,
+and an empty test/eval/asks/iq02-sealed.json. It has the open world's shape and counts (the same
+class counts, about the same number of sessions and turns, the same five providers and the same hard
+cases: reversals, changing facts, corrections in chat, pasted third-party facts, injected command lines,
+project-only strings) but a different person, clients, projects, agents, tools, hosts, dates and numbers.
+Nothing in it is real.
+
+- Who may read it: the people and agents who tune memory must not read its questions or its answers.
+  Score it, do not read it. `node scripts/eval-bar.js --world sealed` prints scores and counts only; it
+  refuses --explain and never prints a question, an answer, a probe or a decoy. Its world file is
+  readable because the harness has to load it; do not open the gold file to see what a miss was.
+- How it is used: it is recorded per release candidate on a GitHub hosted runner, with the open world's
+  recording workflow's guards, and is never tuned against. A workflow here never records it
+  (`--record` on the sealed world exits 2), so its asks file stays empty until a release candidate run
+  keeps replies. The sealed accuracy bar is 0.85 (test/eval/bar.json).
+- A miss on it is a signal to improve the general mechanism, never to add its strings to a rule, a prompt
+  or a fixture. If a question is wrong (not the memory), the author of the world fixes the gold.
+- Tests: test/eval/bar-sealed.test.js checks the counts against the open gold, that every answerable
+  expect string is in its cited turn, that no open-world string appears in the sealed world, that leak
+  probes name a project agent and forbid only strings another project (or the personal notes) holds, and
+  that the bar runs over it with no question or answer text in the report. Run it in a temp HOME.
+
 ## Wave A tasks
 1. The 0.2 eval world and the quality-bar harness (scripts/eval-bar.js, test/fixtures/iq02-*.js,
    test/eval/iq02-*.json, test/eval/bar.json).

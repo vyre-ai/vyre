@@ -744,3 +744,23 @@ test("onboard: join status and verify never need presence; tailscale connect and
   assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "connect" }), true, "starting tailscale up does");
   assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
 });
+
+test("onboard: an address the setup page already claimed is never replaced by the person's name, and step 4 reads it instead of claiming again (#50)", async t => {
+  const { root } = await box(t, { name: "acme-lab", network: { onboardPort: 0, via: "vyre.run" } });
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  const saved = () => JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8"));
+  const before = (await (await tool(base, session, "onboard.status")).json()).data;
+  assert.equal(before.name, null, "step 1 is not prefilled with the address");
+  const you = await (await tool(base, session, "onboard.you", { name: "Robin" })).json();
+  assert.equal(you.data.person, "Robin");
+  assert.equal(saved().name, "acme-lab", "the person's name did not overwrite the address");
+  const s = (await (await tool(base, session, "onboard.status")).json()).data;
+  assert.equal(s.name, "Robin", "the greeting uses the person");
+  assert.equal(s.detail.name.name, "acme-lab", "the address step still says which address is held");
+  // reserving with the person's name does not try to claim it, and does not fail
+  const r = await (await tool(base, session, "onboard.name", { name: "Robin", action: "reserve", confirm: true })).json();
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(saved().name, "acme-lab");
+});

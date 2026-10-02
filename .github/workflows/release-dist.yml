@@ -23,17 +23,18 @@ jobs:
           sh scripts/build-site.sh
           cmp site/w scripts/install-windows.ps1
           mkdir dist
-          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do cp "site/box/$f" dist/; done
+          for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do cp "site/box/$f" dist/; done
           node -e '
             const fs = require("fs"), v = fs.readFileSync("dist/VERSION", "utf8").trim();
             fs.writeFileSync("dist/release.json", JSON.stringify({ version: v, channel: "stable", commit: process.env.GITHUB_SHA, date: new Date().toISOString(), min_from: "0.1.0", notes: "rehearsal" }, null, 2) + "\n");'
+          node scripts/setup-hashes.mjs dist
           (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
           node -e '
             const c = require("crypto"), fs = require("fs"), k = c.generateKeyPairSync("ed25519");
             fs.writeFileSync("pub.b64", k.publicKey.export({ type: "spki", format: "der" }).toString("base64"));
             fs.writeFileSync("dist/SHA256SUMS.sig", c.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), fs.readFileSync("dist/SHA256SUMS")]), k.privateKey).toString("base64") + "\n");'
       - name: A release whose boxes build from source passes
-        run: node scripts/check-release-dist.mjs dist --pubkey "$(cat pub.b64)"
+        run: node scripts/check-release-dist.mjs dist --setup --pubkey "$(cat pub.b64)"
       - name: A release whose boxes pull is refused until its compose.yml and release.json carry digests (what the practice release must fix)
         run: |
           if node scripts/check-release-dist.mjs dist --pulled 2>"$RUNNER_TEMP/pulled.err"; then echo "a release with no images passed --pulled"; exit 1; fi

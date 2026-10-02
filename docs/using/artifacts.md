@@ -27,7 +27,8 @@ any two versions. Images, video and audio are one file each: a new one is a new 
 A public link is off until you turn it on in Settings. A link shows one version, or always the
 latest, expires in 30 days unless you choose otherwise, and carries nothing about your project, the
 agent or the thread. Sharing counts as posting, so an agent's own share waits for you. Images, video
-and audio have no public link yet.
+and audio can be shared the same way; the link serves the file as it is, so a photograph's own
+metadata goes with it.
 
 ## Documents run no code; pages and apps run their own
 

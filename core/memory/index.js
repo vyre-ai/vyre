@@ -1360,7 +1360,9 @@ export default {
           try { const b = await briefDef.run({ for: "session", ...scoped, ...(input.thread ? { thread: input.thread } : {}) }, extra); if (b.text) parts.push(b.text); } catch { /* nothing the caller may read */ }
         }
         const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-        if (prompt && !prompt.startsWith("/") && (slug || (input.project_cwds && input.project_cwds.length))) {
+        // A project's thread reads its room; the person's own assistant or chat (person: true) and a named agent read what memory lets that
+        // caller see, even with no project (#46: memory gives the assistant relevant facts with sources as context, whichever folder it is in).
+        if (prompt && !prompt.startsWith("/") && (slug || (input.project_cwds && input.project_cwds.length) || input.person === true || input.agent)) {
           try {
             const facts = await relevantDef.run({ text: prompt, ...scoped, limit: 5 }, extra);
             const lines = (Array.isArray(facts) ? facts : []).slice(0, 5).map(f => {

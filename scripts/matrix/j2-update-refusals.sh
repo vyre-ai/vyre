@@ -151,6 +151,8 @@ mk tamper 9.9.9-e2e.1 tamper; offer tamper; ask $PORT "$GOODPUB"; refused 5d-sig
 mk good 9.9.9-e2e.1 good; offer good; ask $PORT ""; refused 5e-pinned-key-default 'does not match|not signed'
 # 6 downgrade: a correctly signed release older than what the box runs
 mk old 0.0.1-e2e.1 good; offer old; ask $PORT "$GOODPUB"; refused 6-downgrade 'never goes back'
+# 6b the same version's earlier prerelease is a downgrade too (#15): the compare used to ignore the suffix
+mk oldpre "${V0%%-*}-e2e.0" good; offer oldpre; ask $PORT "$GOODPUB"; refused 6b-same-version-earlier-prerelease 'never goes back'
 # 7 positive control: the same signed release, newer, installs and keeps the data. The person's compose.yml is edited first to make the
 #   vyre service privileged; root runs from its own verified copy, so the container that comes up is not.
 sudo sed -i '/^  vyre:$/a\    privileged: true' "$DIR/compose.yml"

@@ -1,0 +1,26 @@
+# The DigitalOcean Marketplace image's checks that need no DigitalOcean account: the first-boot installer against a
+# fake signed release (OpenSSL 3 and sha256sum, as on the Ubuntu image), and shellcheck over the image's scripts.
+# The Packer build and DigitalOcean's img_check.sh need the vendor account and run by hand (packaging/digitalocean/README.md).
+name: do-image
+on:
+  push:
+    paths: ["packaging/digitalocean/**", "test/do-firstboot.test.js", ".github/workflows/do-image.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: do-image-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  firstboot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: The first-boot installer, against a fake signed release
+        run: node --test --test-reporter=spec test/do-firstboot.test.js
+      - name: shellcheck the image's scripts
+        run: shellcheck -s sh packaging/digitalocean/files/vyre-firstboot packaging/digitalocean/files/01-vyre-firstboot.sh packaging/digitalocean/files/99-vyre-motd && shellcheck -s bash packaging/digitalocean/scripts/*.sh

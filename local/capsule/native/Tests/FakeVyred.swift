@@ -139,6 +139,7 @@ final class FakeVyred: @unchecked Sendable {
         let path = String(target.split(separator: "?", maxSplits: 1).first ?? "")
         let query = target.contains("?") ? String(target.split(separator: "?", maxSplits: 1)[1]) : ""
         if method == "GET" && path == "/v1/events/stream" { return stream(c, query) }
+        if method == "GET" && path == "/v1/link/events" { return boxStream(c, query) }
         var extra: [String: String] = [:]
         var answer: Any
         if method == "POST", path.hasPrefix("/v1/tools/"), let h = head?.headers {
@@ -248,6 +249,38 @@ final class FakeVyred: @unchecked Sendable {
         let f = frame(e)
         for s in streams { _ = VySock.writeAll(s, f, deadline: Date().addingTimeInterval(2)) }
         return lastId
+    }
+
+    // MARK: the box's events, as a paired Mac's vyred proxies them at /v1/link/events
+
+    private var boxStreams: [(fd: Int32, type: String)] = []
+    private(set) var boxStreamQueries: [String] = []
+    var openBoxStreams: Int { lock.lock(); defer { lock.unlock() }; return boxStreams.count }
+
+    private func boxStream(_ c: Int32, _ query: String) {
+        let type = query.split(separator: "&").first { $0.hasPrefix("type=") }.map { String($0.dropFirst(5)) } ?? "*"
+        lock.lock()
+        if stopped { lock.unlock(); close(c); return }
+        boxStreamQueries.append(query)
+        boxStreams.append((c, type))
+        let head = Data("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n".utf8)
+        _ = VySock.writeAll(c, head, deadline: Date().addingTimeInterval(5))
+        lock.unlock()
+        var buf = [UInt8](repeating: 0, count: 256)
+        while read(c, &buf, buf.count) > 0 {}
+        lock.lock(); boxStreams.removeAll { $0.fd == c }; lock.unlock()
+        close(c)
+    }
+
+    /// An event from the box, to every proxied stream whose type pattern matches it.
+    func emitBox(_ type: String, thread: String? = nil, _ payload: [String: Any] = [:]) {
+        lock.lock(); defer { lock.unlock() }
+        let e: [String: Any] = ["id": 9000 + boxStreams.count, "type": type, "source": "box", "thread": thread ?? NSNull(), "project": NSNull(),
+                                "at": 1, "payload": payload]
+        let f = frame(e)
+        for s in boxStreams where s.type == "*" || s.type == type || (s.type.hasSuffix(".*") && type.hasPrefix(String(s.type.dropLast(1)))) {
+            _ = VySock.writeAll(s.fd, f, deadline: Date().addingTimeInterval(2))
+        }
     }
 
     /// A heartbeat comment, as vyred writes every 15 s.

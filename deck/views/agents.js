@@ -813,7 +813,7 @@ function drawModel(sec, a, stub, listErr) {
   put(sec, sectionHead("ab-model", "Model"),
     h("div", { class: "ab-model" }, h("div", { class: "ab-model-pick" }, shown, sel),
       h("div", { class: "ab-effort-wrap" }, h("span", { class: "small faint" }, "Effort"), seg), status),
-    h("p", { class: "ab-note small faint" }, `Memory is checked before every call. When it has the answer, ${a.name} uses it and no model runs.`));
+    h("p", { class: "ab-note small faint" }, `${a.name} answers every question. Memory gives ${a.name} the relevant facts, with where they came from, as context. It never answers instead.`));
 }
 
 // ---- computer --------------------------------------------------------------------------------

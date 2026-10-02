@@ -96,27 +96,29 @@ let routeSuite = Suite("route") { t in
         t.eq(d.options.map { "\($0.kind.rawValue):\($0.thread ?? "")" }, ["thread:dddd4444"])
     }
 
-    t.test("a general question goes to a fast model first, then the assistant, then deeper") {
+    t.test("a question goes to the assistant first, then the fast model, then deeper (#46), whatever it is about") {
         let d = Route.destinations(nil, "What is the capital of Peru?", CAT, quick: true)
-        t.eq(kinds(d), ["quick:haiku", "assistant:juno", "quick:sonnet"])
-        t.eq(d.options[0].meta, "fast model · haiku")
+        t.eq(kinds(d), ["assistant:juno", "quick:haiku", "quick:sonnet"])
+        t.eq(d.options[1].meta, "fast model · haiku")
         t.eq(d.options[2].deep, true)
         t.eq(d.options[2].meta, "deeper · sonnet")
-        t.eq(Route.describe(d.options[0]), DestinationShow(who: "Claude", where: [], meta: "fast model · haiku"))
+        t.eq(Route.describe(d.options[1]), DestinationShow(who: "Claude", where: [], meta: "fast model · haiku"))
         t.eq(Route.describe(d.options[2]), DestinationShow(who: "Claude · deeper", where: [], meta: "deeper · sonnet"))
         t.eq(d.why, nil)
-    }
-
-    t.test("a question about the user's own things goes to the assistant first") {
         for q in ["what did Dana say about the retainer?", "Where is the Harlow Legal deck?", "what is kit doing?",
                   "what's on my calendar tomorrow?", "did I email the Q3 report?", "how many clients do we have?", "what is left this week"] {
-            let d = Route.destinations(nil, q, CAT, quick: true)
-            t.eq(kinds(d), ["assistant:juno", "quick:haiku", "quick:sonnet"], q)
-            t.ok((d.why ?? "").contains("juno answers with your memory"), q)
+            t.eq(kinds(Route.destinations(nil, q, CAT, quick: true)), ["assistant:juno", "quick:haiku", "quick:sonnet"], q)
         }
-        t.eq(Route.ownThings("how do I center a div?", CAT), nil, "I without a work noun is a general question")
-        t.eq(Route.ownThings("what is weekly inflation in Peru?", CAT), nil, "one word of a thread's name does not name it")
-        t.ok((Route.ownThings("any news on Weekly planning?", CAT) ?? "").contains("Weekly planning"))
+    }
+
+    t.test("Ask memory is a destination of its own, after the others, only when memory.ask exists") {
+        let d = Route.destinations(nil, "What is the capital of Peru?", CAT, quick: true, memory: true)
+        t.eq(kinds(d), ["assistant:juno", "quick:haiku", "quick:sonnet", "recall:-"])
+        t.eq(d.options.last?.meta, "memory only")
+        t.eq(kinds(Route.destinations(nil, "what is left", CAT, quick: true)), ["assistant:juno", "quick:haiku", "quick:sonnet"], "no memory.ask: no Ask memory")
+        t.eq(kinds(Route.destinations(nil, "send the invoice", CAT, quick: true, memory: true)), ["assistant:juno", "recall:-"], "not a question: the assistant, and memory on request")
+        var none = CAT; none.agents = []
+        t.eq(kinds(Route.destinations(nil, "what did Dana say?", none, quick: true, memory: true)), ["quick:haiku", "quick:sonnet", "recall:-"], "no assistant: the model, and memory on request")
     }
 
     t.test("a question with no assistant goes to the model, and with no switchboard to memory") {
