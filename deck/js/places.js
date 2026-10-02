@@ -98,7 +98,10 @@ export function fillPlaces(body, close, parts, o) {
   }) : () => {};
 
   const hold = o.hold ?? holdMs();
-  const tiles = (o.tiles || TILES).map(t => {
+  // A kept place leads the grid: it is a page now, and this is where to find it again.
+  const kept0 = readPin(o.store);
+  const list = [...(o.tiles || TILES)].sort((a, b) => (kept0 && b.href === kept0.href ? 1 : 0) - (kept0 && a.href === kept0.href ? 1 : 0));
+  const tiles = list.map(t => {
     // heldAt: when a hold last toggled; swallow: the click that ends that press opens nothing.
     let timer = 0, heldAt = 0, swallow = false, x0 = 0, y0 = 0;
     const a = h("a", { href: t.href, class: "plc-tile", "data-place": t.label, "aria-keyshortcuts": "Shift+F10 ContextMenu" },

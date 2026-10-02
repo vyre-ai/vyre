@@ -83,7 +83,7 @@ function phoneCss() {
 
 test("pwa shell v2: a glass tab bar of five (Now, Chat, Projects, Agents, More); /projects is a page", () => {
   const app = read("js/app.js"), bar = read("css/tabbar.css");
-  assert.match(app, /const tabBar = h\("nav", \{ class: "tabbar", "aria-label": "Pages", "data-tabs": String\(strip\.length \+ 1\) \}, phLabels, moreTab\)/, "the bar is the four pages and More");
+  assert.match(app, /const tabBar = h\("nav", \{ class: "tabbar", "aria-label": "Pages" \}, phLabels, moreTab\)/, "the bar is the four pages and More");
   assert.match(app, /icon\("more", 24\), h\("span", \{ class: "tb-label" \}, "More"\)/);
   assert.match(app, /\["\/projects", "projects"\]/, "the /projects route stays");
   assert.match(app, /\["\/projects\/:slug\/:thread", "projects"\]/);
