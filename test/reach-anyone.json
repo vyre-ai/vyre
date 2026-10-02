@@ -677,6 +677,10 @@
    "module": "link",
    "reason": "read-only, scoped by the module itself"
   },
+  "link.companion.pair": {
+   "module": "link",
+   "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"
+  },
   "link.events": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"

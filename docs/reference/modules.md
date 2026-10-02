@@ -43,7 +43,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 23 | 16 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 27 | 20 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 45 | 15 | capsule, cli, deck |
@@ -57,7 +57,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 27 | 13 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 28 | 13 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 37 | 8 | cli |
@@ -378,8 +378,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [23](tools.md#link), 4 of them only for other modules
-- Emits: [16 events](events.md#link)
+- Tools: [27](tools.md#link), 4 of them only for other modules
+- Emits: [20 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -528,7 +528,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [27](tools.md#relay), 8 of them only for other modules
+- Tools: [28](tools.md#relay), 9 of them only for other modules
 - Emits: [13 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs vault: `tailscale-mint-oauth`
