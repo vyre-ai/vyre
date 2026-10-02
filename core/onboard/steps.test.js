@@ -48,7 +48,7 @@ test("steps: sudo vyre setup's words, while the page is open, after the passkey,
   assert.ok(t.includes("✓ Choose your address     alex.vyre.run"));
   assert.ok(t.includes("○ Sign in to your AI"));
   assert.ok(t.includes("○ Add your phone (optional)"));
-  assert.ok(t.some(x => /sudo vyre setup --new-link/.test(x)));
+  assert.ok(t.includes("run this for a link to carry on from this server:  sudo vyre setup --new-link"));
   const late = setupList({ install: true, words: true, address: true, tailscale: true, ai: true, phone: true, passkey: true });
   assert.deepEqual(setupLines(late, { address: "https://alex.vyre.run" }), ["Vyre setup: step 8 of 10, You and your assistant", "Steps 1 to 7 are done.", "", "Continue at https://alex.vyre.run"]);
   const done = setupList(Object.fromEntries(ids.map(i => [i, i !== "phone" && i !== "history"])), { skipped: ["phone", "history"] });

@@ -65,5 +65,5 @@ export function setupLines(list, { address = null, notes = {} } = {}) {
   }
   return [head, "",
     ...list.steps.map(s => `${s.status === "done" ? "✓" : s.status === "skipped" ? "–" : "○"} ${s.title}${s.optional ? " (optional)" : ""}${s.status === "skipped" ? " (skipped)" : ""}${notes[s.id] ? `     ${notes[s.id]}` : ""}`),
-    "", "Go back to the vyre.run/setup tab to continue. If you closed it,", "run this for a new link:  sudo vyre setup --new-link"];
+    "", "Go back to the vyre.run/setup tab to continue. If you closed it,", "run this for a link to carry on from this server:  sudo vyre setup --new-link"];
 }
