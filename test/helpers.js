@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { SCRATCH, HOMES } from "./scratch.mjs";
-import { setPeerHosting } from "../core/daemon/peer.js";
+import { setPeerHosting, setSocketTrust } from "../core/daemon/peer.js";
 
 // A test starts vyred in its own process and runs the person's client as that process or its child.
 // vyred counts a caller as the person on positive proof only, and a descendant of vyred is a model's
@@ -15,6 +15,9 @@ import { setPeerHosting } from "../core/daemon/peer.js";
 // forger tests unset it, so they prove the production rule.
 process.env.VYRE_TEST_HOSTED = "1"; // for a vyred a test starts as a child (see peerHosting)
 setPeerHosting(true);
+// Tests host vyred in their own process and have no login terminal: a person label on the socket is trusted as a label,
+// the way it was before the socket trust was inverted. test/socket-trust.test.js turns the strict rule back on.
+setSocketTrust("label");
 
 // No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
 // the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test

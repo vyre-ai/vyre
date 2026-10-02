@@ -282,8 +282,8 @@ export default {
     ctx.tool("agents.list", {
       description: "Every agent, the assistant first, with what each is doing now.",
       input: { type: "object", properties: {} },
-      run: async (_, { caller }) => {
-        guard(caller, "list agents");
+      run: async (_, meta) => {
+        guard(meta, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
         return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer,
           // The Deck's agent page shows and edits the job from this list.
@@ -325,11 +325,14 @@ export default {
       // models, only the assistant, and only for its words and model: never credentials, budget,
       // projects, skills or a computer. Every other agent, a bare MCP session and a guest are refused.
       callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
-      run: async (i, { caller }) => {
+      run: async (i, meta) => {
+        const { caller } = meta;
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
           const m = /^mcp:agent:(.+)$/.exec(String(caller));
           const plain = Object.keys(i).every(k => i[k] === undefined || PLAIN_UPDATE.has(k));
-          if (!m || get(m[1])?.kind !== "assistant" || !plain) throw Object.assign(new Error("changing agents is the person's"), { code: "denied" });
+          // The verified agent decides (meta.agent, meta.agentKind); a bare label that names the assistant is a claim.
+          const kind = m && meta.agent === m[1] ? meta.agentKind : m && !meta.agent ? get(m[1])?.kind : undefined;
+          if (!m || kind !== "assistant" || !plain) throw Object.assign(new Error("changing agents is the person's"), { code: "denied" });
         }
         if (i.name !== undefined && i.agent !== undefined && i.name !== i.agent) throw new Error("name and agent say different agents; give one");
         const who = i.name ?? i.agent;

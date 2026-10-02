@@ -268,7 +268,7 @@ export default {
      * @param {string|undefined} agent @param {string|undefined} caller
      */
     const reach = async (agent, caller) => {
-      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+      const said = /(?:^|[\s:])agent:(\(unnamed\)|[A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {

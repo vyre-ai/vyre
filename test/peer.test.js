@@ -338,15 +338,22 @@ test("peer: a person's label from under a claude is the session's own, for every
     assert.match(mine.body.error.message, /inside a Claude session/);
     // The person at a terminal, the Deck and the Capsule on the socket keep their label.
     const outside = await client(dir, socket, "probe.who", {}, { headers });
-    assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
-    assert.equal((await client(dir, socket, "probe.mine", {}, { headers })).status, 200);
+    assert.equal(outside.body.data.caller, /thread:/.test(label) ? "mcp:thread:(unnamed)" : label, JSON.stringify(outside)); // a claim is rewritten to the session shape (canonicalCaller)
+    // A thread claim on a surface label is the session's own (callerKind): it is never the person's surface.
+    assert.equal((await client(dir, socket, "probe.mine", {}, { headers })).status, /thread:/.test(label) ? 403 : 200, label);
   }
   // Every surface's label in the kernel's list, and a surface name no module uses yet, is the
   // session's own from inside; from outside each stays what it said.
-  for (const label of [...SURFACE_LABELS, "phone", "glass-now"]) {
+  for (const label of SURFACE_LABELS) {
     const headers = { "x-vyre-caller": label };
     assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "mcp", label);
     assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, label, label);
+  }
+  // A surface name the socket does not know ("phone", "glass-now") is nobody's: anonymous, from inside a claude or outside.
+  for (const label of ["phone", "glass-now"]) {
+    const headers = { "x-vyre-caller": label };
+    assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers })).body.data.caller, "anonymous", label);
+    assert.equal((await client(dir, socket, "probe.who", {}, { headers })).body.data.caller, "anonymous", label);
   }
   // A model's own label is not traced and not changed; a person-only tool from inside is still
   // refused out loud, never run as the model's.
@@ -750,9 +757,10 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
     const sig = sign("sha256", Buffer.from(`vyre-presence-v1\nsession.trust\n${inputHash(server)}\n${ts}\n${nonce}`), { key: privateKey, dsaEncoding: "der" }).toString("base64url");
     return `device key=${keyId} ts=${ts} nonce=${nonce} sig=${sig}`;
   };
-  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
+  const curlArgs = (tool, input, presenceProof) => ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
     "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(presenceProof ? ["-H", `x-vyre-presence: ${presenceProof}`] : []),
-    "-d", JSON.stringify(input)], { encoding: "utf8" }));
+    "-d", JSON.stringify(input)];
+  const call = (tool, input, presenceProof) => JSON.parse(execFileSync("curl", curlArgs(tool, input, presenceProof), { encoding: "utf8" }));
   const names = () => call("agents.list", {}).data.map(a => a.name);
 
   const bare = call("agents.create", { name: "kit" });
@@ -766,11 +774,19 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   const wrong = call("agents.create", { name: "nova" }, proof({ ...bare.error.server, pid: bare.error.server.pid + 1 }));
   assert.equal(wrong.error?.code, "presence_required", JSON.stringify(wrong));
 
-  const proved = call("agents.create", { name: "juno" }, proof(bare.error.server));
-  assert.equal(proved.error, undefined, JSON.stringify(proved));
-  const again = call("agents.create", { name: "kit" });
-  assert.equal(again.error, undefined, JSON.stringify(again));
-  assert.ok(names().includes("juno") && names().includes("kit") && !names().includes("nova"));
+  // The trust proof covers the server; the call itself is a person-only tool outside Tier 1, so it needs no proof of its own.
+  const person = extra => ({ project: "nope", ...extra });
+  const proved = call("projects.access.revoke", person(), proof(bare.error.server));
+  assert.ok(!["denied", "presence_required"].includes(proved.error?.code), JSON.stringify(proved));
+  // Once proved, a peer under that leader with no pty in the foreground is refused, and told how to fix it.
+  const headless = call("projects.access.revoke", person());
+  assert.equal(headless.error?.code, "denied", JSON.stringify(headless));
+  assert.match(headless.error.message, /ssh -t/);
+  // A pty the caller made for itself (script) under the leader is no terminal the leader made: refused the same way.
+  const q = x => `'${String(x).replace(/'/g, `'\\''`)}'`;
+  const selfPty = JSON.parse(execFileSync("script", ["-qec", `curl ${curlArgs("projects.access.revoke", person()).map(q).join(" ")}`, "/dev/null"], { encoding: "utf8" }).trim());
+  assert.equal(selfPty.error?.code, "denied", JSON.stringify(selfPty));
+  assert.ok(!names().includes("nova"));
 });
 
 test("peer: the trusted-leader test seam cannot reach a real vyred", async () => {

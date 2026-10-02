@@ -23,7 +23,7 @@ import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
-import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
+import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, ptyHosted, canReadPeers, verifiedCapsule, signatureOf, foreground, socketTrust } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -191,7 +191,7 @@ async function startLocked(opts, root, p, release) {
 }
 
 /** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */
-const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/i;
 /**
  * The only forms a socket caller may name an agent in: its MCP server's and its hooks' (harness
  * mcp/server.js, hooks/hook.js). A surface's label with an agent in it ("cli:agent:kit") would be
@@ -253,7 +253,7 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 
 // "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/i;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -262,8 +262,14 @@ const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard
  */
 export function socketCaller(req) {
   const label = String(req.headers["x-vyre-caller"] || "");
-  return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
+  if (!label || FORBIDDEN_LABEL.test(label)) return "anonymous";
+  // An allowlist: the person's surfaces, a model's own labels, and a label that carries an agent or thread claim
+  // (which route() then refuses unless it comes with the agent's key). Anything else, "module", "Module",
+  // "internal", "system" and the rest, is anonymous: a label is only a claim, and a bare "module" read as a
+  // module through callerKind, which skips presence (reviewer-2, 2 Oct 2026).
+  return SOCKET_LABEL.test(label) || /(?:^|[\s:])(?:agent|thread):/i.test(label) ? label : "anonymous";
 }
+const SOCKET_LABEL = /^(?:(?:cli|local|deck|capsule|mobile)|(?:mcp|harness)(?:[\s:][^\s].*)?)$/;
 
 /** A model's own label: its tools' callers lists and the agent key already decide what it may do. */
 const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
@@ -347,11 +353,11 @@ export async function above(socket, registry, caller, deps = {}) {
   // shell runs as could write to directly. The Capsule (launchd-started, its own session, not on
   // the terminal list) is the one positive proof besides the walk's own.
   if (result.unknown && caller === "capsule" && registry.deps.presence
-    && await verifiedCapsule(socket, pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
+    && await verifiedCapsule(socket, pid, (registry.deps.presence.capsulePin ? registry.deps.presence.capsulePin() : null), deps.capsuleSeam)) { if (deps.proof) deps.proof.capsule = true; return { inside: false }; }
   // A `vyre` the Capsule spawned by argv: its top is the Capsule itself, named as a server. The pinned
   // cdhash proves that top too (every link below it passed the walk's own checks), so no prompt.
   if (result.server && registry.deps.presence
-    && await verifiedCapsule({}, result.server.pid, registry.deps.presence.capsulePin(), deps.capsuleSeam)) return { inside: false };
+    && await verifiedCapsule({}, result.server.pid, (registry.deps.presence.capsulePin ? registry.deps.presence.capsulePin() : null), deps.capsuleSeam)) { if (deps.proof) deps.proof.capsule = true; return { inside: false }; }
   // Still unreadable and the caller is gone: it connected, sent and exited before the walk (a
   // forger's fire-and-forget). A real CLI waits for its answer, so it is alive here. Gone counts
   // as a model's, never as the person's.
@@ -375,6 +381,8 @@ export async function above(socket, registry, caller, deps = {}) {
  * @type {Map<string, true>}
  */
 const serverTrust = new Map();
+/** The servers the person has proved once, for tests: key "<exe>:<pid>:<started>". */
+export const trustedServers = serverTrust;
 
 /**
  * One presence proof on any call trusts that server for every later call from any of its panes or
@@ -444,15 +452,55 @@ export async function asTaken(caller, socket, registry, thread, deps) {
   // Only a definite answer stays for the connection's life: inside a model, or read to the top and
   // outside. "Unknown" (an unreadable chain, a peer not found) is asked again on the next call.
   if (!v) {
-    const mine = above(socket, registry, undefined, deps).then(w => ({
+    const proof = { capsule: false };
+    const mine = above(socket, registry, PERSON_LABEL.test(caller) ? caller : undefined, { ...deps, proof }).then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
+      capsule: proof.capsule, server: w.server || null,
     }));
     v = mine;
     taken.set(socket, mine);
     mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
-  return (await v).model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+  const a = await v;
+  const asModel = { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true };
+  if (a.model) return asModel;
+  // Inverted trust: a person's label on the socket is only a claim, and a child that left the claude ancestry
+  // (setsid, nohup, a launchd or cron job an agent wrote) sends the same label. The label is kept only for a
+  // peer that proves it is the person; everything else is capped at mcp, silently, with no prompt.
+  if (socketTrust() === "strict" && PERSON_LABEL.test(caller) && !(await personSocket(socket, registry, a, deps))) {
+    // A chain that ends at a named server (a terminal app vyred does not list, ssh to a Mac) is asked once for a proof on
+    // a person's tool, and route() caps it for every other tool; anything with no such server is capped here.
+    if (a.server) return { caller, model: false, unproven: true };
+    return { ...asModel, capped: true };
+  }
+  return { caller, model: false };
+}
+const PERSON_LABEL = /^(?:cli|local|deck|capsule|mobile)$/;
+
+/** Whether the peer is in the foreground process group of its controlling terminal. @param {any} socket @param {any} [deps] */
+async function foregroundOf(socket, deps = {}) {
+  const pid = await (deps.peerPid || peerPid)(socket);
+  const fg = pid ? (deps.foreground || foreground)(pid) : null;
+  return Boolean(fg && fg.pgid > 0 && fg.pgid === fg.tpgid);
+}
+
+/**
+ * Whether this peer is the person: the pinned Capsule (or a vyre it spawned), a server the person already proved
+ * once (a VS Code or iTerm2 terminal), or a terminal login that `who` lists and that the peer is in the
+ * foreground process group of, with no claude above it (atTerminal). A setsid, nohup, cron or launchd child has
+ * none of these. @param {any} socket @param {any} registry @param {any} a @param {any} [deps]
+ */
+async function personSocket(socket, registry, a, deps = {}) {
+  if (a.capsule) return true;
+  const inForeground = await foregroundOf(socket, deps);
+  const pid = await (deps.peerPid || peerPid)(socket);
+  // A server the person proved once (VS Code, iTerm2) vouches for its terminals, not for everything that runs under it: an
+  // extension host child, a task, Copilot, Cline or Continue has no terminal in the foreground. So the peer needs a pty of
+  // its own and to be in that pty's foreground group, the same test as a login terminal, with no name list.
+  if (a.server && serverTrust.has(`${a.server.exe}:${a.server.pid}:${a.server.started}`)) return Boolean(pid && (deps.tty || controllingTty)(pid) && inForeground && (deps.ptyHosted || ptyHosted)(pid, a.server));
+  const term = await (deps.terminal || atTerminal)(socket, registry, registry.deps && registry.deps.presence);
+  return Boolean(term && inForeground);
 }
 /** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean }>>} */
 const taken = new WeakMap();
@@ -692,6 +740,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       const who = await above(req.socket, registry, caller);
       if (who.nopid) return send(res, 403, { error: { code: "denied", message: "vyred cannot tell which process is calling, so this is refused" } });
       if (who.inside) return send(res, 403, { error: { code: "denied", message: "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence" } });
+      // A server the person proved vouches for its terminals only: a peer under it with no pty in the foreground (an extension host
+      // child, a task, Copilot, Cline, Continue) is not the person, proved server or not.
+      if (socketTrust() === "strict" && who.unknown && who.server && serverTrust.has(`${who.server.exe}:${who.server.pid}:${who.server.started}`)
+        && !await (async () => { const pid = await peerPid(req.socket) || 0; return Boolean(controllingTty(pid) && await foregroundOf(req.socket) && ptyHosted(pid, who.server)); })()) {
+        return send(res, 403, { error: { code: "denied", message: `${serverName(who.server)} is trusted for its own terminals only: run this from a terminal in the foreground, or use ssh -t` } });
+      }
       if (who.unknown) {
         if (!(who.server && await serverTrusted(who.server, req.headers["x-vyre-presence"], caller, registry))) {
           // The full path, pid and start time, never a basename: a model can name its own process
@@ -708,6 +762,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         }
       }
     }
+    // A peer behind a named server the person has not proved is the person only for a person's tool, which asked above;
+    // for every other tool its label is only a claim, so it is capped like any unproven peer.
+    const cappedHere = Boolean(socket && (shell.capped || (shell.unproven && !personal)));
+    if (socket && shell.unproven && !personal) caller = via.thread ? `mcp:thread:${via.thread}` : "mcp";
     // Held in `inflight` until the answer has left, not just until the tool returns: stop()
     // closes every connection once these settle.
     // (A module's own listener may hand over a response that is not a stream; nothing to wait on.)
@@ -750,8 +808,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(cappedHere ? { socketCapped: true } : {}), ...(socket && socketTrust() === "strict" && /^(cli|local)$/.test(caller) ? { terminalAsk: true } : {}), ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
+    // A person's label that was not proven arrived as mcp: say how to be the person, once, in the refusal it earned.
+    if (cappedHere && PERSON_LABEL.test(String(socketCaller(req))) && result.error && result.error.code === "denied") {
+      result.error = { ...result.error, message: `${result.error.message}. This call did not come from your terminal, so it was treated as a program's: run it from your terminal, or use ssh -t` };
+    }
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);

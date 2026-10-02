@@ -293,13 +293,13 @@ test("bypass: making or changing an agent is a person's, with no passkey; the as
   // The assistant changes an agent's words and model, and nothing it can reach or spend. vyred
   // names an agent caller only from inside its running thread, so this is that call as it arrives.
   const words = { name: "kit", instructions: "Drafts replies for Northwind Bakery.", model: "claude-sonnet-5" };
-  const asJuno = input => b.d.registry.call("agents.update", input, "mcp:agent:juno", { agent: "juno" });
+  const asJuno = input => b.d.registry.call("agents.update", input, "mcp:agent:juno", { agent: "juno", agentKind: "assistant" });
   const mine = await asJuno(words);
   assert.equal(mine.data?.instructions, words.instructions, JSON.stringify(mine));
   for (const change of [{ auth: { budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: true }]) {
     assert.equal((await asJuno({ ...words, ...change })).error?.code, "denied", Object.keys(change)[0]);
   }
-  assert.equal((await b.d.registry.call("agents.update", words, "mcp:agent:kit", { agent: "kit" })).error?.code, "denied", "kit is not the assistant");
+  assert.equal((await b.d.registry.call("agents.update", words, "mcp:agent:kit", { agent: "kit", agentKind: "agent" })).error?.code, "denied", "kit is not the assistant");
   // Any other agent, a bare MCP session and a guest change nothing, not even words.
   for (const caller of ["mcp", "mcp:agent:kit", "mcp:agent:scout", "tailnet-guest:sam@example.com"]) await refused("agents.update", words, caller);
 });

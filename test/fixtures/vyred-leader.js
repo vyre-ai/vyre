@@ -9,6 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { start } from "../../core/daemon/index.js";
+import { setSocketTrust } from "../../core/daemon/peer.js";
 import { home, load } from "../../core/config/index.js";
 import { Presence } from "../../core/presence/index.js";
 
@@ -18,6 +19,8 @@ if (!(real(root) + path.sep).startsWith(real(os.tmpdir()) + path.sep) || real(ro
   console.error("vyred-leader: only for a temp VYRE_HOME");
   process.exit(1);
 }
+// A test vyred (temp home only, checked above) has no terminal in front of its CLI children: the label is trusted as it was before the socket inversion.
+setSocketTrust("label");
 process.env.VYRE_NO_DIALOGS = "1";
 const cfg = load(root);
 const presence = deps => Object.assign(new Presence({ ...deps, role: cfg.role, network: () => cfg.network || {} }), { trustsServer: () => true });
