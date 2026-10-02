@@ -31,16 +31,16 @@ test("reportContext: once per place, again on a return (focus and visibility cou
   const sent = /** @type {any[]} */ ([]);
   let path = "/now";
   const W = world();
-  const stop = reportContext({ attempt: async (n, i) => { sent.push([n, i]); return { data: {} }; }, surface: () => "phone", path: () => path, win: W.win, doc: W.doc });
+  const stop = reportContext({ attempt: async (n, i) => { sent.push([n, i]); return { data: {} }; }, surface: () => "phone", path: () => path, zone: () => "Asia/Karachi", win: W.win, doc: W.doc });
   await tick();
-  assert.deepEqual(sent, [["context.report", { surface: "phone", project: null, thread: null }]]);
+  assert.deepEqual(sent, [["context.report", { surface: "phone", project: null, thread: null, tz: "Asia/Karachi" }]]);
   W.fireW("deck:navigate");
   await tick();
   assert.equal(sent.length, 1, "the same place again: nothing");
   path = "/chat/harlow-legal/t1";
   W.fireW("deck:navigate");
   await tick();
-  assert.deepEqual(sent.at(-1), ["context.report", { surface: "phone", project: "harlow-legal", thread: "t1" }]);
+  assert.deepEqual(sent.at(-1), ["context.report", { surface: "phone", project: "harlow-legal", thread: "t1", tz: "Asia/Karachi" }]);
   W.doc.visibilityState = "hidden";
   path = "/agents";
   W.fireW("deck:navigate");
@@ -52,7 +52,7 @@ test("reportContext: once per place, again on a return (focus and visibility cou
   W.fireW("focus");
   await tick();
   assert.equal(sent.length, 3, "one return, one report");
-  assert.deepEqual(Object.keys(sent[2][1]).sort(), ["project", "surface", "thread"], "never text, selection or a URL; no device until the hub names one");
+  assert.deepEqual(Object.keys(sent[2][1]).sort(), ["project", "surface", "thread", "tz"], "never text, selection or a URL; the zone name, no clock; no device until the hub names one");
   stop();
 });
 
@@ -71,7 +71,24 @@ test("reportContext: a box without context is asked once", async () => {
 test("reportContext: the device settings.snapshot echoed goes with the report", async () => {
   const sent = /** @type {any[]} */ ([]);
   const W = world();
-  reportContext({ attempt: async (n, i) => { sent.push(i); return { data: {} }; }, surface: () => "phone", path: () => "/now", device: () => "tailnet:alex-phone", win: W.win, doc: W.doc });
+  reportContext({ attempt: async (n, i) => { sent.push(i); return { data: {} }; }, surface: () => "phone", path: () => "/now", device: () => "tailnet:alex-phone", zone: () => null, win: W.win, doc: W.doc });
   await tick();
   assert.deepEqual(sent, [{ surface: "phone", project: null, thread: null, device: "tailnet:alex-phone" }]);
+});
+
+test("reportContext: the device's own zone rides along, a changed zone is a new report, and none is sent when the device has none", async () => {
+  const sent = /** @type {any[]} */ ([]);
+  let z = /** @type {string|null} */ ("America/Los_Angeles");
+  const W = world();
+  reportContext({ attempt: async (n, i) => { sent.push(i); return { data: {} }; }, surface: () => "deck", path: () => "/now", zone: () => z, win: W.win, doc: W.doc });
+  await tick();
+  assert.equal(sent[0].tz, "America/Los_Angeles");
+  z = "Europe/London";
+  W.fireW("deck:navigate");
+  await tick();
+  assert.equal(sent.at(-1).tz, "Europe/London", "the person travelled: told again");
+  z = null;
+  W.fireW("deck:navigate");
+  await tick();
+  assert.equal("tz" in sent.at(-1), false);
 });

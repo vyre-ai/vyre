@@ -61,10 +61,22 @@ export default {
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
 
-    // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
-    // zone data (about 8 MB of RSS), which an idle planner never needs.
-    let zone = /** @type {string|null} */ (null);
-    const defaultZone = () => zone ??= (ctx.config && ctx.config.planner && validZone(ctx.config.planner.timezone) && String(ctx.config.planner.timezone)) || systemZone();
+    // The person's own zone, in order: the one they set (Settings), the one the box's config names, the zone their device reported (context.now's tz, from the
+    // Deck or Capsule they are using), and only last the zone this process runs in (a box is usually UTC, which read "6pm" as 18:00 UTC). Read when something needs
+    // it: the first zoned Intl call loads ICU's time zone data (about 8 MB of RSS), which an idle planner never needs.
+    let deviceZone = /** @type {string|null} */ (null);
+    const defaultZone = () => (ctx.config && ctx.config.planner && validZone(ctx.config.planner.timezone) && String(ctx.config.planner.timezone)) || deviceZone || systemZone();
+    /** Ask context for the zone the person's device last reported. True when that changed the zone the planner uses. */
+    const learnZone = async () => {
+      try {
+        const r = /** @type {any} */ (await ctx.call("context.now", {}));
+        const z = r && !r.error && r.data && r.data.tz;
+        if (typeof z !== "string" || !z || !validZone(z)) return false;
+        const before = settings().timezone;
+        deviceZone = z;
+        return settings().timezone !== before;
+      } catch { return false; }
+    };
     /** @returns {import("./scheduler.js").Settings} */
     const settings = () => {
       const { timezone, ...kept } = st.state.get("settings") || {};
@@ -775,6 +787,18 @@ export default {
 
     // ---- Settings -----------------------------------------------------------------------------
 
+    /** Floating items follow a new zone and events move with a new lead: every open one is timed again, and the scheduler is re-armed. */
+    const retime = after => {
+      const t = now();
+      const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE state = 'open' AND deleted_at IS NULL AND next_fire IS NOT NULL
+        AND ((floating = 1 AND wall IS NOT NULL) OR kind = 'event')`).all());
+      for (const r of rows) {
+        const n = nextFire(r, t, after);
+        st.patch(r.id, { next_fire: n.next, ...(n.at != null && (r.repeat || r.floating) ? { at: n.at } : {}), updated: t });
+      }
+      scheduler.arm();
+    };
+
     const changeSettings = i => {
       const cur = settings();
       const next = { ...(st.state.get("settings") || {}) };
@@ -789,17 +813,7 @@ export default {
       int("escalate_after", 1, 120); int("escalate_max", 0, 10); int("event_lead", 0, 1440);
       st.state.set("settings", next);
       const after = settings();
-      if (after.timezone !== cur.timezone || after.event_lead !== cur.event_lead) {
-        // Floating items follow the new zone; events move with a new lead.
-        const t = now();
-        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE state = 'open' AND deleted_at IS NULL AND next_fire IS NOT NULL
-          AND ((floating = 1 AND wall IS NOT NULL) OR kind = 'event')`).all());
-        for (const r of rows) {
-          const n = nextFire(r, t, after);
-          st.patch(r.id, { next_fire: n.next, ...(n.at != null && (r.repeat || r.floating) ? { at: n.at } : {}), updated: t });
-        }
-        scheduler.arm();
-      }
+      if (after.timezone !== cur.timezone || after.event_lead !== cur.event_lead) retime(after);
       if (after.event_lead !== cur.event_lead) cal.relead();
       if (after.timezone !== cur.timezone || after.event_lead !== cur.event_lead) emit("planner.schedule", { reason: "settings" });
       return after;
@@ -961,6 +975,11 @@ export default {
       try { await checkLink(); } catch { linked = false; }
     }
     if (!linked) scheduler.start();
+    // The zone follows the person's device: asked once now, and again whenever context says a device's tz changed. Items already timed in the old
+    // default zone are timed again (floating ones follow, fixed ones keep their own zone), as for a change in Settings.
+    const rezone = () => learnZone().then(changed => { if (changed) { retime(settings()); emit("planner.schedule", { reason: "timezone" }); } }).catch(() => {});
+    offs.push(ctx.events.on("context.changed", e => { const c = e && e.payload && e.payload.changed; if (Array.isArray(c) && c.includes("tz")) rezone(); }));
+    rezone();
     offs.push(...cal.watch());
 
     return {

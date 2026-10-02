@@ -22,7 +22,7 @@ let homes = 0;
  * A planner on a fake clock. `boot()` starts (or restarts, after downtime) the module on the same
  * store; `advance(ms)` runs every timer that falls due on the way, in order.
  */
-async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, remote = null, start = T0 } = {}) {
+async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, remote = null, start = T0, device = null } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   const events = new Events(db);
@@ -41,14 +41,14 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
   events.on("planner.acked", e => acked.push(e.payload));
   events.on("planner.task-run", e => taskRuns.push(e.payload));
   const w = {
-    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
+    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, device, handle: /** @type {any} */ (null),
     agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
     /** @type {(tool: string, input: any) => Promise<any>|any} */ onCall: null,
     /** @type {Map<string, any>} */ tools: new Map(),
     async boot() {
       w.tools = new Map();
       const ctx = {
-        name: "planner", config: { role, planner: { timezone: tz } }, paths: { root },
+        name: "planner", config: { role, ...(tz ? { planner: { timezone: tz } } : {}) }, paths: { root },
         store: { db, migrate: steps => migrate(db, "planner", steps) },
         log: m => logs.push(m),
         events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
@@ -57,6 +57,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         call: async (tool, input) => {
           calls.push({ tool, input });
           if (tool === "link.status") return { data: { linked: w.linked } };
+          if (tool === "context.now") return w.device ? { data: { tz: w.device, localTime: null } } : { error: { code: "no_such_tool", message: "no" } };
           if (tool === "google.accounts") return { data: [] };
           // juno is the user's assistant; kit is an agent they made (w.agents: tests narrow it).
           if (tool === "agents.list") return { data: w.agents };
@@ -671,4 +672,41 @@ test("planner: reopening a chained task's dependency and finishing it again does
   await w.ok("planner.update", { item: first.id, title: "Sign the contract (updated)" });
   await new Promise(r => setImmediate(r));
   assert.equal(w.taskRuns.length, before, "a change with no new done_at never re-fires it");
+});
+
+test("planner: with no zone set, the person's own device zone decides what 6pm means, not the box's UTC", async t => {
+  // The box runs in UTC; the person's Deck says Karachi (+5). 6pm is 13:00 UTC.
+  const w = await world(t, { tz: null, device: "Asia/Karachi", start: Z(2026, 9, 24, 5) });
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal((await w.ok("planner.settings")).timezone, "Asia/Karachi");
+  const a = await w.ok("planner.add", { kind: "alarm", title: "Dinner", wall: "18:00", date: "2026-09-24" });
+  assert.equal(a.next_fire, Z(2026, 9, 24, 13), "6pm Karachi is 13:00 UTC");
+  const parsed = await w.ok("planner.parse", { text: "remind me to call the printer at 6pm" });
+  assert.equal(parsed.tz, "Asia/Karachi");
+  assert.equal(localParts(parsed.at, "Asia/Karachi").hour, 18, "read as 18:00 in the person's zone");
+  // The zone Settings sets wins over the device.
+  const s = await w.ok("planner.settings", { timezone: "Europe/London" });
+  assert.equal(s.timezone, "Europe/London");
+});
+
+test("planner: a device that moves zone retimes floating alarms and keeps fixed reminders; an unknown zone is ignored; the box config beats the device", async t => {
+  const w = await world(t, { tz: null, device: "Asia/Karachi", start: Z(2026, 9, 24, 5) });
+  await new Promise(r => setTimeout(r, 0));
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Gym", wall: "07:00", date: "2026-09-25" });
+  const rem = await w.ok("planner.add", { kind: "reminder", title: "Call", wall: "09:00", date: "2026-09-25" });
+  assert.equal(alarm.next_fire, Z(2026, 9, 25, 2), "07:00 in Karachi");
+  w.device = "Not/AZone";
+  w.events.emit("context", "context.changed", { changed: ["tz"] });
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal((await w.ok("planner.settings")).timezone, "Asia/Karachi", "an unknown zone changes nothing");
+  w.device = "America/New_York";
+  w.events.emit("context", "context.changed", { changed: ["tz"] });
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal((await w.ok("planner.settings")).timezone, "America/New_York");
+  assert.equal((await w.ok("planner.get", { item: alarm.id })).item.next_fire, Z(2026, 9, 25, 11), "07:00 in New York (EDT)");
+  assert.equal((await w.ok("planner.get", { item: rem.id })).item.next_fire, Z(2026, 9, 25, 4), "09:00 Karachi stays");
+  // An explicit zone in the box's config is not overridden by a device.
+  const cfg = await world(t, { tz: "Europe/London", device: "Asia/Karachi" });
+  await new Promise(r => setTimeout(r, 0));
+  assert.equal((await cfg.ok("planner.settings")).timezone, "Europe/London");
 });
