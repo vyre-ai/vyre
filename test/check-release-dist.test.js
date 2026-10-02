@@ -90,3 +90,22 @@ test("release dist: with --installer the Windows installer must be in the releas
   assert.ok(check(d, { installer: true }).some(p => /VyreSetup\.exe is not in the release/.test(p)));
   assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
 });
+
+/** Adds setup.json to a dist and lists it in SHA256SUMS, the way the release job does. @param {string} dir @param {string} text */
+function withSetup(dir, text) {
+  fs.writeFileSync(path.join(dir, "setup.json"), text);
+  const line = `${crypto.createHash("sha256").update(text).digest("hex")}  setup.json\n`;
+  fs.appendFileSync(path.join(dir, "SHA256SUMS"), line);
+}
+
+test("release dist: with --setup, setup.json must be in the release, listed in SHA256SUMS and { v: 1, files }", t => {
+  const d = dist(t);
+  assert.ok(check(d, { setup: true }).some(p => /setup\.json is not in the release/.test(p)));
+  assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
+  const ok = dist(t); withSetup(ok, JSON.stringify({ v: 1, files: [["/i", "a".repeat(64)]] }));
+  assert.deepEqual(check(ok, { setup: true }), []);
+  const bad = dist(t); withSetup(bad, JSON.stringify({ v: 2, files: [] }));
+  assert.ok(check(bad, { setup: true }).some(p => /setup\.json is not \{ v: 1/.test(p)));
+  const junk = dist(t); withSetup(junk, "not json");
+  assert.ok(check(junk, { setup: true }).some(p => /setup\.json is not JSON/.test(p)));
+});

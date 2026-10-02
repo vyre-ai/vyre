@@ -155,6 +155,8 @@ jobs:
             cp "site/box/$f" dist/
           done
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
+          # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
+          node scripts/setup-hashes.mjs dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: prepared
@@ -427,9 +429,9 @@ jobs:
       - name: Gate before anything is signed further or published, the release must be what the updater needs
         run: |
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --installer --setup --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer
+            node scripts/check-release-dist.mjs dist --installer --setup
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
