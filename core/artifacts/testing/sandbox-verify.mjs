@@ -4,7 +4,7 @@
 /**
  * @param {{ framed?: any[], outer?: any[], ua?: string } | null} report the Deck stand-in's report (framed run)
  * @param {{ results?: any[], ua?: string } | null} top the hostile page's own results when opened at the top level, or null when not run
- * @param {{ hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string }[]>, api: { via: string, cookie: boolean }[] }} server
+ * @param {{ rule?: boolean, loads?: { path: string, accepted: boolean, sf: string }[], accepted?: Record<string, boolean[]>, hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string, sf?: string }[]>, api: { via: string, cookie: boolean }[] }} server
  * @returns {{ failures: string[], lines: string[] }}
  */
 export function verify(report, top, server) {
@@ -40,10 +40,22 @@ export function verify(report, top, server) {
   const SELF_NAV = new Set(["navmeta", "navloc", "navext", "navanchor", "navdownload"]);
   const cookiesOf = (/** @type {string} */ k) => (server.cookies && server.cookies[k]) || [];
   const urlsOf = (/** @type {string} */ k) => (server.urls && server.urls[k]) || [];
+  // The server's own rule (core/presence/person.js foreignFetch, when the tree has it): would it take each request as the person's?
+  const acceptedOf = (/** @type {string} */ k) => (server.accepted && server.accepted[k]) || [];
+  const RULE = server.rule === true;
+  lines.push(`info the person-session rule (foreignFetch) is ${RULE ? "PRESENT: a request is the person's only if it carries the cookie and is not foreign" : "ABSENT on this tree: any request with the cookie counts"}`);
   for (const k of SELF_NAV) {
     const u = urlsOf(k)[0];
-    lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}`);
-    if (cookiesOf(k).some(c => /vyre_session/.test(c))) failures.push(`self-navigation ${k} carried the Strict session cookie`);
+    const acc = acceptedOf(k);
+    lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}, Sec-Fetch ${u.sf || "not recorded"}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}; taken as the person's: ${acc.length ? acc.map(a => (a ? "YES" : "no")).join(",") : "n/a"}`);
+    if (acc.some(Boolean)) failures.push(`self-navigation ${k} would be taken as the person's session by the server${RULE ? " even with the rule" : " (the rule is absent on this tree)"}`);
+  }
+  // The rule must not break the Deck: its own frame load of the artifact, and the artifact opened directly, stay the person's.
+  if (RULE) for (const want of ["/a/hostile?mode=framed", "/a/hostile?mode=top"]) {
+    const l = (server.loads || []).find(x => x.path === want);
+    if (!l) continue;
+    lines.push(`${l.accepted ? "ok  " : "FAIL"} the person's own load of ${want} is still taken as theirs (Sec-Fetch ${l.sf})`);
+    if (!l.accepted) failures.push(`the rule refuses the person's own load of ${want} (Sec-Fetch ${l.sf})`);
   }
   // The server's own count: nothing else the hostile page tried may have reached it, and nothing carried the cookie.
   const blocked = Object.entries(reached).filter(([via, n]) => n > 0 && !SELF_NAV.has(via) && !via.startsWith("ctl")).map(([via, n]) => `${via}=${n}`);
