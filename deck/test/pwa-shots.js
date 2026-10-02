@@ -136,7 +136,7 @@ const SCREENS = [
   { name: "no-assistant-agents", path: "/agents", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   // A cold launch from the home screen opens where the user left off, not at start_url, when
   // nothing needs them; with something waiting, it opens on Now.
-  { name: "reopen", path: "/now", last: "/agents", expect: "/agents", stub: { "gate.held": [], "threads.asks": [] } },
+  { name: "reopen", path: "/now", last: "/agents", expect: "/agents", stub: { "gate.held": [], "threads.asks": [], "waiting.list": { count: 0, rows: [] } } },
   { name: "reopen-needs", path: "/now", last: "/agents", expect: "/now",
     stub: { "threads.asks": [{ id: "ask-1", kind: "permission", thread: "t-1", agent: "kit", tool: "Bash", at: 1, input: { command: "git push origin q3-report" } }] } },
   // Hold-to-pin on the phone: a held tile in More becomes a swipe page after Agents (no sixth tab) and More's first tile.
@@ -151,7 +151,7 @@ const SCREENS = [
       await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
       const first = document.querySelector('.sheet-more .plc-tile'); if (first.getAttribute('data-place') !== 'Vault' || !first.hasAttribute('data-kept')) throw new Error('the kept place is not the first tile, marked');` },
   // The pinned page is reached by swiping past Agents; More says where you are.
-  { name: "pin-swipe", path: "/now", swipe: true, swipes: 4, expect: "/vault", pin: "Vault" },
+  { name: "pin-swipe", path: "/now", swipe: true, swipes: 5, expect: "/vault", pin: "Vault" },
   // A second hold lets it go: the page and the mark are gone, the bar never changed.
   { name: "pin-unpin", path: "/now", script: `await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
       const hold = async name => { const a = document.querySelector('.sheet-more .plc-tile[data-place=' + name + ']'); const r = a.getBoundingClientRect();
@@ -214,7 +214,9 @@ for (const dev of DEVICES) {
       for (let n = 0; s.swipe && n < (s.swipes || 1); n++) {
         // A finger swiping from right to left low on the page, just above Lumen and clear of
         // the Needs rows (which swipe on their own and hold the pager still).
-        const y = dev.height - dev.insets.bottom - 110;
+        // The Lumen bar sits higher or lower with the shell, so measure it rather than guess.
+        const top = await tab.run(`return Math.round(document.querySelector('.capsule')?.getBoundingClientRect().top || 0)`);
+        const y = top > 200 ? top - 24 : dev.height - dev.insets.bottom - 160;
         await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: dev.width - 40, y }] });
         for (let i = 1; i <= 10; i++) await tab.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: dev.width - 40 - i * 30, y }] });
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
