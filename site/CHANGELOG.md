@@ -3,6 +3,9 @@
 Newest first. The landing page is a static site: `index.html`, `styles.css`, `app.js` and a few
 assets, with no build step and no framework. Fonts load from Google Fonts; the one script is local.
 
+Since v2 the pages are written by `scripts/gen-site.mjs` (one nav, footer, metadata and structured-data source) and committed;
+the site itself still has no build step. `scripts/gen-og.sh` draws the social cards.
+
 ## Unreleased
 
 - The setup page is one flow of ten steps with a timeline (#11): a rail beside the step at 900 px and wider, a segmented bar with
@@ -12,6 +15,19 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
   a progress line.
 - The setup page's log now shows a line for every step as it moves (words matched, connected, address claimed, Tailscale joined,
   address live, AI signed in or skipped, phone paired, passkey link made), in the page's own fixed words, above the server's lines (#21).
+### vyre.run v2 (preview, not yet on production)
+
+- New home page in the bone theme (paper by day, graphite by night): the product as the hero (a Vyre Lumen window and a
+  phone, built in markup, sample data labelled), a works-on bar for Mac, Windows, Linux servers and phones, the problem,
+  the pieces, six feature sections, cost, install, a direction teaser and an FAQ that opens with yes or no.
+- New pages: /mac, /windows, /linux, /phone (one per device, each with what you get, install steps, needs, known gaps
+  and an FAQ) and /direction (hardening, sessions, scale, spaces and modules, as direction and not a promise of dates).
+  /start is rewritten in the same look with the same steps.
+- Search and assistants: llms.txt, llms-full.txt, agents.md and .well-known/agent.json; sitemap.xml and robots.txt;
+  Organization, SoftwareApplication, FAQPage and BreadcrumbList structured data; canonical URLs; a 1200x630 card per page
+  in /og. Lighthouse on the home page: performance 99, SEO 100, best practices 100.
+- Replaced styles.css, app.js and start/start.css with v2.css and v2.js. The installers (/i, /w, /install.sh, /box) and
+  the setup page are not touched. test/site-v2.test.js checks metadata, links, structured data, the sitemap and words.
 
 ### 0.2.0 (2 Oct 2026)
 

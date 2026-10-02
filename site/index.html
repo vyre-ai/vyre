@@ -1,614 +1,364 @@
 <!doctype html>
-<!--
-  Hi. You read source. You're our kind of person.
-  Vyre is open source: github.com/vyre-ai/vyre
-  No build step, no framework, no trackers: one HTML file, one stylesheet, one small script.
--->
+<!-- You read source. Vyre is open source: github.com/vyre-ai/vyre. No framework, no trackers: static pages, one stylesheet, one small script. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vyre: your AI agents on your own server, for your Mac and phone</title>
-  <meta name="description" content="Open-source, self-hosted home for your AI agents. They run on your server and answer from your Mac with Vyre Lumen, from your phone or from Windows. Use your own Claude, Codex, Grok or OpenRouter accounts. Your keys stay in your own vault.">
+  <title>Vyre: your AI command center, on your own machines</title>
+  <meta name="description" content="Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.">
   <link rel="canonical" href="https://vyre.run/">
-  <meta name="theme-color" content="#0E0D0C">
-  <meta name="color-scheme" content="dark">
-  <link rel="icon" href="favicon.ico" sizes="any">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/">
-  <meta property="og:title" content="Vyre: your AI agents on your own server, for your Mac and phone">
-  <meta property="og:description" content="Open-source, self-hosted home for your AI agents. They run on your server and answer from your Mac with Vyre Lumen, from your phone or from Windows. Use your own Claude, Codex, Grok or OpenRouter accounts. Your keys stay in your own vault.">
-  <meta property="og:image" content="https://vyre.run/og.png">
-  <meta property="og:image:width" content="1280">
-  <meta property="og:image:height" content="640">
-  <meta property="og:image:alt" content="Vyre: your agents live on your server. Reach them from your Mac or your phone.">
+  <meta property="og:title" content="Vyre: your AI command center, on your own machines">
+  <meta property="og:description" content="Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.">
+  <meta property="og:image" content="https://vyre.run/og/home.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Your AI command center, on your own machines.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Vyre: your AI agents on your own server, for your Mac and phone">
-  <meta name="twitter:description" content="Open-source, self-hosted home for your AI agents. They run on your server and answer from your Mac with Vyre Lumen, from your phone or from Windows. Use your own Claude, Codex, Grok or OpenRouter accounts. Your keys stay in your own vault.">
-  <meta name="twitter:image" content="https://vyre.run/og.png">
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Vyre",
-    "description": "Open-source, self-hosted home for your AI agents. They run on your server and answer from your Mac with Vyre Lumen, from your phone or from Windows. Use your own Claude, Codex, Grok or OpenRouter accounts. Your keys stay in your own vault.",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "macOS, Linux, Windows",
-    "license": "https://www.apache.org/licenses/LICENSE-2.0",
-    "url": "https://vyre.run/",
-    "codeRepository": "https://github.com/vyre-ai/vyre"
-  }
-  </script>
+  <meta name="twitter:title" content="Vyre: your AI command center, on your own machines">
+  <meta name="twitter:description" content="Open-source command center that runs your AI agents on a server you own. One session across Claude, Codex, Grok and OpenRouter, reached from your Mac, your Windows PC or your phone.">
+  <meta name="twitter:image" content="https://vyre.run/og/home.png">
+  <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://vyre.run/#org","name":"Vyre","url":"https://vyre.run/","logo":"https://vyre.run/icon-512.png","sameAs":["https://github.com/vyre-ai"]},{"@type":"SoftwareApplication","@id":"https://vyre.run/#app","name":"Vyre","url":"https://vyre.run/","description":"Open-source command center for AI agents that runs on your own machines. One session across Claude, Codex, Grok and OpenRouter, with memory, a vault, teammates and watchers. Reach it from a Mac, a Windows PC, a Linux server or any phone.","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Windows, Linux, iOS, Android","softwareVersion":"0.2.1","license":"https://www.apache.org/licenses/LICENSE-2.0","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"publisher":{"@id":"https://vyre.run/#org"},"codeRepository":"https://github.com/vyre-ai/vyre","downloadUrl":"https://vyre.run/setup/"},{"@type":"WebSite","@id":"https://vyre.run/#site","url":"https://vyre.run/","name":"Vyre","publisher":{"@id":"https://vyre.run/#org"}},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is Vyre free?","acceptedAnswer":{"@type":"Answer","text":"Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre."}},{"@type":"Question","name":"Do I need a server?","acceptedAnswer":{"@type":"Answer","text":"Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed."}},{"@type":"Question","name":"Does it run on Windows?","acceptedAnswer":{"@type":"Answer","text":"Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”."}},{"@type":"Question","name":"Does it work on my phone?","acceptedAnswer":{"@type":"Answer","text":"Yes, on iPhone and Android. Open Vyre at your own address, add it to your Home Screen, and pair it by scanning a code. The phone needs Tailscale signed in, because your address only opens from your own devices."}},{"@type":"Question","name":"Where does my data live?","acceptedAnswer":{"@type":"Answer","text":"Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app."}},{"@type":"Question","name":"What is Tailscale for?","acceptedAnswer":{"@type":"Answer","text":"Tailscale joins your server, your computers and your phone into one private network. Your address only opens from devices on it, and it is required. The free plan is enough."}},{"@type":"Question","name":"Does it replace Claude Code, Codex or Grok?","acceptedAnswer":{"@type":"Answer","text":"No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do."}},{"@type":"Question","name":"What stops an agent from doing something I did not ask for?","acceptedAnswer":{"@type":"Answer","text":"Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting."}},{"@type":"Question","name":"Is it ready?","acceptedAnswer":{"@type":"Answer","text":"It is 0.2.1, and what this page shows works today. Some things come next, and the direction page lists them. The known gaps list what 0.2.1 does not do yet."}}]}]}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
-  <link rel="stylesheet" href="styles.css">
-  <script src="app.js" defer></script>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"></noscript>
+  <link rel="stylesheet" href="/v2.css?v=e55f99d9e7">
+  <script>document.documentElement.className='js'</script>
+  <script src="/v2.js?v=df101219ae" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-
 <header class="nav">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Vyre, back to top">
-      <span class="mark" id="mark" aria-hidden="true">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path class="wire" d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="heart" d="M10.5 19.5C6.3 16.4 3.5 13.6 3.5 10.4C3.5 8 5.2 6.3 7.3 6.3C8.7 6.3 9.9 7.1 10.5 8.3C11.1 7.1 12.3 6.3 13.7 6.3C15.8 6.3 17.5 8 17.5 10.4C17.5 13.6 14.7 16.4 10.5 19.5Z" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="dot-sig" id="mark-dot" cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>
-      </span>
-      <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </a>
-    <nav class="nav-links" aria-label="Main">
-      <a href="#lumen">Lumen</a>
-      <a href="#accounts">Accounts</a>
-      <a href="#memory">Memory</a>
-      <a href="#vault">Vault</a>
-      <a href="#glass">Glass</a>
-      <a href="#yours">Open source</a>
-      <span class="nav-sep" aria-hidden="true"></span>
-      <a class="keep" href="https://github.com/vyre-ai/vyre">GitHub</a>
-      <a class="btn btn-signal btn-sm keep" href="#install">Install</a>
-    </nav>
+    <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+    <nav class="nav-links" id="links" aria-label="Main"><a href="/#product">Product</a><a href="/#devices">Devices</a><a href="/direction/">Direction</a><a href="/#open">Open source</a></nav>
+    <div class="nav-end">
+      <a class="star-pill" href="https://github.com/vyre-ai/vyre" aria-label="Star Vyre on GitHub"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg><span>Star</span></a>
+      <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
+      <a class="btn btn-fill btn-sm" href="/setup/">Set up Vyre</a>
+      <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
+    </div>
   </div>
 </header>
-
 <main id="main">
 
-  <!-- HERO -->
-  <section class="hero" id="top" aria-labelledby="hero-h">
-    <div class="wrap">
-      <p class="lbl eyebrow"><span>Open source</span><span aria-hidden="true">&#183;</span><span>Apache 2.0</span><span aria-hidden="true">&#183;</span><span>Your own subscriptions</span></p>
-      <h1 id="hero-h" class="h-display">Your agents live on your server. Reach them from your Mac or your phone.</h1>
-
-      <div class="hero-grid">
-        <div class="hero-copy">
-          <p class="lead">Vyre is an open-source, self-hosted home for your AI agents. They run on a server you own, keep working when your laptop is closed, and answer when you press Option-Space on your Mac or open Vyre on your phone.</p>
-          <p class="lead">Use Claude, Codex, Grok or OpenRouter from your own subscriptions, and switch the model in any session. Your keys stay in an encrypted vault on your server, and anything that sends, posts or pays waits for your Touch ID or Face ID.</p>
-
-          <div class="install" id="install" data-install>
-            <div class="install-cmd">
-              <a class="btn btn-signal" href="/setup/">Set up my server</a>
-              <span class="lbl">It gives you one line to paste on your server, then finishes in your browser.</span>
-            </div>
-            <div class="itabs" role="tablist" aria-label="Where you install Vyre">
-              <button class="itab" type="button" role="tab" id="h-tab-linux" aria-controls="h-pan-linux" aria-selected="true">Linux server</button>
-              <button class="itab" type="button" role="tab" id="h-tab-mac" aria-controls="h-pan-mac" aria-selected="false" tabindex="-1">Your Mac</button>
-              <button class="itab" type="button" role="tab" id="h-tab-win" aria-controls="h-pan-win" aria-selected="false" tabindex="-1">Windows</button>
-              <button class="itab" type="button" role="tab" id="h-tab-needs" aria-controls="h-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
-            </div>
-            <div class="ipanel" role="tabpanel" id="h-pan-linux" aria-labelledby="h-tab-linux" tabindex="0">
-              <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero">curl -fsSL https://vyre.run/install.sh<wbr> | sh</code><button class="btn btn-line btn-sm copy" type="button" data-copy="curl -fsSL https://vyre.run/install.sh | sh" data-copy-target="cmd-hero" aria-label="Copy the install command">Copy</button></div>
-              <p>The setup page shows this line with your one-time code. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, and the rest happens in your browser. A Mac that stays on can be the server too: the same line works there.</p>
-            </div>
-            <div class="ipanel" role="tabpanel" id="h-pan-mac" aria-labelledby="h-tab-mac" tabindex="0" hidden>
-              <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-hero-mac" aria-label="Copy the Mac install command">Copy</button></div>
-              <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-hero-up" aria-label="Copy vyre up">Copy</button></div>
-              <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-lumen">vyre capsule install</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre capsule install" data-copy-target="cmd-hero-lumen" aria-label="Copy vyre capsule install">Copy</button></div>
-              <p>This puts Vyre on your Mac, pairs it with your server over your tailnet, and builds Vyre Lumen on your Mac; nothing is downloaded for it. Vyre is not on npm yet, so it installs from the same tarball the server uses.</p>
-            </div>
-            <div class="ipanel" role="tabpanel" id="h-pan-win" aria-labelledby="h-tab-win" tabindex="0" hidden>
-              <p>There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, and it updates itself. Its installer, VyreSetup.exe, comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>.</p>
-            </div>
-            <div class="ipanel" role="tabpanel" id="h-pan-needs" aria-labelledby="h-tab-needs" tabindex="0" hidden>
-              <ul class="needs">
-                <li><span class="lbl">Server</span><span>A Linux machine with Docker Compose 2.24 or newer, or a Mac that stays on</span></li>
-                <li><span class="lbl">Your Mac</span><span>Node 22.5 or newer</span></li>
-                <li><span class="lbl">AI</span><span>An account with Claude, Codex, Grok or OpenRouter</span></li>
-                <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
-              </ul>
-            </div>
-            <div class="install-foot">
-              <a class="arrow" href="start/">The full steps, in order</a>
-              <span class="copied" data-copied role="status" aria-live="polite"></span>
-            </div>
-          </div>
-
-          <p class="hint">
-            <span class="keys" aria-hidden="true"><span class="kc">&#8997;Space</span></span>
-            <span class="hk-key">Press &#8997;Space to try Vyre Lumen right here.</span>
-            <span class="hk-touch">Tap to try Vyre Lumen right here.</span>
-            <button class="linkbtn" type="button" data-open-demo>Or open it</button>
-          </p>
-        </div>
-
-        <!-- The live Lumen, over a call -->
-        <div class="hero-demo" aria-label="Try Vyre Lumen. Sample data, nothing leaves this page." role="region">
-          <div class="desk-top">
-            <div class="menubar" aria-hidden="true"><span class="app">Calls</span><span>File</span><span>View</span><span class="grow"></span><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="1.9" fill="#F1EEE6"/></svg><span class="mono">Thu 14:40</span></div>
-            <div class="call" aria-hidden="true">
-              <div class="call-bar"><span class="live-dot"></span>Harlow Legal weekly &#183; 23:14</div>
-              <div class="tiles">
-                <div class="tile"><span class="av">HL</span><span class="who">Harlow Legal team</span></div>
-                <div class="tile"><span class="av">A</span><span class="who">alex (you)</span></div>
-              </div>
-            </div>
-            <div class="cap-wrap" data-cap-wrap>
-              <div class="capsule" data-capsule data-state="typing">
-                <div class="st st-typing">
-                  <div class="cap-in">
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#F1EEE6"/></svg>
-                    <input class="cap-field" type="text" placeholder="Ask, or @ an agent or project" autocomplete="off" spellcheck="false" aria-label="Ask Lumen, or @ an agent or project">
-                    <button class="cap-mic" type="button" aria-pressed="false" aria-label="Say it out loud (demo)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="1.5" width="5" height="7.5" rx="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 7A4.5 4.5 0 0 0 11.5 7M7 11.5V13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
-                    <span class="kbd" aria-hidden="true">&#9166;</span>
-                  </div>
-                  <div class="cap-sec cap-route">
-                    <div class="dest on"><span class="lbl sig">Sends to</span><span data-d-name>juno</span><span class="ash" aria-hidden="true">&#183;</span><span data-d-where>your assistant</span><span class="grow"></span><span class="mono stone xs" data-d-note>default</span></div>
-                    <div class="cap-note" data-d-hint>Type @kit or @northwind to pick where it goes.</div>
-                  </div>
-                  <div class="cap-reply" data-reply hidden></div>
-                  <div class="cap-foot" aria-hidden="true"><span>&#9166; send</span><span>&#8593; waiting on you</span><span>esc close</span></div>
-                </div>
-                <div class="st st-recall">
-                  <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#F1EEE6"/></svg><div class="cap-text" data-r-q>what target cost per lead did Harlow Legal give us?</div></div>
-                  <div class="cap-sec cap-recall">
-                    <span class="lbl">From memory &#183; no model used</span>
-                    <span class="big" data-r-a>$180 per signed lead</span>
-                    <span class="small stone" data-r-d>Down from $220 in July. The Harlow Legal team set it on the 12 Sep call, and kit is checking the ads against it today.</span>
-                  </div>
-                  <div class="cap-sec"><div class="src"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/></svg><span data-r-s>Call, 12 Sep &#183; Harlow Legal weekly &#183; turn 41</span></div></div>
-                  <div class="cap-foot" aria-hidden="true"><span>&#9166; open the source</span><span>&#8677; ask juno instead</span><span>esc close</span></div>
-                </div>
-                <div class="st st-held">
-                  <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#F1EEE6"/></svg><div class="cap-text">juno drafted a reply to Harlow Legal</div><span class="held-chip"><span class="dot beacon" aria-hidden="true"></span>Held for you</span></div>
-                  <div class="cap-sec mail">
-                    <dl><dt>To</dt><dd class="mono">team@harlowlegal.example</dd><dt>Subject</dt><dd>Re: Q3 report</dd></dl>
-                    <div class="msg"><span>Hi all,</span><span>The Q3 numbers are in the deck, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>alex</span></div>
-                  </div>
-                  <div class="cap-actions"><button class="btn btn-signal btn-sm" type="button" data-demo-send>Send</button><button class="btn btn-line btn-sm" type="button" data-demo-edit>Edit</button><span class="grow"></span><span class="xs ash">Rule: email to a client waits for you</span></div>
-                </div>
-                <div class="st st-waiting">
-                  <div class="cap-sec waiting-head"><span class="lbl beacon">Waiting on you &#183; 2</span><span class="xs ash">oldest first</span></div>
-                  <div class="waits">
-                    <div class="wait"><span class="dot beacon" aria-hidden="true"></span><span class="body2"><span>kit wants to email 14 Northwind Bakery customers the new order form</span><span class="xs ash">Held by rule: bulk email over 10</span></span><span class="mono xs stone">18 min</span></div>
-                    <div class="wait on"><span class="dot beacon" aria-hidden="true"></span><span class="body2"><span>juno drafted a reply to Harlow Legal</span><span class="xs ash">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span><span class="mono xs stone">6 min</span></div>
-                  </div>
-                  <div class="cap-foot" aria-hidden="true"><span>&#8593;&#8595; move</span><span>&#9166; review</span><span>esc close</span></div>
-                </div>
-              </div>
-              <div class="cap-status" data-status role="status" aria-live="polite"></div>
-              <div class="cap-modes" role="group" aria-label="Lumen modes">
-                <button class="dtab" type="button" data-state="typing" aria-pressed="true">Typing</button>
-                <button class="dtab" type="button" data-state="recall" aria-pressed="false">Recall</button>
-                <button class="dtab" type="button" data-state="held" aria-pressed="false">Held</button>
-                <button class="dtab" type="button" data-state="waiting" aria-pressed="false">Waiting</button>
-              </div>
-            </div>
-          </div>
-          <div class="tries" aria-label="Things to try">
-            <span class="lbl">Try</span>
-            <button class="try" type="button" data-try="@kit the Harlow deck needs the Q3 numbers">@kit the Harlow deck needs the Q3 numbers</button>
-            <button class="try" type="button" data-try="what target cost per lead did Harlow Legal give us?">what target cost per lead did Harlow Legal give us?</button>
-            <button class="try" type="button" data-try="do add the HL-2291 hearing to my calendar">do add the HL-2291 hearing to my calendar</button>
-          </div>
-          <p class="demo-note xs ash">Sample data. Nothing you type leaves this page.</p>
-        </div>
+<section class="hero" aria-labelledby="hero-h">
+  <div class="wrap">
+    <div class="copy">
+      <p class="eyebrow">Open source. Apache 2.0. Your own subscriptions.</p>
+      <h1 id="hero-h" class="display">Your AI command center, <b>on your own machines.</b></h1>
+      <p class="lead">Vyre runs your agents on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.</p>
+      <p class="hero-keep">Your agents keep working when your laptop is closed.</p>
+      <div class="btn-row">
+        <a class="btn btn-fill" href="/setup/">Set up Vyre</a>
+        <a class="btn" href="/direction/">See the direction</a>
       </div>
+      <p class="hero-note">Free. Needs one AI account and Tailscale’s free plan.</p>
     </div>
-  </section>
-
-  <!-- Everything inside this line runs inside your tailnet. -->
-  <div class="tailnet">
-    <div class="gate gate-top" aria-hidden="true"><span class="g">
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5.5" width="8" height="5" rx="1" stroke="#B3AEA4" stroke-width="1.2"/><path d="M4 5.5V4A2 2 0 0 1 8 4V5.5" stroke="#B3AEA4" stroke-width="1.2"/></svg>
-      <span data-host>alex.vyre.run</span><span class="ash"><span class="long">Everything inside this line runs on your own network.</span><span class="short">your network only</span></span>
-    </span></div>
-
-    <div class="wrap">
-
-      <!-- CAPSULE -->
-      <section class="sec" id="lumen" aria-labelledby="lumen-h">
-        <div class="split">
-          <div class="t rv">
-            <p class="lbl num"><span>01</span>Vyre Lumen &#183; on your Mac</p>
-            <h2 id="lumen-h" class="h1">Ask without leaving what you&#39;re doing.</h2>
-            <p class="body">Press &#8997;Space over any app, a call or a doc, and Vyre Lumen opens. Say what you need. It&#39;s gone when you&#39;re done.</p>
-            <dl class="feats">
-              <div><dt>&#8997;Space</dt><dd>Opens over any app on your Mac. Esc closes it. Tap Control twice instead, if you turn that on.</dd></div>
-              <div><dt>@ anything</dt><dd>@ an agent or a project, and it goes there.</dd></div>
-              <div><dt>See where it goes</dt><dd>The destination shows before you send.</dd></div>
-              <div><dt>Answers from memory</dt><dd>If your memory already knows, you get the answer with its source.</dd></div>
-              <div><dt>Say it out loud</dt><dd>Talk instead of typing. Deepgram turns it into text.</dd></div>
-              <div><dt>do &#8230;</dt><dd>Start with &#8220;do&#8221; and it uses your Mac for you. It asks before anything goes out.</dd></div>
-              <div><dt>Auto-answer</dt><dd>Pause on a question and it answers itself, with what memory knows. Enter then asks a follow-up.</dd></div>
-            </dl>
-          </div>
-
-          <div class="mac rv">
-            <div class="menubar" aria-hidden="true"><span class="app">Docs</span><span>File</span><span>Edit</span><span class="grow"></span><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#B8A4FF"/></svg><span class="mono">Thu 14:52</span></div>
-            <div class="doc" aria-hidden="true">
-              <span class="doc-t">Northwind Bakery: autumn order form</span>
-              <span class="ln w90"></span><span class="ln w70"></span><span class="ln w80"></span><span class="ln w40"></span>
-              <span class="ln w90"></span><span class="ln w60"></span>
-            </div>
-            <div class="capsule mac-cap" role="img" aria-label="Vyre Lumen over a document: a message to kit, with where it will go shown before sending.">
-              <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#F1EEE6"/></svg><div class="cap-text"><span class="at">@northwind</span><span>send this to the owner for a yes</span><span class="blink" aria-hidden="true"></span></div><span class="kbd">&#9166;</span></div>
-              <div class="cap-sec cap-route">
-                <div class="dest on"><span class="lbl sig">Sends to</span><span>kit</span><span class="ash">&#183;</span><span>Northwind Bakery</span><span class="ash">&#8250;</span><span class="w5">order form</span></div>
-                <div class="dest"><span class="lbl">Then</span><span class="stone">a draft to Northwind Bakery&#39;s owner, held for you</span></div>
-              </div>
-              <div class="cap-foot"><span>&#9166; send</span><span>&#8595; other destination</span><span>esc close</span></div>
-            </div>
-            <div class="mac-foot"><span class="dot beacon" aria-hidden="true"></span><span>The dot in the menu bar turns violet when something needs you.</span></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- MEMORY -->
-      <section class="sec" id="accounts" aria-labelledby="accounts-h">
-        <div class="split">
-          <div class="t rv">
-            <p class="lbl num"><span>02</span>Your accounts, any model</p>
-            <h2 id="accounts-h" class="h1">One session. Every AI account you have.</h2>
-            <p class="body">A session belongs to Vyre, not to one model. Change the model whenever you like and it keeps its memory and its files.</p>
-            <dl class="feats">
-              <div><dt>The model picker</dt><dd>Choose the provider, account, model and effort from the composer: Claude, Codex, Grok or OpenRouter, from your own subscriptions.</dd></div>
-              <div><dt>@codex, @grok</dt><dd>Add a name to one message to ask another model, and the session stays where it was.</dd></div>
-              <div><dt>You can see who answered</dt><dd>Each reply carries its provider&#39;s mark, and a line says &#8220;Switched to Grok&#8221; when the model changes.</dd></div>
-              <div><dt>Images and video</dt><dd>What a model generates is saved in the project with its provider and prompt, shows up in a Generated folder in Drive, and &#8220;Use in&#8221; hands it to another model.</dd></div>
-            </dl>
-          </div>
-          <div class="yours-vis rv">
-            <div class="panel modules" role="img" aria-label="The model picker: Claude is answering; Codex, Grok and OpenRouter are listed too.">
-              <div class="panel-head"><span class="lbl">Answer with</span><span class="mono ash xs">sample</span></div>
-              <div class="mod"><span><span class="bone">Claude</span><span class="xs ash">Your Claude account</span></span><span class="mono xs bone">answering</span></div>
-              <div class="mod"><span><span class="bone">Codex</span><span class="xs ash">Your ChatGPT sign-in</span></span></div>
-              <div class="mod"><span><span class="bone">Grok</span><span class="xs ash">Your xAI account</span></span></div>
-              <div class="mod"><span><span class="bone">OpenRouter</span><span class="xs ash">Your key &#183; any model it offers</span></span></div>
-            </div>
-            <div class="panel tty">
-              <div><span class="ash">&gt;</span> <span class="bone">@codex rename the intake form fields</span></div>
-              <div class="ash">Switched to Codex. It has this session&#39;s memory and files.</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="sec" id="memory" aria-labelledby="memory-h">
-        <div class="split rev">
-          <div class="t rv">
-            <p class="lbl num"><span>03</span>Memory</p>
-            <h2 id="memory-h" class="h1">It remembers, and shows you where from.</h2>
-            <p class="body">Every session you run goes into your memory. When Vyre recalls something, it shows with its source: the call, the thread, the turn. No model is used to recall it. Everything else came from the model.</p>
-            <p class="body">Ask why, and it opens the source.</p>
-            <div class="legend">
-              <div><span class="sw recall"></span>Recalled from your memory, with the source.</div>
-              <div><span class="sw"></span>Written by the model.</div>
-            </div>
-            <p class="iq"><span class="bone">Vyre Memory</span><span class="stone">Ask in plain words and it answers from what it has stored, with the source.</span></p>
-          </div>
-          <div class="panel thread rv">
-            <div class="panel-head"><span class="lbl">Harlow Legal &#8250; drafts</span><span class="mono ash xs">kit</span></div>
-            <div class="thread-body">
-              <div class="ask">When does Harlow Legal want the drafts, and in what format?</div>
-              <div class="recalled">
-                <span class="lbl">Recalled &#183; Harlow weekly, 3 Mar &#183; no model used</span>
-                <span class="v">Friday before noon. PDFs named by matter number, sent to the team inbox, not the front desk.</span>
-                <button class="why" type="button" aria-expanded="false" aria-controls="why-src">Why? Open turn 41</button>
-                <div class="why-src" id="why-src" hidden>
-                  <span class="lbl">Call transcript &#183; turn 41</span>
-                  <p><span class="ash">Harlow Legal:</span> &#8220;Friday before noon works. Name the PDFs by matter number and send them to the team inbox, please, not the front desk.&#8221;</p>
+    <div class="stage">
+      <canvas class="field" aria-hidden="true"></canvas>
+      <div class="stage-in">
+        <div class="stage-row">
+          <div class="win lumen" id="demo" role="img" aria-label="Vyre Lumen on a Mac answering three requests: an answer from memory with its source, a switch to Codex for one message, and an email held for approval. Sample data.">
+            <div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen</span></div>
+            <div class="body">
+              <div class="ask"><span class="k">&#8997;Space</span><span><span class="q">what did Northwind ask for on the order form?</span><span class="caret"></span></span></div>
+              <div class="scenes">
+                <div class="scene on">
+                  <div class="sends">Sends to <b>kit</b> &middot; Northwind Bakery</div>
+                  <div class="ans" style="margin-top:12px"><div class="src"><span class="tag">From memory</span><span>no model used</span></div><p class="ah">Delivery by 9 am, two box sizes.</p><p>Northwind’s owner set it on the 12 Sep call. kit is checking the form against it today.</p><div class="why">Call, 12 Sep &middot; Northwind weekly &middot; turn 41 &nbsp;&#9166; open the source</div></div>
+                </div>
+                <div class="scene">
+                  <div class="sends">Sends to <b>Codex</b> &middot; this message only</div>
+                  <div class="ans" style="margin-top:12px"><div class="src"><span class="tag">Switched to Codex</span><span>same session</span></div><p class="ah">Renaming 6 fields in the intake form.</p><p>Codex has this session’s memory and files. The next message goes back to Claude.</p><div class="why">Answered by Codex &middot; your ChatGPT sign-in</div></div>
+                </div>
+                <div class="scene">
+                  <div class="sends">Sends to <b>kit</b> &middot; Northwind Bakery</div>
+                  <div class="ans" style="margin-top:12px"><div class="src"><span class="tag">Held for you</span><span>rule: email to a client waits</span></div><p class="ah">Draft to Northwind’s owner is ready.</p><p>“Hi Dana, the new order form is attached. Delivery windows now end at 9 am.”</p><div class="held"><span class="pill go">Send</span><span class="pill">Edit</span><span class="pill acc">Waiting on you &middot; 1</span></div></div>
                 </div>
               </div>
-              <p class="reply">Two of the three drafts are ready. I&#39;ll export them as <span class="mono xs">HL-2291-engagement.pdf</span> and <span class="mono xs">HL-2291-schedule.pdf</span> and hold the third for you.</p>
+              <div class="dots" aria-hidden="true"><i class="on"></i><i></i><i></i></div>
+            </div>
+          </div>
+          <div class="phone" aria-hidden="true">
+            <div class="notch"></div>
+            <div class="scr">
+              <div class="hdr"><span>alex.vyre.run</span><span>2 waiting</span></div>
+              <p class="ph">Needs you</p>
+              <div class="need">kit wants to email 14 Northwind customers the new order form<small>Held by rule: bulk email over 10</small><div class="acts"><span>Approve</span><span>Deny</span></div></div>
+              <div class="need">Pay invoice 204, $320<small>Standing permission needs your touch</small></div>
+              <div class="faceid">&#9679; Face ID to approve</div>
             </div>
           </div>
         </div>
-      </section>
-
-      <!-- VAULT -->
-      <section class="sec" id="vault" aria-labelledby="vault-h">
-        <div class="split">
-          <div class="t rv">
-            <p class="lbl num"><span>04</span>Vault and connections</p>
-            <h2 id="vault-h" class="h1">Every account, one place.</h2>
-            <p class="body">Keep logins with their one-time codes, and your API keys, in one vault on your own server. Agents use a credential without ever seeing it.</p>
-            <dl class="feats">
-              <div><dt>Connect once</dt><dd>Connect Google and your other accounts once. Every agent can use them, with your permission.</dd></div>
-              <div><dt>Sealed values</dt><dd>No vault value shows on any screen, log or event.</dd></div>
-              <div><dt>Share and revoke</dt><dd>Share one item, then take it back in one step.</dd></div>
-            </dl>
-          </div>
-          <div class="panel vault rv">
-            <div class="panel-head"><span class="lbl">Vault</span><span class="mono ash xs">values stay sealed</span></div>
-            <div class="vault-row"><span class="nm">Harlow billing portal<span class="k">Login &#183; one-time code</span></span><span class="val" aria-label="sealed">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span><span class="use">used by kit</span></div>
-            <div class="vault-row"><span class="nm">Northwind payments<span class="k">API key</span></span><span class="val">never shown</span><span class="use">used by kit</span></div>
-            <div class="vault-row"><span class="nm">Google<span class="k">Connection &#183; mail, calendar, drive</span></span><span class="val sig-t">connected</span><span class="use">juno, kit</span></div>
-            <div class="vault-row" data-share><span class="nm">harlow-site env<span class="k">Env set &#183; 9 keys</span></span><span class="val" data-share-state>shared with Harlow Legal</span><span class="use"><button class="btn btn-line btn-sm" type="button" data-revoke aria-label="Revoke the harlow-site env share">Revoke</button></span></div>
-            <div class="vault-foot" data-share-note>A shared item keeps its value on your server. Revoke ends access at once.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- GLASS -->
-      <section class="sec" id="glass" aria-labelledby="glass-h">
-        <div class="sec-head rv">
-          <div class="t">
-            <p class="lbl num"><span>05</span>Glass</p>
-            <h2 id="glass-h" class="h1">Watch it work. Take over any time.</h2>
-          </div>
-          <p class="body">Each agent gets its own computer: a desktop, Chrome and a terminal. Watch it live from the Deck or your phone. Take the wheel when you want to, and hand it back when you&#39;re done.</p>
-        </div>
-
-        <div class="window glass rv" data-glass>
-          <div class="glass-tabs">
-            <div class="tabs"><span class="tab on"><span class="dot sig" aria-hidden="true"></span>kit &#183; <span data-glass-who>live</span></span><span class="tab">juno</span></div>
-            <span class="url"><span data-host>alex.vyre.run</span>/glass/kit</span>
-          </div>
-          <div class="desk" role="img" aria-label="kit's own computer, live. Chrome shows a court case search for HL-2291 and a terminal runs Claude Code.">
-            <div class="win chrome">
-              <div class="win-bar"><span class="lbl">Chrome</span><span class="url">courts.harlow.example/case-search</span></div>
-              <div class="page">
-                <span class="over">Harlow County Court</span>
-                <span class="title">Case search</span>
-                <div class="search"><span class="field">HL-2291</span><span class="go">Search</span></div>
-                <div class="res hit"><span>HL-2291</span><span>Hearing</span><span>14 Oct, 9:30</span></div>
-                <div class="res"><span>HL-2291</span><span>Filing</span><span>2 Oct</span></div>
-                <div class="res"><span>HL-2291</span><span>Notice</span><span>19 Sep</span></div>
-              </div>
-            </div>
-            <div class="win term">
-              <div class="win-bar"><span class="lbl">Terminal</span><span class="mono ash xs">~/harlow-legal</span></div>
-              <div class="term-body">
-                <span><span class="ash">$</span> <span class="bone">claude</span></span>
-                <span class="bone">&gt; add the HL-2291 hearing</span>
-                <span class="rec">recalled &#183; calendar invites, not email</span>
-                <span class="opt">&#183; searched HL-2291, 3 results</span>
-                <span class="bone">&#183; reading row 1<span class="caret"></span></span>
-              </div>
-            </div>
-            <div class="cursor"><svg width="16" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true"><path d="M1.5 1.5V16L5.4 12.4L8.2 18.4L10.6 17.3L7.8 11.4H13L1.5 1.5Z" fill="#F1EEE6" stroke="#0E0D0C" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="tag" data-glass-tag>kit</span></div>
-          </div>
-          <div class="glass-foot"><span data-glass-msg><span class="bone">Live.</span> You&#39;re watching kit work.</span><button class="btn btn-signal btn-sm" type="button" data-takeover aria-pressed="false">Take over</button></div>
-        </div>
-      </section>
-
-      <!-- DECK AND PHONE -->
-      <section class="sec" id="deck" aria-labelledby="deck-h">
-        <div class="sec-head rv">
-          <div class="t">
-            <p class="lbl num"><span>06</span>Deck and phone</p>
-            <h2 id="deck-h" class="h1">Your desk, and your pocket.</h2>
-          </div>
-          <div class="t">
-            <p class="body">The Deck opens in your browser at your own address, private to your Tailscale network. The phone app brings approvals and Glass with you. Nothing goes out as you until you&#39;ve seen the final words.</p>
-            <p class="body">Add your phone from the setup page or your server&#39;s address: scan the ring, check the name and fingerprint your phone shows, and tap Pair.</p>
-            <div class="address">
-              <label class="lbl" for="yourname">Your address</label>
-              <span class="address-line"><span class="scheme">https://</span><input id="yourname" class="name-in" type="text" value="alex" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="20" aria-describedby="yourname-hint"><span>.vyre.run</span></span>
-              <span id="yourname-hint" class="xs ash">Type your name. Only your devices can open it.</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="deck-row">
-          <div class="window deck rv" role="img" aria-label="The Deck in a browser: what each agent is doing now, and one draft waiting for you.">
-            <div class="browser-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5" rx="1" stroke="#8C877D" stroke-width="1.2"/><path d="M4 5.5V4A2 2 0 0 1 8 4V5.5" stroke="#8C877D" stroke-width="1.2"/></svg><span data-host>alex.vyre.run</span>/now</span></div>
-            <div class="deck-body">
-              <div class="rail" aria-hidden="true"><span class="on">Now</span><span>Projects</span><span>Agents</span><span>Memory</span><span>Vault</span><span>Glass</span><span>Settings</span></div>
-              <div class="deck-main">
-                <span class="lbl">Now</span>
-                <div class="now-row"><span class="dot sig"></span><span class="n">kit</span><span class="m">Reading the Harlow court case search</span><span class="s">Glass &#183; live</span></div>
-                <div class="now-row"><span class="dot beacon"></span><span class="n">juno</span><span class="m">Drafted a reply to Harlow Legal</span><span class="s beacon">needs you</span></div>
-                <div class="now-row"><span class="dot"></span><span class="n">Northwind Bakery</span><span class="m">7 threads &#183; order form updated</span><span class="s">yesterday</span></div>
-                <div class="now-row"><span class="dot"></span><span class="n">Harlow Legal</span><span class="m">12 threads &#183; Q3 report</span><span class="s">2 min ago</span></div>
-              </div>
-            </div>
-          </div>
-          <div class="phone rv" role="img" aria-label="The phone app: a held draft to Harlow Legal, with Send and Edit.">
-            <div class="ph-top" aria-hidden="true"><span class="mono">9:41</span><span class="notch"></span><span class="mono">&#9679;&#9679;&#9679;</span></div>
-            <span class="lbl beacon">Needs you</span>
-            <div class="ph-card">
-              <span class="ph-t">juno drafted a reply to Harlow Legal</span>
-              <span class="xs ash">Held by rule: email to a client</span>
-              <p class="ph-msg">The Q3 numbers are in the deck, slide 6. Signed leads came in at $171 each.</p>
-              <div class="ph-acts"><span class="btn btn-signal btn-sm">Send</span><span class="btn btn-line btn-sm">Edit</span></div>
-            </div>
-            <div class="ph-glass"><span class="dot sig" aria-hidden="true"></span><span>kit is live in Glass</span><span class="ash">Watch</span></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- MAKE IT YOURS -->
-      <section class="sec" id="yours" aria-labelledby="yours-h">
-        <div class="split">
-          <div class="t rv">
-            <p class="lbl num"><span>07</span>Make it yours</p>
-            <h2 id="yours-h" class="h1">Open source, and built from pieces.</h2>
-            <p class="body">Vyre is one small daemon with apps around it, built as modules: Lumen, Glass, memory, the vault, each its own piece with its own switch. Turn off what you don't use, and every piece talks to the others only through the same open door you'd use yourself.</p>
-            <dl class="feats">
-              <div><dt>One settings page</dt><dd>Every setting in one place, on your Deck.</dd></div>
-              <div><dt>Modules</dt><dd>Switch the parts you use on, and the rest off.</dd></div>
-              <div><dt>Build your own</dt><dd><code>vyre module new</code> scaffolds one: a tool, a setting, a Now card, tested in minutes.</dd></div>
-              <div><dt>Stays current</dt><dd><code>vyre update</code> brings the latest release. <code>vyre update --rollback</code> takes you back.</dd></div>
-              <div><dt>Apache 2.0</dt><dd>Read every line, change what you like, send it back if you want.</dd></div>
-            </dl>
-          </div>
-          <div class="yours-vis rv">
-            <div class="panel modules">
-              <div class="panel-head"><span class="lbl">Settings &#8250; Modules</span><span class="mono ash xs">try them</span></div>
-              <div class="mod"><span><span class="bone">Lumen</span><span class="xs ash">&#8997;Space on your Mac</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Lumen"><span></span></button></div>
-              <div class="mod"><span><span class="bone">Glass</span><span class="xs ash">A computer for each agent</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Glass"><span></span></button></div>
-              <div class="mod"><span><span class="bone">Voice</span><span class="xs ash">Talk to Lumen</span></span><button class="sw-btn" type="button" role="switch" aria-checked="false" aria-label="Voice"><span></span></button></div>
-              <div class="mod"><span><span class="bone">Computer use</span><span class="xs ash">&#8220;do &#8230;&#8221; uses your Mac</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Computer use"><span></span></button></div>
-            </div>
-            <div class="panel tty">
-              <div><span class="ash">$</span> <span class="bone">vyre update</span></div>
-              <div class="ash"># the latest release, then a restart</div>
-              <div><span class="ash">$</span> <span class="bone">vyre update --rollback</span></div>
-              <div class="ash"># back to the version you had</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SAFETY FLOOR -->
-      <section class="sec" id="floor" aria-labelledby="floor-h">
-        <div class="sec-head rv">
-          <div class="t">
-            <p class="lbl num"><span>07</span>The floor</p>
-            <h2 id="floor-h" class="h1">Rules no setting can switch off.</h2>
-          </div>
-          <p class="body">Vyre enforces these outside the model, in hooks and in the gate every request goes through. The model can&#39;t talk its way past them.</p>
-        </div>
-        <ol class="floor rv">
-          <li>Nothing goes out as you until you&#39;ve seen the final words.</li>
-          <li>You see where something is going before it goes.</li>
-          <li>Every file change a tool makes shows.</li>
-          <li>Vyre can show the source of anything it tells you.</li>
-          <li>No vault value appears on any screen, log or event.</li>
-          <li>Vyre Lumen works offline on your own Mac.</li>
-        </ol>
-      </section>
-    </div>
-
-    <div class="gate gate-bottom" aria-hidden="true"><span class="g lbl">End of your network</span></div>
-  </div>
-
-  <div class="wrap outside">
-    <div class="outside-in">
-      <span class="stem" aria-hidden="true"></span>
-      <div class="t"><span class="lbl">Outside the line &#183; vyre.run</span><span class="xs stone">Holds your DNS record and relays a paired phone&#39;s traffic, end-to-end encrypted. Never your content or keys.</span></div>
+        <p class="demo-tag">Sample data. Nothing you type here leaves this page.</p>
+      </div>
     </div>
   </div>
+</section>
 
-  <!-- FAQ -->
-  <section class="faq-sec" id="faq" aria-labelledby="faq-h">
-    <div class="wrap">
-      <div class="faq-grid">
-        <div class="rv">
-          <p class="lbl">Questions</p>
-          <h2 id="faq-h" class="h1">Good questions, straight answers.</h2>
-        </div>
-        <div class="faq rv">
-          <details>
-            <summary>Is it free?</summary>
-            <p>Yes. Vyre is open source under Apache 2.0. You bring your own Claude subscription or an Anthropic API key, and your agents run on it.</p>
-          </details>
-          <details>
-            <summary>Where does my data live?</summary>
-            <p>Your sessions, memory and vault stay on your server and your Mac. vyre.run holds your name&#39;s DNS record and runs the relay (relay.vyre.run). The relay carries setup progress and phone pairing, end-to-end encrypted: it can see that a device and your server talk, and when, but never what is said or your keys. Day to day, your phone reaches your server over Tailscale. Your prompts go to the provider you choose, exactly as they would if you used it directly.</p>
-          </details>
-          <details>
-            <summary>How do I add my phone?</summary>
-            <p>Add your phone by opening phone.vyre.run and scanning the ring around your avatar. Your phone shows your server&#39;s name and a short code, and pairs only after you tap Pair.</p>
-          </details>
-          <details>
-            <summary>Do I need a server?</summary>
-            <p>A Linux server with Docker is the best home for Vyre, since your agents keep working when your Mac sleeps. You can also start on your Mac and add a server later.</p>
-          </details>
-          <details>
-            <summary>Does it replace Claude Code?</summary>
-            <p>No. Vyre runs your Claude, Codex and Grok agents with your own accounts, and adds memory, a vault, teammates and Vyre Lumen around them. You keep using each tool the way you do.</p>
-          </details>
-          <details>
-            <summary>What is Tailscale for?</summary>
-            <p>Tailscale joins your server, your Mac and your phone into one private network. Your address only opens from devices on it, and Tailscale already knows it&#39;s you, so there is no separate login. The free plan is enough.</p>
-          </details>
-          <details>
-            <summary>Is it ready?</summary>
-            <p>It&#39;s 0.2.0. What this page shows works today. Some things come next: &#8220;give it to two&#8221; (one question, two models side by side) and Chrome parallel tabs in 0.2.1, and Spaces for teams in 0.2.5. Expect rough edges, and tell us about them on GitHub.</p>
-          </details>
-          <details>
-            <summary>Does it run on Windows?</summary>
-            <p>Yes, as an app on your Windows PC (a tray icon and an Alt-Space panel). The server runs on Linux or on a Mac that stays on, and Vyre Lumen runs on macOS. The Deck opens in any browser on your tailnet.</p>
-          </details>
-        </div>
+<section class="works" id="devices" aria-labelledby="works-h">
+  <div class="wrap">
+    <p class="lbl" id="works-h" style="margin-bottom:14px">Works on</p>
+    <div class="frame rv"><span class="pl-a">+</span><span class="pl-b">+</span>
+      <div class="works-grid">
+        <a href="/mac/"><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="21" height="14" rx="2"/><path d="M10 23h8M14 19v4"/></svg><b>Mac</b><span>Vyre Lumen opens over any app with Option-Space.</span><i class="go">Mac &rarr;</i></a>
+        <a href="/windows/"><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5l8.5-1.2v8.2H4zM14 5l10-1.4v9.9H14zM4 15h8.5v8.2L4 22zM14 15h10v9.4L14 23z"/></svg><b>Windows</b><span>Vyre Lumen in your tray, with an Alt+Space panel.</span><i class="go">Windows &rarr;</i></a>
+        <a href="/linux/"><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="20" height="7" rx="1.6"/><rect x="4" y="16" width="20" height="7" rx="1.6"/><path d="M8 8.5h.01M8 19.5h.01M13 8.5h8M13 19.5h8"/></svg><b>Linux server</b><span>Where your agents live and keep working. A Mac that stays on works too.</span><i class="go">Server &rarr;</i></a>
+        <a href="/phone/"><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3.5" width="12" height="21" rx="2.6"/><path d="M12.5 21h3"/></svg><b>iPhone and Android</b><span>Your own address on your Home Screen, paired with Face ID.</span><i class="go">Phone &rarr;</i></a>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- FINAL CTA -->
-  <section class="closing" aria-labelledby="end-h">
-    <div class="wrap">
-      <div class="closing-in rv">
-        <h2 id="end-h" class="h-display small-d">Let&#39;s get to work.</h2>
-        <div class="install install-end" data-install>
-          <div class="install-cmd">
-            <span class="prompt" aria-hidden="true">$</span>
-            <code class="cmd" id="cmd-end">curl -fsSL https://vyre.run/install.sh<wbr> | sh</code>
-            <button class="btn btn-signal copy" type="button" data-copy="curl -fsSL https://vyre.run/install.sh | sh" data-copy-target="cmd-end" aria-label="Copy the install command">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-              <span class="txt">Copy</span>
-            </button>
-          </div>
-          <div class="itabs" role="tablist" aria-label="Where you install Vyre">
-            <button class="itab" type="button" role="tab" id="e-tab-linux" aria-controls="e-pan-linux" aria-selected="true">Linux server</button>
-            <button class="itab" type="button" role="tab" id="e-tab-mac" aria-controls="e-pan-mac" aria-selected="false" tabindex="-1">Mac</button>
-            <button class="itab" type="button" role="tab" id="e-tab-needs" aria-controls="e-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
-          </div>
-          <div class="ipanel" role="tabpanel" id="e-pan-linux" aria-labelledby="e-tab-linux" tabindex="0">
-            <p>Run the line above on your Linux server. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link.</p>
-          </div>
-          <div class="ipanel" role="tabpanel" id="e-pan-mac" aria-labelledby="e-tab-mac" tabindex="0" hidden>
-            <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-end-mac" aria-label="Copy the Mac install command">Copy</button></div>
-            <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-end-up" aria-label="Copy vyre up">Copy</button></div>
-            <p>This puts Vyre on your Mac as a device that pairs with your server (Linux only) over your tailnet. Vyre is not on npm yet, so it installs from the same tarball the server uses.</p>
-          </div>
-          <div class="ipanel" role="tabpanel" id="e-pan-needs" aria-labelledby="e-tab-needs" tabindex="0" hidden>
-            <ul class="needs">
-              <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
-              <li><span class="lbl">Linux server</span><span>Docker Compose 2.24 or newer</span></li>
-              <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
-              <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
-            </ul>
-          </div>
-          <div class="install-foot">
-            <a class="arrow" href="start/">The full steps, in order</a>
-            <span class="copied" data-copied role="status" aria-live="polite"></span>
-          </div>
-        </div>
-        <p class="gh"><a class="mono" href="https://github.com/vyre-ai/vyre">github.com/vyre-ai/vyre <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a><span class="stone">Star it, read it, fork it.</span></p>
+<section class="sec" id="why" aria-labelledby="why-h">
+  <div class="wrap problem">
+    <div class="art rv" aria-hidden="true"><canvas class="markart"></canvas></div>
+    <div class="rv">
+      <p class="eyebrow">The problem.</p>
+      <h2 id="why-h" class="h2">Your AI work lives in <b>someone else’s tabs.</b></h2>
+      <p class="lead">Each AI account has its own app, its own memory and its own keys. Vyre keeps the work, the memory and the keys in one place you own.</p>
+      <div class="pains">
+        <div><h3>One app per AI</h3><p>Claude, Codex and Grok each keep their own history and their own keys. Switching means starting over.</p></div>
+        <div><h3>An agent that stops when the lid closes</h3><p>An agent on your laptop sleeps when the laptop does. On your server it keeps working, and your phone is the way back in.</p></div>
       </div>
     </div>
-  </section>
+  </div>
+</section>
+
+<section class="sec" id="product" aria-labelledby="pieces-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Stop starting over.</p>
+      <h2 id="pieces-h" class="h2">Plug in <b>what you need.</b></h2>
+      <p class="lead">AI accounts, machines, people, agents and modules all connect the same way.</p>
+    </div>
+    <div class="pieces rv">
+      <div class="piece"><span class="num">01</span><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="14" cy="14" r="9.5"/><path d="M14 8v6l4 2.4"/></svg><h3>AI accounts</h3><p>Claude, Codex, Grok or OpenRouter, from the subscriptions you already pay for. Several per provider.</p></div>
+      <div class="piece"><span class="num">02</span><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="20" height="7" rx="1.6"/><rect x="4" y="16" width="20" height="7" rx="1.6"/><path d="M8 8.5h.01M8 19.5h.01M13 8.5h8M13 19.5h8"/></svg><h3>Machines</h3><p>A Linux server, a Mac that stays on, your Windows PC, your phone. One Vyre across them.</p></div>
+      <div class="piece"><span class="num">03</span><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="10" r="3.2"/><circle cx="19" cy="10" r="3.2"/><path d="M3.5 22c.6-3.6 2.8-5.4 5.5-5.4s4.9 1.8 5.5 5.4M13.5 22c.6-3.6 2.8-5.4 5.5-5.4s4.9 1.8 5.5 5.4"/></svg><h3>Agents</h3><p>Teammates with roles and notes. Watchers that act within your rules. They hand work to each other.</p></div>
+      <div class="piece"><span class="num">04</span><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="12" width="9" height="9" rx="1.4"/><rect x="15" y="12" width="9" height="9" rx="1.4"/><rect x="9.5" y="4" width="9" height="9" rx="1.4"/><path d="M12 4v-.01M17 4v-.01"/></svg><h3>Modules</h3><p>The building blocks you or your agents add: tools, connections and screens.</p></div>
+      <div class="piece"><span class="num">05</span><svg class="ic" width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="14" cy="9.5" r="4"/><path d="M5.5 23c.8-4.6 4-7 8.5-7s7.7 2.4 8.5 7"/></svg><h3>People</h3><p>Next: spaces where a team shares a server and each person keeps their own. See the <a href="/direction/">direction</a>.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="lumen" aria-labelledby="lumen-h">
+  <div class="wrap feat">
+    <div class="feat-copy rv">
+      <span class="num">01 &middot; Vyre Lumen</span>
+      <h2 id="lumen-h" class="h2">Ask without leaving <b>what you’re doing.</b></h2>
+      <p class="lead">Press Option-Space on a Mac or Alt+Space on Windows, over any app, and Vyre Lumen opens.</p>
+      <ul class="list"><li><b>@ anything</b><span>Name an agent or a project and the message goes there. The destination shows before you send.</span></li><li><b>Answers from memory</b><span>If your memory already knows, you get the answer with its source, and no model is used.</span></li><li><b>Watch it work</b><span>When an agent works on your Mac or in Chrome, Lumen shows the plan first and lets you pause, stop or edit a step.</span></li></ul>
+    </div>
+    <div class="mock rv"><div class="win" role="img" aria-label="The Vyre Lumen oversight panel: kit is working in Chrome, with a plan of four steps, and buttons to pause or stop. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Vyre Lumen &middot; oversight</span></div>
+      <div class="rows">
+        <div class="row"><span class="mk vi">k</span><div class="grow"><b>kit is working in Chrome</b><small>Northwind order form &middot; step 3 of 4</small></div><span class="st on">working</span></div>
+        <div class="row"><span class="mk sq">1</span><div class="grow">Open the order form<small>done</small></div><span class="st">&#10003;</span></div>
+        <div class="row"><span class="mk sq">2</span><div class="grow">Replace the delivery times<small>done</small></div><span class="st">&#10003;</span></div>
+        <div class="row"><span class="mk sq">3</span><div class="grow">Add the second box size<small>working</small></div><span class="st on">now</span></div>
+        <div class="row"><span class="mk sq">4</span><div class="grow">Send the draft to you<small>waits for your yes</small></div><span class="st">held</span></div>
+        <div class="row"><div class="grow"><span class="pill go">Pause</span> <span class="pill">Stop</span> <span class="pill">Edit a step</span></div></div>
+      </div></div></div>
+  </div>
+</section>
+
+<section class="sec" id="accounts" aria-labelledby="acc-h">
+  <div class="wrap feat flip">
+    <div class="feat-copy rv">
+      <span class="num">02 &middot; Accounts</span>
+      <h2 id="acc-h" class="h2">One session. <b>Every AI account you have.</b></h2>
+      <p class="lead">A session belongs to Vyre, not to one model. Change the model whenever you like and it keeps its memory and its files.</p>
+      <ul class="list"><li><b>The model picker</b><span>Choose the provider, account, model and effort from the composer.</span></li><li><b>@codex, @grok</b><span>Add a name to one message to ask another model. The session stays where it was.</span></li><li><b>See who answered</b><span>Each reply carries its provider’s mark, and a line says “Switched to Grok” when the model changes.</span></li><li><b>Images and video</b><span>What a model generates is saved in the project with its provider and prompt.</span></li></ul>
+    </div>
+    <div class="mock rv"><div class="win" role="img" aria-label="The model picker listing Claude, Codex, Grok and OpenRouter, each from your own account. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Answer with</span></div>
+      <div class="rows">
+        <div class="row"><span class="mk">C</span><div class="grow"><b>Claude</b><small>Your Claude account</small></div><span class="st on">answering</span></div>
+        <div class="row"><span class="mk">X</span><div class="grow"><b>Codex</b><small>Your ChatGPT sign-in</small></div><span class="st">@codex</span></div>
+        <div class="row"><span class="mk">G</span><div class="grow"><b>Grok</b><small>Your xAI account</small></div><span class="st">@grok</span></div>
+        <div class="row"><span class="mk">O</span><div class="grow"><b>OpenRouter</b><small>Your key &middot; any model it offers</small></div><span class="st"></span></div>
+        <div class="sysline">Switched to Codex. It has this session’s memory and files.</div>
+      </div></div></div>
+  </div>
+</section>
+
+<section class="sec" id="agents" aria-labelledby="ag-h">
+  <div class="wrap feat">
+    <div class="feat-copy rv">
+      <span class="num">03 &middot; Teammates and watchers</span>
+      <h2 id="ag-h" class="h2">Agents with roles <b>that keep working.</b></h2>
+      <p class="lead">A teammate is a named role with its own notes. It hands work to the next one, and watchers act within your rules.</p>
+      <ul class="list"><li><b>Teammates</b><span>A role inside a project, with a charter your agents draft and you edit. You can fill a role with one of your own agents.</span></li><li><b>Watchers</b><span>They notice mail, calendar, repo and Slack events, or run on a schedule. Each shows a card before you turn it on: when, what it reads, whether it acts, what it costs.</span></li><li><b>Inside a wall</b><span>A watcher runs with no home folder and no network of its own. If the wall is not available, it does not run and says why.</span></li></ul>
+    </div>
+    <div class="mock rv"><div class="win" role="img" aria-label="A watcher card: when mail arrives from a client, check it against the project notes, draft a reply, and act only by drafting. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Watcher &middot; client mail</span></div>
+      <dl class="kv">
+        <dt>When</dt><dd>A client email arrives</dd>
+        <dt>Check</dt><dd>Is it about an open order?</dd>
+        <dt>Do</dt><dd>Draft a reply, held for you</dd>
+        <dt>Reads</dt><dd>Inbox, project notes</dd>
+        <dt>Acts</dt><dd>No. It drafts only.</dd>
+        <dt>Cost</dt><dd>A few cents a run, capped daily</dd>
+      </dl>
+      <div class="sysline">Owned by teammate <b>kit</b> &middot; hands drafts to <b>juno</b></div>
+    </div></div>
+  </div>
+</section>
+
+<section class="sec" id="approval" aria-labelledby="ap-h">
+  <div class="wrap feat flip">
+    <div class="feat-copy rv">
+      <span class="num">04 &middot; Asking is approving</span>
+      <h2 id="ap-h" class="h2">Your words <b>are the approval.</b></h2>
+      <p class="lead">When you ask for something, that is the yes. Touch ID or Face ID is only for pairing, vault secrets and anything that sends, posts or pays on its own.</p>
+      <ul class="list"><li><b>No pop-up for what you asked</b><span>An action that matches your request goes ahead. An action nobody asked for waits.</span></li><li><b>A floor no setting removes</b><span>Some rules cannot be switched off, and an agent cannot loosen one without telling you, with an Undo.</span></li><li><b>Signed releases</b><span>Updates are checked against a pinned key. A box refuses an unsigned or older release and keeps running.</span></li></ul>
+    </div>
+    <div class="mock rv"><div class="win" role="img" aria-label="Two requests. The first, which you asked for, goes ahead. The second, a payment nobody asked for, waits for Face ID. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Session &middot; Northwind</span></div>
+      <div class="msg"><div class="who"><span class="mk" style="width:20px;height:20px;font-size:9px">A</span>You</div>Send Northwind the new order form.</div>
+      <div class="msg"><div class="who"><span class="mk vi" style="width:20px;height:20px;font-size:9px">k</span>kit</div>Sent. You asked for it, so it went straight out. <span class="pill ok" style="margin-left:6px">done</span></div>
+      <div class="msg"><div class="who"><span class="mk vi" style="width:20px;height:20px;font-size:9px">k</span>kit</div>A supplier invoice is due: $320. Nobody asked me to pay it, so it waits. <div class="held"><span class="pill acc">&#9679; Face ID to approve</span><span class="pill">Deny</span></div></div>
+    </div></div>
+  </div>
+</section>
+
+<section class="sec" id="memory" aria-labelledby="mem-h">
+  <div class="wrap feat">
+    <div class="feat-copy rv">
+      <span class="num">05 &middot; Memory and vault</span>
+      <h2 id="mem-h" class="h2">It remembers, <b>and shows you where from.</b></h2>
+      <p class="lead">Every session goes into your memory, and a recalled answer shows its source.</p>
+      <ul class="list"><li><b>Ask why</b><span>A recalled answer opens the call, the thread or the turn it came from. Anything else came from the model, and says so.</span></li><li><b>A vault, on your server</b><span>Logins, one-time codes and API keys are sealed on your own machine. Agents use a credential without ever seeing it.</span></li><li><b>Share and take back</b><span>Share one item, then revoke it in one step.</span></li></ul>
+    </div>
+    <div class="mock rv"><div class="win" role="img" aria-label="A memory answer with its source, and a vault item whose value stays sealed. Sample data.">
+      <div class="win-bar"><i></i><i></i><i></i><span class="t">Memory</span></div>
+      <div class="msg"><div class="who">You</div>When does Northwind want the drafts, and in what format?</div>
+      <div class="msg"><div class="who"><span class="pill acc">Recalled</span> Northwind weekly, 3 Mar &middot; no model used</div><b>Friday before noon.</b> PDFs named by order number, sent to the team inbox.<div class="why" style="margin-top:8px;font:400 12px var(--mono);color:var(--ink-3)">Why? Open turn 41</div></div>
+      <div class="sysline">Vault</div>
+      <div class="row"><span class="mk sq">&#128274;</span><div class="grow"><b>Northwind billing portal</b><small>Login &middot; one-time code</small></div><span class="sealed">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span></div>
+      <div class="row"><div class="grow"><small>kit used it for the 9 am export. It never saw the value.</small></div></div>
+    </div></div>
+  </div>
+</section>
+
+<section class="sec" id="phone" aria-labelledby="ph-h">
+  <div class="wrap feat flip">
+    <div class="feat-copy rv">
+      <span class="num">06 &middot; Phone</span>
+      <h2 id="ph-h" class="h2">Your pocket, <b>paired with Face ID.</b></h2>
+      <p class="lead">Open Vyre on your phone at your own address and pair it by scanning a code.</p>
+      <ul class="list"><li><b>Needs rows</b><span>Approve, deny or answer by swipe. Push tells you when an agent is waiting.</span></li><li><b>Chats, agents, Find and Drive</b><span>Browse your shared folders and ask your memory from the same app.</span></li><li><b>A removed phone wipes itself</b><span>Remove a device and it is cut off and clears what it kept.</span></li></ul>
+      <p class="sm" style="margin-top:18px">The phone needs Tailscale signed in. <a href="/phone/">More on the phone app</a></p>
+    </div>
+    <div class="mock rv" style="display:flex;justify-content:center"><div class="phone" style="width:min(100%,300px)" role="img" aria-label="The Vyre phone app on the Needs screen, with two items waiting. Sample data.">
+      <div class="notch"></div>
+      <div class="scr">
+        <div class="hdr"><span>alex.vyre.run</span><span>online</span></div>
+        <p class="ph">Needs you</p>
+        <div class="need">kit wants to email 14 Northwind customers the new order form<small>Held by rule: bulk email over 10 &middot; 18 min</small><div class="acts"><span>Approve</span><span>Deny</span></div></div>
+        <div class="need">juno drafted a reply to Northwind<small>Q3 report &middot; email to a client &middot; 6 min</small></div>
+        <div class="need">Which export format should kit use?<small>A question from kit</small></div>
+        <div class="faceid">&#9679; Face ID to approve</div>
+      </div></div></div>
+  </div>
+</section>
+
+<section class="sec" id="open" aria-labelledby="open-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">What it costs.</p>
+      <h2 id="open-h" class="h2">Free, open source, <b>on your machines.</b></h2>
+      <p class="lead">Vyre is Apache 2.0 and runs on your server. You pay your AI providers, not us.</p>
+    </div>
+    <div class="cost rv">
+      <div><p class="lbl">Vyre</p><p class="big">Free</p><p>Apache 2.0. Read it, change it, run it. There is no Vyre cloud to sign up for.</p></div>
+      <div><p class="lbl">Your AI</p><p class="big">Your plans</p><p>Claude, Codex, Grok or OpenRouter, on the subscriptions or keys you already have.</p></div>
+      <div><p class="lbl">Your machine</p><p class="big">One server</p><p>A Linux server with Docker, or a Mac that stays on. Tailscale’s free plan is enough.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="install" aria-labelledby="in-h">
+  <div class="wrap feat">
+    <div class="feat-copy rv">
+      <span class="num">Get started</span>
+      <h2 id="in-h" class="h2">One line on your server, <b>then finish in your browser.</b></h2>
+      <p class="lead">The setup page gives you a line with a one-time code in it. Paste it on your server. The rest happens in your browser.</p>
+      <div class="btn-row"><a class="btn btn-fill" href="/setup/">Open the setup page</a><a class="btn" href="/start/">Read the steps</a></div>
+    </div>
+    <div class="rv">
+      <ol class="steps" style="margin-top:0">
+        <li><b>Open vyre.run/setup.</b> Choose a Linux server or a Mac that stays on.</li>
+        <li><b>Paste the line on your server.</b> It asks before it installs anything, including Docker.
+          <div class="term"><span class="pr" aria-hidden="true">$</span><code>curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh</code><button type="button" data-copy="curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh" aria-label="Copy the command">Copy</button></div></li>
+        <li><b>Finish in your browser.</b> Name your server, sign in to your AI, connect Tailscale and add your phone.</li>
+        <li><b>Add your computers.</b> Vyre Lumen for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="direction" aria-labelledby="dir-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Where Vyre is going.</p>
+      <h2 id="dir-h" class="h2">Direction. <b>Not a promise of dates.</b></h2>
+      <p class="lead">This is direction, not a promise of dates. Next: your own computers pitch in, teams share servers, and every business app becomes a Vyre module.</p>
+    </div>
+    <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="piece"><span class="num">Next</span><h3>Hardening</h3><p>Touch ID for sensitive terminal actions, fixes, and real-device passes.</p></div>
+      <div class="piece"><span class="num">0.2.2</span><h3>Sessions</h3><p>Version history for every project, group chats with people and agents, memory across resets.</p></div>
+      <div class="piece"><span class="num">0.2.3</span><h3>Scale</h3><p>Many sessions on one server, with a fair-share scheduler.</p></div>
+      <div class="piece"><span class="num">0.2.5</span><h3>Spaces</h3><p>One space for all your devices. Shared spaces for teams.</p></div>
+      <div class="piece"><span class="num">Modules</span><h3>In parallel</h3><p>Automation, texts and email, a CRM, documents and e-signature.</p></div>
+    </div>
+    <div class="btn-row"><a class="btn" href="/direction/">Read the direction</a></div>
+  </div>
+</section>
+
+<section class="sec" id="faq" aria-labelledby="faq-h">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <p class="eyebrow">Any questions?</p>
+      <h2 id="faq-h" class="h2">Straight answers, <b>yes or no first.</b></h2>
+    </div>
+    <div class="faq rv"><details><summary>Is Vyre free?</summary><p>Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre.</p></details><details><summary>Do I need a server?</summary><p>Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.</p></details><details><summary>Does it run on Windows?</summary><p>Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.</p></details><details><summary>Does it work on my phone?</summary><p>Yes, on iPhone and Android. Open Vyre at your own address, add it to your Home Screen, and pair it by scanning a code. The phone needs Tailscale signed in, because your address only opens from your own devices.</p></details><details><summary>Where does my data live?</summary><p>Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.</p></details><details><summary>What is Tailscale for?</summary><p>Tailscale joins your server, your computers and your phone into one private network. Your address only opens from devices on it, and it is required. The free plan is enough.</p></details><details><summary>Does it replace Claude Code, Codex or Grok?</summary><p>No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.</p></details><details><summary>What stops an agent from doing something I did not ask for?</summary><p>Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting.</p></details><details><summary>Is it ready?</summary><p>It is 0.2.1, and what this page shows works today. Some things come next, and the <a href="/direction/">direction page</a> lists them. The <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">known gaps</a> list what 0.2.1 does not do yet.</p></details></div>
+  </div>
+</section>
+
+<section class="closing" aria-labelledby="end-h">
+  <div class="wrap">
+    <h2 id="end-h" class="display">Let’s get <b>to work.</b></h2>
+    <div class="btn-row"><a class="btn btn-fill" href="/setup/">Set up Vyre</a><a class="btn" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a><a class="btn" href="https://github.com/vyre-ai/vyre">Read the source</a></div>
+  </div>
+</section>
 </main>
-
 <footer class="foot">
   <div class="wrap">
-    <div class="foot-mark">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#F1EEE6"/></svg>
-      <span class="stone">Made for people who like finishing things.</span>
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="/" aria-label="Vyre, home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="currentColor"/></svg><svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+        <p class="tag">Your AI command center, on your own machines. Open source, Apache 2.0.</p>
+      </div>
+      <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/setup/">Setup</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre"><svg class="star-ic" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
+      <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
-    <nav class="foot-links" aria-label="Footer">
-      <a href="https://github.com/vyre-ai/vyre">GitHub</a>
-      <a href="https://github.com/vyre-ai/vyre#readme">Docs</a>
-      <a href="start/">Start</a>
-      <a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a>
-    </nav>
+    <div class="foot-base"><span>Vyre 0.2.1 &middot; Apache 2.0</span><span>No trackers. No cookies. One stylesheet, one script.</span></div>
   </div>
 </footer>
-
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-<!-- The floating Capsule: ⌥Space opens it (or Control twice, if turned on), Esc closes it. app.js fills it from the hero Capsule. -->
-<dialog class="demo" id="demo" aria-labelledby="demo-h">
-  <div class="demo-head">
-    <h2 id="demo-h"><span class="keys" aria-hidden="true"><span class="kc">&#8997;Space</span></span><span>Vyre Lumen</span><span class="lbl">sample data</span></h2>
-    <button class="demo-close" type="button" data-close-demo aria-label="Close Vyre Lumen"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
-  </div>
-  <div id="demo-mount"></div>
-  <p class="demo-foot">On your Mac Vyre Lumen opens over any app and is gone when you&#39;re done. Here, nothing you type leaves this page.</p>
-</dialog>
 </body>
 </html>
