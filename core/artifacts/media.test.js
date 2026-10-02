@@ -291,7 +291,8 @@ test("media: bytes handed over directly (a provider's content block) are kept wi
   const { ok, call, asVyre } = await boot(t);
   const b64 = PNG.toString("base64");
   // No artifacts folder is registered for t1 at all: nothing here touches an agent's folder.
-  const made = await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64, provider: "codex", prompt: "Revised prompt: a lighthouse at dawn", source: "content-block", title: "Lighthouse" });
+  const made = await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64, provider: "codex", prompt: "Revised prompt: a lighthouse at dawn", source: "content-block", title: "Lighthouse", privacy: "zdr" });
+  assert.equal(made.media.privacy, "zdr", "the account's privacy mode is kept with the item");
   assert.deepEqual([made.kind, made.format, made.media.provider, made.media.source, made.media.bytes], ["image", "png", "codex", "content-block", PNG.length]);
   assert.match(made.media.sha256, /^[0-9a-f]{64}$/);
   const chunk = await asVyre("artifacts.media.read", { id: made.id });
@@ -301,6 +302,8 @@ test("media: bytes handed over directly (a provider's content block) are kept wi
   const again = await asVyre("artifacts.media.register", { thread: "t1", name: "x.png", data_b64: b64, model: "gpt-image" }, "threads");
   assert.equal(again.id, made.id);
   assert.equal(again.media.model, "gpt-image");
+  assert.equal(again.media.privacy, "zdr");
+  assert.equal((await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: PNG.toString("base64") + "", privacy: "anything" })).media.privacy, "zdr", "an unknown privacy value is ignored, the known one stays");
   assert.equal((await ok("artifacts.list", { kind: "image" })).length, 1);
   // Checked as a file is: magic bytes, a type it knows, a size, a registrar.
   await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: Buffer.from("<html><script>").toString("base64") }), /not a png file/);
