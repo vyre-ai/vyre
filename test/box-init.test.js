@@ -105,6 +105,7 @@ test("#43: compose runs docker-api by default and gives vyred its address", () =
   const compose = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "box", "compose.yml"), "utf8");
   const svc = compose.slice(compose.indexOf("\n  docker-api:"), compose.indexOf("\nvolumes:"));
   assert.ok(svc.includes("dockerproxy/main.js") && !/profiles:/.test(svc), "docker-api is not behind a profile");
+  assert.match(svc, /deploy:\s+replicas: \$\{VYRE_DOCKER_PROXY_REPLICAS:-1\}/, "one variable stops the proxy and its socket mount");
   assert.match(compose, /VYRE_COMPUTERS_DOCKER=\$\{VYRE_COMPUTERS_DOCKER-http:\/\/docker-api:2375\}/);
 });
 
@@ -118,9 +119,12 @@ test("#43: vyred's computers.docker comes from VYRE_COMPUTERS_DOCKER, config.jso
     const bearer = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-43-")), "bearer");
     const d = pickDriver({ ...defaults("/nonexistent-home").computers, dockerBearerFile: bearer }, "k");
     assert.ok(d, "a driver is picked");
+    process.env.VYRE_DOCKER_PROXY_REPLICAS = "0";
+    assert.equal(defaults("/nonexistent-home").computers.docker, undefined, "the off switch gives vyred no driver");
+    delete process.env.VYRE_DOCKER_PROXY_REPLICAS;
     delete process.env.VYRE_COMPUTERS_DOCKER;
     assert.equal(defaults("/nonexistent-home").computers.docker, undefined);
     assert.equal(pickDriver(defaults("/nonexistent-home").computers, "k"), null);
-  } finally { delete process.env.VYRE_COMPUTERS_NETWORK; delete process.env.VYRE_COMPUTERS_LABEL_PREFIX; if (old === undefined) delete process.env.VYRE_COMPUTERS_DOCKER; else process.env.VYRE_COMPUTERS_DOCKER = old; }
+  } finally { delete process.env.VYRE_DOCKER_PROXY_REPLICAS; delete process.env.VYRE_COMPUTERS_NETWORK; delete process.env.VYRE_COMPUTERS_LABEL_PREFIX; if (old === undefined) delete process.env.VYRE_COMPUTERS_DOCKER; else process.env.VYRE_COMPUTERS_DOCKER = old; }
   assert.ok(!/config\.json|edit/i.test(NO_DRIVER), NO_DRIVER);
 });

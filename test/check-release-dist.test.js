@@ -26,7 +26,7 @@ function dist(t, { literal = true, sign = true, unstripped = false, images = tru
   if (images) {
     if (literal) compose = pin(compose.replace("${VYRE_TAILSCALE_IMAGE:-tailscale/tailscale:stable}", `\${VYRE_TAILSCALE_IMAGE:-${TS}}`), BOX, COMPUTER);
     else compose = compose.replace("${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}", `\${VYRE_IMAGE:-${BOX}}`).replace(/\$\{VYRE_IMAGE:-ghcr\.io\/vyre-ai\/vyre:latest\}/g, `\${VYRE_IMAGE:-${BOX}}`);
-    if (!literal) compose = compose.replace("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`);
+    if (!literal) compose = compose.replaceAll("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`);
   }
   const files = { "install-box.sh": "#!/bin/sh\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", "vyre": unstripped ? src : strip(src),
     "Dockerfile": "FROM x\n", "dockerignore": "test\n", "vyre.tgz": "tgz", "VERSION": "0.2.0\n",

@@ -254,7 +254,7 @@ function accountTranscripts() {
  * VYRE_COMPUTERS_DOCKER. @param {NodeJS.ProcessEnv} env
  */
 function computersFromEnv(env) {
-  if (!env.VYRE_COMPUTERS_DOCKER) return {};
+  if (!env.VYRE_COMPUTERS_DOCKER || env.VYRE_DOCKER_PROXY_REPLICAS === "0") return {};
   return {
     docker: env.VYRE_COMPUTERS_DOCKER,
     ...(env.VYRE_COMPUTERS_NETWORK ? { network: env.VYRE_COMPUTERS_NETWORK } : {}),

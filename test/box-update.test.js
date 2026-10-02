@@ -118,7 +118,7 @@ function release(dir, version, { android = false, corrupt = "", images = false, 
   fs.rmSync(path.join(dir, ".pkg"), { recursive: true });
   // A release that pulls: every image pinned by digest, as the release pipeline writes it (tagCompose: left on a moving tag).
   const pin = IMAGE_REF;
-  const composeText = images && !tagCompose ? COMPOSE.replace(/^( *image: *).*$/gm, `$1${pin}`).replace("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER_REF}}`) : COMPOSE;
+  const composeText = images && !tagCompose ? COMPOSE.replace(/^( *image: *).*$/gm, `$1${pin}`).replaceAll("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER_REF}}`) : COMPOSE;
   fs.writeFileSync(path.join(dir, "compose.yml"), composeText + `# release ${version}\n`);
   fs.writeFileSync(path.join(dir, "compose.build.yml"), `# compose.build.yml ${version}\n`);
   fs.writeFileSync(path.join(dir, "vyre.env.example"), `# vyre.env.example ${version}\n`);
@@ -637,7 +637,7 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   // The person (or a model running as them) edits compose.yml and plants an override and a vyre.env with a hostile line.
   fs.appendFileSync(path.join(b.DIR, "compose.yml"), "    privileged: true\n");
   fs.writeFileSync(path.join(b.DIR, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nEVIL=$(touch /tmp/pwned)\nBAD=`id`\nNODE_OPTIONS=--require /work/x.js\nLD_PRELOAD=/work/x.so\nVYRE_SETUP_CODE=abc\n");
-  fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_UPDATE_ROOT=/\nVYRE_COMPUTERS_CAP_ADD=SYS_ADMIN\nVYRE_IMAGE=evil/image:latest\nDOCKER_GID=abc\nVYRE_DRIVE_ACCESS=rw\nVYRE_TS_HOSTNAME=box-1\n");
+  fs.appendFileSync(path.join(b.DIR, ".env"), "VYRE_UPDATE_ROOT=/\nVYRE_COMPUTERS_CAP_ADD=SYS_ADMIN\nVYRE_IMAGE=evil/image:latest\nDOCKER_GID=abc\nVYRE_DRIVE_ACCESS=rw\nVYRE_TS_HOSTNAME=box-1\nVYRE_DOCKER_PROXY_REPLICAS=0\n");
   fs.writeFileSync(path.join(b.U, "request", "request"), "update\n");
   const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 0, r.out);
@@ -655,6 +655,7 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   assert.match(env, /^VYRE_UPDATE_ROOT=.*\/uroot$/m, "the update root is root's own, not the .env's");
   assert.match(env, /^VYRE_DRIVE_ACCESS=rw$/m);
   assert.match(env, /^VYRE_TS_HOSTNAME=box-1$/m);
+  assert.match(env, /^VYRE_DOCKER_PROXY_REPLICAS=0$/m, "the one off switch for agents' computers is passed on");
   for (const bad of ["SYS_ADMIN", "evil/image", "DOCKER_GID", "VYRE_COMPUTERS", "VYRE_IMAGE", "VYRE_UPDATE_ROOT=/\n"]) assert.ok(!env.includes(bad), `${bad} was not passed on`);
   const venv = fs.readFileSync(path.join(RUNDIR, "vyre.env"), "utf8");
   assert.match(venv, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);

@@ -131,6 +131,9 @@ services:
       # fresh install starts a computer with no config.json edit. Nothing in .env is needed (a root `vyre update` passes on no
       # COMPOSE_PROFILES). Set VYRE_COMPUTERS_DOCKER to empty in .env to give vyred no computers driver.
       - VYRE_COMPUTERS_DOCKER=${VYRE_COMPUTERS_DOCKER-http://docker-api:2375}
+      # The one off switch for agents' computers: VYRE_DOCKER_PROXY_REPLICAS=0 in .env (a root update passes it on) stops the proxy
+      # AND the host socket mount with it, and vyred then has no computers driver.
+      - VYRE_DOCKER_PROXY_REPLICAS=${VYRE_DOCKER_PROXY_REPLICAS:-1}
       # What the proxy enforces on a create (its own environment, below, has the same values): vyred must ask for exactly these.
       - VYRE_COMPUTERS_NETWORK=${VYRE_COMPUTERS_NETWORK:-vyre-computers}
       - VYRE_COMPUTERS_IMAGE=${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}
@@ -183,6 +186,8 @@ services:
   docker-api:
     image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
     command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
+    deploy:
+      replicas: ${VYRE_DOCKER_PROXY_REPLICAS:-1}
     restart: unless-stopped
     # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
