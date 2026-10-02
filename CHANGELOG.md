@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(github): `github.star.status` and `github.star`, the two tools behind the Deck's star button. They act on vyre-ai/vyre only, with the first connected GitHub account, and only the person's own surfaces may call them (reach person; a model or a module is refused). Status says whether an account is connected and whether the repo is starred; star puts the star. A missing public_repo permission, a dead sign-in and no account each get a plain answer.
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
