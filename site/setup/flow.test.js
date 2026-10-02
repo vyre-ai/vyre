@@ -1053,3 +1053,18 @@ test("timeline: the screen draws the same ten steps as a rail and as a bar, with
   assert.equal(doc.innerHtmlWrites, 0);
   flow.stop();
 });
+
+test("activity: each step leaves one line in the page's own words, and a forged progress line never becomes one", async t => {
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  assert.ok(flow.state.activity.includes("The four words matched."));
+  assert.ok(flow.state.activity.includes("Connected to your server."));
+  assert.ok(flow.state.activity.some(l => /^Claimed .+\.vyre\.run\.$/.test(l)));
+  await toAi(flow, box);
+  assert.ok(flow.state.activity.includes("Your server joined Tailscale."));
+  assert.ok(flow.state.activity.includes("Your address is live."));
+  flow.skipAi();
+  assert.ok(flow.state.activity.some(l => l.startsWith("Skipped the AI sign-in")));
+  assert.equal(new Set(flow.state.activity).size, flow.state.activity.length, "no line twice");
+  flow.stop();
+});

@@ -90,7 +90,7 @@ export function suggestName(text) {
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
- *   skipped: string[], stoppedAt: number,
+ *   skipped: string[], stoppedAt: number, activity: string[],
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -114,7 +114,7 @@ export function createFlow(o) {
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -127,7 +127,25 @@ export function createFlow(o) {
   let sess = null;
   const closeChan = () => { try { chan?.close(); } catch { /* gone */ } chan = null; };
   const emit = () => o.onChange?.(state);
-  const set = patch => { state = { ...state, ...patch }; emit(); };
+  /** What the page itself saw happen, in its own fixed words (never text from the network): one line per step as it moves. */
+  const seen = (a, b) => {
+    const out = [];
+    const tsOf = x => (x.tailscale.status ? x.tailscale.status.state : "");
+    if (a.confirm !== "matched" && b.confirm === "matched") out.push("The four words matched.");
+    if (a.channel !== "ready" && b.channel === "ready") out.push("Connected to your server.");
+    if (a.stage !== "named" && b.stage === "named" && b.named) out.push(`Claimed ${b.named.name}.vyre.run.`);
+    if (tsOf(a) !== "connected" && tsOf(b) === "connected") out.push("Your server joined Tailscale.");
+    const ph = x => (x.tailscale.address ? x.tailscale.address.phase : "");
+    if (ph(a) !== ph(b)) { if (ph(b) === "serving") out.push("Your address is live."); else if (ph(b) === "failed") out.push("The address could not be published."); else if (ph(b)) out.push("Publishing your address."); }
+    for (const acc of b.ai.accounts) { const was = a.ai.accounts.find(x => x.id === acc.id); if (acc.step === "done" && (!was || was.step !== "done")) out.push(`${acc.provider === "claude" ? "Claude" : acc.provider === "codex" ? "ChatGPT (Codex)" : "Grok"} signed in.`); }
+    if (b.skipped.includes("ai") && !a.skipped.includes("ai")) out.push("Skipped the AI sign-in. One can be added later in Settings.");
+    if (a.devices.phone !== "paired" && b.devices.phone === "paired") out.push("Your phone paired.");
+    if (b.skipped.includes("phone") && !a.skipped.includes("phone")) out.push("Skipped adding a phone.");
+    if (a.claim.phase !== "ready" && b.claim.phase === "ready") out.push("Made a one-time link to your server.");
+    if (a.stage !== "done" && b.stage === "done") out.push("Passkey made. Setup carries on at your address.");
+    return out;
+  };
+  const set = patch => { const prev = state; state = { ...state, ...patch }; const more = seen(prev, state); if (more.length) state = { ...state, activity: [...state.activity, ...more].slice(-MAX_LINES) }; emit(); };
   const fail = code => { const at = stepNumber(state); run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", stoppedAt: at || state.stoppedAt, listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
@@ -147,7 +165,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, activity: [], error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.

@@ -326,9 +326,9 @@ export function render(s, ctx) {
   if (rebuiltClaim && clKey.startsWith("c:ready") && cl.url) { const slot = findByRole(m.regions.claim, "qr"); if (slot) actions.drawQr(slot, cl.url); }
 
   // ---- log: the install as the server tells it, as plain text ----
-  region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}`, () => s.lines.length ? [
-    el("h2", { class: "sub" }, "What your server is doing"),
-    el("ul", { class: "log", "aria-live": "polite" }, ...s.lines.map(t => el("li", null, t))),
+  region("log", `${s.lines.length}|${s.lines[s.lines.length - 1] || ""}|${s.activity.length}`, () => s.lines.length || s.activity.length ? [
+    el("h2", { class: "sub" }, "What is happening"),
+    el("ul", { class: "log", "aria-live": "polite" }, ...s.activity.map(t => el("li", { class: "mine" }, t)), ...s.lines.map(t => el("li", null, t))),
   ] : []);
 
   // A new screen puts focus on its heading; progress lines arriving on the same screen do not.

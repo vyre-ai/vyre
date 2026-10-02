@@ -95,3 +95,4 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   .tl-bar { display: none; }
 }
 @media (max-width: 899px) { [data-region="timeline"]:not(:empty) ~ [data-region="head"] .lbl { display: none; } }
+.log li.mine { color: var(--text); }
