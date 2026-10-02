@@ -49,11 +49,12 @@
 @media (prefers-reduced-motion: reduce) { .rail-place, .rail-label { transition: none; } }
 
 /* ---- page header: title, one meta line, actions at the right; the same on every page ---- */
-.page-head { display: flex; align-items: flex-end; gap: var(--s-4); margin: 0 0 var(--s-6); }
-.page-head-t { flex: 1; min-width: 0; }
+.page-head { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-3) var(--s-4); margin: 0 0 var(--s-6); }
+/* The title column never narrows below 200 px: actions that do not fit beside it wrap under it, so a meta line is never a word per line. */
+.page-head-t { flex: 1 1 200px; min-width: 0; }
 .page-head h1 { margin: 0; font: 600 var(--fs-page)/var(--lh-page) var(--sans); letter-spacing: -.02em; color: var(--text); }
 .page-head-meta { margin: 2px 0 0; font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); color: var(--label); }
-.page-head-acts { display: flex; gap: var(--s-2); align-items: center; }
+.page-head-acts { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
 
 /* ---- command bar: glass over the page ---- */
 .cmd { position: fixed; inset: 0; z-index: 70; }

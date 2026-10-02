@@ -90,7 +90,7 @@ test("pwa shell v2: a glass tab bar of five (Now, Chat, Projects, Agents, More);
   assert.match(bar, /\.tabbar \{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
   assert.match(bar, /backdrop-filter: blur\(16px\)/, "glass, lighter than the system's 24 to 40");
   assert.match(bar, /@media \(prefers-reduced-transparency: reduce\), \(prefers-contrast: more\) \{\s*\.tabbar \{ background: var\(--bg\); -webkit-backdrop-filter: none; backdrop-filter: none; \}/, "opaque under Reduce Transparency");
-  assert.match(bar, /#deck:not\(\[data-at="page"\]\) \.tabbar \{ display: none; \}/, "a pushed screen has none");
+  assert.match(bar, /#deck:not\(\[data-at="page"\]\):not\(\[data-at="pushed"\]\) \.tabbar, #deck\[data-own-back\] \.tabbar \{ display: none; \}/, "find and a screen with its own Back cover it; a screen pushed from More keeps it");
   assert.match(bar, /\.tb-item \{[^}]*min-height: 44px/, "44 px targets");
   assert.match(bar, /--cap-bottom: calc\(var\(--tb-h\) \+ 8px\)/, "Lumen floats above the bar");
   assert.match(read("index.html"), /css\/tabbar\.css/);

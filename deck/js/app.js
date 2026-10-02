@@ -337,7 +337,9 @@ function setMode(/** @type {string} */ m, /** @type {string} */ name, /** @type 
   deck.toggleAttribute("data-own-back", m === "pushed" && ownBack(name, params));
   const slot = slotOf(key);
   if (slot >= 0) lastPage = strip[slot].href;
-  mark_(slot >= 0 ? slot : slotOf(keyOf(strip.find(p => p.href === lastPage) || { href: lastPage })));
+  // A screen pushed from More (Memory, Vault, Drive, Settings) keeps the tab bar, with More lit; one with its own Back (a thread, a project) covers it.
+  if (m === "pushed" && !ownBack(name, params)) mark_(PAGER.length);
+  else mark_(slot >= 0 ? slot : slotOf(keyOf(strip.find(p => p.href === lastPage) || { href: lastPage })));
   put(phBackLabel, strip.find(p => p.href === lastPage)?.label || "Now");
   phPlus.hidden = slot !== 3;
   phAvatar.hidden = slot === 3;
@@ -365,7 +367,7 @@ function afterAnim(/** @type {HTMLElement} */ el, /** @type {() => void} */ fn) 
 /** Show a page coming in: pushed from the right, Find risen from the bottom, a crossfade under
  * Reduce Motion. A page coming back under a Back is already there, beneath the one leaving. */
 function enter(/** @type {HTMLElement} */ page, /** @type {string} */ m, /** @type {boolean} */ backward, /** @type {boolean} */ crossfade) {
-  if (m === "pushed" || m === "find") { if (!backward) page.style.zIndex = String(++z); }
+  if (m === "pushed" || m === "find") { if (!backward) page.style.zIndex = String(Math.min(++z, 24)); }
   const cls = !phone() ? "" : reduced() ? (m === "page" && !crossfade ? "" : "ph-fade")
     : backward || m === "page" ? "" : m === "find" ? "ph-rise" : "ph-push";
   const hide = covered; covered = null;

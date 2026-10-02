@@ -1,8 +1,8 @@
 // @ts-check
 // Below 720 px the Deck is the phone layout, with no exceptions (team/0.2.2/deck-v2/FIXES.md section 2). For each width 320, 360, 390, 430, 600 and 719 and each place,
 // in a Chrome that is already running (CDP): the rail is not displayed, the bottom bar is, the page does not scroll sideways, and no text box is narrower than 8
-// characters of its own size (the "one word per line" failure). The four places under More (Memory, Vault, Drive, Settings) are pushed screens on a phone,
-// with their own Back and no bar (css/tabbar.css: "only on a page"), so there the check is Back instead of the bar. At 720 and 768 the rail is displayed and the bottom bar is not. Run on a runner (the pwa-shots workflow).
+// characters of its own size (the "one word per line" failure). The four places under More (Memory, Vault, Drive, Settings) are pushed screens on a phone:
+// they show Back in the header and keep the bar, with More lit (as on iOS). At 720 and 768 the rail is displayed and the bottom bar is not. Run on a runner (the pwa-shots workflow).
 //
 //   CDP=http://127.0.0.1:9422 node deck/test/phone-widths.js <deck url>
 //
@@ -39,10 +39,11 @@ for (const width of [...PHONE, ...DESK]) {
         const w = range.getBoundingClientRect().width, size = parseFloat(cs.fontSize);
         if (w > 0 && range.getClientRects().length > 3 && w < size * 8) { narrow++; if (samples.length < 3) samples.push(t.slice(0, 40) + " | " + n.parentElement.tagName.toLowerCase() + "." + String(n.parentElement.className).slice(0, 40) + " | " + Math.round(w) + "px at " + size); }
       }
+      const more = document.querySelector(".tb-more")?.getAttribute("aria-current") === "page";
       const at = document.querySelector("#deck")?.dataset.at || "";
-      return { rail, bar, back, at, wide, narrow, samples };`);
+      return { rail, bar, back, more, at, wide, narrow, samples };`);
     const pushed = PUSHED.has(path);
-    const ok = phone ? !r.rail && (pushed ? !r.bar && r.back : r.bar) && !r.wide && !r.narrow : r.rail && !r.bar;
+    const ok = phone ? !r.rail && r.bar && (!pushed || (r.back && r.more)) && !r.wide && !r.narrow : r.rail && !r.bar;
     if (!ok) failed++;
     console.log(JSON.stringify({ width, path, ...r, ok }));
   }
