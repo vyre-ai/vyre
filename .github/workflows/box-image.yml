@@ -158,7 +158,8 @@ jobs:
       - name: A session as an account uid gets Vyre's tools (#40)
         run: |
           docker cp test/fixtures/fake-claude-box.sh "$C":/tmp/fake-claude-box.sh
-          docker exec -u root "$C" sh -c 'T=$(readlink -f /usr/local/bin/claude); cp /tmp/fake-claude-box.sh "$T"; chmod 755 "$T"; head -2 "$T"'
+          docker cp core/switchboard/testing/fake-claude.js "$C":/tmp/fake-claude.js
+          docker exec -u root "$C" sh -c 'T=$(readlink -f /usr/local/bin/claude); mkdir -p /opt/vyre/core/switchboard/testing; cp /tmp/fake-claude.js /opt/vyre/core/switchboard/testing/fake-claude.js; cp /tmp/fake-claude-box.sh "$T"; chmod 755 "$T" /opt/vyre/core/switchboard/testing/fake-claude.js; head -2 "$T"'
           docker exec -u vyre "$C" /usr/local/bin/claude --version || true
           docker exec -u vyre "$C" node --input-type=module -e '
             import { call } from "/opt/vyre/core/daemon/client.js";
