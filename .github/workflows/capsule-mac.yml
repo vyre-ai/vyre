@@ -2,9 +2,9 @@
 name: capsule-mac
 on:
   push:
-    paths: ["local/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", "package*.json", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/**", "!local/capsule/native-win/**", "docs/design/brand/export/lumen/macos/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", ".github/workflows/capsule-mac.yml"]
   pull_request:
-    paths: ["local/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", "package*.json", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/**", "!local/capsule/native-win/**", "docs/design/brand/export/lumen/macos/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", ".github/workflows/capsule-mac.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
           [ "$GITHUB_EVENT_NAME" = push ] || exit 0
           git fetch --no-tags origin work/stage-0.2:refs/remotes/origin/work/stage-0.2 || exit 0
           base=$(git merge-base HEAD origin/work/stage-0.2) || exit 0
-          if git diff --name-only "$base" HEAD | grep -Eq '^(local/|core/vault/native|core/cli/commands/capsule|scripts/capsule-native-check\.mjs|package.*\.json|\.github/workflows/capsule-mac\.yml)'; then exit 0; fi
+          if git diff --name-only "$base" HEAD | grep -Ev '^local/capsule/native-win/' | grep -Eq '^(local/|docs/design/brand/export/lumen/macos/|core/vault/native|core/cli/commands/capsule|scripts/capsule-native-check\.mjs|\.github/workflows/capsule-mac\.yml)'; then exit 0; fi
           echo "this branch changed nothing under the Capsule relative to stage: skipping"
           echo run=false >> "$GITHUB_OUTPUT"
   build:

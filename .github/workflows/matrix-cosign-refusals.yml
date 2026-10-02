@@ -2,10 +2,12 @@
 # an unsigned image, a wrong-identity signature (real keyless, from this workflow), a plain-key signature and a missing digest.
 # Push to work/vault-cosign or dispatch it. Runs on a throwaway runner only: it edits /etc/hosts and the system CA store.
 name: matrix-cosign-refusals
+# Runs when dispatched or on a release-candidate branch (work/rc-*), not on every work push: each run takes
+# the shared hosted and Mac/Windows runners for a long time.
 on:
   workflow_dispatch:
   push:
-    branches: ["work/vault-cosign"]
+    branches: ["work/rc-*"]
 permissions:
   contents: read
   id-token: write

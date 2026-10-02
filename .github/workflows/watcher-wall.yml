@@ -5,6 +5,7 @@ name: watcher-wall
 on:
   workflow_dispatch:
   push:
+    branches: ["work/rc-*"]
     paths: ["core/spawner/**", "box/Dockerfile", "box/compose.yml", "scripts/watcher-wall-*", ".github/workflows/watcher-wall.yml"]
 permissions:
   contents: read

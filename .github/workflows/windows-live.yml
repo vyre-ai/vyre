@@ -17,6 +17,9 @@ on:
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: windows-live-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   # The installer is built IN this run by the same reusable capsule-win workflow a release uses (artifact app-windows-<this commit>), so a branch
   # that has no earlier green capsule-win run, or a run on another event, never leaves this job with an empty run id. Giving run_id skips
