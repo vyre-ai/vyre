@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
+
 #### release: the real app-out path is proven with a test key and a stable version
 
 - `test/build-app-out.test.js` runs `scripts/build-app-out.mjs` the way the release does (a signing key from the environment, not `--throwaway`) with a generated test key made the pinned one through a `pinned` seam, release `0.2.0`: the loader and the build seal, both folders verify, both manifests say 0.2.0. A key that is not the pinned one is refused, and so is a prerelease (`0.2.0-rc.1`): the hosted app's manifest, rollback floor and releases.json take plain `x.y.z`, and a prerelease is never served, so the release workflow skips this step for one.
