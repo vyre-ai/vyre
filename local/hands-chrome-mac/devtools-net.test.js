@@ -795,3 +795,30 @@ test("egress guard: a worker the guard closed is never asked to enable Fetch aga
   assert.equal(k.sent.filter(x => x.session === "S-DEAD" && x.method === "Fetch.enable").length, afterStop, "no Fetch.enable to the closed worker in the next guard");
   assert.ok(before >= 0);
 });
+
+test("egress guard: code the script built from a string is tagged by its scriptId from the Debugger domain, and a request it makes is judged after return", async () => {
+  const k = makeCtx({ active: 1 });
+  k.ctx.frames = { list: async () => [{ index: 0, how: "top", frameId: "TOP", readable: true, origin: "https://app.example", url: "https://app.example/w" }] };
+  k.ctx.tabs = { ...k.ctx.tabs, get: async () => ({ id: 1, url: "https://app.example/w" }) };
+  await net.ops["net.start"]({ tab: 1 }, k.ctx);
+  const eg = await egressGuard(k.ctx, 1);
+  const tag = /** @type {any} */ (eg).tag;
+  assert.ok(k.calls("Debugger.enable").length >= 1, "the Debugger domain is on while the guard is up");
+  assert.ok(k.calls("Debugger.setSkipAllPauses").some(c => c.params.skip === true), "pauses are skipped");
+  k.push(1, "Debugger.scriptParsed", { scriptId: "s9", url: "", stackTrace: { callFrames: [{ url: tag }] } });
+  k.push(1, "Debugger.scriptParsed", { scriptId: "s8", url: "", stackTrace: { callFrames: [{ url: "https://app.example/app.js" }] } });
+  await eg.stop();
+  const send = (/** @type {string} */ id, /** @type {string} */ url, /** @type {string} */ scriptId) => {
+    k.push(1, "Network.requestWillBeSent", { requestId: id, type: "Fetch", documentURL: "https://app.example/w", initiator: { type: "script", stack: { callFrames: [{ url: "", scriptId }] } }, request: { url, method: "GET", headers: {} } });
+    k.push(1, "Fetch.requestPaused", { requestId: "p-" + id, networkId: id, resourceType: "Fetch", request: { url, method: "GET", headers: {} } });
+  };
+  send("d1", "https://attacker.example/str", "s9");
+  send("d2", "https://other.example/page", "s8");
+  await new Promise(r => setTimeout(r, 80));
+  const failed = k.calls("Fetch.failRequest").map(c => c.params.requestId);
+  assert.ok(failed.includes("p-d1"), "string-built code is judged: " + failed.join());
+  assert.ok(!failed.includes("p-d2"), "the page's own script is not");
+  k.push(1, "Debugger.paused", {});
+  await new Promise(r => setTimeout(r, 20));
+  assert.ok(k.calls("Debugger.resume").length >= 1, "a pause is resumed at once");
+});
