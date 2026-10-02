@@ -193,24 +193,29 @@ export default {
 /**
  * Resolve a Wink pairing ticket's locator (ADR 0045): a POST body, never a URL, so it never lands
  * in an access log. Single-use either way -- found or not, the PairTicket object it named is gone
- * after this call. Rate-limited per address (env.PAIR_LIMITER) and, if bound, globally
- * (env.PAIR_LIMITER_GLOBAL), the same optional-binding pattern DEVICE_LIMITER already uses for
- * /v1/device; a zone rate limiting rule covers it otherwise.
+ * after this call. The lookup always happens and a hit (200) or a contested ticket (409) is always
+ * served, with no charge: nothing an outsider sends can stop a real ticket from resolving, and a
+ * shared address (carrier-grade NAT, a cafe's Wi-Fi) cannot be used to block a real pairing there by this code, only by the edge's
+ * per-address cap (a neighbour who sends about 300 a minute).
+ * Only a MISS is charged, to a per-address limit (env.PAIR_LIMITER), and no global limit exists (a
+ * global cap on requests let any outsider block pairing for every user). Guessing is bounded by the
+ * keyspace, not a limiter: a seed of at least 64 bits against a ticket's five minutes. Cost is the
+ * edge's: a loose per-address rule on the route, never a global one.
  * @param {Request} request @param {any} env
  */
 async function onPairResolve(request, env) {
   const who = request.headers.get("cf-connecting-ip") || "unknown";
-  if (env.PAIR_LIMITER) { const { success } = await env.PAIR_LIMITER.limit({ key: who }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
-  if (env.PAIR_LIMITER_GLOBAL) { const { success } = await env.PAIR_LIMITER_GLOBAL.limit({ key: "*" }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
   if (!env.TICKETS) return json(404, { error: "this relay does not support scan-to-pair" });
   let body;
   try { body = await request.json(); } catch { return json(400, { error: "bad request" }); }
   const loc = String((body && body.loc) || "");
   if (!LOC_RE.test(loc)) return json(400, { error: "bad request" });
   const res = await env.TICKETS.get(env.TICKETS.idFromName(loc)).fetch("https://ticket/resolve", { method: "POST" });
+  if (res.status === 200) return json(200, await res.json());
   if (res.status === 409) return json(409, { error: "contested" });
-  if (res.status !== 200) return json(404, { error: "this pairing code has expired or was already used" });
-  return json(200, await res.json());
+  // A miss: charged to this address only.
+  if (env.PAIR_LIMITER) { const { success } = await env.PAIR_LIMITER.limit({ key: who }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
+  return json(404, { error: "this pairing code has expired or was already used" });
 }
 
 /**
@@ -230,8 +235,11 @@ async function onPairResolve(request, env) {
  *         only the code has fp but neither the SPKI (a hash of it is all the code carries) nor the
  *         private key. A request replayed inside the window returns ciphertext to whoever saw the
  *         request, which is only the relay operator, who holds that ciphertext anyway.
- * Per-address limits (env.SETUP_LIMITER, env.SETUP_READ_LIMITER) and a global one on appends
- * (env.SETUP_LIMITER_GLOBAL), the same optional bindings /v1/pair uses, with a zone rule behind them.
+ * Per-address limits (env.SETUP_LIMITER, env.SETUP_READ_LIMITER) and a per-locator one on appends
+ * (env.SETUP_LOC_LIMITER; a locator is a secret the installing box and its page know), the same optional
+ * bindings the other routes use. There is no global limit: a shared cap on appends let any outsider block
+ * every install's progress lines. Storage is bounded per locator by the 64 KB cap and the expiry, and cost
+ * is a per-address rule at the edge.
  * The long poll lives here, not in the object: it asks the object once a second (env.SETUP_POLL_MS).
  * @param {Request} request @param {URL} url @param {any} env
  */
@@ -242,13 +250,13 @@ async function onSetupMbx(request, url, env) {
   const stub = loc => env.TICKETS.get(env.TICKETS.idFromName(loc));
   if (request.method === "POST") {
     if (env.SETUP_LIMITER && !(await env.SETUP_LIMITER.limit({ key: who })).success) return busy();
-    if (env.SETUP_LIMITER_GLOBAL && !(await env.SETUP_LIMITER_GLOBAL.limit({ key: "*" })).success) return busy();
     const text = await request.text();
     if (text.length > 8 * 1024) return json(413, { error: "too big" });
     let m;
     try { m = JSON.parse(text); } catch { return json(400, { error: "bad request" }); }
     const loc = String((m && m.loc) || "");
     if (!LOC_RE.test(loc) || !/^[A-Za-z0-9_-]{22}$/.test(String(m.fp || "")) || !/^[A-Za-z0-9_-]{43}$/.test(String(m.wtok || ""))) return json(400, { error: "bad request" });
+    if (env.SETUP_LOC_LIMITER && !(await env.SETUP_LOC_LIMITER.limit({ key: loc })).success) return busy();
     const res = await stub(loc).fetch("https://ticket/mbx/append", { method: "POST", body: JSON.stringify({ fp: m.fp, wtok: m.wtok, line: m.line === undefined ? null : String(m.line) }) });
     return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
   }

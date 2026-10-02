@@ -218,8 +218,8 @@ user). New `PairTicket` Durable Object in relay/worker/index.js, one object per 
 up by). `RouteRelay`'s control socket, previously silent after auth like relay/node's, now handles
 `{t:"ticket",...}` and writes to it; the Worker's top-level `fetch()` handles `POST /v1/pair`
 before the WebSocket-upgrade gate, same locator-in-body/never-a-URL shape as relay/node, with
-optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limiting bindings (same optional pattern as
-`DEVICE_LIMITER`) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
+an optional per-address `PAIR_LIMITER` rate-limiting binding, charged to misses only (same optional pattern as
+`DEVICE_LIMITER`; no global limit, GHSA-25xh-w9j7-7v28) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
 wrangler.toml gains the `TICKETS` binding and migration entry.
 
 Had to extend the shared test harness, relay/worker/fake-cf.js, since it only ever bound one
@@ -964,7 +964,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **relay/worker** (28 Sep, ADR 0045, own): new Durable Object `PairTicket`, bound `TICKETS` in
   wrangler.toml (new migration entry too); `RouteRelay`'s control socket handles `{ t: "ticket",
   loc, record, mac, exp }` post-auth (previously silent); the Worker's top-level `fetch` handles
-  `POST /v1/pair`, optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limit bindings. Not deployed, code and tests only, per the lead; deploying needs the user's yes.
+  `POST /v1/pair`, an optional per-address `PAIR_LIMITER` binding (misses only; no global limit). Not deployed, code and tests only, per the lead; deploying needs the user's yes.
 - **relay/worker/fake-cf.js** (28 Sep, shared test harness, own): `createRuntime` takes an
   optional `classes` map for Durable Object bindings beyond `ROUTES`; a namespace's `.fetch()`
   accepts `(url, init)` as well as a `Request`; `FakeStorage` gains `deleteAll()`. `object(name)`
