@@ -372,6 +372,9 @@ then `vyre call gate.request "$H"` with N changed each time.
    on the other behind Lumen (any two apps side by side will do), then open Lumen over the line. Pass: the panel's left half is visibly
    lighter than its right half, text stays readable on both, and the edge reads as glass. Turn Reduce Transparency on: the panel becomes
    one flat dark (or light) colour and the halves match. GitHub's runner has Reduce Transparency on, so only the flat colour is checked there.
+17. **The @ key (#30).** On the new build, with your own keyboard layout: open Lumen, type `@`, then `@ki`, then clear the box and type `#`,
+   pick a tag with Return and type `@` after it. Pass: the `@` character appears every time. Write down the layout and the Lumen version.
+   #30 stays open until the user has done this once.
 
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.
