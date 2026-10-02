@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
-import { Events } from "./index.js";
+import { Events, DRAIN_CAP } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
 const fresh = t => new Events(open(path.join(tempHome(t), "vyre.db")));
@@ -71,4 +71,34 @@ test("events: a cursor past the newest id is not resumable, and says where to fo
   const e = ev.emit("x", "thing.happened", {});
   assert.deepEqual(ev.resumable(e.id), { ok: true });
   assert.deepEqual(ev.resumable(e.id + 10), { ok: false, from: e.id });
+});
+
+test("events: an event emitted by a listener is heard after the one being delivered, so every listener hears ids in order (#41)", t => {
+  const ev = fresh(t);
+  const early = [], late = [];
+  ev.on("model.switched", () => { early.push("model.switched"); ev.emit("x", "settings.changed", {}); });
+  ev.on("*", e => early.push(e.id));
+  ev.on("*", e => late.push(e.id));
+  const first = ev.emit("x", "model.switched", { model: "haiku" });
+  assert.deepEqual(late, [first.id, first.id + 1], "a later listener hears the outer event first");
+  assert.deepEqual(early.filter(x => typeof x === "number"), [first.id, first.id + 1]);
+});
+
+test("events: listeners that emit each other stop at the drain cap, say which types, and leave the daemon running (#41 review)", t => {
+  const ev = fresh(t);
+  const said = [];
+  ev.log = m => said.push(m);
+  let heard = 0;
+  ev.on("ping.sent", () => { heard++; ev.emit("x", "pong.sent", {}); });
+  ev.on("pong.sent", () => { heard++; ev.emit("x", "ping.sent", {}); });
+  ev.emit("x", "ping.sent", {});
+  assert.ok(heard <= DRAIN_CAP, "one drain delivers at most the cap");
+  assert.equal(said.length, 1);
+  assert.match(said[0], /ping\.sent|pong\.sent/);
+  assert.ok(ev.latestId() > 0);
+  // The bus works again afterwards.
+  const got = [];
+  ev.on("later.said", e => got.push(e.id));
+  ev.emit("x", "later.said", {});
+  assert.equal(got.length, 1);
 });

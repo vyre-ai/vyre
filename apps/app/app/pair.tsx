@@ -12,6 +12,9 @@ import { tokens } from "../src/theme/tokens";
 import { type } from "../src/theme/type";
 import { Button } from "../src/ui/Button";
 
+/** Every client waits the same 90 seconds for the person's Confirm on the other screen (the handshake default is 15). */
+const PAIR_WAIT_MS = 90_000;
+
 type State = { at: "pairing" } | { at: "paired"; name: string; presence: boolean } | { at: "failed"; message: string };
 
 /**
@@ -39,6 +42,7 @@ export default function Pair() {
           keyStore: relayKeyStore(),
           crypto: relayCrypto(),
           about,
+          timeout: PAIR_WAIT_MS, // the box holds a redeem until the screen it came from confirms (up to 60 s)
         })) as Pairing;
         await savePairing(r);
         await disconnect();

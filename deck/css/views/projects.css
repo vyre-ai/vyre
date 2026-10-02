@@ -1,3 +1,5 @@
+/* A thread on the board is the chat's own session view, so it needs the chat's stylesheet. */
+@import url("/chat/chat.css");
 /* Projects. Boards: DeckProject (the board), Chat (how a thread reads). /projects has no board of
    its own; it uses the row language of Now. */
 
@@ -231,3 +233,7 @@
 .pl-row { position: relative; }
 .pl-row .pl-open::after { content: ""; position: absolute; inset: 0; }
 .pl-pin { position: relative; z-index: 1; }
+
+/* Projects is a shell (#47): the project's chats and brief in a page, each chat opening in Chat. */
+.pj-chats { display: grid; gap: 16px; max-width: 760px; padding: 16px 20px 32px; align-content: start; }
+.pj-chats .pj-threads { display: grid; gap: 2px; }

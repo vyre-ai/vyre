@@ -526,6 +526,11 @@ async function main() {
         need(!call.authNote, "api.call.frames", `the bearer token of the iframe's traffic was not found for the call: ${call.authNote}`);
         need((call.frame ?? 0) > 0 || /b\.localhost/.test(String(call.frameOrigin || "")), "api.call.frames", `the call did not run inside the iframe (result carries frame ${short(call.frame)} ${short(call.frameOrigin)}): ${short(call, 300)}`);
         need(!known.length || short(call, 4000).includes(known[0].name), "api.call.frames", `the call's body does not list the workflow "${known[0] && known[0].name}" the fixture holds: ${short(call, 300)}`);
+        const routed = await step("chrome_api route a read by hint", () => mcp.call("chrome_api", { action: "route", tab, hint: "workflows" }));
+        need(routed.route === "api" && routed.status === 200 && ((routed.frame ?? 0) > 0 || /b\.localhost/.test(String(routed.frameOrigin || ""))), "api.route.frames", `route did not take the learned read inside the iframe: ${short(routed, 300)}`);
+        need(!known.length || short(routed, 4000).includes(known[0].name), "api.route.frames", `the routed read does not list the fixture's workflow: ${short(routed, 300)}`);
+        const noRoute = await step("chrome_api route with no match", () => mcp.call("chrome_api", { action: "route", tab, hint: "invoices payments" }));
+        need(noRoute.route === "ui", "api.route.frames", `an unmatched hint did not fall back to the page: ${short(noRoute, 300)}`);
         return { requests: rows.length, frameTag: Object.fromEntries(tagKeys.map(k => [k, row[k]])), learned: learn.learned, workflowEndpoints: wfEntries.length, call: { status: call.status, frame: call.frame, frameOrigin: call.frameOrigin } };
       });
 
@@ -550,6 +555,32 @@ async function main() {
         const again = await mcp.call("chrome_send", { id: h.id }).then(() => "sent twice", () => "refused");
         need(again === "refused", "send.hold", "the same held Send could be released twice");
         return { tileHeld: false, sendHeld: true, releasedOk: rel && rel.ok !== false, sent: seen.length, secondSend: again };
+      });
+
+      // ---------------------------------------------------------------- (h2) parallel tabs and prefetch
+      await stage("parallel_tabs", async () => {
+        const pages = [fixture.site("widgets"), fixture.site("app")];
+        const opened = [];
+        try {
+          const many = await step("chrome_tabs many: two fixture pages and a public one together", () => mcp.call("chrome_tabs", { action: "many", urls: [...pages, "https://example.com/"], timeoutMs: 20_000 }, 40_000));
+          need(Array.isArray(many.tabs) && many.tabs.length === 3, "tabs.many", `three pages were asked for: ${short(many, 300)}`);
+          for (const t of many.tabs) if (t.opened && typeof t.id === "number") opened.push(t.id);
+          const local = many.tabs.slice(0, 2);
+          need(local.every((/** @type {any} */ t) => t.loaded && typeof t.id === "number"), "tabs.many", `a fixture page did not load: ${short(many, 400)}`);
+          const publicOk = !!many.tabs[2].loaded && typeof many.tabs[2].id === "number";
+          const ids = many.tabs.filter((/** @type {any} */ t) => t.loaded && typeof t.id === "number").map((/** @type {any} */ t) => t.id);
+          const par = await step("chrome_parallel: a snapshot of every loaded tab at once", () => mcp.call("chrome_parallel", { steps: ids.map((/** @type {number} */ id) => ({ op: "page.snapshot", args: { tab: id } })) }, 40_000));
+          need(par.done === ids.length, "batch.parallel", `not every parallel snapshot answered: ${short(par, 400)}`);
+          if (publicOk) need(short(par.results[ids.length - 1], 6000).includes("Example Domain"), "batch.parallel.public", `the public page's snapshot does not carry its heading: ${short(par.results[ids.length - 1], 300)}`);
+          const pre = await step("chrome_tabs prefetch the second public page, then use it", () => mcp.call("chrome_tabs", { action: "prefetch", urls: ["https://example.org/"], timeoutMs: 20_000 }, 40_000));
+          const pf = pre.tabs && pre.tabs[0];
+          if (pf && pf.opened) opened.push(pf.id);
+          let used = null;
+          if (pf && pf.loaded) { used = await mcp.call("chrome_tabs", { action: "use", url: "https://example.org/" }); need(used.reused === true && used.prefetched === true && used.id === pf.id, "tabs.prefetch", `use did not find the prefetched tab: ${short(used, 300)}`); }
+          return { opened: many.tabs.length, manyMs: many.ms, parallelMs: par.ms, publicLoaded: publicOk, prefetched: !!(pf && pf.loaded), usedPrefetched: !!used };
+        } finally {
+          for (const id of opened) { try { await mcp.call("chrome_tabs", { action: "close", tab: id }); } catch { /* already closed */ } }
+        }
       });
 
       // ---------------------------------------------------------------- (i) the awkward moments, inside the frame
