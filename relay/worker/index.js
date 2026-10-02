@@ -31,7 +31,7 @@
  */
 export const BOX_AUTH_TAG = "vyre-relay-box-v1";
 /** What this relay does that a box may rely on, told in `ready` (an older relay says nothing): `registered` answers every ticket registration with 200 or 409. */
-export const FEATURES = Object.freeze(["registered"]);
+export const FEATURES = Object.freeze(["registered", "revoke"]);
 export const LIMITS = Object.freeze({ waiting: 8, open: 32, buffered: 64, frame: 1 << 20 });
 export const CLOSE = Object.freeze({ boxOffline: 4404, busy: 4429, refused: 4401, replaced: 4409, boxGone: 4410, deviceGone: 4411, tooBig: 1009 });
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
@@ -193,24 +193,29 @@ export default {
 /**
  * Resolve a Wink pairing ticket's locator (ADR 0045): a POST body, never a URL, so it never lands
  * in an access log. Single-use either way -- found or not, the PairTicket object it named is gone
- * after this call. Rate-limited per address (env.PAIR_LIMITER) and, if bound, globally
- * (env.PAIR_LIMITER_GLOBAL), the same optional-binding pattern DEVICE_LIMITER already uses for
- * /v1/device; a zone rate limiting rule covers it otherwise.
+ * after this call. The lookup always happens and a hit (200) or a contested ticket (409) is always
+ * served, with no charge: nothing an outsider sends can stop a real ticket from resolving, and a
+ * shared address (carrier-grade NAT, a cafe's Wi-Fi) cannot be used to block a real pairing there by this code, only by the edge's
+ * per-address cap (a neighbour who sends about 300 a minute).
+ * Only a MISS is charged, to a per-address limit (env.PAIR_LIMITER), and no global limit exists (a
+ * global cap on requests let any outsider block pairing for every user). Guessing is bounded by the
+ * keyspace, not a limiter: a seed of at least 64 bits against a ticket's five minutes. Cost is the
+ * edge's: a loose per-address rule on the route, never a global one.
  * @param {Request} request @param {any} env
  */
 async function onPairResolve(request, env) {
   const who = request.headers.get("cf-connecting-ip") || "unknown";
-  if (env.PAIR_LIMITER) { const { success } = await env.PAIR_LIMITER.limit({ key: who }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
-  if (env.PAIR_LIMITER_GLOBAL) { const { success } = await env.PAIR_LIMITER_GLOBAL.limit({ key: "*" }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
   if (!env.TICKETS) return json(404, { error: "this relay does not support scan-to-pair" });
   let body;
   try { body = await request.json(); } catch { return json(400, { error: "bad request" }); }
   const loc = String((body && body.loc) || "");
   if (!LOC_RE.test(loc)) return json(400, { error: "bad request" });
   const res = await env.TICKETS.get(env.TICKETS.idFromName(loc)).fetch("https://ticket/resolve", { method: "POST" });
+  if (res.status === 200) return json(200, await res.json());
   if (res.status === 409) return json(409, { error: "contested" });
-  if (res.status !== 200) return json(404, { error: "this pairing code has expired or was already used" });
-  return json(200, await res.json());
+  // A miss: charged to this address only.
+  if (env.PAIR_LIMITER) { const { success } = await env.PAIR_LIMITER.limit({ key: who }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
+  return json(404, { error: "this pairing code has expired or was already used" });
 }
 
 /**
@@ -230,8 +235,11 @@ async function onPairResolve(request, env) {
  *         only the code has fp but neither the SPKI (a hash of it is all the code carries) nor the
  *         private key. A request replayed inside the window returns ciphertext to whoever saw the
  *         request, which is only the relay operator, who holds that ciphertext anyway.
- * Per-address limits (env.SETUP_LIMITER, env.SETUP_READ_LIMITER) and a global one on appends
- * (env.SETUP_LIMITER_GLOBAL), the same optional bindings /v1/pair uses, with a zone rule behind them.
+ * Per-address limits (env.SETUP_LIMITER, env.SETUP_READ_LIMITER) and a per-locator one on appends
+ * (env.SETUP_LOC_LIMITER; a locator is a secret the installing box and its page know), the same optional
+ * bindings the other routes use. There is no global limit: a shared cap on appends let any outsider block
+ * every install's progress lines. Storage is bounded per locator by the 64 KB cap and the expiry, and cost
+ * is a per-address rule at the edge.
  * The long poll lives here, not in the object: it asks the object once a second (env.SETUP_POLL_MS).
  * @param {Request} request @param {URL} url @param {any} env
  */
@@ -242,13 +250,13 @@ async function onSetupMbx(request, url, env) {
   const stub = loc => env.TICKETS.get(env.TICKETS.idFromName(loc));
   if (request.method === "POST") {
     if (env.SETUP_LIMITER && !(await env.SETUP_LIMITER.limit({ key: who })).success) return busy();
-    if (env.SETUP_LIMITER_GLOBAL && !(await env.SETUP_LIMITER_GLOBAL.limit({ key: "*" })).success) return busy();
     const text = await request.text();
     if (text.length > 8 * 1024) return json(413, { error: "too big" });
     let m;
     try { m = JSON.parse(text); } catch { return json(400, { error: "bad request" }); }
     const loc = String((m && m.loc) || "");
     if (!LOC_RE.test(loc) || !/^[A-Za-z0-9_-]{22}$/.test(String(m.fp || "")) || !/^[A-Za-z0-9_-]{43}$/.test(String(m.wtok || ""))) return json(400, { error: "bad request" });
+    if (env.SETUP_LOC_LIMITER && !(await env.SETUP_LOC_LIMITER.limit({ key: loc })).success) return busy();
     const res = await stub(loc).fetch("https://ticket/mbx/append", { method: "POST", body: JSON.stringify({ fp: m.fp, wtok: m.wtok, line: m.line === undefined ? null : String(m.line) }) });
     return new Response(res.body, { status: res.status, headers: { "content-type": "application/json" } });
   }
@@ -308,20 +316,30 @@ export class PairTicket {
       if (!SEALED.test(record) || !LOC_RE.test(mac) || exp <= now) return new Response(null, { status: 400 });
       const cur = await this.ctx.storage.get("t");
       if (cur && cur.exp > now) {
-        if (cur.contested) return json(200, { status: 409 });
+        if (cur.contested || cur.revoked) return json(200, { status: 409 });
         if (cur.record === record && cur.mac === mac) return json(200, { status: 200 });
         await this.ctx.storage.put("t", { ...cur, contested: true });
         return json(200, { status: 409 });
       }
-      await this.ctx.storage.put("t", { record, mac, exp, ...(setup ? { setup: true } : {}) });
+      await this.ctx.storage.put("t", { record, mac, exp, ...(body && typeof body.route === "string" && body.route ? { owner: await sha256b64(body.route) } : {}), ...(setup ? { setup: true } : {}) });
       // A locator nobody ever resolves would otherwise sit in storage forever (reviewer's LOW,
       // 28 Sep): clean it up at its own exp either way, resolved or not.
       await this.alarmAtLeast(exp);
       return json(200, { status: 200 });
     }
+    if (request.method === "POST" && url.pathname === "/revoke") {
+      let body;
+      try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
+      const t = await this.ctx.storage.get("t");
+      if (!t || t.setup || t.revoked || t.exp <= now || !t.owner || t.owner !== await sha256b64(String((body && body.route) || ""))) return json(200, { status: 404 });
+      // The owner's withdrawal leaves a tombstone until the ticket's own exp (its alarm stays): nobody, an outsider least of all, may register this locator again, and it resolves to nothing.
+      await this.ctx.storage.put("t", { exp: t.exp, revoked: true });
+      return json(200, { status: 200 });
+    }
     if (request.method === "POST" && url.pathname === "/resolve") {
       const t = await this.ctx.storage.get("t");
       if (t && t.exp > now && t.contested) return new Response(null, { status: 409 });
+      if (t && t.revoked) return new Response(null, { status: 404 });
       if (t && !t.setup) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); }
       if (!t || t.exp <= now || !t.record) return new Response(null, { status: 404 });
       return json(200, { record: t.record, mac: t.mac });
@@ -508,7 +526,7 @@ export class RouteRelay {
     const old = this.control();
     if (old) this.end(old, CLOSE.replaced, "replaced by a newer box connection");
     const ticket = b64url(random(18));
-    ws.serializeAttachment({ k: "control", ticket });
+    ws.serializeAttachment({ k: "control", ticket, route: r.route });
     const waiting = this.live("device", x => !(/** @type {any} */ (x).piped)).map(d => /** @type {any} */ (this.role(d)).c);
     this.json(ws, { t: "ready", ticket, waiting, features: [...FEATURES] });
   }
@@ -529,6 +547,19 @@ export class RouteRelay {
     if (typeof message !== "string" || !this.ticketRegAllowed()) return;
     let m;
     try { m = JSON.parse(message); } catch { return; }
+    if (m?.t === "revoke") {
+      // A box withdraws a ticket it registered (a renewal replaces the previous one). Only the route that registered it may.
+      const rloc = String(m.loc || "");
+      if (!/^[A-Za-z0-9_-]{20,64}$/.test(rloc) || !this.env.TICKETS) return;
+      try {
+        const res = await this.env.TICKETS.get(this.env.TICKETS.idFromName(rloc)).fetch("https://ticket/revoke", {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route: String(/** @type {any} */ (this.role(ws)).route || "") }),
+        });
+        const out = res.status === 200 ? /** @type {any} */ (await res.json()) : null;
+        if (out) this.json(ws, { t: "revoked", loc: rloc, status: out.status });
+      } catch {}
+      return;
+    }
     if (m?.t !== "ticket" && m?.t !== "setup") return;
     const setup = m.t === "setup";
     const loc = String(m.loc || ""), record = String(m.record || ""), mac = String(m.mac || "");
@@ -537,7 +568,7 @@ export class RouteRelay {
     if (exp <= Date.now() || !this.env.TICKETS) return;
     try {
       const res = await this.env.TICKETS.get(this.env.TICKETS.idFromName(loc)).fetch("https://ticket/register", {
-        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp, setup }),
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ record, mac, exp, setup, route: String(/** @type {any} */ (this.role(ws)).route || "") }),
       });
       const out = res.status === 200 ? /** @type {any} */ (await res.json()) : null;
       if (out) this.json(ws, { t: "registered", loc, status: out.status });

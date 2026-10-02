@@ -834,3 +834,7 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 - team.add is person-only (reach person; ADR 0031 section 4 and the daemon's PERSON_ONLY floor: a session's own socket refuses it, threadsock.js). The session path I built earlier could never be reached by a real session (my test called it through the client's session headers). A model asks the person; making it asked (key team.add:<project>/<role>, off PERSON_ONLY, recorder in lib/said/team.js) is the follow-up if wanted.
 
 - team.add is reach asked again (lead's call): target team.act.target answers team.add:<project>/<role> (the teammate does not exist yet), recorder lib/said/team.js (assistant), still on PERSON_ONLY until platform takes it off, so a session's own socket refuses it until then.
+
+## Duty wake (0.2.2, work/022-duty-wake)
+
+- core/team subscribes to watcher.fired. For a duty a teammate owns, enabled and started with act true, one new item or more queues a single low request (from_kind duty, from duty:<id>) to its teammate. The request text names the duty and carries its stored instruction (the one the person approved); the filed items are delivered by the existing news block (whitelist, nonce, read once), never in the request text. A second firing while one wake is queued adds nothing. makeWake in duties.js is the unit; tests in duties.test.js (conditions, coalescing, injected item stays data) and a runner step in duties-wall.test.js.

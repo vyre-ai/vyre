@@ -117,6 +117,18 @@ jobs:
           EOF
           sh "$RUNNER_TEMP/health.sh" 60
 
+      # The sign-in for each provider the image carries, started the way the Deck starts it: through vyred, as the account's own uid, by the spawner. It must
+      # reach the provider's own device-code line (an address on the provider's host and a code), which proves the program is in the image, the spawner starts
+      # it, and the account's folder is usable. A real install failed here with "grok is not a program the spawner starts". Needs the runner's network.
+      - name: Codex and Grok sign-ins start, through the spawner, up to the device code
+        run: |
+          for p in codex grok; do
+            docker exec "$C" sh -c "command -v $p >/dev/null" || { echo "$p is not in the image"; exit 1; }
+            out=$(docker exec -e P=$p "$C" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.call("sessions.accounts.signin", { provider: process.env.P, label: "image check " + process.env.P }, { caller: "cli", timeout: 90000 }); console.log(JSON.stringify(r)); process.exit(0); }).catch(e => { console.log(JSON.stringify({ error: { message: String(e && e.message || e) } })); process.exit(1); })') || { echo "$p: $out"; exit 1; }
+            echo "$p: $(echo "$out" | sed -E 's/"code":"[^"]*"/"code":"..."/')"
+            echo "$out" | grep -q '"step":"code"' && echo "$out" | grep -Eq '"url":"https://[^"]+"' && echo "$out" | grep -Eq '"code":"[A-Za-z0-9-]{6,}"' || { echo "$p did not reach its device-code line"; exit 1; }
+          done
+
       # The two checks below need ADR 0029's tini and loop.sh (resilience); an older image skips them.
       # The web app a deploy ships (scripts/build-app.sh). A 404 no_app on /app/ means the pack
       # step was missed.

@@ -1,0 +1,122 @@
+# The Lumen Mac app as release files: Vyre.app for Apple silicon and for Intel, each zipped and as a dmg, named like the
+# Windows installers (Vyre-Lumen_<version>_aarch64.dmg and .zip, Vyre-Lumen_<version>_x86_64.dmg and .zip, and the stable
+# Vyre-Lumen-aarch64.dmg, Vyre-Lumen-x86_64.dmg and the two zips). Each app carries its pinned Node and the setup script, so a Mac
+# needs no terminal and no Node. Uploaded as one workflow
+# artifact called `mac-app`, which the release job pulls into dist/ and lists in SHA256SUMS. This job holds no release key.
+#
+# Developer ID signing and notarization are the person's and optional: with the APPLE_* secrets present the app is signed
+# with the hardened runtime, notarized and stapled; without them it is signed ad hoc and the run says so.
+name: mac-app
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The release version, without a leading v. Empty reads package.json.
+        type: string
+        default: ""
+    secrets:
+      APPLE_DEVELOPER_ID_P12: { required: false }
+      APPLE_DEVELOPER_ID_P12_PASSWORD: { required: false }
+      APPLE_DEVELOPER_ID_IDENTITY: { required: false }
+      APPLE_NOTARY_KEY_P8: { required: false }
+      APPLE_NOTARY_KEY_ID: { required: false }
+      APPLE_NOTARY_ISSUER: { required: false }
+      APPLE_ID: { required: false }
+      APPLE_APP_PASSWORD: { required: false }
+      APPLE_TEAM_ID: { required: false }
+  workflow_dispatch:
+  push:
+    paths: ["local/capsule/native/**", "scripts/mac-app-package.sh", ".github/workflows/mac-app.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: mac-app-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+jobs:
+  mac-app:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, x86_64]
+    env:
+      APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+      APPLE_DEVELOPER_ID_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
+      APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+      APPLE_NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Version
+        id: v
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' package.json | head -1)"
+          v="${v#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"; echo "Lumen app version $v"
+      - name: Build Lumen for ${{ matrix.arch }}
+        run: |
+          arch=${{ matrix.arch }}; [ "$arch" = aarch64 ] && arch=arm64
+          VYRE_CAPSULE_ARCH=$arch sh local/capsule/native/build.sh app
+      - name: The binary is for ${{ matrix.arch }}
+        run: |
+          archs="$(lipo -archs local/capsule/native/.build/Vyre.app/Contents/MacOS/Vyre)"
+          echo "architectures: $archs"
+          want=${{ matrix.arch }}; [ "$want" = aarch64 ] && want=arm64
+          [ "$archs" = "$want" ] || { echo "expected $want, got $archs" >&2; exit 1; }
+      - name: The pinned Node (the version and checksum are the ones in scripts/install-mac-server.sh)
+        id: node
+        run: |
+          v="$(sed -n 's/^NODE_VERSION=//p' scripts/install-mac-server.sh | head -1)"
+          na=${{ matrix.arch }}; [ "$na" = aarch64 ] && na=arm64 || na=x64
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/node.tgz" "https://nodejs.org/dist/$v/node-$v-darwin-$na.tar.gz"
+          echo "tgz=$RUNNER_TEMP/node.tgz" >> "$GITHUB_OUTPUT"; echo "Node $v for $na"
+      - name: Package, sign if there is an identity, notarize if there is a credential
+        env:
+          VYRE_NODE_TGZ: ${{ steps.node.outputs.tgz }}
+        run: sh scripts/mac-app-package.sh "${{ steps.v.outputs.version }}" ${{ matrix.arch }} local/capsule/native/.build/Vyre.app dist-mac
+      - name: The dmg mounts and holds the app, the setup files and the pinned Node
+        run: |
+          dmg="dist-mac/Vyre-Lumen_${{ steps.v.outputs.version }}_${{ matrix.arch }}.dmg"
+          hdiutil verify "$dmg"
+          mnt="$(mktemp -d)"; hdiutil attach "$dmg" -nobrowse -mountpoint "$mnt" >/dev/null
+          app="$mnt/Vyre Lumen.app"
+          test -d "$app/Contents/MacOS" && echo "dmg holds Vyre Lumen.app"
+          ls -l "$app/Contents/Resources/setup"; cat "$app/Contents/Resources/setup/setup.json"
+          test -x "$app/Contents/Resources/setup/install-mac-server.sh"
+          test -x "$app/Contents/Resources/setup/vyre-sudo-check"
+          codesign -dv "$app" 2>&1 | grep -E "Identifier|Authority|Signature" || true
+          hdiutil detach "$mnt" >/dev/null
+      - name: Status
+        run: |
+          cat dist-mac/mac-app-*.status
+          { echo "### Lumen Mac app (${{ matrix.arch }})"; echo; echo '```'; cat dist-mac/mac-app-*.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-app-${{ matrix.arch }}
+          path: |
+            dist-mac/Vyre-Lumen*.dmg
+            dist-mac/Vyre-Lumen*.zip
+            dist-mac/mac-app-*.status
+          retention-days: 14
+  collect:
+    # One artifact called `mac-app`, as the release job expects.
+    needs: mac-app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: mac-app-*
+          merge-multiple: true
+          path: dist-mac
+      - run: ls -l dist-mac
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-app
+          path: dist-mac/*
+          retention-days: 14

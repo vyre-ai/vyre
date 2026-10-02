@@ -137,11 +137,14 @@ const about = a => ({
  * (reviewer, 28 Sep MEDIUM: pairTicket alone could only show who it paired with after the fact).
  * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
  * @param {{ name?: string, tailnet?: boolean, enroll?: boolean, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
- *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number }} [o]
+ *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number, onFingerprint?: (fingerprint: string) => void }} [o]
  */
 export async function pairOffer(offer, o = {}) {
   const d = defaults(o);
   const keys = await deviceKey(d);
+  // The box's screen shows this phone's fingerprint beside Confirm (pairing.requested). Hand the same one to the app before the
+  // handshake, which waits for that Confirm, so this phone's own screen shows it too and the person compares two.
+  if (typeof o.onFingerprint === "function") { try { o.onFingerprint(await keyFingerprint(keys.publicKey, d.crypto)); } catch {} }
   // `tailnet: "join"` is a desktop asking its box for a tagged Tailscale key later (ADR 0046); a
   // phone leaves it out and stays on the relay.
   const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}), ...(o.enroll ? { enroll: true } : {}) };
@@ -164,6 +167,20 @@ function enrollOf(e) {
   if (!e || typeof e.grant !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(e.grant)) return null;
   if (typeof e.rpId !== "string" || !/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i.test(e.rpId) || e.rpId.length > 253) return null;
   return { grant: e.grant, expires: Number(e.expires) || 0, rpId: e.rpId.toLowerCase() };
+}
+
+/**
+ * Whether a relay URL named inside a record is exactly the relay that served it: a ws or wss origin with the same scheme and host as
+ * the one asked, and nothing else in it.
+ * @param {string} named @param {string} asked
+ */
+export function sameRelay(named, asked) {
+  try {
+    const a = new URL(String(named)), b = new URL(String(asked).replace(/\/+$/, ""));
+    if (a.protocol !== "wss:" && a.protocol !== "ws:") return false;
+    if (a.username || a.password || a.search || a.hash || (a.pathname !== "/" && a.pathname !== "")) return false;
+    return a.protocol === b.protocol && a.host === b.host;
+  } catch { return false; }
 }
 
 /**
@@ -256,6 +273,9 @@ export async function resolveTicket(ticket, o) {
     record = JSON.parse(fromUtf8(await cryptoP.aesGcmDecrypt(key, sealed.subarray(0, 12), utf8(TICKET_SEAL_AD), sealed.subarray(12))));
   } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
   if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
+  // The record names the relay the phone will connect to after it is confirmed. It comes from the box, so it is held to the relay that
+  // actually answered: the same host and scheme, no path, credentials, query or fragment. A box cannot send a phone to another server.
+  if (!sameRelay(record.relay, o.relay)) throw fail("bad_record", "this pairing code names a different relay than the one that holds it; refusing to pair");
   // The MAC only proves the relay's answer is unmodified from whatever the box minted; an expiry
   // in the past is still a legitimate, unmodified record for a ticket that should have been gone.
   if (typeof record.exp !== "number" || record.exp < Date.now()) throw fail("ticket_gone", "this pairing code has expired or was already used");

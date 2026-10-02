@@ -6,6 +6,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Writable } from "node:stream";
+import { spawn } from "node:child_process";
+import http from "node:http";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -184,7 +186,7 @@ test("media: the same project permission as every artifact, a # tag grants one i
   // A model cannot read the bytes through a tool, nor change the media, nor share it publicly.
   assert.equal((await as("artifacts.media.read", { id: made.id }, "t2")).error.code, "denied");
   assert.match((await as("artifacts.update", { id: made.id, content: "x" }, "t2")).error.message, /one file/);
-  assert.match((await call("artifacts.share", { id: made.id })).error.message, /public links for images, video and audio/);
+  assert.match((await call("artifacts.share", { id: made.id })).error.message, /public links are off/, "a media share follows the same switch as any other");
   assert.match((await ok("artifacts.mention.search", { q: "" }))[0].hint, /image \(image\/png\), made by grok/);
   // The person's surfaces and Vyre's own modules read the bytes in chunks (Drive previews).
   const chunk = await ok("artifacts.media.read", { id: made.id, offset: 0, length: 10 });
@@ -289,7 +291,8 @@ test("media: bytes handed over directly (a provider's content block) are kept wi
   const { ok, call, asVyre } = await boot(t);
   const b64 = PNG.toString("base64");
   // No artifacts folder is registered for t1 at all: nothing here touches an agent's folder.
-  const made = await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64, provider: "codex", prompt: "Revised prompt: a lighthouse at dawn", source: "content-block", title: "Lighthouse" });
+  const made = await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: b64, provider: "codex", prompt: "Revised prompt: a lighthouse at dawn", source: "content-block", title: "Lighthouse", privacy: "zdr" });
+  assert.equal(made.media.privacy, "zdr", "the account's privacy mode is kept with the item");
   assert.deepEqual([made.kind, made.format, made.media.provider, made.media.source, made.media.bytes], ["image", "png", "codex", "content-block", PNG.length]);
   assert.match(made.media.sha256, /^[0-9a-f]{64}$/);
   const chunk = await asVyre("artifacts.media.read", { id: made.id });
@@ -299,6 +302,8 @@ test("media: bytes handed over directly (a provider's content block) are kept wi
   const again = await asVyre("artifacts.media.register", { thread: "t1", name: "x.png", data_b64: b64, model: "gpt-image" }, "threads");
   assert.equal(again.id, made.id);
   assert.equal(again.media.model, "gpt-image");
+  assert.equal(again.media.privacy, "zdr");
+  assert.equal((await asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: PNG.toString("base64") + "", privacy: "anything" })).media.privacy, "zdr", "an unknown privacy value is ignored, the known one stays");
   assert.equal((await ok("artifacts.list", { kind: "image" })).length, 1);
   // Checked as a file is: magic bytes, a type it knows, a size, a registrar.
   await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: Buffer.from("<html><script>").toString("base64") }), /not a png file/);
@@ -321,4 +326,102 @@ test("media: the thread's own folder swapped for a link at the last moment is st
   const r = await call("artifacts.media.copy", { id: made.id }, "mcp:agent:kit", { thread: "t2" });
   assert.equal(r.error?.code, "denied", JSON.stringify(r));
   assert.deepEqual(fs.readdirSync(victim), [], "nothing was created in the target");
+});
+
+const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+const pngOf = (w, h, pad = 0) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), u32(13), Buffer.from("IHDR"), u32(w), u32(h), Buffer.alloc(9), Buffer.alloc(pad, 1)]);
+
+test("media: a file's own size and length are kept, a gallery pages through them within scope, and usage and the box-wide cap are reported", async t => {
+  const { ok, call, asVyre } = await boot(t);
+  const made = [];
+  for (const [i, [w, h]] of [[640, 480], [800, 600], [1024, 1024]].entries()) {
+    const m = await asVyre("artifacts.media.register", { thread: i === 2 ? "t3" : "t1", mime: "image/png", data_b64: pngOf(w, h, i + 1).toString("base64"), provider: i === 1 ? "codex" : "grok", prompt: `picture ${i} ${"x".repeat(200)}`, title: `Picture ${i}` });
+    made.push(m);
+    await new Promise(r => setTimeout(r, 5)); // distinct created_at for paging
+  }
+  assert.deepEqual([made[0].media.width, made[0].media.height], [640, 480], "the size comes from the file's own header");
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42"), Buffer.alloc(4), Buffer.alloc(8, 0)]);
+  const vid = await asVyre("artifacts.media.register", { thread: "t1", mime: "video/mp4", data_b64: mp4.toString("base64"), title: "Clip" });
+  assert.equal(vid.media.duration_s, undefined, "nothing is claimed that the file does not say");
+  // The gallery: the person sees every project, newest first, a prompt cut short, paged by created_at.
+  const g1 = await ok("artifacts.media.gallery", { kind: "image", limit: 2 });
+  assert.deepEqual(g1.items.map(x => x.title), ["Picture 2", "Picture 1"]);
+  assert.equal(g1.items[0].prompt.length, 140);
+  assert.deepEqual([g1.items[0].width, g1.items[0].height], [1024, 1024]);
+  assert.ok(g1.next);
+  const g2 = await ok("artifacts.media.gallery", { kind: "image", limit: 2, before: g1.next });
+  assert.deepEqual(g2.items.map(x => x.title), ["Picture 0"]);
+  assert.equal(g2.next, null);
+  assert.deepEqual((await ok("artifacts.media.gallery", { provider: "codex" })).items.map(x => x.title), ["Picture 1"]);
+  assert.deepEqual((await ok("artifacts.media.gallery", { kind: "video" })).items.map(x => x.title), ["Clip"]);
+  // An agent sees its own project only: t3 is northwind's, kit (t2) is harlow-legal's.
+  const kit = (await call("artifacts.media.gallery", { kind: "image" }, "mcp:agent:kit", { thread: "t2" })).data;
+  assert.deepEqual(kit.items.map(x => x.title).sort(), ["Picture 0", "Picture 1"]);
+  // Usage: the person and Vyre's modules read it; a model does not.
+  const use = await ok("artifacts.media.usage", {});
+  assert.equal(use.total_bytes, made.reduce((n, m) => n + m.media.bytes, 0) + vid.media.bytes);
+  assert.deepEqual(use.projects.map(p => p.project).sort(), ["harlow-legal", "northwind"]);
+  assert.equal(use.limit_bytes, 20 * 1024 ** 3);
+  assert.equal((await call("artifacts.media.usage", {}, "mcp:agent:kit", { thread: "t2" })).error.code, "denied");
+  // The box-wide cap refuses with a plain sentence.
+  _test.mediaCaps = { project: 1e12, thread: 1e12, total: use.total_bytes + 10 };
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: pngOf(10, 10, 100).toString("base64") }), /generated media on this box is at its limit/);
+});
+
+const PRETEND_VYRED = 99999;
+async function shareServer(t, home) {
+  const dir = path.join(home, "data", "artifacts", "public");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o770 });
+  const script = path.join(import.meta.dirname, "share-server.js");
+  const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${dir}`, `--allow-fs-read=${script}`, `--allow-fs-write=${dir}`, script, "--dir", dir, "--port", "0", "--not-uid", String(PRETEND_VYRED)], { stdio: ["ignore", "pipe", "inherit"] });
+  const port = await new Promise((resolve, reject) => {
+    let out = "";
+    child.stdout.on("data", b => { out += b; const m = /listening (\d+)/.exec(out); if (m) resolve(Number(m[1])); });
+    child.on("exit", c => reject(new Error(`share server exited ${c}`)));
+  });
+  const own = _test.ownUid;
+  _test.ownUid = () => PRETEND_VYRED;
+  t.after(() => { _test.ownUid = own; child.kill("SIGTERM"); });
+  return { port };
+}
+const fetchRaw = (port, p, headers = {}, method = "GET") => new Promise((resolve, reject) => {
+  const req = http.request({ host: "127.0.0.1", port, path: p, method, headers }, res => { const c = []; res.on("data", d => c.push(d)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(c) })); });
+  req.on("error", reject); req.end();
+});
+
+test("media: a public link serves the file with its own type, Range and a sandbox, never as a page, and stops at once", async t => {
+  const { home, ok, asVyre } = await boot(t);
+  const { port } = await shareServer(t, home);
+  const dir = folder(t);
+  await asVyre("artifacts.capture.register", { thread: "t1", dir });
+  fs.writeFileSync(path.join(dir, "clip.mp4"), MP4);
+  const v = await asVyre("artifacts.media.register", { thread: "t1", name: "clip.mp4", title: "Flyover" });
+  await ok("artifacts.public.set", { on: true });
+  const shared = await ok("artifacts.share", { id: v.id });
+  const url = shared.share.path;
+  assert.match(url, /^\/s\/[A-Za-z0-9_-]{24}$/);
+  const full = await fetchRaw(port, url);
+  assert.equal(full.status, 200);
+  assert.equal(full.headers["content-type"], "video/mp4");
+  assert.equal(full.headers["x-content-type-options"], "nosniff");
+  assert.match(full.headers["content-security-policy"], /^sandbox;/);
+  assert.equal(full.headers["cache-control"], "no-store");
+  assert.equal(full.headers["cross-origin-resource-policy"], "cross-origin", "a public link may be embedded on any page, by design");
+  assert.ok(full.body.equals(MP4), "the bytes are the file");
+  assert.ok(!JSON.stringify(full.headers).includes("harlow") && !JSON.stringify(full.headers).includes(v.id), "nothing names the project or the artifact");
+  const part = await fetchRaw(port, url, { range: "bytes=4-11" });
+  assert.equal(part.status, 206);
+  assert.equal(part.body.toString("latin1"), "ftypmp42");
+  assert.equal((await fetchRaw(port, url, { range: "bytes=99999999-" })).status, 416);
+  assert.equal((await fetchRaw(port, url, {}, "HEAD")).body.length, 0);
+  assert.equal((await fetchRaw(port, url, {}, "POST")).status, 405);
+  // meta.json cannot make the server serve anything else or name its own type.
+  const hash = fs.readdirSync(path.join(home, "data", "artifacts", "public")).find(n => /^[0-9a-f]{64}$/.test(n));
+  const meta = path.join(home, "data", "artifacts", "public", hash, "meta.json");
+  fs.writeFileSync(meta, JSON.stringify({ expires_at: null, media: { file: "../meta.json", mime: "text/html" } }));
+  assert.equal((await fetchRaw(port, url)).status, 404, "a file name that is not media.<ext> is refused");
+  fs.writeFileSync(meta, JSON.stringify({ expires_at: null, media: { file: "media.mp4", mime: "text/html" }, headers: { "content-type": "text/html" } }));
+  assert.equal((await fetchRaw(port, url)).headers["content-type"], "video/mp4", "the type comes from the extension, not meta.json");
+  await ok("artifacts.unshare", { id: v.id });
+  assert.equal((await fetchRaw(port, url)).status, 410, "stopped at once");
 });

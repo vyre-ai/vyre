@@ -1099,3 +1099,10 @@ Waiting on: vyre-core re-landing on stage (deck/test/shell-release-sw.test.js is
 Resume: rebase on origin/work/stage-0.2 (cherry-pick if stage was rewound; backup branches backup/pwa-old-tip, backup/pwa-76f39091), get CI green, then the real-device matrix.
 
 Box-side device_removed (work/pwa-removed): a session made with a keyed proof (passkey, device key) is bound to that key; removing the key ends the session and keeps id + secret hash and the key id for 30 days. Notes (reviewer-2): a bearer token alone is enough to be told 'removed' (harmless: the holder has the credential); Touch ID and Capsule sessions are unbound; a removal only at the tailnet admin is not covered; the key-kind tombstone and the router test (test/person.test.js) are unreviewed, the router test is runner-only.
+
+## Pairing fingerprint on the phone (2026-10-02, work/pwa-fingerprint)
+
+Done: the arriving phone shows "This phone: <fingerprint>" while it waits for Confirm (onFingerprint from work/023-relay-deploy cb8298799 on pairOffer). Hosted app card: relay/app/loader (phoneCodeWords in fragment.js, showPhoneCode in loader.js; the installed app's in-app scanner runs the same loader). Deck scan sheet: deck/js/pair-scan.js pairing state. Test in relay/app/app.test.js. Branch merges work/023-relay-deploy and work/pwa-app-pair.
+Pin walk (pwa-shots 36963080982) was red: swipes started on the Lumen bar (it sits higher in shell v2) and reopen still had waiting.list needs. Fixed on work/pwa-pin-shots 6ebe99bfa (swipe y measured from .capsule; reopen stubs waiting.list). now-sheet-question red is a world/CHAT_DEMO matter, not the pin walk.
+Pin walk green on work/pwa-pin-shots 6a1cf61ff (run 36970900230, artifact pwa-shots): pin-more, pin-swipe (five swipes), pin-unpin, reopen, swipe-to-chats all ok at 390 and 430. Only now-sheet-question is red (needs a question row from the world; not the pin walk).
+now-sheet-question fixed by stubbing its question and waiting row (CI world has no CHAT_DEMO); pwa-shots fully green on work/pwa-pin-shots e4dd65e88, run 36972640234.

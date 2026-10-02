@@ -90,7 +90,7 @@ test("marketplace: one plugin, vyre, from ./harness, at the package's version", 
   assert.match(fs.readFileSync(path.join(PLUGIN, ".mcp.json"), "utf8"), /mcp\/run\.js/);
 });
 
-test("launcher: finds the package it sits in, VYRE_PACKAGE, or the vyre on PATH, else nothing", t => {
+test("launcher: finds the package it sits in, VYRE_PACKAGE, or the vyre on PATH, else nothing", async t => {
   assert.equal(findPackage(PLUGIN, { PATH: "" }), REPO);
   const { cache } = install(t);
   assert.equal(findPackage(cache, { PATH: "" }), null);
@@ -102,6 +102,13 @@ test("launcher: finds the package it sits in, VYRE_PACKAGE, or the vyre on PATH,
   assert.equal(findPackage(cache, { PATH: bin }), REPO);
   assert.deepEqual(locate(cache, { PATH: bin, VYRE_HOME: path.join(bin, "none") }), { state: "setup", root: REPO });
   assert.deepEqual(locate(cache, { PATH: bin, VYRE_HOME: bin }), { state: "ready", root: REPO });
+  // A session on a box runs as an account uid with no ~/.vyre; its own socket to vyred is what says Vyre is set up (#40).
+  const sock = path.join(bin, "s.sock");
+  const srv = (await import("node:net")).createServer();
+  await new Promise(r => srv.listen(sock, r));
+  t.after(() => srv.close());
+  assert.deepEqual(locate(cache, { PATH: bin, VYRE_HOME: path.join(bin, "none"), VYRE_SOCKET: sock }), { state: "ready", root: REPO });
+  assert.deepEqual(locate(cache, { PATH: bin, VYRE_HOME: path.join(bin, "none"), VYRE_SOCKET: path.join(bin, "gone.sock") }), { state: "setup", root: REPO });
 });
 
 test("no Vyre: a fresh session hears the install line once; every other hook is silent and quick", async t => {

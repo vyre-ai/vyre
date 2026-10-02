@@ -93,7 +93,7 @@ public final class Direct: ObservableObject {
         if let why = Bridge.explain(list) { return .failure(why) }
         let rows = (list.data as? [[String: Any]]) ?? ((list.data as? [String: Any])?["agents"] as? [[String: Any]]) ?? []
         guard let a = rows.first(where: { VJ.s($0["name"]) == agent }) ?? (agent == "assistant" ? rows.first { VJ.s($0["kind"]) == "assistant" } : nil) else {
-            return .failure(agent == "assistant" ? "There is no assistant on this Vyre yet." : "There is no agent called \(agent).")
+            return .failure(agent == "assistant" ? vyred.box.said("There is no assistant on this Vyre yet.") : "There is no agent called \(agent).")
         }
         let name = VJ.s(a["name"])
         let d = VyState.dm(name, thread: VJ.nonEmpty(a["thread"]))

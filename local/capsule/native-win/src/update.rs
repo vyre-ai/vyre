@@ -53,15 +53,71 @@ pub fn check_file(listed: &HashMap<String, String>, name: &str, bytes: &[u8]) ->
     if &got == want { Ok(()) } else { Err(format!("{name} does not match its signed hash")) }
 }
 
-fn parts(v: &str) -> Option<(u64, u64, u64)> {
-    let core = v.trim_start_matches('v').split(['-', '+']).next()?;
-    let mut it = core.split('.');
-    Some((it.next()?.parse().ok()?, it.next()?.parse().ok()?, it.next()?.parse().ok()?))
+/// A semantic version: `major.minor.patch` and optional `-pre.release` identifiers (build metadata with `+` is
+/// refused, as in lib/releases.js). Same ordering as lib/releases.js `compare` (a shared case table checks both).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Version {
+    core: (u64, u64, u64),
+    pre: Vec<String>,
 }
 
-/// Downgrade refusal: only a strictly newer version installs.
+impl Version {
+    pub fn parse(v: &str) -> Option<Version> {
+        let v = v.trim().trim_start_matches('v');
+        if v.contains('+') { return None; }
+        let (core, pre) = match v.split_once('-') { Some((c, p)) => (c, Some(p)), None => (v, None) };
+        let mut it = core.split('.');
+        let core = (it.next()?.parse().ok()?, it.next()?.parse().ok()?, it.next()?.parse().ok()?);
+        if it.next().is_some() { return None; }
+        let pre: Vec<String> = match pre {
+            Some(p) => p.split('.').map(str::to_string).collect(),
+            None => Vec::new(),
+        };
+        if pre.iter().any(|x| x.is_empty() || !x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')) { return None; }
+        Some(Version { core, pre })
+    }
+
+    pub fn is_pre(&self) -> bool { !self.pre.is_empty() }
+}
+
+impl Ord for Version {
+    fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering::*;
+        if self.core != o.core { return self.core.cmp(&o.core); }
+        // A prerelease sorts before its release.
+        match (self.pre.is_empty(), o.pre.is_empty()) {
+            (true, true) => return Equal,
+            (true, false) => return Greater,
+            (false, true) => return Less,
+            _ => {}
+        }
+        for i in 0..self.pre.len().max(o.pre.len()) {
+            let (Some(p), Some(q)) = (self.pre.get(i), o.pre.get(i)) else {
+                // The shorter list sorts first when the rest is equal.
+                return if self.pre.get(i).is_none() { Less } else { Greater };
+            };
+            if p == q { continue; }
+            let (pn, qn) = (p.bytes().all(|c| c.is_ascii_digit()), q.bytes().all(|c| c.is_ascii_digit()));
+            return match (pn, qn) {
+                (true, true) => p.parse::<u64>().unwrap_or(0).cmp(&q.parse::<u64>().unwrap_or(0)),
+                // A number sorts before a word.
+                (true, false) => Less,
+                (false, true) => Greater,
+                _ => p.cmp(q),
+            };
+        }
+        Equal
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(o)) }
+}
+
+/// Downgrade refusal: only a strictly newer version installs. A prerelease is older than its release, so a
+/// build on 0.2.0-rc.1 is offered 0.2.0, and one on 0.2.0 is never offered 0.2.0-rc.2.
 pub fn is_newer(current: &str, candidate: &str) -> bool {
-    match (parts(current), parts(candidate)) { (Some(a), Some(b)) => b > a, _ => false }
+    match (Version::parse(current), Version::parse(candidate)) { (Some(a), Some(b)) => b > a, _ => false }
 }
 
 /// The release to read: the newest stable `vX.Y.Z` tag in GitHub's public releases feed
@@ -70,12 +126,12 @@ pub fn is_newer(current: &str, candidate: &str) -> bool {
 /// answers 403 once a shared address has made 60 calls an hour, which a person's PC cannot be asked to risk.
 /// Tags that are not plain versions (android-..., -rc.N) are skipped; the signature check is what trusts a release.
 pub fn pick_tag(atom: &str) -> Option<String> {
-    let mut best: Option<((u64, u64, u64), String)> = None;
+    let mut best: Option<(Version, String)> = None;
     for part in atom.split("/releases/tag/").skip(1) {
         let tag: String = part.chars().take_while(|c| !matches!(c, '"' | '<' | '&' | '\'' | ' ' | '#' | '?')).collect();
         let Some(plain) = tag.strip_prefix('v') else { continue };
-        if plain.split('.').count() != 3 || plain.contains(['-', '+']) { continue; }
-        let Some(key) = parts(plain) else { continue };
+        // Stable releases only: a plain vX.Y.Z tag. Prereleases and builds are not offered by the feed pick.
+        let Some(key) = Version::parse(plain).filter(|v| !v.is_pre()) else { continue };
         if best.as_ref().map_or(true, |(k, _)| key > *k) { best = Some((key, tag)); }
     }
     best.map(|(_, t)| t)
@@ -90,9 +146,9 @@ pub fn newer_installer(listed: &HashMap<String, String>, current: &str) -> Optio
     listed.keys()
         .filter_map(|n| {
             let v = n.strip_prefix("Vyre_")?.strip_suffix("_x64-setup.exe")?;
-            if parts(v).is_some() && is_newer(current, v) { Some((n.clone(), v.to_string())) } else { None }
+            if Version::parse(v).is_some() && is_newer(current, v) { Some((n.clone(), v.to_string())) } else { None }
         })
-        .max_by_key(|(_, v)| parts(v))
+        .max_by_key(|(_, v)| Version::parse(v))
 }
 
 #[cfg(test)]
@@ -143,6 +199,29 @@ mod tests {
         assert!(check_file(&m, "Vyre.exe", body).is_ok());
         assert!(check_file(&m, "Vyre.exe", b"tampered").is_err());
         assert!(check_file(&m, "Other.exe", body).is_err());
+    }
+
+    #[test]
+    fn the_order_matches_lib_releases_for_every_shared_case() {
+        let cases: serde_json::Value = serde_json::from_str(include_str!("../tests/semver-cases.json")).unwrap();
+        for c in cases.as_array().unwrap() {
+            let (a, b, want) = (c[0].as_str().unwrap(), c[1].as_str().unwrap(), c[2].as_i64().unwrap());
+            let got = Version::parse(a).unwrap().cmp(&Version::parse(b).unwrap()) as i64;
+            assert_eq!(got, want, "{a} vs {b}");
+        }
+    }
+
+    #[test]
+    fn a_prerelease_is_offered_its_release_and_a_release_never_its_prerelease() {
+        assert!(is_newer("0.2.0-rc.1", "0.2.0"));
+        assert!(is_newer("0.2.0-rc.1", "0.2.0-rc.2"));
+        assert!(!is_newer("0.2.0", "0.2.0-rc.2"));
+        assert!(!is_newer("0.2.0-rc.2", "0.2.0-rc.2"));
+        assert!(!is_newer("0.2.0", "garbage"));
+        let mut m = HashMap::new();
+        for n in ["Vyre_0.2.0_x64-setup.exe", "Vyre_0.2.0-rc.2_x64-setup.exe"] { m.insert(n.to_string(), "aa".repeat(32)); }
+        assert_eq!(newer_installer(&m, "0.2.0-rc.1"), Some(("Vyre_0.2.0_x64-setup.exe".into(), "0.2.0".into())));
+        assert_eq!(newer_installer(&m, "0.2.0"), None);
     }
 
     #[test]

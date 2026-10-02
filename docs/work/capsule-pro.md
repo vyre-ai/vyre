@@ -137,6 +137,11 @@ stutter, (4) nothing flickers between keystrokes, (5) hiding and reopening is in
 - threads.start and agents.ask carry `mentions` and `pasted` (sessions' work/sessions-start-mentions a257dd5a must land for them to count).
 - Text expansion, script commands, AI presets, browser tabs and bookmarks, Focus and Shortcuts, `@` targets from manifests: 0.2.x per the lead.
 
+## Where things stand (session 10, 2 Oct, after the restart)
+- rc-0.2.2 (7fe7c97e4 then 9a67fe92b) holds the paired-ask fix. Merged and pushed with the Swift suite passing locally: work/022-at-icons a057d19d8 (536), work/022-deep-glass 1aff8f387 (535), work/022-mac-app 19fb0a0b8 (541). Not yet in the rc: those three branches.
+- The rc's capsule-mac run on 04:53 failed in `ScreenAttachTests` (rapid words collapse). That fix is the paired-ask commit 27a086051, which is in the rc now. The run on 7fe7c97e4 was cancelled by a newer push; the run on 9a67fe92b is the one to read.
+- #30 ("@" not typing) stays open until the user does step 17 below on the new build. Steps 16 (Deep glass) and 17 (the @ key) are the only new ones since 0.2.1. The signed Mac DMG plan is in team/0.2.2-release/NATIVE-APPS.md, Mac section; it waits for a Developer ID.
+
 ## Doing (session 9, 2026-09-30, work/capsule-02-oversight off work/capsule-02-glass 62645bee)
 Computer-use oversight panel (capsule-02.html section 11). 2026-10-01: rewired from my proposed hands.plan/step/voice to the real contract on stage (chrome.plan, chrome.step, chrome.voice, chrome.plan.edit, chrome.interject, chrome.pause); before this it could never have opened. Originally built against my proposed hands.* contract
 (CHAT.md, capsule-pro -> capsule-sight; capsule-sight has not answered yet). Sources/Extensions/oversight/:
@@ -368,6 +373,13 @@ then `vyre call gate.request "$H"` with N changed each time.
    Start a computer-use task from an agent. Pass: the oversight panel opens top right with the
    plan first, can be dragged, takes a typed note, and Esc waits for the current act. A spoken
    reply plays from a mic turn.
+16. **Deep glass.** Reduce Transparency must be off (System Settings, Accessibility, Display). Put a window that is white on one half and black
+   on the other behind Lumen (any two apps side by side will do), then open Lumen over the line. Pass: the panel's left half is visibly
+   lighter than its right half, text stays readable on both, and the edge reads as glass. Turn Reduce Transparency on: the panel becomes
+   one flat dark (or light) colour and the halves match. GitHub's runner has Reduce Transparency on, so only the flat colour is checked there.
+17. **The @ key (#30).** On the new build, with your own keyboard layout: open Lumen, type `@`, then `@ki`, then clear the box and type `#`,
+   pick a tag with Return and type `@` after it. Pass: the `@` character appears every time. Write down the layout and the Lumen version.
+   #30 stays open until the user has done this once.
 
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.

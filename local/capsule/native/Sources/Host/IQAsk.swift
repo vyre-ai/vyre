@@ -110,27 +110,30 @@ public struct IQFixShown: Sendable, Equatable {
 }
 
 extension CapsuleModel {
+    /// Only words that may be about the screen (they point at it, or text may be selected) wait for the screen chip; any other
+    /// question does not wait. Returns true when the words are about the screen, with the chips settled into `attachments`, so the
+    /// caller sends them with the question (the lead, 2026-09-27: Lumen always knows the screen).
+    func settleScreenChips(_ words: String) async -> Bool {
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        let asking = attachers.filter { $0.mayBeAbout(w) }
+        guard !asking.isEmpty else { return false }
+        // The chips already asked for these words, else ask now (⏎ can beat the search, and the follow-up box empties the words as this runs).
+        var got = attachedWords == w ? attachments : []
+        if got.isEmpty {
+            for a in asking {
+                if let x = await a.attachment(for: w, to: .ask), !removedAttachments.contains(x.id) { got.append(x) }
+            }
+        }
+        if got.contains(where: \.aboutIt) { attachments = got; return true }
+        return false
+    }
+
     /// A plain quick question through memory.ask. Nil: this vyred has no memory.ask, so the caller
     /// takes the old path.
     func askIQ(_ words: String) async -> ActionOutcome? {
         guard vyred.has("memory.ask") else { return nil }
-        // Only words that may be about the screen (they point at it, or text may be selected) wait
-        // for its chip; any other question goes to memory.ask at once.
-        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
-        let asking = attachers.filter { $0.mayBeAbout(w) }
-        if !asking.isEmpty {
-            // The chips already asked for these words, else ask now (⏎ can beat the search, and the
-            // follow-up box empties the words as this runs).
-            var got = attachedWords == w ? attachments : []
-            if got.isEmpty {
-                for a in asking {
-                    if let x = await a.attachment(for: w, to: .ask), !removedAttachments.contains(x.id) { got.append(x) }
-                }
-            }
-            // Words about the screen, or a selection: memory cannot see it. The fast model with the
-            // screen context answers instead (the lead, 2026-09-27: the Capsule always knows the screen).
-            if got.contains(where: \.aboutIt) { attachments = got; return nil }
-        }
+        // Words about the screen, or a selection: memory cannot see it. The fast model with the screen context answers instead.
+        if await settleScreenChips(words) { return nil }
         asked = words
         askedMemory = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
@@ -158,7 +161,7 @@ extension CapsuleModel {
         if let c = askContext { input["context"] = c }
         // The draft comes on this call's own ndjson response, never the events bus: {"draft":{id,text}}
         // lines (the whole text so far; empty text means the check failed, so drop it), then the result.
-        var r = await vyred.call("memory.ask", input, timeout: 30) { [weak self] did, text in
+        var r = await vyred.call("memory.ask", input, timeout: iqTimeout) { [weak self] did, text in
             Task { @MainActor [weak self] in
                 guard let self, did == id, self.pending, self.asked == words else { return }
                 self.iqDraft = VJ.nonEmpty(String(text.prefix(IQAnswer.draftLimit)))
@@ -177,6 +180,12 @@ extension CapsuleModel {
         if r.errorCode == "no_such_tool" { return nil }
         // The words changed while it answered: this answer is not theirs.
         guard asked == words else { return .said("") }
+        // Memory has not answered in time (the user's Mac sat on "starting" with nothing): say so, and point at who can still answer.
+        if r.errorCode == "timeout" {
+            asked = nil
+            let who = catalog.assistant?.name
+            return .failed(who.map { "Memory did not answer in time. Ask \($0) instead, or try again." } ?? "Memory did not answer in time. Try again in a moment.")
+        }
         if let why = Bridge.explain(r) { asked = nil; return .failed(why) }
         let iq = IQAnswer.from(words, r.data)
         askedMemory = iq.memory
@@ -209,7 +218,7 @@ extension CapsuleModel {
     func openSource(_ index: Int, opener: (URL) -> Bool = { NSWorkspace.shared.open($0) }) -> Bool {
         guard let url = iqSourceURL(index) else {
             if askedMemory?.sources.indices.contains(index) == true, catalog.box == nil {
-                line = "Vyre chat is on your box, and this Mac is not paired with one."
+                line = "Vyre chat is on your server, and this Mac is not paired with one."
             }
             return false
         }

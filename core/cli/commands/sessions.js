@@ -18,7 +18,7 @@ import { prompt as promptView } from "../view.js";
 import { up } from "./projects.js";
 
 /** The kinds of session a model is set for (core/sessions/config.js PURPOSES). */
-export const PURPOSES = ["chat", "agent", "project", "capsule", "job", "memory", "planner", "learn"];
+export const PURPOSES = ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"];
 const ADR = "Vyre-owned sessions (ADR 0030)";
 
 /**
@@ -164,7 +164,7 @@ async function models(args) {
     return 0;
   }
   out(bold("  by purpose"));
-  for (const [p, v] of Object.entries(purposes)) out(`  ${p.padEnd(9)} ${String(v?.model ?? v).padEnd(24)} ${dim(v?.from ? "from " + v.from : "")}`);
+  for (const [p, v] of Object.entries(purposes)) out(`  ${p.padEnd(10)} ${String(v?.model ?? v).padEnd(24)} ${dim(v?.from ? "from " + v.from : "")}`);
   const slugs = Object.keys(projects);
   if (slugs.length) {
     out(bold("  by project"));

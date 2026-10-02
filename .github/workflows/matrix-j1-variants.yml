@@ -2,10 +2,12 @@
 # installer must refuse (snap, rootless, Podman), through a slow link, and with the line pasted twice.
 # Push to work/e2e2-variants or dispatch it.
 name: matrix-j1-variants
+# Runs when dispatched or on a release-candidate branch (work/rc-*), not on every work push: each run takes
+# the shared hosted and Mac/Windows runners for a long time.
 on:
   workflow_dispatch:
   push:
-    branches: ["work/e2e2-variants"]
+    branches: ["work/rc-*"]
 permissions:
   contents: read
 concurrency:

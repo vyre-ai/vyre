@@ -1,0 +1,35 @@
+# J5 agent half (pairing a phone: the QR, a Needs-you push, removing a device), a real vyred and the real relay server on a runner.
+# Push to work/tailnet-j5 or dispatch it. e2e2 folds it into matrix.yml as a job named j5.
+name: matrix-j5
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/tailnet-j5"]
+permissions:
+  contents: read
+concurrency:
+  group: matrix-j5-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  j5:
+    name: j5-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: J5, the steps an agent can walk (5.1, 5.6, 5.9); the rest are by-hand or need the simulator lanes
+        run: node scripts/matrix/j5.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: results-j5-${{ matrix.os }}
+          path: results
+          retention-days: 14

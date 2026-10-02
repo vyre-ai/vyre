@@ -1,10 +1,12 @@
 # J6 (Vyre for Chrome on a fake GoHighLevel page) and J7 (an agent's own computer in Glass), agent halves, on
 # runners (e2e2 item 5). Push to work/e2e2-j6j7 or dispatch it.
 name: matrix-j6j7
+# Runs when dispatched or on a release-candidate branch (work/rc-*), not on every work push: each run takes
+# the shared hosted and Mac/Windows runners for a long time.
 on:
   workflow_dispatch:
   push:
-    branches: ["work/e2e2-j6j7"]
+    branches: ["work/rc-*"]
 permissions:
   contents: read
 concurrency:

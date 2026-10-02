@@ -12,7 +12,8 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 out="${VYRE_CAPSULE_BUILD:-$here/.build}"
 mode="${1:-app}"
-target="$(uname -m)-apple-macosx14.0"
+# VYRE_CAPSULE_ARCH=x86_64 (or arm64) builds for the other architecture on any Mac, for a release.
+target="${VYRE_CAPSULE_ARCH:-$(uname -m)}-apple-macosx14.0"
 [ "$(uname -s)" = Darwin ] || { echo "Lumen builds only on macOS" >&2; exit 1; }
 command -v swiftc >/dev/null 2>&1 || { echo "swiftc not found. Install the Xcode command line tools: xcode-select --install" >&2; exit 1; }
 mkdir -p "$out/gen"

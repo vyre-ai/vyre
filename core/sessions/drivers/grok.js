@@ -54,7 +54,10 @@ export function grokProvider(o = {}) {
     args: () => ["--no-auto-update", ...(o.custom ? ["-m", o.custom.id || "custom"] : []), "agent", "stdio"],
     ...(o.custom ? { seed: { ".grok/config.toml": grokConfigToml(o.custom) } } : {}),
     secretEnv: () => ["XAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
-    env: run => ({ ...(o.home || run.home ? { HOME: String(o.home || run.home) } : {}) }),
+    // Grok imports MCP servers from ~/.claude.json and ~/.cursor/mcp.json by default (measured with `grok inspect`, 1.0.46: the person's Claude
+    // servers, claude.ai-style connectors included, appeared under "MCP Servers"). A Vyre session gets Vyre's own server and nothing imported.
+    // Still loaded, and not switchable from here: servers of Claude plugins under ~/.claude/plugins and a project's own .mcp.json.
+    env: run => ({ ...(o.home || run.home ? { HOME: String(o.home || run.home) } : {}), GROK_CLAUDE_MCPS_ENABLED: "0", GROK_CURSOR_MCPS_ENABLED: "0" }),
     // MEASURED on Grok Build 1.0.44 (scripts/provider-wire-proof.mjs): with no login session/new answers "Authentication required"
     // (-32000) and initialize offers grok.com (the stored browser login: authenticate waits for a browser when there is none, which
     // the driver reports as "sign this account in first"). With a config.toml that names a model's base_url and env_key, session/new

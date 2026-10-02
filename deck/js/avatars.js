@@ -131,7 +131,7 @@ export function readTeammates(attempt) {
  */
 export function readProjects(attempt, o = {}) {
   if (!readingProjects || o.again) {
-    readingProjects = attempt("projects.list").then(r => { if (r.error) readingProjects = null; else setProjects(r.data?.projects || []); });
+    readingProjects = attempt("projects.list", {}, { share: true }).then(r => { if (r.error) readingProjects = null; else setProjects(r.data?.projects || []); });
   }
   return readingProjects;
 }
@@ -320,7 +320,8 @@ export function threadAvatar(t, o = {}) {
   if (a && who.assistant.name && a === who.assistant.name) return assistantAvatar(o);
   if (a && !/claude/i.test(a)) return agentAvatar(a, o);
   if (t.project) return projectAvatar(t.project, o);
-  return draftAvatar(String(t.thread || ""), o);
+  // A chat in no project is the assistant's own to answer: its creature, never the dashed draft tile (it read as a warning, #33).
+  return assistantAvatar(o);
 }
 
 // ---- the page ------------------------------------------------------------------------------

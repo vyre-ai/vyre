@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 
 // It starts a real daemon and the real built app: only on a CI runner (or with VYRE_ALLOW_LOCAL_RUN=1 in a throwaway
 // account), never by accident on a person's own Mac.
@@ -63,6 +63,49 @@ try {
   console.log(`"#": ${tagRows.length} tag rows (${tagRows.slice(0, 4).map(r => r.title).join(", ")}), line: ${JSON.stringify(p.line)}`);
   check(tagRows.length > 0 || /Nothing to tag|to tag/.test(String(p.line || "")), "# reached the server's mentions.search and got an answer (rows or 'nothing to tag')");
   check(!/not a tool|no such tool|refused|denied/i.test(String(p.line || "")), "the answer is not a refusal");
+  // The icons: every # row draws a real symbol. The connector rows came back as "plug", which is not one, and drew empty dark tiles.
+  const badIcons = tagRows.filter(r => r.symbolOK === false).map(r => `${r.title} (${r.symbol})`);
+  check(badIcons.length === 0, `every # row has an icon that draws${badIcons.length ? `: ${badIcons.join(", ")}` : ""}`);
+  const connectors = tagRows.filter(r => /^Connectors?$/i.test(String(r.sub)));
+  console.log(`"#" connector rows: ${connectors.length} (${connectors.slice(0, 3).map(r => `${r.title}: ${r.symbol}`).join(", ")})`);
+  check(connectors.length === 0 || connectors.every(r => r.symbol === "powerplug"), "connector rows use the plug symbol");
+  if (process.env.VYRE_CAPSULE_SCREENS) {
+    try {
+      fs.mkdirSync(process.env.VYRE_CAPSULE_SCREENS, { recursive: true });
+      const w = await send({ windowid: true });
+      const f = path.join(process.env.VYRE_CAPSULE_SCREENS, "hash-picker.png");
+      execFileSync("/usr/sbin/screencapture", ["-x", "-o", "-l", String(w.windowid), f], { timeout: 20_000 });
+      console.log(`# picker still: ${fs.statSync(f).size} bytes`);
+    } catch (e) { console.log(`# picker still failed: ${String(e && e.message || e).split("\n")[0]}`); }
+  }
+
+  // "@" typed as a keyboard types it, against a real vyred with no agents to name: the character stays in the box (#30).
+  await send({ text: "" }); await pause(300);
+  await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(1200);
+  const at = await send({ probe: true });
+  console.log(`"@" with a real vyred and nothing to name: box ${JSON.stringify(at.text)}, rows ${at.rows.length}, line ${JSON.stringify(at.line)}`);
+  check(at.text === "@", `typing @ leaves "@" in the box (got ${JSON.stringify(at.text)})`);
+  await send({ text: "" });
+
+  // The user's case: "#" used just before. Pick a tag, then type "@" after it. The character must land after the chip's token (#30).
+  await send({ text: "" }); await pause(300);
+  await send({ text: "#" });
+  let t2 = null;
+  for (let i = 0; i < 20; i++) { await pause(300); t2 = await send({ probe: true }); if (t2.rows.some(r => r.kind === "tag")) break; }
+  if (t2.rows.some(r => r.kind === "tag")) {
+    await send({ key: "return" }); await pause(800);
+    const picked = await send({ probe: true });
+    await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(1000);
+    const after = await send({ probe: true });
+    console.log(`@ after a picked tag: box ${JSON.stringify(picked.text)} then ${JSON.stringify(after.text)}`);
+    check(after.text === picked.text + "@", `typing @ after a picked tag adds "@" (got ${JSON.stringify(after.text)} from ${JSON.stringify(picked.text)})`);
+    // And from an empty box right after a tag was removed or cleared.
+    await send({ text: "" }); await pause(300);
+    await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(600);
+    const again = await send({ probe: true });
+    check(again.text === "@", `typing @ in a cleared box leaves "@" (got ${JSON.stringify(again.text)})`);
+  } else { console.log("@ after a picked tag: no tag rows to pick, skipped"); }
+  await send({ text: "" });
 
   // A module command is matched by name.
   if (v.commands.length) {

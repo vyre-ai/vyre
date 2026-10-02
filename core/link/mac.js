@@ -661,7 +661,7 @@ export function macSide(ctx, seam = {}) {
         } }).then(({ req: r }) => { upstream = r; }, e => fail(`the box is not reachable (${e.code || e.message})`));
     };
     follow();
-  });
+  }, { readOnly: true });
 
   return {
     async stop() {

@@ -94,6 +94,59 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if let strokes = c["strokes"] as? [[String: Any]] {
+            // Real key events through this window alone (never posted to the system): the monitor, the key handler and the
+            // text field see them as they see a keyboard. {chars, ignoring?, code, shift?, option?, control?, command?}.
+            let panel = a.panel.panel
+            panel.makeKey()
+            var typed = 0
+            for k in strokes {
+                var f: NSEvent.ModifierFlags = []
+                if VJ.truthy(k["shift"]) { f.insert(.shift) }
+                if VJ.truthy(k["option"]) { f.insert(.option) }
+                if VJ.truthy(k["control"]) { f.insert(.control) }
+                if VJ.truthy(k["command"]) { f.insert(.command) }
+                let chars = (k["chars"] as? String) ?? ""
+                let code = UInt16((k["code"] as? Int) ?? 0)
+                for type in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: f, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: panel.windowNumber, context: nil, characters: chars,
+                                                charactersIgnoringModifiers: (k["ignoring"] as? String) ?? chars, isARepeat: false, keyCode: code) {
+                        NSApp.sendEvent(e)
+                    }
+                }
+                typed += 1
+            }
+            say(["strokes": typed, "key": panel.isKeyWindow, "text": m.text]); return
+        }
+        if let mode = c["display"] as? String {
+            // Deep glass proof: "glass" forces Reduce Transparency off, "reduced" on, "system" reads the Mac's setting.
+            DeepGlass.reduceTransparencyOverride = mode == "glass" ? false : mode == "reduced" ? true : nil
+            DisplayPrefs.shared.refresh()
+            say(["display": mode, "reduced": DeepGlass.reduceTransparency, "systemReduced": NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+                 "systemContrast": NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast]); return
+        }
+        if let mode = c["appearance"] as? String {
+            NSApp.appearance = mode == "dark" ? NSAppearance(named: .darkAqua) : mode == "light" ? NSAppearance(named: .aqua) : nil
+            say(["appearance": mode]); return
+        }
+        if VJ.truthy(c["windowframe"]) {
+            // The panel's rectangle in screen points from the top-left of the main display, as `screencapture -R` takes it.
+            let f = a.panel.panel.frame, h = NSScreen.screens.first?.frame.height ?? 0
+            say(["x": f.minX, "y": h - f.maxY, "w": f.width, "h": f.height]); return
+        }
+        if VJ.truthy(c["linkcatalog"]) {
+            // What a paired Mac knows of its server (BoxLink.swift): the check for #36 reads it.
+            // Read the link afresh first, as showing the panel does (CapsuleModel.willShow), so a server that went away is seen.
+            let box = a.vyred.box
+            Task { @MainActor in
+                if VJ.truthy(c["refresh"]) { await box.refresh(a.vyred) }
+                say(["linked": box.linked, "box": box.boxName ?? NSNull(), "reachable": box.reachable ?? NSNull(),
+                     "agents": m.catalog.agents.map { $0.map(\.name) } ?? NSNull(), "assistant": m.catalog.assistant?.name ?? NSNull(),
+                     "hasAsk": a.vyred.has("agents.ask")])
+            }
+            return
+        }
         if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {
             // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
@@ -124,9 +177,13 @@ enum Drive {
         let m = a.model
         var desk = "none"
         switch m.desk.mode { case .none: desk = "none"; case .list(let i): desk = "list:\(i)"; case .card(let k): desk = "card:\(k)" }
-        return ["shown": a.panel.isShown, "text": m.text, "rows": m.flat.map { ["kind": $0.kind, "title": $0.title, "sub": $0.subtitle] },
+        return ["shown": a.panel.isShown, "text": m.text, "rows": m.flat.map { r -> [String: Any] in
+            var row: [String: Any] = ["kind": r.kind, "title": r.title, "sub": r.subtitle]
+            // A row's symbol and whether the system has it: an unknown name drew an empty tile (the # picker's connectors, #31).
+            if case .symbol(let n, _) = r.icon { row["symbol"] = n; row["symbolOK"] = NSImage(systemSymbolName: n, accessibilityDescription: nil) != nil }
+            return row },
                 "selected": m.selected, "line": m.line ?? NSNull(), "asked": m.asked ?? NSNull(), "reply": m.replyText,
-                "finished": m.reply?.finished ?? NSNull(), "waiting": m.desk.waiting.map(\.title), "desk": desk,
+                "finished": m.reply?.finished ?? NSNull(), "pending": m.pending, "waiting": m.desk.waiting.map(\.title), "desk": desk,
                 "direct": m.direct.dm.map { d in d.messages.map { "\($0.role.rawValue): \($0.text)" } } ?? NSNull(),
                 "offline": m.offline, "target": m.target?.label ?? NSNull()]
     }

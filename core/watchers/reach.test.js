@@ -217,4 +217,12 @@ test("through the real module and the real registry: an agent with a grant sees 
   assert.deepEqual(names(await thread("t-gone")), [], "a thread that cannot be looked up");
   assert.equal((await thread("t-harlow", "watchers.card", { name: "feed-northwind" })).error.code, "not_found");
   assert.equal((await thread("t-harlow", "watchers.card", { name: "mail-harlow-legal" })).data.name, "mail-harlow-legal");
+
+  // A dry run on a real event is the person's own: every kind of model caller is refused, thread claims included
+  // (nothing runs: the refusal comes before any child).
+  const dry = (caller, meta = {}) => reg.call("watchers.test", { name: "mail-harlow-legal", event: { route: "r", id: "d1" } }, caller, meta);
+  for (const [caller, meta] of [[kit, {}], [juno, {}], ["cli:agent:kit", {}], ["mcp", {}], ["harness", {}], ["mcp:thread:t-harlow", { thread: "t-harlow" }], ["mcp", { thread: "t-harlow" }], ["mcp", { peerSession: "1:2", peerCwd: "/work/h" }]]) {
+    const r = await dry(caller, meta);
+    assert.ok(r.error && /owner's/.test(r.error.message), `${caller} ${JSON.stringify(meta)} was not refused: ${JSON.stringify(r)}`);
+  }
 });
