@@ -127,3 +127,18 @@ test("no drift: the watchers module's own targets answer exactly the keys the re
   // Changing a card's hash after it was shown moves the target away from what was recorded.
   assert.notDeepEqual(createTarget({ input: { name: "inbox-mail", hash: "aaaa1111bbbb" } }, { read: () => ({ ...folder, hash: "9999eeee0000" }) }).to, recorded);
 });
+
+test("watchers: \"watch the review comments on this PR\" is the pr preset, and wins over the repo it is in", () => {
+  const kinds = [...KINDS, "pr"];
+  const where = { project: "harlow-legal", kinds, watchers: [] };
+  for (const text of ["Please watch the review comments on this PR", "keep an eye on PR comments", "monitor the pull request comments in the github repo"]) {
+    const r = watchersIntents(text, where);
+    assert.equal(r.intents.length, 1, text);
+    assert.equal(r.intents[0].to[0], "watchers.preset:harlow-legal/pr", text);
+  }
+  // Not offered here: nothing recorded. A plain repo ask still means repo.
+  assert.deepEqual(watchersIntents("watch the review comments", { ...where, kinds: KINDS }).intents, []);
+  assert.equal(watchersIntents("watch my repo", where).intents[0].to[0], "watchers.preset:harlow-legal/repo");
+  // A question or a condition is not an ask.
+  assert.deepEqual(watchersIntents("should I watch the review comments?", where).intents, []);
+});

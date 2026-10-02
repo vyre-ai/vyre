@@ -15,7 +15,7 @@ extension CapsuleModel {
 
     /// Show the list for a "#" token. Returns true when the box is in tag mode.
     func searchTags(_ token: (start: String.Index, partial: String), token t: Int) {
-        recallTask?.cancel(); memory = nil; autoTask?.cancel()
+        autoTask?.cancel()
         tagTask?.cancel()
         let q = token.partial
         tagTask = Task { @MainActor [vyred] in

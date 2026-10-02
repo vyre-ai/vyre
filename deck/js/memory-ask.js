@@ -31,6 +31,6 @@ export function shapeReply(d) {
  */
 export async function ask(call, question) {
   const r = await call("memory.ask", { question });
-  if (r.error) return { error: r.error.missing ? "Vyre Memory is not running on this box." : String(r.error.message || r.error) };
+  if (r.error) return { error: r.error.missing ? "Vyre Memory is not running on your server." : String(r.error.message || r.error) };
   return shapeReply(r.data);
 }

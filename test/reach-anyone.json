@@ -77,9 +77,17 @@
    "module": "artifacts",
    "reason": "own-scope check: reach() with the read option (own project or a # tag) on the artifact, and the file is copied only into the caller's own registered artifacts folder (the folder must still be the registered one); it never writes anywhere else and never changes the artifact"
   },
+  "artifacts.media.gallery": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: the same scope as artifacts.list (an agent sees its own project, the person everything), no bytes, only a prompt's first 140 characters"
+  },
   "artifacts.media.read": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag), and the tool refuses any caller that is not the person or a first-party module"
+  },
+  "artifacts.media.usage": {
+   "module": "artifacts",
+   "reason": "read-only, and the tool refuses any caller that is not the person's surface or a first-party module"
   },
   "artifacts.move": {
    "module": "artifacts",
@@ -668,6 +676,10 @@
   "link.call": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
+  },
+  "link.companion.pair": {
+   "module": "link",
+   "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"
   },
   "link.events": {
    "module": "link",

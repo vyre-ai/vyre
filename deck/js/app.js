@@ -32,6 +32,7 @@ import { offerEnroll } from "./enroll-grant.js";
 import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
+import { starButton } from "./star-button.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
@@ -172,6 +173,7 @@ put(deck,
         h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
         h("div", { style: { flexGrow: "1" } }),
         fixtureNote,
+        starButton(),
         needsPill),
       h("div", { class: "panes" }, side, view))),
   cap.el);

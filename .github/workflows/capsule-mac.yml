@@ -77,6 +77,17 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           node scripts/capsule-daemon-check.mjs local/capsule/native/.build/Vyre.app
+      - name: Lumen on a Mac paired to a server with an assistant
+        # #36: a box vyred and a Mac vyred paired through the link harness (a simulated tailnet); the box has the assistant, the Mac
+        # has none. The built Lumen must ask the box (@ lists it, a question offers it), say so when the box is away, and keep the
+        # Mac's own things local.
+        if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        timeout-minutes: 8
+        env:
+          VYRE_CAPSULE_SCREENS: ${{ runner.temp }}/lumen-screens
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/capsule-paired-check.mjs local/capsule/native/.build/Vyre.app
       - name: Node tests that need a Mac
         run: |
           npm ci --no-audit --no-fund

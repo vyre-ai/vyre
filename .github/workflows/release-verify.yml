@@ -1,0 +1,130 @@
+# The release checks, run on its own after a stable release is published (the patch fast lane). It looks at what was PUBLISHED, from outside:
+# the release folder against the pinned key, the SHA256SUMS signatures, both image digests with and without a login, and a real box on the
+# previous stable release updating itself to this one. Any failure is a red run on the release, which is the signal to pull it.
+# It runs from main: workflow_run uses the default branch's copy of this file. To redo one by hand: dispatch it on main with the tag.
+#
+#   gh workflow run release-verify.yml --ref main -f tag=v0.2.2
+name: release-verify
+on:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The stable release tag to check (vX.Y.Z)"
+        required: true
+        type: string
+permissions:
+  contents: read
+  packages: read
+env:
+  TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+  ID: '^https://github\.com/vyre-ai/vyre/\.github/workflows/release\.yml@refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$'
+  ISSUER: https://token.actions.githubusercontent.com
+jobs:
+  which:
+    name: which release, and the one before it
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+    runs-on: ubuntu-24.04
+    outputs:
+      go: ${{ steps.w.outputs.go }}
+      from: ${{ steps.w.outputs.from }}
+    steps:
+      - id: w
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf %s "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "$TAG is not a stable tag; nothing to check"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
+          st=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,isDraft -q '"\(.isPrerelease) \(.isDraft)"' 2>/dev/null || echo missing)
+          [ "$st" = "false false" ] || { echo "$TAG is not a published stable release ($st); nothing to check"; echo "go=no" >>"$GITHUB_OUTPUT"; exit 0; }
+          from=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 --json tagName,isPrerelease,isDraft -q '.[]|select(.isPrerelease==false and .isDraft==false)|.tagName' | grep -Ex 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -V | grep -Fx -B1 "$TAG" | head -1)
+          [ -n "$from" ] && [ "$from" != "$TAG" ] || { echo "::error::no stable release before $TAG to update from"; exit 1; }
+          echo "checking $TAG, updating from $from"
+          echo "go=yes" >>"$GITHUB_OUTPUT"; echo "from=$from" >>"$GITHUB_OUTPUT"
+  assets:
+    name: the release folder, the signatures and the pinned key
+    needs: which
+    if: needs.which.outputs.go == 'yes'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: check-release-dist, SHA256SUMS.sig and the cosign blob
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM: ${{ needs.which.outputs.from }}
+        run: |
+          set -eu
+          d=$RUNNER_TEMP/release; mkdir -p "$d"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -D "$d"
+          # the key the boxes already trust: the one pinned in the PREVIOUS release's wrapper, not this commit's
+          git fetch -q origin "refs/tags/$FROM:refs/tags/$FROM"
+          key=$(git show "$FROM:box/vyre" | sed -n 's/^RELEASE_KEY=\${VYRE_RELEASE_KEY:-\(.*\)}$/\1/p' | head -1)
+          [ -n "$key" ] || { echo "::error::no pinned key in $FROM's wrapper"; exit 1; }
+          node scripts/check-release-dist.mjs "$d" --pulled --installer --pubkey "$key"
+          node -e '
+            const c=require("crypto"),fs=require("fs"),d=process.argv[2];
+            const k=c.createPublicKey({key:Buffer.from(process.argv[1],"base64"),format:"der",type:"spki"});
+            const ok=c.verify(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),fs.readFileSync(d+"/SHA256SUMS")]),k,Buffer.from(fs.readFileSync(d+"/SHA256SUMS.sig","utf8").trim(),"base64"));
+            console.log("SHA256SUMS.sig verifies against the pinned key:",ok); process.exit(ok?0:1)' "$key" "$d"
+          cosign verify-blob --bundle "$d/SHA256SUMS.cosign.bundle" --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISSUER" "$d/SHA256SUMS"
+          node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1]));if(j.version!==process.argv[2].slice(1)){console.log("release.json says",j.version);process.exit(1)}' "$d/release.json" "$TAG"
+  images:
+    name: both image digests, with a login and without
+    needs: which
+    if: needs.which.outputs.go == 'yes'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: signature, provenance and SBOM, then an anonymous pull
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          d=$(mktemp -d); gh release download "$TAG" --repo "$GITHUB_REPOSITORY" -p release.json -D "$d"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          for k in box computer; do
+            ref=$(jq -r ".images.$k.ref" "$d/release.json"); echo "== $k $ref"
+            cosign verify --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISSUER" "$ref" >/dev/null && echo "signature ok"
+            gh attestation verify "oci://$ref" --repo "$GITHUB_REPOSITORY" >/dev/null && echo "provenance attestation ok"
+            cosign verify-attestation --type spdxjson --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISSUER" "$ref" >/dev/null && echo "sbom attestation ok"
+          done
+          docker logout ghcr.io >/dev/null
+          export DOCKER_CONFIG=$(mktemp -d)
+          for k in box computer; do
+            ref=$(jq -r ".images.$k.ref" "$d/release.json")
+            cosign verify --certificate-identity-regexp "$ID" --certificate-oidc-issuer "$ISSUER" "$ref" >/dev/null && echo "anonymous: $k signature ok"
+            n=${ref%%@*}; n=${n#ghcr.io/}
+            t=$(curl -s "https://ghcr.io/token?scope=repository:$n:pull&service=ghcr.io" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+            c=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $t" -H 'Accept: application/vnd.oci.image.index.v1+json' "https://ghcr.io/v2/$n/manifests/${ref#*@}")
+            echo "anonymous manifest read for $n: HTTP $c"; [ "$c" = 200 ] || { echo "::error::$n is not public"; exit 1; }
+          done
+  update:
+    name: a real box on the previous stable release updates itself
+    needs: [which, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: install the previous release the way a person does, then vyre update on the stable channel
+        env:
+          FROM: ${{ needs.which.outputs.from }}
+        run: |
+          set -eu
+          B=https://github.com/vyre-ai/vyre/releases/download
+          export VYRE_BOX_URL=$B/$FROM/
+          curl -fsSL "$B/$FROM/install-box.sh" -o /tmp/install-box.sh
+          sh /tmp/install-box.sh --yes </dev/null
+          unset VYRE_BOX_URL
+          echo "installed: $(vyre version)"
+          vyre update </dev/null
+          i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i+1)); [ $i -ge 120 ] && { echo "vyred did not come back"; exit 1; }; sleep 1; done
+          got=$(tr -d ' \r\n' </srv/vyre/VERSION)
+          echo "after update: $got"
+          [ "$got" = "${TAG#v}" ]

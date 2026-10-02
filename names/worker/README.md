@@ -23,6 +23,7 @@ All JSON. Success is `{ "data": ... }`, failure `{ "error": { "code", "message" 
 | `DELETE /v1/names/acme {name}` or `{own: true}` | Clears it. |
 | `POST /v1/names/recover {name, code, next}` | A 72-hour pending rebind to the caller's route. `next` is the hash of the new recovery code the box chose. |
 | `POST /v1/names/recover/cancel {name}` | The current owner's route cancels it. A box that is online does this by itself. |
+| `POST /v1/names/admin/rebind {name, route}` | Support only. Needs the `x-vyre-admin` header to equal the Worker secret `ADMIN_SECRET` (404 when none is set, 401 otherwise). Moves the name to the route at once (make the secret with `openssl rand -hex 32`; the deploy workflow refuses one shorter than 32 characters), logs `admin-rebind`, keeps the recovery code, and leaves the old route a `moved` note. |
 | `POST /v1/names/code {name, next}` | The owner replaces the recovery code (and cancels a pending recovery). |
 | `POST /v1/names/release {name}` | Gives the name up. A name that was ever pointed becomes a tombstone forever. |
 | `GET /v1/names/mine` | This route's name, state, pending recovery, notices, and its own-domain zone. |

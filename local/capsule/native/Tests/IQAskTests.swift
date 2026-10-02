@@ -49,7 +49,7 @@ let iqAskSuite = Suite("iq ask") { t in
         }
     }
 
-    t.test("a question about the screen, or with text selected, goes to the fast model with the screen; others to memory.ask") {
+    t.test("a question about the screen, or with text selected, goes to the fast model with the screen; \"memory: ...\" goes to memory.ask") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](), "sources": [Any]()] }
         v.tool("threads.start") { _ in ["id": "q9"] }
@@ -71,14 +71,14 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: [String]? = t.wait {
             let err = await run("what is this error")
             let sel = await run("explain it simply", selected: true)
-            let mem = await run("which car do I drive")
+            let mem = await run("memory: which car do I drive")
             return ["\(err.iq)", VJ.s(err.start?["model"]), "\(VJ.s(err.start?["append"]).contains("Screen: Safari"))",
                     "\(sel.iq)", "\(sel.start != nil)", "\(mem.iq)", "\(mem.start == nil)"]
         }
         t.eq(r, ["0", "haiku", "true", "0", "true", "1", "true"])
     }
 
-    t.test("a memory question does not wait for the screen chip; a screen question does") {
+    t.test("an asked-for memory question does not wait for the screen chip; a screen question does") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](), "sources": [Any]()] }
         v.tool("threads.start") { _ in ["id": "q10"] }
@@ -87,7 +87,7 @@ let iqAskSuite = Suite("iq ask") { t in
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.attachers = [screen]; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
             // ⏎ at once, while the chip is still settling (600 ms).
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             let t0 = vyNowMs()
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { !v.callsOf("memory.ask").isEmpty }
@@ -146,7 +146,7 @@ let iqAskSuite = Suite("iq ask") { t in
         t.eq(IQAnswer.stageWord("understanding"), nil, "the pre-C13 names are not stages")
     }
 
-    t.test("a quick question goes to memory.ask, not a session; a follow-up starts one told the conversation") {
+    t.test("\"memory: ...\" goes to memory.ask, not a session; a follow-up starts one told the conversation") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](),
                                      "sources": [["session": "s1", "seq": 4, "name": "Insurance renewal", "quote": "I drive a blue Volvo XC40"]], "via": "fact"] }
@@ -154,7 +154,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: [String]? = t.wait {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { m.reply?.finished == true }
             let shown = await MainActor.run { [m.replyText, m.askedMemory.map(IQAnswer.chip) ?? "none", "\(m.followUp)"] }
@@ -190,7 +190,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: (id: String, stage: String?, done: Bool)? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { !v.callsOf("memory.ask").isEmpty }
             let id = VJ.s(v.callsOf("memory.ask").first?["id"])
@@ -228,7 +228,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: [String]? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             let first = await until { m.iqDraft == "You drive" }
             sawFirst.open()
@@ -254,7 +254,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let n: Int? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { m.iqDraft != nil }
             let n = await MainActor.run { m.iqDraft?.count ?? -1 }
@@ -283,7 +283,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: [String]? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "who signed off on the homepage" }
+            await MainActor.run { m.text = "memory: who signed off on the homepage" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             let drew = await until { m.iqDraft == "Priya signed off on" }
             seen.open()
@@ -306,7 +306,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: (String, Int)? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { m.reply?.finished == true }
             let text = await MainActor.run { m.replyText }
@@ -331,11 +331,11 @@ let iqAskSuite = Suite("iq ask") { t in
         let ok = MainActor.assumeIsolated { m.openSource(0, opener: { opened = $0; return true }) }
         t.eq(ok, true)
         t.eq(opened?.absoluteString, "https://box.example.ts.net:8443/chat/thread/s1?seq=4")
-        // No box paired: says so, opens nothing.
+        // No server paired: says so, opens nothing.
         MainActor.assumeIsolated { m.catalog = VyreCatalog() }
         let none = MainActor.assumeIsolated { m.openSource(0, opener: { _ in true }) }
         t.eq(none, false)
-        t.eq(MainActor.assumeIsolated { m.line }, "Vyre chat is on your box, and this Mac is not paired with one.")
+        t.eq(MainActor.assumeIsolated { m.line }, "Vyre chat is on your server, and this Mac is not paired with one.")
     }
 
     t.test("corrections (95b2b891): replace shows the fix at once with Undo; wrong and forget too") {
@@ -354,7 +354,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: [String]? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "which car do I drive" }
+            await MainActor.run { m.text = "memory: which car do I drive" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { m.reply?.finished == true }
             await MainActor.run { m.openIQCorrect() }
@@ -379,7 +379,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let r: (Bool, String)? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
-            await MainActor.run { m.text = "who signed off on the homepage" }
+            await MainActor.run { m.text = "memory: who signed off on the homepage" }
             _ = await MainActor.run { m.handleReturn(command: false) }
             _ = await until { m.reply?.finished == true }
             await MainActor.run { m.openIQCorrect() }
@@ -392,19 +392,41 @@ let iqAskSuite = Suite("iq ask") { t in
         t.eq(r?.1, "", "an empty field, not the 'Not sure yet.' text")
     }
 
-    t.test("listed but not there (no_such_tool): the old path answers") {
+    t.test("listed but not there (no_such_tool): asking memory says there is no memory to ask, and starts nothing") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.listed = ["memory.ask"]
         v.tool("threads.start") { _ in ["id": "q3"] }
-        let started: Bool? = t.wait {
+        let got: (String?, Int)? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
+            await MainActor.run { m.text = "memory: which car do I drive" }
+            _ = await MainActor.run { m.handleReturn(command: false) }
+            _ = await until { m.line != nil }
+            let line = await MainActor.run { m.line }
+            await MainActor.run { m.didHide() }
+            return (line, v.callsOf("threads.start").count)
+        }
+        t.ok(got?.0?.contains("no memory to ask") == true, got?.0 ?? "no line")
+        t.eq(got?.1, 0)
+    }
+
+    t.test("a plain typed question never goes to memory.ask, with or without memory on this vyred (#46)") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("memory.ask") { _ in ["answer": "From memory.", "abstained": false, "known": [Any](), "sources": [Any]()] }
+        v.tool("memory.answer") { _ in ["answer": "From memory.", "kind": "fact", "sources": [Any]()] }
+        v.tool("threads.start") { _ in ["id": "q4"] }
+        let got: (Int, Int, Int)? = t.wait {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
             await MainActor.run { m.text = "which car do I drive" }
+            try? await Task.sleep(nanoseconds: 400_000_000)
             _ = await MainActor.run { m.handleReturn(command: false) }
-            let ok = await until { !v.callsOf("threads.start").isEmpty }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
             await MainActor.run { m.didHide() }
-            return ok
+            return (v.callsOf("memory.ask").count, v.callsOf("memory.answer").count, v.callsOf("threads.start").count)
         }
-        t.eq(started, true)
+        t.eq(got?.0, 0, "memory.ask was not asked")
+        t.eq(got?.1, 0, "memory.answer did not run as you typed")
+        t.eq(got?.2, 1, "the question went to the model")
     }
 }

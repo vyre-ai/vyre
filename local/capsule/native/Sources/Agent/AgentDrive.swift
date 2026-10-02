@@ -110,6 +110,18 @@ enum Drive {
             let f = a.panel.panel.frame, h = NSScreen.screens.first?.frame.height ?? 0
             say(["x": f.minX, "y": h - f.maxY, "w": f.width, "h": f.height]); return
         }
+        if VJ.truthy(c["linkcatalog"]) {
+            // What a paired Mac knows of its server (BoxLink.swift): the check for #36 reads it.
+            // Read the link afresh first, as showing the panel does (CapsuleModel.willShow), so a server that went away is seen.
+            let box = a.vyred.box
+            Task { @MainActor in
+                if VJ.truthy(c["refresh"]) { await box.refresh(a.vyred) }
+                say(["linked": box.linked, "box": box.boxName ?? NSNull(), "reachable": box.reachable ?? NSNull(),
+                     "agents": m.catalog.agents.map { $0.map(\.name) } ?? NSNull(), "assistant": m.catalog.assistant?.name ?? NSNull(),
+                     "hasAsk": a.vyred.has("agents.ask")])
+            }
+            return
+        }
         if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {
             // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
@@ -142,7 +154,7 @@ enum Drive {
         switch m.desk.mode { case .none: desk = "none"; case .list(let i): desk = "list:\(i)"; case .card(let k): desk = "card:\(k)" }
         return ["shown": a.panel.isShown, "text": m.text, "rows": m.flat.map { ["kind": $0.kind, "title": $0.title, "sub": $0.subtitle] },
                 "selected": m.selected, "line": m.line ?? NSNull(), "asked": m.asked ?? NSNull(), "reply": m.replyText,
-                "finished": m.reply?.finished ?? NSNull(), "waiting": m.desk.waiting.map(\.title), "desk": desk,
+                "finished": m.reply?.finished ?? NSNull(), "pending": m.pending, "waiting": m.desk.waiting.map(\.title), "desk": desk,
                 "direct": m.direct.dm.map { d in d.messages.map { "\($0.role.rawValue): \($0.text)" } } ?? NSNull(),
                 "offline": m.offline, "target": m.target?.label ?? NSNull()]
     }

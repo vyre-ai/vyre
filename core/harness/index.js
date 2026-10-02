@@ -180,8 +180,11 @@ export default {
         // its folders go too, for a project Memory has not read yet. Outside every project a
         // session reads the unfiled room, never a folder prefix, so a session in the home folder
         // does not see every client (docs/adr/0007-intelligence.md).
+        // The assistant (scope "*") outside any project reads the whole account, not only the unfiled room: memory's job is to give it the
+        // relevant facts with their sources as context (#46, memory never stands in front of an assistant), and memory's own rule for the
+        // assistant decides what it may see.
         const where = project && project.slug ? { room: String(project.slug), ...(folders ? { project_cwds: folders } : {}) }
-          : folders ? { project_cwds: folders } : { room: "unfiled" };
+          : folders ? { project_cwds: folders } : projects === "*" ? {} : { room: "unfiled" };
         const facts = await ask("memory.relevant", { text: prompt, ...where, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
         return { text: [inbox, ...(first ? [lessons, memory] : [memory, lessons])].filter(Boolean).join("\n\n") };

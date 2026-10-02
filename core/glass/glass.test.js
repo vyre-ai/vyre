@@ -491,6 +491,16 @@ test("glass: an agent reaches only its own computer's files, never the box or an
   assert.match((await s.kit("glass.files.list", { target: "computer:pax" })).error.message, /only its own computer/);
   assert.match((await s.kit("glass.files.list", { target: "box" })).error.message, /only its own computer/);
   assert.match((await s.kit("glass.files.download", { target: "box", path: "files/docs/readme.md" })).error.message, /only its own computer/);
+  // a model caller with no agent behind it (plain mcp or harness) has no computer of its own: it reaches no files, read or write
+  for (const caller of ["mcp", "harness", "mcp:thread:t1", "MCP", "Harness", " mcp"]) {
+    const call = (/** @type {string} */ tool, /** @type {any} */ input) => s.registry.call(tool, input, caller);
+    for (const [tool, input] of /** @type {Array<[string, any]>} */ ([["glass.files.list", { target: "box" }], ["glass.files.list", { target: "computer:kit" }], ["glass.files.stat", { target: "box", path: "files" }], ["glass.files.download", { target: "box", path: "files/docs/readme.md" }], ["glass.files.upload", { target: "computer:kit", dir: "", name: "x.txt", size: 1 }], ["glass.files.mkdir", { target: "box", path: "files/x" }], ["glass.files.move", { target: "box", from: "files/a", to: "files/b" }], ["glass.files.trash", { target: "box", path: "files/docs/readme.md" }]])) {
+      const r = await call(tool, input);
+      assert.match(String(r.error && r.error.message), /no computer of its own/, `${caller} ${tool}`);
+    }
+  }
+  // the person's own surfaces are unaffected
+  assert.equal((await s.cli("glass.files.list", { target: "box" })).error, undefined);
 });
 
 test("glass: through every files tool, in every spelling an agent can arrive as, only its own computer can be the target", async t => {
