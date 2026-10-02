@@ -87,6 +87,26 @@ try {
   check(at.text === "@", `typing @ leaves "@" in the box (got ${JSON.stringify(at.text)})`);
   await send({ text: "" });
 
+  // The user's case: "#" used just before. Pick a tag, then type "@" after it. The character must land after the chip's token (#30).
+  await send({ text: "" }); await pause(300);
+  await send({ text: "#" });
+  let t2 = null;
+  for (let i = 0; i < 20; i++) { await pause(300); t2 = await send({ probe: true }); if (t2.rows.some(r => r.kind === "tag")) break; }
+  if (t2.rows.some(r => r.kind === "tag")) {
+    await send({ key: "return" }); await pause(800);
+    const picked = await send({ probe: true });
+    await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(1000);
+    const after = await send({ probe: true });
+    console.log(`@ after a picked tag: box ${JSON.stringify(picked.text)} then ${JSON.stringify(after.text)}`);
+    check(after.text === picked.text + "@", `typing @ after a picked tag adds "@" (got ${JSON.stringify(after.text)} from ${JSON.stringify(picked.text)})`);
+    // And from an empty box right after a tag was removed or cleared.
+    await send({ text: "" }); await pause(300);
+    await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(600);
+    const again = await send({ probe: true });
+    check(again.text === "@", `typing @ in a cleared box leaves "@" (got ${JSON.stringify(again.text)})`);
+  } else { console.log("@ after a picked tag: no tag rows to pick, skipped"); }
+  await send({ text: "" });
+
   // A module command is matched by name.
   if (v.commands.length) {
     const first = v.commands[0].split("/")[1].replace(/[-_.]/g, " ");
