@@ -117,10 +117,11 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     globalThis.__driveMedia = globalThis.__driveMedia || new Map();
     globalThis.__driveMedia.set(root, media);
     t.after(() => globalThis.__driveMedia.delete(root));
-    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone" }, { name: "artifacts.media.read", reach: "modules" }] } },
+    writeModule(mods, "artifacts", { roles: ["box"], does: { tools: [{ name: "artifacts.list", reach: "anyone" }, { name: "artifacts.media.read", reach: "modules" }, { name: "artifacts.media.usage", reach: "modules" }] } },
       `export default { async start(ctx) {
         const m = () => globalThis.__driveMedia.get(ctx.paths.root);
         ctx.tool("artifacts.list", { run: async ({ kind, project }) => ({ artifacts: m().filter(a => a.kind === kind && a.project === project).map(({ bytes_b64, ...a }) => a) }) });
+        ctx.tool("artifacts.media.usage", { run: async () => ({ total_bytes: 999, limit_bytes: 20000, projects: [{ project: "a", items: 3, bytes: 25, limit: 5000 }] }) });
         ctx.tool("artifacts.media.read", { run: async ({ id, offset = 0, length = 1048576 }) => {
           const a = m().find(x => x.id === id);
           if (!a) throw Object.assign(new Error("no such artifact"), { code: "not_found" });
@@ -1066,7 +1067,7 @@ test("drive generated: a project's folder shows a Generated folder with its imag
   const media = [
     { id: "art-aaaaaaaa1", kind: "image", format: "png", mime: "image/png", bytes: png.length, title: "Harbour: dawn/1", created_at: "2026-10-01T10:00:00Z", project: "a", bytes_b64: png.toString("base64") },
     { id: "art-bbbbbbbb2", kind: "image", format: "png", mime: "image/png", bytes: 3, title: "Harbour: dawn/1", created_at: "2026-10-01T09:00:00Z", project: "a", bytes_b64: Buffer.from("xyz").toString("base64") },
-    { id: "art-cccccccc3", kind: "video", format: "mp4", mime: "video/mp4", bytes: 4, title: "Clip", created_at: "2026-10-01T08:00:00Z", project: "a", bytes_b64: Buffer.from("MP4!").toString("base64") },
+    { id: "art-cccccccc3", kind: "video", format: "mp4", mime: "video/mp4", bytes: 4, title: "Clip", media: { width: 1280, height: 720, duration_s: 4.5 }, created_at: "2026-10-01T08:00:00Z", project: "a", bytes_b64: Buffer.from("MP4!").toString("base64") },
     { id: "art-dddddddd4", kind: "image", format: "jpeg", mime: "image/jpeg", bytes: 2, title: "Other project", created_at: "2026-10-01T07:00:00Z", project: "b", bytes_b64: Buffer.from("zz").toString("base64") },
   ];
   const { reg } = await registry(t, { role: "box", media,
@@ -1082,6 +1083,12 @@ test("drive generated: a project's folder shows a Generated folder with its imag
     ["Clip.mp4", "video", "video/mp4", 4, "art-cccccccc3"],
     ["Harbour- dawn-1 (art-bb).png", "image", "image/png", 3, "art-bbbbbbbb2"],
     ["Harbour- dawn-1.png", "image", "image/png", 18, "art-aaaaaaaa1"]]);
+  // Size and length from the file's header, and the storage line.
+  const clip = g.entries.find(e => e.name === "Clip.mp4");
+  assert.deepEqual([clip.width, clip.height, clip.duration_s], [1280, 720, 4.5]);
+  assert.equal(g.entries.find(e => e.name === "Harbour- dawn-1.png").width, undefined, "no size when the header gave none");
+  assert.deepEqual(g.quota, { used: 25, items: 3, limit: 5000, total_used: 999, total_limit: 20000 });
+  assert.equal(top.quota, undefined, "the storage line belongs to the Generated listing");
   // Reading goes through artifacts.media.read, in chunks.
   const r1 = await ok(reg, "files.drive.read", { share: "work", path: "a/Generated/Harbour- dawn-1.png", offset: 0, length: 6 });
   assert.deepEqual([Buffer.from(r1.base64, "base64").toString(), r1.size, r1.done, r1.virtual], ["PNGDAT", 18, false, true]);

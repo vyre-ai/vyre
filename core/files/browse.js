@@ -67,6 +67,17 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
   const bytesOf = a => Number(a.bytes ?? (a.media && a.media.bytes) ?? 0);
   const realOf = p => { try { return fs.realpathSync(p); } catch { return null; } };
 
+  /** The storage line for the Generated folder: what this project holds and the limits, from artifacts.media.usage; nothing when it cannot say. */
+  async function quotaOf(slug) {
+    try {
+      const r = await ctx.call("artifacts.media.usage", { project: slug });
+      const d = r && !r.error && r.data;
+      if (!d) return {};
+      const p = (d.projects || []).find(x => x && x.project === slug) || {};
+      return { quota: { used: Number(p.bytes || 0), items: Number(p.items || 0), limit: Number(p.limit || 0), total_used: Number(d.total_bytes || 0), total_limit: Number(d.limit_bytes || 0) } };
+    } catch { return {}; }
+  }
+
   /** The slug of the project whose home is this folder, or null. */
   async function projectAt(dirReal) {
     try {
@@ -158,11 +169,14 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
           try { const p = path.join(safe.path, name); if (scope.all || withinReal(p, scope.folders)) entries.push(describe(rs, p)); } catch { /* hidden */ }
         }
         for (const m of g_.media) {
-          entries.push({ name: m.name, dir: false, kind: String(m.a.kind || "file"), mime: mimeOf(m.a), size: bytesOf(m.a), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id) });
+          const md = m.a.media || {};
+          // width, height and duration come from the file's own header (artifacts reads them); a surface draws a preview from the artifact id through the content route, there are no thumbnails.
+          entries.push({ name: m.name, dir: false, kind: String(m.a.kind || "file"), mime: mimeOf(m.a), size: bytesOf(m.a), mtime: String(m.a.created_at || ""), virtual: true, artifact: String(m.a.id),
+            ...(md.width ? { width: Number(md.width) } : {}), ...(md.height ? { height: Number(md.height) } : {}), ...(md.duration_s ? { duration_s: Number(md.duration_s) } : {}) });
         }
         entries.sort((a, b) => a.name.localeCompare(b.name));
         const page = entries.slice(offset, offset + limit);
-        return { share, path: "/" + g_.rel, entries: page, total: entries.length, ...(offset + limit < entries.length ? { next: offset + limit } : {}) };
+        return { share, path: "/" + g_.rel, entries: page, total: entries.length, ...(offset + limit < entries.length ? { next: offset + limit } : {}), ...(await quotaOf(g_.slug)) };
       }
       ({ rs, safe, scope } = await resolve(share, rel, meta));
       if (!fs.statSync(safe.real).isDirectory()) throw refuse("that is a file; read it with files.drive.read", "bad_input");
