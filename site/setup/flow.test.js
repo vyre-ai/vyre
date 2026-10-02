@@ -1076,7 +1076,7 @@ test("activity: each step leaves one line in the page's own words, and a forged 
 test("steps: an API key is sent once, never kept in the page's state, and an error never carries it", async t => {
   const box = stepsBox();
   const flow = await atNamed(t, box);
-  flow.continueToAi();
+  await toAi(flow, box);
   flow.openAiKey("nope");
   assert.equal(flow.state.ai.keyKind, null, "only the three kinds open");
   flow.openAiKey("openai-compatible");
@@ -1098,7 +1098,7 @@ test("steps: an API key is sent once, never kept in the page's state, and an err
   assert.equal(flow.state.ai.accounts.at(-1).step, "done");
   assert.equal(flow.state.ai.keyKind, null, "the form closes on success");
   assert.ok(!JSON.stringify(flow.state).includes("sk-good-key-1234567890"), "the saved key is not in the state");
-  flow.continueToTailscale();
-  assert.equal(flow.state.stage, "tailscale", "a saved key counts as one AI to go on with");
+  flow.continueToDevices();
+  assert.equal(flow.state.stage, "devices", "a saved key counts as one AI to go on with");
   flow.stop();
 });
