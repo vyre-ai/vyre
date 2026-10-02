@@ -129,11 +129,12 @@ export function companionCoreSide(ctx, seam = {}) {
 
   /**
    * Before any file name or byte goes out, the server answers hello with its signature (by the key pinned at the join) over this very token's
-   * nonce, so a name, directory or certificate takeover that merely answers cannot receive a transcript. Once per process; refused on any mismatch.
+   * nonce, so a name, directory or certificate takeover that merely answers cannot receive a transcript. Proved again after a minute, before each
+   * sync.upload.start (`fresh`), and after any connection error; refused on any mismatch.
    * @param {NonNullable<typeof saved>} s
    */
-  function verifyBox(s) {
-    if (verifiedAt && now() - verifiedAt < PROOF_TTL) return Promise.resolve();
+  function verifyBox(s, fresh = false) {
+    if (!fresh && verifiedAt && now() - verifiedAt < PROOF_TTL) return Promise.resolve();
     if (!verifying) verifying = (async () => {
       const t = token(s, "link.companion.hello", {});
       const [, , ts, nonce] = t.split(".");
@@ -154,11 +155,12 @@ export function companionCoreSide(ctx, seam = {}) {
   async function remote(tool, input = {}) {
     if (!ALLOWED.has(String(tool))) return { error: { code: "denied", message: `${tool} is not something this PC's helper may ask your server` } };
     let s;
-    try { s = await ready(); await verifyBox(s); } catch (e) { const x = /** @type {any} */ (e); return { error: { code: x.code || "no_link", message: x.message } }; }
+    try { s = await ready(); await verifyBox(s, tool === "sync.upload.start"); } catch (e) { const x = /** @type {any} */ (e); return { error: { code: x.code || "no_link", message: x.message } }; }
     try {
       const r = await conn(s).json("POST", `/v1/tools/${encodeURIComponent(tool)}`, { ...input, companion: token(s, tool, input) }, { timeout: seam.timeout || 15_000 });
       return r.body;
     } catch (e) {
+      verifiedAt = 0;
       const x = /** @type {any} */ (e);
       return { error: { code: x.code === "not_box" ? "not_box" : "box_unreachable", message: x.code === "not_box" ? x.message : `your server is not reachable from this PC (${x.code || x.message}). Is Tailscale signed in?` } };
     }
@@ -174,6 +176,7 @@ export function companionCoreSide(ctx, seam = {}) {
       r = await conn(s).json("POST", `/v1/sync/upload/${encodeURIComponent(upload)}?offset=${encodeURIComponent(String(offset))}`, data,
         { timeout: seam.timeout || 15_000, headers: { "x-vyre-companion": token(s, "sync.upload.chunk", { upload, offset, data }) } });
     } catch (e) {
+      verifiedAt = 0;
       const x = /** @type {any} */ (e);
       throw fail(x.code === "not_box" ? "not_box" : "box_unreachable", x.code === "not_box" ? x.message : `your server is not reachable from this PC (${x.code || x.message})`);
     }

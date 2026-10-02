@@ -88,7 +88,7 @@ test("companion-core: it joins through the app once, seals its key, and signs ev
   assert.equal(start.result.data.upload, "11111111-1111-4111-8111-111111111111");
   const chunk = await t_("link.upload").run({ upload: start.result.data.upload, offset: 0, data: Buffer.from("abc") });
   assert.deepEqual(chunk, { offset: 3 });
-  assert.deepEqual(box.calls.map(c => [c.tool, c.ok]), [["link.companion.hello", true], ["sync.upload.plan", true], ["sync.upload.start", true], ["sync.upload.chunk", true]], "hello first, once");
+  assert.deepEqual(box.calls.map(c => [c.tool, c.ok]), [["link.companion.hello", true], ["sync.upload.plan", true], ["link.companion.hello", true], ["sync.upload.start", true], ["sync.upload.chunk", true]], "hello first, and again before each upload start");
   assert.deepEqual(app.seen.map(r => r.op), ["companion", "seal"], "joined once, sealed once");
   assert.equal(app.seen[0].name, "alex-pc");
 

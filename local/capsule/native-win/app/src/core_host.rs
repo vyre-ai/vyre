@@ -24,6 +24,9 @@ use vyre_capsule_win::{core_calls, core_install, core_launch, core_pkg, history,
 #[serde(tag = "state", content = "message", rename_all = "lowercase")]
 pub enum CoreState { Off, Installing(String), Starting, Up, Failed(String) }
 
+/// DPAPI entropy for what the core has the app seal, so a blob made for another purpose (the device key, the presence key) never opens as one.
+const SEAL_ENTROPY: &[u8] = b"vyre-core-seal-v1";
+
 /// How long one call may take before the app gives up on it (a scan of a large history is the slow one).
 const CALL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 /// Health checks answer at once or not at all.
@@ -129,8 +132,8 @@ impl CoreHost {
         let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
         let (app, gate, bridge, t0) = (app.clone(), self.gate.clone(), self.bridge.clone(), self.t0);
         Box::new(move |req| match req {
-            Request::Seal { data } => match crate::protect(&data, true) { Ok(b) => json!({ "ok": true, "blob": b64.encode(b) }), Err(e) => json!({ "ok": false, "error": e }) },
-            Request::Unseal { blob } => match crate::protect(&blob, false) { Ok(b) => json!({ "ok": true, "data": b64.encode(b) }), Err(e) => json!({ "ok": false, "error": e }) },
+            Request::Seal { data } => match crate::protect_with(&data, true, Some(SEAL_ENTROPY)) { Ok(b) => json!({ "ok": true, "blob": b64.encode(b) }), Err(e) => json!({ "ok": false, "error": e }) },
+            Request::Unseal { blob } => match crate::protect_with(&blob, false, Some(SEAL_ENTROPY)) { Ok(b) => json!({ "ok": true, "data": b64.encode(b) }), Err(e) => json!({ "ok": false, "error": e }) },
             Request::Companion { core, nonce, name } => {
                 let now = t0.elapsed().as_millis() as u64;
                 let (before, decision) = { let mut g = gate.lock().unwrap(); (g.snapshot(), g.decide(now, &nonce)) };
@@ -296,6 +299,12 @@ pub fn selftest(work: &Path, pkg: &Path, node_zip: &Path) -> SelfTest {
         }
         note("stop", host.call("import.stop", &serde_json::json!({})).map(|v| v.to_string()));
         note("refused-tool", host.call("vault.get", &serde_json::json!({})).map(|_| "UNEXPECTED success".to_string()).or_else(|e| if e.contains("not a call") { Ok("refused".into()) } else { Err(e) }));
+        note("dpapi-entropy", (|| {
+            let sealed = crate::protect_with(b"secret", true, Some(SEAL_ENTROPY))?;
+            if crate::protect_with(&sealed, false, Some(SEAL_ENTROPY))? != b"secret" { return Err("did not round-trip".to_string()); }
+            if crate::protect_with(&sealed, false, None).is_ok() || crate::protect_with(&sealed, false, Some(b"other")).is_ok() { return Err("opened without its entropy".to_string()); }
+            Ok("opens only with its own entropy".to_string())
+        })());
         note("countersign-pipe", pipe_selftest(&dir.join("node").join("node.exe"), work));
         host.stop();
         note("stopped", if host.running.lock().unwrap().is_none() { Ok("child ended".into()) } else { Err("still running".into()) });
@@ -349,7 +358,11 @@ fn start_with(paths: &Paths, dir: &Path, get: &dyn Fn(&str) -> Option<String>, h
     let pipe = core_pkg::pipe_name(&real_home_plain.to_string_lossy(), &token);
     let roots: Vec<PathBuf> = history::agent_roots(get, &paths.user).into_iter().map(|r| r.path).collect();
     let args = core_launch::node_args(dir, &real_home_plain, &roots, &pipe)?;
-    let env = core_launch::env(get, &real_home_plain);
+    #[allow(unused_mut)]
+    let mut env = core_launch::env(get, &real_home_plain);
+    // Test builds only (--features selftest): a stand-in server's certificate. A product core trusts no certificate an environment hands it.
+    #[cfg(feature = "selftest")]
+    for k in ["NODE_TLS_REJECT_UNAUTHORIZED", "NODE_EXTRA_CA_CERTS"] { if let Some(v) = get(k) { env.push((k.to_string(), v)); } }
     let log = std::fs::OpenOptions::new().create(true).append(true).open(real_home_plain.join("core.log")).map_err(|e| e.to_string())?;
     let (mut child, job) = imp::spawn(&dir.join("node").join("node.exe"), &args, &env, log)?;
     // The app's own pipe, made before the core is told its name; the name goes to the core on its standard input, never on a command line.

@@ -493,16 +493,22 @@ fn key_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 #[cfg(windows)]
-pub(crate) fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
+pub(crate) fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> { protect_with(data, encrypt, None) }
+
+/// DPAPI for the current account, with an optional entropy string so a blob made for one purpose opens only for that purpose.
+#[cfg(windows)]
+pub(crate) fn protect_with(data: &[u8], encrypt: bool, entropy: Option<&[u8]>) -> Result<Vec<u8>, String> {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
     // Never let Windows raise its own dialog from here.
     const CRYPTPROTECT_UI_FORBIDDEN: u32 = 1;
     let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
+    let ent = entropy.map(|e| CRYPT_INTEGER_BLOB { cbData: e.len() as u32, pbData: e.as_ptr() as *mut u8 });
+    let entp: *const CRYPT_INTEGER_BLOB = ent.as_ref().map(|e| e as *const _).unwrap_or(std::ptr::null());
     let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
     let ok = unsafe {
-        if encrypt { CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
-        else { CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
+        if encrypt { CryptProtectData(&input, std::ptr::null(), entp, std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
+        else { CryptUnprotectData(&input, std::ptr::null_mut(), entp, std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut out) }
     };
     if ok == 0 { return Err("Windows would not open the device key.".into()); }
     let v = unsafe { std::slice::from_raw_parts(out.pbData, out.cbData as usize).to_vec() };
@@ -513,6 +519,8 @@ pub(crate) fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
 // Off Windows this only exists so the crate builds for local checks; it is never shipped.
 #[cfg(not(windows))]
 pub(crate) fn protect(data: &[u8], _encrypt: bool) -> Result<Vec<u8>, String> { Ok(data.to_vec()) }
+#[cfg(not(windows))]
+pub(crate) fn protect_with(data: &[u8], _encrypt: bool, _entropy: Option<&[u8]>) -> Result<Vec<u8>, String> { Ok(data.to_vec()) }
 
 static KEY_LOCK: Mutex<()> = Mutex::new(());
 

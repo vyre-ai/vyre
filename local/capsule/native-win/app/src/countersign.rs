@@ -101,6 +101,7 @@ pub fn new_pipe_name() -> String {
     format!("\\\\.\\pipe\\vyre-app-{}", vyre_capsule_win::core_launch::token_from(&b))
 }
 
+#[cfg(feature = "selftest")]
 /// Whether a first instance of `pipe` can be made now (it cannot while the app's own is up): the squatting check.
 pub fn name_is_free(pipe: &str) -> bool { imp::create(pipe, true).is_ok() }
 
