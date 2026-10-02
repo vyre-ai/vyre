@@ -875,7 +875,7 @@ const SCREENS = {
           h("p", { class: "lbl", style: { marginTop: "20px" } }, "Your computers"),
           h("p", { class: "small" }, dv.data.summary || ""),
           ...devs.filter((/** @type {any} */ d) => d.agents && d.agents.length).map((/** @type {any} */ d) => h("div", { style: { marginBottom: "16px" } },
-            h("p", { class: "small muted", style: { padding: "8px 0 0" } }, `${d.name}: open Lumen on it and choose Import history to pick what comes in`),
+            h("p", { class: "small muted", style: { padding: "8px 0 0" } }, `${d.name}: open Lumen on your Mac to choose what to import.`),
             h("div", { class: "rows" }, d.agents.flatMap((/** @type {any} */ g) => g.folders.map((/** @type {any} */ f) =>
               h("div", { class: "pick" }, h("span", { class: "x" },
                 h("span", { class: "ellipsis" }, `${f.name || f.cwd || "unknown folder"} · ${g.agent}`),
