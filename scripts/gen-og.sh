@@ -20,7 +20,7 @@ node "$here/scripts/gen-site.mjs" --og "$tmp" >/dev/null
 mkdir -p "$here/site/og"
 for f in "$tmp"/*.html; do
   slug=$(basename "$f" .html)
-  "$chrome" --headless=new --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 --virtual-time-budget=4000 \
+  "$chrome" --headless=new --use-mock-keychain --password-store=basic --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 --virtual-time-budget=4000 \
     --allow-file-access-from-files --screenshot="$here/site/og/$slug.png" "file://$f" >/dev/null 2>&1
 done
 ls "$here/site/og"
