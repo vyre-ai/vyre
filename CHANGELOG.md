@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2: the v2 tokens and the project emblem join lib/theme/tokens.json (screen kit)
+
+- `lib/theme/tokens.json` gains a `v2` group: the v2 colours (dark and paper), type roles, 4-grid space, shapes, controls, layout, motion with springs and stagger, three elevations as structured layers, icons, and the project emblem (palette, ink, four cells, eight shapes as data, the byte rules). v1 groups are untouched, so no screen changes.
+- `scripts/gen-tokens` now writes `deck/css/tokens-v2.css` (it was copied by hand; the declarations are the same) and adds `Tokens.V2` to the Capsule's `Tokens.generated.swift`. The Expo app's `tokens.ts` carries `tokens.v2` because it is the JSON as a typed constant.
+- `lib/theme` `checkV2()` holds the v2 colours to AA. One pair misses, filed as #68: paper's ok word on its own wash is 4.46:1.
+- Tests: `test/tokens.test.js` checks the v2 roles, the generated CSS and Swift, the contrast list, and that the emblem spec draws the same SVG as `deck/vendor/vyrecode/emblem.js` for 400 random seeds in both schemes and as a draft. `ThemeTokensTests.swift` reads `Tokens.V2`.
+
 #### deck v2, step 5: Agents, Memory, Vault, Drive and Settings passes; "your server" wording
 
 - Agents, Vault, Drive and Settings open with the one page header; Memory's title takes the page title type. An agent's computer has a name you can change in place (`computers.rename`).
