@@ -131,5 +131,7 @@ test("a vyred a test started as a child over a temp home takes the label rule; n
   assert.equal(probe({ VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: "child-v8", VYRE_HOME: tmp }), "label");
   assert.equal(probe({ VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: "child-v8", VYRE_HOME: path.join(os.homedir(), ".vyre") }), "strict", "the person's home never");
   assert.equal(probe({ VYRE_TEST_HOSTED: "1", VYRE_HOME: tmp }), "strict", "not under node's test runner");
+  assert.equal(probe({ VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: "child-v8", VYRE_HOME: path.join(os.homedir(), ".vyre-work") }), "strict", "a custom home outside the temp folder");
+  assert.equal(probe({ VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: "child-v8", VYRE_HOME: "/srv/vyre-box-home" }), "strict", "a Docker box's home");
   assert.equal(probe({ VYRE_HOME: tmp }), "strict", "no environment, no loosening");
 });

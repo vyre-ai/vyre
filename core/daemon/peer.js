@@ -778,6 +778,13 @@ export function setSocketTrust(mode) { socketTrustMode = mode === "label" ? "lab
  */
 export function socketTrust() {
   if (socketTrustMode) return socketTrustMode;
-  if (hostedTrust === null) hostedTrust = peerHosting() ? "label" : "strict";
+  if (hostedTrust === null) {
+    // And only over a home under the temp folder, where every test home is made: a person's daemon over a custom home (a Docker box, a
+    // second home) never takes it, whatever its environment (reviewer-2, 2 Oct 2026).
+    const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    const home = process.env.VYRE_HOME;
+    const underTmp = Boolean(home) && (real(home) + path.sep).startsWith(real(os.tmpdir()) + path.sep);
+    hostedTrust = underTmp && peerHosting() ? "label" : "strict";
+  }
   return hostedTrust;
 }
