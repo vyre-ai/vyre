@@ -89,9 +89,11 @@ export default {
       input: { type: "object", required: ["name"], properties: { name: str, since: {}, event: { type: "object" } } },
       run: async ({ name, since = null, event = null }, meta = {}) => {
         const { caller } = meta;
-        // A dry run on a hook.received hands the watcher a webhook's body, which an agent may
-        // not read (hooks.delivery refuses agents); the watcher's logs and items would show it.
-        if (event && isAgent(caller)) throw new Error("a dry run on a real event is the owner's; an agent dry-runs without event");
+        // A dry run on a hook.received hands the watcher a webhook's body, which a model may not read
+        // (hooks.delivery refuses it); the watcher's logs and items would show it. Only the person's own
+        // surface may: an agent claim, a verified Vyre thread (meta.thread or a thread claim in the label),
+        // a bare model session and the harness are all refused, by a positive check on who is asking.
+        if (event && (!isPerson(caller) || isAgent(caller) || typeof meta.thread === "string")) throw new Error("a dry run on a real event is the owner's; a model dry-runs without event");
         await mustSee(meta, name);
         return rt.test(name, { since, event });
       },
