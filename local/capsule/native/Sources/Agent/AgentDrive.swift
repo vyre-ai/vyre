@@ -98,11 +98,17 @@ enum Drive {
             // Deep glass proof: "glass" forces Reduce Transparency off, "reduced" on, "system" reads the Mac's setting.
             DeepGlass.reduceTransparencyOverride = mode == "glass" ? false : mode == "reduced" ? true : nil
             DisplayPrefs.shared.refresh()
-            say(["display": mode, "reduced": DeepGlass.reduceTransparency]); return
+            say(["display": mode, "reduced": DeepGlass.reduceTransparency, "systemReduced": NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency,
+                 "systemContrast": NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast]); return
         }
         if let mode = c["appearance"] as? String {
             NSApp.appearance = mode == "dark" ? NSAppearance(named: .darkAqua) : mode == "light" ? NSAppearance(named: .aqua) : nil
             say(["appearance": mode]); return
+        }
+        if VJ.truthy(c["windowframe"]) {
+            // The panel's rectangle in screen points from the top-left of the main display, as `screencapture -R` takes it.
+            let f = a.panel.panel.frame, h = NSScreen.screens.first?.frame.height ?? 0
+            say(["x": f.minX, "y": h - f.maxY, "w": f.width, "h": f.height]); return
         }
         if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {

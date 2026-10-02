@@ -161,15 +161,21 @@ try {
         const bd = spawn(probe, ["backdrop", "split"], { stdio: ["ignore", "pipe", "inherit"] });
         await new Promise(res => { bd.stdout.once("data", () => res(0)); setTimeout(res, 8000); });
         try {
-          await send({ appearance: look }); await send({ display });
+          await send({ appearance: look }); const d = await send({ display });
           await send({ show: true }); await send({ text: "zzzzqq" }); await pause(1200);
           const w = await send({ windowid: true });
           const dir = process.env.VYRE_CAPSULE_SCREENS || home; fs.mkdirSync(dir, { recursive: true });
           const f = path.join(dir, `glass-${look}-${display}.png`);
           execFileSync("/usr/sbin/screencapture", ["-x", "-o", "-l", String(w.windowid), f], { timeout: 20_000 });
-          const [mean, left, right] = execFileSync(probe, ["luma", f], { timeout: 20_000 }).toString().trim().split(/\s+/).map(Number);
+          const [wmean, wleft, wright] = execFileSync(probe, ["luma", f], { timeout: 20_000 }).toString().trim().split(/\s+/).map(Number);
+          // The same panel as the screen shows it: the screen region under it, with the window server's blur composed in. A window
+          // capture of the window alone may leave the behind-window blur out, so this is the one that counts.
+          const fr = await send({ windowframe: true });
+          const g = path.join(dir, `glass-${look}-${display}-screen.png`);
+          execFileSync("/usr/sbin/screencapture", ["-x", "-R", `${Math.round(fr.x)},${Math.round(fr.y)},${Math.round(fr.w)},${Math.round(fr.h)}`, g], { timeout: 20_000 });
+          const [mean, left, right] = execFileSync(probe, ["luma", g], { timeout: 20_000 }).toString().trim().split(/\s+/).map(Number);
           rows.push({ look, display, mean, left, right, gap: left - right });
-          console.log(`glass ${look} ${display}: mean ${mean} left ${left} right ${right} gap ${(left - right).toFixed(2)}`);
+          console.log(`glass ${look} ${display}: screen mean ${mean} left ${left} right ${right} gap ${(left - right).toFixed(2)}; window-only mean ${wmean} left ${wleft} right ${wright} gap ${(wleft - wright).toFixed(2)}; system reduce transparency ${d.systemReduced}`);
         } finally { bd.kill("SIGTERM"); await pause(300); }
       }
     }
