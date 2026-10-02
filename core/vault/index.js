@@ -45,6 +45,7 @@ import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
+import * as apikeyTools from "./tools/apikey.js";
 import { gate } from "./prove.js";
 import { reprompt } from "./session.js";
 
@@ -418,6 +419,7 @@ export default {
     const surfaces = registerSurfaces({ ctx, vault });
 
     deckTools.register({ ctx, vault });
+    apikeyTools.register({ ctx, vault });
 
     // Watchtower's findings as planner todos, once a day after 09:00 (ADR 0028, decision 4).
     const call = (name, input) => (ctx.call ? ctx.call(name, input) : Promise.resolve({ error: { code: "no_such_tool", message: "no planner" } }));

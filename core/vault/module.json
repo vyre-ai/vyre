@@ -130,7 +130,9 @@
       { "name": "vault.said.revoke", "reach": "modules" },
       { "name": "vault.request", "reach": "anyone" },
       { "name": "vault.api.send", "reach": "modules" },
-      { "name": "vault.credential.tokens", "reach": "modules" }
+      { "name": "vault.credential.tokens", "reach": "modules" },
+      { "name": "vault.apikey.check", "reach": "person" },
+      { "name": "vault.apikey.save", "reach": "person" }
     ]
   },
   "mentions": [
