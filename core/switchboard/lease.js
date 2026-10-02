@@ -75,7 +75,7 @@ export class Leases {
     const live = this.holder(thread);
     const now = this.now();
     if (live && sameKeyboard(live.surface, surface)) {
-      if (live.surface !== surface) { this.db.prepare("UPDATE threads_leases SET surface = ?, beat = ? WHERE thread = ?").run(surface, now, thread); return { holder: surface, previous: live.surface, changed: false }; }
+      if (live.surface !== surface) { this.db.prepare("UPDATE threads_leases SET surface = ?, beat = ? WHERE thread = ?").run(surface, now, thread); return { holder: surface, previous: live.surface, changed: true }; }
       this.db.prepare("UPDATE threads_leases SET beat = ? WHERE thread = ?").run(now, thread);
       return { holder: surface, previous: surface, changed: false };
     }
