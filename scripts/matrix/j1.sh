@@ -97,7 +97,7 @@ ${J1_CHROME:-google-chrome} --headless=new --remote-debugging-port=9222 --user-d
 for i in $(seq 1 150); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
 curl -fs http://127.0.0.1:9222/json/version >/dev/null || { echo "j1.sh: Chrome DevTools never came up" >&2; tail -20 "$OUT/chrome.log" >&2; exit 1; }
 rc=0
-node scripts/matrix/j1.mjs --site "$SITE" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
+node scripts/matrix/j1.mjs --site "$SITE" --relay "$RELAY" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
 docker logs --tail 80 vyre-vyre-1 >"$OUT/vyred.log" 2>&1 || true
 { echo "== relay, setup and channel lines, whole log"; docker logs vyre-vyre-1 2>&1 | grep -i -E "relay|setup|channel|claim|onboard|error|warn" | tail -80; } >>"$OUT/vyred.log" 2>&1 || true
 docker exec -u vyre vyre-vyre-1 vyre call onboard.status '{}' >>"$OUT/vyred.log" 2>&1 || true
