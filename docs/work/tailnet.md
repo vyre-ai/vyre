@@ -1082,3 +1082,10 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 Suggested merge order: link and names, daemon and presence, vault, files, computers, watchers and
 hooks, then deck, capsule and onboard. They are one branch here, so this matters only if the
 integrator splits it.
+
+## Companion pairing (2 Oct, box side, `work/023-companion`)
+
+`core/link/companion.js` and `link.companion.*` land on the box, with tests. They are not usable
+until a transport exists that authenticates the local core's own key (v0.2.3 over the tailnet, as
+the Mac's link does; the built-in network in team/0.3 replaces that transport later). Until then
+nothing calls it and a companion cannot connect. CHANGELOG says the same.

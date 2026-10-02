@@ -1,9 +1,5 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
- "link.companion.pair": {
-  "module": "link",
-  "reason": "callers limited in code to deck, tailnet"
- },
  "tools": {
   "agents.ask": {
    "module": "agents",
@@ -672,6 +668,10 @@
   "link.call": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
+  },
+  "link.companion.pair": {
+   "module": "link",
+   "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"
   },
   "link.events": {
    "module": "link",
