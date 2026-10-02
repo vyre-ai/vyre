@@ -18,7 +18,7 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use vyre_capsule_win::hotkey;
 use vyre_capsule_win::shell::Pinned;
-use vyre_capsule_win::{devicekey, drive, update};
+use vyre_capsule_win::{devicekey, drive, history, update};
 use vyre_capsule_win::shell;
 
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
@@ -102,6 +102,19 @@ fn open_external(app: &AppHandle, url: &str) {
     if url.starts_with("https://") {
         let _ = app.opener().open_url(url, None::<&str>);
     }
+}
+
+/// The "Import history" window: a bundled page that lists what this PC holds (#26).
+fn show_history(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("history") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let _ = WebviewWindowBuilder::new(app, "history", WebviewUrl::App("history.html".into()))
+        .title(APP_NAME)
+        .inner_size(560.0, 720.0)
+        .build();
 }
 
 fn show_first_run(app: &AppHandle) {
@@ -188,6 +201,21 @@ fn bind_hotkey(app: &AppHandle) -> String {
 fn get_state(app: AppHandle, live: State<Live>) -> StateOut {
     let pin = pinned(&app);
     StateOut { paired: pin.is_some(), address: pin.map(|p| p.origin().to_string()), hotkey: live.hotkey.lock().unwrap().clone() }
+}
+
+/// What agent sessions this PC holds (Claude Code, Codex, Grok, Gemini CLI): names, sizes, dates and the
+/// folder each ran in, never what was said (history.rs). Runs only when the person opens the history
+/// window, reads nothing else and sends nothing.
+#[tauri::command]
+async fn scan_history(app: AppHandle) -> Result<serde_json::Value, String> {
+    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let roots = history::agent_roots(&|k| std::env::var(k).ok(), &home);
+        let opts = history::Opts { temp: vec![std::env::temp_dir()], vyre_home: Some(home.join(".vyre")) };
+        history::scan(&roots, &opts)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // Commands that build a window are async: a synchronous command runs on the main thread, and creating a
@@ -528,21 +556,23 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, scan_history, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
             let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
+            let history = MenuItem::with_id(app, "history", "Import history", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &drive, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &drive, &history, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "open" => show_panel(app, "/quick"),
                     "drive" => { use tauri::Emitter; let _ = app.emit_to("link", "vyre-drive", ()); }
+                    "history" => show_history(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
