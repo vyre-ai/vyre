@@ -20,6 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
+import { hostSafe } from "../../lib/api-endpoint.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
@@ -28,10 +29,11 @@ import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
-import { Leases } from "./lease.js";
+import { Leases, ownSurface } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
@@ -137,7 +139,7 @@ export const MIGRATIONS = [
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
-export const modelName = m => (typeof m === "string" && m.trim() ? m.trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
+export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 /** What a provider is called in a line a person reads. @param {string} p */
 export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
@@ -1007,7 +1009,14 @@ export class Switchboard {
     const project = rec ? rec.project : null;
     if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
     if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
-    if (t.model) { st.model = t.model; this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" }); }
+    if (t.model) {
+      // What the provider says it runs is the truth (the record held what was asked for, an alias or an account default): the row follows it and a changed
+      // answer is said once, so the header and the picker move to it as a switch would (#41).
+      const was = rec ? rec.model : null;
+      const reported = String(t.model).slice(0, 80);
+      st.model = reported; this.set(id, { model: reported, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
+      if (rec && reported !== was && modelName(reported) !== modelName(was)) this.emit("model.switched", { model: modelName(reported), live: true, reported: true }, id, project);
+    }
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
     if (t.commands) st.commands = t.commands;
@@ -2145,6 +2154,8 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (st && st.proc.control) await st.proc.control("set_model", { model });
+    // The next reply is labelled by the live model first (speaker), so it follows the switch, not the model the thread started with.
+    if (st) st.model = String(model);
     this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(String(model), id);
     this.emit("model.switched", { model: String(model), live: Boolean(st) }, id, rec.project);
     return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
@@ -2617,6 +2628,37 @@ function imagesOf(list) {
  * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
  * @param {string} [caller]
  */
+/**
+ * Who is typing, as the keyboard lease sees it. Identity comes from the caller vyred verified, never from what the call says about itself:
+ *  - the owner (a tailnet:<login> whose login is the recorded network.owner, or a relay-paired device:<id>) is the person's own surface: "deck" or
+ *    what they name among deck, phone, capsule, glass, lumen, mac, web (anchored). The login is compared with the recorded owner, not matched by prefix;
+ *  - a person's own socket callers (cli, deck, capsule, local) say which of their surfaces they are in `surface`;
+ *  - anything else (a model's mcp or harness call, a module, a hook, a guest, an agent's node, another login, an anonymous label) is its own label and
+ *    can never name a surface of its own choosing (one of the person's, a terminal's cli:<pid>, the link's box:x, another agent's): a different name is
+ *    replaced by "via:<label>", which contests like any other holder.
+ * The link's words are always the box's surface: a box:<name> it names stands, any other name becomes box:via:<label>.
+ * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
+ */
+export function surfaceFor(input, caller, owner) {
+  const c = String(caller || "");
+  const asked = String((input && input.surface) || "");
+  const o = String(owner || "").trim().toLowerCase();
+  const login = /^tailnet:(?!agent:)(.+)$/.exec(c);
+  const verifiedOwner = Boolean(login && o && login[1].trim().toLowerCase() === o) || /^device:[a-z2-7]{16}$/.test(c);
+  let s;
+  if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
+  else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
+  // The link's words are the box's person (core/link/mac.js marks its surface "box:<name>" and a write needs as:"person"): a box: name stands, any other is via:<label>.
+  else if (fromLink(c) && asked.startsWith("box:")) s = asked;
+  // The computers module takes and gives back the keyboard for a person's screen it has already checked is a person's (computers.takeover is a person-only tool,
+  // and refuses an agent's call), so the screen it names stands. Any other module still gets its own label.
+  else if (c === "module:computers" && ownSurface(asked)) s = asked;
+  // Not the owner and not a person's own socket: its own label, or via:<label> when it names anything else. Never the asked name, which could be a live
+  // terminal's (cli:<pid>), the link's (box:x) or another agent's, and re-taking "your own" lease is not a conflict.
+  else s = asked && asked !== c ? `via:${c || "vyre"}` : (c || "vyre");
+  return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
+}
+
 export const fromLink = caller => /^link:/.test(String(caller || ""));
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -2682,6 +2724,7 @@ export default {
       codex: { "api-key": "OPENAI_API_KEY" },
       grok: { "api-key": "XAI_API_KEY" },
       openrouter: { "api-key": "OPENROUTER_API_KEY" },
+      "openai-compatible": { "api-key": "OPENAI_COMPAT_API_KEY" },
     });
     const accountEnv = async (/** @type {any} */ a) => {
       if (a.kind === "login") return { auth: "subscription", env: {} };
@@ -2689,7 +2732,14 @@ export default {
       if (!name) throw Object.assign(new Error(`a ${a.kind} account is not something ${a.provider} takes`), { code: "bad_input" });
       const v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
       if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads (vyre vault grant ${a.vault_item} threads)`), { code: "no_credential" });
-      return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v) } };
+      // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
+      // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
+      const own = {};
+      // The Claude CLI resolves the name itself, so nothing can pin it: look it up again before every spawn and refuse (the lookup race is what is left).
+      if (a.base_url && a.provider === "claude" && !(await hostSafe(String(a.base_url)))) throw Object.assign(new Error(`${a.label}'s address is not a place a key may be sent now`), { code: "bad_input" });
+      if (a.base_url) { if (a.provider === "claude") own.ANTHROPIC_BASE_URL = String(a.base_url); else own.VYRE_API_BASE_URL = String(a.base_url); }
+      if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model);
+      return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v), ...own } };
     };
     // On a box the spawner puts each account in its own uid's HOME. Elsewhere a provider that
     // keeps its login in HOME (not Claude, whose transcripts Vyre reads from the user's own) gets
@@ -2771,11 +2821,7 @@ export default {
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => {
-      const s = String(input.surface || caller || "vyre");
-      // The link's words are always the box's surface, whatever the input says.
-      return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
-    };
+    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner);
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;

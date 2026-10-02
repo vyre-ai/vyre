@@ -366,7 +366,7 @@ for (const driver of ["cli", "sdk"]) {
     fs.mkdirSync(process.env.FAKE_ACP_STORE);
     t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
     const list = (await w.tool("providers.list", {})).data;
-    assert.deepEqual(list.map(p => p.id), ["claude", "codex", "grok", "openrouter"]);
+    assert.deepEqual(list.map(p => p.id), ["claude", "codex", "grok", "openrouter", "openai-compatible"]);
     const th = await w.tool("threads.start", { cwd: w.work, provider: "grok", prompt: "hello", surface: "deck" });
     assert.equal(th.error, undefined, JSON.stringify(th));
     await w.finished(th.data.id);

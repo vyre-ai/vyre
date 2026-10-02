@@ -117,7 +117,7 @@ export function register(ctx, { tickets, providerFor, emit }) {
     r.stream.on("error", () => res.destroy());
     res.on("close", () => r.stream.destroy());
     r.stream.pipe(res);
-  });
+  }, { readOnly: true });
 
   ctx.route("put", async (req, res, { caller, url }) => {
     if (req.method !== "PUT") return sendError(res, 405, "method", "put is PUT only", { allow: "PUT" });
@@ -139,5 +139,5 @@ export function register(ctx, { tickets, providerFor, emit }) {
       req.resume();
       sendError(res, statusOf(e), e.code || "failed", e.message, { connection: "close" });
     }
-  });
+  }, { methods: ["PUT"] });
 }

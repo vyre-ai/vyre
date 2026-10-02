@@ -91,6 +91,7 @@ async function startLocked(opts, root, p, release) {
 
   const db = open(p.db);
   const events = new Events(db);
+  events.log = log;
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
   // On a Mac with vyre-core installed (ADR 0040), core holds the trust anchors: every presence
@@ -797,7 +798,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
-  if (own) return own(req, res, { caller, url });
+  if (own) {
+    // A route answers only the methods it declared: a read-only one never a write, a writing one never a GET (the fetch-site rule).
+    const info = registry.routeInfo.get(url.pathname);
+    if (info && !info.methods.includes(req.method)) return send(res, 405, { error: { code: "method_not_allowed", message: `${url.pathname} answers ${info.methods.join(", ")}` } });
+    return own(req, res, { caller, url });
+  }
   // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
   // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
   // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when

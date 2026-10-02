@@ -166,6 +166,7 @@ test("federation reads: an offline Mac leaves the box's rows, says mac_offline, 
   assert.ok(hits.length > 0 && hits.every(h => h.source === "box"));
   const th = await s.boxCall("recall.thread", { session: MAC_ID });
   assert.match(th.error.message, /mac_offline/);
+  assert.equal(th.error.code, "not_found");
   assert.deepEqual((await asBox(s, "threads.list", {})), []);
 });
 

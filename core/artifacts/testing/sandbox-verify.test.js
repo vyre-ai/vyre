@@ -7,7 +7,7 @@ import { startServer, hostilePage, SECRET_COOKIE } from "./sandbox-server.mjs";
 const ok = name => ({ name, ok: true, detail: "blocked: SecurityError" });
 const CONTROL = { cookie: "vyre_session=S3CRET-COOKIE; vyre_lax=S3CRET-LAX", storage: "S3CRET-STORAGE", fetch: "S3CRET-API" };
 const HELD = { framed: [{ origin: "null", mode: "framed", results: [ok("read document.cookie"), ok("fetch the Vyre API with cookies")] }], outer: [ok("outer reads the frame's document")], control: CONTROL, ua: "Safari" };
-const SERVER_OK = { hits: { ctlfetch: 1, ctlimg: 1, ctlbeacon: 1, navmeta: 1, navloc: 1, navext: 1, navanchor: 1, navdownload: 1 }, cookies: { navmeta: [""], navloc: ["vyre_lax"], navext: [""] }, urls: { navmeta: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navloc: [{ len: 8040, data: 8000, host: "127.0.0.1:8123" }], navext: [{ len: 8040, data: 8000, host: "localhost:8123" }] }, api: [{ via: "ctlfetch", cookie: true }] };
+const SERVER_OK = { rule: true, loads: [{ path: "/v1/pic", accepted: true, sf: "site=same-origin mode=no-cors dest=image" }, { path: "/a/hostile?mode=framed", accepted: true, sf: "site=same-origin mode=navigate dest=iframe" }], accepted: { navmeta: [false], navloc: [false], navext: [false], navanchor: [false], navdownload: [false] }, hits: { ctlfetch: 1, ctlimg: 1, ctlbeacon: 1, navmeta: 1, navloc: 1, navext: 1, navanchor: 1, navdownload: 1 }, cookies: { navmeta: [""], navloc: ["vyre_lax"], navext: [""] }, urls: { navmeta: [{ len: 8040, data: 8000, host: "127.0.0.1:8123", sf: "site=cross-site mode=navigate dest=iframe" }], navloc: [{ len: 8040, data: 8000, host: "127.0.0.1:8123", sf: "site=cross-site mode=navigate dest=iframe" }], navext: [{ len: 8040, data: 8000, host: "localhost:8123", sf: "site=cross-site mode=navigate dest=iframe" }] }, api: [{ via: "ctlfetch", cookie: true }] };
 
 test("verify: a held sandbox passes, and every kind of leak is named", () => {
   const held = verify(HELD, { results: [ok("read document.cookie")] }, SERVER_OK);
@@ -15,17 +15,24 @@ test("verify: a held sandbox passes, and every kind of leak is named", () => {
   assert.match(held.lines.join("\n"), /nothing the hostile page tried reached it/);
   assert.match(held.lines.join("\n"), /with the sandbox off the page reads the cookie/);
   const finding = held.lines.join("\n");
-  assert.match(finding, /FINDING self-navigation navloc: 1 request\(s\) reached the server; address length 8040, data carried 8000 bytes, destination host 127\.0\.0\.1:8123; cookies carried: vyre_lax/, "what leaves is reported, not hidden");
-  assert.match(finding, /FINDING self-navigation navext: 1 request\(s\) reached the server; address length 8040, data carried 8000 bytes, destination host localhost:8123/, "and a different origin too");
+  assert.match(finding, /FINDING self-navigation navloc: 1 request\(s\) reached the server; address length 8040, data carried 8000 bytes, destination host 127\.0\.0\.1:8123, Sec-Fetch site=cross-site mode=navigate dest=iframe; cookies carried: vyre_lax/, "what leaves is reported, not hidden");
+  assert.match(finding, /FINDING self-navigation navext: 1 request\(s\) reached the server; address length 8040, data carried 8000 bytes, destination host localhost:8123, Sec-Fetch site=cross-site/, "and a different origin too");
   const leaky = verify({ ...HELD, framed: [{ origin: "http://127.0.0.1:8123", results: [{ name: "read document.cookie", ok: false, detail: "LEAKED vyre_session" }] }] }, null,
-    { hits: { ...SERVER_OK.hits, fetch: 1, hijack: 1, blank: 1 }, cookies: { navmeta: ["vyre_session"] }, api: [{ via: "fetch", cookie: true }] });
+    { hits: { ...SERVER_OK.hits, fetch: 1, hijack: 1, blank: 1 }, accepted: { navmeta: [true] }, cookies: { navmeta: ["vyre_session"] }, api: [{ via: "fetch", cookie: true }] });
   const f = leaky.failures.join("\n");
   assert.match(f, /not the opaque origin/);
   assert.match(f, /read document\.cookie: LEAKED/);
   assert.match(f, /reached by: fetch=1, hijack=1, blank=1/);
   assert.match(f, /carried the session cookie/);
-  assert.match(f, /navmeta carried the Strict session cookie/);
+  assert.match(f, /navmeta would be taken as the person's session/);
   // A zero count only means "blocked" if the unsandboxed control got through.
+  assert.match(verify(HELD, null, { ...SERVER_OK, loads: [{ path: "/a/hostile?mode=framed", accepted: false, sf: "site=same-origin mode=navigate dest=iframe" }] }).failures.join(), /the rule refuses the person's own load/, "the rule must not break the Deck");
+  // The top-level load runs in a fresh browser with no cookie: the rule alone decides, so a cookie-less load the rule takes passes and one it refuses fails.
+  assert.deepEqual(verify(HELD, null, { ...SERVER_OK, loads: [...SERVER_OK.loads.filter(l => l.path === "/v1/pic"), { path: "/a/hostile?mode=top", accepted: false, ruleOk: true, sf: "site=none mode=navigate dest=document" }] }).failures, [], "no cookie in a fresh browser is not the rule's refusal");
+  assert.match(verify(HELD, null, { ...SERVER_OK, loads: [...SERVER_OK.loads.filter(l => l.path === "/v1/pic"), { path: "/a/hostile?mode=top", accepted: true, ruleOk: false, sf: "site=same-site mode=navigate dest=document" }] }).failures.join(), /the rule refuses the person's own load/);
+  assert.match(verify(HELD, null, { ...SERVER_OK, loads: [{ path: "/v1/pic", accepted: false, sf: "site=cross-site mode=no-cors dest=image" }] }).failures.join(), /the person's own image request was refused/, "the rule must not break media in the Deck");
+  assert.match(verify(HELD, null, { ...SERVER_OK, loads: [] }).failures.join(), /image request never reached the server/);
+  assert.match(verify(HELD, null, { ...SERVER_OK, rule: false, accepted: { navloc: [true] } }).failures.join(), /the rule is absent on this tree/);
   assert.match(verify({ ...HELD, control: null }, null, SERVER_OK).failures.join(), /control: the unsandboxed control page never reported/);
   assert.match(verify(HELD, null, { ...SERVER_OK, hits: { navmeta: 1 } }).failures.join(), /fetch, img and beacon reach the server/);
   assert.match(verify({ ...HELD, control: { ...CONTROL, cookie: "threw SecurityError" } }, null, SERVER_OK).failures.join(), /reads the cookie/);
@@ -39,7 +46,7 @@ test("the hostile page is served with the real artifact headers, and the server 
   for (const part of ["sandbox allow-scripts", "default-src 'none'", "connect-src 'none'", "form-action 'none'", "frame-ancestors 'self'"]) assert.ok(csp.includes(part), part);
   assert.ok(!/allow-same-origin/.test(csp), "never allow-same-origin");
   assert.match(h.body, /document\.cookie/);
-  for (const attack of ["target = \"_blank\"", "f.method = \"post\"", "WebSocket", "sendBeacon"]) assert.ok(h.body.includes(attack), attack);
+  for (const attack of ["target = \"_blank\"", "f.method = \"post\"", "WebSocket", "sendBeacon", "ping", "prefetch", "preload", "prerender"]) assert.ok(h.body.includes(attack), attack);
   const srv = await startServer();
   t.after(() => srv.close());
   const deck = await fetch(srv.url + "/");
