@@ -1,0 +1,46 @@
+# #13: test/relay.test.js failed once as a whole file with no assertion on a hosted node run, and passed on rerun. This
+# runs the file in a loop on a hosted runner and keeps every failing iteration's full output, so the cause can be read.
+# Dispatch-only. Throwaway GitHub runner, never a Mac.
+name: relay-test-loop
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many times to run the file"
+        default: "25"
+        type: string
+permissions:
+  contents: read
+jobs:
+  loop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - name: Run test/relay.test.js in a loop
+        env:
+          RUNS: ${{ inputs.runs }}
+        run: |
+          mkdir -p loop-logs
+          fails=0
+          for i in $(seq 1 "$RUNS"); do
+            if node --test --test-reporter=spec test/relay.test.js >"loop-logs/run-$i.txt" 2>&1; then
+              echo "run $i: pass"; rm -f "loop-logs/run-$i.txt"
+            else
+              echo "run $i: FAIL"; fails=$((fails + 1))
+            fi
+          done
+          echo "failures: $fails of $RUNS"
+          { echo "## relay.test.js loop"; echo; echo "failures: $fails of $RUNS"; } >> "$GITHUB_STEP_SUMMARY"
+          for f in loop-logs/run-*.txt; do [ -f "$f" ] && { echo; echo "### $f"; echo '```'; tail -60 "$f"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"; done
+          true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: relay-test-loop-logs
+          path: loop-logs
+          if-no-files-found: ignore
