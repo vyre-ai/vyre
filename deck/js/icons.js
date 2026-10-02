@@ -15,6 +15,7 @@ const P = {
   watch: '<rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><path d="M1.5 5h13M5 14h6"/>',
   pin: '<path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/>',
   mute: '<path d="M3 6v4h2.5L9 13V3L5.5 6z"/><path d="M11.5 6.5l3 3M14.5 6.5l-3 3"/>',
+  star: '<path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.4l-3.7 2.1.8-4.2L2 6.4l4.2-.5z"/>',
   plus: '<path d="M8 3.5v9M3.5 8h9"/>',
   minus: '<path d="M3.5 8h9"/>',
   mic: '<rect x="6" y="2" width="4" height="7.5" rx="2"/><path d="M3.8 8a4.2 4.2 0 008.4 0M8 12.2V14"/>',
