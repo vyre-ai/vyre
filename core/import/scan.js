@@ -73,7 +73,7 @@ export function notSuggested(cwd, { quick = null, ask = null, isDev = () => fals
 
 /**
  * Sources, each with its sessions grouped by the folder they ran in.
- * @param {{ path: string, kind: "claude"|"archive"|"folder"|"codex"|"gemini-cli" }[]} roots
+ * @param {{ path: string, kind: "claude"|"archive"|"folder"|"codex"|"gemini-cli"|"grok" }[]} roots
  * @param {{ projectOf?: (cwd: string) => { slug: string, name: string }|null, candidates?: string[], quick?: string|null, ask?: string|null, isDev?: (cwd: string) => boolean }} [o]
  */
 export function scan(roots, o = {}) {

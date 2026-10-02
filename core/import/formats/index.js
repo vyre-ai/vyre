@@ -11,10 +11,11 @@ import os from "node:os";
 import path from "node:path";
 import * as codex from "./codex.js";
 import * as gemini from "./gemini.js";
+import * as grok from "./grok.js";
 import { isRealHome } from "../../config/dialogs.js";
 
-/** @type {Record<string, typeof codex | typeof gemini>} keyed by the source kind a scan root carries */
-export const FORMATS = { "codex": codex, "gemini-cli": gemini };
+/** @type {Record<string, typeof codex | typeof gemini | typeof grok>} keyed by the source kind a scan root carries */
+export const FORMATS = { "codex": codex, "gemini-cli": gemini, "grok": grok };
 /** The reader for a scan root kind, or null (Claude Code's own layout needs none). @param {string} kind */
 export const formatFor = kind => (Object.hasOwn(FORMATS, kind) ? FORMATS[kind] : null);
 
@@ -32,6 +33,7 @@ export function agentHomes(root, env = process.env) {
   const tilde = (/** @type {string} */ p) => path.resolve(p.replace(/^~(?=$|\/)/, os.homedir()));
   return [
     { kind: "codex", path: env.VYRE_CODEX_HOME ? tilde(env.VYRE_CODEX_HOME) : real ? (env.CODEX_HOME ? tilde(env.CODEX_HOME) : path.join(os.homedir(), ".codex")) : path.join(path.resolve(root), "codex") },
+    { kind: "grok", path: env.VYRE_GROK_HOME ? tilde(env.VYRE_GROK_HOME) : real ? (env.GROK_HOME ? tilde(env.GROK_HOME) : path.join(os.homedir(), ".grok")) : path.join(path.resolve(root), "grok") },
     { kind: "gemini-cli", path: env.VYRE_GEMINI_HOME ? tilde(env.VYRE_GEMINI_HOME) : real ? path.join(os.homedir(), ".gemini") : path.join(path.resolve(root), "gemini") },
   ];
 }

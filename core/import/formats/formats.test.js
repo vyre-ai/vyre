@@ -130,7 +130,7 @@ test("scan: a source per detected agent, tagged, with real counts; an agent with
 test("agentHomes: a temp home reads its own folders, never the person's", t => {
   const root = tempHome(t);
   const h = agentHomes(root, {});
-  assert.deepEqual(h.map(x => x.path), [path.join(root, "codex"), path.join(root, "gemini")]);
+  assert.deepEqual(h.map(x => x.path), [path.join(root, "codex"), path.join(root, "grok"), path.join(root, "gemini")]);
   assert.equal(formatFor("claude"), null);
   assert.equal(formatFor("__proto__"), null);
 });
@@ -182,4 +182,61 @@ test("symlinks are never followed: a linked file and a linked day folder", t => 
   fs.symlinkSync(path.join(chats, "session-2026-09-14T09-00-bbbb2222.json"), path.join(chats, "session-linked.json"));
   assert.equal(gemini.list(gm).length, 2);
   assert.ok(crypto);
+});
+
+// ---- Grok Build (measured on a real account, 2 Oct 2026): sessions/<encoded folder>/<uuid>/{summary.json, chat_history.jsonl}
+import * as grok from "./grok.js";
+const GID = "01a0f5b1-e161-7e03-b226-4355ecb027eb";
+
+function grokHome(t) {
+  const home = path.join(tempHome(t), "grok");
+  const dir = path.join(home, "sessions", encodeURIComponent(CWD), GID);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "summary.json"), JSON.stringify({ info: { id: GID, cwd: CWD }, created_at: "2026-10-01T04:21:10Z", updated_at: "2026-10-01T04:21:42Z", num_messages: 5 }));
+  fs.writeFileSync(path.join(dir, "chat_history.jsonl"), jl([
+    { type: "system", content: "You are Grok Build." },
+    { type: "user", content: [{ type: "text", text: "Fix the intake form on the Harlow site" }] },
+    { type: "user", content: [{ type: "text", text: "<reminder>keep it short</reminder>" }], synthetic_reason: "system_reminder" },
+    { type: "reasoning", content: "thinking about it" },
+    { type: "assistant", content: "I moved the form to /intake and updated the test." },
+    { type: "tool_result", content: "ok: 3 passed" },
+  ]));
+  fs.writeFileSync(path.join(dir, "updates.jsonl"), "{\"never\":\"listed\"}\n");
+  fs.writeFileSync(path.join(home, "config.toml"), "api_key = \"sk-never-read\"\n");
+  fs.writeFileSync(path.join(home, "sessions", encodeURIComponent(CWD), "prompt_history.jsonl"), "{}\n");
+  return home;
+}
+
+test("grok: lists only chat_history.jsonl, finds the folder from summary.json, and converts typed turns and replies", t => {
+  const home = grokHome(t);
+  const listed = grok.list(home);
+  assert.deepEqual(listed.map(f => [f.id, path.basename(f.file)]), [[GID, "chat_history.jsonl"]]);
+  assert.equal(grok.head(home, listed[0].file), CWD);
+  const c = grok.convert(home, listed[0].file);
+  assert.equal(c.cwd, CWD);
+  assert.equal(c.turns, 2, "a typed turn and a reply; the system prompt, the reminder, the reasoning and the tool output are not turns");
+  const rows = c.text.trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual(rows.map(r => r.type), ["user", "user", "assistant"]);
+  assert.equal(rows[1].isMeta, true, "the synthetic reminder is meta");
+  assert.ok(!c.text.includes("thinking about it") && !c.text.includes("3 passed") && !c.text.includes("Grok Build."));
+});
+
+test("grok: the sign-in file and other files are never opened, and a link is never followed", t => {
+  const home = grokHome(t);
+  assert.equal(grok.isAllowed(home, path.join(home, "config.toml")), false);
+  assert.equal(grok.isAllowed(home, path.join(home, "sessions", encodeURIComponent(CWD), GID, "updates.jsonl")), false);
+  assert.throws(() => grok.convert(home, path.join(home, "config.toml")), /may open/);
+  const link = path.join(home, "sessions", "%2Fevil", GID);
+  fs.mkdirSync(path.dirname(link), { recursive: true });
+  fs.symlinkSync(path.join(home, "sessions", encodeURIComponent(CWD), GID), link);
+  assert.deepEqual(grok.list(home).map(f => f.file).filter(f => f.includes("%2Fevil")), [], "a linked session folder is not listed");
+});
+
+test("grok: scan groups its sessions by folder, and agentHomes names a grok home", t => {
+  const home = grokHome(t);
+  assert.equal(formatFor("grok"), grok);
+  assert.ok(agentHomes(path.dirname(home)).some(r => r.kind === "grok" && r.path === home));
+  const s = scan([{ kind: "grok", path: home }]);
+  assert.equal(s.sources[0].agent, "grok");
+  assert.deepEqual(s.sources[0].folders.map(f => [f.cwd, f.sessions]), [[CWD, 1]]);
 });
