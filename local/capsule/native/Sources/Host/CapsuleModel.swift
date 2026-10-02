@@ -99,8 +99,6 @@ public final class CapsuleModel: ObservableObject {
     }
     @Published public internal(set) var asked: String?
     @Published public internal(set) var pending = false
-    /// What memory says about the words in the box (memory.answer), or nil.
-    @Published public internal(set) var memory: MemoryAnswer?
     /// What memory showed for the question that was asked, kept beside its reply.
     @Published public internal(set) var askedMemory: MemoryAnswer?
     /// The inline "Are you sure?" for a destructive action, until Enter again or Escape.
@@ -213,15 +211,12 @@ public final class CapsuleModel: ObservableObject {
     @Published var currentProject: VyreProject?
     /// The front app's document or folder, for the project rule (a fake in tests).
     var frontPath: (FrontApp?) -> String? = { ProjectContext.frontPath($0) }
-    /// The CLI to run instead of vyred's own (tests: a fake vyre).
+    /// When a reply last said anything, and the watch that gives a silent one a plain line (watchReply).
     var heardAt = Date()
     var replyWatch: Task<Void, Never>?
-    /// The old order, memory before the assistant: a memory answer above the results as you type, and a plain quick question answered by
-    /// memory.ask. Off (#46): what is typed goes to the assistant, and memory answers only when asked ("Ask memory", or "memory: ...").
-    nonisolated(unsafe) static var memoryFirstDefault = false
-    var memoryFirst = CapsuleModel.memoryFirstDefault
-    /// How long a quick question waits for memory.ask before it says so and points at the assistant (tests shorten it).
+    /// How long a question to memory waits for memory.ask before it says so and points at the assistant (tests shorten it).
     var iqTimeout: TimeInterval = 12
+    /// The CLI to run instead of vyred's own (tests: a fake vyre).
     var cliOverride: [String]?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
@@ -259,7 +254,6 @@ public final class CapsuleModel: ObservableObject {
     var publishLog: [(token: Int, at: UInt64)] = []
     private var partial: [String: [ResultItem]] = [:]
     var replySub: VyredSubscription?
-    var recallTask: Task<Void, Never>?
     /// Slow providers whose rows are still from the previous keystroke.
     private var stale = Set<String>()
     private var staleTimer: Timer?
@@ -360,7 +354,7 @@ public final class CapsuleModel: ObservableObject {
     public func reset() {
         if let r = reply, !r.finished { return }
         followUp = false; autoKey = nil; autoTask?.cancel(); convo = []
-        text = ""; pickedTags = []; pastedSpans.reset(); groups = []; selected = 0; line = nil; reply = nil; asked = nil; memory = nil; askedMemory = nil; targetParent = nil; target = nil
+        text = ""; pickedTags = []; pastedSpans.reset(); groups = []; selected = 0; line = nil; reply = nil; asked = nil; askedMemory = nil; targetParent = nil; target = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false
         cancelMentionRefresh()
         replySub?.cancel(); replySub = nil
@@ -446,21 +440,21 @@ public final class CapsuleModel: ObservableObject {
         let q = Query(text, front: front)
         // Setting an alias or a hotkey: the box is the field, and the one row says what it wants.
         if let e = bindingEdit {
-            recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
+            autoTask?.cancel(); partial = [:]
             groups = [Group(section: .top, items: [bindingEditRow(e)])]
             selected = 0
             return
         }
         // A module command is open: the box is its search, and its list is the results.
         if let s = viewSession {
-            recallTask?.cancel(); memory = nil; autoTask?.cancel(); partial = [:]
+            autoTask?.cancel(); partial = [:]
             if case .list? = s.level { s.load(q: text) } else if s.stack.isEmpty { s.load(q: text) }
             return
         }
         // `@` being typed: the list is what it can name, nothing else, and memory stays quiet.
         // Inside a nesting chip it is only what that chip holds (mentionQuery says when).
         if let m = mentionQuery {
-            recallTask?.cancel(); memory = nil
+            
             if refreshed?.key != mentionKey(m) { refreshed = nil }
             listMentions(m, keep: false)
             if nestingChip == nil { searchSessions(m, token: t) }
@@ -478,12 +472,12 @@ public final class CapsuleModel: ObservableObject {
         cancelMentionRefresh()
         // The follow-up box: its words go to the answer's thread on ⏎; nothing is searched.
         if followUp && target == nil {
-            autoTask?.cancel(); recallTask?.cancel(); memory = nil
+            autoTask?.cancel(); 
             partial = [:]; groups = []; selected = 0
             return
         }
         if let c = target {
-            recallTask?.cancel(); memory = nil
+            
             groups = q.normalized.isEmpty ? [] : [Group(section: .vyre, items: askItems(q))]
             selected = 0
             if c.kind == .app { attachments = [] } else { refreshAttachments(q.text, to: c.kind == .agent ? .agent : c.kind == .project ? .project : .thread) }
@@ -491,7 +485,7 @@ public final class CapsuleModel: ObservableObject {
         }
         // A vyre command comes before anything else: one row, and nothing is asked about it.
         if let argv = CLIRun.parse(q.text) {
-            autoTask?.cancel(); recallTask?.cancel(); memory = nil; attachments = []
+            autoTask?.cancel(); attachments = []
             partial = [:]
             groups = [Group(section: .top, items: [offline ? startFirstItem(argv) : commandRunItem(argv)])]
             selected = 0
@@ -499,7 +493,7 @@ public final class CapsuleModel: ObservableObject {
         }
         if commandRun?.running == false { commandRun = nil }
         // The warm-up search (Panel.prewarm) only draws local rows: no screen read, no memory lookup.
-        if !warming { refreshAttachments(q.text, to: .ask); recall(q.text, token: t) }
+        if !warming { refreshAttachments(q.text, to: .ask) }
         if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }
         if let c = calcResult(q) { partial["calc"] = [withCopy(c)] }
         if let a = bindings?.aliasRow(q.normalized) { partial["alias"] = [a] }
@@ -914,56 +908,20 @@ public final class CapsuleModel: ObservableObject {
         asked != nil && reply != nil && groups.allSatisfy { $0.items.allSatisfy { $0.kind == "ask" } }
     }
 
-    // MARK: memory
-
-    /// Whether the memory box sits above the results: it has something, and the words read as a
-    /// question or nothing on this Mac matches them well.
-    public var showsMemory: Bool {
-        // One confident answer or nothing: a wall of loosely matching quotes is not shown.
-        guard asked == nil, let m = memory, m.answer != nil, m.text == text.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
-        return Route.asksQuestion(m.text) || !(flat.contains { $0.score >= 0.6 && $0.kind != "ask" })
-    }
-
-    /// Memory first: what memory.answer says about the words, a moment after typing stops, and
-    /// only while vyred is up. It is the one source of personal facts here; with no memory.answer
-    /// on this vyred there is no memory box at all. An answer for older words is dropped.
-    func recall(_ raw: String, token t: Int) {
-        recallTask?.cancel()
-        if raw == prefilled { memory = nil; return }
-        let words = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if memory?.text != words { memory = nil }
-        guard memoryFirst, words.count >= 3, vyred.isUp, vyred.has("memory.answer") else { return }
-        recallTask = Task { @MainActor [vyred] in
-            try? await Task.sleep(nanoseconds: 180_000_000)
-            if Task.isCancelled || t != self.token { return }
-            let t0 = vyNowMs()
-            let r = await vyred.call("memory.answer", ["q": words], presence: false)
-            if Task.isCancelled || t != self.token { return }
-            guard r.error == nil else { return }
-            var m = Memo.fromAnswer(text: words, r.data)
-            m.ms = max(1, vyNowMs() - t0)
-            if m != self.memory { self.memoryExpanded = false }
-            self.memory = m.isEmpty ? nil : m
-        }
-    }
-
     // MARK: asking
 
     func ask(_ words: String, model: String? = nil, context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let model = model ?? models.quick
-        // Vyre IQ (IQAsk.swift): a plain quick question is memory.ask's, grounded or "Not sure yet."
-        if memoryFirst, !computerUse, context == nil, model == models.quick, let out = await askIQ(words) { return out }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
             return .failed("Could not make Lumen's folder: \(error.localizedDescription)")
         }
         asked = words
-        // What memory showed for these same words goes with the question, and only that.
-        askedMemory = memory?.text == words && !(memory?.isEmpty ?? true) ? memory : nil
+        askedMemory = nil
         // The prompt stays the user's words (capsule-now rule 1); what a chip attaches goes with
-        // the instructions, after memory.
-        let append = ([context, Memo.append(askedMemory)].compactMap { $0 } + attachments.map(\.body)).filter { !$0.isEmpty }.joined(separator: "\n\n")
+        // the instructions.
+        let append = ([context].compactMap { $0 } + attachments.map(\.body)).filter { !$0.isEmpty }.joined(separator: "\n\n")
         pending = true
         reply = nil
         replySub?.cancel()

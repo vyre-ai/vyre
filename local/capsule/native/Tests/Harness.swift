@@ -74,8 +74,6 @@ final class ResultBox<T>: @unchecked Sendable { var value: T? }
 
 /// Called by the generated TestMain.swift.
 public func runSuites(_ suites: [Suite]) -> Never {
-    // The suites written before #46 test the memory-first order; the new default has its own tests, which set the flag off.
-    CapsuleModel.memoryFirstDefault = true
     let args = CommandLine.arguments.dropFirst()
     let filter = args.first
     var passed = 0, failed: [String] = []

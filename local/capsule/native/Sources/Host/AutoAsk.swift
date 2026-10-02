@@ -71,8 +71,6 @@ extension CapsuleModel {
             let top = self.topLocal
             guard Self.wantsAnswer(words, topKind: top?.kind, topScore: top?.score ?? 0), self.quickFirst(words) else { return }
             if let hit = self.answerCache.first(where: { $0.key == key }) { self.showCached(hit, words); return }
-            await self.waitForMemory(words)
-            guard !Task.isCancelled, t == self.token else { return }
             self.autoKey = key
             self.handle(await self.ask(words))
             if !self.userMoved { self.selected = -1 }
@@ -82,15 +80,8 @@ extension CapsuleModel {
     /// The router's first choice for these words is a quick answer. The user's own work, or a
     /// command, goes to the assistant ("Ask juno"), and ⏎ runs that row instead.
     func quickFirst(_ words: String) -> Bool {
-        let first = Route.destinations(nil, words, catalog, quick: true, assistantFirst: !memoryFirst, models: (models.quick, models.deeper)).options.first
+        let first = Route.destinations(nil, words, catalog, quick: true, models: (models.quick, models.deeper)).options.first
         return first == nil || first?.kind == .quick
-    }
-
-    /// Memory is asked 180 ms after the last key; give it a moment more so the answer has it.
-    func waitForMemory(_ words: String) async {
-        for _ in 0..<8 where memory?.text != words && recallTask != nil {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
     }
 
     func showCached(_ hit: (key: String, reply: Reply, memory: MemoryAnswer?), _ words: String) {

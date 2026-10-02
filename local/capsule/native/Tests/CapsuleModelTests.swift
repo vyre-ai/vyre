@@ -35,31 +35,6 @@ let capsuleModelSuite = Suite("capsule model") { t in
         t.ok(got?.1 == true)
     }
 
-    t.test("memory on screen goes with the quick question; the prompt stays the user's words") {
-        let v = FakeVyred(); v.start(); defer { v.stop() }
-        let now = Date().timeIntervalSince1970 * 1000
-        v.tool("memory.answer") { _ in ["answer": "You own a blue Volvo XC40, bought in 2022.", "confidence": 0.7, "kind": "said", "from": 1,
-                                        "sources": [["session": "a1", "seq": 4, "name": "Insurance renewal", "quote": "I own a blue Volvo XC40, bought in 2022.",
-                                                     "ts": now - 14 * 86_400_000]]] }
-        v.tool("threads.start") { _ in ["id": "q1"] }
-        let r: (String?, String?, String?)? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
-            _ = await until { m.vyred.isUp }
-            await MainActor.run { m.text = "which car do I own" }
-            _ = await until { m.memory != nil }
-            let answer = await MainActor.run { m.memory?.answer }
-            await MainActor.run { m.selected = m.flat.firstIndex { $0.kind == "ask" } ?? 0; m.run() }
-            _ = await until { !v.callsOf("threads.start").isEmpty }
-            let input = v.callsOf("threads.start").first
-            await MainActor.run { m.didHide() }
-            return (answer, VJ.str(input?["append"]), VJ.str(input?["prompt"]))
-        }
-        t.eq(r?.0, "You own a blue Volvo XC40, bought in 2022.")
-        t.ok(r?.1?.contains("- The user said, 2 weeks ago: \"I own a blue Volvo XC40, bought in 2022.\"") == true, r?.1 ?? "no append")
-        t.ok(r?.1?.contains("no tools") == false, "the old quick append is gone: the box's Vyre IQ prompt says how to answer")
-        t.eq(r?.2, "which car do I own")
-    }
-
     t.test("@ a session busy in a terminal: queued, said so, then handed over") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("projects.list") { _ in ["projects": [Any]()] }
@@ -158,7 +133,7 @@ let capsuleModelSuite = Suite("capsule model") { t in
             for c in "@computer use settings" { await MainActor.run { m.text.append(c) } }
             try? await Task.sleep(nanoseconds: 400_000_000)
             let first = await MainActor.run { m.current }
-            let memoryQuiet = await MainActor.run { m.memory == nil } && v.callsOf("memory.answer").isEmpty
+            let memoryQuiet = v.callsOf("memory.answer").isEmpty
             await MainActor.run { m.run() }
             _ = await until { m.target != nil }
             let box = await MainActor.run { m.text }

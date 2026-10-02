@@ -137,11 +137,9 @@ let identitySuite = Suite("identities") { t in
             var r = VyState.reply("q1"); r.model = "haiku"; r.finished = true; r.ok = true
             r.order = ["m"]; r.text = ["m": "Rye, sourdough and a seeded spelt loaf, from the menu you wrote on Tuesday."]
             m.reply = r
-            m.askedMemory = Memo.fromAnswer(text: m.asked!, [
-                "answer": "Rye and sourdough.", "confidence": 0.7, "kind": "said", "from": 1, "via": "keyword",
-                "sources": [["session": "a1", "seq": 4, "role": "user", "name": "Northwind menu", "quote": "The menu is rye and sourdough.",
-                             "ts": Date().timeIntervalSince1970 * 1000 - 86_400_000]],
-            ])
+            m.askedMemory = MemoryAnswer(text: m.asked!, answer: "Rye and sourdough.", answerKind: .said, confidence: 0.7,
+                                         sources: [MemorySource(kind: .quote, role: "user", session: "a1", seq: 4, name: "Northwind menu",
+                                                                quote: "The menu is rye and sourdough.", age: "1 day")])
             m.memoryExpanded = true
             let reply = draw(CapsuleView(model: m, focus: FocusTicket(), snapshot: true), NSSize(width: Theme.width, height: CapsuleLayout.panelHeight(m)), "who-2-reply")
             out.append((reply?.pixelsWide ?? 0) > 0)

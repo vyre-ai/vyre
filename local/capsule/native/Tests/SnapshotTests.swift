@@ -72,19 +72,11 @@ let snapshotSuite = Suite("snapshots") { t in
             let m2 = snapModel([]); m2.text = "12*7 + 3"
             out.append(snapshot(m2, "2-calc", dir: dir))
 
-            let m3 = snapModel([])
-            m3.text = "which car do I own"
-            m3.memory = Memo.fromAnswer(text: "which car do I own", [
-                "answer": "You own a blue Volvo XC40.", "confidence": 0.7, "kind": "said", "from": 1, "via": "keyword",
-                "sources": [["session": "a1", "seq": 4, "name": "Insurance renewal", "quote": "I own a blue Volvo XC40, bought in 2022. Renew the insurance before March.",
-                             "ts": Date().timeIntervalSince1970 * 1000 - 14 * 86_400_000]],
-            ])
-            m3.search()
-            out.append(snapshot(m3, "3-memory", dir: dir))
-
             let m4 = snapModel([])
             m4.asked = "which car do I own"
-            m4.askedMemory = m3.memory
+            m4.askedMemory = MemoryAnswer(text: "which car do I own", answer: "You own a blue Volvo XC40.", answerKind: .said, confidence: 0.7,
+                                          sources: [MemorySource(kind: .quote, role: "user", session: "a1", seq: 4, name: "Insurance renewal",
+                                                                 quote: "I own a blue Volvo XC40, bought in 2022. Renew the insurance before March.", age: "2 weeks")])
             var r = VyState.reply("q1"); r.model = "haiku"; r.finished = true; r.ok = true; r.cost = 0.004
             r.order = ["m"]; r.text = ["m": "You own a **blue Volvo XC40**, bought in 2022 (you said so 2 weeks ago). The insurance renews before March."]
             m4.reply = r

@@ -43,7 +43,7 @@ let agentRouteSuite = Suite("agent route") { t in
         t.eq(got?.1, "what is the capital of France?")
     }
 
-    t.test("with an assistant: the user's own work goes to it first, and says why; a command goes to it alone") {
+    t.test("with an assistant: a question about the user's own work goes to it first, and so does a command") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         harlow(v)
         v.tool("threads.start") { _ in ["id": "q1"] }
@@ -64,7 +64,7 @@ let agentRouteSuite = Suite("agent route") { t in
             return (own, why, cmd, v.callsOf("agents.ask").first)
         }
         t.eq(got?.0, ["Ask juno | juno"])
-        t.eq(got?.1, "Dana is in Harlow Legal, so juno answers with your memory.")
+        t.eq(got?.1, "your assistant")
         t.eq(got?.2, ["Ask juno | juno"])
         t.eq(VJ.s(got?.3?["agent"]), "juno")
         t.eq(VJ.s(got?.3?["text"]), "send the intake summary to Dana")
@@ -154,7 +154,7 @@ let agentRouteSuite = Suite("agent route") { t in
         v.tool("memory.ask") { _ in ["answer": "From memory.", "abstained": false, "known": [Any](), "sources": [Any]()] as [String: Any] }
         v.tool("threads.start") { _ in ["id": "qq"] }
         let got: (asked: [[String: Any]], memoryAsks: Int, answers: Int, reply: String, firstRow: String?)? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.memoryFirst = false; m.autoDelay = 0.05; m.willShow(front: nil); return m }
+            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.autoDelay = 0.05; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.follower.isStreaming && m.catalog.assistant != nil }
             await MainActor.run { m.text = "are you configured now?" }
             _ = await until { m.flat.contains { $0.kind == "ask" } }
@@ -187,7 +187,7 @@ let agentRouteSuite = Suite("agent route") { t in
         v.tool("memory.ask") { _ in ["answer": "You drive a Volvo.", "abstained": false, "known": [Any](), "sources": [Any]()] as [String: Any] }
         v.tool("threads.start") { _ in ["id": "qq"] }
         let got: (asks: [[String: Any]], agentAsks: Int, rows: [String])? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.memoryFirst = false; m.autoDelay = 3600; m.willShow(front: nil); return m }
+            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.autoDelay = 3600; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") && m.catalog.assistant != nil }
             await MainActor.run { m.text = "what car do I drive" }
             _ = await until { m.flat.contains { $0.title == "Ask memory" } }
