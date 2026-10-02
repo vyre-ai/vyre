@@ -40,6 +40,38 @@ viewer UI (native-core, app-design) wait for app-design's screens and the user's
 - Tests: core/artifacts/artifacts.test.js (10), share-server.test.js (1), lib/secret-text.test.js (2),
   plus boundaries, hygiene, modules, mcp-server-tools, docs-check green locally in temp homes.
 
+## Spikes (0.2.2, 2 Oct)
+
+- AR-S4, answered from sessions' recorded ACP streams (core/sessions/testing/real): both Codex and Grok
+  tell Vyre they may use the client's file calls (`fs.readTextFile` and `writeTextFile` are advertised
+  true in the handshake). Grok then really writes through `fs/write_text_file` (one in the plan-and-edit
+  turn, two `fs/read_text_file`), so Vyre as the ACP client sees the path and the content of every Grok
+  write and can emit `floor.wrote` itself. Codex does not: its edit turn is a shell command
+  (`printf 'hello\n' > hello.txt`) run in its own sandbox, with no `fs/write_text_file`, so a Codex file
+  reaches Vyre only by the folder watcher (or a completed tool call carrying a diff). For artifacts:
+  `floor.wrote` for Grok comes from the ACP write; for Codex it needs sessions' folder watcher on the
+  thread's artifacts folder. The folder watcher is the one path that covers both, which is what
+  capture already assumes.
+- AR-S1, Claude Code 2.1.268 measured on the test box (`claude -p --output-format stream-json --verbose`,
+  the init event's tool list): the built-in tools are Task, Bash, Cron*, DesignSync, Edit, Enter/ExitWorktree,
+  ListAgents, LSP, Monitor, NotebookEdit, PushNotification, Read, RemoteTrigger, ReportFindings,
+  ScheduleWakeup, SendMessage, Skill, TaskOutput, TaskStop, ToolSearch, WebFetch, WebSearch, Workflow, Write.
+  There is no Artifact or publish tool in a headless session (the `Artifact` tools appear only in interactive
+  sessions on a claude.ai login). What does publish or host content, and send as the person, is the account's own
+  claude.ai connectors, which load by default in every session of a logged-in account: Claude Docs (`create`,
+  `update`, `export`), Google Drive (`create_file`, `share_file`), Notion (`create-pages`, `create-file-upload`),
+  Slack (`create_canvas`, `send_message`), Gmail (`send_message`, `create_draft`) and Calendar. The switch
+  is `--strict-mcp-config` with Vyre's own `--mcp-config` (sessions already uses it for the no-tools mode,
+  core/sessions/claude.js), which removes all of them; `--disallowedTools "mcp__claude_ai_Claude_Docs__*"`
+  removes one family. For Vyre sessions the artifacts brief line alone does not stop a model using its own Docs
+  connector: sessions should pass `--strict-mcp-config` on every Vyre-started Claude session.
+  Codex and Grok were not run: the CLIs are not on the test box. Their ImageGen tools make media (not publish
+  to a host); a headless tool list for each needs the CLI installed on a runner with an account, which is
+  sessions' real-account study area (they hold the fixtures).
+- AR-S3 (Funnel for a second tailscaled node in its own container, and a userspace second node on a Mac server)
+  needs a Tailscale auth key and a throwaway tailnet; it is tailnet's to run. Nothing here changes until it does:
+  public links stay off, with a plain message, until the share server runs under its own user.
+
 ## Doing
 
 - 1 Oct: generated media built (core/artifacts/media.js, store.writeMedia, ingestMedia and the three media tools in index.js, content route with Range): tests in media.test.js and a round trip in backup.test.js. Waits: drive's entry shape (virtual entry served by artifacts, lead's ruling), sessions' register call, native-core's inline card (img src = the content route, thread.artifact carries mime and bytes). 0.2.1: thumbnails, gallery, audio polish, quotas, public links for media.
