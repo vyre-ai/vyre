@@ -215,8 +215,8 @@ export class Runtime {
         do: spec.summary ? spec.summary.do : duty && spec.instruction ? spec.instruction.split("\n")[0].slice(0, 240) : "Files what it finds into the project, marked as from outside",
       },
       facts: {
-        reads: spec.net ? Object.keys(spec.net) : [],
-        readsText: spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
+        reads: spec.source ? ["github (your connected account, read only)"] : spec.net ? Object.keys(spec.net) : [],
+        readsText: spec.source ? "Reads the new comments other people leave on this session's pull requests, from GitHub through your connected account (read only)" : spec.net ? `Reads ${Object.keys(spec.net).join(", ")}` : "Reads nothing from the web",
         credentials: spec.net ? Object.entries(spec.net).filter(([, v]) => v.vault || v.credential).map(([h, v]) => ({ host: h, item: v.vault || v.credential, how: v.credential ? "the vault calls it, read only" : "Vyre adds it to requests" })) : [],
         acts: wakes ? `Posts what it finds into session ${wakes} as quoted notes, up to ${spec.wake ? spec.wake.maxPerDay : DEFAULT_PER_DAY} times a day; never as an instruction`
           : duty && spec.act ? "May take actions for its teammate; anything outward that you did not ask for holds for you" : "Never acts: it reads and files",
@@ -540,7 +540,28 @@ export class Runtime {
   }
 
   /** Run in a child and check the items; a bad item is the run's error. */
+  /**
+   * A watcher whose items come from a first-party tool Vyre calls itself (no watcher code, no child, nothing
+   * of its own to reach the network with): today github.session.review, the new comments from other people
+   * on the pull requests of a session's branch. The first run only learns where to start from. Each item
+   * is outside text and is filed and quoted as such; the cursor is the tool's own.
+   */
+  async execSource(spec, since) {
+    const t0 = Date.now(), base = { logs: /** @type {string[]} */ ([]), sandboxed: true, isolated: true, wall: "source" };
+    const r = await this.d.call(/** @type {{ tool: string }} */ (spec.source).tool, { project: spec.project, session: /** @type {{ session: string }} */ (spec.about).session, ...(since ? { since: String(since) } : {}) });
+    if (r.error) return { ...base, items: [], cursor: null, ms: Date.now() - t0, error: `${spec.source && spec.source.tool}: ${r.error.message || r.error.code}` };
+    const data = r.data || {};
+    const start = new Date(this.now()).toISOString().replace(/\.\d+Z$/, "Z");
+    if (since == null) return { ...base, logs: ["starting from now"], items: [], cursor: typeof data.cursor === "string" ? data.cursor : start, ms: Date.now() - t0, error: null };
+    const raw = (Array.isArray(data.items) ? data.items : []).map(i => ({ id: i.id, title: i.title, about: i.author, quote: i.quote, url: i.url, at: i.at }));
+    try {
+      const items = normalize(raw);
+      return { ...base, logs: [`${items.length} new`], items, cursor: typeof data.cursor === "string" ? data.cursor : String(since), ms: Date.now() - t0, error: null };
+    } catch (e) { return { ...base, items: [], cursor: null, ms: Date.now() - t0, error: /** @type {Error} */ (e).message }; }
+  }
+
   async exec(dir, spec, since, hook) {
+    if (spec.source) return this.execSource(spec, since);
     const res = await runOnce({ dir, needs: spec.needs, since, hook, timeoutMs: spec.timeout * 1000, fetch: (n, field) => this.d.fetch(n, spec.name, field), signal: this.abort.signal, wall: typeof this.d.wall === "function" ? this.d.wall() : this.d.wall, findWall: this.d.findWall, viaRequest: spec.net ? async (url, init) => {
         const rule = spec.net[url.hostname];
         if (!rule || !rule.credential) return undefined;

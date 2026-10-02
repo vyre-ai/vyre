@@ -8697,7 +8697,7 @@ Stop a watcher running until it is resumed. The pause says who stopped it.
 
 ### `watchers.preset`
 
-Write a watcher for a common source from a few fields, left off with its card. kind "mail": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind "calendar": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind "repo": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind "slack": project, credential, channel (the channel id), match, when (default every 15 minutes). kind "feed": project, url, match, when (default hourly). None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.
+Write a watcher for a common source from a few fields, left off with its card. kind "mail": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind "calendar": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind "repo": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind "slack": project, credential, channel (the channel id), match, when (default every 15 minutes). kind "feed": project, url, match, when (default hourly). kind "pr": project, session (the session id), when (default every 10 minutes), maxPerDay (default 5): posts the new comments other people leave on that session's pull requests into the session, as quoted data. None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.
 
 - Input:
   - `kind` string, required
@@ -8711,8 +8711,10 @@ Write a watcher for a common source from a few fields, left off with its card. k
   - `instruction` string
   - `label` string
   - `match` list of string
+  - `maxPerDay` integer
   - `only` string
   - `repo` string
+  - `session` string
   - `url` string
   - `when` string
 - Callers: any caller

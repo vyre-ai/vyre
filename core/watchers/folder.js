@@ -15,6 +15,8 @@ import path from "node:path";
 import { parse } from "./cron.js";
 
 export const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+/** What Vyre itself may read for a watcher with no code of its own (first party tools, read only). */
+export const SOURCE_TOOLS = ["github.session.review"];
 const THREAD = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const VAULT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
 const KIND = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
@@ -29,7 +31,7 @@ export const DEFAULT_TIMEOUT_S = 60;
  *   on: string|null, where: Record<string, string|number|boolean>|null,
  *   net: Record<string, { vault?: string, credential?: string, field?: string, header: string, scheme: string }>|null,
  *   ask: { dailyUsd: number }|null, params: Record<string, any>|null, summary: { when: string, check?: string, do: string }|null,
- *   owner: { kind: "teammate", teammate: string }|{ kind: "session", thread: string }|null, about: { session: string }|null, wake: { maxPerDay: number }|null, instruction: string|null, act: boolean, when: string|null }} Spec
+ *   owner: { kind: "teammate", teammate: string }|{ kind: "session", thread: string }|null, about: { session: string }|null, wake: { maxPerDay: number }|null, source: { tool: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
 
 /**
@@ -83,7 +85,7 @@ function check(raw, name, problems) {
   if (!Number.isFinite(timeout) || timeout <= 0 || timeout > MAX_TIMEOUT_S) problems.push(`timeout is seconds, at most ${MAX_TIMEOUT_S}`);
   const net = checkNet(raw.net, problems);
   const owner = checkOwner(raw.owner, problems);
-  const { about, wake } = checkWake(raw, owner, problems);
+  const { about, wake, source } = checkWake(raw, owner, problems);
   let params = null;
   if (raw.params !== undefined) {
     const ok = raw.params && typeof raw.params === "object" && !Array.isArray(raw.params) && JSON.stringify(raw.params).length <= 2000
@@ -100,13 +102,13 @@ function check(raw, name, problems) {
   if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
   if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
   if (raw.act !== undefined && !owner) problems.push("act is for a teammate's duty or a watcher that wakes a session: it needs owner");
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake"].includes(k));
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake", "source"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under net`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
   for (const h of Object.values(net || {})) { if (h.vault) needed.add(h.vault); if (h.credential) needed.add(h.credential); }
-  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
 }
 
@@ -141,10 +143,16 @@ export function checkOwner(owner, problems) {
  * `about` and `wake`: a watcher that wakes a session. about is { session: "<thread id>" }; it needs act true and
  * owner { kind: "session", thread: <the same id> }, so only the session a watcher was made for hears it, and
  * wake.maxPerDay (default 5, at most 20) bounds how often.
- * @returns {{ about: { session: string }|null, wake: { maxPerDay: number }|null }}
+ * @returns {{ about: { session: string }|null, wake: { maxPerDay: number }|null, source: { tool: string }|null }}
  */
 function checkWake(raw, owner, problems) {
   let about = null, wake = null;
+  let source = null;
+  if (raw.source !== undefined) {
+    const sc = raw.source;
+    if (!sc || typeof sc !== "object" || Array.isArray(sc) || Object.keys(sc).some(k => k !== "tool") || !SOURCE_TOOLS.includes(sc.tool)) problems.push(`source is { "tool": one of ${SOURCE_TOOLS.join(", ")} }: what Vyre itself reads for this watcher, with no code of its own`);
+    else source = { tool: sc.tool };
+  }
   if (raw.about !== undefined) {
     const a = raw.about;
     if (!a || typeof a !== "object" || Array.isArray(a) || Object.keys(a).some(k => k !== "session") || typeof a.session !== "string" || !THREAD.test(a.session)) problems.push('about is { "session": "<the session\'s id>" }');
@@ -162,7 +170,8 @@ function checkWake(raw, owner, problems) {
     if (!wake) wake = { maxPerDay: 5 };
   }
   if (owner && owner.kind === "session" && !about) problems.push("owner session is for a watcher that wakes it: add about { session }");
-  return { about, wake };
+  if (source && !about) problems.push("source needs about: the session it reads for");
+  return { about, wake, source };
 }
 
 const HOST = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24}$/;
