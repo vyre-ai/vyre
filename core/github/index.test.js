@@ -961,6 +961,7 @@ test("github.star.status and github.star: the person's own account stars vyre-ai
   state = 401;
   assert.equal((await w.as("deck")("github.star", {})).error.code, "token_invalid");
   assert.equal((await w.as("deck")("github.star.status", {})).error.code, "token_invalid");
+});
 
 test("github.session.review: new comments from other people on the session's open PRs, as outside text with a cursor; the account's own comments are left out; watchers and sessions only", async t => {
   const w = await prWorld(t);
