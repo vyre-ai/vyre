@@ -4,8 +4,12 @@
 // The ring draws relay.pair.ticket's raw secret while it's live (deck/js/phone-code.js), so this
 // module is built around reviewer's pre-review points (relayed by the lead, 28 Sep), not just
 // the visual mechanics:
-//  1. Minted only on an explicit tap ("Add a device"), never on render/page load; no auto-mint
-//     loop — `every(tick, 1000)` only ever toggles state and redraws an ALREADY-minted ticket.
+//  1. Minted only on an explicit tap ("Add a device"), never on render/page load. After that tap the
+//     card keeps a code fresh for the person who is looking at it (RENEW below): a new one in the last
+//     30 seconds, or when they come back to a code that has run out, so a second scan (the iPhone's
+//     install-then-scan) always finds a live ring. Only while this is in view and focused, never with
+//     no proof if the server wants one (then a plain Refresh, as before), at most MAX_RENEWS in a row.
+//     Everything else in `every(tick, 1000)` only toggles state and redraws an ALREADY-minted ticket.
 //  2. Blanks to the idle avatar (no ticks) on document hidden, window blur, expiry and
 //     redemption — the SVG node is replaced (dom.js's put()/replaceChildren), never just
 //     display:none'd.
@@ -21,10 +25,11 @@ import { h, put } from "./dom.js";
 import { icon } from "./icons.js";
 import { UNCONFIRMED_MS, UNCONFIRMED_LINE, ticketRingSvg, ticketPhase, countdown, playDance, idleAvatarSvg } from "./phone-code.js";
 
+/** How many codes in a row this card renews by itself before it asks for a tap: about half an hour. */
+const MAX_RENEWS = 6;
 const parser = new DOMParser();
-// pwa's committed route for pairScanSheet() (28 Sep, not yet a real page — an exported function
-// only — but this is the path they're pointing phone.vyre.run at).
-const SCAN_LINE = "Open phone.vyre.run/pair/scan on your phone and Wink to connect.";
+// wink.vyre.run is the camera page (relay/wink); phone.vyre.run redirects to it.
+const SCAN_LINE = "Open wink.vyre.run on your phone and scan this code. On an iPhone, add Vyre to your Home Screen first.";
 /** SVG markup -> a real node (the Deck's own rule, deck/js/dom.js: no innerHTML). @param {string} src */
 const parseSvg = src => /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));
 
@@ -41,6 +46,9 @@ const parseSvg = src => /** @type {SVGElement} */ (document.importNode(parser.pa
  */
 export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive = () => true, onNext = null }) {
   let mintedAt = 0, ttlMs = 5 * 60_000, ticket = "", shown = false, focused = true, ringDrawn = false, unconfirmed = false;
+  // RENEW: set by an explicit tap (start, Refresh), cleared by Remove, a redemption and leaving. renews counts the
+  // automatic ones since the last tap; needsTap says the server wanted a proof, so the person taps Refresh.
+  let armed = false, renews = 0, renewing = false, needsTap = false;
 
   const ringEl = h("div", { class: "phone-code-ring", "aria-live": "polite" });
   const setRing = (/** @type {SVGElement} */ node) => put(ringEl, node);
@@ -81,9 +89,30 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     if (r.data?.ticket) { ticket = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt); }
     else ticket = ""; // a declined passkey, or the tool is still unmerged: nothing real to draw yet
   };
+  /** A fresh code for the person looking at this card, with no prompt: the old one stays on screen until the new one lands. */
+  const renew = async () => {
+    if (!armed || renewing || needsTap || !shown || !alive() || renews >= MAX_RENEWS) return false;
+    renewing = true;
+    try {
+      const r = await attempt("relay.pair.ticket", {}); // no presence asked: a server that wants a proof says so and the person taps Refresh
+      if (!alive() || !shown) return false;
+      if (!r.data?.ticket) { needsTap = true; return false; }
+      renews++;
+      mintedAt = Date.now();
+      unconfirmed = r.data.confirmed === false;
+      ticket = r.data.ticket; ttlMs = Math.max(0, (r.data.expiresAt ?? mintedAt + ttlMs) - mintedAt);
+      blank(); // a fresh mint always redraws (reviewer's MEDIUM above)
+      return true;
+    } finally { renewing = false; }
+  };
   const tick = () => {
     if (!shown || !alive()) return;
     const { phase, msLeft } = ticketPhase(mintedAt, ttlMs);
+    // In view and focused, with a code about to run out (or already out): a new one first, the "expired" line only if that cannot be done.
+    if ((phase === "expiring" || phase === "expired") && armed && !needsTap && !renewing && visible() && renews < MAX_RENEWS) {
+      renew().then(ok => { if (alive()) { if (!ok && phase === "expired") { ticket = ""; blank(); put(meta, [h("p", { class: "small muted" }, "This code expired."), refreshBtn]); } else tick(); } });
+      if (phase === "expired") return;
+    }
     if (phase === "expired") {
       ticket = ""; // spent; never redrawable
       blank();
@@ -103,7 +132,7 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
   };
 
   const start = async () => {
-    shown = true;
+    shown = true; armed = true; renews = 0; needsTap = false;
     put(body, ringEl, h("p", { class: "small muted" }, SCAN_LINE), meta);
     put(meta, h("span", { class: "busy" }));
     // Reviewer's LOW: blank before the mint's own Touch ID/passkey prompt, not only after it
@@ -114,7 +143,7 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     if (alive()) tick();
   };
   startBtn.addEventListener("click", start);
-  refreshBtn.addEventListener("click", async () => { put(meta, h("span", { class: "busy" })); blank(); await mint(); if (alive()) tick(); });
+  refreshBtn.addEventListener("click", async () => { armed = true; renews = 0; needsTap = false; put(meta, h("span", { class: "busy" })); blank(); await mint(); if (alive()) tick(); });
 
   // Reviewer's #2: hidden/blurred blanks the ring at once, not on the next 1s tick.
   const onVisChange = () => { if (shown) tick(); };
@@ -130,7 +159,7 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
   });
 
   const showConnected = (/** @type {string} */ deviceId, /** @type {string} */ initialName, /** @type {string|null} */ fingerprint) => {
-    shown = false;
+    shown = false; armed = false;
     ticket = ""; // redeemed: gone from memory, not just off-screen
     // Reviewer's LOW on the MEDIUM fix: ringDrawn=false alone left ringEl itself still holding
     // the just-redeemed ring's markup (only the NEXT drawRing() call would replace it), so
@@ -168,6 +197,7 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
   };
 
   const resetToStart = () => {
+    armed = false; shown = false;
     blank();
     put(body, ringEl, h("p", { class: "small muted" }, SCAN_LINE), meta);
     put(meta, startBtn);
