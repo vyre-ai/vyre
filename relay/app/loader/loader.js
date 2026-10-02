@@ -17,6 +17,8 @@ import { registerWorker, adoptInWorker } from "./adopt.js";
 import { pairTicketFrom, HOSTED_RELAY, cardWords, pairWithCard } from "./fragment.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
+// The box holds a redeem until the screen it came from confirms (up to 60 s): the handshake must outlast the person's tap.
+const PAIR_WAIT_MS = 90000;
 const BOX = "vyre.box";
 const LAST = "vyre.release";
 
@@ -119,7 +121,7 @@ async function main() {
     box = await pairWithCard(handed, {
       resolve: () => { status("Looking up this pairing code"); return resolveTicket(handed, { relay: HOSTED_RELAY, crypto }); },
       confirm: found => confirmCard(cardWords(found)),
-      pair: found => { status("Pairing this device with your server"); return pairOffer(found.offer, { name: browserName(), about, keyStore, crypto }); },
+      pair: found => { status("Pairing this device with your server"); return pairOffer(found.offer, { name: browserName(), about, keyStore, crypto, timeout: PAIR_WAIT_MS }); },
     });
     if (!box) { status("Nothing was paired."); return; }
     store(BOX, box);
