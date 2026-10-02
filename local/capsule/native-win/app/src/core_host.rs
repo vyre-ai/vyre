@@ -28,6 +28,8 @@ struct Running {
 }
 
 pub struct CoreHost {
+    /// "Keep them in sync" is on: the core stays up until the person stops it. Remembered across app starts in `sync-core`.
+    keep: std::sync::atomic::AtomicBool,
     state: Mutex<CoreState>,
     running: Mutex<Option<Running>>,
     /// One start or install at a time.
@@ -35,7 +37,7 @@ pub struct CoreHost {
 }
 
 impl CoreHost {
-    pub fn new() -> CoreHost { CoreHost { state: Mutex::new(CoreState::Off), running: Mutex::new(None), busy: Mutex::new(()) } }
+    pub fn new() -> CoreHost { CoreHost { keep: std::sync::atomic::AtomicBool::new(false), state: Mutex::new(CoreState::Off), running: Mutex::new(None), busy: Mutex::new(()) } }
     pub fn state(&self) -> CoreState { self.state.lock().unwrap().clone() }
     fn set(&self, s: CoreState) { *self.state.lock().unwrap() = s; }
 
@@ -73,10 +75,35 @@ impl CoreHost {
     /// One call to one allowed tool, on the core's pipe.
     pub fn call(&self, tool: &str, input: &serde_json::Value) -> Result<serde_json::Value, String> {
         let req = core_calls::request(tool, input)?;
-        let guard = self.running.lock().unwrap();
-        let r = guard.as_ref().ok_or("Vyre's local helper is not running.")?;
-        let raw = imp::exchange(&r.child, &r.pipe, &req)?;
-        core_calls::parse_response(&raw)
+        let out = {
+            let guard = self.running.lock().unwrap();
+            let r = guard.as_ref().ok_or("Vyre's local helper is not running.")?;
+            core_calls::parse_response(&imp::exchange(&r.child, &r.pipe, &req)?)?
+        };
+        Ok(out)
+    }
+
+    /// Note a sync import started or stopped, so the core is kept up (or let go) accordingly.
+    pub fn note_sync(&self, app: &AppHandle, on: bool) {
+        self.keep.store(on, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(dir) = app.path().app_local_data_dir() {
+            let marker = dir.join("sync-core");
+            if on { let _ = std::fs::create_dir_all(&dir); let _ = std::fs::write(&marker, b"1"); } else { let _ = std::fs::remove_file(&marker); }
+        }
+    }
+
+    /// At app start: a sync import the person asked for before gets its core back.
+    pub fn restore_sync(&self, app: &AppHandle) -> bool {
+        let on = app.path().app_local_data_dir().map(|d| d.join("sync-core").is_file()).unwrap_or(false);
+        self.keep.store(on, std::sync::atomic::Ordering::SeqCst);
+        on
+    }
+
+    /// The import screen closed: stop the core unless a send is running or sync is kept on, because it holds about 90 MB.
+    pub fn let_go_if_idle(&self) {
+        if self.keep.load(std::sync::atomic::Ordering::SeqCst) { return; }
+        let sending = self.call("import.status", &serde_json::json!({})).ok().and_then(|s| s["upload"]["state"].as_str().map(|x| x == "sending")).unwrap_or(false);
+        if !sending { self.stop(); }
     }
 }
 
@@ -130,11 +157,24 @@ pub fn selftest(work: &Path, pkg: &Path, node_zip: &Path) -> SelfTest {
     note("start", started.as_ref().map(|_| "up".into()).map_err(|e| e.clone()));
     if let Ok(r) = started {
         *host.running.lock().unwrap() = Some(r);
+        note("health", {
+            let g = host.running.lock().unwrap();
+            let r = g.as_ref().unwrap();
+            imp::exchange(&r.child, &r.pipe, &core_calls::health_request()).and_then(|raw| core_calls::parse_response(&raw)).map(|v| format!("rss {} MB, {} modules running, role {}", v["memory"]["rss"], v["modules"]["running"], v["role"]))
+        });
         note("status", host.call("import.status", &serde_json::json!({})).map(|v| v.to_string().chars().take(120).collect()));
         note("scan", host.call("import.scan", &serde_json::json!({})).and_then(|v| {
             let n = v["sources"].as_array().map(|a| a.iter().map(|s| s["sessions"].as_u64().unwrap_or(0)).sum::<u64>()).unwrap_or(0);
             if n >= 1 { Ok(format!("{n} session(s) found")) } else { Err(format!("found none: {}", v.to_string().chars().take(700).collect::<String>())) }
         }));
+        // The calls the import screen makes, in its order. There is no server here, so Send must come back refused in plain words.
+        let plan = host.call("import.plan", &serde_json::json!({ "include": ["C:\\Work\\demo"] }));
+        note("plan", plan.as_ref().map_err(|e| e.clone()).and_then(|p| if p["sessions"] == 1 { Ok(format!("{} session, pace {}", p["sessions"], p["pace"])) } else { Err(p.to_string()) }));
+        if let Ok(p) = plan {
+            let id = p["plan"].as_str().unwrap_or("").to_string();
+            note("send-without-a-server", host.call("import.start", &serde_json::json!({ "plan": id, "mode": "once", "pace": "gentle" })).map(|v| format!("UNEXPECTED success {v}")).or_else(|e| Ok::<String, String>(format!("refused: {e}"))));
+        }
+        note("stop", host.call("import.stop", &serde_json::json!({})).map(|v| v.to_string()));
         note("refused-tool", host.call("vault.get", &serde_json::json!({})).map(|_| "UNEXPECTED success".to_string()).or_else(|e| if e.contains("not a call") { Ok("refused".into()) } else { Err(e) }));
         host.stop();
         note("stopped", if host.running.lock().unwrap().is_none() { Ok("child ended".into()) } else { Err("still running".into()) });

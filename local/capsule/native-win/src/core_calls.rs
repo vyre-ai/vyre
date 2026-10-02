@@ -26,14 +26,23 @@ fn abs_path(v: &Value) -> Option<&str> {
     Some(s)
 }
 
+/// A folder a session ran in, as the core lists it: a Windows path, or a POSIX one from a session run inside
+/// WSL. It is compared with the scan's own list and never opened, so either form is safe to send.
+fn session_folder(v: &Value) -> Option<&str> {
+    if let Some(s) = abs_path(v) { return Some(s); }
+    let s = v.as_str()?;
+    if s.len() > MAX_PATH || s.contains('\0') || s.contains('\\') || !s.starts_with('/') || s.split('/').any(|p| p == "..") { return None; }
+    Some(s)
+}
+
 fn only_keys(o: &Map<String, Value>, ok: &[&str]) -> Result<(), String> {
     match o.keys().find(|k| !ok.contains(&k.as_str())) { Some(k) => Err(format!("{k} is not an input of this call")), None => Ok(()) }
 }
 
-fn path_list(v: &Value, what: &str) -> Result<Vec<Value>, String> {
+fn path_list(v: &Value, what: &str, pick: fn(&Value) -> Option<&str>) -> Result<Vec<Value>, String> {
     let a = v.as_array().ok_or_else(|| format!("{what} must be a list"))?;
     if a.len() > MAX_ITEMS { return Err(format!("{what} is too long")); }
-    a.iter().map(|x| abs_path(x).map(|s| json!(s)).ok_or_else(|| format!("{what} holds something that is not a full folder path"))).collect()
+    a.iter().map(|x| pick(x).map(|s| json!(s)).ok_or_else(|| format!("{what} holds something that is not a full folder path"))).collect()
 }
 
 /// The input to send, rebuilt from only the fields the tool takes, or why the call is refused.
@@ -44,12 +53,12 @@ pub fn check(tool: &str, input: &Value) -> Result<Value, String> {
     match tool {
         "import.scan" => {
             only_keys(o, &["folders"])?;
-            Ok(match o.get("folders") { Some(f) => json!({ "folders": path_list(f, "folders")? }), None => json!({}) })
+            Ok(match o.get("folders") { Some(f) => json!({ "folders": path_list(f, "folders", abs_path)? }), None => json!({}) })
         }
         "import.plan" => {
             only_keys(o, &["include", "exclude"])?;
-            let include = path_list(o.get("include").ok_or("include is needed")?, "include")?;
-            Ok(match o.get("exclude") { Some(e) => json!({ "include": include, "exclude": path_list(e, "exclude")? }), None => json!({ "include": include }) })
+            let include = path_list(o.get("include").ok_or("include is needed")?, "include", session_folder)?;
+            Ok(match o.get("exclude") { Some(e) => json!({ "include": include, "exclude": path_list(e, "exclude", session_folder)? }), None => json!({ "include": include }) })
         }
         "import.start" => {
             only_keys(o, &["plan", "mode", "pace"])?;
@@ -128,6 +137,10 @@ mod tests {
         assert!(check("import.scan", &json!({ "folders": "C:\\x" })).is_err());
         assert!(check("import.scan", &json!({ "extra": 1 })).is_err());
         assert!(check("import.plan", &json!({})).is_err());
+        assert!(check("import.plan", &json!({ "include": ["/home/alex/work"] })).is_ok(), "a session run inside WSL");
+        assert!(check("import.plan", &json!({ "include": ["/home/../etc"] })).is_err());
+        assert!(check("import.plan", &json!({ "include": ["relative"] })).is_err());
+        assert!(check("import.scan", &json!({ "folders": ["/home/alex"] })).is_err(), "scan opens its folders, so only Windows paths");
         assert_eq!(check("import.plan", &json!({ "include": ["C:\\a"], "exclude": ["C:\\a\\b"] })).unwrap(), json!({ "include": ["C:\\a"], "exclude": ["C:\\a\\b"] }));
         assert_eq!(check("import.start", &json!({ "plan": "p_1-x", "mode": "once", "pace": "gentle" })).unwrap(), json!({ "plan": "p_1-x", "mode": "once", "pace": "gentle" }));
         for bad in [json!({ "plan": "a b", "mode": "once", "pace": "fast" }), json!({ "plan": "p", "mode": "always", "pace": "fast" }), json!({ "plan": "p", "mode": "once", "pace": "now" }), json!({ "plan": "p", "mode": "once" })] {

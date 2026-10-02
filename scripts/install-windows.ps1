@@ -115,6 +115,22 @@ function Remove-VyreWindows {
     Write-Host "Done."
 }
 
+# --- Tailscale (v0.2.3: the PC reaches the person's server over their tailnet) ----------------------
+# Checked, never installed: Tailscale is the person's own network, so this script only says where to get it.
+function Test-Tailscale {
+    $paths = @("$env:ProgramFiles\Tailscale\tailscale.exe", "${env:ProgramFiles(x86)}\Tailscale\tailscale.exe")
+    if ($paths | Where-Object { $_ -and (Test-Path $_) }) { return $true }
+    return [bool](Get-Command tailscale.exe -ErrorAction SilentlyContinue)
+}
+
+function Write-TailscaleNote {
+    if (Test-Tailscale) { return }
+    Write-Host ""
+    Write-Host "Vyre reaches your server through Tailscale, and Tailscale is not on this PC yet."
+    Write-Host "Get it at https://tailscale.com/download/windows, sign in, then open Vyre."
+    Write-Host "This installer does not install it for you."
+}
+
 # --- main ------------------------------------------------------------------------------------------
 
 $InstallDir = $env:VYRE_INSTALL_DIR
@@ -172,4 +188,5 @@ Start-Process -FilePath $app
 
 Write-Host ""
 Write-Host "Vyre is starting. A window will open to finish setup."
+Write-TailscaleNote
 Write-Host ""

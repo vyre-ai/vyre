@@ -28,3 +28,14 @@ test("install-windows.ps1: points at a real release, checks the installer agains
   assert.match(ps, /does NOT check SHA256SUMS\.sig/);
   assert.ok(!/VyreSetup\.msi/.test(ps), "no link to an installer that does not exist");
 });
+
+test("install-windows.ps1: checks for Tailscale, tells the person where to get it, and never installs it", () => {
+  const ps = read("scripts/install-windows.ps1");
+  assert.match(ps, /function Test-Tailscale/);
+  assert.match(ps, /Write-TailscaleNote\r?\n/);
+  assert.match(ps, /Tailscale is not on this PC yet/);
+  assert.match(ps, /https:\/\/tailscale\.com\/download\/windows/);
+  assert.match(ps, /does not install it for you/);
+  assert.ok(!/winget|choco|Start-Process[^\n]*tailscale/i.test(ps.replace(/#[^\n]*/g, "")), "no silent install of Tailscale");
+  assert.ok(!/\u2014|\u00a7/.test(ps.match(/function Write-TailscaleNote[\s\S]*?\n}/)[0]), "no em dash or section sign in what it prints");
+});

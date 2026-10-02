@@ -4,6 +4,24 @@ Scope: Windows support for Vyre. "Box" is retired for this work: Windows PCs and
 devices; the server is Linux only (including inside WSL2 on a Windows PC). No Windows hardware
 this round; verification leans on windows-latest CI.
 
+## 0.2.3 local core (#26), work/023-win-local-core (2 Oct 2026, read this first)
+
+Rulings (lead, binding): the core is bundled as a per-user process the tray app starts (a scheduled task now, a StartupTask in the MSIX build), never a service, never elevated. Node and the vyre package are pinned and hash-checked on every start. Keys are DPAPI in 0.2.3 (the relay Noise key, the core's link key, a new P-256 countersign key); TPM is in BACKLOG.md and Devices says "Keys on this PC are protected by Windows (DPAPI). Hardware-backed keys are coming." Tailscale is required on the PC; the installer checks and points, never installs. The Store plan (MSIX "Vyre", runFullTrust) follows the core.
+
+**Done and proved on the Win11 VM (`Vyre.exe --core-selftest`, VYRE_SELFTEST=1, throwaway folders, synthetic session):** step 1, install (signed `vyre.tgz` checked against the signed SHA256SUMS, node.exe from the pinned zip), start under `--permission` in a job object, health (about 90 MB resident with 54 modules running, role local), `import.status`, `import.scan` finding the synthetic Claude Code session, `import.plan`, Send refused in plain words when there is no server, `import.stop`, a tool outside the list refused, stop ends the child. Step 2a, the app-to-core pipe: the app asks Windows which process serves the pipe and compares it with the handle of the child it started before sending a byte; the app's vocabulary is the five import tools. Step 3, the import screen (plan, speed, mode, Send, progress, Stop). Step 4, the Tailscale check in the script installer and the NSIS installer.
+
+**Found on the VM, fixed:** (1) the node permission model counts the daemon's `existsSync` on its own pipe path as a file read and its `rmSync` as a write, so the pipe name is granted to the core; (2) the core reads the person's `~/.claude` only for the account's own `~/.vyre` (it asks `os.userInfo().homedir`, not USERPROFILE), so the throwaway selftest names Claude Code's folder with VYRE_CLAUDE_HOME; (3) the agent-home variables (CLAUDE_CONFIG_DIR, CODEX_HOME, GROK_HOME and the VYRE_*_HOME ones) are passed to the core, the same ones the app grants it.
+
+**Doing:** the countersign pipe (step 2b). Blocked on a ruling: the box side tailnet built (`link.companion.pair`, 023-companion) takes a presence proof from the app device's enrolled key, not the `vyre-companion-v1` message in `companion.rs`. Proposed: the app-owned pipe takes only the core's public key and nonce (client pid compared with the held process handle, one request per connection), the gate decides whether the app may call, and the app itself calls `link.companion.pair` over its relay channel with an ES256 presence proof from the new DPAPI P-256 key, then hands the answer to the core.
+
+**Next:** the core's own side (JS): reading the pipe name from stdin, DPAPI for its link key (a PowerShell ProtectedData call, since Node has no DPAPI), the companion request, and the transport that authenticates the core's key to the box (nothing on the rc yet: asked tailnet who owns it). Step 5, a fresh install, a scan and a real send to the test server from the VM, needs that transport. Trim the core's modules for role local (54 run, about 90 MB). Send reviewer-2 the pipe and key code.
+
+**Needs from others:** tailnet: the companion proof format, how a Windows app enrols its P-256 key as the device presence key, and the core-to-box transport. app-design: the copy on the import screen and the Tailscale note (Rules: every printed word is product copy). lead: the progress poll is 5 seconds while the import screen is showing and a send runs (RULES say nothing polls faster than 60 s); OK or slower?
+
+**Changed contracts:** none outside native-win. `scripts/install-windows.ps1` gains a Tailscale note at the end (the first-install-sig branch edits the same file; the tail is the same text, so the merge is mechanical). tauri.conf.json gains an NSIS hook file. Cargo.lock (library and app) gain flate2, tar and zip with their dependencies.
+
+**Perf (VM, 4 vCPU, debug build):** the core idle holds about 90 MB with the import screen closed it is stopped. CPU not measured yet.
+
 ## 0.2 status (2026-09-30, current - read this section first)
 
 **User decision 2026-09-30: unsigned for 0.2.** install-windows.ps1 now checks SHA-256 and says

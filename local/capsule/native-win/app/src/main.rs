@@ -113,10 +113,19 @@ fn show_history(app: &AppHandle) {
         let _ = w.set_focus();
         return;
     }
-    let _ = WebviewWindowBuilder::new(app, "history", WebviewUrl::App("history.html".into()))
+    let built = WebviewWindowBuilder::new(app, "history", WebviewUrl::App("history.html".into()))
         .title(APP_NAME)
         .inner_size(560.0, 720.0)
         .build();
+    if let Ok(w) = built {
+        let a = app.clone();
+        w.on_window_event(move |e| {
+            if let tauri::WindowEvent::Destroyed = e {
+                let a = a.clone();
+                std::thread::spawn(move || a.state::<core_host::CoreHost>().let_go_if_idle());
+            }
+        });
+    }
 }
 
 fn show_first_run(app: &AppHandle) {
@@ -235,7 +244,14 @@ async fn core_ensure(app: AppHandle) -> Result<(), String> {
 /// One call to one of the helper's fixed tools (core_calls::ALLOWED); the page never names a path or header.
 #[tauri::command]
 async fn core_call(app: AppHandle, tool: String, input: serde_json::Value) -> Result<serde_json::Value, String> {
-    tauri::async_runtime::spawn_blocking(move || app.state::<core_host::CoreHost>().call(&tool, &input)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let core = app.state::<core_host::CoreHost>();
+        let out = core.call(&tool, &input)?;
+        // A sync import keeps the core up (and across app starts); stopping any import lets it go.
+        if tool == "import.start" && input["mode"] == "sync" { core.note_sync(&app, true); }
+        if tool == "import.stop" { core.note_sync(&app, false); }
+        Ok(out)
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -621,6 +637,11 @@ fn main() {
             // Start in the tray; show the panel only when first-run is needed.
             if pinned(&handle).is_none() { show_first_run(&handle); }
             ensure_link_window(&handle);
+            // A "keep them in sync" import the person started earlier gets its helper back.
+            if pinned(&handle).is_some() && handle.state::<core_host::CoreHost>().restore_sync(&handle) {
+                let h = handle.clone();
+                std::thread::spawn(move || { let _ = h.state::<core_host::CoreHost>().ensure(&h); });
+            }
             spawn_update_loop(handle.clone());
 
             use tauri_plugin_deep_link::DeepLinkExt;
