@@ -59,8 +59,9 @@ export function relayLink(o) {
   const expect = (loc, ms = 5000) => new Promise(resolve => {
     const list = answers.get(loc) || [];
     answers.set(loc, list);
+    // Held (ref'd) while a caller waits on it: an unref'd timer let the event loop drain with the call still pending, and the
+    // test runner then failed the whole file (#13, lib/within.js). stop() answers every waiter, so nothing outlives the link.
     const t = setTimeout(() => { const i = list.indexOf(fn); if (i >= 0) list.splice(i, 1); resolve(null); }, ms);
-    t.unref?.();
     const fn = status => { clearTimeout(t); resolve(status); };
     list.push(fn);
   });
@@ -165,7 +166,6 @@ export function relayLink(o) {
       if (connected) return Promise.resolve(true);
       return new Promise(resolve => {
         const t = setTimeout(() => { waiters = waiters.filter(f => f !== done); resolve(false); }, ms);
-        t.unref?.();
         const done = ok => { clearTimeout(t); resolve(ok); };
         waiters.push(done);
       });
@@ -197,6 +197,10 @@ export function relayLink(o) {
       stopped = true;
       clearTimeout(retry);
       clearInterval(pinger);
+      // Whoever is still waiting on the relay (a registration's answer, the link coming up) is answered now, and their timers go.
+      for (const list of [...answers.values()]) for (const f of [...list]) f(null);
+      answers.clear();
+      waiters.splice(0).forEach(f => f(false));
       for (const ws of data.values()) { try { ws.close(1000, "box stopping"); } catch {} }
       data.clear();
       try { control?.close(1000, "box stopping"); } catch {}
