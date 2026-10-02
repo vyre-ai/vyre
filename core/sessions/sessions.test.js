@@ -652,6 +652,69 @@ for (const driver of ["cli", "sdk"]) {
     assert.match((await w.said(th.id)).at(-1), /#harbour is a file now in your folder: \/work\/from-artifacts\/a_1\.png \(image\/png\)/);
   });
 
+  test(`${driver}: continue-here carries a Mac session on in a new box thread: history over the link, or the synced copy when the Mac is asleep, the Mac untouched, person-only`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    noMemoryBlocks(w);
+    const MAC = "11111111-2222-4333-8444-555555555555";
+    const macTurns = [{ seq: 0, role: "user", text: "plan the Northwind menu" }, { seq: 1, role: "assistant", text: "Here is a plan: soup, bread, tea." }, { seq: 2, role: "user", text: "make it halal" }];
+    const state = { mode: "awake", calls: [] };
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "link.macs.call") {
+        state.calls.push(input.tool);
+        if (state.mode === "asleep") return { data: [{ ok: false, mac: "m1", name: "Studio Mac", error: { code: "mac_offline", message: "offline" } }] };
+        if (input.tool === "recall.thread") return { data: [{ ok: true, mac: "m1", name: "Studio Mac", data: { session: { id: MAC, name: "Intake form", cwd: "/Users/x/intake" }, turns: macTurns } }] };
+        if (input.tool === "threads.list") return { data: [{ ok: true, mac: "m1", name: "Studio Mac", data: [{ id: MAC, name: "Intake form", provider: "claude", project: null }] }] };
+      }
+      if (tool === "recall.thread" && input && input.machines === "local") {
+        state.calls.push("local recall.thread");
+        return state.synced ? { data: { session: { id: MAC, name: "Intake form (synced)" }, turns: state.synced } } : { error: { code: "failed", message: `no session ${input.session}` } };
+      }
+      return realCall(tool, input, caller, meta);
+    };
+    // Awake: the history comes over the link.
+    const r = await w.tool("threads.continue-here", { thread: MAC, surface: "deck" });
+    assert.equal(r.error, undefined, JSON.stringify(r));
+    assert.deepEqual([r.data.source, r.data.turns, r.data.from, r.data.provider], ["mac", 3, { machine: "Studio Mac", thread: MAC }, "claude"]);
+    assert.match(r.data.notice, /^Continued from Studio Mac: Intake form\. It has the conversation so far \(3 turns\), not Studio Mac's files\.$/);
+    const th = (await w.tool("threads.get", { thread: r.data.thread })).data;
+    assert.deepEqual(th.thread.continued_from, { machine: "Studio Mac", thread: MAC });
+    assert.ok(th.events.some(e => e.type === "thread.continued" && e.payload.source === "mac" && e.payload.from_thread === MAC && e.payload.turns === 3));
+    assert.ok(th.events.some(e => e.type === "thread.text" && e.payload.notice && /^Continued from Studio Mac/.test(e.payload.text)));
+    // The history is in front of the person's first words there, quoted as data.
+    assert.equal((await w.tool("threads.send", { thread: r.data.thread, text: "and the prices", surface: "deck" })).error, undefined);
+    await w.finished(r.data.thread);
+    const said = (await w.said(r.data.thread)).at(-1);
+    assert.match(said, /^echo: \[Vyre continuation: this conversation was started on Studio Mac/);
+    assert.match(said, /plan the Northwind menu/);
+    assert.match(said, /make it halal/);
+    assert.match(said, /and the prices$/);
+    // The Mac was only read, never written: nothing but recall.thread and threads.list went over the link.
+    assert.deepEqual([...new Set(state.calls)].sort(), ["recall.thread", "threads.list"]);
+    // Asleep: the last synced copy on the box stands in, and the notice says so.
+    state.mode = "asleep"; state.synced = macTurns.slice(0, 2);
+    const s = await w.tool("threads.continue-here", { thread: MAC, machine: "Studio Mac", surface: "deck" });
+    assert.equal(s.error, undefined, JSON.stringify(s));
+    assert.deepEqual([s.data.source, s.data.turns], ["synced", 2]);
+    assert.match(s.data.notice, /Studio Mac was not reachable, so this is its last synced copy\.$/);
+    // Nothing anywhere, or nothing said: a plain refusal and no new thread.
+    state.synced = null;
+    const n = (await w.tool("threads.list", { all: true })).data.length;
+    const none = await w.tool("threads.continue-here", { thread: MAC, surface: "deck" });
+    assert.equal(none.error.code, "not_found");
+    assert.match(none.error.message, /no paired Mac has session 11111111 and there is no synced copy.*Studio Mac: mac_offline/);
+    state.synced = [{ seq: 0, role: "user", text: "  " }];
+    assert.equal((await w.tool("threads.continue-here", { thread: MAC })).error.code, "no_history");
+    assert.equal((await w.tool("threads.list", { all: true })).data.length, n, "a refused continue makes no thread");
+    // A session already on the box is opened there, not copied; person-only.
+    assert.equal((await w.tool("threads.continue-here", { thread: r.data.thread })).error.code, "bad_input");
+    for (const caller of ["module:planner", "mcp", "mcp:agent:kit", "harness"]) {
+      const d = await w.d.registry.call("threads.continue-here", { thread: MAC }, caller, caller.startsWith("mcp:agent") ? { agent: "kit", agentKind: "agent" } : {});
+      assert.ok(d.error && ["denied", "not_found", "no_such_tool"].includes(d.error.code), `${caller}: ${JSON.stringify(d.error)}`);
+    }
+    for (const id of [r.data.thread, s.data.thread]) assert.equal((await w.tool("threads.get", { thread: id })).error, undefined, "both continued threads exist");
+  });
+
   test(`${driver}: two switches of one thread at once make one process: the second is busy`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
