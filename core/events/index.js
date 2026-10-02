@@ -14,6 +14,9 @@ const NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 // known prefixes); the vault's own redactor is stricter and is what the vault module uses.
 const LOOKS_SECRET = /(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:password|secret|token|api_?key)"\s*:\s*"[^"]{6,}")/i;
 
+/** Events one drain delivers before it stops (a loop of listeners emitting each other). */
+export const DRAIN_CAP = 10_000;
+
 export class Events {
   /** @param {import("node:sqlite").DatabaseSync} db */
   constructor(db) {
@@ -53,6 +56,8 @@ export class Events {
     this.listeners = new Map();
     /** Events stored and not yet delivered to the listeners, and whether a delivery is running. @type {any[]} */
     this.queue = [];
+    /** Where a dropped drain is said; the daemon sets it to its log. @type {(msg: string) => void} */
+    this.log = () => {};
     this.delivering = false;
     this.insert = db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)");
   }
@@ -78,7 +83,16 @@ export class Events {
     if (this.delivering) return event;
     this.delivering = true;
     try {
+      // One drain is bounded: listeners that answer each other (A emits B, B emits A) would otherwise spin the daemon for ever. The rest is dropped
+      // from delivery (it stays stored) and the log names the types.
+      let n = 0;
       for (let e; (e = this.queue.shift());) {
+        if (++n > DRAIN_CAP) {
+          const types = [...new Set([e, ...this.queue].map(x => x.type))].slice(0, 8).join(", ");
+          this.queue.length = 0;
+          this.log(`events: delivery stopped after ${DRAIN_CAP} events in one drain (listeners emitting each other?); dropped from delivery: ${types}`);
+          break;
+        }
         for (const key of [e.type, e.type.split(".")[0] + ".*", "*"]) {
           for (const fn of this.listeners.get(key) || []) {
             // A listener that throws must not stop the others or the emitter.

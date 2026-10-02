@@ -91,6 +91,7 @@ async function startLocked(opts, root, p, release) {
 
   const db = open(p.db);
   const events = new Events(db);
+  events.log = log;
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
   // On a Mac with vyre-core installed (ADR 0040), core holds the trust anchors: every presence

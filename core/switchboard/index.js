@@ -139,7 +139,7 @@ export const MIGRATIONS = [
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
-export const modelName = m => (typeof m === "string" && m.trim() ? m.trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
+export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 /** What a provider is called in a line a person reads. @param {string} p */
 export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
@@ -1013,8 +1013,9 @@ export class Switchboard {
       // What the provider says it runs is the truth (the record held what was asked for, an alias or an account default): the row follows it and a changed
       // answer is said once, so the header and the picker move to it as a switch would (#41).
       const was = rec ? rec.model : null;
-      st.model = t.model; this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
-      if (rec && t.model !== was && modelName(t.model) !== modelName(was)) this.emit("model.switched", { model: modelName(t.model), live: true, reported: true }, id, project);
+      const reported = String(t.model).slice(0, 80);
+      st.model = reported; this.set(id, { model: reported, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
+      if (rec && reported !== was && modelName(reported) !== modelName(was)) this.emit("model.switched", { model: modelName(reported), live: true, reported: true }, id, project);
     }
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
