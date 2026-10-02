@@ -393,8 +393,5 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 
 /* A page whose view file did not arrive yet (js/app.js waitForBox). */
 .page-wait { padding: 48px 24px; }
-
-/* A page's placeholder until its view has drawn (js/app.js skeleton()). */
-.page-skel { display: grid; gap: 14px; padding: 24px 20px; }
-.page-skel-h { height: 22px; width: 38%; border-radius: 6px; background: var(--hover); }
-.page-skel-r { height: 44px; border-radius: 8px; background: var(--hover); opacity: .6; }
+/* A page's placeholder until its view has drawn: the state kit's rows (css/kit.css) with the page's own padding. */
+.page-skel { padding: 24px 20px; }

@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 1: tokens and the state kit
+
+- `deck/css/tokens-v2.css`: the v2 design tokens (design-system.md, final): the surfaces, edges, text, accent and status colours with their washes, the type roles (caption 12, body 14, read 15, title 18, page 24, display 32, the 11 px label; larger body, read and title on a phone), the 4-grid space, the shapes, three elevations, motion durations and easings, and the layout sizes, in dark and paper. The names are new, so they sit beside the old roles and a screen moves to them when its pass lands; nothing changes on a screen yet.
+- `deck/css/kit.css` and `deck/js/states.js`, the state kit every list and panel renders through: skeleton rows at the real row height (the shine stops under reduced motion; a line says Vyre is slow to answer after 10 seconds), an empty state (one bold line, one sentence, one action), an error state (what failed, a quiet reason, Try again, and the real code behind Copy details), and `whyFailed` to turn an API error into those words. `empty()` in `js/dom.js`, used by every view, now draws the error form with its reason and can take a retry; a page's placeholder before its view draws is the skeleton.
+- `deck/test/type-roles.test.js`: a stylesheet may not use a text size outside the roles. The v2 files hold to it outright; the older ones are on a shrink-only list that each screen's pass takes down.
+
 #### deck: QA fixes (#51, #53, #54, #55, #56)
 
 - #51: `/drive` is Drive's address (it opens the files view) and `/devices` goes to Settings, Devices, so both survive a reload and a bookmark. An address nothing serves shows "There is nothing at this address." and no longer asks for a view file that does not exist.

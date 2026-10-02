@@ -1,0 +1,68 @@
+/* Deck v2 tokens (app-design, design-system.md section 2, final: the user approved the prototype, 2 Oct 2026).
+   Copied from team/0.2.2/deck-v2/deck-v2.css; the names are new (--surface-1, --edge, --s-4 ...) so they sit beside the v1 roles in tokens.css
+   and a screen moves to them when its pass lands. Nothing here changes a v1 screen. Do not add a value that is not in tokens-v2.json. */
+
+:root {
+  /* colour roles */
+  --bg: #0E0D0C;            /* app ground */
+  --surface-1: #141311;     /* page content ground, cards sit on it */
+  --surface-2: #1A1816;     /* cards, rows on hover */
+  --surface-3: #211F1C;     /* popovers, selected, inputs */
+  --edge: rgba(241,238,230,.075);
+  --edge-strong: rgba(241,238,230,.14);
+  --edge-top: rgba(241,238,230,.05);
+  --text: #F1EEE6; --text-2: #B3AEA4; --label: #8C877D; --faint: #5F5B54;
+  --primary: #F1EEE6; --primary-hover: #FFFFFF; --primary-ink: #0E0D0C;
+  --accent: #B8A4FF; --accent-wash: rgba(184,164,255,.12); --accent-ink: #0E0D0C;
+  --ok: #6FD3A0; --ok-wash: rgba(111,211,160,.12);
+  --warn: #E6B450; --warn-wash: rgba(230,180,80,.12);
+  --err: #F08A7A; --err-wash: rgba(240,138,122,.12);
+  --hover: rgba(241,238,230,.05); --press: rgba(241,238,230,.08); --selected: rgba(241,238,230,.09);
+  --code-bg: #100F0E; --scrim: rgba(0,0,0,.6);
+  /* type */
+  --sans: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --fs-caption: 12px; --lh-caption: 16px;
+  --fs-body: 14px;    --lh-body: 20px;
+  --fs-read: 15px;    --lh-read: 23px;
+  --fs-title: 18px;   --lh-title: 24px;
+  --fs-page: 24px;    --lh-page: 30px;
+  --fs-display: 32px; --lh-display: 38px;
+  --fs-label: 11px;
+  /* space: a 4 grid */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
+  /* shape */
+  --r-chip: 6px; --r-field: 10px; --r-button: 10px; --r-row: 10px; --r-card: 14px; --r-sheet: 20px; --r-full: 999px;
+  /* elevation: three levels, nothing else casts a shadow */
+  --elev-1: 0 1px 0 var(--edge-top) inset, 0 1px 2px rgba(0,0,0,.35);
+  --elev-2: 0 1px 0 var(--edge-top) inset, 0 8px 24px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.35);
+  --elev-3: 0 1px 0 var(--edge-top) inset, 0 28px 64px -20px rgba(0,0,0,.75), 0 6px 18px rgba(0,0,0,.4);
+  /* motion */
+  --dur-1: 90ms; --dur-2: 160ms; --dur-3: 240ms; --dur-4: 360ms;
+  --ease: cubic-bezier(.2,.7,.2,1); --ease-io: cubic-bezier(.4,0,.2,1); --spring: cubic-bezier(.34,1.4,.64,1);
+  /* layout */
+  --rail-w: 64px; --list-w: 320px; --side-w: 340px; --page-max: 980px; --read-max: 720px;
+  --control: 36px; --control-sm: 30px; --row-h: 56px;
+  color-scheme: dark;
+}
+:root[data-theme="paper"] {
+  --bg: #ECE8DE; --surface-1: #F4F1EA; --surface-2: #FBFAF6; --surface-3: #FFFFFF;
+  --edge: rgba(20,19,17,.09); --edge-strong: rgba(20,19,17,.18); --edge-top: rgba(255,255,255,.7);
+  --text: #141311; --text-2: #4A463F; --label: #6B665D; --faint: #A39D91;
+  --primary: #141311; --primary-hover: #3A3732; --primary-ink: #F4F1EA;
+  --accent: #5B3FC4; --accent-wash: rgba(91,63,196,.10); --accent-ink: #FFFFFF;
+  --ok: #1F7A4D; --ok-wash: rgba(31,122,77,.10);
+  --warn: #9A5B00; --warn-wash: rgba(154,91,0,.10);
+  --err: #B3392B; --err-wash: rgba(179,57,43,.09);
+  --hover: rgba(20,19,17,.045); --press: rgba(20,19,17,.075); --selected: rgba(20,19,17,.08);
+  --code-bg: #EFEBE2; --scrim: rgba(20,19,17,.32);
+  --elev-1: 0 1px 0 var(--edge-top) inset, 0 1px 2px rgba(20,19,17,.08);
+  --elev-2: 0 1px 0 var(--edge-top) inset, 0 8px 24px -8px rgba(20,19,17,.22), 0 2px 6px rgba(20,19,17,.1);
+  --elev-3: 0 1px 0 var(--edge-top) inset, 0 28px 64px -20px rgba(20,19,17,.3), 0 6px 18px rgba(20,19,17,.12);
+  color-scheme: light;
+}
+
+/* Phone: larger body, read and title, 44 px controls and 64 px rows (design-system.md, type table). */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  :root { --fs-body: 16px; --lh-body: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 26px; --fs-page: 28px; --lh-page: 34px; --control: 44px; --control-sm: 36px; --row-h: 64px; }
+}

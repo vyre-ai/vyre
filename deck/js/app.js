@@ -34,6 +34,7 @@ import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
 import { installRows } from "./rows.js";
 import * as trace from "./trace.js";
+import { skeleton as kitSkeleton } from "./states.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
@@ -563,9 +564,12 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
   }
 }
 
-/** The placeholder a page shows until its view has drawn: a header bar and a few rows. */
+/** The placeholder a page shows until its view has drawn: the state kit's skeleton rows (js/states.js). */
 function skeleton() {
-  return h("div", { class: "page-skel", "data-skel": "", "aria-hidden": "true" }, h("span", { class: "page-skel-h" }), [0, 1, 2, 3].map(() => h("span", { class: "page-skel-r" })));
+  const el = kitSkeleton(6);
+  el.setAttribute("data-skel", "");
+  el.classList.add("page-skel");
+  return el;
 }
 
 // ---- warming: a link about to be used has its view ready ----------------------------------------
