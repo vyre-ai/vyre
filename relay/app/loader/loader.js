@@ -14,7 +14,7 @@ import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
 import { registerWorker, adoptInWorker } from "./adopt.js";
-import { pairTicketFrom, HOSTED_RELAY, cardWords, pairWithCard } from "./fragment.js";
+import { pairTicketFrom, HOSTED_RELAY, cardWords, pairWithCard, phoneCodeWords } from "./fragment.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
 // The box holds a redeem until the screen it came from confirms (up to 60 s): the handshake must outlast the person's tap.
@@ -98,6 +98,16 @@ function confirmCard(w) {
   });
 }
 
+/** This phone's own key fingerprint under the status line while it waits for the screen's Confirm. Text only. @param {string} fingerprint */
+function showPhoneCode(fingerprint) {
+  const words = phoneCodeWords(fingerprint);
+  const root = document.getElementById("vyre-loader");
+  if (!words || !root) return;
+  let p = document.getElementById("vyre-phone-code");
+  if (!p) { p = document.createElement("p"); p.id = "vyre-phone-code"; p.className = "mono"; root.append(p); }
+  p.textContent = words;
+}
+
 async function main() {
   const registered = registerWorker();
   const crypto = webCrypto();
@@ -121,7 +131,7 @@ async function main() {
     box = await pairWithCard(handed, {
       resolve: () => { status("Looking up this pairing code"); return resolveTicket(handed, { relay: HOSTED_RELAY, crypto }); },
       confirm: found => confirmCard(cardWords(found)),
-      pair: found => { status("Pairing this device with your server"); return pairOffer(found.offer, { name: browserName(), about, keyStore, crypto, timeout: PAIR_WAIT_MS }); },
+      pair: found => { status("Pairing this device with your server"); return pairOffer(found.offer, { name: browserName(), about, keyStore, crypto, timeout: PAIR_WAIT_MS, onFingerprint: showPhoneCode }); },
     });
     if (!box) { status("Nothing was paired."); return; }
     store(BOX, box);
