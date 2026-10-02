@@ -58,14 +58,18 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 
 ## Doing
 
-- release.yml v2 on work/integrator: buildx multi-arch, push by digest, cosign sign and attest, minisign, release.json v2. Dry-run first.
+- 2 Oct, v0.2.2 emergency patch: cut on work/stage-0.2 at 166f72883 (worktree ../vyre-patch-022, branch work/patch-0.2.2), waiting for its hosted runs (node 36966576508 queued). Then: set repo variable VYRE_RELEASES=go (it is unset; lead told), tag v0.2.2 via gh api, run release.yml, stop at the `release` environment and send the lead the run id.
+- Contents: #38 (0443092a0, ffe8464ef, 1369e7f73 as 7dbde9698, 9095404b0, f9374289d), #40 (e6eea3f66 as 77171da97; the box-image proof 6aeea66f6 left out, it only edits box-image.yml), #39 (c3392e171), #42 (4b7e5e7a7 hand-ported without its parent 16504761f, API-key accounts, because #20 has an open IPv6 bypass; plus a test). #13 left out: its node job was queued, not green. The named shas were branch heads over unlanded chains, so cherry-picking them alone conflicts.
+- patch-release.mjs and check-release-lineage.mjs exist only on work/rc-0.2.2, so the tag line is stage (the old guard accepts a commit on work/stage-0.2) and the signing-path diff is empty.
+- PR #67 (work/ci-queue 8b5272861): reviewer-2's edits pushed (six workflows plus watcher-wall on stage pushes). Merge into stage after the v0.2.2 runs finish, then the relay-test-loop trigger on work/rc-0.2.2.
+- Stage green (work/stage-green-022 b5bf76ad0): context.changed test now uses the module's `now` option and mocked setTimeout; files.deliver test waits for the box receiver's own `tailscale status` call (the box always starts its receiver) before counting calls. Stage node 22's other red was perf-check CPU sustained 13.25% (one burst, run 36954232874); watching 166f72883 for a repeat.
 
 ## Next
 
-1. Land platform 84f901ce, plus vault's fixture move, plus the fixes for the 23 failures, once all are cleared and green on the full CI.
-2. Land the Node 24 fix once reviewed.
-3. release.yml v2 on a work branch, dry-run only; images go to a scratch ghcr name until the lead says go.
-4. Box-image isolation changes and the IM1 spike, with sessions and watchers.
+1. Tag and release v0.2.2, then assemble-site --tag v0.2.2 and the site deploy; the app deploy only if the Deck changed (it did: deck/chat, so yes).
+2. Land #67, then work/stage-green-022, on stage with normal merges.
+3. relay-test-loop dispatch-or-rc trigger on work/rc-0.2.2.
+4. Older plan: release.yml v2 (superseded by the single Ed25519 design), box-image isolation checks.
 
 ## Needs from others
 
