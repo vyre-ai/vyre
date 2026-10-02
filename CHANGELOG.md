@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(threads): under the own-surface rule the link's `box:<name>` surface and the computers module's checked screen keep their names (before, every federation send was labelled `box:via:link:box` and a take-over never saw the lease move), and moving the keyboard between a person's own surfaces still reports `lease.changed`.
 - fix(sessions): a provider's only account is its default (set when it is added or finished, kept when another is removed, and filled in once on existing installs), so a start never finds "no account" on a box with one sign-in. An account's identity that reads empty right after sign-in is asked again after 15 seconds instead of staying empty until a restart. Refs #37, #42
 #### chat: Send gives feedback and never sends twice (#39)
 
