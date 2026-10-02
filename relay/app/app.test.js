@@ -279,3 +279,20 @@ test("service worker: /app/<path> is answered from the build the loader named, h
   await w2.fire("message", { data: { type: "vyre-build", sha, manifest } });
   assert.equal((await w2.fire("fetch", { request: new Request("https://app.vyre.run/app/app.css") })).status, 404);
 });
+
+import { pairTicketFrom, HOSTED_RELAY } from "./loader/fragment.js";
+import nodeCrypto from "node:crypto";
+
+test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and nothing else is taken for one", () => {
+  const ticket = nodeCrypto.randomBytes(8);
+  const got = pairTicketFrom(`#pair=${ticket.toString("base64url")}`);
+  assert.ok(got);
+  assert.deepEqual(Buffer.from(/** @type {Uint8Array} */ (got)), ticket);
+  assert.equal(HOSTED_RELAY, "wss://relay.vyre.run");
+  assert.equal(pairTicketFrom("#pair=short"), null, "too short");
+  assert.equal(pairTicketFrom(`#pair=${nodeCrypto.randomBytes(40).toString("base64url")}`), null, "too long");
+  assert.equal(pairTicketFrom(`#pair=${ticket.toString("base64url")}&x=1`), null, "extra fields are not a hand-off");
+  assert.equal(pairTicketFrom(`#enroll=${ticket.toString("base64url")}`), null);
+  assert.equal(pairTicketFrom(""), null);
+  assert.equal(pairTicketFrom("#pair=!!!!!!!!!!!!"), null);
+});

@@ -23,7 +23,7 @@ import { buildManifest, signManifest, verifyManifest, sha256Hex, folderOf, sri, 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 /** The loader's own files: the page, its module and the device client it imports. */
-export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "manifest.js",
+export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "fragment.js", "manifest.js",
   // What makes "Add to Home Screen" install the app and not a bookmark: the web app manifest and its icons (the Deck's own).
   "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
   ...["bytes.js", "channel.js", "client.js", "noise.js", "paths.js", "response.js", "sse.js", "webcrypto.js"].map(f => `client/${f}`)];

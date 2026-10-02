@@ -9,11 +9,12 @@
 // device key is a non-extractable CryptoKey in IndexedDB, and the box record in localStorage
 // holds no secret. release.js stamps the release public key below.
 
-import { pair, connect, PAIR_BASE } from "./client/client.js";
+import { pair, pairTicket, connect, PAIR_BASE } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
 import { registerWorker, adoptInWorker } from "./adopt.js";
+import { pairTicketFrom, HOSTED_RELAY } from "./fragment.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
 const BOX = "vyre.box";
@@ -78,13 +79,26 @@ async function main() {
   const last = load(LAST) || {};
   const about = { kind: /** @type {"web"} */ ("web"), ...(last.release ? { release: last.release, manifest: last.manifest } : {}) };
   let box = load(BOX);
-  if (location.pathname === "/pair" && location.hash.length > 1) {
+  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`: take it out of the address at once, then
+  // redeem it here, with this origin's own device key. The passkey is enrolled here too, by the app, once it is connected.
+  const handed = pairTicketFrom(location.hash);
+  if (handed) {
+    history.replaceState(null, "", "/");
+    status("Pairing this device with your server");
+    box = await pairTicket(handed, { relay: HOSTED_RELAY, name: browserName(), about, keyStore, crypto });
+    store(BOX, box);
+  } else if (location.pathname === "/pair" && location.hash.length > 1) {
     status("Pairing this browser with your box");
     box = await pair(PAIR_BASE + location.hash, { name: browserName(), about, keyStore, crypto });
     store(BOX, box);
     history.replaceState(null, "", "/");
   }
-  if (!box) { status("This browser is not paired with a box yet. On your box, open Settings, Devices, and scan the code with this device's camera."); return; }
+  if (!box) {
+    // The installed app with no server yet opens the scanner, where the first pairing happens.
+    if (globalThis.matchMedia && globalThis.matchMedia("(display-mode: standalone)").matches) { location.replace("https://wink.vyre.run/"); return; }
+    status("This browser is not paired with a box yet. On your box, open Settings, Devices, and scan the code with this device's camera.");
+    return;
+  }
   status(`Connecting to ${box.name || "your box"}`);
   const conn = connect({ ...box, about, keyStore, crypto });
   const { base, manifest, want } = await loadBuild(conn);
