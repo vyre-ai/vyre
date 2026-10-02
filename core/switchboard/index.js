@@ -2499,7 +2499,8 @@ function imagesOf(list) {
  *    what they name among deck, phone, capsule, glass, lumen, mac, web (anchored). The login is compared with the recorded owner, not matched by prefix;
  *  - a person's own socket callers (cli, deck, capsule, local) say which of their surfaces they are in `surface`;
  *  - anything else (a model's mcp or harness call, a module, a hook, a guest, an agent's node, another login, an anonymous label) is its own label and
- *    can never claim one of the person's surfaces with `surface`: a name that would is replaced by "via:<label>", which contests like any other.
+ *    can never name a surface of its own choosing (one of the person's, a terminal's cli:<pid>, the link's box:x, another agent's): a different name is
+ *    replaced by "via:<label>", which contests like any other holder.
  * The link's words are always the box's surface, whatever the input says.
  * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
  */
@@ -2509,11 +2510,12 @@ export function surfaceFor(input, caller, owner) {
   const o = String(owner || "").trim().toLowerCase();
   const login = /^tailnet:(?!agent:)(.+)$/.exec(c);
   const verifiedOwner = Boolean(login && o && login[1].trim().toLowerCase() === o) || /^device:[a-z2-7]{16}$/.test(c);
-  const claim = (/** @type {string} */ x) => ownSurface(x) || /^(?:tailnet|tailnet-guest|device):/.test(x);
   let s;
   if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
   else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
-  else s = asked && !claim(asked) ? asked : asked ? `via:${c || "vyre"}` : (c || "vyre");
+  // Not the owner and not a person's own socket: its own label, or via:<label> when it names anything else. Never the asked name, which could be a live
+  // terminal's (cli:<pid>), the link's (box:x) or another agent's, and re-taking "your own" lease is not a conflict.
+  else s = asked && asked !== c ? `via:${c || "vyre"}` : (c || "vyre");
   return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
 }
 
