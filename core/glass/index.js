@@ -95,7 +95,7 @@ export default {
       if (said && target !== `computer:${said[1]}`) throw new Error("an agent may browse only its own computer's files through Glass");
       // A model caller with no agent behind it (a plain mcp or harness session) has no computer of its own: it is held like a named agent, which leaves it nothing (Glass's file browser is a person's,
       // or an agent's own computer).
-      if (!said && ["mcp", "harness"].includes(callerKind(caller))) throw new Error("a model caller with no agent behind it has no computer of its own, so it may browse no files through Glass");
+      if (!said && ["mcp", "harness"].includes(callerKind(String(caller).trim().toLowerCase()))) throw new Error("a model caller with no agent behind it has no computer of its own, so it may browse no files through Glass");
       return providerFor(target);
     };
 
