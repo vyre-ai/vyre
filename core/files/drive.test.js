@@ -813,6 +813,9 @@ test("drive picker: candidates list projects first, then the root's folders, mar
   const c = await ok(reg, "files.drive.candidates");
   assert.equal(c.projects, 1);
   assert.deepEqual(c.candidates.slice(0, 1).map(x => [x.kind, x.slug, x.shared, x.suggestedName]), [["project", "harlow", "harlow", "harlow"]]);
+  // How a surface opens a candidate: the offered share that holds it, and the folder inside that share.
+  assert.deepEqual(c.candidates.filter(x => x.kind === "project").map(x => x.via), [{ share: "harlow", rel: "" }]);
+  assert.deepEqual(c.candidates.filter(x => x.name === "notes").map(x => x.via), [{ share: "projects", rel: "notes" }]);
   const names = c.candidates.filter(x => x.kind === "folder").map(x => x.name);
   assert.ok(names.includes("notes") && names.includes("projects"));
   assert.ok(!names.includes("node_modules") && !names.includes(".private") && !names.includes("harlow"), names.join());

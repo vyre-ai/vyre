@@ -39,6 +39,21 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
   /** Folder p as the picker would offer it: its guarded path, or null when sharing it could never work. */
   const usable = p => { try { g.resolveSafe(p); folder(p); return g.resolveSafe(p).path; } catch { return null; } };
 
+  /** Which offered share holds this folder, and where inside it: how a surface opens it (files.drive.list {share, path: rel}). */
+  const viaShare = p => {
+    const r = real(p);
+    let best = null;
+    for (const [name, sp] of Object.entries(shares())) {
+      const root = real(sp) || sp;
+      for (const [x, y] of [[p, sp], [r, root]]) {
+        if (!x || !(x === y || String(x).startsWith(String(y).replace(/\/+$/, "") + "/"))) continue;
+        // The share closest to the folder wins: a share made for the project itself over one that holds every project.
+        if (!best || String(y).length > best.len) best = { share: name, rel: path.posix.relative(String(y), String(x)), len: String(y).length };
+      }
+    }
+    return best ? { share: best.share, rel: best.rel } : null;
+  };
+
   const sharedAs = p => {
     const r = real(p);
     return Object.entries(shares()).find(([, sp]) => sp === p || (r && real(sp) === r))?.[0] || null;
@@ -65,7 +80,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
           const at = home && usable(home);
           if (!at || seen.has(at) || !scope.may(at)) continue;
           seen.add(at);
-          projects.push({ kind: "project", slug: String(p.slug), name: String(p.name || p.slug), path: at, shared: sharedAs(at), suggestedName: shareNameFor(p.slug) });
+          projects.push({ kind: "project", slug: String(p.slug), name: String(p.name || p.slug), path: at, shared: sharedAs(at), via: viaShare(at), suggestedName: shareNameFor(p.slug) });
         }
       } catch { /* no projects module: the folders below still work */ }
       /** @type {any[]} */
@@ -78,7 +93,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
           const at = usable(path.join(root, e.name));
           if (!at || seen.has(at) || !scope.may(at)) continue;
           seen.add(at);
-          folders.push({ kind: "folder", name: e.name, path: at, shared: sharedAs(at), suggestedName: shareNameFor(e.name) });
+          folders.push({ kind: "folder", name: e.name, path: at, shared: sharedAs(at), via: viaShare(at), suggestedName: shareNameFor(e.name) });
         }
       }
       return { candidates: [...projects, ...folders].slice(0, MAX_CANDIDATES), projects: projects.length };

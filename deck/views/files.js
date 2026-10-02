@@ -26,16 +26,42 @@ export default async function files(ctx) {
   return folder(ctx, body, share, ctx.query.get("p") || "");
 }
 
+/**
+ * The Drive front page: this server's own project folders first (each opens straight into its folder, where a Generated folder holds
+ * what models made), then the folders shared with the paired Macs. A server with a project and nothing shared is not empty.
+ * @param {(tool: string, input?: any) => Promise<any>} call
+ * @returns {Promise<{ nodes: any[] } | { error: any }>}
+ */
+export async function drawHome(call) {
+  const [st, cand] = await Promise.all([call("files.drive.status"), call("files.drive.candidates")]);
+  if (st.error && cand.error) return { error: st.error };
+  const projects = ((cand.data && cand.data.candidates) || []).filter((/** @type {any} */ c) => c && c.kind === "project" && c.via);
+  const shared = ((st.data && st.data.shares) || []).filter((/** @type {any} */ s) => s && s.shared);
+  const row = (/** @type {string} */ to, /** @type {string} */ name, /** @type {string} */ note) =>
+    link(to, { class: "fl-row" }, icon("projects", 16), h("span", { class: "fl-name" }, name), note ? h("span", { class: "fl-meta small faint" }, note) : null, icon("chevronright", 14));
+  const nodes = [];
+  if (projects.length) {
+    nodes.push(h("h2", { class: "fl-sub" }, "Projects on your server"));
+    nodes.push(h("div", { class: "fl-list" }, projects.map((/** @type {any} */ p) => row(href(p.via.share, p.via.rel), p.name || p.slug, ""))));
+  }
+  if (shared.length) {
+    nodes.push(h("h2", { class: "fl-sub" }, "Shared with your Macs"));
+    nodes.push(h("div", { class: "fl-list" }, shared.map((/** @type {any} */ s) => row(href(s.name, ""), s.name, ""))));
+  }
+  if (!nodes.length) {
+    nodes.push(empty("No project is on your server yet."),
+      h("p", { class: "muted" }, "Make a project and its folder shows here, with the images and video your models make. To share another folder with your Macs, choose it in Settings, then Drive."),
+      link("/projects", { class: "btn btn-sm" }, "Make a project"));
+  }
+  return { nodes };
+}
+
 /** @param {any} ctx @param {HTMLElement} body */
 async function shares(ctx, body) {
-  const r = await attempt("files.drive.status");
+  const r = await drawHome(attempt);
   if (!ctx.alive()) return;
-  if (r.error) return put(body, head("Drive"), empty("Your box's folders are not reachable.", r.error));
-  const list = (r.data?.shares || []).filter((/** @type {any} */ s) => s && s.shared);
-  put(body, head("Drive"),
-    list.length
-      ? h("div", { class: "fl-list" }, list.map((/** @type {any} */ s) => link(href(s.name, ""), { class: "fl-row" }, icon("projects", 16), h("span", { class: "fl-name" }, s.name), icon("chevronright", 14))))
-      : empty("No folder is shared yet. Share one from Settings on your Mac."));
+  if ("error" in r) return put(body, head("Drive"), empty("Your box's folders are not reachable.", r.error));
+  put(body, head("Drive"), ...r.nodes);
 }
 
 /** @param {any} ctx @param {HTMLElement} body @param {string} share @param {string} dir */
