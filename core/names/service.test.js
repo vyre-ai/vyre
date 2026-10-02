@@ -29,7 +29,7 @@ function selfSigned(cn, days = 90) {
 }
 
 /** A world of fakes, and the service built on it. */
-function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined, deviceOf = undefined, call = undefined } = {}) {
+function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined, deviceOf = undefined, call = undefined, directory = undefined } = {}) {
   const root = tempHome(t);
   const cfg = config.load(root);
   cfg.network.port = 0;
@@ -63,7 +63,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     set: async () => "txt", clear: async () => {},
   };
   let issued = 0;
-  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), ...(deviceOf ? { deviceOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
+  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), ...(deviceOf ? { deviceOf } : {}), ...(directory ? { directory } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
     issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } };
   const svc = names(deps);
   t.after(() => svc.close());
@@ -414,4 +414,15 @@ test("names: a tag:vyre-device node is its bound paired desktop, device:<id>; un
   await w.svc.onRequest(post("100.101.3.1", { device: "qrstuvwxyzabcdef", code: "good" }), agent);
   assert.equal(agent.status, 403, "only a tag:vyre-device node may present a bind code");
   assert.equal(binds.length, 2, "neither refused request reached the relay");
+});
+
+test("names: a box whose name support moved to another server is told once, and a normal answer tells nothing", async t => {
+  const answers = [{ name: null, moved: { name: "alex", at: 5 } }, { name: null, moved: { name: "alex", at: 5 } }, { name: null }];
+  const w = world(t, { directory: { mine: async () => answers.shift() } });
+  w.cfg.name = "alex";
+  w.cfg.network.via = "vyre.run";
+  await w.svc.watch();
+  await w.svc.watch();
+  await w.svc.watch();
+  assert.deepEqual(w.emitted.filter(e => e.type === "name.moved").map(e => e.payload), [{ name: "alex.vyre.run", at: 5 }]);
 });

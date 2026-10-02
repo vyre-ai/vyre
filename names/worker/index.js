@@ -13,6 +13,7 @@
 //   POST   /v1/names/release         {name}                give the name up (a tombstone if it was ever pointed)
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
+//   POST   /v1/names/admin/rebind    {name, route}        support only: move a name to a route at once; needs the ADMIN_SECRET header
 //   GET    /health
 //
 // Identity: the box's relay route key (ADR 0026), Ed25519. Every call but check carries
@@ -203,6 +204,7 @@ const ROUTES = {
   "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
   "POST /v1/names/recover": "recover", "POST /v1/names/recover/cancel": "cancel", "POST /v1/names/code": "code", "POST /v1/names/release": "release",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
+  "POST /v1/names/admin/rebind": "adminRebind",
 };
 
 export default {
@@ -236,7 +238,14 @@ export default {
     }
     const query = Object.fromEntries(url.searchParams);
     let auth = null;
-    if (op !== "check" || request.headers.has("x-vyre-sig")) {
+    if (op === "adminRebind") {
+      // Support only. Not signed with a route key: the Worker secret is the authority. With no secret set the
+      // operation does not exist; a missing and a wrong header answer the same.
+      const given = request.headers.get("x-vyre-admin") || "";
+      if (!env.ADMIN_SECRET || String(env.ADMIN_SECRET).length < 32) return fail(err(404, "not_found", "not available"));
+      if (!given || !same(await sha256(given), await sha256(String(env.ADMIN_SECRET)))) return fail(err(401, "unauthorized", "not authorised"));
+      auth = { admin: true };
+    } else if (op !== "check" || request.headers.has("x-vyre-sig")) {
       auth = await authenticate(request, url, text, Number(env.NOW ? env.NOW() : Date.now()));
       if (!auth) return fail(err(401, "unauthorized", "sign the request with the route key"));
     }
@@ -344,7 +353,7 @@ export class Directory {
     const { op, ip, auth, body, query } = await request.json();
     try {
       if (op === "sweep") { await this.sweep(); return reply(200, { data: { ok: true } }); }
-      if (auth && !await this.fresh(auth)) return fail(err(401, "unauthorized", "that request was already used"));
+      if (auth && !auth.admin && !await this.fresh(auth)) return fail(err(401, "unauthorized", "that request was already used"));
       const data = await /** @type {any} */ (this)["op_" + op](body || {}, auth, ip, query || {});
       return reply(200, { data });
     } catch (e) {
@@ -587,10 +596,42 @@ export class Directory {
 
   async op_mine(_b, a) {
     const rec = await this.held(a.route);
-    if (!rec) return { name: null };
+    if (!rec) {
+      const moved = await this.store.get(`m/${a.route}`);
+      return moved ? { name: null, moved } : { name: null };
+    }
     const dns = dnsFor(this.env);
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: rec.everPointed, ips: rec.ips,
       pending: rec.pending ? { at: rec.pending.at, eta: rec.pending.eta } : null, notices: rec.notices || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
+  }
+
+  /**
+   * Support only (the ADMIN_SECRET header, checked by the Worker): move a name to another route at once, with no
+   * 72-hour wait, for a person whose old server is gone. It writes an admin-rebind notice to the name's log, keeps
+   * the recovery code as it is, leaves a note for the old route (so its devices are told if the server is still
+   * reachable), and wipes the old DNS records so the new box publishes its own address.
+   * @param {any} b @param {{admin?: boolean}} a
+   */
+  async op_adminRebind(b, a) {
+    if (!a || !a.admin) throw err(401, "unauthorized", "not authorised");
+    const v = verdict(String(b.name || ""));
+    if (v.status === "invalid") throw err(400, "bad_request", "not a name");
+    const route = String(b.route || "");
+    if (!ROUTE_RE.test(route)) throw err(400, "bad_request", "not a route");
+    const rec = await this.load(v.name);
+    if (!rec) throw err(404, "no_such_name", "nobody holds that name");
+    if (rec.route === route) throw err(409, "already_yours", "that route already holds the name");
+    if (await this.store.get(`r/${route}`)) throw err(409, "one_per_route", "that route already holds a name");
+    const old = rec.route;
+    await this.unpend(rec);
+    if (old && await this.store.get(`r/${old}`) === rec.name) await this.store.delete(`r/${old}`);
+    if (old) await this.store.put(`m/${old}`, { name: rec.name, at: this.now() });
+    await this.store.put(`r/${route}`, rec.name);
+    Object.assign(rec, { route, state: rec.everPointed ? "live" : "claimed", claimedAt: this.now(), ips: {} });
+    this.note(rec, "admin-rebind", { from: old ? old.slice(0, 8) : null, to: route.slice(0, 8) });
+    await this.save(rec);
+    await this.wipeDns(rec);
+    return { name: rec.name, route: route.slice(0, 8), state: rec.state };
   }
 
   /** Land what came due, lapse what expired, retry DNS cleanups, drop yesterday's counters. */

@@ -48,7 +48,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 45 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
-| [`names`](#names) | `core/names` | `box` | 12 | 11 | cli |
+| [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
 | [`network`](#network) | `core/network` | `box` | 9 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 12 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
@@ -432,7 +432,7 @@ The # tag: one picker over everything the person may mention, from the modules t
 - Runs on: `box`
 - Requires: none
 - Tools: [12](tools.md#names), 2 of them only for other modules
-- Emits: [11 events](events.md#names)
+- Emits: [12 events](events.md#names)
 - Shows on: cli
 - Needs vault: `cloudflare-vyre-token`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
