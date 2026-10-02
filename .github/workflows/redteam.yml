@@ -9,7 +9,7 @@ permissions:
   contents: read
 concurrency:
   group: redteam-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   test:
     runs-on: ubuntu-latest

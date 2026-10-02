@@ -1,17 +1,17 @@
 # The watcher wall on a real container (launch, for watchers): the box image is built, the spawner installs and probes the
 # per-uid outbound REJECT rule at every start, drops NET_ADMIN, and a watcher child behind it is refused loopback, the internet
-# and the unix socket. Push to work/launch-onboard-fix paths below, or dispatch it.
+# and the unix socket. Runs on pushes to the paths below on work/rc-* and work/stage-0.2, or by dispatch.
 name: watcher-wall
 on:
   workflow_dispatch:
   push:
-    branches: ["work/rc-*"]
+    branches: ["work/rc-*", "work/stage-0.2"]
     paths: ["core/spawner/**", "box/Dockerfile", "box/compose.yml", "scripts/watcher-wall-*", ".github/workflows/watcher-wall.yml"]
 permissions:
   contents: read
 concurrency:
   group: watcher-wall-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   wall:
     runs-on: ubuntu-24.04
