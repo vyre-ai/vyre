@@ -646,7 +646,7 @@ export async function android(flags, deps = {}) {
   const stop = json() ? () => {} : follow(true, ["device.paired"], (_, p) => onPaired(p));
   // adb shell hands the line to the phone's shell: quote the link, which has no quote in it.
   const link = `vyre://pair?offer=${encodeURIComponent(offer).replace(/'/g, "%27")}`;
-  const am = await adb(["-s", phone.serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `'${link}'`, "sh.vyre.app"]);
+  const am = await adb(["-s", phone.serial, "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", `'${link}'`, "sh.vyre.app.box"]);
   result.opened = am.code === 0 && !/Error|Exception/.test(am.out + am.err);
   if (json()) { stop(); return emit({ ...result, ...(result.opened ? {} : { pair: scan }) }); }
   if (!result.opened) { stop(); out(dim("  " + scan)); return 0; }

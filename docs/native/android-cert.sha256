@@ -1,3 +1,4 @@
-# The SHA-256 of the Vyre Android signing certificate (lower-case hex, no colons). PENDING until the first signed build:
-# that run prints the fingerprint and fails; commit it here after checking it is your key. A later run with another certificate fails.
-PENDING
+# The SHA-256 of the certificate of each Vyre Android signing key (lower-case hex, no colons), one line per key: "<name> <sha256>".
+# A release reads this file from the PREVIOUS published release tag, not from the commit being released, so one commit cannot change the key and its pin.
+# PENDING until the first signing: run the native-android workflow with record_cert, check the fingerprint it prints is your key, and commit it here.
+sideload PENDING

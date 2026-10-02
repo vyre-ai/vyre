@@ -211,7 +211,10 @@ jobs:
             const bt = s.indexOf("buildTypes"), rel = s.indexOf("release {", bt), line = "signingConfig signingConfigs.debug";
             const at = s.indexOf(line, rel);
             if (bt < 0 || rel < 0 || at < 0) { console.error("no release signingConfig to drop in " + f); process.exit(1); }
-            fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner key" + s.slice(at + line.length));'
+            s = s.slice(0, at) + "// unsigned: the box signs it with the owner key" + s.slice(at + line.length);
+            // The box-signed channel is its own application: sh.vyre.app is the Vyre-signed build (native-android.yml), and one id cannot update across signers.
+            if (!/applicationId\s+"sh\.vyre\.app"/.test(s)) { console.error("applicationId is not sh.vyre.app in " + f); process.exit(1); }
+            fs.writeFileSync(f, s.replace(/applicationId\s+"sh\.vyre\.app"/, "applicationId \"sh.vyre.app.box\""));'
       - run: ./gradlew --no-daemon assembleDebug assembleRelease
         working-directory: apps/app/android
       - name: Name the release and write android.json

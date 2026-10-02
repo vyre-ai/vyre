@@ -401,7 +401,7 @@ test("phone add --android --usb: downloads, checks, installs with adb -r, opens 
   assert.ok(!fs.existsSync(String(install?.[4])), "the temp file is gone");
   assert.deepEqual(fs.readdirSync(adb.tmp), [], "and its folder");
   assert.deepEqual(argv.find(a => a.includes("am")), ["-s", "1A2B3C4D", "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d",
-    `'vyre://pair?offer=${encodeURIComponent(offer).replace(/'/g, "%27")}'`, "sh.vyre.app"]);
+    `'vyre://pair?offer=${encodeURIComponent(offer).replace(/'/g, "%27")}'`, "sh.vyre.app.box"]);
   assert.ok(argv.some(a => a.join(" ") === "-s 1A2B3C4D shell getprop ro.build.version.sdk"), "the API level was checked");
 });
 
