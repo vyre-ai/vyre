@@ -505,7 +505,7 @@ Listens for: `link.unpaired`
 | `effort.switched` | `effort`, `live` |
 | `lease.changed` | `holder`, `previous`; sometimes `took` |
 | `mode.changed` | `label`, `mode` |
-| `model.switched` | `live`, `model` |
+| `model.switched` | `live`, `model`; sometimes `reported` |
 | `thinking.switched` | `on` |
 | `thread.archived` | `agent`, `project` |
 | `thread.contended` | `holder`, `session` |

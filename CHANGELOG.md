@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(chat): one model per turn (#41). The header chip, the picker and each reply label name the same model with the same words (shortModel). The thread follows what the provider says it runs: when the init differs from what the thread asked for (an alias, an account default), the record moves to it and `model.switched {model, live, reported}` is said once, so the header and picker move with it; a live `threads.model` switch now also sets the model the next reply is stamped with, so old replies keep their model and new ones carry the new. `core/events` delivers an event emitted by a listener after the one being delivered (the settings hub answers `model.switched` with `settings.changed`, and the SSE stream's id cursor dropped the 12 after hearing the 13, so a live Deck never saw the switch). The fake Claude takes `FAKE_CLAUDE_REPORT_MODEL`.
+
 - The public site no longer says "vyred" (site/start and site/llms.txt say "Vyre"); `test/site-words.test.js` keeps the internal words out of the site's copy.
 
 - vyre.run carries the new Vyre master icon (app-design's glass mark, approved by the user): favicon (.svg and .ico), 32 px, apple-touch, 192 and 512 px icons, and the links to them on the landing, start and 404 pages. The site is built from main only, so this is the site's icon change alone, without the rest of stage. The social preview (og.png) has the glass master in place of the old flat tile: the same layout and text, the tile area repainted with vyre-master-1024.png at 300 px.

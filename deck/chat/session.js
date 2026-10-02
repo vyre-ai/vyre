@@ -85,6 +85,7 @@ import { textItemRow } from "./live-text.js";
 import { undoSheet } from "./undo-sheet.js";
 import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
+import { shortModel } from "./core/composer-state.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
 import { createGrouper } from "./core/grouping.js";
@@ -394,7 +395,7 @@ export function mountSession(container, opts) {
   /** "Claude · opus · subscription": the parts that are known. */
   function chipText() {
     const prov = S.provider ? (PROVIDERS[S.provider.toLowerCase()] || S.provider) : null;
-    const m = S.model ? (/(opus|sonnet|haiku|fable)/i.exec(S.model)?.[1]?.toLowerCase() || S.model) : null;
+    const m = shortModel(S.model);
     const auth = S.auth && S.auth !== "ambient" ? S.auth : null;
     return [prov, m, auth].filter(Boolean).join(" · ");
   }

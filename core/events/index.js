@@ -51,6 +51,9 @@ export class Events {
     `]);
     /** @type {Map<string, Set<(e: any) => void>>} */
     this.listeners = new Map();
+    /** Events stored and not yet delivered to the listeners, and whether a delivery is running. @type {any[]} */
+    this.queue = [];
+    this.delivering = false;
     this.insert = db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)");
   }
 
@@ -68,12 +71,22 @@ export class Events {
     const at = where.at || Date.now();
     const r = this.insert.run(at, type, source, where.project || null, where.thread || null, json);
     const event = { id: Number(r.lastInsertRowid), at, type, source, project: where.project || null, thread: where.thread || null, payload };
-    for (const key of [type, type.split(".")[0] + ".*", "*"]) {
-      for (const fn of this.listeners.get(key) || []) {
-        // A listener that throws must not stop the others or the emitter.
-        try { fn(event); } catch {}
+    // An event a listener emits while another is being delivered waits its turn: every listener hears events in id order, so a stream that
+    // follows an id cursor (the SSE one) never meets 13 before 12 and drops the 12 (a model.switched the settings hub answered with its own
+    // event was lost to every live Deck this way, #41).
+    this.queue.push(event);
+    if (this.delivering) return event;
+    this.delivering = true;
+    try {
+      for (let e; (e = this.queue.shift());) {
+        for (const key of [e.type, e.type.split(".")[0] + ".*", "*"]) {
+          for (const fn of this.listeners.get(key) || []) {
+            // A listener that throws must not stop the others or the emitter.
+            try { fn(e); } catch {}
+          }
+        }
       }
-    }
+    } finally { this.delivering = false; }
     return event;
   }
 
