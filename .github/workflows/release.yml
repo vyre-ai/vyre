@@ -437,7 +437,7 @@ jobs:
         with:
           name: mac-app
           path: ${{ runner.temp }}/mac
-      - name: Add the Lumen Mac files to dist (stable: required, never optional)
+      - name: Add the Lumen Mac files to dist (stable only, required, never optional)
         if: env.CHANNEL == 'stable'
         run: |
           # The two stable dmg names are what the site's picker links to; the zips and the versioned names ride along. All are in dist before
