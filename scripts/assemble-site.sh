@@ -35,7 +35,7 @@ git rev-parse --verify "$tag^{commit}" >/dev/null || { echo "assemble-site: no t
 say() { printf '== %s\n' "$*"; }
 
 say "pages"
-node scripts/gen-site.mjs >/dev/null
+VYRE_SITE_VERSION=${tag#v} node scripts/gen-site.mjs >/dev/null
 rm -rf "$out"; mkdir -p "$out"
 cp -R site/. "$out/"
 for f in w i install.sh box _redirects; do [ ! -e "$out/$f" ] || { echo "assemble-site: site/ already has $f; it must stay generated" >&2; exit 1; }; done

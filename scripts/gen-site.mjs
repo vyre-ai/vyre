@@ -16,7 +16,15 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
 const SITE = 'https://vyre.run';
-const VERSION = '0.2.1';
+// The release the site speaks for. scripts/assemble-site.sh --tag vX.Y.Z passes it as VYRE_SITE_VERSION, so a release updates every page by itself;
+// the default is the newest release this file knows the notes for (RELEASE_NOTES below).
+const VERSION = process.env.VYRE_SITE_VERSION && /^\d+\.\d+\.\d+$/.test(process.env.VYRE_SITE_VERSION) ? process.env.VYRE_SITE_VERSION : '0.2.2';
+// What each release fixed, in the words the home page and llms-full.txt use. A version with no entry here shows no "out now" line.
+const RELEASE_NOTES = {
+  '0.2.1': 'Claude sign-in accepts the pasted code, and the phone app installs properly from the home screen.',
+  '0.2.2': 'Your own phone, Deck and Mac stop locking each other out of a conversation, a session on a server always gets Vyre\u2019s tools, a provider\u2019s only account is its default, and a message you send shows Sending until the server answers.',
+};
+const RELEASE_LINE = RELEASE_NOTES[VERSION] ? `${VERSION} (out now): ${RELEASE_NOTES[VERSION]}` : '';
 const MODIFIED = new Date().toISOString().slice(0, 10);
 // A hash of each asset goes in its URL, so a deploy never meets a stale copy in a browser cache (see site/_headers).
 const hash = (f) => createHash('sha256').update(readFileSync(join(site, f))).digest('hex').slice(0, 10);
@@ -445,8 +453,8 @@ const homeBody = `
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       <div class="piece"><span class="num">Next</span><h3>Hardening</h3><p>Touch ID for sensitive terminal actions, fixes, and real-device passes.</p></div>
-      <div class="piece"><span class="num">0.2.2</span><h3>Sessions</h3><p>Version history for every project, group chats with people and agents, memory across resets.</p></div>
-      <div class="piece"><span class="num">0.2.3</span><h3>Scale</h3><p>Many sessions on one server, with a fair-share scheduler.</p></div>
+      <div class="piece"><span class="num">0.2.3</span><h3>Sessions</h3><p>Version history for every project, group chats with people and agents, memory across resets.</p></div>
+      <div class="piece"><span class="num">0.2.4</span><h3>Scale</h3><p>Many sessions on one server, with a fair-share scheduler.</p></div>
       <div class="piece"><span class="num">0.2.5</span><h3>Spaces</h3><p>One space for all your devices. Shared spaces for teams.</p></div>
       <div class="piece"><span class="num">Modules</span><h3>In parallel</h3><p>Automation, texts and email, a CRM, documents and e-signature.</p></div>
     </div>
@@ -662,10 +670,10 @@ const DIR = `
   <div class="wrap">
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">The road from ${VERSION}</h2>
     <div class="road">
-      <div class="stop now rv"><p class="ver">${VERSION} &middot; Out now</p><h3>Your own command center</h3><p>One session across Claude, Codex, Grok and OpenRouter. Teammates, watchers, a vault, memory with sources, Vyre Lumen on Mac and Windows, and a phone app. Signed releases and updates.</p><p>0.2.1 (out now): Claude sign-in accepts the pasted code, and the phone app installs properly from the home screen.</p></div>
+      <div class="stop now rv"><p class="ver">${VERSION} &middot; Out now</p><h3>Your own command center</h3><p>One session across Claude, Codex, Grok and OpenRouter. Teammates, watchers, a vault, memory with sources, Vyre Lumen on Mac and Windows, and a phone app. Signed releases and updates.</p>${RELEASE_LINE ? `<p>${RELEASE_LINE}</p>` : ''}</div>
       <div class="stop rv"><p class="ver">Next</p><h3>Hardening</h3><p>The next release makes what is there sturdier.</p><ul><li><b>Touch ID</b>For sensitive terminal actions.</li><li><b>Fixes</b>Safari and interactive pages, a signature-checked first Windows install.</li><li><b>Real devices</b>Passes on real Macs, PCs and phones.</li><li><b>Star Vyre from the app</b>A star button sits at the top of the Deck, and disappears once you’ve starred.</li></ul></div>
-      <div class="stop rv"><p class="ver">0.2.2</p><h3>Sessions</h3><p>Sessions become something you can trust with long work, and share.</p><ul><li><b>Version history</b>For every project, without git.</li><li><b>One writer per file</b>Two agents cannot overwrite each other.</li><li><b>Memory that carries</b>Vyre owns the memory, so it carries across resets and model switches.</li><li><b>Two models at once</b>Give one task to two, and see each answer in its own block.</li><li><b>Group chats</b>People and agents are equal participants, and a chat can have no AI at all.</li><li><b>Wink cards</b>A scannable identity for every person and agent.</li><li><b>One screen kit</b>Lists, records, boards, timelines, forms and the composer, drawn the same everywhere.</li></ul></div>
-      <div class="stop rv"><p class="ver">0.2.3</p><h3>Scale</h3><p>More of your work, running at once.</p><ul><li><b>Many sessions on one server</b>With a scheduler that gives each person a fair share.</li><li><b>Your own computer pitches in</b>Your Mac or PC lends spare compute, running only your own work, while it is awake.</li><li><b>Chrome for many agents</b>Parallel tabs and runs.</li><li><b>Idle sessions sleep</b>When memory runs low, and wake when you write.</li></ul></div>
+      <div class="stop rv"><p class="ver">0.2.3</p><h3>Sessions</h3><p>Sessions become something you can trust with long work, and share.</p><ul><li><b>Version history</b>For every project, without git.</li><li><b>One writer per file</b>Two agents cannot overwrite each other.</li><li><b>Memory that carries</b>Vyre owns the memory, so it carries across resets and model switches.</li><li><b>Two models at once</b>Give one task to two, and see each answer in its own block.</li><li><b>Group chats</b>People and agents are equal participants, and a chat can have no AI at all.</li><li><b>Wink cards</b>A scannable identity for every person and agent.</li><li><b>One screen kit</b>Lists, records, boards, timelines, forms and the composer, drawn the same everywhere.</li></ul></div>
+      <div class="stop rv"><p class="ver">0.2.4</p><h3>Scale</h3><p>More of your work, running at once.</p><ul><li><b>Many sessions on one server</b>With a scheduler that gives each person a fair share.</li><li><b>Your own computer pitches in</b>Your Mac or PC lends spare compute, running only your own work, while it is awake.</li><li><b>Chrome for many agents</b>Parallel tabs and runs.</li><li><b>Idle sessions sleep</b>When memory runs low, and wake when you write.</li></ul></div>
       <div class="stop rv"><p class="ver">0.2.5</p><h3>Spaces</h3><p>A space is yours, and a space can be shared.</p><ul><li><b>Your space</b>Holds all your devices and compute. You reach every one of them from your own Vyre as if it were one.</li><li><b>Shared spaces</b>For teams, with quotas by grant. Each person keeps their own space, and shares only what they put in the shared one.</li><li><b>Add any machine</b>A server or cloud machine plugs in like a brick.</li></ul></div>
       <div class="stop rv"><p class="ver">In parallel &middot; Modules</p><h3>The rest of the work</h3><p>Modules are building blocks that you, or your agents, add. They share one contact and one event stream, so they work together.</p><ul><li><b>Automation</b>The kind you would otherwise reach for Zapier to do.</li><li><b>Texts and email</b>Through your own accounts.</li><li><b>A CRM</b>With Vyre’s own screens.</li><li><b>Documents from templates</b>Filled from what Vyre already knows.</li><li><b>E-signature</b>Sent, signed and filed.</li><li><b>Project management</b>A task’s owner can be a person or an agent.</li></ul><p style="margin-top:18px">The shared model underneath: one kind of project holding people, chats, files, memory, stages and tasks, so any team can design its own workflow.</p></div>
     </div>
@@ -684,7 +692,7 @@ const DIR = `
 page({
   slug: 'direction', path: '/direction/',
   title: 'Where Vyre is going: the direction',
-  desc: 'The direction for Vyre after 0.2.1: hardening, sessions with group chats and version history, scale, spaces for teams, and modules. Direction, not a promise of dates.',
+  desc: 'The direction for Vyre after ' + VERSION + ': hardening, sessions with group chats and version history, scale, spaces for teams, and modules. Direction, not a promise of dates.',
   ogTitle: 'Where Vyre is going.', ogSub: 'Hardening, sessions, scale, spaces and modules. Direction, not a promise of dates.',
   body: DIR, ld: [crumbs([['Vyre', `${SITE}/`], ['Direction', `${SITE}/direction/`]])],
 });
@@ -730,9 +738,9 @@ ${part('05', 'windows', 'Windows', `<p>There is a Windows app for your Windows P
 ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Interactive artifacts in Safari.</strong> On a Mac or an iPhone, a page that navigates itself can be sent your sign-in cookie. A fix comes next. Until then, open interactive pages only from agents you trust.</li>
 <li><strong>Terminal commands.</strong> Touch ID prompts for terminal commands that need them come next.</li>
-<li><strong>Chrome.</strong> API-first routing comes next, and parallel tabs for many agents in 0.2.3.</li>
-<li><strong>Two models at once.</strong> “Give it to two” and per-provider blocks for plans and diffs come in 0.2.2, with memory that Vyre carries across resets.</li>
-<li><strong>Scale and teams.</strong> Putting idle sessions to sleep comes in 0.2.3, and spaces for teams in 0.2.5.</li>
+<li><strong>Chrome.</strong> API-first routing comes next, and parallel tabs for many agents in 0.2.4.</li>
+<li><strong>Two models at once.</strong> “Give it to two” and per-provider blocks for plans and diffs come in 0.2.3, with memory that Vyre carries across resets.</li>
+<li><strong>Scale and teams.</strong> Putting idle sessions to sleep comes in 0.2.4, and spaces for teams in 0.2.5.</li>
 <li><strong>The Mac app is built, not downloaded.</strong> There is no signed Mac download yet; <code>vyre capsule install</code> builds it on your Mac.</li>
 <li><strong>npm.</strong> <code>npm install -g vyre</code> works once the package is published. Until then, use the tarball URL.</li></ul>
 <p>More detail: <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a>. Where this is going: <a href="/direction/">Direction</a>.</p>`)}
@@ -828,19 +836,19 @@ Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, Op
 Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Releases
-- 0.2.1 (out now): Claude sign-in accepts the pasted code, and the phone app installs properly from the home screen.
+${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 
 ## Direction (not a promise of dates)
 - Next, Hardening: Touch ID for sensitive terminal actions, fixes, real-device passes, and a star button at the top of the Deck that disappears once you have starred Vyre.
-- 0.2.2 Sessions: version history for every project without git, one writer per file, memory that Vyre owns and carries across resets and model switches, giving one task to two models, group chats where people and agents are equal participants, Wink identity cards, one screen kit.
-- 0.2.3 Scale: many sessions on one server with a fair-share scheduler, your own computer lending spare compute to run only your own work, Chrome for many agents, idle sessions that sleep when memory runs low.
+- 0.2.3 Sessions: version history for every project without git, one writer per file, memory that Vyre owns and carries across resets and model switches, giving one task to two models, group chats where people and agents are equal participants, Wink identity cards, one screen kit.
+- 0.2.4 Scale: many sessions on one server with a fair-share scheduler, your own computer lending spare compute to run only your own work, Chrome for many agents, idle sessions that sleep when memory runs low.
 - 0.2.5 Spaces: your space holds all your devices and compute, shared spaces for teams with quotas by grant, add any server or cloud machine.
 - Modules in parallel: automation, texts and email, a CRM with Vyre's own screens, documents from templates, e-signature, and project management where a task's owner can be a person or an agent, all sharing one contact and one event stream. Underneath is one kind of project holding people, chats, files, memory, stages and tasks, so any team can design its own workflow.
 
 ## Known gaps in ${VERSION}
 - Interactive artifacts in Safari on Mac and iPhone can be sent your sign-in cookie by a page that navigates itself; the fix is planned next.
 - Touch ID prompts for terminal commands, Chrome API-first routing and a signature-checked first Windows install are planned next.
-- "Give it to two", per-model blocks and Vyre-owned memory across resets are planned for 0.2.2; sleeping idle sessions for 0.2.3; spaces for teams for 0.2.5.
+- "Give it to two", per-model blocks and Vyre-owned memory across resets are planned for 0.2.3; sleeping idle sessions for 0.2.4; spaces for teams for 0.2.5.
 - The Mac app is built on your Mac, not downloaded. The Windows app is not code-signed yet.
 - Face ID pairing and the removed-phone wipe still need a pass on real phones.
 See https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md.

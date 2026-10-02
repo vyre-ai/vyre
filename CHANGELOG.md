@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.
 - fix(site): scripts/gen-og.sh launches Chrome with --use-mock-keychain and --password-store=basic, so it never raises a Keychain dialog on a Mac (test/chrome-flags).
 - The public site no longer says "vyred" (site/start and site/llms.txt say "Vyre"); `test/site-words.test.js` keeps the internal words out of the site's copy.
 
