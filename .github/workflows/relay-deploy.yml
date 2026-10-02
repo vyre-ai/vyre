@@ -1,5 +1,5 @@
-# The one gated deploy of the three Cloudflare Workers 0.2.0 needs: the relay (relay.vyre.run), the name directory (names.vyre.run)
-# and the hosted web app (app.vyre.run). Nothing here runs until a person dispatches it, and the real deploy waits for the
+# The one gated deploy of the four Cloudflare Workers 0.2.0 needs: the relay (relay.vyre.run), the name directory (names.vyre.run),
+# the hosted web app (app.vyre.run) and the camera page (wink.vyre.run). Nothing here runs until a person dispatches it, and the real deploy waits for the
 # `deploy` environment's required reviewer (the same reviewer as `release`) after the dry runs have been read.
 #
 #   gh workflow run relay-deploy.yml --ref work/stage-0.2 -f sha=<the stage sha> -f relay=true -f names=true
@@ -28,6 +28,14 @@ on:
         default: false
       app_out_run:
         description: "The run id of the release run that uploaded the signed `app-out` artifact (for app)"
+        required: false
+        type: string
+      wink:
+        description: "Deploy relay/wink (wink.vyre.run). Needs wink_out_run."
+        type: boolean
+        default: false
+      wink_out_run:
+        description: "The run id of the release run that uploaded the signed `wink-out` artifact (for wink)"
         required: false
         type: string
       names_admin_secret:
@@ -97,6 +105,18 @@ jobs:
         working-directory: relay/app
         run: |
           "$W" deploy --dry-run --outdir /tmp/app-out-bundle 2>&1 | tee /tmp/app-dry.txt; grep -E "ASSETS|Assets|assets" /tmp/app-dry.txt
+      - name: relay/wink, the signed build to deploy (the release workflow's run for this commit, signature verified)
+        if: ${{ inputs.wink }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.wink_out_run }}
+          SHA: ${{ inputs.sha }}
+        run: scripts/deploy/fetch-wink-out.sh "$RUN" "$SHA"
+      - name: relay/wink, dry run
+        if: ${{ inputs.wink }}
+        working-directory: relay/wink
+        run: |
+          "$W" deploy --dry-run --outdir /tmp/wink-out-bundle 2>&1 | tee /tmp/wink-dry.txt; grep -E "ASSETS|Assets|assets" /tmp/wink-dry.txt
   deploy:
     name: deploy (waits for the deploy environment's reviewer)
     needs: dry-run
@@ -178,8 +198,23 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           "$W" deploy
+      - name: relay/wink, the signed build (checked again here)
+        if: ${{ inputs.wink }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.wink_out_run }}
+          SHA: ${{ inputs.sha }}
+        run: scripts/deploy/fetch-wink-out.sh "$RUN" "$SHA"
+      - name: relay/wink
+        if: ${{ inputs.wink }}
+        working-directory: relay/wink
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          "$W" deploy
       - name: what is live
         run: |
-          for u in ${{ inputs.relay && 'https://relay.vyre.run/' || '' }} ${{ inputs.names && 'https://names.vyre.run/v1/names/check?name=probe-deploy' || '' }} ${{ inputs.app && 'https://app.vyre.run/' || '' }}; do
+          for u in ${{ inputs.relay && 'https://relay.vyre.run/' || '' }} ${{ inputs.names && 'https://names.vyre.run/v1/names/check?name=probe-deploy' || '' }} ${{ inputs.app && 'https://app.vyre.run/' || '' }} ${{ inputs.wink && 'https://wink.vyre.run/' || '' }}; do
             [ -n "$u" ] && printf '%s -> HTTP %s\n' "$u" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$u")"
           done

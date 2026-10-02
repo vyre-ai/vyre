@@ -53,7 +53,7 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   const prepare = yml.indexOf("  prepare:"), images = yml.indexOf("\n  images:");
   assert.ok(prepare < i && i < images, "it is a step of the prepare job, which needs no approval");
   const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
-  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
+  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/build-wink-out.mjs", "relay/wink", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });
 
@@ -96,4 +96,23 @@ test("release.yml: prepare refuses a release whose package, lockfile and plugin 
   const i = yml.indexOf('the tag says $version but package.json says $pkg');
   assert.ok(i > 0 && yml.indexOf("node scripts/bump-version.mjs --check", i) > i);
   assert.ok(yml.indexOf("node scripts/bump-version.mjs --check") < yml.indexOf("- name: Box files and vyre.tgz"));
+});
+
+test("release.yml: the camera page is sealed beside the app, for a stable release only, with the same key rule, and uploaded as wink-out", () => {
+  const i = yml.indexOf("- name: Seal and sign the camera page (scripts/build-wink-out.mjs)");
+  assert.ok(i > yml.indexOf("- name: Seal and sign the hosted phone app"), "after the app step");
+  const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
+  assert.match(step, /if: env\.CHANNEL == 'stable'/);
+  assert.match(step, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key only on a publish");
+  assert.match(step, /node scripts\/build-wink-out\.mjs --release "\$VERSION" --out wink-out --throwaway/, "a dry run is throwaway");
+  assert.ok(!/node -e|python|perl -e/.test(step), "no inline code where the key is");
+  assert.match(yml, /name: \$\{\{ env\.PUBLISH == 'true' && 'wink-out' \|\| 'wink-out-dryrun' \}\}/);
+});
+
+test("relay-deploy.yml: the camera page deploys from a verified wink-out of the release run, dry run first, and is checked after", () => {
+  const d = fs.readFileSync(path.join(REPO, ".github/workflows/relay-deploy.yml"), "utf8");
+  assert.match(d, /wink_out_run:/);
+  assert.equal([...d.matchAll(/scripts\/deploy\/fetch-wink-out\.sh "\$RUN" "\$SHA"/g)].length, 2, "fetched and verified in the dry run and again in the deploy");
+  assert.match(d, /working-directory: relay\/wink\n\s+run: \|\n\s+"\$W" deploy --dry-run/);
+  assert.match(d, /https:\/\/wink\.vyre\.run\//, "wink.vyre.run is in what is live");
 });

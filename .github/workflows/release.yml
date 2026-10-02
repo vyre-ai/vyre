@@ -110,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/build-wink-out.mjs relay/wink scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
@@ -462,6 +462,23 @@ jobs:
         with:
           name: ${{ env.PUBLISH == 'true' && 'app-out' || 'app-out-dryrun' }}
           path: app-out
+          retention-days: 7
+      - name: Seal and sign the camera page (scripts/build-wink-out.mjs), for a stable release only
+        # wink.vyre.run serves the camera page that hands a scanned ring to the app. Same rule as the app: a plain x.y.z only, so a prerelease builds none.
+        if: env.CHANNEL == 'stable'
+        env:
+          VYRE_SIGNING_KEY: ${{ env.PUBLISH == 'true' && secrets.VYRE_RELEASE_SIGNING_KEY || '' }}
+        run: |
+          if [ "$PUBLISH" = true ]; then
+            node scripts/build-wink-out.mjs --release "$VERSION" --out wink-out
+          else
+            node scripts/build-wink-out.mjs --release "$VERSION" --out wink-out --throwaway
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: env.CHANNEL == 'stable'
+        with:
+          name: ${{ env.PUBLISH == 'true' && 'wink-out' || 'wink-out-dryrun' }}
+          path: wink-out
           retention-days: 7
       - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
         if: env.PUBLISH == 'true'

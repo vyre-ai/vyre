@@ -1,0 +1,14 @@
+# wink.vyre.run: the camera page, sealed and signed by the release workflow (relay/wink/release.js, scripts/build-wink-out.mjs).
+# Build the directory with scripts/build-wink-out.mjs before deploying; the deploy fetches the signed `wink-out` artifact of a release run.
+# Deploys only through .github/workflows/relay-deploy.yml (the lead's approval, the deploy environment); no account id lives here.
+name = "vyre-wink"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+workers_dev = false
+routes = [{ pattern = "wink.vyre.run", custom_domain = true }]
+
+[assets]
+directory = "../../wink-out"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "none"

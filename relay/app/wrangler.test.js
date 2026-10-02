@@ -15,7 +15,7 @@ const topLevel = file => {
   return (end < 0 ? lines : lines.slice(0, end)).filter(l => !/^\s*#/.test(l)).join("\n");
 };
 
-for (const [file, domain] of [["relay/worker/wrangler.toml", "relay.vyre.run"], ["names/worker/wrangler.toml", "names.vyre.run"], ["relay/app/wrangler.toml", "app.vyre.run"]]) {
+for (const [file, domain] of [["relay/worker/wrangler.toml", "relay.vyre.run"], ["names/worker/wrangler.toml", "names.vyre.run"], ["relay/app/wrangler.toml", "app.vyre.run"], ["relay/wink/wrangler.toml", "wink.vyre.run"]]) {
   test(`${file}: workers.dev off and the ${domain} custom domain, as top-level keys`, () => {
     const top = topLevel(file);
     assert.match(top, /^workers_dev\s*=\s*false\s*$/m);

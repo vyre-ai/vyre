@@ -92,7 +92,7 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 One API token, scoped to the one account and the one zone, and nothing more:
 - Account, Workers Scripts: Edit (it covers the Workers, their Durable Objects and migrations, rate limiter bindings, cron triggers, observability, and the static assets of vyre-app).
 - Account, Account Settings: Read (wrangler looks the account up; it is also why CLOUDFLARE_ACCOUNT_ID is set as a variable).
-- Zone vyre.run, Workers Routes: Edit (the custom domains names.vyre.run and app.vyre.run; relay.vyre.run already has its).
+- Zone vyre.run, Workers Routes: Edit (the custom domains names.vyre.run, app.vyre.run and wink.vyre.run; relay.vyre.run already has its).
 - Zone vyre.run, DNS: Edit (a Worker custom domain creates its DNS record) and Zone: Read.
 No KV, R2, D1, Queues or Workers Rate Limiting permission is needed: none is bound. The account id goes in the variable CLOUDFLARE_ACCOUNT_ID. The names Worker's own runtime token is a different, narrower one (Zone, DNS: Edit on vyre.run only), set as the Worker secret CF_API_TOKEN beside CF_ZONE_ID; it never leaves Cloudflare and no box sees it.
 
