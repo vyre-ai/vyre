@@ -5,6 +5,10 @@ edition = "2021"
 description = "The Vyre Windows app: tray, global hotkey, toasts, autostart, and a WebView2 window on the person's own server. Trust rules live in ../src/shell.rs."
 publish = false
 
+[features]
+# The VM proof harness (Vyre.exe --core-selftest). Never in a release build.
+selftest = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

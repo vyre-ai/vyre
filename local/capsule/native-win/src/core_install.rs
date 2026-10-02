@@ -145,12 +145,16 @@ fn install_checked(core_root: &Path, version: &str, package_tgz: &[u8], node_zip
     r.map(|_| final_dir)
 }
 
-/// Remove version folders other than `keep` (and stale staging folders), after a newer one is in place.
+/// Remove version folders other than `keep` and stale staging folders, after a newer one is in place. Only a folder named like a
+/// version or like `.staging-...` is ever touched, and never a link: anything else under the core folder is left alone.
 pub fn prune(core_root: &Path, keep: &str) {
     let Ok(rd) = fs::read_dir(core_root) else { return };
     for e in rd.flatten() {
         let name = e.file_name().to_string_lossy().to_string();
-        if name != keep { let _ = fs::remove_dir_all(e.path()); }
+        if name == keep { continue; }
+        if !(name.starts_with(".staging-") || crate::update::Version::parse(&name).is_some()) { continue; }
+        let Ok(md) = fs::symlink_metadata(e.path()) else { continue };
+        if md.is_dir() && !md.file_type().is_symlink() { let _ = fs::remove_dir_all(e.path()); }
     }
 }
 
@@ -279,10 +283,13 @@ mod tests {
         }
         fs::create_dir_all(root.join("0.9.9")).unwrap(); // no lock: a half install
         fs::create_dir_all(root.join(".staging-1-0.3.0")).unwrap();
+        fs::create_dir_all(root.join("notes")).unwrap();
+        fs::write(root.join("keep.txt"), b"x").unwrap();
         assert_eq!(installed_version(&root).as_deref(), Some("0.2.10"));
         prune(&root, "0.2.10");
         let left: Vec<_> = fs::read_dir(&root).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().to_string()).collect();
-        assert_eq!(left, vec!["0.2.10".to_string()]);
+        let mut left = left; left.sort();
+        assert_eq!(left, vec!["0.2.10".to_string(), "keep.txt".to_string(), "notes".to_string()], "only versions and staging folders are pruned");
         assert!(version_dir(&root, "latest").is_err());
         assert!(version_dir(&root, "../x").is_err());
     }

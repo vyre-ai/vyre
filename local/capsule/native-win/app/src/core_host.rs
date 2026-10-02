@@ -21,18 +21,30 @@ use vyre_capsule_win::{core_calls, core_install, core_launch, core_pkg, history,
 #[serde(tag = "state", content = "message", rename_all = "lowercase")]
 pub enum CoreState { Off, Installing(String), Starting, Up, Failed(String) }
 
+/// How long one call may take before the app gives up on it (a scan of a large history is the slow one).
+const CALL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
+/// Health checks answer at once or not at all.
+const HEALTH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
+
 struct Running {
-    child: std::process::Child,
+    child: Mutex<std::process::Child>,
     pipe: String,
     #[allow(dead_code)]
     job: imp::Job,
+}
+
+impl Running {
+    /// The child's process handle, for the pipe check. It stays valid while this value is alive (the child is only reaped, never closed, until then).
+    fn raw(&self) -> usize { imp::raw(&self.child.lock().unwrap()) }
+    fn exited(&self) -> Option<std::process::ExitStatus> { self.child.lock().unwrap().try_wait().ok().flatten() }
+    fn kill(&self) { let mut c = self.child.lock().unwrap(); let _ = c.kill(); let _ = c.wait(); }
 }
 
 pub struct CoreHost {
     /// "Keep them in sync" is on: the core stays up until the person stops it. Remembered across app starts in `sync-core`.
     keep: std::sync::atomic::AtomicBool,
     state: Mutex<CoreState>,
-    running: Mutex<Option<Running>>,
+    running: Mutex<Option<std::sync::Arc<Running>>>,
     /// One start or install at a time.
     busy: Mutex<()>,
 }
@@ -44,18 +56,15 @@ impl CoreHost {
 
     /// Stop the core (the app is quitting, or the person asked). Killing the child ends its job too.
     pub fn stop(&self) {
-        if let Some(mut r) = self.running.lock().unwrap().take() {
-            let _ = r.child.kill();
-            let _ = r.child.wait();
-        }
+        if let Some(r) = self.running.lock().unwrap().take() { r.kill(); }
         self.set(CoreState::Off);
     }
 
     /// Make sure the core is installed and running, and say how it went in plain words.
     pub fn ensure(&self, app: &AppHandle) -> Result<(), String> {
         let _one = self.busy.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(r) = self.running.lock().unwrap().as_mut() {
-            if matches!(r.child.try_wait(), Ok(None)) { return Ok(()); }
+        if let Some(r) = self.running.lock().unwrap().as_ref() {
+            if r.exited().is_none() { return Ok(()); }
         }
         self.stop();
         let run = || -> Result<(), String> {
@@ -64,7 +73,7 @@ impl CoreHost {
             let dir = ensure_installed(&paths)?;
             self.set(CoreState::Starting);
             let running = start(&paths, &dir)?;
-            *self.running.lock().unwrap() = Some(running);
+            *self.running.lock().unwrap() = Some(std::sync::Arc::new(running));
             Ok(())
         };
         match run() {
@@ -76,12 +85,9 @@ impl CoreHost {
     /// One call to one allowed tool, on the core's pipe.
     pub fn call(&self, tool: &str, input: &serde_json::Value) -> Result<serde_json::Value, String> {
         let req = core_calls::request(tool, input)?;
-        let out = {
-            let guard = self.running.lock().unwrap();
-            let r = guard.as_ref().ok_or("Vyre's local helper is not running.")?;
-            core_calls::parse_response(&imp::exchange(&r.child, &r.pipe, &req)?)?
-        };
-        Ok(out)
+        // The lock is held only to take a share of the running core; the exchange itself (which can take a while) holds nothing.
+        let r = self.running.lock().unwrap().clone().ok_or("Vyre's local helper is not running.")?;
+        core_calls::parse_response(&imp::exchange(r.raw(), &r.pipe, &req, CALL_DEADLINE)?)
     }
 
     /// Note a sync import started or stopped, so the core is kept up (or let go) accordingly.
@@ -124,6 +130,7 @@ impl Paths {
     }
 }
 
+#[cfg(feature = "selftest")]
 /// The app-owned pipe, with a stand-in node process as the child: another process is disconnected and the pipe keeps listening, the
 /// child gets its answer on stdin's pipe name, a second first instance of the same name is refused, one request per connection.
 fn pipe_selftest(node: &Path, work: &Path) -> Result<String, String> {
@@ -152,6 +159,7 @@ fn pipe_selftest(node: &Path, work: &Path) -> Result<String, String> {
     Ok(format!("name squat refused; another process disconnected ({}); the child answered after it: {}", rogue_said.trim(), child_said.trim()))
 }
 
+#[cfg(feature = "selftest")]
 /// What `Vyre.exe --core-selftest` reports.
 pub struct SelfTest { pub lines: Vec<String> }
 
@@ -160,6 +168,7 @@ pub struct SelfTest { pub lines: Vec<String> }
 /// the release's, so a local package is only ever taken here), starts the core under a throwaway user
 /// folder with synthetic Claude Code sessions, asks it for its status and a scan, and stops it. It touches
 /// no real home, pairing or key.
+#[cfg(feature = "selftest")]
 pub fn selftest(work: &Path, pkg: &Path, node_zip: &Path) -> SelfTest {
     let mut lines = vec![];
     let mut note = |name: &str, r: Result<String, String>| lines.push(match r { Ok(d) => format!("pass {name} {d}"), Err(e) => format!("FAIL {name} {e}") });
@@ -185,11 +194,18 @@ pub fn selftest(work: &Path, pkg: &Path, node_zip: &Path) -> SelfTest {
     });
     note("start", started.as_ref().map(|_| "up".into()).map_err(|e| e.clone()));
     if let Ok(r) = started {
-        *host.running.lock().unwrap() = Some(r);
+        *host.running.lock().unwrap() = Some(std::sync::Arc::new(r));
         note("health", {
             let g = host.running.lock().unwrap();
             let r = g.as_ref().unwrap();
-            imp::exchange(&r.child, &r.pipe, &core_calls::health_request()).and_then(|raw| core_calls::parse_response(&raw)).map(|v| format!("rss {} MB, {} modules running, role {}", v["memory"]["rss"], v["modules"]["running"], v["role"]))
+            imp::exchange(r.raw(), &r.pipe, &core_calls::health_request(), HEALTH_DEADLINE).and_then(|raw| core_calls::parse_response(&raw)).map(|v| format!("rss {} MB, {} modules running, role {}", v["memory"]["rss"], v["modules"]["running"], v["role"]))
+        });
+        note("only-its-vocabulary", {
+            let r = host.running.lock().unwrap().clone().unwrap();
+            let ask = |m: &str| format!("{m} HTTP/1.1\r\nHost: vyred\r\nx-vyre-caller: local\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
+            let tools = imp::exchange(r.raw(), &r.pipe, ask("GET /v1/tools").as_bytes(), HEALTH_DEADLINE).map(|b| String::from_utf8_lossy(&b).lines().next().unwrap_or("").to_string());
+            let vault = imp::exchange(r.raw(), &r.pipe, ask("POST /v1/tools/vault.list").as_bytes(), HEALTH_DEADLINE).map(|b| String::from_utf8_lossy(&b).lines().next().unwrap_or("").to_string());
+            match (tools, vault) { (Ok(a), Ok(b)) if a.contains("404") && b.contains("404") => Ok(format!("{a} / {b}")), (a, b) => Err(format!("{a:?} {b:?}")) }
         });
         note("status", host.call("import.status", &serde_json::json!({})).map(|v| v.to_string().chars().take(120).collect()));
         note("scan", host.call("import.scan", &serde_json::json!({})).and_then(|v| {
@@ -261,24 +277,24 @@ fn start_with(paths: &Paths, dir: &Path, get: &dyn Fn(&str) -> Option<String>) -
     let env = core_launch::env(get, &real_home_plain);
     let log = std::fs::OpenOptions::new().create(true).append(true).open(real_home_plain.join("core.log")).map_err(|e| e.to_string())?;
     let (child, job) = imp::spawn(&dir.join("node").join("node.exe"), &args, &env, log)?;
-    let mut running = Running { child, pipe, job };
-    wait_ready(&mut running, &real_home_plain)?;
+    let running = Running { child: Mutex::new(child), pipe, job };
+    wait_ready(&running, &real_home_plain)?;
     Ok(running)
 }
 
 /// The core is ready when it answers its health check on its own pipe, served by our child.
-fn wait_ready(r: &mut Running, home: &Path) -> Result<(), String> {
+fn wait_ready(r: &Running, home: &Path) -> Result<(), String> {
     let started = std::time::Instant::now();
     let ask = core_calls::health_request();
     loop {
-        if let Ok(Some(status)) = r.child.try_wait() {
+        if let Some(status) = r.exited() {
             return Err(format!("Vyre's local helper stopped as it started ({status}). {}", log_tail(home)));
         }
-        if let Ok(raw) = imp::exchange(&r.child, &r.pipe, &ask) {
+        if let Ok(raw) = imp::exchange(r.raw(), &r.pipe, &ask, HEALTH_DEADLINE) {
             if core_calls::parse_response(&raw).is_ok() { return Ok(()); }
         }
         if started.elapsed() > std::time::Duration::from_secs(45) {
-            let _ = r.child.kill();
+            r.kill();
             return Err(format!("Vyre's local helper did not start in time. {}", log_tail(home)));
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
@@ -298,15 +314,23 @@ mod imp {
     use std::os::windows::process::CommandExt;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::{AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE};
+    use windows_sys::Win32::System::IO::CancelIoEx;
     use windows_sys::Win32::System::Pipes::GetNamedPipeServerProcessId;
     use windows_sys::Win32::System::Threading::GetProcessId;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    const CREATE_SUSPENDED: u32 = 0x0000_0004;
 
     /// A job whose last handle closing ends every process in it: the core cannot outlive the app.
     pub struct Job(HANDLE);
     unsafe impl Send for Job {}
+    unsafe impl Sync for Job {}
     impl Drop for Job { fn drop(&mut self) { unsafe { CloseHandle(self.0) }; } }
+
+    pub fn raw(child: &std::process::Child) -> usize { child.as_raw_handle() as usize }
+
+    #[link(name = "ntdll", kind = "raw-dylib")]
+    extern "system" { fn NtResumeProcess(process: HANDLE) -> i32; }
 
     fn job_for(child: &std::process::Child) -> Result<Job, String> {
         unsafe {
@@ -327,10 +351,14 @@ mod imp {
         let log2 = log.try_clone().map_err(|e| e.to_string())?;
         let mut cmd = std::process::Command::new(node);
         cmd.args(args).env_clear().envs(env.iter().map(|(k, v)| (k, v))).stdin(std::process::Stdio::piped())
-            .stdout(log).stderr(log2).creation_flags(CREATE_NO_WINDOW);
+            .stdout(log).stderr(log2).creation_flags(CREATE_NO_WINDOW | CREATE_SUSPENDED);
+        // Born suspended, tied to the job, then let go: it can start nothing outside the job.
         let mut child = cmd.spawn().map_err(|e| format!("Vyre's local helper would not start: {e}"))?;
         match job_for(&child) {
-            Ok(job) => Ok((child, job)),
+            Ok(job) => {
+                if unsafe { NtResumeProcess(child.as_raw_handle() as HANDLE) } < 0 { let _ = child.kill(); return Err("Windows would not start the local helper.".into()); }
+                Ok((child, job))
+            }
             Err(e) => { let _ = child.kill(); Err(e) }
         }
     }
@@ -347,17 +375,32 @@ mod imp {
     }
 
     /// Open the pipe, check that our child serves it, send one request and read the whole answer.
-    pub fn exchange(child: &std::process::Child, pipe: &str, request: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn exchange(child: usize, pipe: &str, request: &[u8], deadline: std::time::Duration) -> Result<Vec<u8>, String> {
         let mut f = open_pipe(pipe)?;
         let mut server = 0u32;
         let ok = unsafe { GetNamedPipeServerProcessId(f.as_raw_handle() as HANDLE, &mut server) };
-        let ours = unsafe { GetProcessId(child.as_raw_handle() as HANDLE) };
+        let ours = unsafe { GetProcessId(child as HANDLE) };
         if ok == 0 || ours == 0 || server != ours {
             return Err("Something other than Vyre's local helper answered, so nothing was sent to it.".into());
         }
-        f.write_all(request).map_err(|e| e.to_string())?;
-        let mut out = Vec::new();
-        f.take(core_calls::MAX_RESPONSE as u64 + 1).read_to_end(&mut out).map_err(|e| e.to_string())?;
+        // A watchdog cancels the wait on this pipe when the deadline passes, so a core that stops answering cannot hang the app.
+        let h = f.as_raw_handle() as usize;
+        let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let d2 = done.clone();
+        let dog = std::thread::spawn(move || {
+            let t0 = std::time::Instant::now();
+            while t0.elapsed() < deadline { if d2.load(std::sync::atomic::Ordering::SeqCst) { return; } std::thread::sleep(std::time::Duration::from_millis(50)); }
+            unsafe { CancelIoEx(h as HANDLE, std::ptr::null()) };
+        });
+        let io = (|| -> Result<Vec<u8>, String> {
+            f.write_all(request).map_err(|e| e.to_string())?;
+            let mut out = Vec::new();
+            (&mut f).take(core_calls::MAX_RESPONSE as u64 + 1).read_to_end(&mut out).map_err(|e| e.to_string())?;
+            Ok(out)
+        })();
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = dog.join();
+        let out = io.map_err(|_| "Vyre's local helper did not answer in time.".to_string())?;
         if out.len() > core_calls::MAX_RESPONSE { return Err("the local helper's answer was larger than expected".into()); }
         Ok(out)
     }
@@ -369,5 +412,6 @@ mod imp {
     use super::*;
     pub struct Job;
     pub fn spawn(_: &Path, _: &[String], _: &[(String, String)], _: std::fs::File) -> Result<(std::process::Child, Job), String> { Err("The local helper runs only on Windows.".into()) }
-    pub fn exchange(_: &std::process::Child, _: &str, _: &[u8]) -> Result<Vec<u8>, String> { Err("The local helper runs only on Windows.".into()) }
+    pub fn raw(_: &std::process::Child) -> usize { 0 }
+    pub fn exchange(_: usize, _: &str, _: &[u8], _: std::time::Duration) -> Result<Vec<u8>, String> { Err("The local helper runs only on Windows.".into()) }
 }

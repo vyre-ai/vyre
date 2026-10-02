@@ -144,7 +144,12 @@ async function startLocked(opts, root, p, release) {
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
-  await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
+  // Started by the Windows app (VYRE_SUPERVISOR=app): only the modules named in VYRE_MODULES_ONLY run, so the core holds what
+  // an import needs and nothing else. Both variables are the app's launch environment, never a file in the writable home.
+  const found = discover(moduleRoots(root), { firstPartyRoots });
+  const appOnly = appMode() ? new Set(String(process.env.VYRE_MODULES_ONLY || "").split(",").filter(Boolean)) : null;
+  const disable = appOnly ? [...(cfg.modules.disable || []), ...found.map(f => f.manifest && f.manifest.name).filter(n => typeof n === "string" && !appOnly.has(n))] : cfg.modules.disable;
+  await registry.start(found, { role: cfg.machine, ...cfg.modules, ...(appOnly ? { disable } : {}) });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
   // it, it is safe to remove; if something does, another vyred is running and this one stops.
@@ -155,8 +160,9 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => fail(res, e)));
+  const server = http.createServer((req, res) => { if (appMode() && !appAllows(req)) return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } }); route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => fail(res, e)); });
   server.on("upgrade", async (req, socket, head) => {
+    if (appMode()) { socket.destroy(); return; }
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
   });
@@ -188,6 +194,16 @@ async function startLocked(opts, root, p, release) {
     log("vyred down");
   };
   return { registry, events, config: cfg, paths: p, stop };
+}
+
+/** The Windows app starts its core with VYRE_SUPERVISOR=app; the core then answers on its pipe only what the app asks. */
+export const appMode = () => process.env.VYRE_SUPERVISOR === "app";
+/** The app's whole vocabulary on the core's pipe (the same five tools as local/capsule/native-win/src/core_calls.rs) and health. */
+export const APP_TOOLS = new Set(["import.scan", "import.plan", "import.start", "import.stop", "import.status"]);
+export function appAllows(req) {
+  const url = new URL(req.url || "/", "http://vyred");
+  if (req.method === "GET") return url.pathname === "/v1/health";
+  return req.method === "POST" && url.pathname.startsWith("/v1/tools/") && APP_TOOLS.has(decodeURIComponent(url.pathname.slice("/v1/tools/".length)));
 }
 
 /** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */

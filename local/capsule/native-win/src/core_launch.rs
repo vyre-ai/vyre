@@ -41,17 +41,21 @@ pub fn node_args(version_dir: &Path, home: &Path, read_roots: &[PathBuf], pipe: 
     a.push(format!("--allow-fs-read={}", flag_path(Path::new(pipe))?));
     a.push(format!("--allow-fs-write={}", flag_path(home)?));
     a.push(format!("--allow-fs-write={}", flag_path(Path::new(pipe))?));
-    // The core asks Tailscale who is on the other end of a link, which is a program it starts.
-    a.push("--allow-child-process".into());
+    // No --allow-child-process: this core only sends, so it starts no program (no Tailscale whois, no tailnet listener), and the
+    // permission flags above are what bind a bug in it.
     a.push(flag_path(&version_dir.join("vyre").join("core").join("daemon").join("main.js"))?);
     Ok(a)
 }
 
 /// The environment for the core: the kept variables that are set, plus its home.
+/// The modules the import path needs, and nothing else (the core enforces this itself: core/daemon/index.js).
+pub const MODULES: &str = "import,sync,link,recall,memory,projects";
+
 pub fn env(get: &dyn Fn(&str) -> Option<String>, home: &Path) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = ENV_KEEP.iter().filter_map(|k| get(k).filter(|v| !v.is_empty()).map(|v| (k.to_string(), v))).collect();
     out.push(("VYRE_HOME".into(), crate::core_pkg::plain_path(home)));
     out.push(("VYRE_SUPERVISOR".into(), "app".into()));
+    out.push(("VYRE_MODULES_ONLY".into(), MODULES.into()));
     out
 }
 
@@ -77,6 +81,7 @@ mod tests {
         assert!(a.contains(&"--allow-fs-read=C:\\Users\\a\\.claude\\projects".to_string()));
         assert_eq!(a.iter().filter(|x| x.to_ascii_lowercase() == "--allow-fs-read=c:\\users\\a\\.vyre").count(), 1, "a folder named twice is named once");
         assert_eq!(a.iter().filter(|x| x.starts_with("--allow-fs-write=")).collect::<Vec<_>>(), vec!["--allow-fs-write=C:\\Users\\a\\.vyre", "--allow-fs-write=\\\\.\\pipe\\vyre-1-2"]);
+        assert!(!a.iter().any(|x| x.contains("child-process")), "no program may be started by the core");
         assert!(a.last().unwrap().ends_with("vyre\\core\\daemon\\main.js") || a.last().unwrap().ends_with("vyre/core/daemon/main.js"));
     }
 
@@ -92,6 +97,7 @@ mod tests {
         let e = env(&get, Path::new("\\\\?\\C:\\Users\\a\\.vyre"));
         assert!(e.contains(&("USERPROFILE".into(), "C:\\Users\\a".into())));
         assert!(e.contains(&("VYRE_HOME".into(), "C:\\Users\\a\\.vyre".into())));
+        assert!(e.contains(&("VYRE_SUPERVISOR".into(), "app".into())) && e.contains(&("VYRE_MODULES_ONLY".into(), MODULES.into())));
         assert!(!e.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY" || k == "TEMP"));
     }
 }

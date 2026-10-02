@@ -582,6 +582,8 @@ fn main() {
             if let Some(out) = args.get(i + 1) { selftest(out); return; }
         }
     }
+    // Built only with `--features selftest` (the VM proofs): it installs a package that is not the release's, so a release build has no such door.
+    #[cfg(feature = "selftest")]
     if std::env::var("VYRE_SELFTEST").as_deref() == Ok("1") {
         if let Some(i) = args.iter().position(|a| a == "--core-selftest") {
             if let (Some(work), Some(pkg), Some(zip), Some(out)) = (args.get(i + 1), args.get(i + 2), args.get(i + 3), args.get(i + 4)) {
