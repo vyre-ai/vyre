@@ -251,6 +251,26 @@ const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return n
 /** The saved launch options of a thread (threads_runs.opts). */
 const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
 
+/**
+ * What a tool call brings into a session that Vyre's Gate should treat with care, from the tool's name alone (the same name a card shows):
+ *  outside: words from beyond the person (the web, a fetched page, mail, a calendar, a connector, any MCP server that is not Vyre's own);
+ *  private: what belongs to the person (the vault, mail, calendar and connector data, the person's files, private memory).
+ * Mail, calendar and connector data are both. The names are Claude's (WebFetch, mcp__server__tool), Codex's (mcp.server.tool) and Grok's (server__tool); anything
+ * unknown is neither: this only ever adds a flag, it never clears one.
+ * @param {any} name @returns {{ outside: boolean, private: boolean }}
+ */
+export function taintOf(name) {
+  const n = String(name || "").toLowerCase();
+  if (/^(webfetch|websearch|web_fetch|web_search|fetch_url|browser_|browse)/.test(n)) return { outside: true, private: false };
+  const m = /^mcp(?:__|\.)([a-z0-9-]+)(?:__|\.)(.+)$/.exec(n) || /^([a-z0-9-]+)__(.+)$/.exec(n);
+  if (!m) return { outside: false, private: false };
+  const [, server, tool] = m;
+  if (server !== "vyre") return { outside: true, private: false };
+  if (/^(mail|gmail|calendar|google|connect|connectors|slack|drive|notion|github_(?:issues|prs|review))/.test(tool)) return { outside: true, private: true };
+  if (/^(vault|files|memory|recall|notes|drive)/.test(tool)) return { outside: false, private: true };
+  return { outside: false, private: false };
+}
+
 /** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
 export function purposeOf(o, project) {
   if (o.purpose) return String(o.purpose);
@@ -455,7 +475,7 @@ export class Switchboard {
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, starter: optsOf(r).starter || null, archived: r.archived_at || null,
+      provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -667,6 +687,8 @@ export class Switchboard {
       // A plain mcp caller (the person's own Claude Code through Vyre's MCP) started it: "mcp:<claude pid>:<its start time>", set by vyred from the socket
       // peer and never from input, so one terminal session cannot handle another's threads.
       if (typeof o.starter === "string" && /^mcp:\d+:/.test(o.starter)) kept.starter = o.starter;
+      // A fork carries the conversation, so it carries what the conversation took in: the flags are the source's.
+      if (o.forkFrom) { const src = this.record(String(o.forkFrom)); if (src && (src.taint.outside || src.taint.private)) kept.taint = { outside: src.taint.outside, private: src.taint.private }; }
       // The session's own git branch (github.session.worktree), when the project gave it a worktree.
       if (w.branch) kept.branch = w.branch;
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
@@ -864,6 +886,17 @@ export class Switchboard {
     st.openTools.clear();
   }
 
+  /** A tool call that brings outside or private material into a thread flags it, for good: the flags are sticky and nothing clears them (threads.get thread.taint). @param {string} id @param {any} name */
+  taint(id, name) {
+    const t = taintOf(name);
+    if (!t.outside && !t.private) return;
+    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+    if (!row) return;
+    const opts = optsOf(row), now = opts.taint || {};
+    if ((!t.outside || now.outside) && (!t.private || now.private)) return;
+    this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify({ ...opts, taint: { outside: Boolean(now.outside || t.outside), private: Boolean(now.private || t.private) } }), id);
+  }
+
   /** Something happened in a thread: its idle clock starts again (sessions.idle_minutes). */
   touch(id, st) {
     st.touched = Date.now();
@@ -1044,7 +1077,7 @@ export class Switchboard {
         // A one-shot thread (a job, not a conversation) ends with its first answer.
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
-      if (e.type === "thread.tool" && e.payload.phase === "started") { this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
+      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload.name || e.payload.tool); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
       if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; this.releaseSlots(id, st, e.payload.call); }
       // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
       if (e.type === "thread.finished") this.cancelTools(id, st, project);

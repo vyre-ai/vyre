@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(threads): threads.get gives thread.taint {outside, private}: sticky flags set when a tool call brings in outside material (the web, mail, a calendar, a connector, an MCP server that is not Vyre's) or the person's private things (the vault, mail, files, private memory); nothing clears them, a fork inherits them. For the Gate on interactive pages.
+
 - sessions: a Vyre-started Claude session loads only Vyre's own MCP server (--strict-mcp-config with an explicit config, on the CLI and the Agent SDK path), not the servers the account or the machine adds. scripts/claude-connector-check.mjs checks it against a real Claude Code.
 
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
