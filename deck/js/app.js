@@ -37,6 +37,7 @@ import { installRows } from "./rows.js";
 import * as trace from "./trace.js";
 import { skeleton as kitSkeleton } from "./states.js";
 import { fillMore } from "./more.js";
+import { readPin } from "./places.js";
 import { haptic } from "./haptics.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
@@ -102,6 +103,11 @@ const PAGER = [
 ];
 /** @type {{ href: string, label: string, view: string, icon: string, key?: string }[]} */
 const strip = [...PAGER];
+/** The kept place as a page of the pager. @param {{ href: string, label: string, icon?: string }} t */
+function fifth(t) {
+  const [path] = t.href.split("#");
+  return { href: t.href, label: t.label, view: match(path).view, icon: t.icon || "settings", key: path };
+}
 const keyOf = (/** @type {{ href: string, key?: string }} */ p) => p.key || p.href;
 /** Which page of the pager an address is (0 to 3), or -1 for a pushed screen. */
 export const slotOf = (/** @type {string} */ key) => strip.findIndex(p => keyOf(p) === key);
@@ -117,6 +123,8 @@ function match(pathname) {
   }
   return { view: "missing", params: {} };
 }
+
+{ const kept = readPin(); if (kept) strip.push(fifth(kept)); }
 
 // Theme: dark unless the viewer chose paper in Settings. A per-viewer convenience.
 try { if (localStorage.getItem("vyre.theme") === "paper") document.documentElement.dataset.theme = "paper"; } catch {}
@@ -145,7 +153,8 @@ const view = h("main", { class: "view", id: "view" });
 const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "tb-item", "data-view": p.view,
   onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); haptic("tick"); toPage(i); } },
   icon(/** @type {any} */ (p.icon), 24), h("span", { class: "tb-label" }, p.label));
-const phLabels = strip.map(tab);
+// Four tabs and More, never more (the platform limit is five): a kept place is a swipe page with no tab of its own.
+const phLabels = PAGER.map(tab);
 const phBackLabel = h("span", { class: "ph-back-to" }, "Now");
 const phBack = h("button", { type: "button", class: "ph-back", "aria-label": "Back", onclick: () => back(lastPage) }, icon("left", 22), phBackLabel);
 const phInitial = h("span", { class: "ph-initial", "aria-hidden": "true" }, "V");
@@ -335,6 +344,8 @@ function setMode(/** @type {string} */ m, /** @type {string} */ name, /** @type 
 let marked = -1;
 function mark_(/** @type {number} */ i) {
   phLabels.forEach((a, j) => { if (i === j) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  // The kept place has no tab: while it is on screen, More (where it is the first tile) says where you are.
+  if (i >= PAGER.length) moreTab.setAttribute("aria-current", "page"); else moreTab.removeAttribute("aria-current");
   if (i === marked) return;
   marked = i;
   // The header's title is the page's own name; the tab bar says where you are, the title says what it is.
@@ -704,12 +715,18 @@ function openFind(/** @type {string | undefined} */ words) {
 }
 
 /** The More sheet, from the tab bar's last tab or the avatar (js/more.js in js/sheet.js's sheet): the places
- * that are not a tab. A tap opens one pushed. */
+ * that are not a tab. A tap opens one pushed, or goes to its page when it is the one kept as a fifth; a hold keeps or lets go. */
 function openMore() {
   let stop = () => {};
   const s = openSheet({ title: "More", label: "More", build(body, close, parts) {
     stop = fillMore(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
-      health: watchHealth, line: linkLine, open: t => go(t.href) }).stop;
+      health: watchHealth, line: linkLine, pinned: keep,
+      open: t => {
+        // The kept place is a page: go there without a history entry, as a tab tap does.
+        if (!phone() || slotOf(t.href.split("#")[0]) < 0) { go(t.href); return; }
+        if (location.pathname + location.search + location.hash !== t.href) history.replaceState(history.state, "", t.href);
+        route();
+      } }).stop;
   }, onClose() {
     stop();
     matchMedia(PHONE_QUERY).removeEventListener("change", shut);
@@ -717,6 +734,34 @@ function openMore() {
   // Out of the phone layout (a rotation, a wider window) the rail has the places: the sheet goes.
   const shut = () => s.close();
   matchMedia(PHONE_QUERY).addEventListener("change", shut);
+}
+
+/**
+ * The More sheet kept a place as a fifth page (or let it go): the pager gains, swaps or loses its last slot. It has no tab (the
+ * bar is four and More); its tile in More moves to the front. Pages move to where they now belong, and the router runs again when
+ * the page on screen changed shape (a page now pushed, or back).
+ * @param {{ href: string, label: string, icon?: string } | null} t
+ */
+function keep(t) {
+  const N = PAGER.length;
+  const was = strip[N] ? keyOf(strip[N]) : null;
+  strip.splice(N);
+  if (t) strip.push(fifth(t));
+  const now = strip[N] ? keyOf(strip[N]) : null;
+  // Devices and Settings are the same page (/settings): only the address changes.
+  if (was === now) return;
+  const oldSlot = slots.splice(N)[0];
+  if (strip[N]) {
+    const slot = h("div", { class: "pager-slot", "data-slot": strip[N].view });
+    slots.push(slot);
+    pager.append(slot);
+  }
+  for (const [k, p] of pages) place(k, p.page);
+  oldSlot?.remove();
+  marked = -1;
+  if (!strip.some(p => p.href === lastPage)) lastPage = "/now";
+  if (current === was || current === now) route();
+  else if (mode === "page") { mark_(slotOf(current)); toSlot(slotOf(current), false); }
 }
 
 /** Lumen's placeholder names the assistant: read once, and again after a visit to Agents. */
