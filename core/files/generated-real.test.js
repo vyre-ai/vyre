@@ -37,7 +37,7 @@ async function boot(t) {
   const reg = new Registry({ db, events, config: { role: "box", files: { roots: [work], drive: { shares: { projects: null, work } } } }, paths: { root: home }, log: () => {} });
   const found = discover([CORE]).filter(f => f.manifest && ["artifacts", "files"].includes(f.manifest.name));
   // Until the artifacts module's media calls are on this branch there is nothing real to run against.
-  if (!found.some(f => f.manifest.name === "artifacts" && JSON.stringify(f.manifest).includes("artifacts.media.read"))) return null;
+  if (!found.some(f => f.manifest.name === "artifacts" && JSON.stringify(f.manifest).includes("artifacts.media.usage"))) return null;
   await reg.start([...found, ...discover([mods])], { role: "box" });
   for (const n of ["artifacts", "files"]) assert.equal(reg.modules.get(n)?.state, "running", `${n}: ${reg.modules.get(n)?.error}`);
   t.after(async () => { await reg.stop?.(); db.close(); });
@@ -55,7 +55,7 @@ async function boot(t) {
 
 test("drive generated, real artifacts: an image and a video a provider made show under Generated in the project's folder and read back byte for byte", async t => {
   const b = await boot(t);
-  if (!b) return t.skip("core/artifacts has no artifacts.media.read on this branch yet");
+  if (!b) return t.skip("core/artifacts has no artifacts.media.usage on this branch yet");
   const { ok, no, capture } = b;
   const img = await capture("t1", "harbour.png", PNG);
   const vid = await capture("t1", "clip.mp4", MP4);
@@ -70,6 +70,9 @@ test("drive generated, real artifacts: an image and a video a provider made show
   assert.deepEqual([byName["harbour.png"].kind, byName["harbour.png"].mime, byName["harbour.png"].size, byName["harbour.png"].artifact], ["image", "image/png", PNG.length, img.id]);
   assert.deepEqual([byName["clip.mp4"].kind, byName["clip.mp4"].mime, byName["clip.mp4"].artifact], ["video", "video/mp4", vid.id]);
 
+  // The file's own header gave the picture its size (the png here is not a decodable image, so only a real one would), and the usage line comes from artifacts.
+  assert.equal(typeof g.quota.used, "number");
+  assert.ok(g.quota.limit > 0 && g.quota.total_limit > 0 && g.quota.items === 2, JSON.stringify(g.quota));
   // Chunked read through artifacts.media.read: the whole file, in pieces, equals what was made.
   let got = Buffer.alloc(0), offset = 0;
   for (;;) {
