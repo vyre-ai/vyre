@@ -8,6 +8,8 @@ the site itself still has no build step. `scripts/gen-og.sh` draws the social ca
 
 ## Unreleased
 
+- Mac download, ready and switched off: `MAC_DMG=1 node scripts/gen-site.mjs` makes the Mac page offer Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg from the latest release, swaps the "built on your Mac" lines for the download and adds an Apple silicon or Intel answer. `site/v2.js` picks the file for the visitor's Mac (Chrome and Edge report the chip; Safari and Firefox get Apple silicon with an "Intel Mac?" link). Nothing changes until a release carries the files.
+
 ### vyre.run v2 (preview, not yet on production)
 
 - New home page in the bone theme (paper by day, graphite by night): the product as the hero (a Vyre Lumen window and a
