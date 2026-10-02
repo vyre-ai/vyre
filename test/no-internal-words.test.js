@@ -53,8 +53,7 @@ const ERR_SKIP = /(^|\/)(test|testing|node_modules|vendor|fixtures)(\/|$)|\.test
 /** The lines per file that put an internal word inside a string literal on an error line. */
 const BASELINE = {
   "core/computers/index.js": 3, "core/config/index.js": 1, "core/files/drop.js": 1, "core/gate/index.js": 1, "core/hooks/funnel.js": 2, "core/hooks/index.js": 1,
-  "core/modules/index.js": 2, "core/names/backup.js": 1, "core/names/system.js": 1, "core/push/index.js": 1, "core/term/index.js": 1, "core/vault/tools/cli.js": 2, "core/vyre-core/install-main.js": 1, "core/watchers/run.js": 1, "local/voice/listen.js": 1, "local/voice/talk.js": 1,
-  "modules/vault-extension/background.js": 3,
+  "core/modules/index.js": 2, "core/names/backup.js": 1, "core/names/system.js": 1, "core/push/index.js": 1, "core/term/index.js": 1, "core/vault/tools/cli.js": 2, "core/vyre-core/install-main.js": 1, "core/watchers/run.js": 1,
 };
 
 test("the box's error texts: no file gains an internal word, and the counts only shrink", () => {
