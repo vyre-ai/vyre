@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":857,"event":338,"config":239,"env":192,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":858,"event":338,"config":239,"env":192,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -381,6 +381,7 @@
     {"kind":"tool","name":"github.session.pr","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionpr","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.push","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionpush","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.redo","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionredo","module":"github","mentions":[]},
+    {"kind":"tool","name":"github.session.review","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionreview","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.undo","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionundo","module":"github","mentions":[]},
     {"kind":"tool","name":"github.session.worktree","definedIn":"core/github/index.js","page":"reference/tools.md#githubsessionworktree","module":"github","mentions":[{"page":"adr/0041-github-everywhere.md","line":308,"anchor":"5-a-worktree-and-branch-per-session"},{"page":"adr/0041-github-everywhere.md","line":314,"anchor":"5-a-worktree-and-branch-per-session"},{"page":"adr/0041-github-everywhere.md","line":367,"anchor":"6-manifest-tools-and-callers-011"},{"page":"adr/0041-github-everywhere.md","line":379,"anchor":"6-manifest-tools-and-callers-011"}]},
     {"kind":"event","name":"github.token-invalid","definedIn":"core/github/index.js","page":"reference/events.md#github","module":"github","mentions":[{"page":"adr/0041-github-everywhere.md","line":258,"anchor":"4a-adding-a-repo-to-an-existing-project"},{"page":"adr/0041-github-everywhere.md","line":369,"anchor":"6-manifest-tools-and-callers-011"}]},

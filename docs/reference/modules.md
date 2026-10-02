@@ -33,7 +33,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 28 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 30 | 8 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 31 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 20 | 7 | capsule, cli, deck |
@@ -267,7 +267,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [30](tools.md#github), 5 of them only for other modules
+- Tools: [31](tools.md#github), 6 of them only for other modules
 - Emits: [8 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`

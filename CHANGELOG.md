@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(github): `github.session.review`, the read behind review comments reaching a session. For a session's open pull requests it answers the new comments from other people (the connected account's own are left out), each cut to 1500 characters and marked as outside text, with a cursor to pass back. Only watchers, sessions and threads may call it; it never returns a token. Comments now carry their link.
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
