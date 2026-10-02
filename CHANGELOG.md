@@ -57,6 +57,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - The thread in the middle of a project board and at /threads/<id> was a simpler copy of the chat that read each event by the wrong field names: a message from another surface drew as "Another surface" with no text, replies drew as empty rows, and its composer stayed disabled while another surface held the keyboard. It now mounts the chat's own session view (`deck/chat/session.js`), the same one /chat opens; the files the thread touched stay beside it. About 330 lines of the old copy are gone.
 - In the chat itself a reply or thought with no words draws no row (and no header for it), and an item kind the Deck has no drawing for shows a labelled line ("This update (kind) can't be shown here yet."), never an empty row.
+- Test (`deck/chat/session-empty.test.js`, its own mounted view): an event with no words draws no row and no header, and an unknown item kind draws the labelled line.
 - Opening a session that is in no project no longer highlights Projects in the rail: it keeps where the person came from (Now or Chat), else nothing.
 
 #### deck: it feels like an app (#33)

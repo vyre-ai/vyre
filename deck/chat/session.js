@@ -122,6 +122,9 @@ const BUSY = new Set(["starting", "working", "asking"]);
 const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "Lumen", cli: "the terminal", local: "the terminal", phone: "your phone",
   mobile: "your phone", pwa: "your phone", needs: "Needs", deck: "the Deck", chat: "the Deck", glass: "Glass" });
 
+/** What a row says for an item kind the Deck has no drawing for: a labelled line, never an empty row. @param {any} kind */
+export const unknownItemText = kind => `This update (${String(kind || "unknown").slice(0, 40)}) can't be shown here yet.`;
+
 /**
  * @param {HTMLElement} container
  * @param {{ thread: string, project: string|null, projects?: any[], recorded?: boolean, known?: boolean, turns?: number, source?: string|null, machine?: string|null,
@@ -823,7 +826,7 @@ export function mountSession(container, opts) {
       case "steer": return steerEl(it);
       case "shell": return shellEl(it);
       // A kind this Deck has no drawing for: a labelled line, never an empty row.
-      default: return noticeMsg(`This update (${String(it.kind || "unknown").slice(0, 40)}) can't be shown here yet.`, it.at);
+      default: return noticeMsg(unknownItemText(it.kind), it.at);
     }
   }
   /** Bring a row up to its item. Returns the row (a new one when it had to be rebuilt). */
