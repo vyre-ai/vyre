@@ -5,12 +5,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION } from "./accounts.js";
 
 function fresh(o) {
   const db = new DatabaseSync(":memory:");
   db.exec(ACCOUNTS_MIGRATION);
   db.exec(ACCOUNTS_PENDING_MIGRATION);
+  db.exec(ACCOUNTS_ENDPOINT_MIGRATION);
   return new Accounts(db, o);
 }
 
@@ -142,4 +143,18 @@ test("accounts: a pending account (started by a non-person) is never resolved, b
   assert.equal(a.row(login.id).needs, "confirm");
   assert.equal(a.bind({ id: login.id, project: "harlow-legal", confirm: true }).pending, false);
   assert.equal(a.resolve({ provider: "codex", account: login.id, project: "harlow-legal" }).id, login.id);
+});
+
+test("accounts: a provider's only account is its default, kept when another is removed, and a pending one only once confirmed", async () => {
+  const a = fresh();
+  const one = await a.add({ provider: "codex", label: "Personal", vault_item: "codex-personal" });
+  assert.equal(one.is_default, true);
+  const two = await a.add({ provider: "codex", label: "Work", vault_item: "codex-work" });
+  assert.equal(two.is_default, false);
+  a.remove(one.id);
+  assert.equal(a.list("codex")[0].is_default, true);
+  const pend = await a.add({ provider: "grok", label: "Key", vault_item: "grok-key", pending: true });
+  assert.equal(pend.is_default, false);
+  const done = a.bind({ id: pend.id, confirm: true });
+  assert.equal(done.is_default, true);
 });

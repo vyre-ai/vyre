@@ -17,8 +17,10 @@ import { remember } from "./recipe.js";
 import { originOf } from "../lib/observe.js";
 import { records } from "./net.js";
 import { err } from "../lib/err.js";
+import { READING } from "../shared/proto.js";
 
 const MAX_STEPS = 200;
+const MAX_PARALLEL = 6;
 const REF = /^\$(\d{1,3})((?:\.[A-Za-z0-9_-]+)*)$/;
 
 /**
@@ -70,6 +72,34 @@ async function budgetFits(ctx, wb, merged, res) {
 export default {
   name: "batch",
   ops: {
+    /**
+     * Reads on several tabs at the same time (a snapshot of each of five tabs, a route call per site). Reading ops only, one per tab, because a write
+     * needs its own approval and a plan's budget is counted in order. Each step goes through ctx.call, so the floor and stop apply to each; a step that fails
+     * or is refused does not stop the others.
+     */
+    "batch.parallel": async (args, ctx) => {
+      const steps = args.steps;
+      if (!Array.isArray(steps) || !steps.length) throw err("bad_request", "batch.parallel needs steps: [{op, args: {tab}}]");
+      if (steps.length > MAX_PARALLEL) throw err("bad_request", `batch.parallel takes at most ${MAX_PARALLEL} steps`);
+      const seen = new Set();
+      for (const [i, st] of steps.entries()) {
+        if (!st || typeof st.op !== "string") throw err("bad_request", `step ${i} has no op`);
+        if (!READING.has(st.op)) throw err("bad_request", `step ${i}: ${st.op} is not a reading op, so it cannot run in parallel (use batch.run)`);
+        const a = st.args || {};
+        const tab = typeof a.tabId === "number" ? a.tabId : typeof a.tab === "number" ? a.tab : undefined;
+        if (tab === undefined) throw err("bad_request", `step ${i} must name its tab`);
+        if (seen.has(tab)) throw err("bad_request", `step ${i}: tab ${tab} is used twice; parallel steps each take their own tab`);
+        seen.add(tab);
+      }
+      if (ctx.stopped()) throw err("stopped", "the person pressed stop");
+      const t0 = Date.now();
+      const results = await Promise.all(steps.map(async (/** @type {any} */ st) => {
+        try { const r = await ctx.call(st.op, st.args || {}, {}); return r && r.ok === false ? { ok: false, ...r } : { ok: true, result: r }; }
+        catch (e) { return { ok: false, error: { code: /** @type {any} */ (e)?.code || "error", message: String(/** @type {any} */ (e)?.message || e).slice(0, 300) } }; }
+      }));
+      return { ok: results.every(r => r.ok), done: results.filter(r => r.ok).length, results, ms: Date.now() - t0 };
+    },
+
     "batch.run": async (args, ctx, trust = {}) => {
       const steps = args.steps;
       if (!Array.isArray(steps) || !steps.length) throw err("bad_request", "batch.run needs steps: [{op, args}]");

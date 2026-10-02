@@ -71,6 +71,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     if (a && a.$error) return { status: 409, statusText: "", json: async () => ({ error: a.$error }) };
     return ok(a);
   }
+  if (tool === "threads.continue-here") return ok({ thread: "box-copy-1" });
   if (tool === "system.info") return ok({ assistant: { name: "juno" }, owner: { name: "alex" } });
   if (tool === "threads.asks") return ok([]);
   if (tool === "threads.answer" && answerErr) return { status: 409, statusText: "", json: async () => ({ error: answerErr }) };
@@ -149,6 +150,24 @@ test("an offline Mac keeps the words, says so, offers Try again and chips the he
   sends.push({ sent: true, thread: MAC, source: "mac", machine: "alex-mac" });
   await type("Are you there?");
   assert.doesNotMatch(text($(box, ".session-head")), /offline/, "a send that went through clears the chip");
+});
+
+test("the Mac goes to sleep: the line says so, 'Continue on the server' appears and opens the box's copy; waking brings the line back", async () => {
+  const went = /** @type {string[]} */ ([]);
+  Object.defineProperty(globalThis, "history", { value: { state: null, pushState: (/** @type {any} */ _s, /** @type {any} */ _t, /** @type {string} */ u) => went.push(u), replaceState() {} }, configurable: true, writable: true });
+  assert.equal($$(box, "[data-act=continue-here]").length, 0, "nothing while the Mac is awake");
+  hear(/** @type {any} */ ({ id: ++evId, type: "link.mac-offline", thread: null, project: null, at: Date.now(), payload: { mac: "m1", name: "alex-mac", why: "sleep" } }));
+  await wait();
+  assert.match(text($(box, ".lease-bar")), /alex-mac is asleep or offline/);
+  const btn = $(box, "[data-act=continue-here]");
+  assert.ok(btn, "the way out");
+  await btn.click(); await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.continue-here").map(c => c.input), [{ thread: MAC, machine: "alex-mac" }]);
+  assert.deepEqual(went, ["/chat/thread/box-copy-1"]);
+  hear(/** @type {any} */ ({ id: ++evId, type: "link.mac-online", thread: null, project: null, at: Date.now(), payload: { mac: "m1", name: "alex-mac" } }));
+  await wait();
+  assert.match(text($(box, ".lease-bar")).trim(), /^On alex-mac$/);
+  assert.equal($$(box, "[data-act=continue-here]").length, 0);
 });
 
 test("cards on a Mac session: the usual buttons, 'on alex-mac', and the answer carries the machine", async () => {

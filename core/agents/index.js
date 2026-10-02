@@ -418,7 +418,8 @@ export default {
           // The keyboard is given back once the question is asked. Every word still goes through
           // the one process vyred owns, so there is no second writer on the transcript; holding
           // the lease past the reply would only lock the user's other screens out of the agent.
-          if (thread && i.wait !== false) await ctx.call("threads.release", { thread, surface });
+          // Released as the one who typed: the person for a person's ask (the lease is theirs), this module otherwise (a surface name is never an identity).
+          if (thread && i.wait !== false) await ctx.call("threads.release", { thread, surface }, ...(byPerson ? [{ as: String(caller) }] : []));
         }
       },
     });

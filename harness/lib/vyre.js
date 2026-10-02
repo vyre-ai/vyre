@@ -63,7 +63,14 @@ export function homeDir(env = process.env) {
 export function locate(pluginRoot, env = process.env) {
   const root = findPackage(pluginRoot, env);
   if (!root) return { state: "missing", root: null };
-  return { state: fs.existsSync(homeDir(env)) ? "ready" : "setup", root };
+  // A session on a box runs as an account uid with a home of its own, where there is no ~/.vyre; what it has is its own socket to vyred
+  // (VYRE_SOCKET, set by the spawner). That is Vyre on this machine, set up.
+  return { state: fs.existsSync(homeDir(env)) || socketThere(env) ? "ready" : "setup", root };
+}
+
+/** Does VYRE_SOCKET name a socket that exists? @param {NodeJS.ProcessEnv} env */
+function socketThere(env) {
+  try { return Boolean(env.VYRE_SOCKET) && fs.statSync(String(env.VYRE_SOCKET)).isSocket(); } catch { return false; }
 }
 
 /** The one line a session without Vyre shows. @param {"setup"|"missing"} state */

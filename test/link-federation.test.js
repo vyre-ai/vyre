@@ -205,3 +205,17 @@ test("link federation: unpairing from the Mac stops its loop, and pairing again 
   await polling(s);
   assert.equal((await ask(s, "threads.list")).data[0].ok, true);
 });
+
+test("link federation: link.rename relabels a paired Mac on the box, shows in link.macs at once, and tells the surfaces", async t => {
+  const s = await pair(t);
+  await polling(s);
+  const seen = [];
+  s.box.events.on("device.renamed", e => seen.push(e.payload));
+  const mac = (await s.boxCall("link.macs")).data[0];
+  const r = await s.boxCall("link.rename", { id: mac.mac, name: "  Alex's   MacBook Pro " });
+  assert.equal(r.data.name, "Alex's MacBook Pro", JSON.stringify(r.error));
+  assert.equal((await s.boxCall("link.macs")).data[0].name, "Alex's MacBook Pro");
+  assert.deepEqual(seen, [{ kind: "mac", id: mac.mac, name: "Alex's MacBook Pro" }]);
+  assert.ok((await s.boxCall("link.rename", { id: mac.mac, name: "" })).error, "an empty name is refused");
+  assert.ok((await s.boxCall("link.rename", { id: "nope", name: "x" })).error, "an unknown device is refused");
+});

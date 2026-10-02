@@ -44,3 +44,19 @@
   .pl-banner .pl-acts { width: 100%; }
   .pl-banner .pl-acts .btn { flex: 1; height: 44px; }
 }
+
+/* The planner's add, edit and keyboard (#48). */
+.pl-quick { display: grid; gap: 6px; margin-bottom: 16px; }
+.pl-quick .pl-add { display: flex; gap: 8px; }
+.pl-quick .pl-add .input { flex: 1; }
+.pl-preview { min-height: 18px; margin: 0; }
+.pl-row, .pl-note { position: relative; border-radius: 8px; }
+.pl-row[tabindex]:focus-visible, .pl-note[tabindex]:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.pl-row-acts { margin-left: auto; display: inline-flex; gap: 2px; opacity: 0; transition: opacity 120ms ease; }
+.pl-row:hover .pl-row-acts, .pl-row:focus-within .pl-row-acts, .pl-note:hover .pl-row-acts, .pl-note:focus-within .pl-row-acts { opacity: 1; }
+@media (pointer: coarse) { .pl-row-acts { opacity: 1; } }
+.pl-row.sending { opacity: .6; }
+.pl-edit { display: grid; gap: 8px; width: 100%; padding: 8px 0; }
+.pl-edit .pl-acts { display: flex; gap: 8px; align-items: center; }
+.pl-edit textarea { resize: vertical; font: inherit; }
+@media (prefers-reduced-motion: reduce) { .pl-row-acts { transition: none; } }

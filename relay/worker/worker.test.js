@@ -104,7 +104,7 @@ for (const hibernateEveryEvent of [false, true]) {
     const ready = await b.s.json();
     assert.equal(ready.t, "ready");
     assert.deepEqual(ready.waiting, []);
-    assert.deepEqual(ready.features, ["registered"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
+    assert.deepEqual(ready.features, ["registered", "revoke"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
 
     const dev = sock(rt, `/v1/device?route=${b.route}`);
     await dev.open();
@@ -621,10 +621,10 @@ for (const hibernateEveryEvent of [false, true]) {
   });
 }
 
-test("worker: the setup mailbox holds 64 KB, limits per address and globally, and answers any origin", async t => {
-  let allow = true, globalAllow = true;
+test("worker: the setup mailbox holds 64 KB, limits per address and per locator, has no global limit, and answers any origin", async t => {
+  let allow = true, locAllow = true, globalSpent = 0;
   const limiter = fn => ({ limit: async () => ({ success: fn() }) });
-  const rt = world(t, { env: { SETUP_LIMITER: limiter(() => allow), SETUP_LIMITER_GLOBAL: limiter(() => globalAllow), SETUP_POLL_MS: "20" } });
+  const rt = world(t, { env: { SETUP_LIMITER: limiter(() => allow), SETUP_LOC_LIMITER: limiter(() => locAllow), SETUP_LIMITER_GLOBAL: { limit: async () => { globalSpent++; return { success: false }; } }, SETUP_POLL_MS: "20" } });
   const loc = "z".repeat(43);
   const post = (line, extra = {}) => worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", headers: { origin: "https://vyre.run" }, body: JSON.stringify({ loc, fp: "f".repeat(22), wtok: "w".repeat(43), ...(line ? { line } : {}), ...extra }) }), rt.env);
   const first = await post();
@@ -639,11 +639,70 @@ test("worker: the setup mailbox holds 64 KB, limits per address and globally, an
   assert.equal((await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", body: "x".repeat(9000) }), rt.env)).status, 413);
   allow = false;
   assert.equal((await post()).status, 429, "per-address limiter");
-  allow = true; globalAllow = false;
-  assert.equal((await post()).status, 429, "global limiter");
+  allow = true; locAllow = false;
+  assert.equal((await post()).status, 429, "per-locator limiter");
+  locAllow = true;
+  assert.equal((await post()).status, 200, "a spent global budget (the old one, bound here as always-refusing) blocks nobody");
+  assert.equal(globalSpent, 0, "no global limiter is consulted any more");
+  assert.equal((await post(undefined, { loc: "y".repeat(43) })).status, 200, "another locator is unaffected");
   const pre = await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "OPTIONS", headers: { origin: "https://vyre.run" } }), rt.env);
   assert.equal(pre.status, 204);
   assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-key/);
   const badLoc = await worker.fetch(new Request(`${H}/v1/setup/mbx?loc=short`), rt.env);
   assert.equal(badLoc.status, 400);
+});
+
+test("worker: a box withdraws a ticket it registered (revoke), only its own, and a revoked locator resolves to nothing", async t => {
+  const rt = world(t);
+  const a = await box(rt), b = await box(rt);
+  const ready = await a.s.json();
+  assert.ok(ready.features.includes("revoke"), "the relay says it can withdraw a ticket");
+  await b.s.json();
+  const exp = Date.now() + 5 * 60_000, loc = "r".repeat(43);
+  const sealed = wire.ticketSeal(Buffer.alloc(8, 5), JSON.stringify({ v: 1, name: "alex", relay: BASE, route: a.route, box: "x".repeat(43), exp }));
+  a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: sealed, mac: "b".repeat(43), exp }));
+  assert.equal((await a.s.json()).status, 200);
+  // another box cannot withdraw it
+  b.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.deepEqual(await b.s.json(), { t: "revoked", loc, status: 404 });
+  // its own can, once, and then nothing resolves
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.deepEqual(await a.s.json(), { t: "revoked", loc, status: 200 });
+  const gone = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
+  assert.equal(gone.status, 404);
+  // the withdrawn locator is a tombstone until its own exp: no other box registers it again, and it still resolves to nothing
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc, record: sealed, mac: "d".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 409, "a revoked locator cannot be re-registered by an outsider");
+  const still = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
+  assert.equal(still.status, 404);
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc }));
+  assert.equal((await a.s.json()).status, 404, "a second withdrawal finds nothing");
+  // a setup offer is not a Wink ticket and is not withdrawn this way
+  const sloc = "s".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "setup", loc: sloc, record: sealed, mac: "c".repeat(43), exp }));
+  assert.equal((await a.s.json()).status, 200);
+  a.s.ws.send(JSON.stringify({ t: "revoke", loc: sloc }));
+  assert.equal((await a.s.json()).status, 404);
+});
+
+test("worker: /v1/pair serves a hit and a contested ticket with no charge, charges only a miss to its own address, and has no global limit", async t => {
+  const rt = world(t);
+  const b = await box(rt);
+  await b.s.json();
+  const exp = Date.now() + 5 * 60_000, ticket = Buffer.alloc(8, 9);
+  const sealed = wire.ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", relay: BASE, route: b.route, box: "x".repeat(43), exp }));
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc: "f".repeat(43), record: sealed, mac: "b".repeat(43), exp }));
+  await rt.settle();
+  let global = 0, charged = [];
+  // the old global binding, bound here as always-refusing to prove it is never consulted
+  rt.env.PAIR_LIMITER_GLOBAL = { limit: async () => { global++; return { success: false }; } };
+  rt.env.PAIR_LIMITER = { limit: async ({ key }) => { charged.push(key); return { success: key !== "203.0.113.7" }; } };
+  const resolve = (loc, ip = "203.0.113.5") => worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ loc }) }), rt.env);
+  // an address that has spent its own miss budget still gets a real ticket resolved
+  assert.equal((await resolve("g".repeat(43), "203.0.113.7")).status, 429, "its miss is refused");
+  assert.equal((await resolve("f".repeat(43), "203.0.113.7")).status, 200, "its hit is served");
+  assert.deepEqual(charged, ["203.0.113.7"], "only the miss was charged");
+  // another address is unaffected by it, and a plain miss answers as a miss
+  assert.equal((await resolve("h".repeat(43))).status, 404);
+  assert.equal(global, 0, "a global limiter, if one is still bound, is never consulted");
 });
