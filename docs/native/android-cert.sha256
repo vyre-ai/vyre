@@ -1,0 +1,3 @@
+# The SHA-256 of the Vyre Android signing certificate (lower-case hex, no colons). PENDING until the first signed build:
+# that run prints the fingerprint and fails; commit it here after checking it is your key. A later run with another certificate fails.
+PENDING

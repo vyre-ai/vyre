@@ -1,0 +1,187 @@
+# The Android store build (0.2.2 native apps, team/0.2.2-release/NATIVE-APPS.md): sh.vyre.app, signed with the Vyre-held key for Google Play
+# and vyre.run. The box-signed channel (app.yml) is a different application id, sh.vyre.app.box.
+#   build        no secrets: npm, gradle and every third-party plugin run here and make an UNSIGNED release APK and AAB
+#   dry-sign     no secrets: the same signing script with a throwaway key, to prove the signing path on every run; and the upload script's test
+#   sign         the only job with the protected `release` environment and the key. It runs no npm and no gradle (apksigner, jarsigner and
+#                scripts/native only), checks the build job's sha256 list first, pins the signing certificate, then optionally attaches the
+#                APK to the GitHub release and uploads the AAB to a Play track. Without the secrets it prints a skip line.
+name: native-android
+on:
+  push:
+    paths: ["scripts/native/**", "docs/native/**", ".github/workflows/native-android.yml"]
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "Sign with the release key (needs the release environment's approval and secrets)"
+        type: boolean
+        default: false
+      track:
+        description: "Play track to upload the signed AAB to (empty: no upload)"
+        type: string
+        default: ""
+      status:
+        description: "Play release status: draft (a new app) or completed"
+        type: string
+        default: "draft"
+permissions:
+  contents: read
+concurrency:
+  group: native-android-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+env:
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: echo "SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK }}/ndk/27.1.12297006
+            ${{ env.SDK }}/cmake/3.22.1
+          key: android-ndk-27.1.12297006-cmake-3.22.1
+      - run: npm ci --no-audit --no-fund
+      - run: npx expo prebuild -p android --no-install --clean
+      - name: Unsigned release, with a versionCode that only goes up
+        run: |
+          # prebuild points release at the debug keystore; that line goes, so nothing here is signed. versionCode = 100 + the run number
+          # (Play needs a larger number for every upload).
+          node -e '
+            const fs = require("fs"), f = "android/app/build.gradle"; let s = fs.readFileSync(f, "utf8");
+            const bt = s.indexOf("buildTypes"), rel = s.indexOf("release {", bt), line = "signingConfig signingConfigs.debug", at = s.indexOf(line, rel);
+            if (bt < 0 || rel < 0 || at < 0) { console.error("no release signingConfig to drop in " + f); process.exit(1); }
+            s = s.slice(0, at) + "// unsigned: scripts/native/android-sign.sh signs it in the release job" + s.slice(at + line.length);
+            const code = 100 + Number(process.env.RUN_NUMBER);
+            if (!/versionCode\s+\d+/.test(s)) { console.error("no versionCode in " + f); process.exit(1); }
+            s = s.replace(/versionCode\s+\d+/, "versionCode " + code);
+            if (!/applicationId\s+["\x27]sh\.vyre\.app["\x27]/.test(s)) { console.error("applicationId is not sh.vyre.app"); process.exit(1); }
+            fs.writeFileSync(f, s);'
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+      - run: ./gradlew --no-daemon assembleRelease bundleRelease
+        working-directory: apps/app/android
+      - name: Collect and checksum
+        run: |
+          mkdir -p ../../dist-native
+          apk=$(ls android/app/build/outputs/apk/release/*-unsigned.apk | head -1); aab=$(ls android/app/build/outputs/bundle/release/*.aab | head -1)
+          test -f "$apk" && test -f "$aab" || { echo "no unsigned APK or AAB"; ls -R android/app/build/outputs; exit 1; }
+          cp "$apk" ../../dist-native/vyre-release-unsigned.apk; cp "$aab" ../../dist-native/vyre-release-unsigned.aab
+          (cd ../../dist-native && sha256sum vyre-release-unsigned.apk vyre-release-unsigned.aab | tee SHA256SUMS-build)
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$bt/aapt2" dump badging ../../dist-native/vyre-release-unsigned.apk | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/package \1 versionCode \2 versionName \3/p" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-unsigned-${{ github.sha }}
+          path: dist-native/
+          retention-days: 14
+
+  dry-sign:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-unsigned-${{ github.sha }}
+          path: unsigned
+      - name: The upload script against a fake Play
+        run: node --test scripts/native/play-upload.test.js
+      - name: Sign with a throwaway key, verify, and check the pin logic refuses
+        run: |
+          export KS_PASS=$(openssl rand -hex 16)
+          keytool -genkeypair -keystore "$RUNNER_TEMP/throwaway.p12" -storetype PKCS12 -storepass "$KS_PASS" -alias ci -keyalg RSA -keysize 2048 -validity 2 -dname "CN=Vyre throwaway CI" >/dev/null 2>&1
+          export KEY_PASS=$KS_PASS KEY_ALIAS=ci KEYSTORE_FILE="$RUNNER_TEMP/throwaway.p12" APK_IN=unsigned/vyre-release-unsigned.apk AAB_IN=unsigned/vyre-release-unsigned.aab
+          (cd unsigned && sha256sum -c SHA256SUMS-build)
+          OUT_DIR="$RUNNER_TEMP/signed" PIN_MODE=none bash scripts/native/android-sign.sh | tee -a "$GITHUB_STEP_SUMMARY"
+          # The pin check must fail closed: PENDING, and a different certificate.
+          if OUT_DIR="$RUNNER_TEMP/s2" PIN_MODE=enforce PIN_FILE=docs/native/android-cert.sha256 bash scripts/native/android-sign.sh >"$RUNNER_TEMP/pending.log" 2>&1; then echo "a PENDING pin passed"; exit 1; fi
+          grep -q "PENDING" "$RUNNER_TEMP/pending.log" || { cat "$RUNNER_TEMP/pending.log"; echo "the PENDING refusal did not say so"; exit 1; }
+          printf '%064d\n' 0 > "$RUNNER_TEMP/other.pin"
+          if OUT_DIR="$RUNNER_TEMP/s3" PIN_MODE=enforce PIN_FILE="$RUNNER_TEMP/other.pin" bash scripts/native/android-sign.sh >"$RUNNER_TEMP/other.log" 2>&1; then echo "a wrong pin passed"; exit 1; fi
+          grep -q "not the pinned one" "$RUNNER_TEMP/other.log" || { cat "$RUNNER_TEMP/other.log"; echo "the wrong-pin refusal did not say so"; exit 1; }
+          echo "pin refusals hold (PENDING and a different certificate)" | tee -a "$GITHUB_STEP_SUMMARY"
+          # A key's password never reached the logs.
+          ! grep -q "$KS_PASS" "$RUNNER_TEMP/pending.log" "$RUNNER_TEMP/other.log"
+
+  sign:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write  # attaching the signed APK to a release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/native
+            docs/native
+      - name: Is the key here
+        id: keys
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for v in ANDROID_KEYSTORE_B64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then echo "skipped: $v is not set in the release environment" | tee -a "$GITHUB_STEP_SUMMARY"; echo "present=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "present=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.keys.outputs.present == 'true'
+        with:
+          name: android-unsigned-${{ github.sha }}
+          path: unsigned
+      - name: Sign, verify, pin
+        if: steps.keys.outputs.present == 'true'
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set +x
+          for s in "$KS_B64" "$KS_PASS" "$KEY_ALIAS" "$KEY_PASS"; do echo "::add-mask::$s"; done
+          (cd unsigned && sha256sum -c SHA256SUMS-build)
+          umask 077
+          ks="$RUNNER_TEMP/vyre-release.p12"
+          printf '%s' "$KS_B64" | base64 -d > "$ks"
+          trap 'rm -f "$ks"' EXIT
+          KEYSTORE_FILE="$ks" APK_IN=unsigned/vyre-release-unsigned.apk AAB_IN=unsigned/vyre-release-unsigned.aab OUT_DIR=signed \
+            PIN_MODE=enforce PIN_FILE=docs/native/android-cert.sha256 bash scripts/native/android-sign.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: steps.keys.outputs.present == 'true'
+        with:
+          name: android-signed-${{ github.sha }}
+          path: signed/
+          retention-days: 30
+      - name: Upload the AAB to Play
+        if: steps.keys.outputs.present == 'true' && inputs.track != ''
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then echo "skipped: PLAY_SERVICE_ACCOUNT_JSON is not set in the release environment" | tee -a "$GITHUB_STEP_SUMMARY"; exit 0; fi
+          echo "::add-mask::$PLAY_SERVICE_ACCOUNT_JSON"
+          node scripts/native/play-upload.mjs --aab signed/vyre-release-signed.aab --package sh.vyre.app --track "${{ inputs.track }}" --status "${{ inputs.status }}" | tee -a "$GITHUB_STEP_SUMMARY"
