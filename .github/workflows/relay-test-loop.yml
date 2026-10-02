@@ -1,11 +1,13 @@
 # #13: test/relay.test.js failed once as a whole file with no assertion on a hosted node run, and passed on rerun, and
 # core/relay/setup.test.js "a new install code discards the device of an earlier unclaimed session" failed once with "box
 # closed the connection". This runs both files in a loop on a hosted runner and keeps every failing iteration's full output, so the cause can be read.
-# Runs when this file changes and on dispatch (GitHub only lets a workflow be dispatched once it has run). Throwaway GitHub runner, never a Mac.
+# Runs on dispatch, and on a push to a work/rc-* branch that touches the relay or this file (GitHub only lets a workflow be dispatched once it has run).
+# Throwaway GitHub runner, never a Mac.
 name: relay-test-loop
 on:
   push:
-    paths: [".github/workflows/relay-test-loop.yml"]
+    branches: ["work/rc-*"]
+    paths: ["core/relay/**", "relay/**", "test/relay*.test.js", ".github/workflows/relay-test-loop.yml"]
   workflow_dispatch:
     inputs:
       runs:
