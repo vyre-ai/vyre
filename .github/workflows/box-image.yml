@@ -152,6 +152,31 @@ jobs:
               console.log(`/app/ 200 (${page.body.length} bytes), ${entry} ${js.body.length} bytes, /app/now 200, /app/sw.js build ${pre.build} with ${list.length} precached (all 200), manifest start_url /app/`);
             }).catch(e => { console.error(e); process.exit(1); });' | tee -a "$GITHUB_STEP_SUMMARY"
 
+      # #40: a session runs as an account's own uid, with a home that has no ~/.vyre. Its Vyre MCP server must still reach vyred (through the session's own
+      # socket) and offer tools, not the "not set up, run vyre up" stub. The stand-in claude starts the MCP server its --mcp-config names, as Claude Code does,
+      # and says what it got. Run last among the boot checks: it replaces claude in this throwaway container.
+      - name: A session as an account uid gets Vyre's tools (#40)
+        run: |
+          docker exec -u root "$C" sh -c 'T=$(readlink -f /usr/local/bin/claude); printf "#!/bin/sh\nFAKE_CLAUDE_LOG=/dev/null exec node /opt/vyre/core/switchboard/testing/fake-claude.js \"\$@\"\n" > "$T"; chmod 755 "$T"'
+          docker exec -u vyre "$C" node --input-type=module -e '
+            import { call } from "/opt/vyre/core/daemon/client.js";
+            const t = async (n, i) => { const r = await call(n, i, { caller: "cli", timeout: 30000 }); if (r.error) throw new Error(n + ": " + JSON.stringify(r.error)); return r.data; };
+            const acct = await t("sessions.accounts.add", { provider: "claude", label: "probe", kind: "login" });
+            if (!(acct.uid >= 2000)) throw new Error("no account uid: " + JSON.stringify(acct));
+            const th = await t("threads.start", { cwd: "/work", prompt: "mcp-tools", provider: "claude", account: acct.id, surface: "deck" });
+            const id = th.id || th.thread;
+            for (let i = 0; i < 90; i++) {
+              await new Promise(r => setTimeout(r, 1000));
+              const g = await t("threads.get", { thread: id, limit: 200 });
+              const done = g.events.find(e => e.type === "thread.text" && e.payload.done);
+              if (done) {
+                console.log("uid", acct.uid, "->", done.payload.text);
+                if (!/^mcp vyre: [1-9][0-9]* tools$/.test(done.payload.text)) { console.log("the session got no Vyre tools"); process.exit(1); }
+                process.exit(0);
+              }
+              if (["failed", "stopped"].includes(g.thread.status)) { console.log("thread", g.thread.status, JSON.stringify(g.events.slice(-3).map(e => e.payload))); process.exit(1); }
+            }
+            console.log("no reply in 90 s"); process.exit(1);'
       - name: tini is PID 1
         if: hashFiles('core/daemon/loop.sh') != ''
         run: |

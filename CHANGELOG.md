@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(harness): a session that runs as an account's own uid on a box could not use Vyre's tools: the MCP launcher judged "set up" only by ~/.vyre, which an account home does not have, so it served the stub that says to run `vyre up`. A VYRE_SOCKET that names an existing socket (the session's own, given by the spawner) now counts as set up. The box-image run starts a session as an account uid and checks its Vyre MCP server offers tools; the stand-in claude gained a prompt for it. fixes #40
 - feat(threads): threads.get gives thread.taint {outside, private}: sticky flags set when a tool call brings in outside material (the web, mail, a calendar, a connector, an MCP server that is not Vyre's) or the person's private things (the vault, mail, files, private memory); nothing clears them, a fork inherits them. For the Gate on interactive pages.
 
 - sessions: a Vyre-started Claude session loads only Vyre's own MCP server (--strict-mcp-config with an explicit config, on the CLI and the Agent SDK path), not the servers the account or the machine adds. scripts/claude-connector-check.mjs checks it against a real Claude Code.

@@ -24,6 +24,8 @@
 //   "spend <usd>"   a turn that cost that much
 //   "nearlimit"     a rate-limit warning (85% of the five-hour limit), then a normal turn
 //   "lowlimit"      a rate-limit warning at 27% of the seven-day limit, then a normal turn
+//   "mcp-tools"     starts the MCP server this launch's --mcp-config names, as Claude Code would (same env, same uid), asks it for its tools,
+//                   and says how many, or its instructions when it is the stub that says Vyre is not set up
 //   "forge <caller> <tool>"  calls a vyred tool as <caller>, carrying this thread's agent key
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
@@ -415,6 +417,29 @@ async function turn(prompt, uuid = null) {
     });
     await say(String(r));
     return result(true, String(r));
+  }
+  if (p.trim() === "mcp-tools") {
+    let out;
+    try {
+      const cfg = JSON.parse(flag("--mcp-config") || "{}");
+      const [name, srv] = Object.entries(cfg.mcpServers || {})[0] || [];
+      if (!srv) out = "no mcp server in --mcp-config";
+      else {
+        const { spawn } = await import("node:child_process");
+        const child = spawn(srv.command, srv.args || [], { env: { ...process.env, ...(srv.env || {}) }, stdio: ["pipe", "pipe", "ignore"] });
+        const got = new Map();
+        readline.createInterface({ input: child.stdout }).on("line", l => { try { const m = JSON.parse(l); if (m.id != null) got.set(m.id, m); } catch {} });
+        const ask = (id, method, params) => { child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); return new Promise(res => { const t = setInterval(() => { if (got.has(id)) { clearInterval(t); res(got.get(id)); } }, 50); setTimeout(() => { clearInterval(t); res(null); }, 20_000).unref(); }); };
+        const init = await ask(1, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "fake-claude", version: "0" } });
+        child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+        const list = await ask(2, "tools/list", {});
+        const tools = list && list.result && list.result.tools || [];
+        out = tools.length ? `mcp ${name}: ${tools.length} tools` : `mcp ${name}: no tools: ${init && init.result && init.result.instructions || "no answer"}`;
+        child.kill();
+      }
+    } catch (e) { out = `mcp-tools failed: ${e && e.message}`; }
+    await say(out);
+    return result(true, out);
   }
   // The plugin's own way in (the MCP server, the hooks): no root, so a session's VYRE_SOCKET is used.
   const own = /^vyre-sock (\S+)\s*(.*)$/s.exec(p);
