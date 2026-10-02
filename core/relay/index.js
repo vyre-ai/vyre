@@ -676,7 +676,8 @@ export default {
     let pairWindow = null;
     /** @type {any} */
     let windowTimer = null;
-    /** Who opened it: the caller, the node, and the person session. A renewal must come from all three. */
+    /** Who opened it: the caller, the node, and the person session. A renewal must come from all three. Opening needs a proof, and a proof from
+     * an owner's device needs a person session, so the session part is never empty for an open window (a test pins it). */
     const windowWho = meta => `${String((meta && meta.caller) || "")}|${(meta && meta.peer && (meta.peer.stableId || meta.peer.node)) || ""}|${(meta && meta.person && meta.person.id) || ""}`;
     /** The window's screen: the owner's own device or browser, never a terminal, an agent or a module. */
     const screenOnly = (meta, what) => {
@@ -1165,6 +1166,11 @@ export default {
 
     // Taking a device's presence key away (presence.remove) takes the device away too: its open
     // channel closes with 4401 "device removed" and it is refused on reconnect, the same as relay.devices.remove.
+    // The person session that opened a pairing window ended (signed out or revoked): the window closes at once, not 30 s later.
+    const offSignedOut = ctx.events.on("presence.signed-out", (/** @type {any} */ ev) => {
+      const id = ev && ev.payload && ev.payload.id;
+      if (pairWindow && id && pairWindow.who.endsWith(`|${id}`)) closeWindow("session ended");
+    });
     const offPresence = ctx.events.on("presence.removed", (/** @type {any} */ ev) => {
       const keyId = ev && ev.payload && ev.payload.id;
       if (!keyId) return;
@@ -1172,6 +1178,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { try { offPresence(); } catch {} stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { try { offPresence(); } catch {} try { offSignedOut(); } catch {} clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

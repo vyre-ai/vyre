@@ -179,3 +179,15 @@ test("pairing window: a redeem with no confirm does not enrol, and closing the w
   await assertRefused;
   assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.length, 0, "no confirm, no device");
 });
+
+test("pairing window: it closes at once when its person session signs out, and opening needs a person session", async t => {
+  const w = await windowWorld(t);
+  assert.equal((await w.call("relay.pair.window.open", {}, SCREEN, { proof: A.proof, peer: A.peer })).error?.code, "person_session_required", "no person session, no window");
+  const id = (await w.call("relay.pair.window.open", {}, SCREEN, A)).data.window;
+  w.d.events.emit("presence", "presence.signed-out", { id: "ps2" });
+  assert.equal((await w.call("relay.pair.window.ping", { window: id }, SCREEN, A2)).data.closesInMs > 0, true, "another session signing out leaves it open");
+  w.d.events.emit("presence", "presence.signed-out", { id: "ps1" });
+  assert.equal((await w.call("relay.pair.window.ping", { window: id }, SCREEN, A2)).error?.code, "not_found", "its own session signing out closes it");
+  for (let i = 0; i < 50 && !w.events.some(e => e[0] === "pairing-window.closed"); i++) await new Promise(r => setTimeout(r, 50));
+  assert.ok(w.events.some(e => e[0] === "pairing-window.closed" && e[1].reason === "session ended"));
+});
