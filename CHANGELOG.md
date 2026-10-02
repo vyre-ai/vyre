@@ -47,6 +47,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   is never retried or counted. The card says "Posts what it finds into session <id> as quoted notes".
   New event `watcher.woke`.
 
+- Lumen Deep glass: proved on the built app. CI now compiles a small probe, puts a window that is white on the left half and black on the right behind the panel, captures the panel with macOS's own window capture, and compares the panel's two halves with the glass on and with Reduce Transparency forced on, in dark and light (the Mac check prints the numbers and the stills glass-<look>-<ground>.png). New drive commands `display` and `appearance` set those two for the check.
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
