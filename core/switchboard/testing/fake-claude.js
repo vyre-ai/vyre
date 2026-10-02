@@ -72,7 +72,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;
 /** @type {Map<string, (r: any) => void>} */
 const waiting = new Map();
-let MODEL = flag("--model") || "fake-model";
+// FAKE_CLAUDE_REPORT_MODEL: the model it says it runs whatever was asked for (an account default that differs from the alias a thread was started with, #41).
+let MODEL = process.env.FAKE_CLAUDE_REPORT_MODEL || flag("--model") || "fake-model";
 /** The slash commands it offers, as Claude Code lists them in init and in the initialize answer. */
 const COMMANDS = [{ name: "compact", description: "Clear the conversation but keep a summary", argumentHint: "<instructions>" },
   { name: "review", description: "Review a pull request", argumentHint: "" }];

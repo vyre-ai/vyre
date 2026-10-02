@@ -98,7 +98,7 @@ export function phoneNow(ctx) {
   /** Macs asking to pair, from link.pending. Empty where this machine is not a box. */
   let pairs = /** @type {any[]} */ ([]);
   const loadPairs = async () => {
-    const r = await attempt("link.pending");
+    const r = await attempt("link.pending", {}, { ifPresent: true });
     if (!ctx.alive()) return;
     pairs = Array.isArray(r.data) ? r.data.map((/** @type {any} */ p) => ({ kind: "pair", id: "pair:" + p.id, at: Number(p.expires || Date.now()) - 600_000, pair: p })) : [];
     drawNeeds();

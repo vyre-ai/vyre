@@ -161,7 +161,7 @@ test("a chat's draft tile and the project made from it share colour and mark; on
   assert.equal(av.projectSeed("harlow-legal"), "harlow-legal", "no stored seed: the slug, never the name");
 });
 
-test("threadAvatar: a project session wears the project tile, a loose chat its draft, agents and teammates their own, the assistant only in its own thread", () => {
+test("threadAvatar: a project session wears the project tile, a loose chat the assistant's creature (never the dashed draft tile), agents and teammates their own, the assistant only in its own thread", () => {
   av._reset();
   av.setIdentity({ assistant: { name: "juno" } });
   av.setTeammates([{ agent: "design-harlow-legal", project: "harlow-legal" }]);
@@ -169,7 +169,7 @@ test("threadAvatar: a project session wears the project tile, a loose chat its d
   const fam = (/** @type {any} */ t) => { const e = av.threadAvatar(t); return e.getAttribute("data-family") + (e.hasAttribute("data-draft") ? ":draft" : ""); };
   assert.equal(fam({ agent: null, project: "harlow-legal", thread: "t1" }), "project");
   assert.equal(fam({ agent: "claude-code", project: "harlow-legal", thread: "t1" }), "project");
-  assert.equal(fam({ agent: null, project: null, thread: "t2" }), "project:draft");
+  assert.equal(fam({ agent: null, project: null, thread: "t2" }), "assistant");
   assert.equal(fam({ agent: "juno", project: null, thread: "t3" }), "assistant");
   assert.equal(fam({ agent: "kit", project: "harlow-legal", thread: "t4" }), "agent");
   assert.equal(fam({ agent: "design-harlow-legal", project: "harlow-legal", thread: "t5" }), "teammate");

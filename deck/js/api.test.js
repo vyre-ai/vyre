@@ -242,3 +242,19 @@ test("device_removed on a 4xx tells the phone it was removed; a network error or
     if (was) Object.defineProperty(globalThis, "location", was); else delete globalThis.location;
   } finally { globalThis.fetch = real; off(); box = () => ({ body: { data: { state: "sent" } } }); }
 });
+
+test("ifPresent: a tool the box does not list is never called; one it lists, or an unreadable list, is", async () => {
+  const seen = /** @type {string[]} */ ([]);
+  globalThis.fetch = /** @type {any} */ (async (/** @type {string} */ url) => {
+    seen.push(String(url));
+    if (String(url) === "/v1/tools") return { status: 200, json: async () => ({ data: [{ name: "link.pending" }, { name: "projects.list" }] }) };
+    return { status: 200, statusText: "", json: async () => ({ data: [] }) };
+  });
+  const { attempt } = await import("./api.js");
+  const gone = await attempt("github.accounts", {}, { ifPresent: true });
+  assert.equal(gone.error?.missing, true);
+  assert.ok(!seen.some(u => u.includes("github.accounts")), "no request for a tool the box lacks");
+  const there = await attempt("link.pending", {}, { ifPresent: true });
+  assert.deepEqual(there.data, []);
+  assert.equal(seen.filter(u => u === "/v1/tools").length, 1, "the list is asked once");
+});

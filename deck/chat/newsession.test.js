@@ -86,7 +86,7 @@ test("new session: shows who and where, says where no folder starts, and starts 
   const stop = mountNewSession(box, { project: "harlow-legal", onDone: () => done++ });
   await tick(); await tick();
   const t = text(box);
-  for (const s of ["Who", "Vyre", "juno", "kit", "Where", "Harlow Legal", "Northwind Bakery", "site", "Browse...", "No folder (starts in /work)", "First message"]) assert.ok(t.includes(s), s);
+  for (const s of ["Who", "A Claude session", "juno", "kit", "Where", "Harlow Legal", "Northwind Bakery", "site", "Browse...", "No folder (starts in /work)", "First message"]) assert.ok(t.includes(s), s);
   assert.equal($(box, "button[aria-checked=true]") && text($$(box, "button[aria-checked=true]")[1]).includes("Harlow Legal"), true);
   $(box, "textarea").value = "Tidy the intake form";
   press("Enter", $(box, "textarea"), { metaKey: true });

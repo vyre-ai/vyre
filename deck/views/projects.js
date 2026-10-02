@@ -3,40 +3,37 @@
 // thread reads).
 //
 //   /projects                     every project (projects.list), with pins and New project
-//   /projects/:slug               the board: threads + brief on the left, the thread in the
-//   /projects/:slug/:thread       centre, the files it touched on the right. ?tab= brief|files|memory
-//   /threads/:thread              the same thread for a session in no project, with "Add to a project"
+//   /projects/:slug               the project's page: its chats, brief and the rest. ?tab= team|brief|files|memory
 //
-// A thread is either a recorded session (recall.thread, read from its transcript) or a live
-// switchboard thread (threads.get, then thread.* and ask.raised events). Everything a thread says
-// is untrusted and goes in through h() as text only.
+// Projects is a shell: it lists and describes a project and never draws a conversation. Every chat opens in
+// Chat (/chat/<project>/<thread>), scoped to the project, where the one real session view lives; a start
+// box is the same New chat there. /projects/<slug>/<thread> and /threads/<id> still work and go to Chat
+// (js/app.js). The board used to draw its own copy of a thread, which read events by the wrong fields and
+// drew empty rows and a composer that sent nothing (#37, #42).
 //
-// On the box, the paired Mac's rows come in too (js/machine.js): its projects in the list, a Mac
-// session picked into a box project in the board, a Mac thread at /threads/:thread. Each carries
-// a machine chip and is read only: a Mac project has no board here, and a Mac thread opens from
-// recall.thread with no reply, keyboard or Take. Picking a Mac session into a box project is fine.
+// On the box, the paired Mac's rows come in too (js/machine.js): its projects in the list with a machine
+// chip. A Mac project has no page here; a Mac session opens in Chat like any other.
 
 import { h, put, link, go, head, empty } from "../js/dom.js";
-import { attempt, queue, queued } from "../js/api.js";
+import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
-import { projectAvatar, draftAvatar, setProjects, personAvatar, threadAvatar, readTeammates, readProjects } from "../js/avatars.js";
-import { labelFor, readNames } from "../chat/lib/names.js";
+import { projectAvatar, setProjects } from "../js/avatars.js";
 import * as needs from "../js/needs.js";
-import { when, clock, since, base, initial, plural } from "../js/fmt.js";
+import { when, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 import { elsewhere } from "../js/need-rows.js";
-import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline, offerThen } from "../js/empty-actions.js";
+import { createProject, createProjectInline, startThread, indexHistoryInline, offerThen } from "../js/empty-actions.js";
 import { renameProject, archiveProject } from "../js/project-actions.js";
 import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
+import { chatCounts, chatsWord } from "../js/chat-counts.js";
 
 const enc = encodeURIComponent;
-const TABS = [["threads", "Threads"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
+const TABS = [["threads", "Chats"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
 
 /** @param {any} ctx */
 export default async function projects(ctx) {
   if (ctx.params.slug) return board(ctx);
-  if (ctx.params.thread) return loose(ctx);
   return list(ctx);
 }
 
@@ -122,16 +119,18 @@ async function list(ctx) {
     put(form, el);
   };
 
+  /** @type {Map<string, number>} */ let chats = new Map();
   const draw = async () => {
-    const r = await attempt("projects.list", showArchived ? { archived: true } : {});
+    const [r, counts] = await Promise.all([attempt("projects.list", showArchived ? { archived: true } : {}), chatCounts(attempt)]);
     if (!ctx.alive()) return;
+    chats = counts;
     if (r.error) { put(count_, ""); put(rows, empty("Projects are not available.", r.error)); return; }
     const all = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0));
     setProjects(all); // each project's tile seed (js/avatars.js)
     const pinned = new Set(pins());
     put(count_, all.length ? `${plural(all.length, "project")}, most recent first.` : "No projects yet.");
     put(rows,
-      all.length ? all.map(p => projectRow(p, pinned.has(p.slug), draw))
+      all.length ? all.map(p => projectRow(p, pinned.has(p.slug), draw, chats))
         : h("div", { class: "empty" }, "Name one and Vyre makes its folder. Or run vyre new in a folder you already have.", createProjectInline()),
       (r.data?.problems || []).map(pr => h("div", { class: "pl-problem small muted" }, typeof pr === "string" ? pr : (pr.message || pr.path || JSON.stringify(pr)))));
   };
@@ -148,7 +147,7 @@ function parsePeople(s) {
   });
 }
 
-function projectRow(p, pinned, redraw) {
+function projectRow(p, pinned, redraw, counts = new Map()) {
   if (isMac(p)) return macProjectRow(p);
   const pin = h("button", { type: "button", class: "ibtn pl-pin", "aria-pressed": String(pinned), "aria-label": `${pinned ? "Unpin" : "Pin"} ${p.name}`,
     title: pinned ? "Pinned to the rail" : "Pin to the rail", onclick: () => { setPin(p.slug, !pinned); redraw(); } }, icon("pin"));
@@ -159,7 +158,7 @@ function projectRow(p, pinned, redraw) {
     h("div", { class: "pl-main" },
       h("div", { class: "pl-name" }, link(`/projects/${enc(p.slug)}`, { class: "link quiet pl-open" }, p.name), p.archived_at ? h("span", { class: "tag" }, "Archived") : null, p.org ? h("span", { class: "tag" }, p.org) : null),
       h("div", { class: "small muted ellipsis" }, ppl.length ? ppl.join(", ") : h("span", { class: "faint" }, "No people yet"))),
-    h("div", { class: "code pl-count" }, plural(p.threads || 0, "thread")),
+    h("div", { class: "code pl-count" }, chatsWord(p, counts)),
     h("div", { class: "code faint pl-last" }, p.last ? when(p.last) : "never"),
     p.archived_at ? h("button", { type: "button", class: "btn btn-sm", "data-act": "restore", "aria-label": `Restore ${p.name}`,
       onclick: async () => { if (await archiveProject(p, false)) redraw(); } }, "Restore") : null,
@@ -202,10 +201,10 @@ async function board(ctx) {
     ...live.sort((a, b) => (b.last || 0) - (a.last || 0)).map(t => ({ id: t.id, name: t.name || t.id, at: t.last || t.started, live: t })),
     ...recorded.map(t => ({ id: t.id, name: t.label || t.name || t.title || t.id, at: t.last, rec: t })),
   ];
-  const chosen = ctx.params.thread || null;
-  const selected = chosen || items[0]?.id || null;
-  const hrefFor = id => `/projects/${enc(slug)}/${enc(id)}`;
-  const tabHref = t => (chosen ? hrefFor(chosen) : `/projects/${enc(slug)}`) + (t === "threads" ? "" : `?tab=${t}`);
+  // A chat opens in Chat, scoped to this project: the old /projects/<slug>/<thread> address goes there.
+  if (ctx.params.thread) { go(`/chat/${enc(slug)}/${enc(ctx.params.thread)}`); return; }
+  const hrefFor = id => `/chat/${enc(slug)}/${enc(id)}`;
+  const tabHref = t => `/projects/${enc(slug)}` + (t === "threads" ? "" : `?tab=${t}`);
 
   const ppl = peopleText(p.people);
   const nameEl = h("h1", { class: "pj-name" }, p.name);
@@ -222,9 +221,9 @@ async function board(ctx) {
     h("div", { class: "pj-grow" }),
     agents.length ? h("span", { class: "pj-agents small faint" }, agents.map(a => h("span", { class: "initial sm", "aria-hidden": "true" }, initial(a))), agents.join(", ")) : null,
     h("button", { type: "button", class: "btn btn-ghost btn-sm pj-archive", "data-act": "archive", title: "Take it out of the list. Nothing is deleted.", onclick: () => archiveProject(p) }, "Archive"),
-    newThreadButton(ctx, p, sw.error));
+    link(`/chat?new&project=${enc(slug)}`, { class: "btn", "aria-label": "New chat in this project" }, icon("plus", 14), h("span", { class: "nt-label" }, "New chat")));
 
-  const root = h("div", { class: "pj" + (chosen ? " has-thread" : "") + " tab-" + tab });
+  const root = h("div", { class: "pj tab-" + tab });
   put(ctx.root, root);
 
   if (tab === "brief") { put(root, header, briefTab(ctx, p, cx, sw.error)); return; }
@@ -232,34 +231,21 @@ async function board(ctx) {
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
   if (tab === "team") { const box = h("div", { class: "pj-page" }); put(root, header, box); const m = await import("./project-team.js"); if (ctx.alive()) await m.drawTeam(box, ctx, p); return; }
 
+  // The project's chats, newest first: each opens in Chat. Beside them, the start of the brief.
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
-    h("div", { class: "lbl pj-threads-l" }, "Threads"),
-    items.length ? items.map(it => threadItem(it, it.id === selected, hrefFor(it.id), needs.current()))
-      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. Sessions are not available on this box, so one cannot start here.")
-      : h("div", { class: "empty pj-none" }, "No threads yet.", startThreadInline(p)),
+    items.length ? items.map(it => threadItem(it, false, hrefFor(it.id), needs.current()))
+      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No chats yet. Sessions are not available on this box, so one cannot start here.")
+      : h("div", { class: "empty pj-none" }, "No chats yet. ", link(`/chat?new&project=${enc(slug)}`, { class: "link" }, "Start one")),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
   drawList();
   ctx.cleanup(needs.watch(drawList));
   const brief = h("section", { class: "pj-brief", "aria-labelledby": "brief-h" },
     h("div", { class: "pj-brief-top" }, h("h2", { id: "brief-h", class: "lbl" }, "Brief"), link(tabHref("brief"), { class: "link small muted" }, "Read all")),
     cx.error ? empty("", cx.error) : shortBrief(cx.data?.text).map(l => h("p", { class: l.mono ? "pj-brief-mono" : "pj-brief-p" }, l.text)));
+  put(root, header, h("div", { class: "pj-page pj-chats" }, h("div", { class: "lbl pj-threads-l" }, "Chats"), threadList, brief));
 
-  const centre = h("section", { class: "pj-centre", "aria-label": "Thread" });
-  const files = h("aside", { class: "pj-files", "aria-label": "Files this thread touched" });
-  put(root, header, h("div", { class: "pj-body" },
-    h("aside", { class: "pj-left", "aria-label": "Threads and brief" }, threadList, h("div", { class: "pj-grow" }), brief),
-    centre, files));
-
-  if (!selected) {
-    put(centre, h("div", { class: "th-empty" }, h("div", { class: "empty" }, "The thread you start shows here.")));
-    put(files, h("div", { class: "pj-files-head" }, h("h2", { class: "lbl" }, "Files")), h("div", { class: "pj-files-pad empty" }, "The files a thread touches show here."));
-    return;
-  }
-  const it = items.find(x => x.id === selected);
-  await threadPane(ctx, selected, { centre, files, known: it, project: p, switchboard: sw, back: `/projects/${enc(slug)}` });
-
-  // Keep the list's states fresh when a thread starts, finishes or raises a question.
+  // Keep the list's states fresh when a chat starts: read the page again.
   ctx.on("thread.started", e => { if (e.project === slug) go(location.pathname + location.search); });
 }
 
@@ -293,40 +279,6 @@ function threadItem(it, on, href, open) {
       held ? h("span", { class: "pj-held" }, h("span", { class: "dot beacon", "aria-hidden": "true" }), "held") : null));
 }
 
-function newThreadButton(ctx, p, swErr) {
-  const wrap = h("div", { class: "nt" });
-  const btn = h("button", { type: "button", class: "btn", "aria-label": "New thread", "aria-expanded": "false", "aria-haspopup": "dialog", onclick: () => toggle(pop.hidden) }, icon("plus", 14), h("span", { class: "nt-label" }, "New thread"));
-  const pop = h("form", { class: "nt-pop", hidden: true, role: "dialog", "aria-label": "New thread" });
-  const toggle = openIt => {
-    pop.hidden = !openIt;
-    btn.setAttribute("aria-expanded", String(openIt));
-    if (openIt) draw();
-  };
-  const draw = () => {
-    const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", { class: "input", rows: "3", "aria-label": "What should the new thread do?", placeholder: "What should it do? You can leave this empty." }));
-    const status = h("div", { class: "small muted", role: "status" });
-    const go_ = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Start"));
-    pop.onsubmit = async e => {
-      e.preventDefault();
-      go_.disabled = true;
-      put(status, "Starting…");
-      const r = await startThread(p, ta.value.trim());
-      go_.disabled = false;
-      if (r.error) { put(status, r.error); return; }
-      toggle(false);
-      if (r.id) go(`/projects/${enc(p.slug)}/${enc(r.id)}`);
-    };
-    put(pop,
-      h("div", { class: "code faint ellipsis" }, "In ", base(p.home)),
-      ta,
-      h("div", { class: "nt-actions" }, go_, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => toggle(false) }, "Cancel")),
-      swErr?.missing ? h("div", { class: "small faint" }, "Sessions are not available on this box, so this will not start yet.") : null,
-      status);
-    ta.focus();
-  };
-  pop.addEventListener("keydown", e => { if (/** @type {KeyboardEvent} */ (e).key === "Escape") { toggle(false); btn.focus(); } });
-  return put(wrap, btn, pop);
-}
 
 // ---- tabs ---------------------------------------------------------------------------------
 
@@ -337,7 +289,7 @@ function briefTab(ctx, p, cx, swErr) {
     head("Brief", h("span", { class: "code faint" }, "Built from this project's threads")),
     cx.error ? empty("The brief is not available.", cx.error)
       : lines.length ? h("div", { class: "pj-brief-full" }, lines.map(l => h("p", { class: /^(People|Other threads|From this project)/.test(l.text) ? "pj-brief-h" : "" }, l.text)))
-        : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run.", swErr?.missing ? null : startThreadInline(p)),
+        : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run.", swErr?.missing ? null : link(`/chat?new&project=${enc(p.slug)}`, { class: "link" }, " Start a chat")),
     h("div", { class: "pj-facts code" },
       h("div", null, h("span", { class: "faint" }, "Home  "), p.home || ""),
       (p.workspaces || []).filter(w => w !== p.home).map(w => h("div", null, h("span", { class: "faint" }, "Also  "), w))),
@@ -399,7 +351,7 @@ function filesTab(ctx, p, items) {
     const err = rs.find(r => r.error)?.error;
     const all = rs.flatMap((r, i) => (r.data || []).map(f => ({ ...f, thread: ids[i] }))).sort((a, b) => (b.at || 0) - (a.at || 0));
     if (!all.length) { put(box, err ? empty("Files are not available.", err) : h("div", { class: "empty" }, "No thread in this project has changed a file yet.")); return; }
-    put(box, all.map(f => fileRow(f, link(`/projects/${enc(p.slug)}/${enc(f.thread.id)}`, { class: "link quiet small muted ellipsis pj-file-th" }, f.thread.name))));
+    put(box, all.map(f => fileRow(f, link(`/chat/${enc(p.slug)}/${enc(f.thread.id)}`, { class: "link quiet small muted ellipsis pj-file-th" }, f.thread.name))));
   })();
   return page;
 }
@@ -440,471 +392,4 @@ function fileRow(f, extra) {
 function shortDir(d) {
   const parts = d.split("/").filter(Boolean);
   return (parts.length > 2 ? "…/" : d.startsWith("/") ? "/" : "") + parts.slice(-2).join("/") + (parts.length ? "/" : "");
-}
-
-// ---- /threads/:thread --------------------------------------------------------------------
-
-async function loose(ctx) {
-  const id = ctx.params.thread;
-  const [sw, cx, pl, rt] = await Promise.all([attempt("threads.list", {}), attempt("projects.context", { session: id }), attempt("projects.list"),
-    attempt("recall.thread", { session: id, limit: 1 })]);
-  const known = (sw.data || []).find(t => t.id === id);
-  // A Mac thread (the box read it from the Mac): its project and folder are the Mac's, so only a
-  // pick into one of this machine's projects (projects.context) says where it is here.
-  const mac = isMac(known) || isMac(rt.data);
-  const cwd = mac ? null : known?.cwd || rt.data?.session?.cwd;
-  const of = !mac && !known?.project && !cx.data?.project && cwd ? await attempt("projects.of", { cwd }) : null;
-  if (!ctx.alive()) return;
-  const inProject = (mac ? null : known?.project) || cx.data?.project || of?.data?.slug || null;
-  // Picking goes into this machine's projects only.
-  const projectsAll = (pl.data?.projects || []).filter(x => !isMac(x));
-  const owner = projectsAll.find(x => x.slug === inProject);
-
-  const add = h("div", { class: "lt-add" });
-  const drawAdd = () => {
-    if (owner) { put(add, h("span", { class: "small muted" }, "In ", link(`/projects/${enc(owner.slug)}/${enc(id)}`, { class: "link" }, owner.name))); return; }
-    if (inProject) { put(add, h("span", { class: "small muted" }, "In ", inProject)); return; }
-    if (pl.error) { put(add, h("span", { class: "small faint" }, "Projects are not available.")); return; }
-    // Made into a new project, this chat's draft tile carries over and turns solid (projects.create
-    // from_thread keeps its seed); filed into an existing one, it takes that project's tile.
-    const make = h("button", { type: "button", class: "btn btn-sm", onclick: () => newProject() }, icon("plus", 14), "New project from this");
-    // Still offered with zero existing projects: form() falls back to "New project from a
-    // GitHub repo…" alone when there's nothing to pick from the select.
-    const btn = h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, "Add to a project");
-    put(add, draftAvatar(id, { size: 24, title: "Not in a project yet" }), h("span", { class: "small faint lt-none" }, "Not in a project."), make, btn);
-  };
-  const newProject = () => {
-    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input lt-sel", "aria-label": "Project name", placeholder: "Project name" }));
-    const status = h("span", { class: "small muted", role: "status" });
-    const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Make it"));
-    put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
-      e.preventDefault();
-      if (!name.value.trim()) { put(status, "Give it a name."); return; }
-      ok.disabled = true;
-      const r = await createProject({ name: name.value.trim(), from_thread: id });
-      ok.disabled = false;
-      if (r.error || !r.slug) { put(status, r.error || "The project was not made."); return; }
-      const slug = r.slug;
-      offerThen(status, r, () => go(`/projects/${enc(slug)}/${enc(id)}`));
-    } }, name, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
-    name.focus();
-  };
-  /** A newly-made project (from a GitHub repo) still needs the thread filed into it, same as
-   * picking an existing one from the select. */
-  const fileInto = async (/** @type {string} */ slug, /** @type {HTMLElement} */ status) => {
-    const r = await attempt("projects.add-threads", { project: slug, threads: [id] });
-    if (r.error) { put(status, r.error.missing ? `The ${r.error.module} module is not running.` : String(r.error.message)); return false; }
-    window.dispatchEvent(new Event("deck:pins"));
-    go(`/projects/${enc(slug)}/${enc(id)}`);
-    return true;
-  };
-  const form = () => {
-    const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input lt-sel", "aria-label": "Project" }, projectsAll.map(x => h("option", { value: x.slug }, x.name))));
-    const status = h("span", { class: "small muted", role: "status" });
-    const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Add"));
-    const ghBtn = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => openGithubRepoPicker({
-      title: "New project from a GitHub repo",
-      onPick: async (repo, account) => {
-        put(status, `Cloning ${repo.full_name}…`);
-        // from_thread (github's contract, sha 9cf93817) both sets the new project's avatar_seed
-        // to this chat's id and files the chat in, in the one call: the same carry-over a
-        // native project-from-chat gets, and no separate projects.add-threads needed here.
-        const r = await attempt("github.project", { repo: repo.full_name, account, from_thread: id });
-        if (r.error) { put(status, r.error.message || "Could not create the project from that repo."); return; }
-        if (r.data?.project) { window.dispatchEvent(new Event("deck:pins")); go(`/projects/${enc(r.data.project)}/${enc(id)}`); }
-      },
-    }) }, icon("branch", 12), "New project from a GitHub repo…");
-    put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
-      e.preventDefault();
-      ok.disabled = true;
-      await fileInto(sel.value, status);
-      ok.disabled = false;
-    } }, projectsAll.length ? [sel, ok] : null, ghBtn, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
-    if (projectsAll.length) sel.focus(); else ghBtn.focus();
-  };
-  drawAdd();
-
-  const centre = h("section", { class: "pj-centre", "aria-label": "Thread" });
-  const files = h("aside", { class: "pj-files", "aria-label": "Files this thread touched" });
-  put(ctx.root, h("div", { class: "pj has-thread lt" },
-    h("div", { class: "pj-head" },
-      h("div", { class: "pj-id" }, link("/now", { class: "pj-back pj-phone" }, icon("right", 14), "Now"), h("span", { class: "lbl" }, "Thread"),
-        machineChip(mac ? { source: "mac", machine: known?.machine || rt.data?.machine } : null)),
-      h("div", { class: "pj-grow" }), add),
-    h("div", { class: "pj-body" }, centre, files)));
-  await threadPane(ctx, id, { centre, files, known: known ? { live: known } : mac ? { rec: rt.data } : null, project: owner || null, switchboard: sw, back: owner ? `/projects/${enc(owner.slug)}` : "/now" });
-}
-
-// ---- one thread -----------------------------------------------------------------------------
-
-/**
- * Load and draw a thread into centre, and the files it touched into files.
- * @param {any} ctx
- * @param {string} id
- * @param {{ centre: HTMLElement, files: HTMLElement, known: any, project: any, switchboard: any, back: string }} o
- */
-async function threadPane(ctx, id, o) {
-  const { centre, files } = o;
-  const body = h("div", { class: "th-body", "aria-live": "polite" }, h("div", { class: "empty" }, "Opening the thread…"));
-  const title = h("h2", { class: "th-title ellipsis" }, o.known?.name || o.known?.live?.name || " ");
-  const meta = h("span", { class: "code faint th-meta" });
-  const compose = h("div", { class: "th-compose" });
-  put(centre,
-    h("div", { class: "th-head" },
-      link(o.back, { class: "pj-back pj-phone", "aria-label": "Back" }, icon("right", 14), o.project ? o.project.name : "Back"),
-      title, meta),
-    body, compose);
-
-  // Which kind of thread is this: live on the switchboard, or a recorded session? A Mac's is only
-  // ever read from its transcript, through the box, and never offered a reply.
-  let fromMac = isMac(o.known?.live) || isMac(o.known?.rec);
-  const isLive = !!o.known?.live && !fromMac;
-  let thread = null, events = [], recorded = null, loadErr = null;
-  // Who is who for the avatars and names (each read once per page; a missing one just means a
-  // fallback). chat/lib/names.js's readNames reads system.info and passes it to the avatars too.
-  // The thread never waits on these: it draws at once, and whoReady() redraws the avatars and the
-  // reply names in place if they land after it (reviewer's nit on 6fea1c16).
-  /** @type {{ assistant?: string|null, owner?: string|null }} */ let names = {};
-  let identityIn = false;
-  /** @type {() => void} */ let whoReady = () => {};
-  Promise.all([readNames(attempt), readTeammates(attempt), readProjects(attempt)])
-    .then(([nm]) => { names = nm || {}; identityIn = true; whoReady(); }, () => {});
-  if (isLive) {
-    const r = await attempt("threads.get", { thread: id });
-    if (r.data) ({ thread, events } = { thread: r.data.thread, events: r.data.events || [] }); else loadErr = r.error;
-  }
-  if (!thread) {
-    const r = await attempt("recall.thread", { session: id, limit: 400, ...(fromMac ? { source: "mac" } : {}) });
-    if (r.data) { recorded = r.data; fromMac = fromMac || isMac(r.data); }
-    else if (fromMac) loadErr = r.error;
-    else {
-      const g = await attempt("threads.get", { thread: id });
-      if (g.data?.thread) ({ thread, events } = { thread: g.data.thread, events: g.data.events || [] }); else loadErr = loadErr || r.error;
-    }
-  }
-  if (!ctx.alive()) return;
-
-  const swMissing = !!(o.switchboard?.error?.missing);
-  const agent = thread?.agent || o.known?.live?.agent || null;
-  // ADR 0043 section 6: the person's own avatar on their messages; a reply wears the thread's
-  // (the project's tile in a project, a draft tile in none, an agent's blob, a teammate's character).
-  const project = o.project?.slug || thread?.project || null;
-  const youAv = (/** @type {string} */ who) => personAvatar({ size: 24, cls: "th-av", title: who });
-  const replyAv = (/** @type {string} */ who) => threadAvatar({ agent, project, thread: id }, { size: 24, cls: "th-av", title: who });
-  const cwd = thread?.cwd || recorded?.session?.cwd || "";
-  put(title, thread?.name || o.known?.name || o.known?.live?.name || recorded?.session?.name || recorded?.session?.title || (thread ? "New thread" : id));
-  const machine = fromMac ? String(recorded?.machine || o.known?.live?.machine || o.known?.rec?.machine || "your Mac") : null;
-  put(meta, `session ${/^[0-9a-f]{8}-/i.test(id) ? id.slice(0, 4) : id}`, agent ? ` · ${agent}` : cwd ? ` · in ${base(cwd)}` : "", machine ? ` · on ${machine}` : "");
-
-  if (!thread && !recorded) {
-    put(body, empty("This thread could not be opened.", loadErr));
-    drawFiles(ctx, files, id, []);
-    drawComposer(ctx, compose, { id, agent, lease: null, swMissing: true, machine, append: () => {} });
-    return;
-  }
-
-  // The stream of things said and done, in order.
-  const stream = h("div", { class: "th-stream" });
-  // The identity reads landed after the thread drew: the right avatars and reply names, in place.
-  if (!identityIn) whoReady = () => {
-    if (!ctx.alive()) return;
-    for (const m of stream.querySelectorAll(".th-msg")) {
-      const name = m.querySelector(".th-name");
-      const user = m.classList.contains("user");
-      if (!user && name) put(name, labelFor({ role: "assistant", agent }, names));
-      const who = name?.textContent || "";
-      m.querySelector(".th-av")?.replaceWith(user ? youAv(who) : replyAv(who));
-    }
-  };
-  put(body, stream);
-  let toolGroup = /** @type {HTMLElement|null} */ (null);
-  const byMsg = new Map();
-  // A live message streams as several thread.text events: partials carry only `delta` (no
-  // `text`), so they are accumulated here; the final event carries the whole `text`, which
-  // replaces the accumulated buffer outright rather than trusting the deltas summed to it.
-  const textBuf = new Map();
-  const pendingEcho = new Set();
-  /** @type {any[]} */ const liveTools = [];
-  // switchboard sends "started" and "done" as two separate thread.tool events sharing one id, and
-  // withholds the result text by design (spec: events stay small); "done" only marks the started
-  // line as failed, it never draws a second line.
-  const toolLines = new Map();
-  const asks = new Map();
-  const scrollDown = () => { body.scrollTop = body.scrollHeight; ctx.root.scrollTop = ctx.root.scrollHeight; };
-
-  const addTool = ev => {
-    if (ev.phase === "done") { if (ev.error) toolLines.get(ev.id)?.querySelector(".tl-dot")?.classList.add("beacon"); return; }
-    if (isRecall(ev.tool)) { toolGroup = null; stream.append(recalledBlock(ev, o.project)); return; }
-    if (!toolGroup) { toolGroup = h("div", { class: "th-tools" }); stream.append(toolGroup); }
-    const el = toolLine(ev);
-    if (ev.id) toolLines.set(ev.id, el);
-    toolGroup.append(el);
-  };
-  const addEvent = (ev, live) => {
-    const type = ev.type;
-    if (type === "thread.tool") { addTool(ev); }
-    else if (type === "thread.text") {
-      toolGroup = null;
-      if (ev.recalled) { stream.append(recalledBlock({ result: ev.recalled.text || ev.text, from: ev.recalled.from, session: ev.recalled.session }, o.project)); return; }
-      const key = ev.message || ev.msg || null;
-      const text = typeof ev.text === "string" ? ev.text
-        : key && typeof ev.delta === "string" ? textBuf.set(key, (textBuf.get(key) || "") + ev.delta).get(key)
-        : ev.text || "";
-      if (live && key && byMsg.has(key)) { put(byMsg.get(key), text); return; }
-      if (live && ev.role === "user" && pendingEcho.has(ev.text)) { pendingEcho.delete(ev.text); return; }
-      // A reply is named the way chat names it (chat/lib/names.js): the agent's name, else the assistant's, never "Claude".
-      const who = ev.role === "user" ? "You" : labelFor({ role: "assistant", agent }, names);
-      const m = message(ev.role === "user" ? "user" : "assistant", who, ev.at, text, ev.role === "user" ? youAv(who) : replyAv(who));
-      if (key) byMsg.set(key, /** @type {HTMLElement} */ (m.querySelector(".th-text")));
-      stream.append(m);
-    } else if (type === "thread.sent") {
-      // Another surface's own keystrokes: this surface already echoed its own (o.append, below).
-      if (ev.surface === "deck") return;
-      toolGroup = null;
-      stream.append(message("user", ev.surface || "Another surface", ev.at, ev.text || "", youAv(ev.surface || "Another surface")));
-    } else if (type === "ask.raised") {
-      toolGroup = null;
-      const a = normAsk(ev.ask || ev, ev.at);
-      if (!a.id || asks.has(a.id)) return;
-      const el = heldBlock(a, id);
-      asks.set(a.id, el);
-      stream.append(el);
-    } else if (type === "ask.answered") {
-      const aid = ev.ask?.id || ev.ask || ev.id;
-      const el = asks.get(aid);
-      if (el) settle(el, ev.decision || "answered");
-    } else if (type === "thread.finished") {
-      toolGroup = null;
-      stream.append(h("div", { class: "th-finished code faint" }, `Finished${ev.at ? " · " + clock(ev.at) : ""}`, ev.text ? `  ·  ${ev.text}` : ""));
-    }
-  };
-
-  if (recorded) {
-    const turns = recorded.turns || [];
-    if (!turns.length) stream.append(h("div", { class: "empty" }, "Nothing was said in this thread."));
-    for (const t of turns) addEvent({ type: "thread.text", role: t.role, at: t.ts, text: t.text }, false);
-  } else {
-    if (!events.length) stream.append(h("div", { class: "empty th-wait" }, thread?.state === "running" ? "Starting. What the thread says shows here as it runs." : "Nothing in this thread yet."));
-    for (const ev of events) addEvent(ev, false);
-    // An open question the list knows about but the events did not carry.
-    for (const n of needs.current()) if (n.kind === "ask" && n.thread === id && !asks.has(n.id)) addEvent({ type: "ask.raised", at: n.at, ask: { id: n.id, tool: n.command ? "Bash" : "", command: n.command, rule: n.rule, why: n.why, options: n.options, elsewhere: elsewhere(n) } }, false);
-  }
-  requestAnimationFrame(scrollDown);
-
-  // Live: follow the thread as it runs.
-  const mine = e => e.thread === id || e.payload?.thread === id || e.payload?.session === id;
-  const fromEvent = e => ({ type: e.type, at: e.at, ...(e.payload || {}) });
-  for (const t of ["thread.text", "thread.tool", "thread.finished", "thread.sent", "ask.raised", "ask.answered"]) {
-    ctx.on(t, e => {
-      if (!mine(e)) return;
-      const stick = body.scrollHeight - body.scrollTop - body.clientHeight < 80;
-      stream.querySelector(".th-wait")?.remove();
-      const ev = fromEvent(e);
-      addEvent(ev, true);
-      if (t === "thread.tool") { liveTools.push(ev); drawFilesFromEvents(); }
-      if (stick) scrollDown();
-    });
-  }
-
-  // Files
-  const drawFilesFromEvents = () => drawFiles(ctx, files, id, [...events, ...liveTools]);
-  drawFilesFromEvents();
-  ctx.on("file.touched", e => { if (e.payload?.session === id) drawFilesFromEvents(); });
-
-  drawComposer(ctx, compose, {
-    id, agent, lease: thread?.holder || null, swMissing: swMissing && !thread, recorded: !!recorded, machine,
-    append: text => {
-      pendingEcho.add(text);
-      toolGroup = null;
-      stream.querySelector(".th-wait")?.remove();
-      stream.append(message("user", "You", Date.now(), text, youAv("You")));
-      scrollDown();
-    },
-  });
-}
-
-const isRecall = tool => /(^|__|\.)(recall|memory)[._]/i.test(String(tool || "")) || /^(recall|memory)$/i.test(String(tool || ""));
-
-/** One message. `av`: its avatar (js/avatars.js), the person's for "you" and the thread's own
- * (the project tile, a draft tile, an agent's blob or a teammate's character) for a reply. */
-function message(role, who, at, text, av) {
-  return h("div", { class: "th-msg " + role },
-    av,
-    h("div", { class: "th-msg-main" },
-      h("div", { class: "th-who" }, h("span", { class: "th-name" }, who), at ? h("span", { class: "code faint" }, clock(at)) : null),
-      h("p", { class: "th-text" }, text)));
-}
-
-/** A tool call as the board's mono lines: "● Tool(arg)" then "⎿ result". */
-function toolLine(ev) {
-  const arg = toolArg(ev.tool, ev.input);
-  const res = toolResult(ev.result);
-  return h("div", { class: "tl" },
-    h("div", { class: "tl-call" }, h("span", { class: "tl-dot", "aria-hidden": "true" }, "●"),
-      h("span", { class: "tl-sig" }, h("span", { class: "tl-name" }, ev.tool || "Tool"), h("span", { class: "faint" }, "("), h("span", { class: "tl-arg" }, arg), h("span", { class: "faint" }, ")"))),
-    res ? h("div", { class: "tl-res" }, h("span", { class: "faint", "aria-hidden": "true" }, "⎿"), h("span", null, res)) : null);
-}
-function toolArg(tool, input) {
-  if (input == null) return "";
-  if (typeof input === "string") return clip(input, 160);
-  const k = ["file_path", "path", "command", "pattern", "url", "query", "q", "prompt", "description"].find(k => typeof input[k] === "string");
-  return clip(k ? input[k] : JSON.stringify(input), 160);
-}
-function toolResult(r) {
-  if (r == null || r === "") return "";
-  const s = typeof r === "string" ? r : (r.summary || r.text || JSON.stringify(r));
-  return clip(String(s).split("\n").filter(Boolean).slice(0, 2).join("  "), 200);
-}
-const clip = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-
-function recalledBlock(ev, project) {
-  const from = ev.from || ev.source?.name || ev.source || null;
-  const session = ev.session || ev.source?.session || null;
-  const href = session ? (project ? `/projects/${enc(project.slug)}/${enc(session)}` : `/threads/${enc(session)}`) : null;
-  const text = toolResult(ev.result) || ev.text || "";
-  return h("div", { class: "recalled th-recalled" },
-    h("div", { class: "lbl recall th-rl" }, h("span", { class: "dot recall", "aria-hidden": "true" }), "Recalled · no model used"),
-    h("div", { class: "th-rtext" }, text,
-      from ? h("span", { class: "muted" }, " From ", href ? link(href, { class: "link", style: { color: "var(--text-2)" } }, String(from)) : String(from), ".") : null));
-}
-
-function normAsk(a, at) {
-  return {
-    id: a.id || a.ask, at: a.at || at, tool: a.tool || "", command: a.command || a.summary || "", rule: a.rule || "", why: a.why || "",
-    // A Mac session's ask on a box that cannot forward the answer: no options, and the card says where.
-    elsewhere: a.elsewhere || null,
-    options: a.elsewhere ? [] : a.options?.length ? a.options : [{ label: "Allow once", decision: "allow" }, { label: "Deny", decision: "deny" }],
-  };
-}
-
-/** A held call, in Beacon, with its actions. */
-function heldBlock(a, threadId) {
-  const status = h("div", { class: "small muted th-held-status", role: "status" });
-  const buttons = h("div", { class: "th-held-actions" });
-  const act = async opt => {
-    for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
-    try {
-      const n = needs.current().find(x => x.id === a.id);
-      if (n) await needs.answer(n, opt);
-      else await queue("threads.answer", { ask: a.id, decision: opt.decision, ...(opt.input ? { input: opt.input } : {}) });
-      settle(el, opt.label);
-    } catch (e) {
-      const err = /** @type {any} */ (e);
-      put(status, err.missing ? "Sessions are not available on this box, so this cannot be answered here yet." : String(err.message));
-      // The box cannot forward answers to this Mac (needs.js): the line says where, no buttons.
-      if (err.elsewhere) put(buttons);
-      else for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
-    }
-  };
-  put(buttons, a.elsewhere ? h("span", { class: "small muted" }, `Answer it on ${a.elsewhere}`) : a.options.map((opt, i) => h("button", { type: "button",
-    class: "btn" + (i === 0 ? " btn-primary" : i === a.options.length - 1 ? " btn-ghost" : ""), onclick: () => act(opt) }, opt.label)));
-  const el = h("div", { class: "held th-held", role: "group", "aria-label": "Held tool call", "data-ask": a.id, "data-thread": threadId },
-    h("div", { class: "th-held-top" }, h("span", { class: "lbl beacon th-rl" }, h("span", { class: "dot beacon", "aria-hidden": "true" }), "Held before it ran"),
-      a.at ? h("span", { class: "code" }, clock(a.at)) : null),
-    h("div", { class: "tl th-held-call" },
-      h("div", { class: "tl-call" }, h("span", { class: "tl-dot beacon", "aria-hidden": "true" }, "●"),
-        h("span", { class: "tl-sig" }, h("span", { class: "tl-name" }, a.tool || "Tool"), h("span", { class: "muted" }, "("), h("span", null, a.command), h("span", { class: "muted" }, ")"))),
-      h("div", { class: "tl-res th-held-res" }, h("span", { "aria-hidden": "true" }, "⎿"), h("span", null, "Not run. Waiting for you."))),
-    a.rule ? h("p", { class: "th-held-why" }, "Your rule: ", h("span", { class: "th-bone" }, a.rule.replace(/\.?$/, ".")))
-      : a.why ? h("p", { class: "th-held-why" }, a.why) : null,
-    buttons, status);
-  return el;
-}
-
-function settle(el, label) {
-  el.classList.add("settled");
-  el.querySelector(".th-held-actions")?.replaceChildren();
-  const res = el.querySelector(".th-held-res span:last-child");
-  if (res) put(/** @type {HTMLElement} */ (res), `Answered: ${label}.`);
-  const top = el.querySelector(".th-held-top .lbl");
-  if (top) put(/** @type {HTMLElement} */ (top), "Answered");
-}
-
-// ---- files the thread touched ------------------------------------------------------------
-
-async function drawFiles(ctx, box, id, toolEvents) {
-  const r = await attempt("harness.touched", { session: id, limit: 100 });
-  if (!ctx.alive()) return;
-  let rows = r.data || [], from = "harness";
-  if (!rows.length) {
-    // The Harness has not recorded this thread (it ran elsewhere, or not yet): read the paths
-    // from its own tool calls instead.
-    const seen = new Map();
-    for (const ev of [...toolEvents].reverse()) {
-      const p = ev.input && typeof ev.input === "object" ? (ev.input.file_path || ev.input.path || ev.input.notebook_path) : null;
-      if (typeof p === "string" && !seen.has(p)) seen.set(p, { path: p, tool: ev.tool, at: ev.at });
-    }
-    rows = [...seen.values()];
-    from = rows.length ? "tools" : from;
-  }
-  put(box,
-    h("div", { class: "pj-files-head" }, h("h2", { class: "lbl" }, "Files"), h("span", { class: "code faint" }, rows.length ? plural(rows.length, "file") : "")),
-    r.error && !rows.length ? h("div", { class: "pj-files-pad" }, empty("Files are not available.", r.error))
-      : rows.length ? h("div", { class: "rows pj-files-list" }, rows.map(f => fileRow(f)))
-        : h("div", { class: "pj-files-pad empty" }, "This thread has not changed a file."),
-    from === "tools" ? h("p", { class: "small faint pj-files-pad" }, "Read from this thread's tool calls.") : null,
-    h("div", { class: "pj-files-pad" }, noContents()));
-}
-
-// ---- the composer --------------------------------------------------------------------------
-
-/**
- * @param {any} ctx @param {HTMLElement} box
- * @param {{ id: string, agent: string|null, lease: string|null, swMissing: boolean, recorded?: boolean, machine?: string|null, append: (t: string) => void }} o
- *   machine: the thread is that Mac's, so the reply, the keyboard and Take are off, and it says where to continue it.
- */
-function drawComposer(ctx, box, o) {
-  const mac = o.machine ? { source: "mac", machine: o.machine } : null;
-  if (mac) { put(box, h("div", { class: "th-note-row" }, h("div", { class: "readonly-note th-note", role: "status" }, readOnlyNote(mac)))); return; }
-  let holder = o.lease;
-  const input = /** @type {HTMLInputElement} */ (h("input", { type: "text", class: "th-in", id: "reply-" + o.id, autocomplete: "off" }));
-  const send = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "ibtn", "aria-label": "Send" }, icon("send")));
-  const note = h("div", { class: "small faint th-note", role: "status" });
-  const take = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: async () => {
-    const r = await attempt("threads.lease", { thread: o.id, surface: "deck" });
-    if (r.error) { put(note, r.error.missing ? "Sessions are not available on this box." : String(r.error.message)); return; }
-    holder = r.data?.holder || r.data?.surface || "deck";
-    draw();
-    if (holder === "deck") input.focus();
-  } }, "Take the keyboard");
-
-  const draw = () => {
-    const other = holder && holder !== "deck";
-    input.disabled = o.swMissing || !!other;
-    send.disabled = input.disabled;
-    input.placeholder = o.swMissing ? "Replies are off here" : other ? `${holder} is typing` : o.agent ? `Reply to ${o.agent}` : o.recorded ? "Reply to carry this thread on" : "Reply";
-    take.hidden = !other || o.swMissing;
-    put(note, o.swMissing ? "Sessions are not available on this box, so this thread cannot take a reply from the Deck."
-      : other ? `The ${holder} has the keyboard. You can read along, or take it.` : "");
-  };
-  const form = h("form", { class: "th-box", onsubmit: async (/** @type {Event} */ e) => {
-    e.preventDefault();
-    const text = input.value.trim();
-    if (!text || input.disabled) return;
-    send.disabled = true;
-    if (holder !== "deck") {
-      const l = await attempt("threads.lease", { thread: o.id, surface: "deck" });
-      if (l.error) { put(note, l.error.missing ? "Sessions are not available on this box." : String(l.error.message)); send.disabled = false; return; }
-      holder = l.data?.holder || l.data?.surface || "deck";
-      if (holder !== "deck") { draw(); return; }
-    }
-    const r = await queued("threads.send", { thread: o.id, text });
-    send.disabled = false;
-    if (r.error) { put(note, r.error.missing ? "Sessions are not available on this box." : String(r.error.message)); return; }
-    // threads.send answers {sent:false,...} rather than an error when the lease was taken back
-    // between the check above and this call.
-    if (r.data && r.data.sent === false) { holder = r.data.holder || null; draw(); return; }
-    input.value = "";
-    o.append(text);
-    put(note, "");
-  } },
-    h("label", { for: "reply-" + o.id, class: "pj-sr" }, o.agent ? `Message ${o.agent}` : "Reply"),
-    input, send);
-  ctx.on("lease.changed", e => {
-    if (!(e.thread === o.id || e.payload?.thread === o.id)) return;
-    holder = e.payload?.surface || e.payload?.holder || null;
-    draw();
-  });
-  put(box, form, h("div", { class: "th-note-row" }, note, take));
-  draw();
 }
