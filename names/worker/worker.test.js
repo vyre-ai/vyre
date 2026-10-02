@@ -502,3 +502,12 @@ test("admin rebind: refused with no secret configured, no header, a wrong header
   assert.equal(code(await admin(w, { name: "alex", route: other.route })), "one_per_route");
   assert.equal(data(await a.get("/v1/names/mine")).name, "alex", "the owner still holds it after every refusal");
 });
+
+test("admin rebind: the old route's moved note goes when that route holds a name again", async t => {
+  const w = world(t, { ADMIN_SECRET: ADMIN }), { a } = await claimed(w);
+  const n = boxOf(w);
+  assert.equal((await admin(w, { name: "alex", route: n.route })).status, 200);
+  assert.equal(data(await a.get("/v1/names/mine")).moved.name, "alex");
+  data(await a.post("/v1/names/claim", { name: "blake" }));
+  assert.equal(data(await a.get("/v1/names/mine")).moved, undefined, "claiming again clears the note");
+});
