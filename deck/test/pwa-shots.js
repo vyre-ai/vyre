@@ -245,7 +245,7 @@ for (const dev of DEVICES) {
         title: document.querySelector('.ph-title') ? getComputedStyle(document.querySelector('.ph-title')).display : "none",
         tabs: document.querySelector('.tabbar') ? getComputedStyle(document.querySelector('.tabbar')).display : "none",
         capsule: document.querySelector('.capsule') ? getComputedStyle(document.querySelector('.capsule')).display : "none",
-        tabbar: !!document.querySelector('.tabbar'), at: document.getElementById('deck')?.dataset.at || "",
+        tabbar: !!document.querySelector('.tabbar'), ownBack: !!document.getElementById('deck')?.hasAttribute('data-own-back'), at: document.getElementById('deck')?.dataset.at || "",
         standalone: document.documentElement.dataset.display || "" }`);
       if (s.drag) {
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -259,7 +259,9 @@ for (const dev of DEVICES) {
         phoneShell && check.at !== want && `the shell is in ${check.at || "no"} mode, not ${want}`,
         phoneShell && want === "page" && (check.head !== "flex" || check.title === "none") && "no header with the page title",
         phoneShell && want === "page" && check.tabs !== "grid" && "no tab bar",
-        phoneShell && want !== "page" && check.tabs !== "none" && "the tab bar shows on a pushed screen or Find",
+        // Find and a screen with its own Back (a thread, a project) cover the bar; a screen pushed from More (Planner, Devices) keeps it.
+        phoneShell && (want === "find" || check.ownBack) && check.tabs !== "none" && "the tab bar shows over Find or a screen with its own Back",
+        phoneShell && want === "pushed" && !check.ownBack && check.tabs !== "grid" && "no tab bar on a screen pushed from More",
         phoneShell && want === "page" && check.capsule !== "flex" && "no Lumen",
         phoneShell && want !== "page" && check.capsule !== "none" && "Lumen shows on a pushed screen",
         phoneShell && want === "find" && check.head !== "none" && "the header shows over Find",
