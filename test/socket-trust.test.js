@@ -6,6 +6,7 @@
 // no terminal needed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { asTaken, trustedServers } from "../core/daemon/index.js";
 import { ptyHosted } from "../core/daemon/peer.js";
 import { setSocketTrust, socketTrust } from "../core/daemon/peer.js";
@@ -118,4 +119,17 @@ test("ptyHosted: the integrated terminal's chain passes; a pty an extension host
   // A second helper in the chain is not a terminal host.
   const two = table({ 10: { ppid: 11, tty: "t", args: "vyre" }, 11: { ppid: 12, tty: null, args: "ptyHost" }, 12: { ppid: 700, tty: null, args: "ptyHost" } });
   assert.equal(ptyHosted(10, server, two, seam({ 11: HELPER, 12: HELPER })), false);
+});
+
+test("a vyred a test started as a child over a temp home takes the label rule; nothing else does by environment", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const os = await import("node:os");
+  const peer = path.resolve(import.meta.dirname, "../core/daemon/peer.js");
+  const probe = env => execFileSync(process.execPath, ["--input-type=module", "-e", `const m = await import(${JSON.stringify(peer)}); console.log(m.socketTrust());`],
+    { encoding: "utf8", env: { PATH: process.env.PATH, ...env } }).trim();
+  const tmp = path.join(os.tmpdir(), "vyre-trust-probe");
+  assert.equal(probe({ VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: "child-v8", VYRE_HOME: tmp }), "label");
+  assert.equal(probe({ VYRE_TEST_HOSTED: "1", NODE_TEST_CONTEXT: "child-v8", VYRE_HOME: path.join(os.homedir(), ".vyre") }), "strict", "the person's home never");
+  assert.equal(probe({ VYRE_TEST_HOSTED: "1", VYRE_HOME: tmp }), "strict", "not under node's test runner");
+  assert.equal(probe({ VYRE_HOME: tmp }), "strict", "no environment, no loosening");
 });

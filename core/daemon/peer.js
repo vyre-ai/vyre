@@ -759,7 +759,10 @@ export function ptyHosted(pid, server, look = procInfo, { exe = exePath, uid = p
   return false;
 }
 
-let socketTrustMode = "strict";
+/** @type {"strict"|"label"|null} */
+let socketTrustMode = null;
+/** @type {"strict"|"label"|null} */
+let hostedTrust = null;
 /**
  * "strict" (the default): a person's label on the socket (cli, local, deck, capsule, mobile) is kept only for a
  * peer that proves it is the person (the pinned Capsule, a terminal login in the foreground, or a server the
@@ -768,4 +771,13 @@ let socketTrustMode = "strict";
  * @param {"strict"|"label"} mode
  */
 export function setSocketTrust(mode) { socketTrustMode = mode === "label" ? "label" : "strict"; }
-export const socketTrust = () => socketTrustMode;
+/**
+ * What a test sets wins. Otherwise strict, except for a vyred a test started as a child process (`vyre up` in a temp home under node's
+ * test runner): it takes the label rule on the same conditions peerHosting() takes VYRE_TEST_HOSTED (a live parent that is not init,
+ * and a home that is not ~/.vyre), since a CI runner gives that child no login terminal. The person's daemon never qualifies.
+ */
+export function socketTrust() {
+  if (socketTrustMode) return socketTrustMode;
+  if (hostedTrust === null) hostedTrust = peerHosting() ? "label" : "strict";
+  return hostedTrust;
+}

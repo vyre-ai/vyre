@@ -92,6 +92,10 @@ test("once an owner exists, a capped peer cannot mint the onboarding link, and a
   const refused = await detachedCall(fs.mkdtempSync(path.join(owned, "trust-")), d1.paths.socket, "onboard.link", {}, "cli");
   assert.notEqual(refused.status, 200, JSON.stringify(refused.body));
   assert.match(JSON.stringify(refused.body), /only from the box's own terminal|not available to mcp/);
+  // Only asking is allowed: nothing is minted, and a link that would be is still refused.
+  const asking = await detachedCall(fs.mkdtempSync(path.join(owned, "trust-")), d1.paths.socket, "onboard.link", { mint: false }, "cli");
+  assert.equal(asking.status, 200, JSON.stringify(asking.body));
+  assert.equal(asking.body.data.url, null);
   // Fresh: the mint is recorded with the caller and the capped flag.
   const fresh = tempHome(t);
   fs.writeFileSync(path.join(fresh, "config.json"), JSON.stringify(base));

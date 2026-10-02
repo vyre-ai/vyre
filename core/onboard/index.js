@@ -668,7 +668,10 @@ export default {
         // installer runs without a terminal (CI, `docker exec`, `ssh host cmd`): the daemon capped it as a program, not a model
         // session (socketCapped), and the first-run link is still its to make. After the first owner, only a terminal does.
         const firstRun = caller === "mcp" && socketCapped === true && !ob().finished && !net().ownerSeen;
-        if (!firstRun && !["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
+        // Asking whether a link is open (mint false) makes nothing and gives nothing away, so `vyre up --json` over `docker exec` or ssh
+        // with no terminal can still report the box's state at any time.
+        const asking = caller === "mcp" && socketCapped === true && Boolean(input) && input.mint === false;
+        if (!firstRun && !asking && !["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
