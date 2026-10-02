@@ -172,7 +172,7 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { rule: RULE_PRESENT, loads: /** @type {{ path: string, accepted: boolean, ruleOk?: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
+  const state = { rule: RULE_PRESENT, loads: /** @type {{ path: string, accepted: boolean, ruleOk?: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), ruleOk: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
@@ -205,6 +205,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
       state.hits[key] = (state.hits[key] || 0) + 1;
       (state.urls[key] ||= []).push({ len: (req.url || "").length, data: (u.searchParams.get("d") || "").length, host: String(req.headers.host || ""), sf: ["sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"].map(h => `${h.slice(10)}=${req.headers[h] || "none"}`).join(" ") });
       (state.accepted[key] ||= []).push(accepted);
+      (state.ruleOk[key] ||= []).push(!(foreignFetch && foreignFetch(req.headers)));
       (state.cookies[key] ||= []).push(String(req.headers.cookie || "").split(";").map(x => x.trim().split("=")[0]).filter(Boolean).join(","));
       if (u.pathname === "/v1/api/secret") state.api.push({ via: key, cookie: /vyre_session/.test(req.headers.cookie || "") });
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
@@ -221,7 +222,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
       res.writeHead(200, { "content-type": "text/plain" });
       return void res.end("ok");
     }
-    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ loads: state.loads, accepted: state.accepted, rule: RULE_PRESENT, hits: state.hits, cookies: state.cookies, urls: state.urls, api: state.api, report: state.report, top: state.top })); }
+    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ loads: state.loads, accepted: state.accepted, ruleOk: state.ruleOk, rule: RULE_PRESENT, hits: state.hits, cookies: state.cookies, urls: state.urls, api: state.api, report: state.report, top: state.top })); }
     res.writeHead(404); res.end("not found");
   });
   server.on("upgrade", (req, socket) => { const u = new URL(req.url || "/", "http://x"); const via = u.searchParams.get("via") || "ws"; state.hits[via] = (state.hits[via] || 0) + 1; socket.destroy(); });

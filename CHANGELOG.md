@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(artifacts): the sandbox proof now records the Sec-Fetch rule's own verdict for every self-navigation and fails if the rule would take one. Before, Chrome's "not taken as the person's" could mean only that no cookie came (reviewer-2, LOW); Safari and iOS, which send the Strict cookie, already proved the rule.
 - test(artifacts): the sandbox proof checks the person's own top-level load against the Sec-Fetch rule alone. Chrome opens that load in a second launch that holds no session cookie, so the old cookie-and-rule check failed on the missing cookie (artifact-sandbox run 36960710458), not on the rule. Safari, which keeps its cookie, passed at the same head.
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10

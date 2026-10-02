@@ -25,6 +25,9 @@ test("verify: a held sandbox passes, and every kind of leak is named", () => {
   assert.match(f, /reached by: fetch=1, hijack=1, blank=1/);
   assert.match(f, /carried the session cookie/);
   assert.match(f, /navmeta would be taken as the person's session/);
+  // The rule itself, not the cookie's absence: a self-navigation the rule would take (ruleOk true) fails even when no cookie came.
+  assert.match(verify(HELD, null, { ...SERVER_OK, ruleOk: { navloc: [true] } }).failures.join(), /self-navigation navloc is not refused by the rule itself/);
+  assert.deepEqual(verify(HELD, null, { ...SERVER_OK, ruleOk: { navloc: [false] } }).failures, []);
   // A zero count only means "blocked" if the unsandboxed control got through.
   assert.match(verify(HELD, null, { ...SERVER_OK, loads: [{ path: "/a/hostile?mode=framed", accepted: false, sf: "site=same-origin mode=navigate dest=iframe" }] }).failures.join(), /the rule refuses the person's own load/, "the rule must not break the Deck");
   // The top-level load runs in a fresh browser with no cookie: the rule alone decides, so a cookie-less load the rule takes passes and one it refuses fails.

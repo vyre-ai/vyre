@@ -4,7 +4,7 @@
 /**
  * @param {{ framed?: any[], outer?: any[], ua?: string } | null} report the Deck stand-in's report (framed run)
  * @param {{ results?: any[], ua?: string } | null} top the hostile page's own results when opened at the top level, or null when not run
- * @param {{ rule?: boolean, loads?: { path: string, accepted: boolean, ruleOk?: boolean, sf: string }[], accepted?: Record<string, boolean[]>, hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string, sf?: string }[]>, api: { via: string, cookie: boolean }[] }} server
+ * @param {{ rule?: boolean, loads?: { path: string, accepted: boolean, ruleOk?: boolean, sf: string }[], accepted?: Record<string, boolean[]>, hits: Record<string, number>, cookies?: Record<string, string[]>, ruleOk?: Record<string, boolean[]>, urls?: Record<string, { len: number, data: number, host: string, sf?: string }[]>, api: { via: string, cookie: boolean }[] }} server
  * @returns {{ failures: string[], lines: string[] }}
  */
 export function verify(report, top, server) {
@@ -48,6 +48,10 @@ export function verify(report, top, server) {
     const u = urlsOf(k)[0];
     const acc = acceptedOf(k);
     lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}, Sec-Fetch ${u.sf || "not recorded"}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}; taken as the person's: ${acc.length ? acc.map(a => (a ? "YES" : "no")).join(",") : "n/a"}`);
+    // The rule alone, apart from the cookie: Chrome sends no cookie on these, so "not taken" there could be the cookie's absence.
+    // Every browser reports Sec-Fetch-Site cross-site for a sandboxed frame's own navigation, so the rule must refuse each one.
+    const ro = (server.ruleOk && server.ruleOk[k]) || [];
+    if (RULE && ro.some(Boolean)) failures.push(`self-navigation ${k} is not refused by the rule itself (Sec-Fetch ${u ? u.sf || "not recorded" : "not recorded"}), whatever the cookie`);
     if (acc.some(Boolean)) failures.push(`self-navigation ${k} would be taken as the person's session by the server${RULE ? " even with the rule" : " (the rule is absent on this tree)"}`);
   }
   // The Deck's own image request (how a media artifact is shown) must still be the person's, rule or no rule.
