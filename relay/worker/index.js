@@ -193,24 +193,29 @@ export default {
 /**
  * Resolve a Wink pairing ticket's locator (ADR 0045): a POST body, never a URL, so it never lands
  * in an access log. Single-use either way -- found or not, the PairTicket object it named is gone
- * after this call. Rate-limited per address (env.PAIR_LIMITER) and, if bound, globally
- * (env.PAIR_LIMITER_GLOBAL), the same optional-binding pattern DEVICE_LIMITER already uses for
- * /v1/device; a zone rate limiting rule covers it otherwise.
+ * after this call. Rate-limited per address (env.PAIR_LIMITER, every request: one address's own
+ * guessing is bounded and never costs another address anything). The global limit
+ * (env.PAIR_LIMITER_GLOBAL, if bound) is charged to MISSES only and never gates a hit: a real ticket
+ * always resolves, so a flood of guesses from anywhere can burn the miss budget but cannot stop a
+ * single person from pairing (it was a worldwide outsider DoS when it gated every request). Guessing
+ * stays bounded: each guess is a miss, a 64-bit seed makes a hit infeasible within a ticket's five
+ * minutes, and the per-address limit and a zone rate limiting rule cap each source.
  * @param {Request} request @param {any} env
  */
 async function onPairResolve(request, env) {
   const who = request.headers.get("cf-connecting-ip") || "unknown";
   if (env.PAIR_LIMITER) { const { success } = await env.PAIR_LIMITER.limit({ key: who }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
-  if (env.PAIR_LIMITER_GLOBAL) { const { success } = await env.PAIR_LIMITER_GLOBAL.limit({ key: "*" }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
   if (!env.TICKETS) return json(404, { error: "this relay does not support scan-to-pair" });
   let body;
   try { body = await request.json(); } catch { return json(400, { error: "bad request" }); }
   const loc = String((body && body.loc) || "");
   if (!LOC_RE.test(loc)) return json(400, { error: "bad request" });
   const res = await env.TICKETS.get(env.TICKETS.idFromName(loc)).fetch("https://ticket/resolve", { method: "POST" });
+  if (res.status === 200) return json(200, await res.json());
+  // A miss (or contested): charged to the global miss budget, and refused outright when that is spent.
+  if (env.PAIR_LIMITER_GLOBAL) { const { success } = await env.PAIR_LIMITER_GLOBAL.limit({ key: "*" }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
   if (res.status === 409) return json(409, { error: "contested" });
-  if (res.status !== 200) return json(404, { error: "this pairing code has expired or was already used" });
-  return json(200, await res.json());
+  return json(404, { error: "this pairing code has expired or was already used" });
 }
 
 /**
