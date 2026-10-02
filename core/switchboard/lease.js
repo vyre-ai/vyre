@@ -33,6 +33,14 @@ export function pidAlive(pid) {
  */
 const cliPid = surface => { const m = /^cli:(\d+)$/.exec(String(surface)); return m ? Number(m[1]) : 0; };
 
+/**
+ * A person's own surfaces (their Deck, phone, Capsule, Glass, Mac, a tailnet login) are one participant: they never lock each other out.
+ * The keyboard is contested only between that person and a terminal process, an agent, another box or another person.
+ * @param {string} surface
+ */
+export const ownSurface = surface => /^(?:tailnet:(?!agent:)|device:|deck|phone|capsule|glass|lumen|mac|web|chat$|person$|you$|vyre$)/.test(String(surface));
+const sameKeyboard = (a, b) => a === b || (ownSurface(a) && ownSurface(b));
+
 export class Leases {
   /**
    * @param {import("node:sqlite").DatabaseSync} db
@@ -66,7 +74,8 @@ export class Leases {
     const raw = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_leases WHERE thread = ?").get(thread));
     const live = this.holder(thread);
     const now = this.now();
-    if (live && live.surface === surface) {
+    if (live && sameKeyboard(live.surface, surface)) {
+      if (live.surface !== surface) { this.db.prepare("UPDATE threads_leases SET surface = ?, beat = ? WHERE thread = ?").run(surface, now, thread); return { holder: surface, previous: live.surface, changed: false }; }
       this.db.prepare("UPDATE threads_leases SET beat = ? WHERE thread = ?").run(now, thread);
       return { holder: surface, previous: surface, changed: false };
     }
@@ -83,7 +92,7 @@ export class Leases {
    */
   typing(thread, surface) {
     const live = this.holder(thread);
-    if (live && live.surface !== surface) return { ok: false, holder: live.surface };
+    if (live && !sameKeyboard(live.surface, surface)) return { ok: false, holder: live.surface };
     const r = this.take(thread, surface);
     return r.changed ? { ok: true, took: r } : { ok: true };
   }
