@@ -3,13 +3,13 @@
 //
 // Both ends check this list: the box refuses anything else before it queues a request, and the Mac
 // refuses anything else before it runs one, so a box that was changed or taken over still cannot
-// make the Mac do more than read its catalog, its projects, its sessions and its threads.
+// make the Mac do more than read its catalog, its projects, its sessions and its threads, and list what history it holds (import.offer: counts and dates by folder, never what was said).
 // recall.thread and recall.transcript (the same session as blocks, tool calls and their output
 // included) are the only ones that return what was said, and a surface asks for them only when
 // someone opens that session.
 
 /** @type {readonly string[]} */
-export const ALLOW = Object.freeze(["projects.catalog", "projects.list", "recall.search", "recall.sessions", "recall.thread", "recall.transcript", "threads.list", "threads.asks"]);
+export const ALLOW = Object.freeze(["projects.catalog", "projects.list", "recall.search", "recall.sessions", "recall.thread", "recall.transcript", "threads.list", "threads.asks", "import.offer"]);
 
 // The writes the box may ask of a Mac: typing into one of its sessions, and answering one of its
 // asks. Both ends check the list, as for ALLOW, and both refuse a write unless the request says it

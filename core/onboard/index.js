@@ -6,6 +6,7 @@
 // config.json under "onboard". The steps call other modules' tools (names.*, vault.put,
 // recall.*, projects.*) and work without them: a missing module blocks its step and says why.
 
+import { deviceHistory } from "./device-history.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -572,10 +573,12 @@ export default {
     });
 
     ctx.tool("onboard.history", {
-      description: "Find and index this machine's Claude Code sessions, in the background.",
-      input: obj({ action: { type: "string", enum: ["status", "start"] } }),
+      description: "Find and index this machine's Claude Code sessions, in the background; action devices lists the history on the person's paired computers (Claude Code, Codex, Grok) by project, with counts and dates.",
+      input: obj({ action: { type: "string", enum: ["status", "start", "devices"] } }),
       run: async ({ action = "status" }, { caller }) => {
         boxOnly();
+        // The person's own computers (#26): each paired Mac's history by project, counts and dates, asked through the link (import.offer, read-only).
+        if (action === "devices") return deviceHistory(await call("link.macs.call", { tool: "import.offer", timeout: 10_000 }).catch(() => []));
         if (action === "start" && !indexing) {
           save({ onboard: { history: true } });
           indexing = call("recall.index").catch(e => ctx.log("onboard: indexing failed: " + e.message)).finally(() => { indexing = null; });
