@@ -10,6 +10,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
 
 - The hosted app's loader page had no web app manifest, icons or iOS tags (`/manifest.json` answered with a redirect to `/`), so Add to Home Screen made a bookmark. The loader now ships `manifest.webmanifest` (standalone, start `/`, the Deck's colours), the Deck's 192, 512 and maskable PNG icons and the apple-touch-icon, all inside the signed loader manifest, and `index.html` links them with the apple-mobile-web-app tags. `release.js loader` copies the icons as bytes; the loader's service worker types them. Test in `relay/app/app.test.js`. Nothing deployed.
+- Generated in Drive: each media entry carries width, height and length (read from the file's own header by
+  artifacts, only when it has them), and the Generated folder's listing carries a `quota` storage line
+  (this project's bytes and items against its limit, and the box-wide total against its cap) from
+  `artifacts.media.usage`. Previews use the artifact id through the content route; there are no thumbnails.
+- The public site no longer says "vyred" (site/start and site/llms.txt say "Vyre"); `test/site-words.test.js` keeps the internal words out of the site's copy.
 
 #### release: the real app-out path is proven with a test key and a stable version
 
