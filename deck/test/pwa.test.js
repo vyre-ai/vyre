@@ -74,7 +74,7 @@ test("pwa: the service worker caches no tool call but its two offline reads", ()
 /** The rules inside deck.css's phone block (PHONE_QUERY), the one that starts the shell. */
 function phoneCss() {
   const css = read("css/deck.css");
-  const at = css.indexOf("@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {\n  .top { display: none; }");
+  const at = css.indexOf("@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {\n");
   assert.ok(at > 0, "the phone block in deck.css");
   let depth = 0, i = css.indexOf("{", at);
   for (let j = i; j < css.length; j++) { if (css[j] === "{") depth++; else if (css[j] === "}" && --depth === 0) return css.slice(i, j); }

@@ -1,7 +1,7 @@
 // @ts-check
-// The rail (docs/design/system/components/rail.md): the place switcher from 720 px up. A 72 px
-// column: the home mark, then the places Now, Chat, Agents, Projects, Planner, Memory, Vault, and
-// at the bottom Devices, Settings and the person's avatar. Each place is an icon 20 over its label
+// The rail (docs/design/system/components/rail.md): the place switcher from 720 px up. A 64 px
+// column: the home mark, then seven places Now, Chat, Projects, Agents, Memory, Vault, Drive, and
+// at the bottom Search, Settings and the person's avatar. Each place is an icon 20 over its label
 // at 12/16; the current one is filled --hover with its label at 600. The needs-you badge on Now is
 // the only colour in it (js/status-mark.js). Cmd+1 to Cmd+9 (Ctrl+1 to Ctrl+9 off a Mac) open the
 // places in rail order. Styles: css/deck.css (.rail). The phone has no rail (js/app.js).
@@ -21,16 +21,14 @@ import { badge } from "./status-mark.js";
  * @type {readonly { href: string, label: string, icon: string, views: string[], key?: string, end?: boolean }[]}
  */
 export const PLACES = Object.freeze([
-  { href: "/now", label: "Now", icon: "now", views: ["now", "needs"], key: "1" },
+  { href: "/now", label: "Now", icon: "now", views: ["now", "needs", "planner"], key: "1" },
   { href: "/chat", label: "Chat", icon: "chat", views: ["chat"], key: "2" },
-  { href: "/agents", label: "Agents", icon: "agents", views: ["agents", "glass"], key: "3" },
-  { href: "/projects", label: "Projects", icon: "projects", views: ["projects"], key: "4" },
-  { href: "/planner", label: "Planner", icon: "planner", views: ["planner"], key: "5" },
-  { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], key: "6" },
-  { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], key: "7" },
-  { href: "/files", label: "Drive", icon: "drive", views: ["files"] }, // no digit: the keys stay 1 to 9
-  { href: "/settings#devices", label: "Devices", icon: "devices", views: [], key: "8", end: true },
-  { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], key: "9", end: true },
+  { href: "/projects", label: "Projects", icon: "projects", views: ["projects"], key: "3" },
+  { href: "/agents", label: "Agents", icon: "agents", views: ["agents", "glass"], key: "4" },
+  { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], key: "5" },
+  { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], key: "6" },
+  { href: "/files", label: "Drive", icon: "drive", views: ["files"], key: "7" },
+  { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], key: "8", end: true },
 ]);
 
 /**
@@ -39,8 +37,7 @@ export const PLACES = Object.freeze([
  * @param {string} view @param {string} [hash] location.hash
  * @returns {string | null} the place's label
  */
-export function placeOf(view, hash = "") {
-  if (view === "settings" && hash === "#devices") return "Devices";
+export function placeOf(view, _hash = "") {
   return PLACES.find(p => p.views.includes(view))?.label || null;
 }
 
@@ -83,7 +80,7 @@ export function nowLabel(/** @type {number} */ n) {
  * The rail's elements. setNeeds(n) moves the badge and the mark's dot; setCurrent(view, hash)
  * marks the place; setOwner(name, letter, face) puts the person's avatar (else initial) and name on it.
  */
-export function rail() {
+export function rail({ onSearch = () => {} } = {}) {
   const count = /** @type {HTMLElement} */ (badge(0));
   count.setAttribute("aria-hidden", "true");
   const place = (/** @type {typeof PLACES[number]} */ p) => link(p.href, { class: "rail-place", "data-place": p.label, "aria-keyshortcuts": `Meta+${p.key} Control+${p.key}` },
@@ -93,10 +90,12 @@ export function rail() {
   const initial = h("span", { class: "rail-initial", "aria-hidden": "true" }, "V");
   const avatar = link("/settings", { class: "rail-avatar", "aria-label": "Account", title: "Account" }, initial);
   const home = link("/now", { class: "rail-home", "aria-label": "Vyre home" }, mark(22));
+  const search = h("button", { type: "button", class: "rail-place rail-search", "data-place": "Search", "aria-label": "Search", "aria-keyshortcuts": "Meta+K Control+K", onclick: () => onSearch() },
+    icon(/** @type {any} */ ("search"), 20), h("span", { class: "rail-label" }, "Search"));
   const el = h("nav", { class: "rail", "aria-label": "Vyre" },
     home,
     h("div", { class: "rail-set" }, links.filter((_, i) => !PLACES[i].end)),
-    h("div", { class: "rail-set rail-end" }, links.filter((_, i) => PLACES[i].end), avatar));
+    h("div", { class: "rail-set rail-end" }, search, links.filter((_, i) => PLACES[i].end), avatar));
 
   function setNeeds(/** @type {number} */ n) {
     badge(n, count);
@@ -116,5 +115,5 @@ export function rail() {
     initial.replaceChildren(face || letter || "V");
     avatar.setAttribute("title", name || "Account");
   }
-  return { el, links, avatar, home, count, setNeeds, setCurrent, setOwner };
+  return { el, links, search, avatar, home, count, setNeeds, setCurrent, setOwner };
 }

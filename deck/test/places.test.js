@@ -54,7 +54,7 @@ test("places: the seven tiles in the spec's order, the rail's routes, no page am
   assert.deepEqual(TILES.map(t => t.href), ["/projects", "/planner", "/memory", "/vault", "/files", "/settings#devices", "/settings"]);
   assert.deepEqual(TILES.map(t => t.icon), ["projects", "planner", "memory", "vault", "drive", "devices", "settings"]);
   const { PLACES } = await import("../js/rail.js");
-  for (const t of TILES) assert.equal(PLACES.find(p => p.label === t.label)?.href, t.href, `${t.label} goes where the rail goes`);
+  for (const t of TILES) { const p = PLACES.find(q => q.label === t.label); if (p) assert.equal(p.href, t.href, `${t.label} goes where the rail goes`); }
 });
 
 test("places: the head (avatar, name, address), a grid of seven links named by their labels, the hint", async () => {

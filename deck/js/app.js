@@ -20,11 +20,11 @@ import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
 import { attempt, on, onResume, fromFixtures, fixturesOn, canProve, onDeviceRemoved } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
-import { when, base, initials } from "./fmt.js";
+import { initials } from "./fmt.js";
 import * as pwa from "./pwa.js";
 // Loaded with the shell, not with Now, so it hears Chrome's one beforeinstallprompt.
 import "./phone-setup.js";
-import { isMac, machineChip } from "./machine.js";
+import { isMac } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
@@ -40,7 +40,8 @@ import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
-import { installed, kbd, mac } from "./platform.js";
+import { installed, mac } from "./platform.js";
+import { createCmdBar } from "./cmdbar.js";
 import { reportContext } from "./context-report.js";
 import { homePath } from "./home.js";
 import { installTrustAsk } from "./trust-ask.js";
@@ -131,15 +132,11 @@ const info = { projects: /** @type {any[]} */ ([]) };
 
 // ---- shell ---------------------------------------------------------------------------------
 
-const address = h("div", { class: "address" }, icon("lock", 12), h("span", null, location.host, h("b", null, "/now")));
-const searchIn = /** @type {HTMLInputElement} */ (h("input", { type: "search", placeholder: "Search threads, files, people", "aria-label": "Search threads, files, people",
-  autocomplete: "off", role: "combobox", "aria-expanded": "false", "aria-controls": "search-pop" }));
-const pop = h("div", { class: "search-pop", id: "search-pop", role: "listbox", hidden: true });
-const needsPill = link("/now", { class: "needs-pill", hidden: true }, h("span", { class: "dot beacon" }), h("span", null, ""));
 // Sample data stands in for a module that is not merged yet: said once, quietly, in the header.
 const fixtureNote = h("span", { class: "fixture-note", hidden: true }, "Sample data for modules not merged yet");
 installRows();
-const railEl = rail();
+const cmd = createCmdBar();
+const railEl = rail({ onSearch: () => cmd.open() });
 // The list column, right of the rail: a view's own list (ctx.rail, e.g. Chat's sessions; the
 // deck:rail event, e.g. Vault's places), or the pinned and recent projects beside a project.
 // Hidden while empty, so a view that has no list gets the whole width.
@@ -174,20 +171,13 @@ put(deck,
   h("div", { class: "body" },
     railEl.el,
     h("div", { class: "stage" },
-      h("header", { class: "top" },
-        address,
-        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
-        h("div", { style: { flexGrow: "1" } }),
-        fixtureNote,
-        needsPill),
+      h("div", { class: "shell-note" }, fixtureNote),
       h("div", { class: "panes" }, side, view))),
   cap.el);
 
 function drawNeeds() {
   // waiting's one count where the box has it (reminders and pairings included), else the list's.
   const n = needs.count();
-  needsPill.hidden = n === 0;
-  put(/** @type {HTMLElement} */ (needsPill.lastChild), `${n} need${n === 1 ? "s" : ""} you`);
   railEl.setNeeds(n);
   // The phone: the mark's dot takes the attention colour, and Now says how many.
   phHead.toggleAttribute("data-needs", n > 0);
@@ -243,52 +233,12 @@ let owner = { name: /** @type {string | null} */ (null), letter: "V" };
 
 // ---- search --------------------------------------------------------------------------------
 
-let searchSeq = 0, active = -1;
-/** @type {{ href: string }[]} */ let hits = [];
-async function search() {
-  const q = searchIn.value.trim();
-  const n = ++searchSeq;
-  if (q.length < 2) { pop.hidden = true; searchIn.setAttribute("aria-expanded", "false"); return; }
-  const r = await attempt("recall.search", { q, limit: 8 });
-  if (n !== searchSeq) return;
-  active = -1;
-  if (r.error) { put(pop, h("div", { class: "empty", style: { padding: "10px" } }, r.error.missing ? "Search needs the recall module, which is not running." : String(r.error.message))); }
-  else if (!r.data.length) { put(pop, h("div", { class: "empty", style: { padding: "10px" } }, "Nothing said matches that.")); hits = []; }
-  else {
-    hits = r.data.map(t => ({ href: threadHref(t.session) }));
-    put(pop, r.data.map((t, i) => link(hits[i].href, { role: "option", id: "hit-" + i, onclick: () => closeSearch() },
-      h("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px" } },
-        h("span", { class: "small ellipsis", style: { flexGrow: "1" } }, t.name || t.title || t.session),
-        machineChip(t),
-        h("span", { class: "code", style: { flexShrink: "0" } }, when(t.ts))),
-      h("div", { class: "small muted", style: { marginTop: "2px" } }, snippet(t.snippet || t.text)),
-      h("div", { class: "code faint", style: { marginTop: "2px" } }, base(t.cwd), " · ", t.role))));
-  }
-  pop.hidden = false;
-  searchIn.setAttribute("aria-expanded", "true");
-}
 /** Recall marks matches with «»; shown in Bone against Stone, as text nodes only. */
-export function snippet(s) {
+export function snippet(/** @type {any} */ s) {
   return String(s || "").split(/(«[^»]*»)/).map(part => part.startsWith("«") ? h("span", { style: { color: "var(--text)" } }, part.slice(1, -1)) : part);
 }
-const threadHref = session => `/threads/${encodeURIComponent(session)}`;
-function closeSearch() { pop.hidden = true; searchIn.setAttribute("aria-expanded", "false"); searchIn.blur(); }
-let st = 0;
-searchIn.addEventListener("input", () => { clearTimeout(st); st = window.setTimeout(search, 180); });
-searchIn.addEventListener("keydown", e => {
-  const opts = [...pop.querySelectorAll("a")];
-  if (e.key === "Escape") { closeSearch(); return; }
-  if (!opts.length) return;
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    e.preventDefault();
-    active = (active + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
-    opts.forEach((o, i) => o.classList.toggle("on", i === active));
-    searchIn.setAttribute("aria-activedescendant", "hit-" + active);
-  }
-  if (e.key === "Enter" && active >= 0) { e.preventDefault(); go(hits[active].href); closeSearch(); }
-});
-document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target)).closest(".search")) pop.hidden = true; });
-document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
+// The command bar (js/cmdbar.js): Cmd or Ctrl K from anywhere, and the rail's Search button.
+document.addEventListener("keydown", cmd.onGlobalKey);
 // Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
 // phone has no rail, so no rail keys.
 const MAC = mac();
@@ -447,7 +397,6 @@ async function route() {
   // /quick is the hotkey panel: the compact ask alone, no rail (css/views/quick.css reads this).
   document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
-  put(address.lastChild, location.host, h("b", null, location.pathname));
   railEl.setCurrent(name, location.hash);
   // A detail (a session, a project's board or thread): under 900 it takes the list column's place.
   deck.toggleAttribute("data-detail", (name === "chat" && !!params.thread) || (name === "projects" && !!(params.slug || params.thread)));

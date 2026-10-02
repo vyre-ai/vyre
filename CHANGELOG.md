@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 2: the rail, the page header and the command bar
+
+- The rail is seven places (Now, Chat, Projects, Agents, Memory, Vault, Drive) with Search, Settings and the person's avatar at the bottom, 64 wide, keys Cmd or Ctrl 1 to 8. Planner is folded into Now and Devices into Settings, so both addresses still work and highlight their parent.
+- The top bar is gone: no address chip, no search box, no needs pill (Now's badge on the rail carries it). `deck/js/cmdbar.js` is the command bar: Cmd or Ctrl K or the rail's Search opens a glass panel; projects, people and agents, threads and actions, `p `, `t ` and `u ` to narrow, what was said through recall.search, recent choices remembered per device.
+- `deck/js/page-header.js`: the one page header (title, meta line, actions). `deck/css/shell-v2.css` holds the rail, header and command bar styles over the v2 tokens. The phone's Places sheet keeps its own seven tiles until the phone pass.
+
 #### deck v2, step 1: tokens and the state kit
 
 - `deck/css/tokens-v2.css`: the v2 design tokens (design-system.md, final): the surfaces, edges, text, accent and status colours with their washes, the type roles (caption 12, body 14, read 15, title 18, page 24, display 32, the 11 px label; larger body, read and title on a phone), the 4-grid space, the shapes, three elevations, motion durations and easings, and the layout sizes, in dark and paper. The names are new, so they sit beside the old roles and a screen moves to them when its pass lands; nothing changes on a screen yet.
