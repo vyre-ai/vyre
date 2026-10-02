@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":881,"event":351,"config":242,"env":195,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":881,"event":351,"config":242,"env":196,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1954,6 +1954,7 @@
     {"kind":"env","name":"VYRE_NO_TIPS","definedIn":"core/cli/index.js","page":"reference/config.md#environment-variables","mentions":[{"page":"using/tips.md","line":23,"anchor":"where-tips-show"}]},
     {"kind":"env","name":"VYRE_NO_UP","definedIn":"core/cli/commands/box.js","page":"reference/config.md#environment-variables","mentions":[{"page":"using/box-care.md","line":270,"anchor":"run-the-installer-by-hand"},{"page":"using/box-care.md","line":382,"anchor":"restore"}]},
     {"kind":"env","name":"VYRE_NODE_SHA256","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_NODE_TGZ","definedIn":"scripts/mac-app-package.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_NODE_URL","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_NPM_BIN","definedIn":"core/cli/commands/update.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_OLD_PROJECTS_DIR","definedIn":"core/config/index.js","page":"reference/config.md#environment-variables","mentions":[]},

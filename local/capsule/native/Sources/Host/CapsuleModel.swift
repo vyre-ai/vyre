@@ -218,6 +218,8 @@ public final class CapsuleModel: ObservableObject {
     var iqTimeout: TimeInterval = 12
     /// The CLI to run instead of vyred's own (tests: a fake vyre).
     var cliOverride: [String]?
+    /// The bundled setup to run instead of the app's own (tests: a fake installer).
+    var setupOverride: BundledSetup?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 

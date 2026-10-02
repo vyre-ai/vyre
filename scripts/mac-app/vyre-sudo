@@ -1,0 +1,9 @@
+#!/bin/sh
+# vyre-sudo: what Lumen sets as VYRE_SUDO for install-mac-server.sh: sudo, asking for the password in a dialog instead of a
+# terminal. It runs only the installer's one root step, pinned by vyre-sudo-check (generated at build): that script's exact text, the
+# Node checksum, the release key and the verb. Anything else is refused before the password is asked for.
+here="$(cd "$(dirname "$0")" && pwd)"
+"$here/vyre-sudo-check" "$@" || exit 126
+SUDO_ASKPASS="$here/askpass"
+export SUDO_ASKPASS
+exec /usr/bin/sudo -A "$@"
