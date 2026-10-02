@@ -47,3 +47,22 @@ test("taintOf: a shell command that reaches the network is outside; a local one 
   assert.deepEqual(taintOf("execute", "wget x.test"), T(true, false));
   assert.deepEqual(taintOf("Read", "curl x.test"), T(false, false));
 });
+
+test("a network command is flagged by the whole command, however far along the summary was cut", async () => {
+  const { describe, translate } = await import("./translate.js");
+  const long = `cd ${"/very/long/path".repeat(30)} && echo ${"x".repeat(100)} && curl -s https://example.org/x`;
+  assert.ok(long.indexOf("curl") > 300);
+  const d = describe("Bash", { command: long });
+  assert.equal(d.net, true, "decided before the summary is cut");
+  assert.ok(!d.summary.includes("curl"), "the summary is still the short one");
+  assert.ok(!JSON.stringify(d).includes("example.org"), "the command text is not in the flag");
+  assert.equal(describe("Bash", { command: `echo ${"x".repeat(500)} && make` }).net, undefined);
+  assert.equal(describe("run_terminal_command", { command: `${"x ".repeat(200)}; wget x.test` }).net, true);
+  assert.equal(describe("Read", { file_path: "curl http://x" }).net, undefined);
+  // The harness's own event carries it, and taintOf reads the boolean.
+  const ev = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: long } }] } }, new Set());
+  const started = ev.events.find(e => e.type === "thread.tool" && e.payload.phase === "started");
+  assert.equal(started.payload.net, true);
+  assert.deepEqual(taintOf("Bash", started.payload.net === true), T(true, false));
+  assert.deepEqual(taintOf("Bash", false), T(false, false));
+});

@@ -86,20 +86,34 @@ export function detailOf(tool, input = {}) {
 /** Where a sending tool keeps its destination, in the order worth showing (as core/harness/rules.js). */
 const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
 
+/** Does a shell command line reach the network: a URL, or a program that fetches (curl, wget, an http client, ssh and friends, a script's own client)? @param {any} command */
+export const reachesNetwork = command => {
+  const c = String(command || "");
+  if (/\b(?:https?|ftps?|wss?|sftp|ssh|git):\/\/\S/i.test(c)) return true;
+  return /(?:^|[;&|(`]|\$\()\s*(?:(?:sudo|time|xargs|nohup|env|command|exec|timeout\s+\d+)\s+)*(?:curl|wget|http|https|httpie|xh|aria2c?|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|lynx|links|w3m)(?=[\s;&|)`]|$)/.test(c)
+    || /\b(?:requests\.(?:get|post|put|request)|urllib|http\.client|httpx|aiohttp|fetch\(|axios|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b/.test(c)
+    || /\bgit\s+(?:clone|fetch|pull|ls-remote)\b|\bgh\s+api\b|\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|i|add)\b/.test(c);
+};
+
+/** Tools that run a shell command line, by the names the providers use. */
+const SHELL_TOOL = /^(bash|shell|sh|zsh|exec|execute|exec_command|run_terminal_command|run_command|terminal|local_shell)$/i;
+
 /**
  * A tool call as one line a person can judge, and where it goes. Never the whole input: a Write's
  * content or an Edit's replacement can be the size of a file, and may hold anything.
  * @param {string} tool @param {Record<string, any>} input
- * @returns {{ summary: string, destination: string|null }}
+ * @returns {{ summary: string, destination: string|null, net?: true }} net: a shell command that reaches the network, decided on the whole command (up to the 4000-character clip), before the summary is cut; the command itself never rides in it
  */
 export function describe(tool, input = {}) {
   const i = input || {};
   // A command can carry a token (curl -H "Authorization: ..."), and the summary is shown on every device.
-  if (tool === "Bash") return { summary: cut(clip(String(i.command ?? ""), 4000)), destination: null };
+  if (tool === "Bash") { const c = clip(String(i.command ?? ""), 4000); return { summary: cut(c), destination: null, ...(reachesNetwork(c) ? { net: true } : {}) }; }
   if (["Write", "Edit", "MultiEdit", "Read", "NotebookEdit"].includes(tool)) {
     const file = i.file_path || i.notebook_path || "";
     return { summary: `${tool} ${cut(file)}`, destination: file ? String(file) : null };
   }
+  // The other spellings of a shell tool: the same network judgement on the whole command, the summary as any tool's.
+  if (SHELL_TOOL.test(tool) && (typeof i.command === "string" || typeof i.cmd === "string")) { const c = clip(String(i.command ?? i.cmd), 4000); return { summary: cut(`${tool} ${c}`), destination: null, ...(reachesNetwork(c) ? { net: true } : {}) }; }
   if (tool === "WebFetch") return { summary: `fetch ${cut(i.url)}`, destination: i.url ? cut(i.url) : null };
   if (tool === "WebSearch") return { summary: `search ${cut(i.query)}`, destination: null };
   if (tool === "Glob" || tool === "Grep") return { summary: `${tool} ${cut(i.pattern)}${i.path ? " in " + cut(i.path, 80) : ""}`, destination: null };

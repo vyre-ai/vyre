@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { translate, cut, clip, CAPS } from "./translate.js";
+import { translate, cut, clip, CAPS, reachesNetwork } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
@@ -261,14 +261,14 @@ const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse
  * (curl, wget, an http client, ssh and friends, or any URL in it) is outside. The names are Claude's (WebFetch, mcp__server__tool), Codex's (mcp.server.tool) and Grok's
  * (server__tool); anything unknown is neither: this only ever adds a flag, it never clears one. What it cannot see: Read, Grep, Glob and Edit of local files (a name says
  * nothing about whose file it is), and a program that talks to the network without saying so on its command line.
- * @param {any} name @param {any} [summary] a shell call's command line (thread.tool's summary)
+ * @param {any} name @param {any} [network] for a shell call: true when its command reaches the network (translate's `net`, decided on the whole command), or the command line itself
  * @returns {{ outside: boolean, private: boolean }}
  */
-export function taintOf(name, summary) {
+export function taintOf(name, network) {
   const n = String(name || "").toLowerCase();
   if (/^(webfetch|websearch|web_fetch|web_search|fetch_url|browser_|browse)/.test(n)) return { outside: true, private: false };
   if (/^(bash|shell|sh|zsh|exec|execute|exec_command|run_terminal_command|run_command|terminal|local_shell)$/.test(n)) {
-    return { outside: reachesNetwork(summary), private: false };
+    return { outside: network === true || (typeof network === "string" && reachesNetwork(network)), private: false };
   }
   const m = /^mcp(?:__|\.)([a-z0-9-]+)(?:__|\.)(.+)$/.exec(n) || /^([a-z0-9-]+)__(.+)$/.exec(n);
   if (!m) return { outside: false, private: false };
@@ -281,14 +281,6 @@ export function taintOf(name, summary) {
   return { outside: false, private: false };
 }
 
-/** Does a shell command line reach the network: a URL, or a program that fetches (curl, wget, an http client, ssh and friends, a script's own client)? @param {any} command */
-const reachesNetwork = command => {
-  const c = String(command || "");
-  if (/\b(?:https?|ftps?|wss?|sftp|ssh|git):\/\/\S/i.test(c)) return true;
-  return /(?:^|[;&|(`]|\$\()\s*(?:(?:sudo|time|xargs|nohup|env|command|exec|timeout\s+\d+)\s+)*(?:curl|wget|http|https|httpie|xh|aria2c?|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|lynx|links|w3m)(?=[\s;&|)`]|$)/.test(c)
-    || /\b(?:requests\.(?:get|post|put|request)|urllib|http\.client|httpx|aiohttp|fetch\(|axios|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b/.test(c)
-    || /\bgit\s+(?:clone|fetch|pull|ls-remote)\b|\bgh\s+api\b|\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|i|add)\b/.test(c);
-};
 
 /** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
 export function purposeOf(o, project) {
@@ -906,8 +898,8 @@ export class Switchboard {
   }
 
   /** A tool call that brings outside or private material into a thread flags it, for good: the flags are sticky and nothing clears them (threads.get thread.taint). @param {string} id @param {any} name */
-  taint(id, name, summary) {
-    const t = taintOf(name, summary);
+  taint(id, name, network) {
+    const t = taintOf(name, network);
     if (!t.outside && !t.private) return;
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     if (!row) return;
@@ -1096,7 +1088,7 @@ export class Switchboard {
         // A one-shot thread (a job, not a conversation) ends with its first answer.
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
-      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload.name || e.payload.tool, e.payload.summary); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
+      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload.name || e.payload.tool, e.payload.net === true); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
       if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; this.releaseSlots(id, st, e.payload.call); }
       // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
       if (e.type === "thread.finished") this.cancelTools(id, st, project);
