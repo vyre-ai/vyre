@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vyre Lumen</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f3ec; --fg:#1d1b17; --mut:#6b665c; --line:#d9d3c5; --acc:#1d1b17; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161512; --fg:#f1ede3; --mut:#9a9486; --line:#302d26; --acc:#f1ede3; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 "Segoe UI Variable Text","Segoe UI",sans-serif; }
+  main { max-width:520px; margin:0 auto; padding:24px 16px 32px; }
+  h1 { font-size:22px; font-weight:600; margin:0 0 8px; }
+  h2 { font-size:15px; font-weight:600; margin:18px 0 4px; display:flex; justify-content:space-between; gap:12px; }
+  p { color:var(--mut); margin:0 0 12px; }
+  .src span, .sub { color:var(--mut); font-size:13px; font-weight:400; }
+  label { display:flex; gap:10px; align-items:flex-start; padding:6px 0; border-top:1px solid var(--line); cursor:pointer; }
+  label input { margin-top:5px; }
+  .name { display:block; font-weight:500; overflow-wrap:anywhere; }
+  .row { display:flex; gap:10px; align-items:center; margin:14px 0 4px; color:var(--mut); font-size:13px; }
+  .row .grow { flex:1; }
+  button { padding:8px 14px; font:inherit; border-radius:8px; cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--fg); }
+  button.link { border:0; padding:0; color:var(--mut); text-decoration:underline; font-size:13px; }
+  button.go { color:var(--bg); background:var(--acc); border:0; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  ul.where { color:var(--mut); font-size:13px; padding-left:18px; overflow-wrap:anywhere; }
+  #err { color:#b3402a; min-height:1.5em; }
+</style>
+<main>
+  <h1>Bring your history in</h1>
+  <div id="body"><p>Looking on this PC&hellip;</p></div>
+  <div id="err" role="alert"></div>
+</main>
+<script src="history.js"></script>

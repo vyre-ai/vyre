@@ -452,3 +452,53 @@ test("a DNS failure while wiping is retried by the sweep", async t => {
   await worker.scheduled({}, w.env);
   assert.equal(w.dns.records.length, 0);
 });
+
+// ---- the operator rebind (support only) ----
+
+const ADMIN = "s".repeat(48);
+const admin = (w, body, secret = ADMIN, extra = {}) => worker.fetch(new Request(BASE + "/v1/names/admin/rebind", {
+  method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-admin": secret }), ...extra }, body: JSON.stringify(body),
+}), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
+
+test("admin rebind: a name moves at once, is logged, tells the old route, and keeps the recovery code", async t => {
+  const w = world(t, { ADMIN_SECRET: ADMIN }), { a, code: c } = await claimed(w);
+  data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.1" }));
+  const n = boxOf(w);
+  const r = await admin(w, { name: "alex", route: n.route });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual([r.json.data.name, r.json.data.state], ["alex", "live"]);
+  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "mine");
+  const m = data(await n.get("/v1/names/mine"));
+  assert.ok(m.notices.some(x => x.kind === "admin-rebind" && x.from === a.route.slice(0, 8) && x.to === n.route.slice(0, 8)), "the log has an admin-rebind entry");
+  assert.equal(w.dns.records.length, 0, "the old address is unpublished");
+  const old = data(await a.get("/v1/names/mine"));
+  assert.equal(old.name, null);
+  assert.equal(old.moved.name, "alex", "the old route is told where its name went");
+  data(await n.post("/v1/names/point", { name: "alex", ip: "100.101.9.9" }));
+  const third = boxOf(w);
+  assert.equal((await third.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "y") })).status, 200, "the recovery code still works");
+});
+
+test("admin rebind: refused with no secret configured, no header, a wrong header, an unknown name, a malformed route, a taken route", async t => {
+  const none = world(t);
+  const x = boxOf(none);
+  assert.equal((await admin(none, { name: "alex", route: x.route })).status, 404, "no ADMIN_SECRET on the Worker: the operation does not exist");
+  assert.equal((await admin(none, { name: "alex", route: x.route }, "short")).status, 404);
+  const w = world(t, { ADMIN_SECRET: ADMIN }), { a } = await claimed(w);
+  const n = boxOf(w);
+  assert.equal((await admin(w, { name: "alex", route: n.route }, null)).status, 401, "no header");
+  assert.equal((await admin(w, { name: "alex", route: n.route }, "w".repeat(48))).status, 401, "a wrong secret");
+  assert.equal((await admin(w, { name: "alex", route: n.route }, ADMIN.slice(0, -1))).status, 401, "a near miss");
+  assert.equal(data(await n.get("/v1/names/check?name=alex")).status, "taken", "nothing moved");
+  assert.equal(code(await admin(w, { name: "nobody-here", route: n.route })), "no_such_name");
+  assert.equal(code(await admin(w, { name: "alex", route: "NOT-A-ROUTE" })), "bad_request");
+  assert.equal(code(await admin(w, { name: "alex", route: "a".repeat(25) })), "bad_request");
+  assert.equal(code(await admin(w, { name: "!!", route: n.route })), "bad_request");
+  assert.equal(code(await admin(w, { name: "alex", route: a.route })), "already_yours");
+  // a route-key signature is not the secret
+  assert.equal((await n.post("/v1/names/admin/rebind", { name: "alex", route: n.route })).status, 401);
+  // a route that already holds a name
+  const other = boxOf(w); data(await other.post("/v1/names/claim", { name: "blake" }));
+  assert.equal(code(await admin(w, { name: "alex", route: other.route })), "one_per_route");
+  assert.equal(data(await a.get("/v1/names/mine")).name, "alex", "the owner still holds it after every refusal");
+});
