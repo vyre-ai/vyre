@@ -50,7 +50,7 @@ async function open(view) {
 for (const view of ["now", "chat", "projects", "vault", "files", "planner"]) {
   test(`${view}: everything it needs is asked for in at most two rounds`, async () => {
     const r = await open(view);
-    assert.ok(r.tools.length > 0, "it asked the box for something");
+    assert.ok(r.tools.length > 0, "it asked your server for something");
     assert.ok(r.rounds <= 2, `${view} took ${r.rounds} rounds: ${r.tools.join(", ")}`);
   });
 }

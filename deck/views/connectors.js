@@ -19,7 +19,7 @@ import { redact } from "../js/redact.js";
 
 export const EVENTS = ["connectors.connected", "connectors.connect-failed", "connectors.disconnected"];
 const httpsOnly = (/** @type {any} */ u) => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
-const words = (/** @type {any} */ e, /** @type {string[]} */ also = []) => (e?.missing ? "Connectors are not running on this box yet." : redact(e?.message || e || "That did not go through.", also));
+const words = (/** @type {any} */ e, /** @type {string[]} */ also = []) => (e?.missing ? "Connectors are not running on your server yet." : redact(e?.message || e || "That did not go through.", also));
 const SETUP_WORD = { none: "", app: "Needs an app from the vendor", token: "Needs a token", via: "Comes through another connector" };
 
 /** Who can use a connection: the person and the assistant by default, every project, or only some. */
@@ -254,12 +254,12 @@ export async function drawCatalog(el, ctx, deps = {}) {
   }
 
   function draw() {
-    if (st.error) { put(el, h("h3", { class: "h3" }, "Add a service"), empty(st.error?.missing ? "Connectors are not on this box yet." : "The catalog could not be read.", st.error)); return; }
+    if (st.error) { put(el, h("h3", { class: "h3" }, "Add a service"), empty(st.error?.missing ? "Connectors are not on your server yet." : "The catalog could not be read.", st.error)); return; }
     put(el,
       h("h3", { class: "h3" }, "Add a service"),
       h("p", { class: "small muted" }, "Sign in to a service the way its own site does. Vyre keeps the credential in the vault and agents use it without seeing it."),
       st.notice ? h("p", { class: "small", role: "status" }, st.notice) : null,
-      st.groups.length ? st.groups.map(g => h("div", { class: "cn-group" }, h("p", { class: "lbl" }, g.group), g.presets.map(presetRow))) : h("div", { class: "empty" }, "No services to add on this box."));
+      st.groups.length ? st.groups.map(g => h("div", { class: "cn-group" }, h("p", { class: "lbl" }, g.group), g.presets.map(presetRow))) : h("div", { class: "empty" }, "No services to add on your server."));
   }
 
   for (const type of EVENTS) ctx.on(type, e => {

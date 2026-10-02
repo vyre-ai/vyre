@@ -105,7 +105,7 @@ test("needs: a Mac session's ask is answered with its machine; mac_offline keeps
     assert.deepEqual(m1?.options.map(o => o.decision), ["allow", "deny"], "the usual buttons");
     assert.deepEqual(m2?.options.map(o => o.decision), ["allow", "deny"]);
     assert.equal(l1?.source, undefined);
-    assert.equal(rows.elsewhere(/** @type {any} */ (m1)), null, "answerable here while the box forwards");
+    assert.equal(rows.elsewhere(/** @type {any} */ (m1)), null, "answerable here while your server forwards");
 
     // The Mac is away: the box's words, the item stays, forwarding is not turned off.
     answers["threads.answer"] = { $refuse: { code: "mac_offline", message: "alex-mac is not reachable" } };
@@ -139,7 +139,7 @@ test("needs: a Mac session's ask is answered with its machine; mac_offline keeps
     assert.ok(needs.current().some(n => n.id === "m1"), "still listed, answered on the Mac");
     calls.length = 0;
     await assert.rejects(needs.answer(/** @type {any} */ (m1), { label: "Allow once", decision: "allow" }), /Answer it on alex-mac\./);
-    assert.equal(calls.length, 0, "nothing sent once the box has said so");
+    assert.equal(calls.length, 0, "nothing sent once your server has said so");
   } finally {
     rows.resetMacAnswers();
     Object.assign(answers, { "threads.asks": saved.asks, "threads.list": saved.list, "threads.answer": saved.answer });
@@ -147,12 +147,12 @@ test("needs: a Mac session's ask is answered with its machine; mac_offline keeps
   }
 });
 
-test("needs: which refusals say the box cannot forward a Mac's answer", () => {
+test("needs: which refusals say your server cannot forward a Mac's answer", () => {
   assert.equal(needs.macRefused({ code: "no_such_tool" }, {}), true);
   assert.equal(needs.macRefused({ code: "unsupported" }, { node: "n" }), true);
   assert.equal(needs.macRefused({ code: "bad_input", message: "unknown field machine" }, {}), true);
   assert.equal(needs.macRefused({ code: "bad_input", message: "decision must be allow or deny" }, {}), false);
-  assert.equal(needs.macRefused({ code: "not_found", message: "no ask m1" }, {}), true, "an ask the box never relayed");
+  assert.equal(needs.macRefused({ code: "not_found", message: "no ask m1" }, {}), true, "an ask your server never relayed");
   assert.equal(needs.macRefused({ code: "not_found", message: "no ask m1" }, { node: "nodeA" }), false, "relayed, so it was answered");
   for (const code of ["mac_offline", "timeout", "person_session_required", "presence_required", "offline"]) assert.equal(needs.macRefused({ code }, {}), false, code);
 });
@@ -166,7 +166,7 @@ test("needs: an ask raised this session opens by id before the list has it, unti
   assert.equal(r?.machine, "alex-mac");
   assert.equal(r?.node, "nodeA");
   assert.equal(r?.thread, "tm");
-  assert.equal(needs.current().some(n => n.id === "r1"), false, "the list is the box's only");
+  assert.equal(needs.current().some(n => n.id === "r1"), false, "the list is your server's only");
   needs.hear({ type: "ask.answered", payload: { ask: "r1", decision: "allow" } });
   assert.equal(needs.find("r1"), null);
   assert.equal(needs.find("nope"), null);

@@ -41,7 +41,7 @@ test("a role made a moment ago says so and undoes through team.retire; a reply e
   assert.equal($(done, ".cv-made"), null, "a teammate that has replied has run: no Undo");
 });
 
-test("an Undo the box refuses because the teammate already ran falls back to a plain retire, and says Retired", async () => {
+test("an Undo your server refuses because the teammate already ran falls back to a plain retire, and says Retired", async () => {
   markMade("northwind", "qa", null);
   const real = globalThis.fetch;
   const seen = /** @type {any[]} */ ([]);

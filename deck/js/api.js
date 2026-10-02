@@ -78,7 +78,7 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
 export async function call(name, input = {}, opts = {}) {
   // `ifPresent`: a tool this box may not have is asked about once (GET /v1/tools) and never called when it is absent, so a missing module is a quiet
   // answer, not a failed request in the console on every page (#56).
-  if (opts.ifPresent && !(await hasTool(name))) throw new ApiError("no_such_tool", `this box has no ${name}`, name);
+  if (opts.ifPresent && !(await hasTool(name))) throw new ApiError("no_such_tool", `your server has no ${name}`, name);
   if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
   // The same read asked for twice at once (the rail, the view and the avatars all want projects.list) is one request: they share its answer.
   // Only a caller that says `share: true` joins one (a read whose answer may be a moment old for the other), and a write clears them all, so a

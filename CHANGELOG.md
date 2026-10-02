@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 5: Agents, Memory, Vault, Drive and Settings passes; "your server" wording
+
+- Agents, Vault, Drive and Settings open with the one page header; Memory's title takes the page title type. An agent's computer has a name you can change in place (`computers.rename`).
+- Every person-visible "this box", "the box" and "your box" in the Deck's views, chat, Glass and shared scripts now says "your server" (commands and comments unchanged), with the tests that asserted the old words.
+
 #### deck v2, step 5: the Projects shell and the Planner pass
 
 - Projects: the one page header; the board's header wears the project's emblem; a project's chats are the one thread row, and every chat still opens in Chat.

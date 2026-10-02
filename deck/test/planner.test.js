@@ -195,7 +195,7 @@ test("the planner module not running shows it in plain words", async () => {
 });
 
 
-test("splitKind reads todo/note/event/task as the kind, and previewLine says what the box read", () => {
+test("splitKind reads todo/note/event/task as the kind, and previewLine says what your server read", () => {
   assert.deepEqual(splitKind("todo send the invoice"), { kind: "todo", text: "send the invoice" });
   assert.deepEqual(splitKind("Task: call Dana"), { kind: "todo", text: "call Dana" });
   assert.deepEqual(splitKind("note printer code 4471"), { kind: "note", text: "printer code 4471" });

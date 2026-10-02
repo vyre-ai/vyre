@@ -109,7 +109,7 @@ test("events: onResume hears a reconnect and a reset, and events after a reset a
   off(); offR();
 });
 
-test("events: a tool call the box answers while the stream backs off reconnects it at once (budget 8)", async () => {
+test("events: a tool call your server answers while the stream backs off reconnects it at once (budget 8)", async () => {
   const last = () => streams[streams.length - 1];
   last().push("retry: 2000\nid: 9\n\n");
   await tick();
@@ -137,7 +137,7 @@ test("idempotency: a write carries one key, the same on the retry after a sign-i
   assert.equal(signIns, 1);
   assert.equal(sent.length, 2);
   const k = sent[0].headers["idempotency-key"];
-  assert.match(k, /^[A-Za-z0-9_.:-]{8,128}$/, "a key the box accepts");
+  assert.match(k, /^[A-Za-z0-9_.:-]{8,128}$/, "a key your server accepts");
   assert.equal(sent[1].headers["idempotency-key"], k, "the retry is the same write");
   api.setPersonHandler(null);
 
@@ -146,10 +146,10 @@ test("idempotency: a write carries one key, the same on the retry after a sign-i
   await api.call("planner.add", { text: "and again" }, { write: true });
   assert.notEqual(sent[0].headers["idempotency-key"], k, "a new write, a new key");
   await api.call("planner.list", {});
-  assert.equal(sent[1].headers["idempotency-key"], undefined, "reads are not kept by the box");
+  assert.equal(sent[1].headers["idempotency-key"], undefined, "reads are not kept by your server");
 });
 
-test("idempotency: an owner's answer the box wants a passkey for goes again with the same key", async () => {
+test("idempotency: an owner's answer your server wants a passkey for goes again with the same key", async () => {
   sent.length = 0;
   box = url => (url === "/v1/presence/challenge" ? { status: 200, body: { data: { challenge: "c1", webauthn: { challenge: "AAAA", rpId: "localhost" } } } }
     : sent.filter(x => x.url.startsWith("/v1/tools/")).length === 1 ? { status: 403, body: { error: { code: "presence_required", message: "prove it" } } } : { status: 200, body: { data: { state: "answered" } } });
@@ -175,7 +175,7 @@ async function reconnect() {
 }
 const tools = (/** @type {string} */ t) => sent.filter(x => x.url === "/v1/tools/" + t);
 
-test("outbox: a send the box did not get waits, says so, and goes once when the stream is back, with the same key", async () => {
+test("outbox: a send your server did not get waits, says so, and goes once when the stream is back, with the same key", async () => {
   sent.length = 0;
   let up = false;
   box = url => (url === "/v1/tools/threads.send" && !up ? "down" : { status: 200, body: { data: { sent: true } } });
@@ -222,7 +222,7 @@ test("outbox: a write that needs a passkey is never queued; offline it fails at 
   /** @type {any} */ (navigator).onLine = true;
   box = url => (url === "/v1/presence/challenge" ? { status: 200, body: { data: { challenge: "c2", webauthn: { challenge: "AAAA", rpId: "localhost" } } } } : "down");
   const down = await api.queued("gate.approve", { id: "g1" }, { presence: true });
-  assert.equal(down.error.code, "offline", "the box went away after the passkey: the existing offline error");
+  assert.equal(down.error.code, "offline", "your server went away after the passkey: the existing offline error");
   assert.equal(tools("gate.approve").length, 1);
   assert.ok(tools("gate.approve")[0].headers["idempotency-key"]);
   box = () => ({ status: 200, body: { data: {} } });

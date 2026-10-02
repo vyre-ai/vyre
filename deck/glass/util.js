@@ -40,12 +40,12 @@ const WORDS = {
   not_found: "That is not there any more. Someone may have moved it.",
   exists: "Something with that name is already there.",
   too_large: "That file is larger than Glass takes in one upload.",
-  presence_required: "This box still asks for a passkey to take the keyboard. Update the box: take-over needs none now.",
+  presence_required: "Your server still asks for a passkey to take the keyboard. Update your server: take-over needs none now.",
   not_holder: "Another screen has the keyboard, so this one cannot hand it back.",
   held: "Someone else has the keyboard right now.",
-  shield_unavailable: "Signing in privately is not available on this box yet: the agent's computer cannot hide the page from the agent.",
+  shield_unavailable: "Signing in privately is not available on your server yet: the agent's computer cannot hide the page from the agent.",
   no_screen: "This computer has no screen to show.",
-  offline: "The box did not answer. It may be asleep or out of reach.",
+  offline: "Your server did not answer. It may be asleep or out of reach.",
 };
 
 /** @param {any} err an ApiError or anything thrown */

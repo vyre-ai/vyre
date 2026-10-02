@@ -564,7 +564,7 @@ const unfetched = e => e instanceof TypeError && /dynamically imported module|mo
 /** A page whose view could not be fetched: one quiet line, and a fresh mount when the box answers again.
  * @param {string} key @param {{ alive: boolean }} entry @param {HTMLElement} page */
 function waitForBox(key, entry, page) {
-  put(page, h("div", { class: "page-wait", role: "status" }, h("p", { class: "muted" }, "This page loads when your box answers.")));
+  put(page, h("div", { class: "page-wait", role: "status" }, h("p", { class: "muted" }, "This page loads when your server answers.")));
   const back = (/** @type {Event} */ ev) => {
     if (ev.type === "deck:stream" && /** @type {CustomEvent} */ (ev).detail?.state !== "open") return;
     window.removeEventListener("deck:stream", back);

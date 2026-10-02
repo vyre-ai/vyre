@@ -178,7 +178,7 @@ test("places: stored junk reads as none; storage that throws never breaks the sh
   assert.deepEqual(d.kept, ["/planner"]);
 });
 
-test("places: the path to the box joins the address only when link.health knows it", async () => {
+test("places: the path to your server joins the address only when link.health knows it", async () => {
   /** @type {(x: any) => void} */ let push = () => {};
   let stopped = 0;
   const d = await draw({ health: (/** @type {any} */ fn) => { push = fn; return () => { stopped++; }; }, line: (/** @type {any} */ x) => `${x.path} ${x.latencyMs} ms` });

@@ -96,7 +96,7 @@ test("survey: thoughts is left out when no box has words; both a choice and thou
 });
 
 test("survey: keys are left to the thoughts box while it has focus; Decline denies; a failure keeps the picks", async () => {
-  const f = vyred({ "threads.answer": { $error: { code: "timeout", message: "The box did not answer" } } });
+  const f = vyred({ "threads.answer": { $error: { code: "timeout", message: "Your server did not answer" } } });
   const c = surveyCard(ask({ questions: [ask().questions[0]] }), {});
   /** @type {any} */ (globalThis.document).activeElement = $(c, ".cv-sv-box");
   assert.equal(c.onKey(key("1")), false);

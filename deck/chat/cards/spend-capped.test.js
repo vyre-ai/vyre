@@ -26,7 +26,7 @@ const { spendCapped } = await import("./spend-capped.js");
 const EVENT = { provider: "claude", day: "2026-10-01", spent: 5.02, cap: 5, line: "Claude spend today reached $5.02 of the $5.00 daily cap, so this is paused. Raise it: vyre spend raise claude <dollars>", thread: "t1",
   action: { label: "Raise it", tool: "vault.reveal", input: { provider: "claude", to: 10 } } };
 
-test("the box's line and a Raise it; the field opens with the suggested amount and nothing is sent yet", () => {
+test("your server's line and a Raise it; the field opens with the suggested amount and nothing is sent yet", () => {
   vyred();
   const el = spendCapped(EVENT);
   assert.match(text($(el, ".cv-spend-line")), /Claude spend today reached \$5\.02 of the \$5\.00 daily cap/);

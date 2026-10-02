@@ -194,13 +194,13 @@ test("need-rows: a deny waits out its Undo toast, and Undo means it never ran", 
 test("need-rows: flush sends at once, once; a failure is reported, not thrown", async () => {
   const t = clock();
   let ran = 0;
-  const d = deferred(() => { ran++; throw new Error("the box refused"); }, 4000, t);
+  const d = deferred(() => { ran++; throw new Error("your server refused"); }, 4000, t);
   d.flush(); d.flush();
   t.tick(5000);
   const r = await d.done;
   assert.equal(ran, 1);
   assert.equal(r.ran, true);
-  assert.equal(r.error.message, "the box refused");
+  assert.equal(r.error.message, "your server refused");
   assert.equal(d.state, "ran");
 });
 
@@ -233,10 +233,10 @@ test("need-rows: a Mac session's ask swipes and approves like any other, and say
   assert.match(ariaLabel(mac, NOW), /Actions: Approve, Deny, Open\.$/);
   assert.equal(thirdLine(mac), "kit · on alex-mac");
   assert.equal(thirdLine({ ...mac, machine: null }), "kit · on your Mac");
-  assert.equal(thirdLine({ ...mac, source: null }), "kit", "a box session says nothing of a Mac");
+  assert.equal(thirdLine({ ...mac, source: null }), "kit", "a server session says nothing of a Mac");
 });
 
-test("need-rows: on a box that cannot forward answers (pre-v2), a Mac's ask only opens and says where", async () => {
+test("need-rows: on a server that cannot forward answers (pre-v2), a Mac's ask only opens and says where", async () => {
   const { elsewhere, holdMacAnswers, resetMacAnswers, macAnswers } = await import("./need-rows.js");
   const mac = { kind: "ask", at: NOW, agent: "kit", tool: "Bash", command: "npm test", source: "mac", machine: "alex-mac" };
   holdMacAnswers();
@@ -245,8 +245,8 @@ test("need-rows: on a box that cannot forward answers (pre-v2), a Mac's ask only
     assert.equal(elsewhere(mac), "alex-mac");
     assert.equal(elsewhere({ ...mac, machine: null }), "your Mac");
     assert.equal(elsewhere({ ...mac, kind: "question" }), "alex-mac");
-    assert.equal(elsewhere({ ...mac, source: null }), null, "a box session is answered here");
-    assert.equal(elsewhere({ ...mac, kind: "draft" }), null, "a held draft is the box's");
+    assert.equal(elsewhere({ ...mac, source: null }), null, "a server session is answered here");
+    assert.equal(elsewhere({ ...mac, kind: "draft" }), null, "a held draft is your server's");
     assert.deepEqual(swipeActions(mac), []);
     assert.deepEqual(swipeActions({ ...mac, source: null }), ["Approve", "Deny"]);
     assert.equal(swipeCommit(mac, "right"), "sheet");

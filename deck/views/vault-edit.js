@@ -268,7 +268,7 @@ export function editPane(app, panel, what, focus) {
     title, form);
   drawKind();
   if (focus) (editing ? title : nameIn).focus({ preventScroll: true });
-  if (!vc.has("vault.update")) put(status, "This box cannot save vault items from the Deck yet.");
+  if (!vc.has("vault.update")) put(status, "Your server cannot save vault items from the Deck yet.");
 }
 
 /**

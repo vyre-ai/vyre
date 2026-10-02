@@ -102,7 +102,7 @@ test("Forget a site: memory.site.forget {key}, the site leaves the list, and a l
   assert.equal($(m.root, "[data-kept]"), null);
 });
 
-test("Undo lives on the box: what it lists as forgotten is one collapsed Recently forgotten row at the bottom, with an Undo for a site and for a row", async () => {
+test("Undo lives on your server: what it lists as forgotten is one collapsed Recently forgotten row at the bottom, with an Undo for a site and for a row", async () => {
   const forgotten = [{ kind: "site", key: "https://old.example", name: "Old shop", at: Date.now() - 3600e3, expires_at: Date.now() + 23 * 3600e3 },
     { kind: "row", key: "https://portal.northwind.example", name: "Northwind portal", part: "controls", id: "c9", label: "Export on /reports", at: Date.now() - 600e3, expires_at: Date.now() + 23 * 3600e3 }];
   assert.equal(forgottenOf({ forgotten }).length, 2);
@@ -122,7 +122,7 @@ test("Undo lives on the box: what it lists as forgotten is one collapsed Recentl
   assert.deepEqual(m.of("memory.site.restore")[1].input, { key: "https://old.example" });
 });
 
-test("a restore the box answers with 0 (after the day, or nothing forgotten) says it can no longer be brought back", async () => {
+test("a restore your server answers with 0 (after the day, or nothing forgotten) says it can no longer be brought back", async () => {
   const m = await mount({ "memory.site.list": { sites: LIST.sites, forgotten: [{ kind: "site", key: "https://old.example", name: "Old shop", at: 1, expires_at: 2 }] }, "memory.site.restore": { restored: 0 } });
   click($(m.root, "[data-act=recent]"));
   click($(m.root, ".ms-kept [data-act=undo]")); await settle();
@@ -147,7 +147,7 @@ test("a refused forget says so in words; no memory module: one plain line", asyn
   assert.match(text(m.root), /person's own surfaces only/);
   assert.ok($(row(m.root, "https://portal.harlow.example"), "[data-act=forget]"));
   const none = await mount({ "memory.site.list": { $error: { code: "no_such_tool", message: "x", missing: true, module: "memory" } } });
-  assert.match(text(none.root), /Sites are not on this box yet/);
+  assert.match(text(none.root), /Sites are not on your server yet/);
 });
 
 test("forgetting a family asks once with the count of sites it covers", async () => {
@@ -170,7 +170,7 @@ test("the empty state says what learns a site and what does not", async () => {
   assert.match(text(m.root), /Nothing is learned from pages you have not opened with Vyre/);
 });
 
-test("Dismiss clears the in-place Forgot line for a site, and what the box still lists shows only in the collapsed row", async () => {
+test("Dismiss clears the in-place Forgot line for a site, and what your server still lists shows only in the collapsed row", async () => {
   const forgotten = [{ kind: "site", key: "https://portal.northwind.example", name: "Northwind portal", at: 1, expires_at: Date.now() + 1e6 }];
   let gone = false;
   const m = await mount({ "memory.site.list": () => ({ sites: gone ? LIST.sites.slice(1) : LIST.sites, forgotten: gone ? forgotten : [] }), "memory.site.forget": () => { gone = true; return { forgotten: 1 }; } });

@@ -30,7 +30,7 @@ test("rename: the pencil opens a field with the name, Enter saves and the new na
   assert.equal($(f, ".rn-in"), null);
 });
 
-test("rename: Esc leaves the name alone; an empty or 65-character name is refused; an error from the box stays in the field", async () => {
+test("rename: Esc leaves the name alone; an empty or 65-character name is refused; an error from your server stays in the field", async () => {
   const { renameField, $, text } = await load();
   let calls = 0;
   const f = renameField({ name: "Mac mini", save: async () => { calls++; return { error: { message: "No such Mac." } }; } });

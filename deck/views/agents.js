@@ -16,6 +16,8 @@
 
 import { h, put, link, head, empty, PHONE_QUERY } from "../js/dom.js";
 import { attempt, on, snapshot } from "../js/api.js";
+import { renameField } from "../js/rename-field.js";
+import { pageHeader } from "../js/page-header.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
@@ -82,7 +84,7 @@ function projectsText(a, names) {
 
 async function list(ctx) {
   const title = h("h1", { class: "h2" }, "Agents");
-  const sub = h("p", { class: "muted" }, " ");
+  const sub = h("span", null, " ");
   const newBtn = h("button", { type: "button", class: "btn btn-primary", "aria-expanded": "false", "aria-controls": "ag-new" }, icon("plus", 14), "New agent");
   const form = h("section", { class: "ag-new", id: "ag-new", hidden: true, "aria-label": "New agent" });
   const rows = h("section", { class: "ag-list", "aria-labelledby": "ag-list-h" });
@@ -93,7 +95,7 @@ async function list(ctx) {
   const setup = h("div", { class: "ag-setup" });
   const mq = matchMedia(PHONE_QUERY);
   const root = h("div", { class: "ag" + (mq.matches ? " ag-phone" : "") }, h("div", { class: "ag-col" },
-    h("div", { class: "ag-top" }, h("div", { class: "ag-top-text" }, title, sub), newBtn),
+    pageHeader({ title: "Agents", meta: sub, actions: [newBtn] }),
     setup, form, rows, teamEl));
   put(ctx.root, root);
   /** The phone's page: its state lives here so a redraw keeps the consoles. */
@@ -127,7 +129,7 @@ async function list(ctx) {
     /** @type {HTMLElement} */ (headRow.firstChild).id = "ag-list-h";
     if (listErr) {
       put(setup);
-      put(sub, "Agents could not be read from the box.");
+      put(sub, "Agents could not be read from your server.");
       put(rows, headRow, empty("No agents can be listed.", listErr));
       return;
     }
@@ -392,7 +394,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
   function draw(listErr) {
     const w = getWorld();
     const all = getAll();
-    if (listErr) return [h("p", { class: "agp-sum" }, "Agents could not be read from the box."), empty("No agents can be listed.", listErr)];
+    if (listErr) return [h("p", { class: "agp-sum" }, "Agents could not be read from your server."), empty("No agents can be listed.", listErr)];
     const assistant = all.find(a => a.kind === "assistant");
     const ordered = [assistant, ...all.filter(a => a.kind !== "assistant")].filter(Boolean);
     const working = ordered.filter(isWorking);
@@ -643,7 +645,7 @@ function drawJob(sec, a, w, stub, listErr) {
   const view = () => {
     const edit = h("button", { type: "button", class: "link ab-edit", disabled: stub, onclick: () => editing() }, "Edit");
     put(sec, sectionHead("ab-job", "Job", stub ? null : edit),
-      stub ? empty(`${a.name}'s job could not be read from the box.`, listErr)
+      stub ? empty(`${a.name}'s job could not be read from your server.`, listErr)
         : a.instructions ? h("p", { class: "ab-job" }, a.instructions)
         : h("div", { class: "ab-job" }, h("span", { class: "faint" }, "No instructions yet."), action("Write its job", () => editing())),
       stub ? null : h("div", { class: "ab-where" }, h("span", { class: "small faint" }, "Works in"), where),
@@ -747,13 +749,13 @@ function watcherRow(x, w) {
  * report if there is one.
  */
 function drawUsage(sec, a, stub, listErr, ctx) {
-  if (stub) { put(sec, sectionHead("ab-usage", "Usage"), empty(`${a.name}'s usage could not be read from the box.`, listErr)); return; }
+  if (stub) { put(sec, sectionHead("ab-usage", "Usage"), empty(`${a.name}'s usage could not be read from your server.`, listErr)); return; }
   const body = h("div");
   put(sec, sectionHead("ab-usage", "Usage"), body);
   const draw = async () => {
     const r = await attempt("agents.usage", { agent: a.name });
     if (!ctx.alive()) return;
-    if (r.error) { put(body, empty(`${a.name}'s usage could not be read from the box.`, r.error)); return; }
+    if (r.error) { put(body, empty(`${a.name}'s usage could not be read from your server.`, r.error)); return; }
     const list = Array.isArray(r.data) ? r.data : [];
     const u = list.find(x => x.agent === a.name) || list[0];
     if (!u || (!u.turns && !u.last_at)) { put(body, h("div", { class: "empty" }, `${a.name} has not run yet.`)); return; }
@@ -786,7 +788,7 @@ function drawUsage(sec, a, stub, listErr, ctx) {
 function drawModel(sec, a, stub, listErr) {
   const status = h("span", { class: "small muted", role: "status" });
   if (stub) {
-    put(sec, sectionHead("ab-model", "Model"), empty(`${a.name}'s model could not be read from the box.`, listErr));
+    put(sec, sectionHead("ab-model", "Model"), empty(`${a.name}'s model could not be read from your server.`, listErr));
     return;
   }
   const models = MODELS.some(m => m.id === a.model) || !a.model ? MODELS : [...MODELS, { id: a.model, name: a.model }];
@@ -857,7 +859,7 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
   const status = h("div", { class: "small muted ab-comp-status", role: "status" });
   const c = cr.data;
   const right = c ? h("span", { class: "code faint" }, c.state || "none") : null;
-  if (stub) { put(aside, sectionHead("ab-comp", "Computer"), empty(`Whether ${a.name} has a computer could not be read from the box.`, listErr)); return; }
+  if (stub) { put(aside, sectionHead("ab-comp", "Computer"), empty(`Whether ${a.name} has a computer could not be read from your server.`, listErr)); return; }
   if (!a.computer) {
     const give = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (give).disabled = true;
@@ -931,6 +933,7 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
       spec("Processor", `${c.cpus ?? "?"} core${c.cpus === 1 ? "" : "s"}`),
       spec("Memory", `${c.memory_gb ?? "?"} GB`),
       spec("Screen", size.w ? `${size.w} × ${size.h}` : "?"),
+      spec("Name", renameField({ name: c.label || `${who}'s computer`, label: "Rename computer", save: async n => attempt("computers.rename", { computer: who, name: n }) })),
       spec("Watching", c.viewers ? `${c.viewers} ${c.viewers === 1 ? "screen" : "screens"}` : "Nobody", c.paused ? `${who}'s hands are paused.` : null)),
     h("div", { class: "ab-row-acts ab-comp-acts" }, limits, restart), box, status);
 }

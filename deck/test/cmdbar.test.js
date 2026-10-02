@@ -25,7 +25,7 @@ const attempt = /** @type {any} */ (async (/** @type {string} */ tool) => ({ dat
 const settle = () => new Promise(r => setTimeout(r, 20));
 const mem = () => { const m = new Map(); return { getItem: (/** @type {string} */ k) => m.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => { m.set(k, v); } }; };
 
-test("cmdbar: Ctrl K opens a dialog with one box, lists the box's things by group, Esc closes it", async () => {
+test("cmdbar: Ctrl K opens a dialog with one box, lists your server's things by group, Esc closes it", async () => {
   const { createCmdBar, $, $$ } = await load();
   const went = /** @type {string[]} */ ([]);
   const cmd = createCmdBar({ attempt, go: href => went.push(href), doc: document, storage: mem() });

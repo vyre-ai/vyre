@@ -362,7 +362,7 @@ test("a session closed for idleness is paused, not stopped or failed", () => {
 
 // ---- steering, the queue, rewinds, modes, todos and tasks (the composer like Claude Code) ----
 
-test("a plain send: the words drawn at once with no marker, then the box's echo (its own uuid) is the same row", () => {
+test("a plain send: the words drawn at once with no marker, then your server's echo (its own uuid) is the same row", () => {
   const s = createSession(T);
   const drawn = localSend(s, { uuid: "deck-1", text: "Add the autumn specials", mode: "send", at: 1000 });
   assert.deepEqual(keys(s), ["u:deck-1"]);
@@ -370,7 +370,7 @@ test("a plain send: the words drawn at once with no marker, then the box's echo 
   assert.equal(s.items.some(i => i.kind === "steer"), false, "no steer marker");
   ev(s, "thread.sent", { text: "Add the autumn specials", surface: "deck", uuid: "box-1" }, { at: 1050 });
   assert.equal(s.items.filter(i => i.kind === "user").length, 1, "the echo is the same message");
-  assert.equal(s.meta.uuids.get("box-1"), s.items[0].key, "known by the box's uuid now");
+  assert.equal(s.meta.uuids.get("box-1"), s.items[0].key, "known by your server's uuid now");
   // A send that failed takes its row away.
   const t = createSession(T);
   localSend(t, { uuid: "deck-2", text: "Try again later", mode: "send" });
@@ -425,7 +425,7 @@ test("the step counts only this turn's finished calls; a steer from another scre
   assert.equal(s.byKey.get("steer:u-3").step, 1, "c1 was the last turn's; c3 still runs");
 });
 
-test("a steer the box took as a message of its own (the turn had ended) loses its marker", () => {
+test("a steer your server took as a message of its own (the turn had ended) loses its marker", () => {
   const s = createSession(T);
   localSend(s, { uuid: "u-5", text: "And the Harlow Legal intake", mode: "steer" });
   const out = ev(s, "thread.sent", { text: "And the Harlow Legal intake", surface: "deck", uuid: "u-5", via: "turn" });
@@ -457,7 +457,7 @@ test("queued on send, named by the answer, then Steer now: via now, the queued w
   localSend(s, { uuid: "q-1", text: "Then open a PR against main", mode: "queue", queued: 12 });
   assert.equal(s.queued[0].queued, 12);
   ev(s, "thread.queued", { queued: 12, uuid: "q-1", text: "Then open a PR against main", surface: "deck" }, { at: 6 });
-  assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: 12, at: 6 }], "one row, the box's");
+  assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: 12, at: 6 }], "one row, your server's");
   ev(s, "thread.tool", { call: "c1", name: "Read", status: "completed" });
   // threads.send-now: the row goes into the running turn.
   ev(s, "thread.sent", { queued: 12, uuid: "q-1", via: "now" }, { at: 8 });
@@ -531,7 +531,7 @@ test("a rewind read back on open (noteRewind before the blocks): the old branch 
   assert.deepEqual(keys(s), ["u:@0", "m:msg_a:0", "turn:@2"]);
 });
 
-test("the box mints the steer's uuid: the echo (same words) and the answer (confirmSend) tie it to the drawn item, and thread.steered uses it", () => {
+test("your server mints the steer's uuid: the echo (same words) and the answer (confirmSend) tie it to the drawn item, and thread.steered uses it", () => {
   const s = createSession(T);
   ev(s, "thread.turn", { turn: `${T}:1`, uuid: "box-1", text: "Rebuild the Estate intake" });
   ev(s, "thread.sent", { text: "Rebuild the Estate intake", uuid: "box-1" });
@@ -545,7 +545,7 @@ test("the box mints the steer's uuid: the echo (same words) and the answer (conf
   ev(s, "thread.steered", { uuid: "box-2" });
   const m = /** @type {any} */ (s.items.find(i => i.kind === "steer"));
   assert.deepEqual([m.pending, m.step, m.taken], [false, 1, true]);
-  assert.equal(s.items.filter(i => i.kind === "steer").length, 1, "no second marker under the box's uuid");
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 1, "no second marker under your server's uuid");
 
   // The answer first, then thread.steered, then the echo.
   localSend(s, { uuid: "deck-3", text: "And keep the witness page", mode: "steer" });
@@ -579,7 +579,7 @@ test("steered words the turn never reached run as the next turn: markers go, one
   assert.equal(s.items.filter(i => i.kind === "user").length, 2);
 });
 
-test("a queued send: the answer's queued_id and the box's uuid name the row drawn under the Deck's", () => {
+test("a queued send: the answer's queued_id and your server's uuid name the row drawn under the Deck's", () => {
   const s = createSession(T);
   ev(s, "thread.turn", { turn: `${T}:1`, uuid: "u-1", text: "Rebuild the intake" });
   localSend(s, { uuid: "deck-q", text: "Then open a PR against main", mode: "queue", at: 5 });
@@ -625,7 +625,7 @@ test("mode, model and thinking: from thread.started and their own events", () =>
   assert.equal(s.thinking, false);
   assert.deepEqual(ev(s, "mode.changed", { mode: "plan" }), ["@session"]);
   assert.equal(s.mode, "plan");
-  assert.deepEqual(ev(s, "thread.mode", { mode: "acceptEdits" }), [], "the box says mode.changed");
+  assert.deepEqual(ev(s, "thread.mode", { mode: "acceptEdits" }), [], "your server says mode.changed");
   assert.equal(s.mode, "plan");
   assert.deepEqual(ev(s, "thread.model", { model: "sonnet" }), ["@session"]);
   assert.equal(s.model, "sonnet");
@@ -648,7 +648,7 @@ test("todos: the newest TodoWrite of the thread, announced as @todos", () => {
   assert.deepEqual(applyBlocks(s, blocks), [], "read again: nothing moved");
 });
 
-test("background tasks: guessed from tool calls until thread.task comes, then the box's", () => {
+test("background tasks: guessed from tool calls until thread.task comes, then your server's", () => {
   const s = createSession(T);
   const out = applyBlocks(s, [
     { seq: 0, kind: "user", ts: 1, text: "Start the Northwind dev server" },
@@ -774,7 +774,7 @@ test("# memory: thread.remembered is a notice naming the file", () => {
   assert.equal(s.byKey.get("n:8").text, "Remembered in CLAUDE.local.md (this folder, not shared)");
 });
 
-test("background tasks, the box's shapes: started, updated with only what changed, ended with a summary; threads.tasks seeds them", () => {
+test("background tasks, your server's shapes: started, updated with only what changed, ended with a summary; threads.tasks seeds them", () => {
   const s = createSession(T);
   // task_started: kind, title, call, background.
   ev(s, "thread.task", { id: "task_3", status: "running", kind: "shell", title: "npm run dev", call: "toolu_9", background: true }, { at: 10 });
@@ -797,7 +797,7 @@ test("background tasks, the box's shapes: started, updated with only what change
   assert.deepEqual([...o.tasks.keys()], ["bash_1"], "an older box: guessed");
   assert.deepEqual(seedTasks(o, [{ id: "task_1", kind: "shell", title: "npm run dev", status: "running", call: "b1", background: true }]), ["@tasks"]);
   assert.deepEqual([...o.tasks.keys()], ["task_1"]);
-  assert.deepEqual(seedTasks(createSession(T), []), ["@tasks"], "an empty list is the box's too");
+  assert.deepEqual(seedTasks(createSession(T), []), ["@tasks"], "an empty list is your server's too");
   assert.deepEqual(seedTasks(o, /** @type {any} */ (null)), []);
 });
 

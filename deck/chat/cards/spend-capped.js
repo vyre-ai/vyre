@@ -30,7 +30,7 @@ export function spendCapped(data, ctx = {}) {
     st.busy = true; st.error = null; draw();
     const r = await attempt("spend.raise", off ? { provider, off: true } : { provider, to: Math.round(n * 100) / 100 });
     st.busy = false;
-    if (r.error) st.error = r.error.missing ? "Spend caps are not on this box." : r.error;
+    if (r.error) st.error = r.error.missing ? "Spend caps are not on your server." : r.error;
     else { st.raised = r.data?.cap ?? null; st.open = false; ctx.onRaised?.(st.raised); }
     draw();
   }

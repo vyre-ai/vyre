@@ -21,7 +21,7 @@ test("Add a Windows PC: the words or the QR text reach relay.pair.ticket as the 
   for (const [name, input, opts] of calls) { assert.equal(name, "relay.pair.ticket"); assert.equal(input.seed, base64url(seed)); assert.deepEqual(opts, { presence: "asked" }); }
 });
 
-test("Add a Windows PC: a wrong code never reaches the box, and each failure says what to do", async () => {
+test("Add a Windows PC: a wrong code never reaches your server, and each failure says what to do", async () => {
   let asked = 0;
   const attempt = async () => { asked++; return { data: {} }; };
   const words = (await seedToWords(newSeed(c), c)).slice();

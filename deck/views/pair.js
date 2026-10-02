@@ -23,7 +23,7 @@ import { normalCode, showCode, pairSteps } from "../js/pair-steps.js";
 const WORD = { todo: "to do", done: "done", failed: "failed" };
 const DEVICE_KEY = "vyre.push.device";
 const myDevice = () => { try { return window.localStorage.getItem(DEVICE_KEY); } catch { return null; } };
-const plain = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running on this box.` : String(e?.message || e));
+const plain = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running on your server.` : String(e?.message || e));
 
 /** @param {any} ctx */
 export default async function pair(ctx) {

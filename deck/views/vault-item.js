@@ -70,7 +70,7 @@ export function itemPane(app, panel, name, focus) {
       h("span", { class: "lbl vt-flabel" }, LABEL[f] || f),
       val,
       h("span", { class: "vt-facts" }, revealBtn,
-        h("button", { type: "button", class: "ibtn vt-fbtn", "aria-label": `Copy ${LABEL[f] || f}`, title: canCopy ? `Copy ${LABEL[f] || f}` : "This box cannot copy yet", disabled: !canCopy,
+        h("button", { type: "button", class: "ibtn vt-fbtn", "aria-label": `Copy ${LABEL[f] || f}`, title: canCopy ? `Copy ${LABEL[f] || f}` : "Your server cannot copy yet", disabled: !canCopy,
           onclick: () => app.copy(it, f, (LABEL[f] || f).toLowerCase()) }, icon("copy", 14))));
   };
 
@@ -100,7 +100,7 @@ export function itemPane(app, panel, name, focus) {
       const r = await vc.call("vault.totp", { name: it.name });
       fetching = false;
       if (!ctx.alive() || !code.isConnected) return;
-      if (r.error) { put(code, h("span", { class: "vt-code-lock" }, r.error.code === "denied" ? "The box does not give codes to the Deck yet" : errText(r.error))); return; }
+      if (r.error) { put(code, h("span", { class: "vt-code-lock" }, r.error.code === "denied" ? "Your server does not give codes to the Deck yet" : errText(r.error))); return; }
       const c = String(r.data?.code || "");
       shown = c.length === 6 ? c.slice(0, 3) + " " + c.slice(3) : c;
       put(code, shown);
@@ -117,7 +117,7 @@ export function itemPane(app, panel, name, focus) {
       h("span", { class: "lbl vt-flabel" }, "Code"),
       h("span", { class: "vt-val vt-totp-val" }, svg, code, h("span", { class: "vt-secs-w" }, secs)),
       h("span", { class: "vt-facts" }, h("button", { type: "button", class: "ibtn vt-fbtn", "aria-label": "Copy one-time code", disabled: !canCopy,
-        title: canCopy ? "Copy the code" : "This box cannot copy yet", onclick: () => app.copy(it, "totp", "one-time code") }, icon("copy", 14))));
+        title: canCopy ? "Copy the code" : "Your server cannot copy yet", onclick: () => app.copy(it, "totp", "one-time code") }, icon("copy", 14))));
   }
 
   const set = it.updated ? `Set ${day(it.updated)}${it.set_by ? ` by ${it.set_by}` : ""}` : "";
@@ -127,7 +127,7 @@ export function itemPane(app, panel, name, focus) {
     h("p", { class: "vt-sealed-p" }, canReveal
       ? `Values stay sealed on ${app.host}. Copy puts one on the clipboard for 90 seconds; Reveal shows it here for 30.`
       : `Values stay sealed on ${app.host}. Copy puts one on the clipboard for 90 seconds without it entering this page.`),
-    it.rotate ? h("p", { class: "vt-hint" }, "Marked to rotate: a sealed copy left this box. Replace the value to clear it.") : null);
+    it.rotate ? h("p", { class: "vt-hint" }, "Marked to rotate: a sealed copy left your server. Replace the value to clear it.") : null);
 
   // ---- head actions ----
   const favOn = st.fav.has(it.name);

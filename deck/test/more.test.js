@@ -24,7 +24,7 @@ test("more: the tiles are Planner, Memory, Vault, Drive, Devices, Settings, none
   for (const tab of ["Now", "Chat", "Agents", "Projects"]) assert.ok(!MORE.some(t => t.label === tab), `${tab} is a tab`);
 });
 
-test("more: the head names the person and the box; a tap closes the sheet and opens the place; a hold pins it as a page", async () => {
+test("more: the head names the person and your server; a tap closes the sheet and opens the place; a hold pins it as a page", async () => {
   const lib = await load();
   const body = document.createElement("div"), head = document.createElement("div"), sheet = document.createElement("div");
   const opened = /** @type {string[]} */ ([]);

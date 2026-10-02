@@ -129,7 +129,7 @@ test("session-view voice states: recording reads Listening, a stop tap reads Tra
   ws.onmessage({ data: JSON.stringify({ type: "final", text: "hello there" }) });
 
   await tap(c); // the second tap: stop
-  assert.equal(mic(c).classList.contains("on"), true, "still open - the box has not answered yet");
+  assert.equal(mic(c).classList.contains("on"), true, "still open - your server has not answered yet");
   assert.equal(mic(c).classList.contains("stopping"), true, "transcribing");
   assert.equal(mic(c).getAttribute("aria-label"), "Transcribing");
   assert.match(text($(c.el, ".composer-voice-pill")), /Transcribing…$/);
@@ -223,7 +223,7 @@ test("Enter stops and sends; the send button does the same while listening", asy
   await tick();
   assert.equal(sendCalls.length, 1);
   assert.equal(sendCalls[0].text, "ship it");
-  assert.equal(c.value(), "", "sent: the box clears");
+  assert.equal(c.value(), "", "sent: your server clears");
   assert.equal(mic(c).classList.contains("on"), false);
   ws.close();
   c.stop();

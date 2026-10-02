@@ -298,12 +298,12 @@ test("ask form: says who asks, answers the ask on merge (allow) and on request c
 });
 
 test("ask form: fields in detail read the same; if the answer fails Retry only answers, the merge is not repeated", async () => {
-  const f = vyred({ "threads.answer": { $error: { code: "timeout", message: "The box did not answer" } } });
+  const f = vyred({ "threads.answer": { $error: { code: "timeout", message: "Your server did not answer" } } });
   const c = card({ id: "ask-pr-2", kind: "pr_review", agent: "kit", detail: PR() });
   assert.match(text($(c, ".cv-card-head")), /#412/);
   $(c, "[data-act=merge]").click();
   await settle();
-  assert.match(text($(c, ".cv-prr-err")), /The box did not answer/);
+  assert.match(text($(c, ".cv-prr-err")), /Your server did not answer/);
   assert.equal(c.isOpen(), true);
   const g = vyred();
   $(c, "[data-act=retry]").click();

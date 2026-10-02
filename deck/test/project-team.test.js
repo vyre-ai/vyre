@@ -118,7 +118,7 @@ test("the steer toggle calls team.default.set; a refusal is shown; no teammate m
   assert.deepEqual(m.of("team.default.set")[0].input, { project: "harlow-legal", enabled: false });
   assert.match(text(m.el), /only a person/);
   const none = await mount({ "team.list": { $error: { code: "no_such_tool", message: "x", missing: true, module: "team" } } });
-  assert.match(text(none.el), /Teammates are not on this box yet/);
+  assert.match(text(none.el), /Teammates are not on your server yet/);
 });
 
 test("team events reload the list", async () => {
@@ -128,7 +128,7 @@ test("team events reload the list", async () => {
   assert.equal(m.of("team.list").length, 2);
 });
 
-test("a failed enable shows the box's own words (a bad trigger reads watchers: how to write it)", async () => {
+test("a failed enable shows your server's own words (a bad trigger reads watchers: how to write it)", async () => {
   const m = await mount({ "team.duties.enable": { $error: { code: "bad_input", message: "watchers: write the trigger like daily 07:00" } } });
   const a = "design-harlow-legal";
   click($(row(m.el, a), "[data-act=open]")); await settle();

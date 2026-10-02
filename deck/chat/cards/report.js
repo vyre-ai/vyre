@@ -187,7 +187,7 @@ export function report(data, ctx = {}) {
         h("span", { class: "cv-rp-errline" }, h("span", { class: "cv-mark cv-mark-failed", "aria-hidden": "true" }), problemText(typeof err === "object" ? err.title || err.message || "" : err)),
         typeof err === "object" && err.detail ? h("span", { class: "cv-rp-detail" }, untrusted(err.detail, 300)) : null)
         : v === "text" ? textBody() : v === "card" ? cardBody() : tableBody(),
-      state.waiting ? h("div", { class: "cv-rp-queued" }, "Queued · runs when the box is back") : null,
+      state.waiting ? h("div", { class: "cv-rp-queued" }, "Queued · runs when your server is back") : null,
       state.error ? h("div", { class: "cv-rp-error", role: "alert" },
         h("span", { class: "cv-rp-errline" }, h("span", { class: "cv-mark cv-mark-failed", "aria-hidden": "true" }), problemText(state.error.r)),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", "data-act": "retry", onclick: (/** @type {any} */ e) => { if (human(e)) act(state.error.a, state.error.i); } }, "Retry")) : null,

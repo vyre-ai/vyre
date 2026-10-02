@@ -236,7 +236,7 @@ async function board(ctx) {
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
     items.length ? items.map(it => threadItem(it, false, hrefFor(it.id), needs.current(), slug))
-      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No chats yet. Sessions are not available on this box, so one cannot start here.")
+      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No chats yet. Sessions are not available on your server, so one cannot start here.")
       : h("div", { class: "empty pj-none" }, "No chats yet. ", link(`/chat?new&project=${enc(slug)}`, { class: "link" }, "Start one")),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
   drawList();

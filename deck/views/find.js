@@ -50,7 +50,7 @@ const SCOPES = [["all", "All"], ["chats", "Chats"], ["projects", "Projects"], ["
 const FILE_ICON = { folder: "projects", code: "terminal", text: "lines" };
 
 const why = err => err?.missing
-  ? (err.module === "switchboard" ? "Sessions are not available on this box, so the assistant cannot answer here yet." : `The ${err.module} module is not running on this machine.`) // internal-word: the module id, compared in code and never drawn
+  ? (err.module === "switchboard" ? "Sessions are not available on your server, so the assistant cannot answer here yet." : `The ${err.module} module is not running on this machine.`) // internal-word: the module id, compared in code and never drawn
   : String(err?.message || err || "");
 const size = n => !n ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${Math.round(n / 1024)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 const words = q => q.toLowerCase().split(/\s+/).filter(Boolean);
