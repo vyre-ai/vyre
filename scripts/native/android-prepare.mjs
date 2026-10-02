@@ -27,7 +27,9 @@ export function prepare(gradle, version) {
   return s;
 }
 
-if (process.argv[1] && process.argv[1].endsWith("android-prepare.mjs")) {
+if (process.argv[1] && process.argv[1].endsWith("android-prepare.mjs") && process.argv[2] === "--code") {
+  console.log(versionCode(process.argv[3] || ""));
+} else if (process.argv[1] && process.argv[1].endsWith("android-prepare.mjs")) {
   const [file, version] = process.argv.slice(2);
   if (!file || !version) { console.error("usage: android-prepare.mjs <build.gradle> <x.y.z>"); process.exit(2); }
   try { fs.writeFileSync(file, prepare(fs.readFileSync(file, "utf8"), version)); } catch (e) { console.error(`android-prepare: ${e.message} in ${file}`); process.exit(1); }

@@ -68,6 +68,15 @@ export function checkIos(plists, policy) {
   return problems;
 }
 
+/** The app's own Info.plist must be the bundle, version and build the workflow asked for. @param {Record<string, any>} pl @returns {string[]} */
+export function checkIosIdentity(pl, { bundleId, version, build }) {
+  const problems = [];
+  if (pl.CFBundleIdentifier !== bundleId) problems.push(`the app's bundle id is ${pl.CFBundleIdentifier}, expected ${bundleId}`);
+  if (pl.CFBundleShortVersionString !== version) problems.push(`the app's version is ${pl.CFBundleShortVersionString}, expected ${version}`);
+  if (String(pl.CFBundleVersion) !== String(build)) problems.push(`the app's build number is ${pl.CFBundleVersion}, expected ${build}`);
+  return problems;
+}
+
 function aapt2() {
   if (process.env.AAPT2) return process.env.AAPT2;
   const home = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
@@ -95,6 +104,12 @@ if (process.argv[1] && process.argv[1].endsWith("check-permissions.mjs")) {
     const got = parseAndroid(text);
     console.log(`Android permissions of ${got.pkg}:\n${got.perms.map(p => "  " + p).join("\n") || "  (none)"}`);
     problems = checkAndroid(got, policy);
+  } else if (kind === "ios-expect" && rest.length >= 4) {
+    // ios-expect <bundle id> <version> <build> <app Info.plist> [more plists]: the app's identity, then the usage keys of all of them.
+    const [bundleId, version, build, ...files] = rest;
+    const plists = files.map(readPlist);
+    problems = [...checkIosIdentity(plists[0], { bundleId, version, build }), ...checkIos(plists, policy)];
+    console.log(`iOS app ${plists[0].CFBundleIdentifier} ${plists[0].CFBundleShortVersionString} (${plists[0].CFBundleVersion}), ${files.length} Info.plist file(s) read`);
   } else if (kind === "ios" && rest.length) {
     const plists = rest.map(readPlist);
     const keys = [...new Set(plists.flatMap(p => Object.keys(p).filter(k => /UsageDescription$/.test(k))))].sort();

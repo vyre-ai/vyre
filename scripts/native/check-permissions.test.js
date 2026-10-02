@@ -1,7 +1,7 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseAndroid, checkAndroid, checkIos } from "./check-permissions.mjs";
+import { parseAndroid, checkAndroid, checkIos, checkIosIdentity } from "./check-permissions.mjs";
 
 const policy = { android: { allowed: ["android.permission.INTERNET", "{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"] }, ios: { allowedKeys: [] } };
 const dump = (...p) => `package: sh.vyre.app\n${p.map(n => `uses-permission: name='${n}'`).join("\n")}\npermission: sh.vyre.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION\n`;
@@ -34,4 +34,10 @@ test("ios: sensitive usage keys fail unless listed; other keys are ignored", () 
   const problems = checkIos([pl], policy);
   assert.deepEqual(problems.map(p => p.split(" ")[0]).sort(), ["NSLocationWhenInUseUsageDescription", "NSMicrophoneUsageDescription", "NSPhotoLibraryAddUsageDescription"]);
   assert.deepEqual(checkIos([pl], { ios: { allowedKeys: ["NSMicrophoneUsageDescription", "NSLocationWhenInUseUsageDescription", "NSPhotoLibraryAddUsageDescription"] } }), []);
+});
+
+test("ios: the app's identity must be the bundle id, version and build the workflow asked for", () => {
+  const pl = { CFBundleIdentifier: "sh.vyre.app", CFBundleShortVersionString: "0.2.2", CFBundleVersion: "57" };
+  assert.deepEqual(checkIosIdentity(pl, { bundleId: "sh.vyre.app", version: "0.2.2", build: "57" }), []);
+  assert.equal(checkIosIdentity(pl, { bundleId: "sh.vyre.app.box", version: "0.2.3", build: "58" }).length, 3);
 });

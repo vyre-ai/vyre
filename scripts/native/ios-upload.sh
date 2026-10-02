@@ -1,6 +1,6 @@
 #!/bin/bash
 # The iOS TestFlight step: export the UNSIGNED archive the build job made, signed by Apple's cloud-managed signing, and upload it to App Store Connect.
-#   ARCHIVE_TGZ=<Vyre.xcarchive.tgz> ARCHIVE_SHA256=<its sha256 from the build job> WORK=<scratch dir> \
+#   ARCHIVE_TGZ=<Vyre.xcarchive.tgz> ARCHIVE_SHA256=<its sha256 from the build job> EXPECT_BUNDLE_ID=sh.vyre.app EXPECT_VERSION=x.y.z EXPECT_BUILD=n WORK=<scratch dir> \
 #   ASC_KEY_ID=... ASC_ISSUER_ID=... ASC_KEY_P8=<the .p8 text> APPLE_TEAM_ID=... bash scripts/native/ios-upload.sh
 # It runs in the job with the `apple` environment (a required reviewer, v* tags only) and nothing else runs there: no npm, no pods. The key file is written
 # mode 600 and deleted on exit; the key's id, issuer and path are the only things on the xcodebuild command line, never the key's text.
@@ -22,11 +22,18 @@ got=$(shasum -a 256 "$ARCHIVE_TGZ" | cut -d' ' -f1)
 echo "archive sha256: $got"
 
 umask 077
-mkdir -p "$WORK"; key="$WORK/AuthKey.p8"; trap 'rm -f "$key"' EXIT
-printf '%s\n' "$ASC_KEY_P8" > "$key"
-tar -xzf "$ARCHIVE_TGZ" -C "$WORK"
-archive=$(ls -d "$WORK"/*.xcarchive | head -1)
+mkdir -p "$WORK/archive"; key="$WORK/AuthKey.p8"; trap 'rm -f "$key"' EXIT
+tar -xzf "$ARCHIVE_TGZ" -C "$WORK/archive"
+archive=$(ls -d "$WORK"/archive/*.xcarchive | head -1)
 [ -d "$archive" ] || { echo "no .xcarchive in the tarball"; exit 1; }
+# The checksum only proves the archive was not changed in transit. Before the key is written, read what the archive says it is, against values the
+# workflow supplied: the bundle id, the release version, the build number, and no usage key that is not listed.
+: "${EXPECT_BUNDLE_ID:?}" "${EXPECT_VERSION:?}" "${EXPECT_BUILD:?}"
+app=$(ls -d "$archive"/Products/Applications/*.app | head -1)
+plists="$app/Info.plist $({ find "$app/PlugIns" -name Info.plist 2>/dev/null || true; } | tr '\n' ' ')"
+# shellcheck disable=SC2086
+node scripts/native/check-permissions.mjs ios-expect "$EXPECT_BUNDLE_ID" "$EXPECT_VERSION" "$EXPECT_BUILD" $plists
+printf '%s\n' "$ASC_KEY_P8" > "$key"
 cat > "$WORK/ExportOptions.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

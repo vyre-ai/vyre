@@ -26,10 +26,19 @@ for s in "$ANDROID_SIDELOAD_KEYSTORE_B64" "$ANDROID_SIDELOAD_KEYSTORE_PASSWORD" 
 
 (cd "$UNSIGNED" && sha256sum -c SHA256SUMS-build)
 
+# The build job's own checksum only proves the file was not changed in transit. Before the key touches it, read what the APK says it is, from values
+# this workflow supplied: the package, the release version, the versionCode derived from it, and nothing sensitive in its merged manifest.
+bt=$(ls -d "${ANDROID_HOME:?}"/build-tools/* | sort -V | tail -1)
+badging=$("$bt/aapt2" dump badging "$UNSIGNED/vyre-release-unsigned.apk" | head -1)
+want="package: name='sh.vyre.app' versionCode='$(node scripts/native/android-prepare.mjs --code "$VERSION")' versionName='$VERSION'"
+case "$badging" in "$want"*) echo "the APK is sh.vyre.app $VERSION" ;; *) echo "the APK is not what this release asked for: got [$badging], expected [$want]"; exit 1 ;; esac
+node scripts/native/check-permissions.mjs android --apk "$UNSIGNED/vyre-release-unsigned.apk"
+
 # The pin: the newest earlier release whose tag carries a real sideload line.
-pin_from=""; pin_line=""
+pin_from=""; pin_line=""; had_apk=""
 for t in $(gh release list -R "${GITHUB_REPOSITORY:?}" --exclude-drafts --limit 10 --json tagName --jq '.[].tagName'); do
   [ "$t" != "$TAG" ] || continue
+  if gh release view "$t" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx 'Vyre-android.apk'; then had_apk=$t; fi
   git fetch --no-tags --depth=1 origin "refs/tags/$t:refs/tags/$t" >/dev/null 2>&1 || continue
   line=$(git show "refs/tags/$t:docs/native/android-cert.sha256" 2>/dev/null | awk '$1 == "sideload" && $2 != "PENDING" {print; exit}' || true)
   if [ -n "$line" ]; then pin_from=$t; pin_line=$line; break; fi
@@ -38,6 +47,7 @@ pinfile="$RUNNER_TEMP/android-cert.pin"
 if [ -n "$pin_line" ]; then
   echo "$pin_line" > "$pinfile"; echo "certificate pin: from the tag $pin_from"
 else
+  [ -z "$had_apk" ] || { echo "$had_apk already published an APK but no recent release carries a pin: refusing to take this commit's pin. Restore the pin line in an earlier tag's lineage or ask the lead"; exit 1; }
   awk '$1 == "sideload" && $2 != "PENDING" {print; exit}' docs/native/android-cert.sha256 > "$pinfile"
   [ -s "$pinfile" ] || { echo "FIRST SIGNING and docs/native/android-cert.sha256 says PENDING: run native-android with record_cert, check the fingerprint is your key, commit it"; exit 1; }
   echo "certificate pin: FIRST SIGNING, no earlier release carries one, so this commit's pin is used (compare it with the record_cert run)"
