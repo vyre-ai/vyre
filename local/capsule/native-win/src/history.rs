@@ -306,6 +306,7 @@ mod tests {
     }
     fn put(p: &Path, text: &str) { fs::create_dir_all(p.parent().unwrap()).unwrap(); fs::write(p, text).unwrap(); }
     const UUID: &str = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const UUID2: &str = "1a9fbe6c-e0dc-47a0-b276-81978839a61f";
 
     #[test]
     fn roots_follow_the_environment_and_the_profile() {
@@ -355,8 +356,8 @@ mod tests {
         put(&codex.join("sessions/2026/09/30/notes.jsonl"), "{\"cwd\":\"C:\\\\no\"}\n");
         put(&codex.join("sessions/bad/09/30/rollout-1.jsonl"), "{\"cwd\":\"C:\\\\no\"}\n");
         let grok = root.join("grok");
-        put(&grok.join(format!("sessions/C%3A%5Cwork%5Cgrok-app/{UUID}/chat_history.jsonl")), "{\"type\":\"user\"}\n");
-        put(&grok.join(format!("sessions/C%3A%5Cwork%5Cgrok-app/{UUID}/summary.json")), "{\"info\":{\"cwd\":\"C:\\\\work\\\\grok-app\"}}");
+        put(&grok.join(format!("sessions/C%3A%5Cwork%5Cgrok-app/{UUID2}/chat_history.jsonl")), "{\"type\":\"user\"}\n");
+        put(&grok.join(format!("sessions/C%3A%5Cwork%5Cgrok-app/{UUID2}/summary.json")), "{\"info\":{\"cwd\":\"C:\\\\work\\\\grok-app\"}}");
         let gem = root.join("gemini");
         put(&gem.join(format!("tmp/{}/chats/session-1.jsonl", "a".repeat(64))), "{}\n");
         let roots = [Root { kind: Kind::Codex, path: codex }, Root { kind: Kind::Grok, path: grok }, Root { kind: Kind::Gemini, path: gem }];
