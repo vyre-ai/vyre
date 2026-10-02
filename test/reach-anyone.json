@@ -961,6 +961,10 @@
    "module": "relay",
    "reason": "callers limited in code to deck, tailnet"
   },
+  "relay.pair.window.reject": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
   "relay.pair.window.renew": {
    "module": "relay",
    "reason": "callers limited in code to deck, tailnet"

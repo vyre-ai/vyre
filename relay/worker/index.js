@@ -316,7 +316,7 @@ export class PairTicket {
       if (!SEALED.test(record) || !LOC_RE.test(mac) || exp <= now) return new Response(null, { status: 400 });
       const cur = await this.ctx.storage.get("t");
       if (cur && cur.exp > now) {
-        if (cur.contested) return json(200, { status: 409 });
+        if (cur.contested || cur.revoked) return json(200, { status: 409 });
         if (cur.record === record && cur.mac === mac) return json(200, { status: 200 });
         await this.ctx.storage.put("t", { ...cur, contested: true });
         return json(200, { status: 409 });
@@ -331,13 +331,15 @@ export class PairTicket {
       let body;
       try { body = await request.json(); } catch { return new Response(null, { status: 400 }); }
       const t = await this.ctx.storage.get("t");
-      if (!t || t.setup || t.exp <= now || !t.owner || t.owner !== await sha256b64(String((body && body.route) || ""))) return json(200, { status: 404 });
-      await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm();
+      if (!t || t.setup || t.revoked || t.exp <= now || !t.owner || t.owner !== await sha256b64(String((body && body.route) || ""))) return json(200, { status: 404 });
+      // The owner's withdrawal leaves a tombstone until the ticket's own exp (its alarm stays): nobody, an outsider least of all, may register this locator again, and it resolves to nothing.
+      await this.ctx.storage.put("t", { exp: t.exp, revoked: true });
       return json(200, { status: 200 });
     }
     if (request.method === "POST" && url.pathname === "/resolve") {
       const t = await this.ctx.storage.get("t");
       if (t && t.exp > now && t.contested) return new Response(null, { status: 409 });
+      if (t && t.revoked) return new Response(null, { status: 404 });
       if (t && !t.setup) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); }
       if (!t || t.exp <= now || !t.record) return new Response(null, { status: 404 });
       return json(200, { record: t.record, mac: t.mac });

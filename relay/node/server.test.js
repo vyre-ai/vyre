@@ -319,6 +319,12 @@ test("a box withdraws a ticket it registered (revoke), only its own, never a set
   assert.deepEqual(await a.s.json(), { t: "revoked", loc, status: 200 });
   const gone = await fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
   assert.equal(gone.status, 404);
+  // the withdrawn locator is a tombstone until its own exp: nobody, not even another box, registers it again, and it still resolves to nothing
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc, record: rec, mac: "n".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 409, "a revoked locator cannot be re-registered");
+  a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: rec, mac, exp }));
+  assert.equal((await a.s.json()).status, 409, "not even by the box that withdrew it");
+  assert.equal((await fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) })).status, 404);
   const sloc = "j".repeat(43);
   a.s.ws.send(JSON.stringify({ t: "setup", loc: sloc, record: rec, mac, exp: Date.now() + 3_600_000 }));
   assert.equal((await a.s.json()).status, 200);

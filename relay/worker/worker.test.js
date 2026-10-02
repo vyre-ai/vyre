@@ -670,6 +670,11 @@ test("worker: a box withdraws a ticket it registered (revoke), only its own, and
   assert.deepEqual(await a.s.json(), { t: "revoked", loc, status: 200 });
   const gone = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
   assert.equal(gone.status, 404);
+  // the withdrawn locator is a tombstone until its own exp: no other box registers it again, and it still resolves to nothing
+  b.s.ws.send(JSON.stringify({ t: "ticket", loc, record: sealed, mac: "d".repeat(43), exp }));
+  assert.equal((await b.s.json()).status, 409, "a revoked locator cannot be re-registered by an outsider");
+  const still = await worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) }), rt.env);
+  assert.equal(still.status, 404);
   a.s.ws.send(JSON.stringify({ t: "revoke", loc }));
   assert.equal((await a.s.json()).status, 404, "a second withdrawal finds nothing");
   // a setup offer is not a Wink ticket and is not withdrawn this way

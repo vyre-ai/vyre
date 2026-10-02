@@ -796,6 +796,19 @@ export default {
       },
     });
 
+    ctx.tool("relay.pair.window.reject", {
+      callers: ["deck", "tailnet"],
+      description: "\"Not you?\": refuse the phone that is waiting to be confirmed, shown as pairing.requested. The window stays open and the slot is free at once, so a stranger who redeemed a code cannot hold it; the screen renews the code for the real phone. Answers { rejected: true }.",
+      input: obj({ window: str, device: str }, ["window", "device"]),
+      run: async (input, meta = {}) => {
+        const w = theWindow(meta, input.window);
+        if (!w.pending || w.pending.device !== String(input.device)) throw fail("not_found", "no phone is waiting to be confirmed with that id");
+        const p = w.pending; w.pending = null; p.resolve(false);
+        ctx.events.emit("pairing.rejected", { window: w.id, device: p.device });
+        return { rejected: true };
+      },
+    });
+
     // A short fingerprint for the Touch ID prompt: the box's key, never the relay it happens to
     // sit behind. Same shape as core/relay's own device ids (base32 of sha256), just short enough
     // to read: 8 characters as two groups of 4.

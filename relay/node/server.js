@@ -118,7 +118,7 @@ export function createRelay(o = {}) {
   // ticketSeal): anything that isn't opaque base64url, a plaintext JSON record included, is
   // refused, so this relay never holds a box's name, handle or key in the clear.
   const SEALED = /^[A-Za-z0-9_-]{22,2048}$/;
-  /** @type {Map<string, { record: string, mac: string, exp: number, route?: string, setup?: boolean, contested?: boolean }>} */
+  /** @type {Map<string, { record: string, mac: string, exp: number, route?: string, setup?: boolean, contested?: boolean, revoked?: boolean }>} */
   const pairTickets = new Map();
   const sweepTickets = () => { const now = Date.now(); for (const [loc, t] of pairTickets) if (t.exp <= now) pairTickets.delete(loc); };
   // First writer wins, for a Wink ticket and a setup offer alike (tailnet plan 3.6): a second
@@ -132,7 +132,7 @@ export function createRelay(o = {}) {
     sweepTickets();
     const cur = pairTickets.get(loc);
     if (!cur) { pairTickets.set(loc, t); return 200; }
-    if (cur.contested) return 409;
+    if (cur.contested || cur.revoked) return 409;
     if (cur.record === t.record && cur.mac === t.mac) return 200;
     cur.contested = true;
     return 409;
@@ -140,8 +140,9 @@ export function createRelay(o = {}) {
   /** A box withdraws a ticket it registered (a renewal replaces the previous one): only the route that registered it may. @param {string} loc @param {string} route @returns {200|404} */
   const revokeLoc = (loc, route) => {
     const t = pairTickets.get(loc);
-    if (!t || t.setup || t.exp <= Date.now() || !t.route || t.route !== route) return 404;
-    pairTickets.delete(loc);
+    if (!t || t.setup || t.revoked || t.exp <= Date.now() || !t.route || t.route !== route) return 404;
+    // The owner's withdrawal leaves a tombstone until the ticket's own exp: nobody, an outsider least of all, may register that locator again, and it resolves to nothing.
+    pairTickets.set(loc, { record: "", mac: "", exp: t.exp, revoked: true });
     return 200;
   };
   const isContested = loc => { const t = pairTickets.get(loc); return Boolean(t && t.exp > Date.now() && t.contested); };
@@ -199,7 +200,7 @@ export function createRelay(o = {}) {
       sweepTickets();
       const t = pairTickets.get(loc);
       if (t && t.contested) { res.writeHead(409, { "content-type": "application/json" }); res.end('{"error":"contested"}'); return; }
-      if (t && !t.setup) pairTickets.delete(loc);
+      if (t && !t.setup && !t.revoked) pairTickets.delete(loc);
       if (!t || t.exp <= Date.now() || !t.record) {
         // A miss is charged to this address only.
         if (!pairResolveLimitByIp(ip)) { res.writeHead(429, { "content-type": "application/json" }); res.end('{"error":"too many pairing attempts; wait a minute"}'); return; }

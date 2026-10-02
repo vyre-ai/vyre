@@ -191,3 +191,34 @@ test("pairing window: it closes at once when its person session signs out, and o
   for (let i = 0; i < 50 && !w.events.some(e => e[0] === "pairing-window.closed"); i++) await new Promise(r => setTimeout(r, 50));
   assert.ok(w.events.some(e => e[0] === "pairing-window.closed" && e[1].reason === "session ended"));
 });
+
+test("pairing window: 'Not you?' frees the pending slot at once, the window stays open, and each phone's own screen gets the same fingerprint the box shows", async t => {
+  const w = await windowWorld(t);
+  const open = (await w.call("relay.pair.window.open", {}, SCREEN, A)).data;
+  const id = open.window;
+  const waitFor = (n) => new Promise((resolve, reject) => { const iv = setInterval(() => { const es = w.events.filter(x => x[0] === "pairing.requested"); if (es.length >= n) { clearInterval(iv); resolve(es[n - 1][1]); } }, 20); setTimeout(() => { clearInterval(iv); reject(new Error("no pairing.requested event")); }, 8000); });
+  // a stranger's phone redeems first and sits in the one pending slot
+  let junkFp = null;
+  const junk = pairTicket(fromBase64url(open.ticket), { relay: w.status.url, name: "Stranger", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "junk-key.json")), timeout: 20_000, onFingerprint: fp => { junkFp = fp; } });
+  const junkRefused = assert.rejects(junk);
+  const first = await waitFor(1);
+  assert.equal(junkFp, first.fingerprint, "the phone's own screen shows the fingerprint the box shows");
+  assert.equal((await w.call("relay.pair.window.reject", { window: id, device: "nope" }, SCREEN, A2)).error?.code, "not_found");
+  assert.equal((await w.call("relay.pair.window.reject", { window: id, device: first.device }, SCREEN, B)).error?.code, "denied", "only the screen that opened the window");
+  assert.equal((await w.call("relay.pair.window.reject", { window: id, device: first.device }, SCREEN, A2)).data.rejected, true);
+  await junkRefused;
+  assert.ok(w.events.some(e => e[0] === "pairing.rejected" && e[1].device === first.device));
+  assert.equal((await w.call("relay.pair.window.ping", { window: id }, SCREEN, A2)).data.closesInMs > 0, true, "the window is still open");
+  // the real phone gets a fresh code and takes the free slot
+  w.clock.t += 16_000;
+  const r = await w.call("relay.pair.window.renew", { window: id }, SCREEN, A2);
+  assert.ok(r.data?.ticket, JSON.stringify(r.error));
+  let realFp = null;
+  const real = pairTicket(fromBase64url(r.data.ticket), { relay: w.status.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "real-key.json")), timeout: 20_000, onFingerprint: fp => { realFp = fp; } });
+  const second = await waitFor(2);
+  assert.equal(realFp, second.fingerprint);
+  assert.notEqual(second.fingerprint, first.fingerprint);
+  assert.equal((await w.call("relay.pair.window.confirm", { window: id, device: second.device }, SCREEN, A2)).data.confirmed, true);
+  assert.ok((await real).device);
+  assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.length, 1, "only the real phone is enrolled");
+});
