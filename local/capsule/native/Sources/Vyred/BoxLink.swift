@@ -91,6 +91,20 @@ public final class BoxLink: @unchecked Sendable {
         }
     }
 
+    /// The Mac is going to sleep: tell the box now (link.sleep stops the serve loop and heartbeat, and the box marks this Mac offline at
+    /// once, rather than after a missed heartbeat). Short: the call gives up after 3 s. Nothing when this vyred has no such tool.
+    func willSleep(_ client: VyredClient) async {
+        guard client.has("link.sleep") else { return }
+        _ = await client.callLocal("link.sleep", [:], timeout: 3)
+    }
+
+    /// The Mac woke: say hello to the box and serve again (link.wake), then look at the link afresh.
+    @MainActor func didWake(_ client: VyredClient) async {
+        guard client.has("link.wake") else { return }
+        _ = await client.callLocal("link.wake", [:], timeout: 10)
+        await refresh(client)
+    }
+
     /// link.status, then the server's events while linked. Called when this vyred is found and when the panel shows.
     @MainActor func refresh(_ client: VyredClient) async {
         guard client.has("link.status") else { setLinked(false, client); return }

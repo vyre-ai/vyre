@@ -135,6 +135,25 @@ let boxLinkSuite = Suite("box link") { t in
         t.ok(t.wait { await until { v.openBoxStreams == 0 } } ?? false, "the streams closed")
         t.ok(!c.has("agents.ask"))
     }
+
+    t.test("sleep and wake: link.sleep and link.wake when the vyred has them, nothing when it does not") {
+        let v = pairedMac(); defer { v.stop() }
+        v.tool("link.sleep") { _ in ["ok": true, "linked": true] as [String: Any] }
+        v.tool("link.wake") { _ in ["ok": true, "linked": true] as [String: Any] }
+        let c = VyredClient(socket: v.socket)
+        let _: Bool? = t.wait {
+            _ = await c.refreshTools()
+            await c.box.willSleep(c)
+            await c.box.didWake(c)
+            return true
+        }
+        t.eq(v.callNames.filter { $0 == "link.sleep" }.count, 1)
+        t.eq(v.callNames.filter { $0 == "link.wake" }.count, 1)
+        let old = FakeVyred(); old.start(); defer { old.stop() }
+        let c2 = VyredClient(socket: old.socket)
+        let _: Bool? = t.wait { _ = await c2.refreshTools(); await c2.box.willSleep(c2); await c2.box.didWake(c2); return true }
+        t.eq(old.callNames.filter { $0.hasPrefix("link.s") || $0 == "link.wake" }.count, 0, "an older vyred is not called")
+    }
 }
 
 final class HeardBox: @unchecked Sendable {
