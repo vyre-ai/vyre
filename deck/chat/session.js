@@ -587,7 +587,7 @@ export function mountSession(container, opts) {
         title: off ? NEEDS_UPDATE : early ? "Queueing…" : label, onclick: fn }, label);
     };
     put(queuedBox, S.queued.map(q => h("div", { class: "cv-queued-row" + (q.local ? " cv-queued-local" : "") },
-      h("span", { class: "lbl" }, "Queued for after"),
+      h("span", { class: "lbl" }, q.queued == null ? "Sending to the queue" : "Queued for after this turn"),
       h("span", { class: "cv-queued-text ellipsis" }, q.text),
       btn("Edit", "cv-q-edit", "threads.edit", q, () => composer.editQueued(q)),
       btn("Take back", "cv-q-take", "threads.unqueue", q, () => queueAct("threads.unqueue", q)),
@@ -805,7 +805,9 @@ export function mountSession(container, opts) {
   function asBlock(it) {
     const at = it.at;
     switch (it.kind) {
-      case "user": return { kind: "user", text: it.text, command: it.command, ts: at, ...(it.images ? { images: it.images } : {}) };
+      case "user": return { kind: "user", text: it.text, command: it.command, ts: at, ...(it.images ? { images: it.images } : {}),
+        // Drawn on send, and the box has not answered yet: marked as sending until it does.
+        ...(it.local && !it.confirmed && !it.accepted && it.seq === undefined ? { sending: true } : {}) };
       case "text": return { kind: "text", text: it.text, ts: at };
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,

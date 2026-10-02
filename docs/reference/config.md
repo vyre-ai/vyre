@@ -195,7 +195,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |
 | `VYRE_SITE_TEST_CLOCK` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js` |
-| `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `core/cli/daemonctl.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/mcp/server.js` |
+| `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `core/cli/daemonctl.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
 | `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `core/cli/daemonctl.js`, `harness/hooks/hook.js` |
 

@@ -167,9 +167,11 @@ export class Accounts {
     const id = crypto.randomBytes(6).toString("hex");
     const uid = await this.allocate();
     const now = Date.now();
+    // A provider's first account is its default: with only one, there is nothing to choose, and a start must never find "no account".
+    const first = !this.db.prepare("SELECT 1 FROM sessions_accounts WHERE provider = ?").get(provider);
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(provider);
     this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
       i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100));
     return this.row(id);
   }
@@ -190,6 +192,9 @@ export class Accounts {
     const r = this.row(id);
     if (!r) throw Object.assign(new Error(`no account ${id}`), { code: "not_found" });
     this.db.prepare("DELETE FROM sessions_accounts WHERE id = ?").run(String(id));
+    // If one account is left on the provider it is the default.
+    const rest = /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ?").all(r.provider));
+    if (rest.length === 1) this.db.prepare("UPDATE sessions_accounts SET is_default = 1 WHERE id = ?").run(rest[0].id);
     // Its uid, and the HOME with its sign-in, wait for a wipe before another account takes them.
     if (r.uid != null) this.db.prepare("INSERT OR IGNORE INTO sessions_uids_dirty (uid) VALUES (?)").run(r.uid);
     return { id: String(id), removed: true };
@@ -204,9 +209,11 @@ export class Accounts {
     if (i.project) scope.projects = add(scope.projects, String(i.project));
     if (i.agent) scope.agents = add(scope.agents, String(i.agent));
     const now = Date.now();
+    // The person finishing the provider's only account makes it the default.
+    const sole = Boolean(i.confirm) && /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ?").all(r.provider)).length === 1;
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(r.provider);
     this.db.prepare("UPDATE sessions_accounts SET scope_projects = ?, scope_agents = ?, is_default = ?, pending = ?, updated = ? WHERE id = ?")
-      .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default ? 1 : (r.is_default ? 1 : 0), i.confirm && !(r.kind === "login" && r.signed_in_at == null) ? 0 : (r.pending ? 1 : 0), now, r.id);
+      .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || sole ? 1 : (r.is_default ? 1 : 0), i.confirm && !(r.kind === "login" && r.signed_in_at == null) ? 0 : (r.pending ? 1 : 0), now, r.id);
     return this.row(r.id);
   }
 

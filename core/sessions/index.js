@@ -92,6 +92,8 @@ export default {
     // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
     try { db.prepare("SELECT base_url, model FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_ENDPOINT_MIGRATION); }
+    // A provider with exactly one account has it as its default (earlier installs left it unset).
+    try { db.exec("UPDATE sessions_accounts SET is_default = 1 WHERE is_default = 0 AND provider IN (SELECT provider FROM sessions_accounts GROUP BY provider HAVING COUNT(*) = 1)"); } catch {}
     // A uid handed to a new account first has its HOME emptied: by the spawner on a box, by
     // removing the account's folder on a machine without one (there the uid only numbers it).
     /** Does the vault hold an item by this name? null when the vault cannot say (not running, locked). Never its value. */
@@ -322,10 +324,15 @@ export default {
     });
 
     /** @type {Map<string, { email?: string, org?: string } | null>} */ const identities = new Map();
+    /** @type {Map<string, number>} */ const identityAt = new Map();
     /** @param {any} a an account row */
     const identityOf = async a => {
       const key = `${a.id}:${a.signed_in_at}`;
-      if (identities.has(key)) return identities.get(key) ?? null;
+      // A found identity is kept; an empty one is asked again after a few seconds (Claude Code writes oauthAccount only once it has run, so a
+      // first read right after sign-in is often empty and must not stay empty for good).
+      const had = identities.get(key);
+      if (had) return had;
+      if (identities.has(key) && Date.now() - (identityAt.get(key) || 0) < 15_000) return null;
       let out = null;
       try {
         if (usesSpawner() && a.uid != null) {
@@ -340,6 +347,7 @@ export default {
         }
       } catch { out = null; }
       identities.set(key, out);
+      identityAt.set(key, Date.now());
       return out;
     };
     tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",

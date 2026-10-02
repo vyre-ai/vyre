@@ -446,7 +446,7 @@ test("queued rows sit above the composer: Edit, Take back, Steer now by row id; 
   at("thread.queued", { queued: 7, uuid: "q1", text: "Then open a PR against main", surface: "deck" });
   const row = $(box3, ".cv-queued-row");
   assert.ok(row);
-  assert.match(text(row), /^Queued for after\s*Then open a PR against main/);
+  assert.match(text(row), /^Queued for after this turn\s*Then open a PR against main/);
   for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Steer now"]]) {
     const b = $(row, cls);
     assert.equal(text(b), label);
