@@ -106,7 +106,7 @@ struct CapsuleView: View {
             SummonMark(size: 20, replay: focus.count)
             if let vs = model.viewSession {
                 HStack(spacing: 5) {
-                    Image(systemName: vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2")
+                    Image(systemName: IconCache.safeSymbol(vs.command.icon.flatMap { ViewIcon.spec($0) }.map { if case .symbol(let n, _) = $0 { return n }; return "square.grid.2x2" } ?? "square.grid.2x2"))
                         .font(Theme.subtitle)
                     Text(vs.command.title).font(Theme.type(Tokens.TypeScale.base, .medium)).lineLimit(1)
                 }
@@ -205,7 +205,7 @@ struct CapsuleView: View {
     @ViewBuilder private func chipIcon(_ c: VyreCandidate) -> some View {
         let spec = model.mentionIcon(c)
         if case .symbol(let name, _)? = spec {
-            Image(systemName: name).font(Theme.subtitle)
+            Image(systemName: IconCache.safeSymbol(name)).font(Theme.subtitle)
         } else if let spec, let img = model.icons.image(spec, points: 14, scale: 2) {
             Image(nsImage: img).resizable().interpolation(.high).frame(width: 14, height: 14)
         } else {
@@ -905,7 +905,7 @@ struct Row: View, Equatable {
             // Symbols sit on a small tile so they line up with app icons beside them.
             RoundedRectangle(cornerRadius: Tokens.Radius.chip, style: .continuous).fill(Theme.raised)
                 .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.chip, style: .continuous).strokeBorder(Theme.rule, lineWidth: 1))
-                .overlay(Image(systemName: name).font(Theme.type(top ? Tokens.TypeScale.read : Tokens.TypeScale.base, .medium)).foregroundColor(Theme.tint(tint)))
+                .overlay(Image(systemName: IconCache.safeSymbol(name)).font(Theme.type(top ? Tokens.TypeScale.read : Tokens.TypeScale.base, .medium)).foregroundColor(Theme.tint(tint)))
                 .padding(1)
         } else if IconCache.isSlow(item.icon) {
             // A file's or an app's own icon is made off the main thread; the row draws without it
