@@ -173,3 +173,16 @@ test("sealed: the bar runs over the sealed world and the report carries no quest
   }
   for (const f of S.FRESH.questions) assert.ok(!json.includes(low(f.q)), "the report carries a freshness question");
 });
+
+test("recording the sealed world is refused everywhere but the memory-sealed-record workflow", async () => {
+  const { runBar } = await import("../../scripts/eval-bar.js");
+  await assert.rejects(() => runBar({ world: "sealed", record: true }), /never recorded outside/);
+  const keep = { a: process.env.VYRE_EVAL_SEALED_RECORD, b: process.env.GITHUB_ACTIONS };
+  try {
+    delete process.env.VYRE_EVAL_SEALED_RECORD; delete process.env.GITHUB_ACTIONS;
+    await assert.rejects(() => runBar({ world: "sealed", record: true, recordSealed: true }), /only by the memory-sealed-record workflow/);
+    process.env.VYRE_EVAL_SEALED_RECORD = "1";
+    await assert.rejects(() => runBar({ world: "sealed", record: true, recordSealed: true }), /only by the memory-sealed-record workflow/, "the flag alone is not enough: it must be a GitHub Actions run");
+    await assert.rejects(() => runBar({ world: "open", record: true, recordSealed: true }), /only by the memory-sealed-record workflow/, "and only for the sealed world");
+  } finally { for (const [k, v] of [["VYRE_EVAL_SEALED_RECORD", keep.a], ["GITHUB_ACTIONS", keep.b]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+});
