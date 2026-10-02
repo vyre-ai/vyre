@@ -4,7 +4,8 @@
 // Memory ships in 0.2 only if every measure passes; this is how every later change is measured.
 //
 //   node scripts/eval-bar.js                 the open 0.2 world, as a report
-//   node scripts/eval-bar.js --world open    the same (the sealed half is added when it is written)
+//   node scripts/eval-bar.js --world open    the same
+//   node scripts/eval-bar.js --world sealed  the sealed half: scores only, never its questions or answers
 //   node scripts/eval-bar.js --json          the same, as JSON
 //   node scripts/eval-bar.js --gate          exit 1 when any measure FAILs
 //   node scripts/eval-bar.js --explain --json  also every question's answer and every leak probe's reach
@@ -47,12 +48,15 @@ import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
 import { Budget, openrouterOnce, marginFor, keyUsage, StartRefused, START_LIMIT_USD } from "./lib/eval-openrouter.js";
 import { embedAll, correct, CONFIDENT } from "./eval-answer.js";
 import * as open02 from "../test/fixtures/iq02-open.js";
+import * as sealed02 from "../test/fixtures/iq02-sealed.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const BAR_FILE = path.join(ROOT, "test/eval/bar.json");
 export const WORLDS = {
   real: () => worldFromFile(String(process.env.VYRE_EVAL_REAL_WORLD || "")),
   open: () => ({ world: open02, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq02-open.json"), "utf8")), asks: path.join(ROOT, "test/eval/asks/iq02-open.json"), sealed: false }),
+  // The sealed half: scored, never read. Its questions and answers are never printed, never explained, never recorded by a workflow here.
+  sealed: () => ({ world: sealed02, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq02-sealed.json"), "utf8")), asks: path.join(ROOT, "test/eval/asks/iq02-sealed.json"), sealed: true }),
 };
 /**
  * A world from a file of { sessions: [{ id, start, turns }], questions: [{ q, class, expect }] }: the real-use test's scrubbed corpus
@@ -152,7 +156,7 @@ async function timedAsk(mem, q, caller, input) {
 }
 
 /**
- * @param {{ world?: "open", only?: number, record?: boolean, freshness?: boolean, explain?: boolean }} [opts]
+ * @param {{ world?: "open"|"sealed", only?: number, record?: boolean, freshness?: boolean, explain?: boolean }} [opts]
  *   only: the first n questions of each class (the smoke test). explain: every question's result
  *   and every leak probe's reach, for tuning (never on a sealed world).
  */
@@ -177,6 +181,7 @@ export async function runBar(opts = {}) {
   const { world, gold, asks: asksDefault, sealed } = w();
   const asks = opts.asks || asksDefault;
   if (opts.explain && sealed) throw new Error("--explain never runs on a sealed world");
+  if (opts.record && sealed) throw new Error("a sealed world is never recorded by a workflow here");
   const bar = JSON.parse(fs.readFileSync(BAR_FILE, "utf8"));
   let questions = gold.questions;
   if (opts.classes) questions = questions.filter(q => opts.classes.includes(q.class));
@@ -308,7 +313,7 @@ export async function runBar(opts = {}) {
       for (const fq of world.FRESH.questions) {
         const r = (await tryCall(mem, "memory.ask", { question: fq.q }, "cli")).r || {};
         const rt = (await tryCall(mem, "memory.retrieve", { question: fq.q, k: 8 }, "cli")).r || {};
-        res.push({ q: fq.q, answered: correct(r.answer, fq.expect), unrecorded: r.why === "no model",
+        res.push({ ...(sealed ? {} : { q: fq.q }), answered: correct(r.answer, fq.expect), unrecorded: r.why === "no model",
           retrievable: (rt.passages || []).some(p => p.session === s.id), ms: round(performance.now() - f0) });
       }
       fresh = { pass_ms: round(pass), questions: res, answered_ms: res.every(x => x.answered) ? Math.max(...res.map(x => x.ms)) : null,
