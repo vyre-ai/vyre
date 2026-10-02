@@ -97,7 +97,7 @@ export function keygen(file) {
 }
 
 /** Sign a set of files into <dir> with its manifest. Returns the manifest's sha256 hex. */
-async function sealed(files, dir, o) {
+export async function sealed(files, dir, o) {
   const bytes = await buildManifest({ release: o.release, entry: o.entry, files, created: o.created });
   const sig = await signManifest(bytes, await loadKey(o.key));
   for (const [p, b] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true }); fs.writeFileSync(path.join(dir, p), b); }
