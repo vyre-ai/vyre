@@ -1,0 +1,6 @@
+#!/bin/sh
+# vyre-sudo: what Lumen sets as VYRE_SUDO for install-mac-server.sh. sudo, asking through the dialog instead of a terminal.
+here="$(cd "$(dirname "$0")" && pwd)"
+SUDO_ASKPASS="$here/askpass"
+export SUDO_ASKPASS
+exec /usr/bin/sudo -A "$@"

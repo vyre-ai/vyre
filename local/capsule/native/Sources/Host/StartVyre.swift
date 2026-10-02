@@ -54,6 +54,40 @@ public enum VyreCLI {
     }
 }
 
+/// What the app carries to set Vyre up on a Mac with no terminal and no Node (Contents/Resources/setup, put there by
+/// scripts/mac-app-package.sh): the installer script, the pinned Node tarball for this architecture, and the sudo helper that asks
+/// for the Mac password in a dialog. setup.json can name extra installer arguments ("args"), so the flags change without the app.
+public struct BundledSetup: Equatable {
+    public let dir: String
+    public var script: String { dir + "/install-mac-server.sh" }
+    public var sudo: String { dir + "/vyre-sudo" }
+    /// The Node tarball, or nil when the app was built without one.
+    public let nodeTgz: String?
+    public let args: [String]
+
+    /// The environment the installer runs with: the dialog sudo, and the bundled Node instead of a download. The installer still
+    /// checks the tarball against the checksum pinned inside itself.
+    public var environment: [String: String] {
+        var e = ["VYRE_SUDO": sudo]
+        if let nodeTgz { e["VYRE_NODE_URL"] = "file://" + nodeTgz }
+        return e
+    }
+
+    /// The setup folder inside this app, or VYRE_CAPSULE_SETUP_DIR (tests, and a hand-run check). Nil when there is none.
+    public static func locate(env: [String: String] = ProcessInfo.processInfo.environment, resources: String? = Bundle.main.resourcePath) -> BundledSetup? {
+        let dir = env["VYRE_CAPSULE_SETUP_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? resources.map { $0 + "/setup" }
+        guard let dir, dir.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: dir + "/install-mac-server.sh") else { return nil }
+        var tgz: String?
+        var args = ["--yes"]
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+            tgz = names.first { $0.hasPrefix("node-") && $0.hasSuffix(".tar.gz") }.map { dir + "/" + $0 }
+        }
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: dir + "/setup.json")), let o = VJ.decode(d) as? [String: Any],
+           let a = o["args"] as? [String], a.allSatisfy({ !$0.isEmpty }) { args = a }
+        return BundledSetup(dir: dir, nodeTgz: tgz, args: args)
+    }
+}
+
 extension CapsuleModel {
     /// `vyre up`, run from here: the argv is fixed. --no-capsule, since this is the Capsule.
     static let startArgv = ["up", "--no-capsule"]
@@ -77,7 +111,17 @@ extension CapsuleModel {
         commandRun = run
         autoTask?.cancel()
         guard let cli = cliOverride ?? VyreCLI.locate(home: home) else {
-            run.finish(nil, failure: "Lumen could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
+            // No vyre on this Mac: the app's own setup, with its own Node. Its lines are drawn as they come, and it asks for the
+            // Mac password in a dialog (not a terminal). Only when the app was built with it; otherwise the old words.
+            guard let setup = setupOverride ?? BundledSetup.locate() else {
+                run.finish(nil, failure: "Lumen could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
+                return
+            }
+            Task { @MainActor in
+                let code = await self.exec(run, cli: ["/bin/sh", setup.script], args: setup.args, frames: false, errorsAlways: true, environment: setup.environment)
+                run.finish(code)
+                if code == 0 { self.vyred.follower.lookNow() }
+            }
             return
         }
         Task { @MainActor in

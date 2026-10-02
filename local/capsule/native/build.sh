@@ -12,7 +12,8 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 out="${VYRE_CAPSULE_BUILD:-$here/.build}"
 mode="${1:-app}"
-target="$(uname -m)-apple-macosx14.0"
+# VYRE_CAPSULE_ARCH=x86_64 (or arm64) builds for the other architecture on any Mac, for a release.
+target="${VYRE_CAPSULE_ARCH:-$(uname -m)}-apple-macosx14.0"
 [ "$(uname -s)" = Darwin ] || { echo "Lumen builds only on macOS" >&2; exit 1; }
 command -v swiftc >/dev/null 2>&1 || { echo "swiftc not found. Install the Xcode command line tools: xcode-select --install" >&2; exit 1; }
 mkdir -p "$out/gen"
@@ -51,16 +52,7 @@ case "$mode" in
     app="$out/Vyre.app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     # shellcheck disable=SC2046
-    if [ "${VYRE_CAPSULE_UNIVERSAL:-}" = 1 ]; then
-      # A release build runs on Apple silicon and Intel Macs: one binary per architecture, joined.
-      for arch in arm64 x86_64; do
-        swiftc -O -target "$arch-apple-macosx14.0" -o "$out/Vyre-$arch" $(sources) "$reg" "$here/Sources/Host/main.swift"
-      done
-      lipo -create -output "$app/Contents/MacOS/Vyre" "$out/Vyre-arm64" "$out/Vyre-x86_64"
-      rm -f "$out/Vyre-arm64" "$out/Vyre-x86_64"
-    else
-      swiftc -O -target "$target" -o "$app/Contents/MacOS/Vyre" $(sources) "$reg" "$here/Sources/Host/main.swift"
-    fi
+    swiftc -O -target "$target" -o "$app/Contents/MacOS/Vyre" $(sources) "$reg" "$here/Sources/Host/main.swift"
     # The plist: LSUIElement (menu bar, no Dock icon), usage strings for permissions asked on
     # first use, and whatever extensions add in Sources/Extensions/<name>/Info.plist.part.
     version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$here/../../../package.json" 2>/dev/null | head -1)"

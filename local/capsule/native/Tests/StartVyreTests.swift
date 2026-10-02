@@ -142,4 +142,63 @@ let startVyreSuite = Suite("start vyre") { t in
             m.vyred.follower.stop()
         }
     }
+
+    t.test("the app's bundled setup is found by its files, and setup.json can change the installer's arguments") {
+        let dir = vyScratch("setup-find-\(UUID().uuidString.prefix(6))")
+        t.eq(BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": dir], resources: nil), nil, "no installer, no setup")
+        executable(dir + "/install-mac-server.sh")
+        t.eq(BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": dir], resources: nil), BundledSetup(dir: dir, nodeTgz: nil, args: ["--yes"]), "the installer alone: --yes")
+        FileManager.default.createFile(atPath: dir + "/node-v22.0.0-darwin-arm64.tar.gz", contents: Data("x".utf8))
+        try? Data(#"{"args":["--yes","--login-only"]}"#.utf8).write(to: URL(fileURLWithPath: dir + "/setup.json"))
+        let s = BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": dir], resources: nil)
+        t.eq(s?.nodeTgz, dir + "/node-v22.0.0-darwin-arm64.tar.gz")
+        t.eq(s?.args, ["--yes", "--login-only"])
+        t.eq(s?.environment, ["VYRE_SUDO": dir + "/vyre-sudo", "VYRE_NODE_URL": "file://" + dir + "/node-v22.0.0-darwin-arm64.tar.gz"])
+        t.eq(BundledSetup.locate(env: [:], resources: dir + "/nothing-here"), nil, "an app without the folder has no setup")
+        t.eq(BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": "relative/dir"], resources: nil), nil, "a relative folder is refused")
+    }
+
+    t.test("offline with no vyre on this Mac: Start Vyre runs the bundled setup with its own sudo and Node, and says what it prints") {
+        let v = FakeVyred()
+        defer { v.stop() }
+        let dir = vyScratch("setup-run-\(UUID().uuidString.prefix(6))")
+        let body = """
+        #!/bin/sh
+        echo "  ok  args: $*"
+        echo "  ok  sudo: $VYRE_SUDO"
+        echo "  ok  node: $VYRE_NODE_URL"
+        echo "vyre: pretend failure" >&2
+        exit 0
+        """
+        FileManager.default.createFile(atPath: dir + "/install-mac-server.sh", contents: Data(body.utf8), attributes: [.posixPermissions: 0o755])
+        FileManager.default.createFile(atPath: dir + "/node-v22.0.0-darwin-arm64.tar.gz", contents: Data("x".utf8))
+        MainActor.assumeIsolated {
+            let m = offlineModel(v, cli: nil)
+            m.setupOverride = BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": dir], resources: nil)
+            t.ok(until { m.offline })
+            t.ok(m.returnStartsVyre())
+            t.ok(until { m.commandRun?.running == false })
+            let text = String(describing: m.commandRun?.views ?? [])
+            t.ok(text.contains("args: --yes"), text)
+            t.ok(text.contains("sudo: \(dir)/vyre-sudo"), "the dialog sudo is the one used")
+            t.ok(text.contains("node: file://\(dir)/node-v22.0.0-darwin-arm64.tar.gz"), "the bundled Node, not a download")
+            t.eq(m.commandRun?.exit, 0)
+            m.vyred.follower.stop()
+        }
+    }
+
+    t.test("offline with no vyre and no bundled setup: the old words, nothing is run") {
+        let v = FakeVyred()
+        defer { v.stop() }
+        MainActor.assumeIsolated {
+            let m = offlineModel(v, cli: nil)
+            m.setupOverride = nil
+            t.ok(until { m.offline })
+            // The app under test has no Resources/setup, so locate finds none either.
+            t.ok(m.returnStartsVyre())
+            t.ok(until { m.commandRun?.running == false })
+            t.ok((m.commandRun?.failure ?? "").contains("Run vyre capsule once in Terminal"), m.commandRun?.failure ?? "no failure")
+            m.vyred.follower.stop()
+        }
+    }
 }

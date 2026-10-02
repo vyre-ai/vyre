@@ -215,12 +215,13 @@ extension CapsuleModel {
 
     /// One run of the CLI; lines are handed over as they come. The exit code, or nil if it could
     /// not start.
-    func exec(_ run: CommandRun, cli: [String], args: [String], frames: Bool, errorsAlways: Bool = false) async -> Int32? {
+    func exec(_ run: CommandRun, cli: [String], args: [String], frames: Bool, errorsAlways: Bool = false, environment: [String: String] = [:]) async -> Int32? {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: cli[0])
         p.arguments = Array(cli.dropFirst()) + args
         var env = ProcessInfo.processInfo.environment
         env["NO_COLOR"] = "1"; env["FORCE_COLOR"] = "0"; env["VYRE_NO_DIALOGS"] = env["VYRE_ALLOW_DIALOGS"] == "1" ? nil : "1"
+        for (k, v) in environment { env[k] = v }
         p.environment = env
         p.standardInput = FileHandle.nullDevice
         let out = Pipe(), err = Pipe()
