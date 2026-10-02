@@ -23,6 +23,8 @@ export function mountSetup(host, o) {
   const pollMs = o.pollMs ?? 3000;
   const sleep = o.sleep || (ms => new Promise(r => setTimeout(r, ms)));
   /** @type {any} */ let status = null;
+  /** onboard.setup's answer: the box's own step list (null on a box that does not have it yet, where onboard.status is read instead). @type {any} */
+  let setup = null;
   /** @type {{ passed: string[], error: string|null, busy: boolean, loadError: string|null, ending: null | { name: string|null, display: string|null, thread: string|null, why?: string|null }, checking: boolean, add: boolean }} */
   const ui = { passed: [], error: null, busy: false, loadError: null, ending: null, checking: false, add: false };
   let alive = true, finishing = false;
@@ -33,8 +35,11 @@ export function mountSetup(host, o) {
   host.replaceChildren(root);
 
   async function load() {
-    try { status = await o.call("onboard.status", {}); ui.loadError = null; }
-    catch (e) { ui.loadError = msg(e); }
+    try {
+      status = await o.call("onboard.status", {});
+      setup = await o.call("onboard.setup", {}).catch(() => null);
+      ui.loadError = null;
+    } catch (e) { ui.loadError = msg(e); }
     draw();
   }
 
@@ -46,6 +51,16 @@ export function mountSetup(host, o) {
     await load();
   }
 
+  /** The steps as drawn: the box's own list when it has one, else derived from onboard.status. */
+  const viewOf = () => {
+    if (setup && Array.isArray(setup.steps) && setup.steps.length === 10) {
+      const list = setup.steps.map((x, i) => ({ id: String(x.id), title: String(x.title), where: String(x.where), optional: Boolean(x.optional), n: i + 1, status: ["done", "current", "skipped", "todo"].includes(x.status) ? x.status : "todo" }));
+      const cur = typeof setup.current === "string" ? setup.current : null;
+      const idx = cur ? list.findIndex(x => x.id === cur) : -1;
+      return { list, current: cur, number: idx >= 0 ? idx + 1 : 10, finished: setup.finished === true || cur === null };
+    }
+    return setupSteps(status, { passed: ui.passed });
+  };
   const timeline = view => {
     const rowsFor = () => {
       const rows = [];
@@ -74,7 +89,7 @@ export function mountSetup(host, o) {
   const err = () => (ui.error ? h("p", { class: "warn", role: "alert" }, ui.error) : null);
 
   function stepAssistant(view) {
-    const you = h("input", { type: "text", class: "name", name: "you", autocomplete: "name", maxlength: "60", "aria-label": "Your name", value: typed.name ?? (status.person || (typeof status.accountName === "string" ? status.accountName.slice(0, 60) : "")) });
+    const you = h("input", { type: "text", class: "name", name: "you", autocomplete: "name", maxlength: "60", "aria-label": "Your name", value: typed.name ?? ((setup && typeof setup.name === "string" && setup.name) || status.person || (typeof (setup && setup.accountName || status.accountName) === "string" ? String(setup && setup.accountName || status.accountName).slice(0, 60) : "")) });
     const asst = h("input", { type: "text", class: "name", name: "assistant", autocomplete: "off", maxlength: "40", "aria-label": "Your assistant's name", placeholder: status.assistant || "Juno", value: typed.assistant ?? "" });
     you.addEventListener("input", () => { typed.name = you.value; });
     asst.addEventListener("input", () => { typed.assistant = asst.value; });
@@ -103,7 +118,7 @@ export function mountSetup(host, o) {
       err(),
       h("div", { class: "actions" },
         mac ? btn("Continue", "primary", () => { ui.passed.push("computers"); draw(); })
-          : [btn("Add a computer", "primary", () => { ui.add = true; draw(); }), btn("Skip for now", "quiet", () => act(() => o.call("onboard.skip", { step: "devices" })))]),
+          : [btn("Add a computer", "primary", () => { ui.add = true; draw(); }), btn("Skip for now", "quiet", () => act(() => (setup ? o.call("onboard.setup", { skip: "computers" }) : o.call("onboard.skip", { step: "devices" }))))]),
     ];
   }
 
@@ -118,7 +133,7 @@ export function mountSetup(host, o) {
       : [h("p", { class: "lead" }, `Found nothing${names.length ? ` on ${names.join(" and ")}` : ""}. ${names.length ? "It has" : "There is"} no Claude Code, Codex or Grok history in the usual folders.`)];
     return [
       h("p", { class: "lbl" }, label(view, "history")), h("h1", { tabindex: "-1" }, "Your history"), ...body, err(),
-      h("div", { class: "actions" }, btn("Continue", "primary", () => act(async () => { await o.call("onboard.history", { action: "start" }).catch(() => null); ui.passed.push("history"); }))),
+      h("div", { class: "actions" }, btn("Continue", "primary", () => act(async () => { await o.call("onboard.history", { action: "start" }).catch(() => null); if (setup) await o.call("onboard.setup", { pass: "history" }); else ui.passed.push("history"); }))),
     ];
   }
 
@@ -134,7 +149,12 @@ export function mountSetup(host, o) {
   async function retry() {
     if (ui.checking) return;
     ui.checking = true; draw();
-    try { const r = await o.call(o.retryTool || "onboard.assistant", { retry: true }).catch(() => o.call("onboard.finish", {})); ui.ending = (r && r.assistant) || r || null; }
+    try {
+      const r = await o.call(o.retryTool || "onboard.assistant", { retry: true }).catch(() => o.call("onboard.finish", {}));
+      const a = (r && r.assistant) || r || null;
+      // onboard.assistant answers {name, display, made, why, state}: a thread is opened from the finish answer, so a made assistant with no thread says it is ready.
+      ui.ending = a && a.state === "failed" ? { name: null, display: a.display || null, thread: null, why: a.why || "it could not be made" } : a;
+    }
     catch (e) { ui.ending = { name: null, display: null, thread: null, why: msg(e) }; }
     ui.checking = false; draw();
   }
@@ -151,9 +171,9 @@ export function mountSetup(host, o) {
   function draw() {
     if (!alive) return;
     if (!status) { root.replaceChildren(h("p", { class: ui.loadError ? "warn" : "status", role: "status" }, ui.loadError ? `Your server did not answer: ${ui.loadError}` : "Reading where setup stands"), ui.loadError ? btn("Try again", "primary", load) : null); return; }
-    const view = setupSteps(status, { passed: ui.passed });
+    const view = viewOf();
     if (view.finished && !status.finished && !ui.ending) finish();
-    const key = JSON.stringify([view.list.map(s => s.status), view.current, ui.error, ui.busy, ui.add, ui.checking, ui.ending, status.detail && status.detail.devices && status.detail.devices.mac, status.detail && status.detail.history && status.detail.history.sessions]);
+    const key = JSON.stringify([view.list.map(s => s.status), view.current, ui.error, ui.busy, ui.add, ui.checking, ui.ending, status.detail && status.detail.devices && status.detail.devices.mac, status.detail && status.detail.history && status.detail.history.sessions, setup && setup.current]);
     if (key === lastKey) return;
     lastKey = key;
     const panel = view.finished ? ending()
@@ -168,7 +188,7 @@ export function mountSetup(host, o) {
     while (alive) {
       await sleep(pollMs);
       if (!alive) return;
-      const v = status && setupSteps(status, { passed: ui.passed });
+      const v = status && viewOf();
       if (v && (v.current === "computers" || v.current === "history") && !ui.busy) await load();
     }
   })();

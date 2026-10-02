@@ -107,3 +107,34 @@ test("mount: the name is prefilled from the signed-in AI account, and stays edit
   assert.equal($(host, "input[name=you]").value, "Alex Rivera");
   m.stop();
 });
+
+test("mount: with onboard.setup the box's own list is drawn, skip and pass go through it, and the name prefills from accountName", async () => {
+  const dom = install();
+  const { mountSetup } = await import("./mount.js");
+  const host = dom.createElement("div");
+  const mk = (cur, over = {}) => ({ steps: STEPS.map((x, i) => ({ ...x, n: i + 1, status: i < 7 ? "done" : x.id === cur ? "current" : "todo" })), current: cur, finished: false, skipped: [], name: null, accountName: "Alex Rivera", address: "harlow.vyre.run", assistant: { display: "Juno", state: null }, ...over });
+  let setup = mk("assistant");
+  const calls = [];
+  const call = async (tool, input) => {
+    calls.push([tool, input]);
+    if (tool === "onboard.status") return status({ person: setup.name, detail: { devices: { mac: { connected: false }, macDownload: null }, history: { state: "todo", sessions: 0, machines: [] } } });
+    if (tool === "onboard.setup") { if (input && input.skip) setup = mk("history"); else if (input && input.pass) setup = { ...mk(null), finished: true }; return setup; }
+    if (tool === "onboard.you") { setup = mk("computers", { name: input.name }); return {}; }
+    if (tool === "onboard.history") return {};
+    if (tool === "onboard.finish") return { assistant: { name: "juno", display: "Juno", thread: null } };
+    throw new Error("no such tool " + tool);
+  };
+  const m = mountSetup(host, { call, pollMs: 5 });
+  await until(() => $(host, "input[name=you]"));
+  assert.equal($(host, "input[name=you]").value, "Alex Rivera");
+  const btn = l => $$(host, "button").find(b => text(b) === l);
+  btn("Continue").listeners.get("click")[0]({});
+  await until(() => text(host).includes("Pair a Mac or a Windows PC"));
+  btn("Skip for now").listeners.get("click")[0]({});
+  await until(() => text(host).includes("Found nothing"));
+  assert.ok(calls.some(c => c[0] === "onboard.setup" && c[1] && c[1].skip === "computers"));
+  btn("Continue").listeners.get("click")[0]({});
+  await until(() => calls.some(c => c[0] === "onboard.setup" && c[1] && c[1].pass === "history"));
+  await until(() => text(host).includes("Juno is ready when you are"));
+  m.stop();
+});
