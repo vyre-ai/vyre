@@ -135,7 +135,7 @@ test("a pairing window: one proof opens it, pings go every 15 s only while in vi
   assert.equal(renew?.opts, undefined, "no proof for a renewal");
 });
 
-test("a phone redeems: 'A phone is pairing' with its name and fingerprint; only Confirm enrols; Not now closes the window and pairs nothing", async t => {
+test("a phone redeems: 'A phone is pairing' with its name and fingerprint; only Confirm enrols; Not you? Close closes the window and pairs nothing", async t => {
   const w = windowWorld(); t.after(w.restore);
   w.click("Add a device"); await w.settle();
   await w.events["pairing.requested"]({ payload: { window: "w9", device: "dX", name: "Evil", fingerprint: "FF" } });
@@ -150,7 +150,7 @@ test("a phone redeems: 'A phone is pairing' with its name and fingerprint; only 
   w2.click("Add a device"); await w2.settle();
   await w2.events["pairing.requested"]({ payload: { window: "w1", device: "d2", name: "Sam's Pixel", fingerprint: "11 22" } });
   await w2.advance(1_000);
-  w2.click("Not now"); await w2.settle();
+  w2.click("Not you? Close"); await w2.settle();
   assert.equal(w2.count("relay.pair.window.close"), 1);
   assert.equal(w2.count("relay.pair.window.confirm"), 0);
   assert.match(text(w2.el), /Nothing was paired/);

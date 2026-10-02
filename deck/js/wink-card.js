@@ -23,7 +23,7 @@
 //     the card keeps it alive: a ping every pingEveryMs (15 s) while the card is in view and focused (nothing when it is not:
 //     30 s of silence closes it), a renewal with the window id (no proof; the previous ticket dies at the relay) in the last
 //     30 seconds of a code. A phone that redeems is held, not enrolled: pairing.requested shows "A phone is pairing: <name>,
-//     <fingerprint>" with Confirm and Not now, and only Confirm (relay.pair.window.confirm) enrols it. A server without the
+//     <fingerprint>" with Confirm and "Not you? Close", and only Confirm (relay.pair.window.confirm) enrols it. A server without the
 //     window tools answers no `window`: the card then behaves as before (a proof per code, a plain Refresh).
 //  6. After pairing: the device's own name (inline-renameable) and key fingerprint, plus a
 //     one-tap Remove (relay.devices.remove).
@@ -145,7 +145,7 @@ export function buildWinkCard({ attempt, subscribe, every, cleanup, calm, alive 
     ticket = ""; blank(); // the ring is spent the moment a phone has redeemed it
     pendingShown = true;
     const confirmBtn = h("button", { class: "btn btn-primary", type: "button" }, "Confirm");
-    const notNow = h("button", { class: "btn", type: "button" }, "Not now");
+    const notNow = h("button", { class: "btn", type: "button" }, "Not you? Close");
     confirmBtn.addEventListener("click", async () => {
       confirmBtn.disabled = true; notNow.disabled = true;
       const r = await attempt("relay.pair.window.confirm", { window: id, device: p.device }); // no proof: the window's one Touch ID covers it
