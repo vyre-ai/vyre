@@ -27,3 +27,5 @@ jobs:
       - run: node --test relay/app/app.test.js
       - name: First load in a fresh profile
         run: node relay/app/testing/boot-chrome.mjs
+      - name: The camera page's #pair= hand-off
+        run: node relay/app/testing/pair-fragment-chrome.mjs
