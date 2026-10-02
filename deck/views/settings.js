@@ -27,6 +27,7 @@ import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, 
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
 import { watchTrustAsks } from "../js/trust-ask.js";
+import { renameField, renameCall } from "../js/rename-field.js";
 import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
@@ -619,13 +620,23 @@ async function drawDevices(el, ctx) {
   // A browser asking for full access (tailnet's device.trust-asked): its key first, its name as its own claim.
   const asks = h("div");
   ctx.cleanup?.(watchTrustAsks(card => put(asks, card)));
-  const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
+  const [st, macs, relayR, macsR, sysR] = await Promise.all([attempt("onboard.status"), attempt("link.peers"),
+    attempt("relay.devices.list", {}, { ifPresent: true }), attempt("link.macs", {}, { ifPresent: true }), attempt("system.info")]);
   if (!ctx.alive()) return;
+  // #65: every device has a name the person can change here; a rename anywhere (device.renamed) changes it on screen.
+  /** @type {Map<string, any>} */ const fields = new Map();
+  const nameField = (/** @type {"relay"|"mac"|"server"|"computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name, /** @type {boolean} */ allowEmpty = false) => {
+    const f = renameField({ name, allowEmpty, label: "Rename", save: async n => { const c = renameCall(kind, id, n); return attempt(c.tool, c.input); } });
+    fields.set(kind + ":" + id, f);
+    return f;
+  };
+  ctx.on("device.renamed", (/** @type {any} */ e) => { const d = e?.payload || e; fields.get(`${d.kind}:${d.id}`)?.setName(String(d.name ?? "")); });
   if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
   const wink = winkCard(st.data, ctx);
   const addPc = addPcCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
-  const paired = Array.isArray(macs.data) ? macs.data : [];
+  const pairedMacs = Array.isArray(macsR.data) ? macsR.data : [];
+  const paired = pairedMacs.length ? pairedMacs : Array.isArray(macs.data) ? macs.data : [];
   const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
   const pairedHere = p => paired.some(m => same(m, p));
   const order = p => (deviceKind(p.os, p.name).handheld ? 0 : 1) * 2 + (p.online ? 0 : 1);
@@ -640,8 +651,14 @@ async function drawDevices(el, ctx) {
   // A paired Mac Tailscale did not list (Tailscale not running here, say) still shows.
   for (const m of paired) {
     if (peers.some(p => same(m, p))) continue;
-    rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
+    rows.push(row("Mac", h("span", { class: "set-inline" }, m.mac ? nameField("mac", String(m.mac), String(m.name || m.node || "A Mac")) : mono(m.name || m.node || "A Mac"), stateLbl(m.online === false ? "Offline" : "Paired", "faint"))));
   }
+  // Phones, PCs and browsers paired through the relay (relay.devices.list), and this server's own name.
+  for (const d of (Array.isArray(relayR.data?.devices) ? relayR.data.devices : [])) {
+    if (!d?.id) continue;
+    rows.push(row(d.kind === "web" ? "Browser" : "Phone or PC", h("span", { class: "set-inline" }, nameField("relay", String(d.id), String(d.name || "A device")), stateLbl(d.online ? "Online" : "Offline", d.online ? "" : "faint"))));
+  }
+  if (sysR.data && typeof sysR.data.serverName === "string" && sysR.data.serverName) rows.unshift(row("This server", h("span", { class: "set-inline" }, nameField("server", "server", sysR.data.serverName, true))));
   put(el,
     asks,
     wink,

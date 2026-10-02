@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: rename a device in place (#65)
+
+- Settings > Your devices: a pencil by each name (this server, paired Macs, phones, PCs and browsers paired through the relay) opens a field in the row; Enter or Save keeps it, Esc leaves it, one to 64 characters. It calls `relay.devices.rename`, `link.rename` or `system.rename` by kind, and a `device.renamed` event changes the name on screen. Agents' computers (`computers.rename`) take the same control on the Agents screen pass.
+
 #### deck v2, step 2: the rail, the page header and the command bar
 
 - The rail is seven places (Now, Chat, Projects, Agents, Memory, Vault, Drive) with Search, Settings and the person's avatar at the bottom, 64 wide, keys Cmd or Ctrl 1 to 8. Planner is folded into Now and Devices into Settings, so both addresses still work and highlight their parent.
