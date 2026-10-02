@@ -7,6 +7,7 @@
 //! nothing but a frozen data constant injected. The trust rules are in `vyre_capsule_win::shell`.
 
 mod core_host;
+mod countersign;
 
 use std::sync::Mutex;
 
@@ -490,7 +491,7 @@ fn key_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
 }
 
 #[cfg(windows)]
-fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
+pub(crate) fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
     // Never let Windows raise its own dialog from here.
@@ -509,7 +510,7 @@ fn protect(data: &[u8], encrypt: bool) -> Result<Vec<u8>, String> {
 
 // Off Windows this only exists so the crate builds for local checks; it is never shipped.
 #[cfg(not(windows))]
-fn protect(data: &[u8], _encrypt: bool) -> Result<Vec<u8>, String> { Ok(data.to_vec()) }
+pub(crate) fn protect(data: &[u8], _encrypt: bool) -> Result<Vec<u8>, String> { Ok(data.to_vec()) }
 
 static KEY_LOCK: Mutex<()> = Mutex::new(());
 

@@ -12,6 +12,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::countersign;
 use tauri::{AppHandle, Manager};
 use vyre_capsule_win::{core_calls, core_install, core_launch, core_pkg, history, update};
 
@@ -123,6 +124,34 @@ impl Paths {
     }
 }
 
+/// The app-owned pipe, with a stand-in node process as the child: another process is disconnected and the pipe keeps listening, the
+/// child gets its answer on stdin's pipe name, a second first instance of the same name is refused, one request per connection.
+fn pipe_selftest(node: &Path, work: &Path) -> Result<String, String> {
+    use std::io::Write as _;
+    let out = work.join("pipe-out.txt");
+    let client = r#"const net=require("net"),fs=require("fs");let b="";process.stdin.on("data",d=>{b+=d;if(!b.includes("\n"))return;const j=JSON.parse(b.split("\n")[0]);const c=net.connect(j.countersign);c.on("connect",()=>c.write(JSON.stringify({v:1,op:"companion",core:"K".repeat(64),nonce:"n".repeat(20),name:"t"})+"\n"));let r="";c.on("data",d=>r+=d);c.on("error",e=>{fs.writeFileSync(process.env.OUT,r||"ERR "+e.message);process.exit(0)});c.on("end",()=>{fs.writeFileSync(process.env.OUT,r);process.exit(0)});c.on("data",()=>c.end());});"#;
+    let rogue = r#"const net=require("net"),fs=require("fs");const c=net.connect(process.argv[1]);c.on("connect",()=>c.write('{"v":1,"op":"companion","core":"R","nonce":"r"}\n'));let r="";c.on("data",d=>r+=d);c.on("error",e=>{fs.writeFileSync(process.env.OUT2,"ERR "+e.code);process.exit(0)});c.on("end",()=>{fs.writeFileSync(process.env.OUT2,"END "+r);process.exit(0)});"#;
+    let _ = std::fs::remove_file(&out);
+    let mut child = std::process::Command::new(node).args(["-e", client]).env("OUT", &out).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
+    let pipe = countersign::new_pipe_name();
+    let served = countersign::serve(pipe.clone(), &child, Box::new(|r| serde_json::json!({ "ok": true, "echo": r.core.len() })))?;
+    let taken = !countersign::name_is_free(&pipe);
+    let out2 = work.join("rogue-out.txt");
+    let _ = std::fs::remove_file(&out2);
+    let status = std::process::Command::new(node).args(["-e", rogue, &pipe]).env("OUT2", &out2).status().map_err(|e| e.to_string())?;
+    let rogue_said = std::fs::read_to_string(&out2).unwrap_or_default();
+    child.stdin.as_mut().unwrap().write_all(format!("{{\"v\":1,\"countersign\":{}}}\n", serde_json::to_string(&pipe).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+    let t0 = std::time::Instant::now();
+    while child.try_wait().map_err(|e| e.to_string())?.is_none() && t0.elapsed() < std::time::Duration::from_secs(15) { std::thread::sleep(std::time::Duration::from_millis(100)); }
+    let _ = child.kill();
+    drop(served);
+    let child_said = std::fs::read_to_string(&out).unwrap_or_default();
+    if !taken { return Err("a second first instance of the pipe name was allowed".into()); }
+    if rogue_said.contains("ok") { return Err(format!("another process was served: {rogue_said}")); }
+    if !child_said.contains("\"ok\":true") { return Err(format!("the child got no answer after the rogue: {child_said:?} (rogue exit {status}, said {rogue_said:?})")); }
+    Ok(format!("name squat refused; another process disconnected ({}); the child answered after it: {}", rogue_said.trim(), child_said.trim()))
+}
+
 /// What `Vyre.exe --core-selftest` reports.
 pub struct SelfTest { pub lines: Vec<String> }
 
@@ -176,6 +205,7 @@ pub fn selftest(work: &Path, pkg: &Path, node_zip: &Path) -> SelfTest {
         }
         note("stop", host.call("import.stop", &serde_json::json!({})).map(|v| v.to_string()));
         note("refused-tool", host.call("vault.get", &serde_json::json!({})).map(|_| "UNEXPECTED success".to_string()).or_else(|e| if e.contains("not a call") { Ok("refused".into()) } else { Err(e) }));
+        note("countersign-pipe", pipe_selftest(&dir.join("node").join("node.exe"), work));
         host.stop();
         note("stopped", if host.running.lock().unwrap().is_none() { Ok("child ended".into()) } else { Err("still running".into()) });
     }
