@@ -1831,7 +1831,7 @@
     {"kind":"env","name":"VYRE_BUILD","definedIn":"scripts/install-box.sh","page":null,"mentions":[{"page":"using/box-care.md","line":268,"anchor":"run-the-installer-by-hand"}]},
     {"kind":"env","name":"VYRE_CAFFEINATE","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_CAPSULE_CHECK_DETAIL","definedIn":"scripts/capsule-native-check.mjs","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_CAPSULE_SCREENS","definedIn":"scripts/capsule-native-check.mjs","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_CAPSULE_SCREENS","definedIn":"scripts/capsule-daemon-check.mjs","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_CHAIN_TOP","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_CHANNEL","definedIn":"box/vyre","page":null,"mentions":[{"page":"using/box-care.md","line":114,"anchor":"upgrade"},{"page":"using/box-care.md","line":120,"anchor":"upgrade"}]},
     {"kind":"env","name":"VYRE_CHECK_VIEWS","definedIn":"core/cli/view.js","page":"reference/config.md#environment-variables","mentions":[]},
