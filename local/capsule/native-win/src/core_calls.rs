@@ -72,6 +72,11 @@ pub fn request(tool: &str, input: &Value) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// The readiness check: the core's health, asked the same way.
+pub fn health_request() -> Vec<u8> {
+    format!("GET /v1/health HTTP/1.1\r\nHost: vyred\r\nx-vyre-caller: {CALLER}\r\nConnection: close\r\n\r\n").into_bytes()
+}
+
 /// The core's answer: `data` on success, or its own error message in plain words.
 pub fn parse_response(raw: &[u8]) -> Result<Value, String> {
     let split = raw.windows(4).position(|w| w == b"\r\n\r\n").ok_or("the local core's answer was cut short")?;

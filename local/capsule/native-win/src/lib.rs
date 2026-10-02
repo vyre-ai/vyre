@@ -24,3 +24,4 @@ pub mod companion;
 pub mod core_install;
 pub mod core_calls;
 pub mod history;
+pub mod core_launch;

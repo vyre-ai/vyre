@@ -8,6 +8,9 @@
   "permissions": [
     "core:default",
     "allow-get-state",
-    "allow-scan-history"
+    "allow-scan-history",
+    "allow-core-status",
+    "allow-core-ensure",
+    "allow-core-call"
   ]
 }

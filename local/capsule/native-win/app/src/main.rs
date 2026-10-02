@@ -6,6 +6,8 @@
 //! panel, a WebView2 on the person's own server with no capability, a navigation allowlist and
 //! nothing but a frozen data constant injected. The trust rules are in `vyre_capsule_win::shell`.
 
+mod core_host;
+
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -220,6 +222,22 @@ async fn scan_history(app: AppHandle) -> Result<serde_json::Value, String> {
 
 // Commands that build a window are async: a synchronous command runs on the main thread, and creating a
 // webview there deadlocks on Windows (the confirm window stayed at about:blank on a real runner).
+/// The local helper's state, for the history screen: off, getting it, starting, up or failed (with why).
+#[tauri::command]
+fn core_status(core: State<core_host::CoreHost>) -> core_host::CoreState { core.state() }
+
+/// Get the local helper and start it if it is not running. Slow the first time (a download).
+#[tauri::command]
+async fn core_ensure(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<core_host::CoreHost>().ensure(&app)).await.map_err(|e| e.to_string())?
+}
+
+/// One call to one of the helper's fixed tools (core_calls::ALLOWED); the page never names a path or header.
+#[tauri::command]
+async fn core_call(app: AppHandle, tool: String, input: serde_json::Value) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || app.state::<core_host::CoreHost>().call(&tool, &input)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn save_pairing(app: AppHandle, address: String) -> Result<(), String> {
     let pin = Pinned::parse(&address).ok_or("That is not a server address. Try alex.vyre.run.")?;
@@ -547,6 +565,15 @@ fn main() {
             if let Some(out) = args.get(i + 1) { selftest(out); return; }
         }
     }
+    if std::env::var("VYRE_SELFTEST").as_deref() == Ok("1") {
+        if let Some(i) = args.iter().position(|a| a == "--core-selftest") {
+            if let (Some(work), Some(pkg), Some(zip), Some(out)) = (args.get(i + 1), args.get(i + 2), args.get(i + 3), args.get(i + 4)) {
+                let r = core_host::selftest(std::path::Path::new(work), std::path::Path::new(pkg), std::path::Path::new(zip));
+                let _ = std::fs::write(out, r.lines.join("\n") + "\n");
+                return;
+            }
+        }
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // A second launch (a vyre:// link) arrives through the deep-link plugin below.
@@ -556,9 +583,10 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, scan_history, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, scan_history, core_status, core_ensure, core_call, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
+            app.manage(core_host::CoreHost::new());
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
@@ -604,7 +632,8 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("vyre app")
-        .run(|_app, event| {
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event { app.state::<core_host::CoreHost>().stop(); }
             // A tray app keeps running with no window open: closing the last window (finishing pairing closes
             // the first-run page before the panel exists) asks to exit with no code, and that is refused.
             // Quit from the tray exits with a code and goes through.
