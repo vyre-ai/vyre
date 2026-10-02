@@ -92,7 +92,7 @@ export default async function chat(ctx) {
 
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
   async function load() {
-    const [p, c, t, macs] = await Promise.all([attempt("projects.list"), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
+    const [p, c, t, macs] = await Promise.all([attempt("projects.list", {}, { share: true }), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
       readMacs(attempt, state.macs), readSystem(attempt), readTeammates(attempt)]);
     if (!ctx.alive()) return;
     setProjects(p.data?.projects || []); // each project's tile seed (js/avatars.js)

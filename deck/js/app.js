@@ -32,6 +32,9 @@ import { offerEnroll } from "./enroll-grant.js";
 import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
+import { starButton } from "./star-button.js";
+import { installRows } from "./rows.js";
+import * as trace from "./trace.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
@@ -71,6 +74,9 @@ const ROUTES = [
   // The box's shared folders, browsed from a phone (views/files.js).
   ["/files", "files"],
   ["/files/:share", "files"],
+  // Drive is where a person looks for it (#51): /drive works as a bookmark and after a reload, like the rail link.
+  ["/drive", "files"],
+  ["/drive/:share", "files"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
@@ -132,6 +138,7 @@ const pop = h("div", { class: "search-pop", id: "search-pop", role: "listbox", h
 const needsPill = link("/now", { class: "needs-pill", hidden: true }, h("span", { class: "dot beacon" }), h("span", null, ""));
 // Sample data stands in for a module that is not merged yet: said once, quietly, in the header.
 const fixtureNote = h("span", { class: "fixture-note", hidden: true }, "Sample data for modules not merged yet");
+installRows();
 const railEl = rail();
 // The list column, right of the rail: a view's own list (ctx.rail, e.g. Chat's sessions; the
 // deck:rail event, e.g. Vault's places), or the pinned and recent projects beside a project.
@@ -172,6 +179,7 @@ put(deck,
         h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
         h("div", { style: { flexGrow: "1" } }),
         fixtureNote,
+        starButton(),
         needsPill),
       h("div", { class: "panes" }, side, view))),
   cap.el);
@@ -199,7 +207,7 @@ window.addEventListener("deck:rail", e => { railOwned = true; side.classList.rem
 const ON_PROJECT = /^\/(projects\/[^/]+|threads\/)/;
 async function drawRail() {
   if (!ON_PROJECT.test(location.pathname)) { if (!railOwned) { side.classList.remove("rail-projects"); put(pins); sideSync(); } return; }
-  const r = await attempt("projects.list");
+  const r = await attempt("projects.list", {}, { share: true });
   if (railOwned || !ON_PROJECT.test(location.pathname)) return;
   // Pins open a board on this machine, so a paired Mac's projects (on the box) are not pinned here.
   info.projects = (r.data?.projects || []).filter(p => !isMac(p));
@@ -339,7 +347,7 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** Pushed screens that draw their own back control, so the shell's back row stays out of the way. */
 function ownBack(/** @type {string} */ name, /** @type {Record<string, string>} */ params) {
   return (name === "chat" && !!(params.thread || params.project)) || name === "needs" || name === "find"
-    || (name === "projects" && !!(params.slug || params.thread));
+    || (name === "projects" && !!params.slug);
 }
 /** The page under the pushed screens: where Back goes when history has nothing of the Deck's. */
 let lastPage = "/now";
@@ -428,7 +436,15 @@ async function route() {
     history.replaceState(history.state, "", "/agents" + location.hash);
     newAgent = true;
   }
+  // Projects never draws a conversation: a chat opens in Chat, scoped to its project (#47). The old addresses still work and go there.
+  {
+    const m = /^\/projects\/([^/]+)\/([^/]+)\/?$/.exec(location.pathname), t = /^\/threads\/([^/]+)\/?$/.exec(location.pathname);
+    // Devices is a part of Settings: /devices is its address (#51).
+    const to = m ? `/chat/${m[1]}/${m[2]}` : t ? `/chat/thread/${t[1]}` : /^\/devices\/?$/.test(location.pathname) ? "/settings#devices" : null;
+    if (to) history.replaceState(history.state, "", to.includes("#") ? to : to + location.search + location.hash);
+  }
   const { view: name, params } = match(location.pathname);
+  trace.routeStart(location.pathname + location.search, name);
   // /quick is the hotkey panel: the compact ask alone, no rail (css/views/quick.css reads this).
   document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
@@ -497,6 +513,8 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
   const page = h("div", { class: "page", "data-page": name });
   away(page, hidden);
   place(key, page);
+  // The frame is on screen in the same frame as the tap: a quiet placeholder until the view's code and data arrive, so nothing is ever blank.
+  if (!hidden) { page.append(skeleton()); trace.mark("frame"); }
   const offs = /** @type {(() => void)[]} */ ([]);
   const entry = { page, name, shows: /** @type {(() => void)[]} */ ([]), rail: /** @type {any} */ (null), alive: true,
     leave: () => { for (const f of offs.splice(0)) { try { f(); } catch {} } } };
@@ -519,11 +537,21 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
     /** Fill the list column right of the rail (Chat's sessions). */
     rail: (/** @type {any} */ el) => { entry.rail = el; if (current === key) { put(railLower, el); sideSync(); } },
   };
+  // An address nothing serves (#51): the plain "not found" page, with no request for a view file that does not exist.
+  if (name === "missing") {
+    put(page, h("div", { style: { padding: "48px 72px" } },
+      h("div", { class: "lbl" }, "Not found"),
+      h("h1", { class: "h2", style: { marginTop: "10px" } }, "There is nothing at this address."),
+      h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
+    return;
+  }
   try {
-    await style(name);
-    const mod = await import(`../views/${name}.js`);
+    // The stylesheet and the view's code are asked for together, not one after the other: two round trips become one.
+    const [, mod] = await Promise.all([style(name).then(() => trace.mark("css")), import(`../views/${name}.js`).then(m => { trace.mark("code"); return m; })]);
     if (!entry.alive) return;
     await mod.default(ctx);
+    page.querySelector("[data-skel]")?.remove();
+    trace.mark("draw");
   } catch (e) {
     if (!entry.alive) return;
     // The view's file did not arrive (the box out of reach before the service worker kept it):
@@ -536,6 +564,29 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
       h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
   }
 }
+
+/** The placeholder a page shows until its view has drawn: a header bar and a few rows. */
+function skeleton() {
+  return h("div", { class: "page-skel", "data-skel": "", "aria-hidden": "true" }, h("span", { class: "page-skel-h" }), [0, 1, 2, 3].map(() => h("span", { class: "page-skel-r" })));
+}
+
+// ---- warming: a link about to be used has its view ready ----------------------------------------
+// Pointing at an internal link (or touching it, or focusing it) fetches that screen's stylesheet and code, so the tap that follows has them
+// already. Once per screen; a failure is nothing (the real navigation asks again and says why).
+const warmed = new Set();
+function warmLink(/** @type {EventTarget|null} */ t) {
+  const a = /** @type {HTMLAnchorElement|null} */ (/** @type {any} */ (t)?.closest?.("a[href]"));
+  if (!a || a.target === "_blank" || a.origin !== location.origin) return;
+  const { view: name } = match(a.pathname);
+  if (!name || name === "missing" || warmed.has(name)) return;
+  warmed.add(name);
+  void style(name);
+  void import(`../views/${name}.js`).catch(() => warmed.delete(name));
+}
+document.addEventListener("pointerover", e => { if (/** @type {PointerEvent} */ (e).pointerType !== "touch") warmLink(e.target); }, { passive: true });
+document.addEventListener("pointerdown", e => { trace.pressed(); warmLink(e.target); }, { passive: true, capture: true });
+document.addEventListener("touchstart", e => { trace.pressed(); warmLink(e.target); }, { passive: true });
+document.addEventListener("focusin", e => warmLink(e.target));
 
 /** A module that failed to load over the network (Chrome, Firefox, Safari word it differently). @param {any} e */
 const unfetched = e => e instanceof TypeError && /dynamically imported module|module script failed|error loading dynamically imported/i.test(String(e.message));

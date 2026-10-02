@@ -104,7 +104,8 @@ export function killGroup(child, sig) {
 /** A command as an absolute path: the spawner starts only the programs it allows, by path. */
 function absolute(command, env) {
   if (path.isAbsolute(command)) return command;
-  for (const dir of String((env && env.PATH) || process.env.PATH || "").split(":")) {
+  // The caller's PATH first, then the places the image installs the provider CLIs, so a PATH an account's environment narrowed cannot hide them.
+  for (const dir of [...String((env && env.PATH) || process.env.PATH || "").split(":"), "/usr/local/bin", "/usr/bin"]) {
     if (!dir) continue;
     const p = path.join(dir, command);
     try { fs.accessSync(p, fs.constants.X_OK); return p; } catch {}

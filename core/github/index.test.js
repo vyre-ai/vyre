@@ -927,3 +927,62 @@ test("github.mcp.sync / github.remove: each connected account gets GitHub's host
   await person("github.remove", { name: "home" });
   assert.deepEqual(w.mcpRows.map(r => r.name), ["github-work", "github-clash"], "only the removed account's row goes");
 });
+
+test("github.star.status and github.star: the person's own account stars vyre-ai/vyre; not connected, no scope and a dead token are said in plain words; a model and a module are refused", async t => {
+  const w = await world(t);
+  const seen = [];
+  let state = 404;
+  withFetch(t, async (url, opts = {}) => {
+    const u = new URL(String(url));
+    seen.push(`${opts.method || "GET"} ${u.pathname}`);
+    if (u.pathname !== "/user/starred/vyre-ai/vyre") throw new Error(`fake github: unexpected url ${url}`);
+    if (opts.method === "PUT") { if (state === 204 || state === 404) { state = 204; return { ok: true, status: 204 }; } return { ok: false, status: state, json: async () => ({}) }; }
+    return { ok: state === 204, status: state, json: async () => ({}) };
+  });
+  const none = await w.as("deck")("github.star.status", {});
+  assert.deepEqual(none.data, { connected: false, starred: null }, "no account: the Deck opens the repo page instead");
+  assert.equal((await w.as("deck")("github.star", {})).error.code, "no_account");
+  assert.deepEqual(seen, [], "nothing is asked of GitHub with no account");
+
+  seedAccount(w.db);
+  assert.deepEqual((await w.as("deck")("github.star.status", {})).data, { connected: true, starred: false });
+  assert.deepEqual((await w.as("deck")("github.star", {})).data, { starred: true });
+  assert.deepEqual((await w.as("cli")("github.star.status", {})).data, { connected: true, starred: true });
+  assert.deepEqual(seen.slice(-2), ["PUT /user/starred/vyre-ai/vyre", "GET /user/starred/vyre-ai/vyre"]);
+
+  for (const caller of ["mcp", "mcp:agent:helper", "module:sessions", "module:someone-else"]) {
+    assert.equal((await w.as(caller)("github.star", {})).error.code, "denied", `${caller} may not star`);
+  }
+
+  state = 403;
+  const noScope = await w.as("deck")("github.star", {});
+  assert.equal(noScope.error.code, "scope");
+  assert.match(noScope.error.message, /public_repo/);
+  state = 401;
+  assert.equal((await w.as("deck")("github.star", {})).error.code, "token_invalid");
+  assert.equal((await w.as("deck")("github.star.status", {})).error.code, "token_invalid");
+});
+
+test("github.session.review: new comments from other people on the session's open PRs, as outside text with a cursor; the account's own comments are left out; watchers and sessions only", async t => {
+  const w = await prWorld(t);
+  const wa = w.as("module:watchers", { firstParty: true });
+  const r = await wa("github.session.review", { project: "app", session: "s1" });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual(r.data.items.map(i => i.author).sort(), ["mallory", "mallory"], "alex's own inline comment is left out");
+  const review = r.data.items.find(i => i.kind === "review");
+  assert.equal(review.quote, "no, because");
+  assert.equal(review.id, "alex/app#7:review:1");
+  assert.equal(review.title, "mallory on alex/app#7");
+  assert.equal(r.data.cursor, "2026-01-03T00:00:00Z");
+  assert.ok(w.log.every(l => l.method === "GET"), "read only");
+  assert.ok(!JSON.stringify(r.data).includes("test-token"), "no token");
+  const later = await wa("github.session.review", { project: "app", session: "s1", since: "2026-01-03T00:00:00Z" });
+  assert.equal(later.data.items.filter(i => i.kind === "review").length, 0, "nothing at or before the cursor comes again");
+  assert.deepEqual((await wa("github.session.review", { project: "app", session: "none" })).data, { items: [], cursor: null });
+  assert.equal((await wa("github.session.review", { project: "app", session: "s1", since: "yesterday" })).error.code, "bad_input");
+  assert.equal((await wa("github.session.review", { project: "nope", session: "s1" })).error.code, "not_found");
+  for (const [caller, fp] of [["module:watchers", false], ["module:someone-else", true], ["module:projects", true]]) {
+    assert.equal((await w.as(caller, { firstParty: fp })("github.session.review", { project: "app", session: "s1" })).error.code, "denied", `${caller} first-party ${fp}`);
+  }
+  assert.equal((await w.as("module:threads", { firstParty: true })("github.session.review", { project: "app", session: "s1" })).error, undefined, "sessions and threads may read it too");
+});

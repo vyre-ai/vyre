@@ -135,6 +135,9 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
    clear of the status bar and the notch. env() is 0 on a desktop browser: nothing moves there. */
 .shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 /* The header spans the area right of the rail (the brand moved to the rail's home mark). */
+.star { display: flex; align-items: center; gap: 8px; }
+.star[hidden] { display: none; }
+.star-btn { gap: 6px; }
 .top { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 20px; border-bottom: 1px solid var(--rule); }
 /* The mark and wordmark on the onboarding's pages (onboard.css); the shell has no brand row. */
 .brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
@@ -393,3 +396,8 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 
 /* A page whose view file did not arrive yet (js/app.js waitForBox). */
 .page-wait { padding: 48px 24px; }
+
+/* A page's placeholder until its view has drawn (js/app.js skeleton()). */
+.page-skel { display: grid; gap: 14px; padding: 24px 20px; }
+.page-skel-h { height: 22px; width: 38%; border-radius: 6px; background: var(--hover); }
+.page-skel-r { height: 44px; border-radius: 8px; background: var(--hover); opacity: .6; }

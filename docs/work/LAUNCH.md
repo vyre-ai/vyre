@@ -106,3 +106,18 @@ lead's 0.2 BUILD GO.
   entry in test/boundaries.test.js's ALLOW list was needed for up.js's import of it.
 
 - integrator: `vyre uninstall` finds volumes by label run.vyre=1; the new vyre-accounts volume must carry it in compose.yml.
+
+## v0.2.3 landings on work/rc-0.2.2 (launch, 2 Oct 2026)
+
+Order of value; a branch lands only when its own head is green on hosted node and box-image. Never force-push the rc.
+
+- Landed: glass-files 8ada13b9a, eval-guard 147ccdefe (also capsule-mac green), git-hooks 7a3a173f2, pwa-copy2 94c09abb5, 032-continue-here 2a310a945, 023-companion e448cd652 (not usable until a transport exists), eval-world 96c00ecf5, 023-app-relay-check 7fa12e885, paired-ask a7b1f5f9f (AgentDrive.swift conflict resolved by keeping both command blocks; the rc's capsule-mac run is the compile proof), lumen-import 5aeb18d52 (one-line delta over the earlier import), 023-relay-lows 157038706 (module.json for link and relay merged by hand: companion and pairing-window tools and events both kept; replaces pair-limit and device-names). Docs, reach and boundaries tests green on testbox for the merge.
+- Waiting: paired-ask a7b1f5f9 (capsule-mac run 36966388152), 023-relay-lows 157038706 (replaces pair-limit and device-names), 023-app-relay-check 7fa12e885, lumen-import 5aeb18d52 (relay.test flake, re-run), app-feel 65338e16f (stale docs+terms, owner fixing), 011-setup pair (assistant moves the step list to a kernel folder, no boundary exception).
+- Red, owners notified in team/0.2/CHAT.md: parallel-tabs a4081aae2 (reach-computed-calls reviewed list), strings b639c64d9 (box error-text internal-word count). chrome-standalone dispatched on parallel-tabs, run 36966395049.
+- Not started: pwa-copy2, iq eval-world, e2e2 J1, 023-shell.
+- Landed later: app-feel's 10 own commits cherry-picked (0d8a2edd1 carried a main merge, scripts/gen-og.sh and site files, so none of it came along; its node red was the phone add flake and the Chrome keychain-flag test on those main-only files), #11 011-setup-steps 74c319762 then 011-setup 1c34efdd3 (onboard/index.js: person-only name from steps, the rc's #50 held-address test kept).
+- Waiting: assistant #41 0aff81ebc, pwa-fingerprint 9c3416645 (replaces pwa-window), then parallel-tabs, strings, 023-shell, e2e2 J1.
+- Landed later still: pwa-expo-wait 31e680a6d, parallel-tabs 29b012841, strings 727a69182, fix-20-api-keys ed0964f5a (#20, #56), and a rc-side fix: artifacts.media.gallery and artifacts.media.usage declare projectArg (the rc's project-arg test was red). site/setup merge of #11 and #20 keeps both; the API-key flow test follows the new step order.
+- Held: fetchsite 713304663 (reviewer-2 delta check), e2e2-harness cherry-picks, assistant #41 and the surface-name fix (arrive with the stage merge after v0.2.2), pwa-fingerprint, wink-deploy, the Lumen four (deep-glass, at-icons, mac-app, mac-release), 023-shell.
+- Merged stage-0.2 at v0.2.2 (12b601daa) into the rc: #38, #40, #42, #39 and the surface-name fix now ride on it. core/sessions accounts.js/index.js: the endpoint columns (#20) and the one-account-default rule (#42) both kept.
+- Landed: #41 as its 2 own commits (1caa6bceb, 0aff81ebc cherry-picked: the branch carried main-only files), fetchsite f4a267443 (artifact-sandbox green on chrome, safari, ios; reviewer-2 cleared), pwa-fingerprint 4f8d3003d (replaces pwa-window). Open: companion-transport 32be4b04f (node running), Lumen four and wink-deploy and e2e2-harness need the rc merged in (their node reds are the rc project-arg red, fixed on the rc), 023-shell.

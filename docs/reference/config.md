@@ -78,6 +78,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_ALLOW_REAL_TRANSCRIPTS` | `1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests. | `core/config/dialogs.js` |
+| `VYRE_API_BASE_URL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
+| `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
@@ -194,7 +196,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |
 | `VYRE_SITE_TEST_CLOCK` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js` |
-| `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `core/cli/daemonctl.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/mcp/server.js` |
+| `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `core/cli/daemonctl.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
 | `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `core/cli/daemonctl.js`, `harness/hooks/hook.js` |
 

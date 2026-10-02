@@ -67,6 +67,7 @@ const calls = [];
 let reads = 0;
 // The second session: a live headless thread the transcript read cannot find yet.
 const LIVE = "9d0e4c1a-live-thread";
+const NOREC = "norec-server-thread";
 let liveReads = 0;
 const liveBlocks = [
   { seq: 0, kind: "user", ts: T0, text: "ask" },
@@ -207,6 +208,13 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
+  if (input.thread === NOREC || input.session === NOREC) {
+    if (tool === "threads.get") data = { thread: { id: NOREC, name: "server thread", cwd: "/srv/w", status: "idle", canonical_status: "waiting", holder: null, agent: null },
+      events: [{ id: 1, type: "thread.sent", thread: NOREC, at: T0, payload: { text: "hello from the server", surface: "deck" } }], asks: [] };
+    else if (tool === "recall.transcript" || tool === "recall.thread") return { status: 500, statusText: "", json: async () => ({ error: { code: "internal", message: "no paired Mac" } }) };
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
   if (input.thread === LIVE || input.session === LIVE) {
     if (tool === "threads.get") data = { thread: { id: LIVE, name: null, cwd: fx.session.cwd, status: "running", canonical_status: "working", holder: null, agent: null }, events: liveEvents, asks: [fx.asks[0]] };
     else if (tool === "recall.transcript") {
@@ -233,17 +241,17 @@ doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
 
-test("avatars (ADR 0043): the person's circle for you; a chat in no project wears its draft tile on its replies and header", () => {
+test("avatars (ADR 0043): the person's circle for you; a chat in no project wears the assistant on its replies and header, never the dashed draft tile", () => {
   const you = $(container, ".cv-user .msg-av");
   assert.equal(you.getAttribute("data-family"), "person");
   assert.ok($(you, "svg"), "drawn, not a letter");
   assert.equal(you.getAttribute("title"), "alex");
   const reply = $(container, ".cv-head .msg-av");
-  assert.equal(reply.getAttribute("data-family"), "project");
-  assert.ok(reply.hasAttribute("data-draft"), "no project yet: the dashed draft tile");
+  assert.equal(reply.getAttribute("data-family"), "assistant");
+  assert.ok(!reply.hasAttribute("data-draft"), "no project yet: not the dashed draft tile, which read as a warning");
   assert.ok($(reply, "svg"));
   const head = $(container, ".cv-head-av");
-  assert.equal(head.getAttribute("data-family"), "project", "the session header wears the same tile");
+  assert.equal(head.getAttribute("data-family"), "assistant", "the session header wears the same one");
   assert.match(text($(container, ".cv-num")), /^#[0-9a-z-]{6}$/, "and the session's short id beside its title");
 });
 
@@ -438,7 +446,7 @@ test("queued rows sit above the composer: Edit, Take back, Steer now by row id; 
   at("thread.queued", { queued: 7, uuid: "q1", text: "Then open a PR against main", surface: "deck" });
   const row = $(box3, ".cv-queued-row");
   assert.ok(row);
-  assert.match(text(row), /^Queued for after\s*Then open a PR against main/);
+  assert.match(text(row), /^Queued for after this turn\s*Then open a PR against main/);
   for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Steer now"]]) {
     const b = $(row, cls);
     assert.equal(text(b), label);
@@ -613,9 +621,19 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   at("thread.usage", { cost_usd: 0.01, total_cost_usd: 0.2, context: { used: 124000, max: 200000, share: 0.62 } });
   await wait();
   assert.equal(text($(box4, ".cv-context")), "62% of context");
+  const heads = () => $$(box4, ".cv-head .msg-prov").map(el => text(el));
+  at("thread.sent", { text: "Before the switch?", surface: "deck" });
+  at("thread.text", { message: "old1", text: "Answered before the switch.", done: true, provider: "claude", model: "claude-opus-4-5" });
+  await wait();
   at("model.switched", { model: "haiku", live: true });
   await wait();
   assert.match(text($(box4, ".composer-answer")), /haiku/);
+  // One truth (#41): the header, the picker and each reply name a model with the same word, and a switch relabels nothing already said.
+  assert.match(text($(box4, ".cv-chip")), /haiku/, "the header follows the switch");
+  at("thread.sent", { text: "And now?", surface: "deck" });
+  at("thread.text", { message: "new1", text: "Answered after the switch.", done: true, provider: "claude", model: "haiku" });
+  await wait();
+  assert.deepEqual(heads().slice(-2), ["Claude, opus", "Claude, haiku"], "each reply says the model that answered it, in the header's words");
   await $(box4, ".composer-answer").click();
   await wait();
   assert.ok(calls.some(c => c.tool === "sessions.models.get"), "the picker reads the per-purpose map");
@@ -1013,4 +1031,16 @@ test("@role: an existing teammate's own turn, never this session's; an unknown r
   assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore3, "nothing sent");
   assert.equal(calls.filter(c => c.tool === "team.ask").length, teamAsksBefore + 1, "still tried the ask itself - only creation is gated on team.default");
   teamWorld = null;
+});
+
+test("a server thread opens from its own history when no Mac is paired, and recall is asked once, not on every read (#56)", async () => {
+  const box = new El("div");
+  doc.body.append(box);
+  const before = calls.length;
+  const stopN = mountSession(box, { thread: NOREC, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text(box), /hello from the server/, "the thread's events drew it");
+  assert.equal(calls.slice(before).filter(c => c.tool === "recall.transcript").length, 1, "one failed ask, then none");
+  assert.equal(calls.slice(before).filter(c => c.tool === "recall.thread").length, 0, "recall.thread is for a Mac's sessions");
+  stopN();
 });

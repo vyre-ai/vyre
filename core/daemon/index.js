@@ -91,6 +91,7 @@ async function startLocked(opts, root, p, release) {
 
   const db = open(p.db);
   const events = new Events(db);
+  events.log = log;
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
   // On a Mac with vyre-core installed (ADR 0040), core holds the trust anchors: every presence
@@ -689,7 +690,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let data;
     try { data = await rawBinary(req, 4 * 1024 * 1024); }
     catch (e) { return send(res, 400, { error: { code: /** @type {any} */ (e).code || "bad_input", message: /** @type {Error} */ (e).message } }); }
-    const r = await registry.call("sync.upload.chunk", { upload, offset, data }, caller, { peer: policy.peer });
+    // A companion core's proof rides in a header (never the URL, which gets logged); sync.upload.chunk asks core/link to check it.
+    const companion = typeof req.headers["x-vyre-companion"] === "string" ? req.headers["x-vyre-companion"] : null;
+    const r = await registry.call("sync.upload.chunk", { upload, offset, data, ...(companion ? { companion } : {}) }, caller, { peer: policy.peer });
     return send(res, r.error ? (r.error.code === "denied" ? 403 : r.error.code === "bad_input" ? 400 : 409) : 200, r);
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
@@ -811,7 +814,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
-  if (own) return own(req, res, { caller, url });
+  if (own) {
+    // A route answers only the methods it declared: a read-only one never a write, a writing one never a GET (the fetch-site rule).
+    const info = registry.routeInfo.get(url.pathname);
+    if (info && !info.methods.includes(req.method)) return send(res, 405, { error: { code: "method_not_allowed", message: `${url.pathname} answers ${info.methods.join(", ")}` } });
+    return own(req, res, { caller, url });
+  }
   // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
   // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
   // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when
