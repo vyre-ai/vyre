@@ -380,22 +380,27 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
     { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
-  const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data;
+  // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
+  assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
+  assert.equal((await tool("threads.send", { thread: id, text: "over the tailnet", surface: "tailnet:owner@example" })).data.sent, true);
+  assert.equal((await tool("threads.lease", { thread: id, surface: "tailnet:owner@example" })).data.holder, "deck", "a tailnet login is the person's Deck, not a participant of its own");
+  assert.equal((await tool("threads.send", { thread: id, text: "back on the deck", surface: "deck:1" })).data.sent, true);
+  const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "box:phone" })).data;
   assert.deepEqual(refused.sent, false);
   assert.equal(refused.holder, "deck:1");
-  const moved = (await tool("threads.lease", { thread: id, surface: "phone" })).data;
+  const moved = (await tool("threads.lease", { thread: id, surface: "box:phone" })).data;
   assert.equal(moved.previous, "deck:1");
-  await until(() => of(a.got, id, "lease.changed").some(e => e.payload.holder === "phone" && e.payload.previous === "deck:1"), "lease.changed");
-  assert.equal((await tool("threads.send", { thread: id, text: "typed on the deck", surface: "deck:1" })).data.holder, "phone");
-  assert.equal((await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data.sent, true);
-  await until(() => of(a.got, id, "thread.sent").some(e => e.payload.surface === "phone"), "thread.sent");
+  await until(() => of(a.got, id, "lease.changed").some(e => e.payload.holder === "box:phone" && e.payload.previous === "deck:1"), "lease.changed");
+  assert.equal((await tool("threads.send", { thread: id, text: "typed on the deck", surface: "deck:1" })).data.holder, "box:phone");
+  assert.equal((await tool("threads.send", { thread: id, text: "from the phone", surface: "box:phone" })).data.sent, true);
+  await until(() => of(a.got, id, "thread.sent").some(e => e.payload.surface === "box:phone"), "thread.sent");
 
   // Stop, and a send brings it back with --resume under the same id.
   await until(() => of(a.got, id, "thread.finished").length >= 3, "the phone's turn");
   assert.equal((await tool("threads.stop", { thread: id })).data.stopped, true);
   await until(() => of(a.got, id, "thread.stopped")[0], "thread.stopped");
   assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "stopped");
-  assert.equal((await tool("threads.send", { thread: id, text: "still there?", surface: "phone" })).data.sent, true);
+  assert.equal((await tool("threads.send", { thread: id, text: "still there?", surface: "box:phone" })).data.sent, true);
   await until(() => of(a.got, id, "thread.text").some(e => e.payload.text === "echo: still there?"), "the resumed reply");
   const last = launches().at(-1);
   assert.deepEqual(last.argv.slice(last.argv.indexOf("--resume"), last.argv.indexOf("--resume") + 2), ["--resume", id]);
@@ -640,7 +645,7 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   const launch = await until(() => launches().at(-1), "the launch");
   assert.ok(launch.argv.includes("--resume") && launch.argv.includes(quiet.id), "resumed, not started anew");
   await until(async () => (await tool("threads.get", { thread: quiet.id })).data.events.some(e => e.type === "thread.text" && e.payload.text === "echo: add a phone field"), "the reply");
-  assert.equal((await tool("threads.send", { thread: quiet.id, text: "and a note", surface: "deck" })).data.holder, "capsule", "the lease holds");
+  assert.equal((await tool("threads.send", { thread: quiet.id, text: "and a note", surface: "box:deck" })).data.holder, "capsule", "the lease holds");
 
   // Written a moment ago: someone is working in it.
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });

@@ -2647,7 +2647,9 @@ export default {
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
     const surfaceOf = (input, caller) => {
-      const s = String(input.surface || caller || "vyre");
+      let s = String(input.surface || caller || "vyre");
+      // The owner's own tailnet login (the only login the listener admits) is the person at their Deck: one participant, never "tailnet:<login>".
+      if (/^tailnet:(?!agent:)/.test(s)) s = "deck";
       // The link's words are always the box's surface, whatever the input says.
       return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
     };
