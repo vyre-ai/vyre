@@ -15,13 +15,13 @@ import { resolveTicket, crypto } from "../../deck/js/pair-ticket.js";
 import { haptic } from "../../deck/js/haptics.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
-// The worker that makes this page a signed one: installed once, and only when the release key signed it.
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
-
 const root = /** @type {HTMLElement} */ (document.getElementById("wink-root"));
 const wink = mountWink(root, {
   nav: navigator,
   standalone: (() => { try { return matchMedia("(display-mode: standalone)").matches; } catch { return false; } })(),
+  // The worker that makes this page a signed one: installed once, and only when the release key signed it. page.js calls this only
+  // when it is not the iPhone install page.
+  registerWorker: () => { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {}); },
   relay: DEFAULT_RELAY, crypto, startScan, resolveTicket,
   sha256: async b => new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", b)),
   haptic: k => haptic(k),

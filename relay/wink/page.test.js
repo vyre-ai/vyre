@@ -26,6 +26,7 @@ function world(/** @type {{ userAgent: string, standalone?: boolean, record?: an
     startScan: opts => { log.push("scan"); cam = opts; return { stop() { log.push("scan-stop"); } }; },
     resolveTicket: async () => { log.push("resolve"); if (o.resolveError) throw o.resolveError; return o.record || { name: "Alex's Mac", fingerprint: "AB12 CD34" }; },
     sha256, haptic: k => { haptics.push(k); }, navigate: u => { log.push("navigate " + u); }, later: fn => { timers.push(fn); },
+    registerWorker: () => { log.push("register-sw"); },
   });
   const tick = () => new Promise(r => setTimeout(r, 0));
   const run = async () => { for (let i = 0; i < 4; i++) { await tick(); while (timers.length) timers.shift()?.(); } await tick(); };
@@ -43,7 +44,7 @@ test("iOS in Safari (platform's test): nothing starts. No camera, no lookup, no 
   const w = world({ userAgent: IOS });
   await w.run();
   assert.equal(w.wink.state().kind, "install");
-  assert.deepEqual(w.log, [], "no scan, no resolve, no navigate");
+  assert.deepEqual(w.log, [], "no scan, no resolve, no navigate, and no service worker: an iPhone tab keeps no cache");
   assert.deepEqual(touched, [], "no storage read or written");
   assert.match(allText(w.root), /Add Vyre to your Home Screen/);
   for (const step of ["Share", "Add to Home Screen", "Open Vyre"]) assert.ok(allText(w.root).includes(step), step);
@@ -54,7 +55,7 @@ test("the installed app on iOS, Android and a desktop scan; a first pairing hand
   for (const o of [{ userAgent: IOS, standalone: true }, { userAgent: ANDROID }, { userAgent: "Mozilla/5.0 (Windows NT 10.0)" }]) {
     const w = world(o);
     assert.equal(w.wink.state().kind, "search");
-    assert.deepEqual(w.log, ["scan"]);
+    assert.deepEqual(w.log, ["register-sw", "scan"], "the worker is registered where the page runs");
     w.cam().onFound(TICKET);
     await w.run();
     assert.equal(w.wink.state().kind, "card");
@@ -122,7 +123,7 @@ test("no host from the ring or the server is ever navigated to: whatever the rec
     const w = world({ userAgent: ANDROID, record });
     w.cam().onFound(TICKET); await w.run();
     const text = allText(w.root);
-    if (record.handle === "alex") assert.ok(text.includes("alex.vyre.run"), "the address is its own line on the card");
+    if (record.handle === "alex") assert.ok(text.includes("Says it is alex.vyre.run") && text.includes("AB12 CD34"), "the address is a claim on its own line, beside the fingerprint a server cannot choose");
     else assert.ok(!text.includes("evil.example") && !text.includes("10.0.0.1"), "an invalid handle is not shown as an address");
     const main = /** @type {any} */ ([...w.root.querySelectorAll("button")].find((/** @type {any} */ b) => b.className.includes("main")));
     main.dispatchEvent(Object.assign(new Event("click"), { button: 0 })); await w.run();

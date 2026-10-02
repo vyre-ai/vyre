@@ -15,7 +15,7 @@ import { initial, step, needsInstall, cardOf, cardId, handoffUrl } from "./flow.
  *   startScan: (o: { video: HTMLVideoElement, onFound: (ticket: Uint8Array) => void, onError: (e: Error) => void, onSlow?: () => void }) => { stop: () => void },
  *   resolveTicket: (ticket: Uint8Array, o: { relay: string, crypto: any }) => Promise<{ name: string, fingerprint: string, handle?: string | null }>,
  *   sha256: (b: Uint8Array) => Promise<Uint8Array>, haptic: (k: "tick" | "success" | "warning") => unknown,
- *   navigate: (url: string) => void, redeem?: (ticket: Uint8Array) => void | Promise<void>, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
+ *   navigate: (url: string) => void, registerWorker?: () => void, redeem?: (ticket: Uint8Array) => void | Promise<void>, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
  */
 
 const SVG = {
@@ -49,7 +49,7 @@ export function mountWink(root, d) {
   let torchOn = false;
 
   if (install) {
-    // The one place nothing starts: no camera, no lookup, no storage, no hand-off. The person installs the app and scans there.
+    // The one place nothing starts (so no service worker either: an iPhone tab keeps no cache before the app is installed): no camera, no lookup, no storage, no hand-off. The person installs the app and scans there.
     put(root, h("section", { class: "install", "aria-label": "Add Vyre to your Home Screen" },
       h("h2", { class: "install-title" }, "Add Vyre to your Home Screen"),
       h("ol", { class: "steps" },
@@ -61,6 +61,8 @@ export function mountWink(root, d) {
     return { stop() {}, state: () => state };
   }
 
+  // The worker that makes this page a signed one: registered only where the page runs (never on the install page).
+  try { d.registerWorker?.(); } catch {}
   const video = /** @type {HTMLVideoElement} */ (h("video", { class: "cam-feed", playsinline: true, muted: true, "aria-hidden": "true" }));
   const hint = h("p", { class: "cam-hint", role: "status" }, "Point at a Wink");
   const reticle = h("div", { class: "reticle", "aria-hidden": "true" }, h("i", { class: "c tl" }), h("i", { class: "c tr" }), h("i", { class: "c bl" }), h("i", { class: "c br" }));
@@ -115,7 +117,8 @@ export function mountWink(root, d) {
       h("span", { class: "chip" }, card.expires),
       h("p", { class: "note" }, card.note),
       // The server's address, a line of its own (display only: the hand-off goes to app.vyre.run whatever the record says).
-      h("p", { class: "addr" }, card.address ? ["Server address ", h("b", null, card.address)] : "This server has no name yet."),
+      // A claim, not a fact: any server can say any name, so it sits beside the key fingerprint, which a server cannot choose.
+      h("p", { class: "addr" }, card.address ? ["Says it is ", h("b", null, card.address)] : "This server has no name yet."),
       h("p", { class: "fp" }, "Code ", h("b", null, card.fingerprint), ". Check it matches your Vyre screen."),
       h("div", { class: "row" },
         h("button", { type: "button", class: "btn", onclick: notNow }, card.other),
