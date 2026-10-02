@@ -34,6 +34,7 @@ import crypto from "node:crypto";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { boxKey, signAnswer } from "./assert.js";
+import { companionSide } from "./companion.js";
 
 const TTL = 10 * 60_000;
 const MAX_PENDING = 5;
@@ -81,6 +82,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     // "mac" is the full link feature set (reads, Taildrop, ask-answering); "device" is a peer
     // paired only to import its own sessions (sync.upload.*), never forwarded a read or a write.
     `ALTER TABLE link_peers ADD COLUMN kind TEXT NOT NULL DEFAULT 'mac'`,
+    // A companion (core/link/companion.js): a local core vouched for by the desktop app device that is its parent.
+    `ALTER TABLE link_peers ADD COLUMN parent TEXT`,
+    `ALTER TABLE link_peers ADD COLUMN core_pub TEXT`,
   ]);
   const pepper = crypto.randomBytes(32);
   const mac = s => crypto.createHmac("sha256", pepper).update(String(s)).digest();
@@ -202,7 +206,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   /** The paired Mac this key belongs to, checked against the calling node when known. */
   const byKey = (key, meta) => {
-    const row = /** @type {any} */ (db.prepare("SELECT * FROM link_peers WHERE key_hash = ?").get(sha(String(key || ""))));
+    const row = /** @type {any} */ (db.prepare("SELECT * FROM link_peers WHERE key_hash = ? AND kind != 'companion'").get(sha(String(key || ""))));
     if (!row || !tailnetLogin(meta.caller)) return null;
     const peer = peerOf(meta);
     if (row.stable_id && peer && peer.stableId !== row.stable_id) return null;
@@ -510,8 +514,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     },
   });
 
+  const companion = companionSide(ctx, { db, now, deviceInfo: async id => { const r = /** @type {any} */ (await ctx.call("relay.device.info", { id })); return r && r.data ? r.data : null; } });
+
   return {
     async stop() {
+      companion.stop();
       pending.clear(); forwarded.clear(); macAsks.clear();
       for (const id of [...waiting.keys()]) release(id, null);
       for (const a of [...asks.values()]) a.done({ ok: false, error: { code: "stopped", message: "the box is stopping" } });
