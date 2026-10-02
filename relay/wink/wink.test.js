@@ -15,9 +15,10 @@ test("specifiers: static, dynamic and new URL() imports, relative only", () => {
   assert.deepEqual(specifiers(src).sort(), ["../b.js", "./a.js", "./lazy.js", "./re.js", "./side.js", "./w.js"]);
 });
 
-test("the page loads the scanner, the relay client and the avatar, and never the Deck's API client or router", () => {
+test("the page loads the scanner, the relay client and the haptics, and never the Deck's API client, router or avatars", () => {
   const files = closure();
-  for (const f of ["deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/pair-scan.js", "deck/js/pair-ticket.js", "relay/client/client.js", "deck/vyrecode/decode-core2.js", ENTRY]) assert.ok(files.includes(f), f);
+  for (const f of ["deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/pair-ticket.js", "deck/js/haptics.js", "relay/client/client.js", "deck/vyrecode/decode-core2.js", "relay/wink/page.js", "relay/wink/flow.js", ENTRY]) assert.ok(files.includes(f), f);
+  assert.ok(!files.includes("deck/js/avatars.js") && !files.includes("deck/js/pair-scan.js"), "no avatar renderer, no Deck sheet: the card has no picture");
   assert.ok(!files.includes("deck/js/api.js"), "no Deck API client: the page has no box to call");
   assert.ok(!files.some(f => f === "deck/js/app.js" || f.startsWith("deck/views/") && f !== "deck/views/pair-scan.js"), "no Deck shell or view");
 });
@@ -27,7 +28,7 @@ test("build: sealed, every folder verifies, the entry is pinned by SRI, no inlin
   const pub = keygen(key);
   const out = path.join(dir, "out");
   const r = await build({ release: "0.2.0", key, out });
-  assert.ok(r.files > 25);
+  assert.ok(r.files > 15);
   const manifest = await verify(out, new Uint8Array(Buffer.from(pub, "base64url")));
   assert.equal(manifest, r.manifest);
   const html = fs.readFileSync(path.join(out, "index.html"), "utf8");
@@ -51,12 +52,14 @@ test("build: sealed, every folder verifies, the entry is pinned by SRI, no inlin
   await assert.rejects(verify(out, new Uint8Array(Buffer.from(pub, "base64url"))), /does not match/);
 });
 
-test("the page makes no request but the relay's, and keeps nothing: no storage, no fetch of its own", () => {
-  const files = closure().filter(f => f !== "deck/js/avatars.js");
-  const wink = fs.readFileSync(path.join(import.meta.dirname, "wink.js"), "utf8");
-  assert.doesNotMatch(wink, /localStorage|sessionStorage|indexedDB|fetch\(/);
-  assert.match(fs.readFileSync(path.join(import.meta.dirname, "..", "..", "deck/js/pair-scan.js"), "utf8"), /resolveTicket\(ticket, \{ relay: opts\.relay/);
-  assert.ok(files.length > 10);
+test("the page makes no request but the relay's and keeps nothing: no storage, no cookie, no fetch of its own, in any file it loads except the device-key store the relay client owns", () => {
+  const files = closure().filter(f => f.startsWith("relay/wink/") || f === "deck/js/scan.js" || f === "deck/js/haptics.js");
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(import.meta.dirname, "..", "..", f), "utf8");
+    // haptics.js reads a person's own opt-out (localStorage vyre.haptics) and writes nothing; the tests use no real storage.
+    const bad = f === "deck/js/haptics.js" ? /sessionStorage|indexedDB|document\.cookie|fetch\(|setItem/ : /localStorage|sessionStorage|indexedDB|document\.cookie|fetch\(/;
+    assert.doesNotMatch(src.replace(/^\s*\/\/.*$/gm, ""), bad, f);
+  }
 });
 
 test("scripts/build-wink-out: the real path (a PEM key from the environment, not --throwaway) seals; a key that is not the pinned one, a prerelease and no key are refused", async () => {
