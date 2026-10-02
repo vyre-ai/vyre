@@ -253,10 +253,12 @@ export default {
     /** Only the assistant may drive other sessions, from inside its own thread. */
     // A label never grants: an agent is the assistant only by what vyred verified (meta.agent, meta.agentKind from the stored row); a label that
     // names an agent with nothing verified behind it is refused.
-    const guard = (caller, what) => {
-      const m = /^mcp:agent:(.+)$/.exec(String(caller || ""));
+    // Called with the call's meta (its verified agent and kind ride in it) or, from older call sites, with the caller label alone.
+    const guard = (who, what) => {
+      const meta = who && typeof who === "object" ? who : null;
+      const m = /^mcp:agent:(.+)$/.exec(String(meta ? meta.caller : who || ""));
       if (!m) return;
-      const v = /** @type {any} */ (calls.getStore());
+      const v = /** @type {any} */ (meta || calls.getStore());
       if (v && v.agent === m[1] && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${m[1]} is an agent`);
     };
