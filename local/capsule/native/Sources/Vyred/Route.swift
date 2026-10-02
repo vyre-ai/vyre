@@ -303,7 +303,7 @@ public enum Route {
     /// the default), `agentThreads` the threads of that agent when the switchboard can list them.
     /// `quick` says the switchboard can start a thread, so a question can go straight to a model.
     public static func destinations(_ target: VyreCandidate?, _ text: String, _ cat: VyreCatalog, agentThreads: [VyreThread] = [],
-                                    now: Double = vyNowMs(), quick: Bool = false,
+                                    now: Double = vyNowMs(), quick: Bool = false, assistantFirst: Bool = false, memory: Bool = false,
                                     models: (quick: String, deeper: String) = (ModelFallback.quick, ModelFallback.deeper)) -> (options: [VyreDestination], why: String?) {
         func threadDest(_ t: VyreThread, _ agent: String? = nil) -> VyreDestination {
             let a = agent ?? t.agent
@@ -318,14 +318,17 @@ public enum Route {
             let mine = cat.assistant.map { VyreDestination(kind: .assistant, agent: $0.name, meta: "your assistant") }
             // A question goes to a model. One about the user's own work goes to the assistant first,
             // which has their memory; any other goes to a fast model, which has none and answers sooner.
+            // What the person types goes to the assistant by default (#46); memory answers only when asked ("Ask memory", or "memory: ...").
+            let ask = assistantFirst && memory ? [VyreDestination(kind: .recall, meta: "memory only")] : []
             if quick && asksQuestion(text) {
                 let fast = VyreDestination(kind: .quick, model: models.quick, meta: "fast model · \(models.quick)")
                 let deep = VyreDestination(kind: .quick, model: models.deeper, deep: true, meta: "deeper · \(models.deeper)")
-                guard let mine else { return ([fast, deep], nil) }
+                guard let mine else { return ([fast, deep] + ask, nil) }
+                if assistantFirst { return ([mine, fast, deep] + ask, nil) }
                 if let own = ownThings(text, cat) { return ([mine, fast, deep], "\(own), so \(mine.agent ?? "") answers with your memory.") }
                 return ([fast, mine, deep], nil)
             }
-            if let mine { return ([mine], nil) }
+            if let mine { return ([mine] + ask, nil) }
             // No switchboard yet, or no assistant made: memory still answers, on this Mac, with no model.
             return ([VyreDestination(kind: .recall, meta: "memory · no model")], nil)
         }

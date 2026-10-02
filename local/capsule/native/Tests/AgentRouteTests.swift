@@ -145,4 +145,64 @@ let agentRouteSuite = Suite("agent route") { t in
         t.ok(VJ.s(got?.deep?["append"]).contains("Q: what is 2+2?\nA: 4"), "the deeper model is told the conversation")
         t.eq(got?.copied, "4")
     }
+
+    t.test("#46: a question typed in Lumen reaches the assistant and shows its reply; memory answers only when asked for") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        harlow(v)
+        v.tool("agents.ask") { _ in ["ok": true, "thread": "tj"] as [String: Any] }
+        v.tool("memory.answer") { _ in ["answer": "You drive a Volvo.", "confidence": 0.9] as [String: Any] }
+        v.tool("memory.ask") { _ in ["answer": "From memory.", "abstained": false, "known": [Any](), "sources": [Any]()] as [String: Any] }
+        v.tool("threads.start") { _ in ["id": "qq"] }
+        let got: (asked: [[String: Any]], memoryAsks: Int, answers: Int, reply: String, firstRow: String?)? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.memoryFirst = false; m.autoDelay = 0.05; m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.follower.isStreaming && m.catalog.assistant != nil }
+            await MainActor.run { m.text = "are you configured now?" }
+            _ = await until { m.flat.contains { $0.kind == "ask" } }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            let first = await MainActor.run { m.flat.first { $0.kind == "ask" }?.title }
+            // Return takes the first row: Ask juno.
+            await MainActor.run { _ = m.handleReturn(command: false); m.run() }
+            _ = await until { !v.callsOf("agents.ask").isEmpty }
+            _ = v.emit("thread.text", thread: "tj", ["message": "m1", "text": "Yes, I am set up.", "done": true])
+            _ = v.emit("thread.finished", thread: "tj", ["ok": true])
+            _ = await until { m.replyText.contains("set up") }
+            let reply = await MainActor.run { m.replyText }
+            let beforeMemory = v.callsOf("memory.ask").count
+            await MainActor.run { m.didHide() }
+            return (v.callsOf("agents.ask"), beforeMemory, v.callsOf("memory.answer").count, reply, first)
+        }
+        t.eq(got?.firstRow, "Ask juno", "the first row is the assistant")
+        t.eq(got?.asked.count, 1, "agents.ask was called once")
+        t.eq(VJ.s(got?.asked.first?["agent"]), "juno")
+        t.eq(VJ.s(got?.asked.first?["text"]), "are you configured now?")
+        t.eq(got?.memoryAsks, 0, "memory.ask was not called for a typed question")
+        t.eq(got?.answers, 0, "memory.answer did not run as you typed")
+        t.eq(got?.reply, "Yes, I am set up.", "the assistant's reply is shown")
+    }
+
+    t.test("#46: \"memory: ...\" and the Ask memory row ask memory on purpose, with its sources") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        harlow(v)
+        v.tool("agents.ask") { _ in ["ok": true, "thread": "tj"] as [String: Any] }
+        v.tool("memory.ask") { _ in ["answer": "You drive a Volvo.", "abstained": false, "known": [Any](), "sources": [Any]()] as [String: Any] }
+        v.tool("threads.start") { _ in ["id": "qq"] }
+        let got: (asks: [[String: Any]], agentAsks: Int, rows: [String])? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = routeModel(v); m.memoryFirst = false; m.autoDelay = 3600; m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") && m.catalog.assistant != nil }
+            await MainActor.run { m.text = "what car do I drive" }
+            _ = await until { m.flat.contains { $0.title == "Ask memory" } }
+            let rows = await MainActor.run { m.flat.filter { $0.kind == "ask" }.map(\.title) }
+            await MainActor.run { m.text = "memory: what car do I drive"; _ = m.handleReturn(command: false) }
+            _ = await until { !v.callsOf("memory.ask").isEmpty }
+            await MainActor.run { m.didHide() }
+            return (v.callsOf("memory.ask"), v.callsOf("agents.ask").count, rows)
+        }
+        t.eq(got?.rows, ["Ask juno", "Ask memory"], "memory is a row of its own, after the assistant")
+        t.eq(got?.asks.count, 1)
+        t.eq(VJ.s(got?.asks.first?["question"]), "what car do I drive", "the prefix is not part of the question")
+        t.eq(got?.agentAsks, 0, "the assistant was not asked")
+        t.eq(CapsuleModel.memoryRequest("Memory:  who is Dana "), "who is Dana")
+        t.eq(CapsuleModel.memoryRequest("memory:"), nil)
+        t.eq(CapsuleModel.memoryRequest("what is memory: a term"), nil)
+    }
 }

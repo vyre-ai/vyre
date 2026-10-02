@@ -114,16 +114,15 @@ The Vault may ask for Touch ID first. See [Vault](vault.md).
 Type a question and press Enter. The "Sends to" row under the box shows where it will go before
 anything is sent, and Enter uses exactly that destination:
 
-- A question about your own work ("what did I promise Harlow Legal?") goes to your assistant,
-  which has your memory.
-- Any other question (one that ends in `?` or opens with a question word) goes to a fast model,
-  haiku. The down arrow offers your assistant and a deeper model, sonnet.
-- Anything that is not a question ("draft a reply to Northwind Bakery") goes to your assistant,
-  which can act.
-- With no assistant made yet, memory answers on its own, with no model.
+- What you type goes to your assistant, whatever it is about. The assistant has your memory: the
+  server adds the relevant facts to the assistant's own prompt, so Lumen sends your words as they
+  are. On a Mac paired to a server, this is the server's assistant.
+- The down arrow offers a fast model (haiku) and a deeper one (sonnet).
+- Memory answers on its own only when you ask it to: choose the **Ask memory** row, or start with
+  `memory:` ("memory: what car do I drive"). Its answer shows its sources, with Wrong? and Forget.
+- With no assistant made yet, a question goes to the fast model.
 
-Answers render in place as markdown, with a copy button and the cost. Anything that came from
-memory is drawn in gold, with its source.
+Answers render in place as markdown, with a copy button and the cost. An answer from Ask memory is drawn in gold, with its source.
 
 ## Ask about your screen
 

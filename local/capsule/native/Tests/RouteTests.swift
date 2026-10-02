@@ -163,4 +163,16 @@ let routeSuite = Suite("route") { t in
         t.ok(Route.questionLike("one two three four five"))
         t.ok(!Route.questionLike("harlow"))
     }
+
+    t.test("assistant first (#46): a question goes to the assistant by default, memory is an option only when asked for, and no assistant means the model") {
+        let d = Route.destinations(nil, "What is the capital of Peru?", CAT, quick: true, assistantFirst: true, memory: true)
+        t.eq(kinds(d), ["assistant:juno", "quick:haiku", "quick:sonnet", "recall"], "the assistant leads, whatever the words are about")
+        t.eq(d.options.last?.meta, "memory only")
+        t.eq(kinds(Route.destinations(nil, "what did Dana say about the retainer?", CAT, quick: true, assistantFirst: true, memory: true)),
+             ["assistant:juno", "quick:haiku", "quick:sonnet", "recall"], "a question about your own things too")
+        t.eq(kinds(Route.destinations(nil, "what is left", CAT, quick: true, assistantFirst: true)), ["assistant:juno", "quick:haiku", "quick:sonnet"], "no memory.ask: no Ask memory")
+        t.eq(kinds(Route.destinations(nil, "send the invoice", CAT, quick: true, assistantFirst: true, memory: true)), ["assistant:juno", "recall"], "not a question: the assistant, and memory on request")
+        var none = CAT; none.agents = []
+        t.eq(kinds(Route.destinations(nil, "what did Dana say?", none, quick: true, assistantFirst: true, memory: true)), ["quick:haiku", "quick:sonnet", "recall"])
+    }
 }

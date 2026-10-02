@@ -216,6 +216,10 @@ public final class CapsuleModel: ObservableObject {
     /// The CLI to run instead of vyred's own (tests: a fake vyre).
     var heardAt = Date()
     var replyWatch: Task<Void, Never>?
+    /// The old order, memory before the assistant: a memory answer above the results as you type, and a plain quick question answered by
+    /// memory.ask. Off (#46): what is typed goes to the assistant, and memory answers only when asked ("Ask memory", or "memory: ...").
+    nonisolated(unsafe) static var memoryFirstDefault = false
+    var memoryFirst = CapsuleModel.memoryFirstDefault
     /// How long a quick question waits for memory.ask before it says so and points at the assistant (tests shorten it).
     var iqTimeout: TimeInterval = 12
     var cliOverride: [String]?
@@ -928,7 +932,7 @@ public final class CapsuleModel: ObservableObject {
         if raw == prefilled { memory = nil; return }
         let words = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if memory?.text != words { memory = nil }
-        guard words.count >= 3, vyred.isUp, vyred.has("memory.answer") else { return }
+        guard memoryFirst, words.count >= 3, vyred.isUp, vyred.has("memory.answer") else { return }
         recallTask = Task { @MainActor [vyred] in
             try? await Task.sleep(nanoseconds: 180_000_000)
             if Task.isCancelled || t != self.token { return }
@@ -949,7 +953,7 @@ public final class CapsuleModel: ObservableObject {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let model = model ?? models.quick
         // Vyre IQ (IQAsk.swift): a plain quick question is memory.ask's, grounded or "Not sure yet."
-        if !computerUse, context == nil, model == models.quick, let out = await askIQ(words) { return out }
+        if memoryFirst, !computerUse, context == nil, model == models.quick, let out = await askIQ(words) { return out }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
             return .failed("Could not make Lumen's folder: \(error.localizedDescription)")

@@ -37,6 +37,21 @@ extension CapsuleModel {
         return words.count >= 3 && Route.intent(text, topKind: topKind, topScore: topScore) == .ask
     }
 
+    /// "memory: who is Dana" -> "who is Dana": the person asked memory on purpose. Nil for anything else.
+    nonisolated static func memoryRequest(_ text: String) -> String? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.lowercased().hasPrefix("memory:") else { return nil }
+        let rest = t.dropFirst("memory:".count).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest.isEmpty ? nil : rest
+    }
+
+    /// Memory answers, as asked: memory.ask with its sources and Wrong?/Forget. Never the default.
+    func askMemory(_ words: String) async -> ActionOutcome {
+        guard !words.isEmpty else { return .said("Type a question for memory first.") }
+        if let out = await askIQ(words) { return out }
+        return .failed("This Vyre has no memory to ask yet.")
+    }
+
     /// The best local row: what the words would open if they are not a question.
     var topLocal: ResultItem? { flat.first { $0.kind != "ask" && $0.kind != "mention" } }
 
@@ -67,7 +82,7 @@ extension CapsuleModel {
     /// The router's first choice for these words is a quick answer. The user's own work, or a
     /// command, goes to the assistant ("Ask juno"), and ⏎ runs that row instead.
     func quickFirst(_ words: String) -> Bool {
-        let first = Route.destinations(nil, words, catalog, quick: true, models: (models.quick, models.deeper)).options.first
+        let first = Route.destinations(nil, words, catalog, quick: true, assistantFirst: !memoryFirst, models: (models.quick, models.deeper)).options.first
         return first == nil || first?.kind == .quick
     }
 
@@ -124,6 +139,14 @@ extension CapsuleModel {
         if userMoved && !command { return false }
         // "do …": computer use, from ⏎ or ⌘⏎.
         if let job = Self.doRequest(words) { startComputerUse(job); return true }
+        // "memory: …": memory answers, on purpose, with its sources (the default is the assistant, #46).
+        if !command, let q = Self.memoryRequest(words) {
+            autoTask?.cancel()
+            autoKey = Self.autoKey(q)
+            Task { @MainActor in self.handle(await self.askMemory(q)) }
+            commitFollowUp()
+            return true
+        }
         let top = topLocal
         let onScreen = answerOnTop && autoKey == Self.autoKey(text)
         let question = onScreen || (Self.wantsAnswer(words, topKind: top?.kind, topScore: top?.score ?? 0) && quickFirst(words))
