@@ -224,7 +224,7 @@ test("box update: with no release on GitHub it falls back to VYRE_BOX_URL, as be
   const b = await box(t, { releases: [] });
   const r = /** @type {any} */ (await b.run(["update"]));
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /no stable release on GitHub yet/);
+  assert.match(r.out, /No stable release on GitHub yet/);
   assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.1.5");
   assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "0.1.5");
   assert.ok(b.hits.some(h => h.startsWith("/api/")), "asked GitHub first");
@@ -347,7 +347,7 @@ test("box update --rollback: the previous release back, the current database kep
   assert.equal((/** @type {any} */ (await b.run(["update"]))).code, 0);
   const r = /** @type {any} */ (await b.run(["update", "--rollback"]));
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /the database is the current one/);
+  assert.match(r.out, /Your data is as it is now/);
   assert.equal(b.read(path.join(b.DIR, "src", "marker")).trim(), "old");
   assert.equal(b.read(path.join(b.DIR, "src.prev", "marker")).trim(), "0.2.0");
   assert.equal(b.image("vyre:local"), "orig");
@@ -431,7 +431,7 @@ test("box update: a release whose min_from is above the running version names th
   fs.writeFileSync(path.join(b.FAKE, "cur"), "0.0.9");
   const r = /** @type {any} */ (await b.run(["update"]));
   assert.equal(r.code, 1);
-  assert.match(r.out, /runs 0\.0\.9, and 0\.2\.0 updates from 0\.1\.0 or newer: run vyre update --to 0\.1\.0 first/);
+  assert.match(r.out, /runs 0\.0\.9, and 0\.2\.0 updates from 0\.1\.0 or newer\. Run vyre update --to 0\.1\.0 first/);
   assert.ok(!b.calls().some(c => c.includes("backup")));
 });
 
@@ -459,7 +459,7 @@ test("update-from-request: a signed release is installed, the request is consume
   ask(b);
   const r = /** @type {any} */ (await b.run(["update-from-request"], KEY));
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /signature checked against Vyre's release key/);
+  assert.match(r.out, /Release signature checked/);
   assert.equal(b.read(path.join(b.DIR, "VERSION")).trim(), "0.2.0");
   assert.ok(!fs.existsSync(path.join(b.U, "request", "request")), "the request is gone");
   assert.ok(!fs.existsSync(path.join(b.U, "private", "lock")), "the lock is released");
@@ -681,7 +681,7 @@ test("root run: an override file, a COMPOSE_* setting in .env or the environment
   await refuse("COMPOSE_FILE in .env", b => fs.appendFileSync(path.join(b.DIR, ".env"), "COMPOSE_FILE=evil.yml\n"), /COMPOSE_FILE is set in .*\.env/);
   await refuse("COMPOSE_PROFILES in .env", b => fs.appendFileSync(path.join(b.DIR, ".env"), "COMPOSE_PROFILES=computers\n"), /COMPOSE_PROFILES is set in/);
   await refuse("COMPOSE_* in the environment", () => {}, /COMPOSE_ENV_FILE is set in the environment/, { COMPOSE_ENV_FILE: "/tmp/evil.env" });
-  await refuse("no record of the mode", b => fs.rmSync(path.join(b.U, "mode")), /root has no record of how this box is built/);
+  await refuse("no record of the mode", b => fs.rmSync(path.join(b.U, "mode")), /root has no record of how Vyre was set up here/);
   await refuse("a box that builds from a checkout of its own", b => fs.writeFileSync(path.join(b.U, "mode"), "external\n"), /never builds from a folder you can write/);
 });
 
@@ -723,7 +723,7 @@ test("updater install --dir: a box that is not in /srv/vyre hands root its folde
   fs.appendFileSync(path.join(b.DIR, "compose.yml"), "# edited by somebody\n");
   const swapped = /** @type {any} */ (await b.run(["updater", "install", "--dir", b.DIR], { VYRE_SYSTEMD_DIR: units, VYRE_ROOT_UID: String(process.getuid()) }));
   assert.notEqual(swapped.code, 0);
-  assert.match(swapped.out, /root recorded another compose\.yml for this box than the one in .*; nothing was changed/);
+  assert.match(swapped.out, /root recorded a different compose\.yml for this server than the one in .*; nothing was changed/);
   assert.ok(!b.read(path.join(b.U, "private", "run", "compose.yml")).includes("edited by somebody"), "root's copy is untouched");
   fs.writeFileSync(path.join(b.DIR, "compose.yml"), b.read(path.join(b.U, "private", "run", "compose.yml")));
   assert.equal(/** @type {any} */ ((await b.run(["updater", "install", "--dir", "relative"], { VYRE_SYSTEMD_DIR: units }))).code, 1);

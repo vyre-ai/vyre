@@ -38,7 +38,7 @@ test("install-box.sh look: plain output has steps, checks and a finish, and no e
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!/[^\x09\x0a\x20-\x7e]/.test(r.stdout), `plain output is printable ASCII:\n${r.stdout}`);
   const lines = r.stdout.split("\n");
-  const titles = ["Checking Docker", "Reading the box files", "Laying out ", "Installing the vyre command", "Starting Vyre"];
+  const titles = ["Checking Docker", "Reading Vyre's files", "Setting up ", "Installing the vyre command", "Starting Vyre"];
   let at = -1;
   titles.forEach((title, i) => {
     const n = lines.findIndex(l => l.startsWith(`[${i + 1}/5] ${title}`));
@@ -47,9 +47,8 @@ test("install-box.sh look: plain output has steps, checks and a finish, and no e
   });
   assert.equal(lines.filter(l => /^ {2}ok /.test(l)).length, 5, r.stdout);
   assert.match(r.stdout, /^would run: env VYRE_DIR=/m, "the would-run lines stay");
-  assert.match(r.stdout, /That's the whole plan\./);
-  assert.match(r.stdout, /Go do your best work\. We'll keep the thread\./);
-  assert.ok(!r.stdout.includes("end the week"), "the Friday line is for colour only");
+  assert.match(r.stdout, /Dry run finished\./);
+  assert.ok(!/best work|keep the thread|end the week/.test(r.stdout), "no sign-off");
 });
 
 test("install-box.sh look: NO_COLOR and CI stay plain; VYRE_NO_UP has four steps", t => {

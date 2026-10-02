@@ -212,7 +212,7 @@ export async function update(args, deps = {}) {
   const say = json() ? () => {} : out;
 
   if ((deps.supervisor ?? process.env.VYRE_SUPERVISOR) === "docker") {
-    return fail("in the box's container, the host's vyre update does this", { code: "wrong_place", next: "run vyre update on the server itself, or vyre box update from your Mac" });
+    return fail("inside Vyre's container, the server's own vyre update does this", { code: "wrong_place", next: "run vyre update on the server itself, or vyre box update from your Mac" });
   }
   const mine = (deps.build || build)();
   if (!mine.stamped || fs.existsSync(path.join(deps.repo || REPO, ".git"))) {
@@ -308,14 +308,14 @@ async function install(ctx, releases, target, channel) {
         return fail(`${problem}; nothing was installed`, { code: "unsigned", next: "vyre update --allow-unsigned installs it anyway" });
       }
       ctx.say(beacon(`  WARNING: ${problem}. Installing it anyway because you passed --allow-unsigned: nothing proves this release came from Vyre.`));
-    } else { releaseSigned = true; say(dim("  signature checked against Vyre's release key")); }
+    } else { releaseSigned = true; say(dim("  Release signature checked.")); }
     tgz = await fetchChecked(target, "vyre.tgz", dir, got.sums);
     await fetchShellFiles(target, dir, got.sums);
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
     return fail(`${/** @type {Error} */ (e).message}; nothing was installed`, { code: "bad_release", next: "try again later; if it keeps failing the release is broken" });
   }
-  say(dim(`  checked vyre.tgz against SHA256SUMS · ${dir}`));
+  say(dim(`  Download checked against the release checksums · ${dir}`));
 
   const prev = await keepCurrent(releases, current, home);
   if (!prev) say(beacon(`  no ${current} tarball to go back to`) + dim(" · a failed update restores the data but cannot reinstall this version"));
@@ -324,7 +324,7 @@ async function install(ctx, releases, target, channel) {
   const passphrase = writeInternalPassphrase(file);
   try { await ctx.backup({ root: home, file, passphrase }); }
   catch (e) { return fail(`the backup before updating did not finish: ${/** @type {Error} */ (e).message}; nothing was installed`, { code: "backup_failed" }); }
-  say(dim(`  backed up · ${file}`));
+  say(dim(`  Backed up your data · ${file}`));
 
   /** Inside the window: put the old code back, and the data too once the new vyred has run. */
   const undo = async (why, data) => {
@@ -362,7 +362,7 @@ async function install(ctx, releases, target, channel) {
   const removed = prune(home, target.version);
   const fresh = await whatsNew(ctx, current);
   if (json()) return emit({ updated: true, from: current, to: target.version, channel, backup: file, removed, new: fresh });
-  out(`  ${signal("updated")} ${current} → ${target.version} ${dim("· vyred answering")}`);
+  out(`  ${signal("updated")} ${current} → ${target.version} ${dim("· Vyre is running")}`);
   for (const t of fresh) out(`  ${bold("New in " + t.since)} ${t.text}`);
   out(dim(`  backup from before it: ${file}`));
   if (prev) out(dim(`  vyre update --rollback puts ${current} back`));
@@ -413,12 +413,12 @@ async function rollback(ctx) {
     catch (e) { return fail(String(/** @type {Error} */ (e).message), { code: "no_backup_key", next: "vyre update --rollback keeps the current data" }); }
     await ctx.stop();
     try { await ctx.restore({ root: home, file, passphrase, force: true }); }
-    catch (e) { return fail(`${prev.version} is installed but the backup did not go back: ${/** @type {Error} */ (e).message}`, { code: "restore_failed", next: "vyre up starts vyred on the current data" }); }
+    catch (e) { return fail(`${prev.version} is installed but your data did not go back: ${/** @type {Error} */ (e).message}`, { code: "restore_failed", next: "vyre up starts Vyre on your current data" }); }
   }
   const back = buildOf(prev.version, old.meta);
   const b = await ctx.bring(ctx.role, () => back);
   const h = b.ok ? await ctx.waitFor(prev.version, ctx.window, back.commit) : null;
-  if (!h) return fail(`${prev.version} is installed but vyred did not come back: ${b.note || "no answer on /v1/health"}`, { code: "vyred_down", next: "vyre up" });
+  if (!h) return fail(`${prev.version} is installed but Vyre did not come back: ${b.note || "no answer on /v1/health"}`, { code: "vyred_down", next: "vyre up" });
   if (json()) return emit({ rolledBack: true, from: current, to: prev.version, restoredData: data, backup: data ? file : null });
   say(`  ${signal("rolled back")} ${current} → ${prev.version} ${dim(data ? "· data restored from the backup" : "· kept the current data")}`);
   return EXIT.OK;

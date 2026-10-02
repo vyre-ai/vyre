@@ -281,7 +281,7 @@ test("install-box.sh: shellcheck is clean when available", t => {
 test("install-box.sh: dry run lists every change and makes none", t => {
   const r = runScript(t, ["--dry-run", "--yes"]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^dry run: nothing on this server will change$/m);
+  assert.match(r.stdout, /^Dry run: nothing on this server will change\.$/m);
   assert.ok(r.stdout.split("\n").includes("would download: https://vyre.run/box/SHA256SUMS"), r.stdout);
   for (const f of ["compose.yml", "compose.build.yml", "vyre.env.example", "vyre"]) {
     assert.ok(r.stdout.split("\n").includes(`would download and verify: https://vyre.run/box/${f}`), `${f}: ${r.stdout}`);
@@ -343,8 +343,8 @@ test("install-box.sh: a real run writes the stack, never overwrites .env, and st
   });
   assert.equal(r.status, 0, r.stderr + r.stdout);
   assert.equal(fs.readFileSync(path.join(r.dir, ".env"), "utf8"), mine);
-  assert.match(r.stdout, /\.env exists; leaving it as it is/);
-  assert.match(r.stdout, /does not list compose\.build\.yml/);
+  assert.match(r.stdout, /\.env already exists\. Leaving it as it is\./);
+  assert.match(r.stdout, /image will be downloaded, not built from source/);
   for (const f of ["compose.yml", "compose.build.yml", "vyre.env.example"]) {
     assert.ok(fs.existsSync(path.join(r.dir, f)), f);
   }
@@ -369,7 +369,7 @@ test("install-box.sh: DOCKER_GID is the socket's group, written fresh or added t
     fs.writeFileSync(path.join(box.dir, ".env"), mine);
   }, { VYRE_DOCKER_SOCK: s1, VYRE_NO_UP: "1" });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /adding DOCKER_GID/);
+  assert.match(r.stdout, /Adding DOCKER_GID/);
   assert.equal(fs.readFileSync(path.join(dir, ".env"), "utf8"), `${mine}\nDOCKER_GID=${gid}\n`);
   const kept = "COMPOSE_PROJECT_NAME=vyre\nDOCKER_GID=4242\n";
   const again = runScript(t, ["--yes", "--from", REPO], {}, box => {
@@ -400,7 +400,7 @@ test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks"
   const r = runScript(t, ["--dry-run", "--uninstall"]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^would run: docker compose -p vyre down --remove-orphans$/m);
-  assert.match(r.stdout, /volumes stay too/);
+  assert.match(r.stdout, /data is still here/);
 
   const kept = runScript(t, ["--dry-run", "--uninstall", "--purge"], {}, ({ dir, wrapper }) => {
     fs.mkdirSync(dir, { recursive: true });
@@ -431,7 +431,7 @@ test("install-box.sh: with no image to pull, it builds from a verified vyre.tgz 
   // A release with no signed image digests only installs when asked to build from source (fail closed).
   const r = runScript(t, ["--yes"], NO_IMAGE, () => {}, { VYRE_BUILD: "tgz" });
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /building the image from vyre\.tgz \(VYRE_BUILD=tgz\)/);
+  assert.match(r.stdout, /Building the image from vyre\.tgz \(VYRE_BUILD=tgz\)/);
   assert.equal(fs.readFileSync(path.join(r.dir, "src", "VERSION"), "utf8"), "0.3.0\n");
   assert.ok(fs.existsSync(path.join(r.dir, "src", "box", "Dockerfile")));
   assert.ok(!fs.existsSync(path.join(r.dir, "src.new")));
@@ -552,9 +552,9 @@ exit 0` };
 const E = "\u001b";
 const ONBOARDING = [
   "", `  vyred ${E}[32mrunning${E}[0m ${E}[2m· 0.3.0 · box${E}[0m`, "",
-  `  Open this link to set up Vyre ${E}[2m(it works once, for an hour)${E}[0m:`, "",
+  `  Open this link to set up Vyre. It works once, for an hour:`, "",
   `    ${E}[32mhttp://127.0.0.1:7300/onboard?t=abc123${E}[0m`, "",
-  "  This box is headless. On your own computer, run this first, then open the link there:",
+  "  This server has no screen. On your own computer, run this line first, then open the link there:",
   "    ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4", "",
 ].join("\n");
 
@@ -577,7 +577,7 @@ test("box/vyre: up --print-link prints only VYRE_LINK and VYRE_SSH", t => {
 });
 
 test("box/vyre: up --print-link after onboarding gives the address, and fails with no link", t => {
-  const done = linkBox(t, `  vyred is already running · 0.3.0 · box\n  your address: ${E}[32mhttps://alex.vyre.run${E}[0m\n`);
+  const done = linkBox(t, `  Vyre 0.3.0 is running.\n  your address: ${E}[32mhttps://alex.vyre.run${E}[0m\n`);
   const r = spawnSync("sh", [WRAPPER, "up", "--print-link"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: done.env });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, "VYRE_LINK=https://alex.vyre.run\n");
@@ -595,6 +595,6 @@ test("install-box.sh: --print-link ends with only the machine-readable lines on 
   const r = runScript(t, ["--yes", "--print-link", "--from", REPO], UP_PRINTS, () => {}, { VYRE_TEST_UP: up });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, "VYRE_LINK=http://127.0.0.1:7300/onboard?t=abc123\nVYRE_SSH=ssh -N -L 7300:127.0.0.1:7300 alex@203.0.113.4\n");
-  assert.match(r.stderr, /the stack goes in/);
-  assert.ok(r.calls.includes("docker compose exec -T -e SSH_CONNECTION= -e VYRE_HOST_USER=alex vyre vyre up"), r.calls.join("\n"));
+  assert.match(r.stderr, /Vyre's files go in/);
+  assert.ok(r.calls.includes("docker compose exec -T -e SSH_CONNECTION= -e VYRE_LINK_ONLY=1 -e VYRE_HOST_USER=alex vyre vyre up"), r.calls.join("\n"));
 });

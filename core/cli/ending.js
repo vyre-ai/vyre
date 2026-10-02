@@ -13,9 +13,9 @@ import { out } from "./style.js";
 export function ending({ address, assistant }) {
   return [
     // Ready means the address serves: without it, the phone and the Mac have nothing to reach.
-    address ? "  Vyre is ready." : "  Almost there: your box has no address yet.",
+    address ? "  Vyre is ready." : "  Almost there: your server has no address yet.",
     "",
-    `    your box        ${address || "not set up yet"}`,
+    `    your server     ${address || "not set up yet"}`,
     // Not a dead end: the one command that makes it.
     assistant ? `    your assistant  ${assistant}` : "    your assistant  none yet: vyre assistant <name>, e.g. vyre assistant Juno",
     "    next            vyre      (your projects and threads)",

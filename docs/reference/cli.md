@@ -20,7 +20,7 @@ In the order `vyre help` lists them.
 | Command | What it does |
 | --- | --- |
 | [`vyre needs`](#vyre-needs) | everything waiting on you: held drafts and open asks, newest first, each with the command that answers it |
-| [`vyre up`](#vyre-up) | start vyred and print the onboarding link, or this box's address |
+| [`vyre up`](#vyre-up) | start Vyre and print the setup link, or this server's address |
 | [`vyre down`](#vyre-down) | stop it |
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
 | [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
@@ -45,7 +45,7 @@ In the order `vyre help` lists them.
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
 | [`vyre gate`](#vyre-gate) | drafts held at the Gate: list, show one, approve (send), reject, or revise the words |
 | [`vyre memory`](#vyre-memory) | what memory holds, or everything about one thing |
-| [`vyre name`](#vyre-name) | this box's address: <you>.vyre.run |
+| [`vyre name`](#vyre-name) | this server's address: <you>.vyre.run |
 | [`vyre alarm`](#vyre-alarm) | set an alarm, list them, change, turn off or delete one |
 | [`vyre why`](#vyre-why) | the turns a fact came from |
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
@@ -104,7 +104,7 @@ from, and the command to act on it.
 
 ### vyre up
 
-Start vyred and print the onboarding link, or this box's address.
+Start Vyre and print the setup link, or this server's address.
 
 ```
 vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]
@@ -418,7 +418,7 @@ Change what it holds:
 
 ### vyre name
 
-This box's address: <you>.vyre.run.
+This server's address: <you>.vyre.run.
 
 ```
 vyre name [status|check <n>|claim <n>|ts.net|release] [--json]
@@ -852,15 +852,15 @@ These work, but `vyre help` leaves them out: they are for the box's service mana
 
 | Command | What it does |
 | --- | --- |
-| [`vyre owner`](#vyre-owner) | the one Tailscale login this box serves |
+| [`vyre owner`](#vyre-owner) | the one Tailscale login this server serves |
 | [`vyre home`](#vyre-home) | your projects, a new session, and your agents |
-| [`vyre restore`](#vyre-restore) | put a backup back (vyred must be stopped) |
-| [`vyre uninstall`](#vyre-uninstall) | remove the systemd units (the data stays unless --purge) |
-| [`vyre daemon`](#vyre-daemon) | run vyred in the foreground (what systemd runs) |
+| [`vyre restore`](#vyre-restore) | put a backup back (Vyre must be stopped) |
+| [`vyre uninstall`](#vyre-uninstall) | remove Vyre's system service (your data stays unless --purge) |
+| [`vyre daemon`](#vyre-daemon) | run Vyre in the foreground (what the system service runs) |
 
 ### vyre owner
 
-The one Tailscale login this box serves.
+The one Tailscale login this server serves.
 
 ```
 vyre owner [<tailscale-login>]
@@ -876,7 +876,7 @@ vyre home
 
 ### vyre restore
 
-Put a backup back (vyred must be stopped).
+Put a backup back (Vyre must be stopped).
 
 ```
 vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]
@@ -884,7 +884,7 @@ vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to 
 
 ### vyre uninstall
 
-Remove the systemd units (the data stays unless --purge).
+Remove Vyre's system service (your data stays unless --purge).
 
 ```
 vyre uninstall --system [--purge] [--dry-run]
@@ -892,7 +892,7 @@ vyre uninstall --system [--purge] [--dry-run]
 
 ### vyre daemon
 
-Run vyred in the foreground (what systemd runs).
+Run Vyre in the foreground (what the system service runs).
 
 ```
 vyre daemon

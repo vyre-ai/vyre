@@ -369,7 +369,7 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   assert.ok(!fs.existsSync(path.join(m.env.VYRE_LAUNCHAGENTS, "run.vyre.server.plist")), "no LaunchAgent: launchd's system domain runs it");
   assert.ok(!/launchctl bootstrap/.test(m.calls()), "the script never bootstraps; the root installer does");
   assert.match(r.stdout, /vyre-core is up/);
-  assert.match(r.stdout, /starts when this Mac boots, with nobody signed in/);
+  assert.match(r.stdout, /starts when this Mac starts, even before anyone signs in/);
   // The enrolment code is read and dropped: never on screen, never in the env file, never in a call.
   assert.ok(!(r.stdout + r.stderr).includes(ENROL) && !m.calls().includes(ENROL));
   assert.ok(!fs.readFileSync(path.join(m.env.VYRE_HOME, "vyre.env"), "utf8").includes(ENROL));
@@ -380,7 +380,7 @@ test("install-mac-server.sh: a failing root installer stops the script, says so,
   const m = sys(t, { fail: true });
   const r = run(m.env, ["--yes", "--system"]);
   assert.notEqual(r.status, 0);
-  assert.match(r.stderr, /the root installer failed/);
+  assert.match(r.stderr, /the system service installer failed/);
   assert.ok(!/vyre-core is up/.test(r.stdout));
 });
 

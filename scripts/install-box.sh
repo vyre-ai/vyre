@@ -119,7 +119,7 @@ hello() {
   else
     say "  Vyre${v:+ $v}"
   fi
-  say "  Let's set up your server. A few minutes, and nothing changes without asking."
+  say "  Installing Vyre on this server. This takes about 3 minutes."
   say ""
 }
 
@@ -134,13 +134,8 @@ step() {
 # done_step TEXT: the step finished, with a check mark (or "ok" in plain text).
 done_step() { say "  $SIGNAL$OK$RESET $1"; mbx_send "done: $1"; }
 
-# WAITS: one quiet line for the one real wait in this installer (Docker's own script). Picked by
-# pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
-# never invented data, never a name or anything a person typed.
-WAITS="this part is Docker's own installer, not ours
-nothing is stuck: it's just quiet before apt gets going
-the next lines on screen are curl's, not ours
-a fine moment for a coffee"
+# WAITS: one line for the one real wait in this installer (Docker's own script, which says nothing for a minute or two).
+WAITS="Installing Docker. This takes a minute or two."
 
 wait_line() {
   n=$(printf '%s\n' "$WAITS" | wc -l)
@@ -163,27 +158,22 @@ finish() {
   say ""
   rule
   if [ "$DRY" = 1 ]; then
-    say "  $BOLD${BONE}That's the whole plan.$RESET Nothing on this server changed."
-    say "  Run it again without --dry-run when you're ready."
+    say "  $BOLD${BONE}Dry run finished.$RESET Nothing on this server changed."
+    say "  Run it again without --dry-run to install Vyre."
   elif [ "${VYRE_NO_UP:-0}" = 1 ]; then
-    say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
+    say "  $BOLD${BONE}Installed.$RESET Start Vyre with: ${SIGNAL}vyre up$RESET"
   else
-    say "  $BOLD${BONE}Your server is ready.$RESET"
+    say "  $BOLD${BONE}Vyre is installed and running.$RESET"
     if [ "$LINK_ONLY" = 1 ]; then
-      say "  The setup link went to stdout for the program that asked."
+      say "  The setup link was handed to the program that ran this installer."
     else
       if [ -n "$CODE" ]; then
-        say "  Done. Back to your browser."
+        say "  Done. Go back to the vyre.run/setup tab to finish."
       else
-        say "  Next: open the link above. If it came with an ssh -L line,"
-        say "  run that on your own computer first, then open the link there."
+        say "  Next: open the setup link above. If a line starting with ssh came with it,"
+        say "  run that line on your own computer first, then open the link there."
       fi
     fi
-  fi
-  say ""
-  say "  Go do your best work. We'll keep the thread."
-  if [ "$COLOR" = 1 ] && [ "$(date +%u 2>/dev/null || true)" = 5 ]; then
-    say "  ${ASH}Nice way to end the week.$RESET"
   fi
   say ""
 }
@@ -251,7 +241,7 @@ compose_ok() {
 need_docker() {
   cmd="curl -fsSL https://get.docker.com | sh"
   if ! command -v docker >/dev/null 2>&1; then
-    if ask "Docker is not installed. Install it now with: $cmd ?"; then
+    if ask "Docker is not installed. Install it now? This runs: $cmd"; then
       # The one real silent gap in this installer: Docker's own script takes a minute or two
       # before it says anything. One quiet line so it doesn't look stuck; --dry-run never gets
       # here for real, so it stays out of that output.
@@ -259,7 +249,7 @@ need_docker() {
       priv sh -c "$cmd"
       [ "$DRY" = 1 ] && return 0
     else
-      say "Vyre runs in Docker. Install it with:"
+      say "Vyre needs Docker. Install it with:"
       say "  $cmd"
       say "then run this installer again."
       exit 1
@@ -285,8 +275,8 @@ need_docker() {
 # Tailscale runs in its own container with kernel networking, which needs the TUN device.
 need_tun() {
   [ -c "$TUN" ] && return 0
-  say "This server has no /dev/net/tun, which the Tailscale container needs."
-  say "Try: sudo modprobe tun. On a VPS or LXC container, enable TUN in the provider's panel."
+  say "This server has no /dev/net/tun, which Vyre needs for Tailscale."
+  say "Try: sudo modprobe tun. On a VPS or LXC container, turn on TUN in the provider's panel."
   exit 1
 }
 
@@ -294,7 +284,7 @@ need_tun() {
 fetch() {
   if command -v curl >/dev/null 2>&1; then curl -fsSL "$BASE$1" -o "$2"
   elif command -v wget >/dev/null 2>&1; then wget -qO "$2" "$BASE$1"
-  else die "need curl or wget to download $BASE$1"
+  else die "Vyre needs curl or wget to download $BASE$1. Install one and run this again."
   fi
 }
 
@@ -311,7 +301,7 @@ mine() {
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
-  else die "need sha256sum or shasum to verify downloads"
+  else die "Vyre needs sha256sum or shasum to check its downloads. Install one and run this again."
   fi
 }
 
@@ -340,13 +330,13 @@ pick_build() {
   [ -n "$FROM" ] && return 0
   if [ "${VYRE_BUILD:-}" = tgz ]; then
     TGZ=1
-    say "building the image from vyre.tgz (VYRE_BUILD=tgz)"
+    say "Building the image from vyre.tgz (VYRE_BUILD=tgz)."
   elif [ -n "$BOX_REF" ]; then
     # A release that names its image by digest is pulled by that digest, never built or pulled by tag.
     :
   elif ! dk_quiet manifest inspect "$IMAGE" >/dev/null 2>&1; then
     TGZ=1
-    say "cannot pull $IMAGE; building it from vyre.tgz instead"
+    say "Could not download $IMAGE. Building it from vyre.tgz instead."
   fi
 }
 
@@ -391,9 +381,9 @@ mkdir_owned() {
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
   if [ -n "$FROM" ]; then
-    done_step "using the box files in $FROM"
-    step "Laying out $DIR"
-    say "the stack goes in $DIR, owned by $OWNER"
+    done_step "Using the files in $FROM"
+    step "Setting up Vyre"
+    say "Vyre's files go in $DIR."
     mkdir_owned "$DIR"
     put "$FROM/box/compose.yml" "$DIR/compose.yml" 0644
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
@@ -408,7 +398,7 @@ write_stack() {
       say "would download: $BASE""SHA256SUMS"
       for f in $files; do say "would download and verify: $BASE$f"; done
       say "would read release.json and, when it names image digests, check each with cosign and pull it by digest"
-      done_step "nothing downloaded (dry run)"
+      done_step "Nothing downloaded (dry run)"
     else
       get_sums
       if awk '$2 == "release.json" || $2 == "*release.json" { f = 1 } END { exit !f }' "$TMP/SHA256SUMS"; then
@@ -420,11 +410,11 @@ write_stack() {
       pick_build
       [ "$TGZ" = 1 ] && files="$files vyre.tgz"
       for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
-      done_step "every file matches SHA256SUMS"
+      done_step "Downloads match the release checksums"
       verify_images
     fi
-    step "Laying out $DIR"
-    say "the stack goes in $DIR, owned by $OWNER"
+    step "Setting up Vyre"
+    say "Vyre's files go in $DIR."
     # Only once everything has verified, so a failed run leaves no empty stack folder behind.
     mkdir_owned "$DIR"
     for f in compose.yml compose.build.yml vyre.env.example; do
@@ -449,7 +439,7 @@ write_env() {
   gid=$(docker_gid)
   if [ -e "$DIR/.env" ]; then
     if [ -n "$gid" ] && ! grep -q '^DOCKER_GID=' "$DIR/.env" 2>/dev/null; then
-      say "$DIR/.env exists; adding DOCKER_GID=$gid and leaving the rest as it is"
+      say "$DIR/.env already exists. Adding DOCKER_GID=$gid and leaving the rest as it is."
       TMP=${TMP:-$(mktemp -d)}
       # A read, so it runs even in a dry run; sudo only when the .env is not ours to read.
       # sudo reads the root-only file; the copy is written as this user on purpose.
@@ -459,10 +449,10 @@ write_env() {
       printf 'DOCKER_GID=%s\n' "$gid" >>"$TMP/env"
       put "$TMP/env" "$DIR/.env" 0600
     else
-      say "$DIR/.env exists; leaving it as it is"
+      say "$DIR/.env already exists. Leaving it as it is."
     fi
     if { [ -n "$FROM" ] || [ "$TGZ" = 1 ]; } && ! grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
-      say "  (it does not list compose.build.yml, so the image is pulled, not built from source)"
+      say "  The image will be downloaded, not built from source."
     fi
     return 0
   fi
@@ -493,8 +483,8 @@ write_env() {
 # /usr/local/bin/vyre: ours, or ask before replacing whatever is there.
 install_wrapper() {
   if [ -e "$WRAPPER" ] && ! grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
-    ask "$WRAPPER exists and is not the box wrapper. Replace it?" \
-      || die "left $WRAPPER alone. The stack is in $DIR; move that file aside and run this again."
+    ask "$WRAPPER exists and is not Vyre's command. Replace it?" \
+      || die "left $WRAPPER alone. Move that file aside and run this again. Vyre's files are in $DIR."
   fi
   [ -d "$(dirname "$WRAPPER")" ] || priv mkdir -p "$(dirname "$WRAPPER")"
   priv install -m 0755 "$WRAPPER_SRC" "$WRAPPER"
@@ -502,7 +492,7 @@ install_wrapper() {
   # `vyre update` when vyred drops its request (box/vyre, `vyre updater`). No systemd, or a wrapper somewhere else (a test):
   # nothing is written, and an update is the `vyre update` command.
   if [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ]; then
-    priv env "VYRE_DIR=$DIR" "$WRAPPER" updater install || say "note: could not set up updates from Settings; vyre update still works"
+    priv env "VYRE_DIR=$DIR" "$WRAPPER" updater install || say "Updates from the app are not set up on this server. Run vyre update to update."
   fi
 }
 
@@ -517,8 +507,7 @@ start() {
   fi
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
-    say "Your account cannot reach Docker, so the vyre command needs sudo: sudo vyre up."
-    say "Adding yourself to the docker group avoids that, and makes your account root-equivalent."
+    say "Use sudo for Vyre commands on this server, for example: sudo vyre up"
   fi
 }
 
@@ -628,7 +617,7 @@ intake_code() {
   fi
   [ -n "$CODE" ] || return 0
   printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9_-]{43}$' \
-    || die "that setup code does not look right. Copy the install line from your browser again."
+    || die "that setup code does not look right. Copy the install line from vyre.run/setup again."
 }
 
 # write_code: VYRE_SETUP_CODE into DIR/vyre.env (0600), which the vyre service already reads, with the time it
@@ -657,7 +646,7 @@ one_install() {
   command -v docker >/dev/null 2>&1 || return 0
   up=$(dk_quiet compose -p vyre ps -q 2>/dev/null | head -n 1 || true)
   [ -n "$up" ] || return 0
-  say "Vyre is already running in $DIR, so this installer leaves it alone."
+  say "Vyre is already installed in $DIR, so this installer leaves it alone."
   say "  Update it:    vyre update"
   say "  Start over:   vyre uninstall, then run this line again"
   exit 0
@@ -706,7 +695,7 @@ read_release() {
   BOX_REF=$(printf '%s' "$j" | sed -n 's/.*"box": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
   COMPUTER_REF=$(printf '%s' "$j" | sed -n 's/.*"computer": *{[^}]*"ref": *"\([^"]*\)".*/\1/p')
   if [ -z "$BOX_REF" ] && [ "${VYRE_BUILD:-}" != tgz ]; then
-    die "release.json names no image digest for the box, so it cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
+    die "release.json names no image digest for Vyre, so it cannot be verified. Nothing was installed. (VYRE_BUILD=tgz builds from source instead.)"
   fi
   # Every image line of the compose file is exactly `image: <name>@sha256:<64 hex>` (no variable a .env can replace, no comment trick, no
   # tag), and the images release.json names are among those lines, whole.
@@ -734,7 +723,7 @@ read_release() {
 # pulled by digest. Fail closed, and never skippable.
 verify_images() {
   [ -n "$BOX_REF" ] || return 0
-  say "checking the image signature"
+  say "Checking Vyre's signature on the images."
   for ref in $BOX_REF $COMPUTER_REF; do
     if ! dk docker run --rm "$COSIGN_IMAGE" verify --certificate-identity-regexp "$COSIGN_ID" \
       --certificate-oidc-issuer "$COSIGN_ISSUER" "$ref" >/dev/null 2>"$TMP/cosign.err"; then
@@ -743,7 +732,7 @@ verify_images() {
     fi
   done
   dk docker pull -q "$BOX_REF" >/dev/null
-  done_step "signed by Vyre's release workflow, and pulled by digest"
+  done_step "Images checked against Vyre's signature and downloaded"
 }
 
 uninstall() {
@@ -765,26 +754,26 @@ uninstall() {
   fi
   if [ -e "$WRAPPER" ]; then
     if grep -q "$MARK" "$WRAPPER" 2>/dev/null; then priv rm -f "$WRAPPER"
-    else say "$WRAPPER is not the server wrapper; leaving it"
+    else say "$WRAPPER is not Vyre's command, so it was left alone."
     fi
   fi
   if [ "$PURGE" = 1 ]; then
     vols=$(dk_quiet volume ls -q --filter label=run.vyre=1 --filter label=com.docker.compose.project=vyre)
     if [ -z "$vols" ]; then
-      say "no Vyre volumes to delete"
+      say "There is no Vyre data to delete."
     else
-      say "These volumes hold the vault, Claude's sign-in, the store and /work:"
+      say "This is Vyre's data: your vault, AI sign-ins, memory and projects:"
       for v in $vols; do say "  $v"; done
-      if ask "Delete them for good?"; then
+      if ask "Delete this data for good?"; then
         # shellcheck disable=SC2086 # one volume name per word
         dk docker volume rm $vols
       else
-        say "kept the volumes"
+        say "Your data was kept."
       fi
     fi
   fi
-  say "Vyre is off this server. $DIR stays (with its .env); remove it with: sudo rm -rf $DIR"
-  [ "$PURGE" = 1 ] || say "The volumes stay too, so a reinstall picks up where it left off."
+  say "Vyre is removed from this server. $DIR is still here; delete it with: sudo rm -rf $DIR"
+  [ "$PURGE" = 1 ] || say "Your data is still here, so a new install picks up where this one stopped."
 }
 
 # dk_quiet ARGS...: a read-only docker query, run even in a dry run.
@@ -843,10 +832,10 @@ main() {
   intake_code
   early_one_install
   [ "$DRY" = 1 ] || mbx_init
-  [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
+  [ "$DRY" = 1 ] && say "Dry run: nothing on this server will change."
 
   if [ "$UNINSTALL" = 1 ]; then
-    command -v docker >/dev/null 2>&1 || die "Docker is not installed, so there is no stack to stop"
+    command -v docker >/dev/null 2>&1 || die "Docker is not installed, so there is no Vyre to remove"
     need_docker
     uninstall
     exit 0
@@ -859,23 +848,23 @@ main() {
   need_tun
   docker_flavor
   one_install
-  if command -v docker >/dev/null 2>&1; then done_step "Docker, Compose and the TUN device are there"
+  if command -v docker >/dev/null 2>&1; then done_step "Docker is ready"
   else done_step "Docker would be installed first (dry run)"
   fi
-  if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
+  if [ -n "$FROM" ]; then step "Reading Vyre's files"; else step "Downloading and checking Vyre"; fi
   write_stack
   write_env
   write_code
-  if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
+  if [ "$DRY" = 1 ]; then done_step "Nothing written (dry run)"; else done_step "Vyre's files are in $DIR"; fi
   step "Installing the vyre command"
   install_wrapper
-  if [ "$DRY" = 1 ]; then done_step "nothing installed (dry run)"; else done_step "vyre is at $WRAPPER"; fi
+  if [ "$DRY" = 1 ]; then done_step "Nothing installed (dry run)"; else done_step "The vyre command is at $WRAPPER"; fi
   # VYRE_NO_UP=1: everything but starting it, for `vyre box move`, which streams the volumes in first.
-  if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "installed in $DIR; not started (VYRE_NO_UP=1). Start it with: vyre up"
+  if [ "${VYRE_NO_UP:-0}" = 1 ]; then say "Installed in $DIR, not started (VYRE_NO_UP=1). Start it with: vyre up"
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else done_step "Vyre is up"; fi
+    if [ "$DRY" = 1 ]; then done_step "Nothing started (dry run)"; else done_step "Vyre is running"; fi
     show_words
   fi
   finish

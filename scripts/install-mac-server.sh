@@ -214,7 +214,7 @@ install_app() {
     get vyre.tgz
     tar -xzf "$TMP/vyre.tgz" -C "$APP.new" --strip-components=1 || die "vyre.tgz did not unpack"
   fi
-  [ -f "$APP.new/core/daemon/main.js" ] || die "the download has no vyred in it; nothing was installed"
+  [ -f "$APP.new/core/daemon/main.js" ] || die "the download has no Vyre program in it; nothing was installed"
   [ "$SYSTEM" = 0 ] || [ -f "$APP.new/core/vyre-core/install-main.js" ] || die "the download has no root installer in it; nothing was installed"
   rm -rf "$APP.old"
   [ ! -d "$APP" ] || mv "$APP" "$APP.old"
@@ -385,7 +385,7 @@ setup_colima() {
 # setup_gh: the gh CLI. One already on PATH is used; else the pinned release zip (never Homebrew), checked against its
 # sum, into Vyre's own bin. If none works it says so and goes on: GitHub sign-in waits for gh.
 setup_gh() {
-  if [ "$DRY" = 1 ]; then say "would make sure the gh CLI is installed (already on PATH, or a pinned, checksummed download into Vyre's own bin) and give vyred its path"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would make sure the gh CLI is installed (already on PATH, or a pinned, checksummed download into Vyre's own bin) and tell Vyre where it is"; return 0; fi
   g=$(command -v gh 2>/dev/null || true)
   if [ -z "$g" ]; then
     case "$UNAME_M" in
@@ -458,7 +458,7 @@ export VYRE_HOME="$VHOME"
 exec "$WNODE" "$APP/bin/vyre" "\$@"
 EOF
   chmod 755 "$BIN/vyre-serve" "$BIN/vyre"
-  step "the service wrapper is in $BIN"
+  step "Vyre's service script is in $BIN"
 }
 
 write_plist() {
@@ -482,16 +482,16 @@ EOF
 }
 
 start_service() {
-  if [ "$DRY" = 1 ]; then say "would start it with launchctl and wait for vyred to answer"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would start it with launchctl and wait for Vyre to answer"; return 0; fi
   uid=$(id -u)
   "$LAUNCHCTL" bootout "gui/$uid/$LABEL" >/dev/null 2>&1 || true
-  "$LAUNCHCTL" bootstrap "gui/$uid" "$AGENTS_DIR/$LABEL.plist" || die "launchctl could not start Vyre"
+  "$LAUNCHCTL" bootstrap "gui/$uid" "$AGENTS_DIR/$LABEL.plist" || die "macOS could not start Vyre (launchctl failed)"
   i=0
   while [ "$i" -lt 60 ]; do
-    if [ -f "$VHOME/vyred.pid" ] && kill -0 "$(cat "$VHOME/vyred.pid" 2>/dev/null)" 2>/dev/null; then step "vyred is running"; return 0; fi
+    if [ -f "$VHOME/vyred.pid" ] && kill -0 "$(cat "$VHOME/vyred.pid" 2>/dev/null)" 2>/dev/null; then step "Vyre is running"; return 0; fi
     sleep 1; i=$((i + 1))
   done
-  die "vyred did not start; its output is in $VHOME/logs/vyred.out"
+  die "Vyre did not start. Its log is in $VHOME/logs/vyred.out"
 }
 
 # system_install: the one sudo (ROOT_SH above). The root installer's stdout ends with VYRE_CORE_ENROL=<code>. It is
@@ -538,8 +538,8 @@ system_install() {
   out=$("$SUDO" /bin/sh -c "$ROOT_SH" vyre-root "$NODE_TGZ_SHA" "$TMP/release" "$TMP/node.tgz" "$RELEASE_KEY" "$VERIFY_JS" "$@" && printf 'rc:0' || printf 'rc:%s' "$?")
   rc=${out##*rc:}
   out=${out%rc:*}
-  [ "$rc" = 0 ] || { out=""; die "the root installer failed (exit $rc); its message is above"; }
-  case "$out" in *VYRE_CORE_ENROL=*) ;; *) out=""; die "the root installer did not finish; nothing was enrolled" ;; esac
+  [ "$rc" = 0 ] || { out=""; die "the system service installer failed (exit $rc). Its message is above."; }
+  case "$out" in *VYRE_CORE_ENROL=*) ;; *) out=""; die "the system service installer did not finish, so nothing was set up" ;; esac
   printf '%s\n' "$out" | grep -v '^VYRE_CORE_ENROL=' || true
   out=""
   step "the system service is installed"
@@ -548,10 +548,10 @@ system_install() {
 # wait_system: vyred answers (its pid file, as in login-only) and vyre-core's socket file exists
 # (the path is in core.json; it is checked, never connected to).
 wait_system() {
-  if [ "$DRY" = 1 ]; then say "would wait for vyred and for vyre-core's socket named in $CORE_BASE/core.json"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would wait for Vyre and its system service (its socket is named in $CORE_BASE/core.json)"; return 0; fi
   i=0; pid_ok=0; sock_ok=0
   while [ "$i" -lt 90 ]; do
-    if [ "$pid_ok" = 0 ] && [ -f "$VHOME/vyred.pid" ] && kill -0 "$(cat "$VHOME/vyred.pid" 2>/dev/null)" 2>/dev/null; then pid_ok=1; step "vyred is running"; fi
+    if [ "$pid_ok" = 0 ] && [ -f "$VHOME/vyred.pid" ] && kill -0 "$(cat "$VHOME/vyred.pid" 2>/dev/null)" 2>/dev/null; then pid_ok=1; step "Vyre is running"; fi
     if [ "$sock_ok" = 0 ] && [ -f "$CORE_BASE/core.json" ]; then
       sock=$(sed -n 's/.*"socket" *: *"\([^"]*\)".*/\1/p' "$CORE_BASE/core.json" | head -n 1)
       if [ -n "$sock" ] && [ -e "$sock" ]; then sock_ok=1; step "vyre-core is up"; fi
@@ -559,8 +559,8 @@ wait_system() {
     [ "$pid_ok" = 1 ] && [ "$sock_ok" = 1 ] && return 0
     sleep 1; i=$((i + 1))
   done
-  [ "$pid_ok" = 1 ] || die "vyred did not start; its output is in $VHOME/logs"
-  die "vyre-core did not come up: its socket named in $CORE_BASE/core.json is missing"
+  [ "$pid_ok" = 1 ] || die "Vyre did not start. Its logs are in $VHOME/logs"
+  die "Vyre's system service did not start. Its socket is missing; see $CORE_BASE/core.json"
 }
 
 # system_uninstall: the root installer from the installed tree, with its own node.
@@ -572,8 +572,8 @@ system_uninstall() {
   [ -x "$rn" ] || rn=$(command -v node || true)
   [ -n "$rn" ] || die "no Node to run the root installer with"
   say "Vyre now asks for your Mac password once, to remove its system service."
-  if [ "$1" = 1 ]; then "$SUDO" "$rn" "$im" uninstall --purge || die "the root uninstaller failed"
-  else "$SUDO" "$rn" "$im" uninstall || die "the root uninstaller failed"; fi
+  if [ "$1" = 1 ]; then "$SUDO" "$rn" "$im" uninstall --purge || die "the system service uninstaller failed"
+  else "$SUDO" "$rn" "$im" uninstall || die "the system service uninstaller failed"; fi
   step "the system service is removed"
 }
 
@@ -620,7 +620,7 @@ main() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   if [ "$UNINSTALL" = 1 ]; then uninstall; return 0; fi
-  say "Installing Vyre on this Mac as your server."
+  say "Installing Vyre on this Mac. This takes about 3 minutes."
   preflight
   install_app
   setup_colima
@@ -630,13 +630,13 @@ main() {
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
-    say "Vyre is running. Back in your browser, it will find this Mac."
-    say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
+    say "Vyre is running. Go back to the vyre.run/setup tab to finish."
+    say "Vyre starts when this Mac starts, even before anyone signs in, and keeps this Mac awake while it runs. The command is $BIN/vyre"
   else
     write_plist
     start_service
-    say "Vyre is running. Back in your browser, it will find this Mac."
-    say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
+    say "Vyre is running. Go back to the vyre.run/setup tab to finish."
+    say "Vyre starts when you sign in to this Mac and keeps it awake while it runs. The command is $BIN/vyre"
   fi
 }
 

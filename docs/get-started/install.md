@@ -68,10 +68,10 @@ The installer asks for `sudo` itself, only for what needs it: Docker, the `/srv/
 It works through five steps, and the page shows each one as it happens:
 
 1. **Checking Docker**: Docker with Compose 2.24 or newer, and the TUN device.
-2. **Downloading and verifying**: every file is checked against a published list of checksums,
+2. **Downloading and checking Vyre**: every file is checked against a published list of checksums,
    and the Vyre image's signature is checked against Vyre's release workflow before the image is
    pulled by its digest. A failed check stops the install, and nothing skips it.
-3. **Laying out /srv/vyre**: the stack goes in that folder, owned by your account.
+3. **Setting up /srv/vyre**: Vyre's files go in that folder, owned by your account.
 4. **Installing the vyre command**: `/usr/local/bin/vyre`.
 5. **Starting Vyre**: two containers start, one for Tailscale and one for Vyre.
 
@@ -82,7 +82,7 @@ Near the end the terminal prints four words:
   They should match the four on your screen.
 ```
 
-and finishes with `Your server is ready.` and `Done. Back to your browser.` The four words are
+and finishes with `Vyre is installed and running.` and `Done. Go back to the vyre.run/setup tab to finish.` The four words are
 the ones on your screen in step 3. Yours will differ.
 
 > [!SNAG] "Another server already used this code. Your browser is not connected to this server."
@@ -114,8 +114,8 @@ Paste the line in Terminal on that Mac, as yourself, not root. The page says it 
 password once, to set Vyre up as a service that starts when the Mac does, with nobody signed in.
 The installer downloads a Node and checks it against a pinned checksum, installs Colima (the
 small Linux machine your agents' computers run in) and the GitHub command line tool, and checks
-the Vyre release's signature before it installs anything. It ends with `Vyre is running. Back in
-your browser, it will find this Mac.`
+the Vyre release's signature before it installs anything. It ends with `Vyre is running. Go back to
+the vyre.run/setup tab to finish.`
 
 After a power cut: with FileVault on, the Mac waits for someone to unlock it at the screen, and
 Vyre is off until then. With FileVault off, anyone who takes the Mac can read Vyre's files,
@@ -289,7 +289,7 @@ yet` before that):
 ```output
   Vyre is ready.
 
-    your box        https://alex.vyre.run
+    your server     https://alex.vyre.run
     your assistant  juno
     next            vyre      (your projects and threads)
 ```
@@ -431,7 +431,7 @@ vyre up --connect https://alex.vyre.run
 
 It asks the server to pair this Mac and shows the code to approve in the Deck, as in step 10.
 Plain `vyre up` looks for a Vyre server on the Mac's tailnet and takes the one it finds, with a
-line such as `found your box on the tailnet: https://vyre.tail1234.ts.net`; with several it asks
+line such as `Found your server on your tailnet: https://vyre.tail1234.ts.net`; with several it asks
 which one. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
 session (`vyre statusline install` does it later). Pick `3` at the question `vyre up` asks, if you
 would rather type the address there.
@@ -444,7 +444,7 @@ vyre up --box
 ```
 
 ```output
-  Open this link to set up Vyre (it works once, for an hour):
+  Open this link to set up Vyre. It works once, for an hour:
 
     http://127.0.0.1:7300/onboard?t=...
 ```
@@ -464,11 +464,11 @@ On a terminal it asks `Paste the setup code from your browser (Enter to skip):`.
 ends with the server's own setup link:
 
 ```output
-  Open this link to set up Vyre (it works once, for an hour):
+  Open this link to set up Vyre. It works once, for an hour:
 
     http://127.0.0.1:7300/onboard?t=...
 
-  This box is headless. On your own computer, run this first, then open the link there:
+  This server has no screen. On your own computer, run this line first, then open the link there:
     ssh -N -L 7300:127.0.0.1:7300 alex@192.0.2.10
 ```
 
@@ -494,11 +494,11 @@ install Vyre on the Mac as in [step 10](#10-put-the-lumen-on-your-mac).
 > the server, run `vyre up`. Either prints a fresh link, and the page keeps every step you
 > already finished.
 
-> [!SNAG] "Almost there: your box has no address yet."
+> [!SNAG] "Almost there: your server has no address yet."
 > You skipped the address screen on the SSH path, so there is nothing for your Mac or phone to
 > reach yet. Run `vyre box add alex@192.0.2.10` again and finish **Your address** in the browser.
 
-> [!SNAG] your box https://alex.vyre.run did not answer from here
+> [!SNAG] your server https://alex.vyre.run did not answer from here
 > The reason follows on the same line. "this Mac is not on the tailnet": sign in to Tailscale on
 > the Mac. "the box is offline or unreachable": on the server, run `vyre status`.
 

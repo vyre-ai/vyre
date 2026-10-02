@@ -110,7 +110,9 @@ test("install-box.sh v2: with a code the terminal ends on the plain line", t => 
   const b = box(t);
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Done\. Back to your browser\./);
+  assert.match(r.stdout, /Done\. Go back to the vyre\.run\/setup tab to finish\./);
+  assert.doesNotMatch(r.stdout, /127\.0\.0\.1|ssh -|Open this link|Next: open the setup link/, "a web-started install prints one next step: no local link, no tunnel (#11)");
+  assert.doesNotMatch(r.stdout, /best work|keep the thread|end the week/, "no sign-off");
 });
 
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
@@ -128,7 +130,7 @@ test("install-box.sh v2: a release with digests is cosign-checked against the wo
   assert.ok(calls.includes(`docker pull -q ${DIGEST}`), calls);
   assert.ok(!calls.includes("manifest inspect"), "no tag lookup when the release names a digest");
   assert.ok(!fs.existsSync(path.join(b.dir, "vyre.tgz")) && !fs.existsSync(path.join(b.dir, "src")), "nothing built from source");
-  assert.match(r.stdout, /signed by Vyre's release workflow/);
+  assert.match(r.stdout, /Images checked against Vyre's signature/);
 });
 
 test("install-box.sh v2: a failed signature check stops the install before anything is laid out", t => {
@@ -218,7 +220,7 @@ test("install-box.sh v2: a running install is updated, never replaced", t => {
   fs.writeFileSync(path.join(b.dir, "compose.yml"), "# mine\n");
   const r = run(b.env, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /already running/);
+  assert.match(r.stdout, /already installed/);
   assert.match(r.stdout, /vyre update/);
   assert.equal(fs.readFileSync(path.join(b.dir, "compose.yml"), "utf8"), "# mine\n", "compose.yml untouched");
   assert.ok(!fs.existsSync(b.env.VYRE_WRAPPER), "no wrapper written");
@@ -260,7 +262,7 @@ test("vyre uninstall: with no answer the data is kept, every volume is listed in
   for (const v of VOLS) assert.ok(r.stdout.includes(v), `${v} is named:\n${r.stdout}`);
   assert.match(r.stdout, /vyre_vyre-accounts: each AI account's sign-in/);
   assert.match(r.stdout, /vyre_mystery: Vyre data/, "an unknown volume is still listed");
-  assert.match(r.stdout, /your data is kept/);
+  assert.match(r.stdout, /Your data is kept\./);
   const calls = b.calls();
   assert.ok(!calls.includes("volume rm"), calls);
   assert.ok(calls.includes("rm -f c1 c2"), "agents' computers are removed");
@@ -276,7 +278,7 @@ test("vyre uninstall --delete-data deletes every volume in one step, with no sec
   const r = uninstall(b, ["--delete-data"]);
   assert.equal(r.status, 0, r.stderr);
   assert.ok(b.calls().includes(`volume rm ${VOLS.join(" ")}`), b.calls());
-  assert.match(r.stdout, /your data is deleted/);
+  assert.match(r.stdout, /Your data is deleted\./);
 });
 
 test("vyre uninstall --keep-data and a bad option", t => {
@@ -340,7 +342,7 @@ test("install-box.sh v2: a second paste of the same code on a running install po
   fs.writeFileSync(path.join(b.base, "bin", "docker"), `#!/bin/sh\ncase "$1 $2" in "compose version") echo 2.29.1 ;; "compose -p") echo abc123 ;; esac\nexit 0\n`, { mode: 0o755 });
   const second = await runAsync({ ...b.env, VYRE_CODE: code, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
   assert.equal(second.status, 0, second.stdout + second.stderr);
-  assert.match(second.stdout, /already running/);
+  assert.match(second.stdout, /already installed/);
   const after = (await (await mailboxReader({ relay: base, secret, key, wait: 0 })).next(0)).length;
   assert.equal(after, before, "the second paste wrote no lines, so the page's reader stays in order");
 });
@@ -371,7 +373,7 @@ test("install-box.sh v2: the check words come from the box, show on the terminal
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Check words: lantern quiet river oak/);
   assert.match(r.stdout, /They should match the four on your screen\./);
-  assert.ok(r.stdout.indexOf("Check words") < r.stdout.indexOf("Done. Back to your browser."), "words, then the plain last line");
+  assert.ok(r.stdout.indexOf("Check words") < r.stdout.indexOf("Done. Go back to the vyre.run/setup tab to finish."), "words, then the plain last line");
   assert.ok(!b.calls().includes("lantern"), "the words are not sent anywhere");
 });
 

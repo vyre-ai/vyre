@@ -104,7 +104,7 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
   assert.match(out, new RegExp(`reaching ${TARGET}`));
   assert.match(out, /Docker Compose 2\.29\.0/);
   assert.match(out, new RegExp(`Vyre will, on ${TARGET}:`));
-  assert.match(out, /the stack goes in /, "the installer's own output is shown");
+  assert.match(out, /Vyre's files go in /, "the installer's own output is shown");
   assert.equal(rig.ssh().filter(l => INSTALL_RUN.test(l)).length, 1, "the installer ran once, with --yes");
   assert.ok(fs.existsSync(path.join(rig.env.server.VYRE_DIR, ".env")), "the installer wrote the stack");
   assert.ok(rig.docker().includes("compose up -d"), "and the wrapper started it");
@@ -127,9 +127,9 @@ test("journey 1, door A: box add installs, the browser onboards, the Mac ends re
     assert.match(out, /^ {2}pairing: |Approve this Mac in your Deck/m);
   } else {
     // ADR 0008 section 6: with the address step skipped, the ending says it is not done yet.
-    assert.match(out, new RegExp(`your box has no address yet\\. Run vyre box add ${TARGET} again to finish Your address in the browser\\.`));
+    assert.match(out, new RegExp(`your server has no address yet\\. Run vyre box add ${TARGET} again to finish Your address in the browser\\.`));
     assert.ok(out.includes(ending({ address: null, assistant: "Juno" }).join("\n")), out);
-    assert.match(out, /^ {2}Almost there: your box has no address yet\.$/m);
+    assert.match(out, /^ {2}Almost there: your server has no address yet\.$/m);
   }
   ok = true;
 
@@ -200,7 +200,7 @@ test("journey 4, door B: the installer on the server prints the link and the ssh
     assert.equal(r.code, 0, r.out);
     assert.match(r.out, /Open this link to set up Vyre/);
     assert.match(r.out, new RegExp(`^ {4}http://127\\.0\\.0\\.1:${rig.onboardPort}/onboard\\?t=\\S+$`, "m"));
-    assert.match(r.out, /This box is headless\. On your own computer, run this first, then open the link there:/);
+    assert.match(r.out, /This server has no screen\. On your own computer, run this line first, then open the link there:/);
     assert.match(r.out, new RegExp(`^ {4}ssh -N -L ${rig.onboardPort}:127\\.0\\.0\\.1:${rig.onboardPort} alex@203\\.0\\.113\\.4$`, "m"), "the host's account, not the container's");
     assert.ok(rig.docker().includes("compose up -d"), "the wrapper started the stack");
 

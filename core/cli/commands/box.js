@@ -201,7 +201,7 @@ async function wait(r, env = process.env) {
   for (;;) {
     let s = null;
     try { s = await r.json(vyre(["call", "onboard.status"], env)); quiet = false; }
-    catch (e) { if (!quiet) out(dim(`  the box did not answer (${/** @type {Error} */ (e).message}); still trying`)); quiet = true; }
+    catch (e) { if (!quiet) out(dim(`  the server did not answer (${/** @type {Error} */ (e).message}); still trying`)); quiet = true; }
     for (const [k, state] of Object.entries((s && s.steps) || {})) {
       if (said.has(k) || !["done", "skipped"].includes(state)) continue;
       said.add(k);
@@ -237,7 +237,7 @@ async function macFirst(env) {
   const t = await tailnet.status(env);
   if (t.running) return t;
   out(beacon(`  ${t.why || "Tailscale is not running"}`));
-  if (!t.installed) out(`  Vyre reaches your box over Tailscale. Get it here, sign in, then run this again: ${signal(tailnet.DOWNLOAD)}`);
+  if (!t.installed) out(`  Vyre reaches your server over Tailscale. Get it here, sign in, then run this again: ${signal(tailnet.DOWNLOAD)}`);
   return null;
 }
 
@@ -349,7 +349,7 @@ async function finish(r, target, s, t, env, tool = call) {
   config.save({ box: { ssh: target }, network: { box: s.address || undefined } });
   if (!s.address) {
     // Onboarding finished with the address step skipped: nothing on the tailnet to pair with yet.
-    out(beacon("  your box has no address yet.") + ` Run ${signal(`vyre box add ${target}`)} again to finish ${signal("Your address")} in the browser.`);
+    out(beacon("  your server has no address yet.") + ` Run ${signal(`vyre box add ${target}`)} again to finish ${signal("Your address")} in the browser.`);
     printEnding({ address: null, assistant: s.assistant });
     return 0;
   }
@@ -357,9 +357,9 @@ async function finish(r, target, s, t, env, tool = call) {
   // another one-time link would only compete with it.
   if (!s.arrived) await passkey(r, env);
   const up = await ensureUp();
-  if (!up.ok) out(beacon("  this Mac's vyred did not start: ") + dim(String(up.log)));
+  if (!up.ok) out(beacon("  Vyre did not start on this Mac: ") + dim(String(up.log)));
   else if (await passkeyMade(r, s.address, env)) await pairOver(s.address, tool, env);
-  if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the box serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Sign this Mac in to Tailscale as the box's owner, then run vyre up.");
+  if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the server serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Sign this Mac in to Tailscale as the server's owner, then run vyre up.");
   printEnding({ address: s.address, assistant: s.assistant });
   return 0;
 }
@@ -373,7 +373,7 @@ async function passkey(r, env) {
   const l = await r.json(vyre(["call", "onboard.link"], env)).catch(() => null);
   if (!l || !l.passkeyUrl) return;
   openBrowser(l.passkeyUrl, env);
-  out(`\n  Make your passkey, which approves everything on your box from now on ${dim("(works once, for 10 minutes)")}:\n\n    ${signal(l.passkeyUrl)}\n`);
+  out(`\n  Make your passkey, which approves everything on your server from now on ${dim("(works once, for 10 minutes)")}:\n\n    ${signal(l.passkeyUrl)}\n`);
 }
 
 /**
@@ -438,7 +438,7 @@ export async function add(target, opts = {}) {
   if (!t) return 1;
   /** @type {import("../ssh.js").Remote|null} */
   let r = null;
-  const off = onInterrupt(async () => { await r?.close(); out(`\n  Stopped. Your box is as you left it; ${resume(target)}`); });
+  const off = onInterrupt(async () => { await r?.close(); out(`\n  Stopped. Your server is as you left it; ${resume(target)}`); });
   try {
     r = await connect(target, t, env, x => { r = x; });
     if (!r) return 1;
@@ -477,7 +477,7 @@ async function onboard(r, target, t, env, tool) {
     s = await wait(r, env);
   } finally { await tunnel.close(); }
   if (s === "late") {
-    out(beacon("\n  The setup link has expired.") + ` Your box is as you left it; ${resume(target)}`);
+    out(beacon("\n  The setup link has expired.") + ` Your server is as you left it; ${resume(target)}`);
     return 1;
   }
   return finish(r, target, s, t, env, tool);
@@ -489,7 +489,7 @@ async function onboard(r, target, t, env, tool) {
 function saved() {
   const c = /** @type {any} */ (config.load());
   const t = c.box && c.box.ssh;
-  if (!t) out(`  no box yet: ${signal("vyre box add <user@host>")}`);
+  if (!t) out(`  no server yet: ${signal("vyre box add <user@host>")}`);
   return t || null;
 }
 
@@ -518,7 +518,7 @@ async function status() {
   if (!target) return 0;
   const address = config.load().network.box;
   const h = address ? await tailnet.probe(address) : null;
-  out(`  your box  ${signal(address || "no address yet")} ${dim(`· ${target}`)}`);
+  out(`  your server  ${signal(address || "no address yet")} ${dim(`· ${target}`)}`);
   out(h ? `  ${signal("answering")} ${dim(`· ${h.version || ""}`)}` : beacon("  not answering from here") + dim(" · is this Mac on your tailnet?"));
   return h ? 0 : 1;
 }
@@ -536,12 +536,12 @@ async function update() {
   return withBox(target, async r => {
     const u = await r.run(vyre(["update"]), { tty: terminal() });
     if (!terminal() && u.stdout.trim()) out(u.stdout.replace(/^/gm, "  ").trimEnd());
-    if (u.code !== 0) { out(beacon(`  vyre update on the box stopped (exit ${u.code})`)); return 1; }
+    if (u.code !== 0) { out(beacon(`  vyre update on the server stopped (exit ${u.code})`)); return 1; }
     const v = (await r.run(vyre(["version"]))).stdout.trim();
     const cmp = newer(v, VERSION);
-    if (cmp > 0) out(`  the box runs ${signal(v)}, newer than this Mac's ${VERSION}: ${signal(`${INSTALL} && vyre up`)}`);
-    else if (cmp < 0) out(`  the box runs ${v}, older than this Mac's ${VERSION}; its next image catches up`);
-    else out(`  the box and this Mac both run ${signal(v)}`);
+    if (cmp > 0) out(`  the server runs ${signal(v)}, newer than this Mac's ${VERSION}: ${signal(`${INSTALL} && vyre up`)}`);
+    else if (cmp < 0) out(`  the server runs ${v}, older than this Mac's ${VERSION}; its next image catches up`);
+    else out(`  the server and this Mac both run ${signal(v)}`);
     return 0;
   });
 }
@@ -565,7 +565,7 @@ async function backup(file, flags = {}) {
   if (fs.existsSync(dest) && !flags.force) { out(beacon(`  ${dest} exists; `) + "pick another file, or add --force to replace it"); return 1; }
   const partial = dest + ".partial";
   return withBox(target, async r => {
-    out(dim(`  stopping the box while it copies; it starts again after`));
+    out(dim(`  stopping Vyre on the server while it copies; it starts again after`));
     const fd = fs.openSync(partial, "w", 0o600);
     fs.fchmodSync(fd, 0o600);
     const child = r.spawn(script(BACKUP), ["ignore", fd, "pipe"]);
@@ -582,7 +582,7 @@ async function backup(file, flags = {}) {
     out(`  ${signal(dest)} ${dim(`· ${Math.round(fs.statSync(dest).size / 1024)} KB · ${VOLUMES.join(", ")}`)}`);
     out(dim("  keep it private: it holds your vault"));
     return 0;
-  }, () => { fs.rmSync(partial, { force: true }); out("\n  Stopped. The box starts its stack again on its own; no backup was written."); });
+  }, () => { fs.rmSync(partial, { force: true }); out("\n  Stopped. Vyre starts again on its own; no backup was written."); });
 }
 
 const tail = (s, n = 3) => s.trim().split("\n").slice(-n).join(" / ");
@@ -642,8 +642,8 @@ export async function move(newTarget, flags = {}, deps = {}) {
   /** Start the old stack again and say truthfully whether it came back. */
   const restore = async () => {
     const r = await from.run(script('cd "$DIR" && $D docker compose start'));
-    if (r.code === 0) out(`  your box is running again on ${signal(oldTarget)}, as it was`);
-    else out(beacon(`  the old box did not start again (${tail(r.stderr) || `exit ${r.code}`}).`) + ` On ${oldTarget}, run: cd /srv/vyre && docker compose start`);
+    if (r.code === 0) out(`  your server is running again on ${signal(oldTarget)}, as it was`);
+    else out(beacon(`  Vyre did not start again on the old server (${tail(r.stderr) || `exit ${r.code}`}).`) + ` On ${oldTarget}, run: cd /srv/vyre && docker compose start`);
   };
   const off = onInterrupt(async () => {
     out("\n  Stopped.");
@@ -659,8 +659,8 @@ export async function move(newTarget, flags = {}, deps = {}) {
     const p = await look(to, env);
     const why = unfit(p);
     if (why) { out(beacon(`  ${why}. Nothing changed.`)); return 1; }
-    if (p.box) { out(beacon(`  ${newTarget} already holds a box in ${p.dir}; moving would overwrite it. Nothing changed.`)); return 1; }
-    if (p.volumes.length) { out(beacon(`  ${newTarget} holds Vyre volumes from an earlier box (${p.volumes.join(", ")}); moving would overwrite them. Nothing changed.`)); return 1; }
+    if (p.box) { out(beacon(`  ${newTarget} already has Vyre in ${p.dir}; moving would overwrite it. Nothing changed.`)); return 1; }
+    if (p.volumes.length) { out(beacon(`  ${newTarget} holds Vyre data from an earlier install (${p.volumes.join(", ")}); moving would overwrite them. Nothing changed.`)); return 1; }
     const has = await from.run(script(HAS_VOLUMES));
     if (has.code !== 0) { out(beacon(`  ${tail(has.stderr) || `the volumes on ${oldTarget} could not be checked`}. Nothing changed.`)); return 1; }
 
@@ -674,7 +674,7 @@ export async function move(newTarget, flags = {}, deps = {}) {
     // Until install-box.sh honours VYRE_NO_UP, the installer starts a fresh stack: take it down,
     // with the empty volumes it just made (the preflight saw none there before), so nothing holds them.
     const down = await to.run(script('cd "$DIR" && $D docker compose down -v'));
-    if (down.code !== 0) { out(beacon(`  could not clear the fresh stack on ${newTarget}: ${tail(down.stderr)}. ${oldTarget} was not touched.`)); return 1; }
+    if (down.code !== 0) { out(beacon(`  could not clear the new install on ${newTarget}: ${tail(down.stderr)}. ${oldTarget} was not touched.`)); return 1; }
 
     oldStopped = true;
     try {
@@ -694,10 +694,10 @@ export async function move(newTarget, flags = {}, deps = {}) {
     }
 
     config.save({ box: { ssh: to.target } });
-    out(`  your box now runs on ${signal(to.target)}`);
+    out(`  your server now runs on ${signal(to.target)}`);
     const u = await install(from, ["--yes", "--uninstall"], process.env);
     if (u === 0) out(`  Vyre is off ${oldTarget}; its volumes stay there until you delete them`);
-    else out(beacon(`  taking Vyre off ${oldTarget} stopped (exit ${u}).`) + ` Its stack is stopped and its volumes kept; to finish, run install-box.sh --uninstall on ${oldTarget}.`);
+    else out(beacon(`  taking Vyre off ${oldTarget} stopped (exit ${u}).`) + ` Vyre is stopped there and its data kept; to finish, run install-box.sh --uninstall on ${oldTarget}.`);
     return 0;
   } catch (e) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
@@ -716,9 +716,9 @@ async function remove(flags) {
   if (no !== null) return no;
   return withBox(target, async r => {
     const code = await install(r, ["--uninstall", ...(flags.purge ? ["--purge"] : [])], process.env);
-    if (code !== 0) { out(beacon(`  the uninstall stopped (exit ${code}); this Mac still remembers the box`)); return 1; }
+    if (code !== 0) { out(beacon(`  the uninstall stopped (exit ${code}); this Mac still remembers the server`)); return 1; }
     config.save({ box: null, network: { box: null } });
-    out("  this Mac has forgotten the box");
+    out("  this Mac has forgotten the server");
     return 0;
   });
 }
@@ -743,11 +743,11 @@ const usage = "vyre box [status|add <user@host> [--yes]|update|backup [file] [--
 const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
 
 const verbs = [
-  { verb: "status", summary: "your box's address, and whether it answers from here", usage: "", read: true },
+  { verb: "status", summary: "your server's address, and whether it answers from here", usage: "", read: true },
   { verb: "add", summary: "put Vyre on a server you can SSH to, then pair this Mac with it", usage: "<user@host> [--yes]" },
-  { verb: "update", summary: "run vyre update on the box, and compare its version with this Mac's", usage: "" },
-  { verb: "backup", summary: "copy the box's volumes to a file here (the box stops while it copies)", usage: "[file] [--force]" },
-  { verb: "move", summary: "move the box to another server, same name and address", usage: "<user@newhost> [--yes]" },
+  { verb: "update", summary: "run vyre update on the server, and compare its version with this Mac's", usage: "" },
+  { verb: "backup", summary: "copy the server's data to a file here (Vyre stops while it copies)", usage: "[file] [--force]" },
+  { verb: "move", summary: "move Vyre to another server, same name and address", usage: "<user@newhost> [--yes]" },
   { verb: "remove", summary: "take Vyre off the server; --purge deletes its volumes too", usage: "[--purge] [--yes]" },
 ];
 

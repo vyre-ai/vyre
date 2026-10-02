@@ -77,7 +77,7 @@ Something between the server and the page altered or replayed the progress. The 
 
 ### The page says "Waiting for your server"
 
-The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Your server is ready.` If the installer stopped, the last line says why (Docker, `/dev/net/tun`, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
+The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Vyre is installed and running.` If the installer stopped, the last line says why (Docker, `/dev/net/tun`, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
 
 ### "that name is reserved", or the address is not free
 
@@ -167,7 +167,7 @@ Your address opens only from your own devices on your tailnet. Install Tailscale
 
 The host's `vyre` wrapper looks for the stack in `/srv/vyre`. Either the install did not finish, or you installed somewhere else: set `VYRE_DIR` to that folder, or run the installer again.
 
-### "vyre: vyred did not come up; see: vyre logs"
+### "vyre: Vyre did not start. See why with: vyre logs"
 
 The containers started but Vyre did not answer within a minute. Run `vyre logs` and read the last lines. Fix what it names, then run `vyre up` again.
 
@@ -185,11 +185,11 @@ After an upgrade of a systemd install, `vyre up` asks you to rewrite the units. 
 
 ## The Mac
 
-### "vyred did not start"
+### "Vyre did not start"
 
 `vyre up` or another command could not start Vyre on this Mac. It prints the log file; read it (`~/.vyre/logs/vyred.out`). Node must be 22.5 or newer (`node --version`).
 
-### "your box ... did not answer from here"
+### "your server ... did not answer from here"
 
 The reason follows on the same line:
 

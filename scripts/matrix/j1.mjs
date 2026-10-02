@@ -84,7 +84,7 @@ try {
     // The line pasted a second time (on the same server, or a screenshotted one): it leaves the running box alone.
     const again = spawnSync("sh", ["-c", line], { env: { ...process.env, ...extraEnv }, encoding: "utf8" });
     const said = hide((again.stdout || "") + (again.stderr || ""));
-    r.step("1.3d-line-twice-is-harmless", again.status === 0 && /already running/i.test(said) && !/Check words/.test(said), { why: `exit ${again.status}: ${said.split("\n").slice(-4).join(" | ")}`.slice(0, 300) });
+    r.step("1.3d-line-twice-is-harmless", again.status === 0 && /already (running|installed)/i.test(said) && !/Check words/.test(said), { why: `exit ${again.status}: ${said.split("\n").slice(-4).join(" | ")}`.slice(0, 300) });
   }
   r.step("1.3b-terminal-words", Boolean(words.words), { why: words.words ? undefined : "the terminal printed no four check words" });
 

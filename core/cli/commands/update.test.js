@@ -333,7 +333,7 @@ test("update: a checkout refuses and points at git; so does the box's container"
   assert.deepEqual(g.installs(), []);
   const box = await world(t);
   assert.equal(await update(["--yes"], { ...box.deps, supervisor: "docker" }), 1);
-  assert.match(box.text(), /the host's vyre update does this/);
+  assert.match(box.text(), /the server's own vyre update does this/);
   assert.deepEqual(box.served, [], "nothing was fetched");
 });
 
@@ -370,7 +370,7 @@ test("update: an unsigned release, or one signed by another key, is refused befo
   // A signed one shows the check.
   const ok = await world(t);
   assert.equal(await update(["--yes"], ok.deps), 0, ok.text());
-  assert.match(ok.text(), /signature checked against Vyre's release key/);
+  assert.match(ok.text(), /Release signature checked\./);
 });
 
 test("update: only a release whose signature verified is published for the phone's shell check; --allow-unsigned installs and stops there", async t => {

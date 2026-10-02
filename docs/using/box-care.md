@@ -24,7 +24,7 @@ vyre box       # the box's address and SSH target, and whether it answers from h
 ```
 
 ```output
-  your box  https://vyre.tail1234.ts.net · alex@192.0.2.10
+  your server  https://vyre.tail1234.ts.net · alex@192.0.2.10
   answering · 0.0.1
 ```
 ::: tab On a server
@@ -257,7 +257,7 @@ Pass options after `sh -s --`, for example `curl -fsSL https://vyre.run/install.
 | `--yes`, `-y` | answers yes to every question |
 | `--from DIR` | uses the box files in a local checkout and builds the image from it |
 | `--print-link` | ends with only two lines on stdout for a program to read, VYRE_LINK with the setup link and, when there is one, VYRE_SSH with the `ssh -L` line; everything else goes to stderr |
-| `--uninstall` | stops the stack and removes `/usr/local/bin/vyre`; the volumes stay |
+| `--uninstall` | stops Vyre and removes `/usr/local/bin/vyre`; your data stays |
 | `--purge` | with `--uninstall`: also deletes the volumes, after listing them and asking |
 
 | Variable | Default | Does |

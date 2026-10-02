@@ -224,7 +224,7 @@ mkdir -p "$W/shim"; cp "$H/docker" "$W/shim/docker"; chmod 755 "$W/shim/docker"
 wrap() { PATH="$W/shim:$PATH" VYRE_DIR="$S" VYRE_WRAPPER="$W/bin/vyre" VYRE_BOX_URL="http://127.0.0.1:$PORT/" VYRE_RELEASES_API="" \
   VYRE_UPDATE_WAIT=120 nice -n 15 sh "$W/bin/vyre" "$@" </dev/null 2>&1; }
 out=$(wrap update)
-if [ $? -eq 0 ] && echo "$out" | grep -q "updated to $NEXT"; then pass "8 update: vyre update to the fake release $NEXT"
+if [ $? -eq 0 ] && echo "$out" | grep -qi "updated to $NEXT"; then pass "8 update: vyre update to the fake release $NEXT"
 else fail "8 update: vyre update: $(echo "$out" | tail -6 | short)"; fi
 ready 60
 v=$("$RC_DOCKER" exec "$C" vyre version 2>/dev/null | tr -d ' \r\n')
@@ -232,7 +232,7 @@ v=$("$RC_DOCKER" exec "$C" vyre version 2>/dev/null | tr -d ' \r\n')
 [ "$(vc vault.list '{}' | j '(d.items || []).some(i => i.name === "claude-setup-token")')" = true ] \
   && pass "8 update: the vault item survived the update" || fail "8 update: the vault item is gone after the update"
 out=$(wrap update --rollback)
-if [ $? -eq 0 ] && echo "$out" | grep -q "rolled back"; then pass "8 update: vyre update --rollback"
+if [ $? -eq 0 ] && echo "$out" | grep -qi "rolled back"; then pass "8 update: vyre update --rollback"
 else fail "8 update: vyre update --rollback: $(echo "$out" | tail -6 | short)"; fi
 ready 60
 v=$("$RC_DOCKER" exec "$C" vyre version 2>/dev/null | tr -d ' \r\n')

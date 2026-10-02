@@ -109,7 +109,7 @@ test("up on a Mac: exactly one box answers on the tailnet, so it is saved and th
   assert.equal(await up([], f.deps), 0);
   assert.equal(config.load().network.box, BOX);
   assert.match(f.text(), /Vyre is ready\./);
-  assert.match(f.text(), /your box\s+https:\/\/vyre\.example-tail\.ts\.net/);
+  assert.match(f.text(), /your server\s+https:\/\/vyre\.example-tail\.ts\.net/);
   assert.deepEqual(f.calls.map(c => c[0]), ["link.find", "link.status", "capsule"], "pairing is looked at; no_such_tool is skipped quietly");
   assert.doesNotMatch(f.text(), /link:/);
 });
@@ -177,7 +177,7 @@ test("up on a Mac: a known box that does not answer says why and exits 1", async
   config.save({ network: { box: BOX } });
   const f = fakes(t);
   assert.equal(await up([], f.deps), 1);
-  assert.match(f.text(), /your box https:\/\/vyre\.example-tail\.ts\.net did not answer from here/);
+  assert.match(f.text(), /your server https:\/\/vyre\.example-tail\.ts\.net did not answer from here/);
   assert.match(f.text(), /this Mac is not on the tailnet/);
   t.mock.restoreAll();
 
@@ -358,7 +358,7 @@ test("up --connect with no address is refused, and nothing is saved", async t =>
   for (const args of [["--connect"], ["--connect", "--json"], ["--connect="]]) {
     const f = fakes(t);
     assert.equal(await up(args, f.deps), 1, args.join(" "));
-    assert.match(f.text(), /--connect needs your box's address/);
+    assert.match(f.text(), /--connect needs your server's address/);
     t.mock.restoreAll();
   }
   const j = fakes(t);
@@ -397,6 +397,43 @@ test("up --json: a throw anywhere is still exactly one error object and exit 1",
   await assert.rejects(up([], f.deps), /bring broke/);
 });
 
+test("up on a box while setup runs at vyre.run/setup: one next step, no local link, no ssh tunnel, no link minted (#11)", async t => {
+  world(t, running([]));
+  config.save({ role: "box" });
+  const link = { data: { url: "http://127.0.0.1:7300/onboard?t=abc", port: 7300, user: "alex", address: null } };
+  const prevSsh = process.env.SSH_CONNECTION, prevOnly = process.env.VYRE_LINK_ONLY;
+  process.env.SSH_CONNECTION = "203.0.113.9 50000 203.0.113.4 22"; delete process.env.VYRE_LINK_ONLY;
+  t.after(() => { for (const [k, v] of [["SSH_CONNECTION", prevSsh], ["VYRE_LINK_ONLY", prevOnly]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  for (const state of ["waiting", "paired"]) {
+    const f = fakes(t, { tools: { "onboard.link": () => link, "relay.setup.status": () => ({ data: { state } }) } });
+    f.deps.platform = "linux";
+    assert.equal(await up([], f.deps), 0);
+    assert.match(f.text(), /Go back to the vyre\.run\/setup tab to finish setting up\./);
+    assert.doesNotMatch(f.text(), /127\.0\.0\.1|ssh -N|Open this link/, state);
+    assert.ok(!f.calls.some(c => c[0] === "onboard.link"), "no link was minted");
+    t.mock.restoreAll();
+  }
+  // No web setup: the local link and the tunnel stay, for an install that started without the page.
+  const plain = fakes(t, { tools: { "onboard.link": () => link, "relay.setup.status": () => ({ data: { state: "none" } }) } });
+  plain.deps.platform = "linux";
+  assert.equal(await up([], plain.deps), 0);
+  assert.match(plain.text(), /Open this link to set up Vyre\. It works once, for an hour:[\s\S]*127\.0\.0\.1:7300\/onboard/);
+  assert.match(plain.text(), /ssh -N -L 7300:127\.0\.0\.1:7300/);
+  t.mock.restoreAll();
+  // A program that asked for the link (box/vyre --print-link) still gets it, web setup or not.
+  process.env.VYRE_LINK_ONLY = "1";
+  const asked = fakes(t, { tools: { "onboard.link": () => link, "relay.setup.status": () => ({ data: { state: "waiting" } }) } });
+  asked.deps.platform = "linux";
+  assert.equal(await up([], asked.deps), 0);
+  assert.match(asked.text(), /127\.0\.0\.1:7300\/onboard/);
+  t.mock.restoreAll();
+  // --json is unchanged.
+  const j = fakes(t, { tools: { "onboard.link": () => link, "relay.setup.status": () => ({ data: { state: "waiting" } }) } });
+  delete process.env.VYRE_LINK_ONLY;
+  assert.equal(await up(["--json"], j.deps), 0);
+  assert.equal(JSON.parse(j.lines[0]).url, link.data.url);
+});
+
 test("up --keep-link on a box (vyre update): reports the open link, mints none, opens nothing", async t => {
   world(t, running([]));
   config.save({ role: "box" });
@@ -405,8 +442,8 @@ test("up --keep-link on a box (vyre update): reports the open link, mints none, 
   f.deps.platform = "linux";
   assert.equal(await up(["--keep-link"], f.deps), 0);
   assert.deepEqual(f.calls.find(c => c[0] === "onboard.link")[1], { mint: false });
-  assert.match(f.text(), /set up is not finished; the link you have still works \(42 min left\)/);
-  assert.match(f.text(), /vyre up prints a new link and voids that one/);
+  assert.match(f.text(), /Setup is not finished\. Your setup link still works \(42 min left\)\./);
+  assert.match(f.text(), /Run vyre up for a new link; it replaces that one\./);
   assert.deepEqual(f.opened, []);
   t.mock.restoreAll();
 
@@ -429,9 +466,9 @@ test("up on a Mac, the very first time: the welcome, the three choices, and choi
   const text = f.text();
   const { version } = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../../../package.json"), "utf8"));
   assert.ok(text.includes(`v·  Vyre is installed · ${version}`), "the welcome names the package's version");
-  assert.match(text, /Vyre runs Claude Code on a machine you own/);
+  assert.match(text, /Vyre runs your AI agents on a machine you own/);
   assert.ok(text.indexOf("Vyre is installed") < text.indexOf("Where should Vyre run?"), "the welcome comes first");
-  assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a box/);
+  assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a server/);
   assert.match(text, /Asking https:\/\/vyre\.example-tail\.ts\.net to pair with this Mac/);
   assert.match(text, /Approve this Mac on your phone at https:\/\/vyre\.example-tail\.ts\.net[\s\S]*Code: 123-456/);
   assert.doesNotMatch(text, /vyred running ·/, "a first run gets the welcome, not a status line");

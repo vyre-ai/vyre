@@ -25,7 +25,7 @@ Run `vyre up` on the box, or on your Mac once it is paired. It prints the addres
 ```output
   Vyre is ready.
 
-    your box        https://vyre.tail1234.ts.net
+    your server     https://vyre.tail1234.ts.net
     your assistant  juno
     next            vyre      (your projects and threads)
 ```
@@ -33,7 +33,7 @@ Run `vyre up` on the box, or on your Mac once it is paired. It prints the addres
 Open that address in a browser on any device signed in to your tailnet as the box's owner. A
 device signed in as anyone else gets `403 not_owner` ("This Vyre serves only its owner.").
 
-> [!SNAG] The last line reads "Almost there: your box has no address yet."
+> [!SNAG] The last line reads "Almost there: your server has no address yet."
 > The address step of the onboarding is not done, and the Deck is served only at the address.
 > Finish that step: see [Onboarding](../get-started/onboarding.md).
 

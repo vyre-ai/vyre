@@ -112,7 +112,7 @@ function Remove-VyreWindows {
     if (Test-Path $InstallDir) {
         Remove-Item -Path $InstallDir -Recurse -Force
     }
-    Write-Host "Done."
+    Write-Host "Vyre is removed from this PC."
 }
 
 # --- main ------------------------------------------------------------------------------------------
@@ -152,10 +152,10 @@ if (-not $releaseBase) {
     $feed = (Invoke-WebRequest "https://github.com/vyre-ai/vyre/releases.atom" -UseBasicParsing).Content
     $tag = [regex]::Matches($feed, '/releases/tag/(v\d+\.\d+\.\d+)(?=["<&])') | ForEach-Object { $_.Groups[1].Value } |
         Sort-Object { [version]($_.TrimStart('v')) } -Descending -Unique | Select-Object -First 1
-    if (-not $tag) { throw "No release found." }
+    if (-not $tag) { throw "Could not find a Vyre release to install." }
     $releaseBase = "https://github.com/vyre-ai/vyre/releases/download/$tag"
     foreach ($f in "VyreSetup.exe", "SHA256SUMS") {
-        try { Invoke-WebRequest "$releaseBase/$f" -Method Head -UseBasicParsing | Out-Null } catch { throw "No Windows release has been published yet ($tag has no $f)." }
+        try { Invoke-WebRequest "$releaseBase/$f" -Method Head -UseBasicParsing | Out-Null } catch { throw "The newest Vyre release ($tag) has no Windows installer yet, so there is nothing to install." }
     }
 }
 
@@ -163,7 +163,7 @@ $exe = Get-VerifiedInstaller -ReleaseBase $releaseBase -Dest $InstallDir
 # Run the installer quietly (per-user, no elevation), then start the installed app.
 Start-Process -FilePath $exe -ArgumentList "/S" -Wait
 $app = Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe"
-if (-not (Test-Path $app)) { throw "The installer finished but $app is not there." }
+if (-not (Test-Path $app)) { throw "The installer finished, but Vyre is not at $app. Run this line again, or download VyreSetup.exe from https://github.com/vyre-ai/vyre/releases." }
 Register-VyreAutostart -ExePath $app
 
 # The setup code is not handed to the app yet: how the app claims with it is launch's contract,
@@ -171,5 +171,5 @@ Register-VyreAutostart -ExePath $app
 Start-Process -FilePath $app
 
 Write-Host ""
-Write-Host "Vyre is starting. A window will open to finish setup."
+Write-Host "Vyre is starting. A window will open to finish setting up."
 Write-Host ""

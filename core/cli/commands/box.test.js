@@ -258,7 +258,7 @@ test("box add: onboarding finished without an address reopens the browser, says 
   const { code, text } = await capture(() => add("alex@203.0.113.9", { call: async tool => { asked.push(tool); return { data: {} }; } }));
   assert.equal(code, 0, text);
   assert.deepEqual(asked, []);
-  assert.match(text, /your box has no address yet/);
+  assert.match(text, /your server has no address yet/);
   assert.match(text, /Almost there/);
   assert.doesNotMatch(text, /Vyre is ready/);
   assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9");
@@ -343,7 +343,7 @@ test("box update: runs vyre update on the saved box and compares versions; a fai
   const run = /** @type {any} */ (box[0]).run;
   const none = await capture(() => run(["update"]));
   assert.equal(none.code, 1);
-  assert.match(none.text, /no box yet: vyre box add <user@host>/);
+  assert.match(none.text, /no server yet: vyre box add <user@host>/);
   assert.equal(r.read("vyre.log"), "", "nothing ran without a box");
 
   config.save({ box: { ssh: OLD } });
@@ -351,26 +351,26 @@ test("box update: runs vyre update on the saved box and compares versions; a fai
   const same = await capture(() => run(["update"]));
   assert.equal(same.code, 0, same.text);
   assert.match(same.text, /pulled the new image/);
-  assert.ok(same.text.includes(`the box and this Mac both run ${VERSION}`), same.text);
+  assert.ok(same.text.includes(`the server and this Mac both run ${VERSION}`), same.text);
   assert.deepEqual(r.read("vyre.log").trim().split("\n"), ["update", "version"]);
 
   r.put("version", "0.0.0\n");
   const older = await capture(() => run(["update"]));
   assert.equal(older.code, 0, older.text);
-  assert.match(older.text, /the box runs 0\.0\.0, older than this Mac's .*; its next image catches up/);
+  assert.match(older.text, /the server runs 0\.0\.0, older than this Mac's .*; its next image catches up/);
   assert.match(ssh(r), new RegExp(OLD.replace(/\./g, "\\.")), "it went to the saved target");
 
   r.put("version", "99.0.0\n");
   const newer = await capture(() => run(["update"]));
   assert.equal(newer.code, 0, newer.text);
-  assert.match(newer.text, /the box runs 99\.0\.0, newer than this Mac's .*&& vyre up/);
+  assert.match(newer.text, /the server runs 99\.0\.0, newer than this Mac's .*&& vyre up/);
 
   r.put("update-fail", "");
   const failed = await capture(() => run(["update"]));
   assert.equal(failed.code, 1, failed.text);
   assert.match(failed.text, /the image pull failed/);
-  assert.match(failed.text, /vyre update on the box stopped \(exit 4\)/);
-  assert.doesNotMatch(failed.text, /the box runs/, "no version compare after a failed update");
+  assert.match(failed.text, /vyre update on the server stopped \(exit 4\)/);
+  assert.doesNotMatch(failed.text, /the server runs/, "no version compare after a failed update");
 });
 
 test("box backup: writes through .partial at 0600, refuses to overwrite without --force", async t => {
