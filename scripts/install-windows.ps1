@@ -159,6 +159,9 @@ function Get-VerifiedInstaller {
     $sigPath  = Join-Path $Dest "SHA256SUMS.sig"
     $exePath  = Join-Path $Dest "VyreSetup.exe"
 
+    # A key from the environment is a test seam; never let it pass quietly (reviewer-2).
+    if ($env:VYRE_RELEASE_KEY) { Write-Host "Using a test release key from VYRE_RELEASE_KEY, not Vyre's." -ForegroundColor Yellow }
+
     # 1. The signed list first: nothing is run, or even downloaded, before its signature holds.
     Invoke-WebRequest -Uri "$ReleaseBase/SHA256SUMS" -OutFile $sumsPath -UseBasicParsing
     try { Invoke-WebRequest -Uri "$ReleaseBase/SHA256SUMS.sig" -OutFile $sigPath -UseBasicParsing }

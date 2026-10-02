@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -39,4 +40,9 @@ test("windows installer: pins the same release key as vyre-core", async () => {
   const { RELEASE_KEY } = await import("../core/vyre-core/release.js");
   const fs = await import("node:fs");
   assert.ok(fs.readFileSync(SCRIPT, "utf8").includes(`"${RELEASE_KEY}"`), "install-windows.ps1 carries RELEASE_KEY");
+});
+
+test("install-windows.ps1: a release key taken from the environment is announced, never silent", () => {
+  const ps = fs.readFileSync(new URL("../scripts/install-windows.ps1", import.meta.url), "utf8");
+  assert.match(ps, /if \(\$env:VYRE_RELEASE_KEY\) \{ Write-Host "Using a test release key from VYRE_RELEASE_KEY, not Vyre's\./);
 });
