@@ -138,9 +138,8 @@ done_step() { say "  $SIGNAL$OK$RESET $1"; mbx_send "done: $1"; }
 # pid, not by odds, since something has to show while it's genuinely quiet: this is look only,
 # never invented data, never a name or anything a person typed.
 WAITS="this part is Docker's own installer, not ours
-nothing is stuck: it's just quiet before apt gets going
-the next lines on screen are curl's, not ours
-a fine moment for a coffee"
+nothing is stuck: this step is quiet for a moment
+the next lines on screen are curl's, not ours"
 
 wait_line() {
   n=$(printf '%s\n' "$WAITS" | wc -l)
@@ -158,7 +157,7 @@ rule() {
   fi
 }
 
-# finish: what just happened, the one next step, and a sign-off.
+# finish: what just happened and the one next step. It ends on that step, with no sign-off.
 finish() {
   say ""
   rule
@@ -179,11 +178,6 @@ finish() {
         say "  run that on your own computer first, then open the link there."
       fi
     fi
-  fi
-  say ""
-  say "  Go do your best work. We'll keep the thread."
-  if [ "$COLOR" = 1 ] && [ "$(date +%u 2>/dev/null || true)" = 5 ]; then
-    say "  ${ASH}Nice way to end the week.$RESET"
   fi
   say ""
 }
