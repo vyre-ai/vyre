@@ -9,7 +9,7 @@
   "needs": { "vault": ["cloudflare-vyre-token"] },
   "teaches": {
     "tips": [
-      {"id": "address", "text": "Run `vyre name` to print your server's address and the login it serves.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre name", "docs": "using/tailscale.md#know-your-boxs-address"},
+      {"id": "address", "text": "Run `vyre name` to print your server's address and the login it serves.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre name", "docs": "using/tailscale.md#know-your-servers-address"},
       {"id": "not-owner", "text": "Sign a device in to Tailscale as the server's owner if it gets `403 not_owner`; a tagged device never can be.", "surfaces": ["deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/tailscale.md#connect-a-device"},
       {"id": "retry-cert", "text": "Run `vyre name ts.net` to retry the certificate once HTTPS Certificates are on in Tailscale's DNS page.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre name ts.net", "docs": "using/tailscale.md#if-the-address-has-no-certificate"},
       {"id": "owner", "text": "Run `vyre owner` to see which Tailscale login the server serves, or `vyre owner <login>` to set it.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre owner", "docs": "using/tailscale.md#connect-a-device"},

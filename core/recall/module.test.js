@@ -117,7 +117,7 @@ test("recall cli: up, index, recall, down against a temp home", async t => {
   const { root } = home(t, { vectors: false });
   const env = { VYRE_HOME: root };
   t.after(() => run(["down"], env));
-  assert.match((await run(["up"], env)).out, /vyred running/);
+  assert.match((await run(["up"], env)).out, /is running/);
   const ix = await run(["index"], env);
   assert.equal(ix.code, 0);
   assert.match(ix.out, /6 sessions/);

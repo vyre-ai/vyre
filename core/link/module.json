@@ -20,7 +20,7 @@
       {"id": "box-list", "text": "Run `vyre link` on the server to list the paired Macs and any Mac waiting to be approved.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre link"},
       {"id": "unpair", "text": "Run `vyre link unpair` on the Mac to forget the server, or `vyre link unpair <id>` on the server to drop a Mac.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre link unpair", "docs": "using/tailscale.md#connect-your-mac-to-the-server"},
       {"id": "signin", "text": "Run `vyre link signin` so this Mac's CLI and Capsule can answer and approve on the server for 30 days.", "surfaces": ["cli", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre link signin"},
-      {"id": "mac-read-only", "text": "Continue a thread marked alex-mac on that Mac; the server's Deck shows it read-only and keeps no copy.", "surfaces": ["deck", "chat"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/deck.md#your-macs-sessions-on-the-box"}
+      {"id": "mac-read-only", "text": "Continue a thread marked alex-mac on that Mac; the server's Deck shows it read-only and keeps no copy.", "surfaces": ["deck", "chat"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/deck.md#your-macs-sessions-on-the-server"}
     ]
   }
 }

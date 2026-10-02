@@ -34,7 +34,7 @@ test("link cli: pair on the Mac, approve on the box, status both sides, signin, 
   assert.equal(before.code, 0, before.out);
   assert.equal(JSON.parse(before.stdout).linked, false);
   const notYet = await run(s.macRoot, ["link"]);
-  assert.match(notYet.out, /not paired with a box/);
+  assert.match(notYet.out, /not paired with a server/);
   assert.match(notYet.out, /vyre link pair <address>/);
 
   // pair: no address is a usage mistake, with an example.
