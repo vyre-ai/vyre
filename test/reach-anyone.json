@@ -945,6 +945,30 @@
    "module": "relay",
    "reason": "the callers list (surfaces, the owner's devices, a module) plus owner() in the tool, which refuses a model, an agent, a hook, a guest and anonymous, and the presence proof the tool requires"
   },
+  "relay.pair.window.close": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.confirm": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.open": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.ping": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.reject": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.renew": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
   "relay.setup.status": {
    "module": "relay",
    "reason": "the setup channel's own allowlist and the owner() style check in the tool; read-only, answers state and the words, no secret"

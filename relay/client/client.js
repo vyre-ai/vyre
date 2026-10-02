@@ -137,11 +137,14 @@ const about = a => ({
  * (reviewer, 28 Sep MEDIUM: pairTicket alone could only show who it paired with after the fact).
  * @param {{ relay: string, route: string, box: Uint8Array, secret: string, name?: string }} offer
  * @param {{ name?: string, tailnet?: boolean, enroll?: boolean, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
- *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number }} [o]
+ *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number, onFingerprint?: (fingerprint: string) => void }} [o]
  */
 export async function pairOffer(offer, o = {}) {
   const d = defaults(o);
   const keys = await deviceKey(d);
+  // The box's screen shows this phone's fingerprint beside Confirm (pairing.requested). Hand the same one to the app before the
+  // handshake, which waits for that Confirm, so this phone's own screen shows it too and the person compares two.
+  if (typeof o.onFingerprint === "function") { try { o.onFingerprint(await keyFingerprint(keys.publicKey, d.crypto)); } catch {} }
   // `tailnet: "join"` is a desktop asking its box for a tagged Tailscale key later (ADR 0046); a
   // phone leaves it out and stays on the relay.
   const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}), ...(o.tailnet ? { tailnet: "join" } : {}), ...(o.enroll ? { enroll: true } : {}) };

@@ -218,8 +218,8 @@ user). New `PairTicket` Durable Object in relay/worker/index.js, one object per 
 up by). `RouteRelay`'s control socket, previously silent after auth like relay/node's, now handles
 `{t:"ticket",...}` and writes to it; the Worker's top-level `fetch()` handles `POST /v1/pair`
 before the WebSocket-upgrade gate, same locator-in-body/never-a-URL shape as relay/node, with
-optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limiting bindings (same optional pattern as
-`DEVICE_LIMITER`) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
+an optional per-address `PAIR_LIMITER` rate-limiting binding, charged to misses only (same optional pattern as
+`DEVICE_LIMITER`; no global limit, GHSA-25xh-w9j7-7v28) and an in-memory per-route registration cap (60/minute, resets on hibernation, only weakens the cap, never the pairing security it sits in front of, which is the MAC, not this).
 wrangler.toml gains the `TICKETS` binding and migration entry.
 
 Had to extend the shared test harness, relay/worker/fake-cf.js, since it only ever bound one
@@ -964,7 +964,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **relay/worker** (28 Sep, ADR 0045, own): new Durable Object `PairTicket`, bound `TICKETS` in
   wrangler.toml (new migration entry too); `RouteRelay`'s control socket handles `{ t: "ticket",
   loc, record, mac, exp }` post-auth (previously silent); the Worker's top-level `fetch` handles
-  `POST /v1/pair`, optional `PAIR_LIMITER`/`PAIR_LIMITER_GLOBAL` rate-limit bindings. Not deployed, code and tests only, per the lead; deploying needs the user's yes.
+  `POST /v1/pair`, an optional per-address `PAIR_LIMITER` binding (misses only; no global limit). Not deployed, code and tests only, per the lead; deploying needs the user's yes.
 - **relay/worker/fake-cf.js** (28 Sep, shared test harness, own): `createRuntime` takes an
   optional `classes` map for Durable Object bindings beyond `ROUTES`; a namespace's `.fetch()`
   accepts `(url, init)` as well as a `Request`; `FakeStorage` gains `deleteAll()`. `object(name)`
@@ -1082,3 +1082,9 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 Suggested merge order: link and names, daemon and presence, vault, files, computers, watchers and
 hooks, then deck, capsule and onboard. They are one branch here, so this matters only if the
 integrator splits it.
+
+## 2 Oct 2026 status (relaunch)
+
+- Pushed, each after targeted tests plus docs, reach, boundaries and hygiene on the test box: 023-pair-window af1a30e7c, 023-companion e448cd652 (not usable until a transport exists), 023-app-relay-check 7fa12e885 (app-boot run 36966573078), 022-device-names f299fc4c1 (#65), and 023-relay-deploy b8339c039 (pair-window merged with pair-limit a9c9d8dd9, the one branch for the relay redeploy). 022-relay-flake cd691f322 (#13) was already pushed and its relay loop is green on Node 22 and 24.
+- Next: relay-deploy.yml needs the sha on work/stage-0.2; I dispatch it once the integrator lands 023-relay-deploy, then the lead approves the deploy environment. The edge rule stays off until CLOUDFLARE_WAF_TOKEN exists. 023-presence-trim is held, unpushed.
+- 0.3: ADR 0050 claimed (the built-in network, supersedes 0046's transport). Section 12b of team/0.3/PLAN-built-in-network.md is my confirmation of platform's sections 5 to 8 and 12; the spike list is there.

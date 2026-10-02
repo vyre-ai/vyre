@@ -57,7 +57,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 27 | 13 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 33 | 18 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 37 | 8 | cli |
@@ -528,8 +528,8 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [27](tools.md#relay), 8 of them only for other modules
-- Emits: [13 events](events.md#relay)
+- Tools: [33](tools.md#relay), 8 of them only for other modules
+- Emits: [18 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

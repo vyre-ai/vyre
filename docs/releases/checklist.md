@@ -36,3 +36,14 @@ A box that pulls its image checks the release before it pulls (`vyre update` in 
 ## After 0.2.0 lands on stage: redeploy the site for vyre.run/w
 
 `https://vyre.run/w` is `scripts/install-windows.ps1`, put at `site/w` by `scripts/build-site.sh` and served as plain text by `site/_headers`. It only exists once the site is redeployed from the commit that carries 0.2.0 (the site is built from main only; `scripts/deploy-site.sh`). Check afterwards: `curl -sI https://vyre.run/w` is 200 with `content-type: text/plain`, and `curl -s https://vyre.run/w | cmp - scripts/install-windows.ps1`. `release-check.sh --live` does both.
+
+
+## Before the relay fix for GHSA-25xh-w9j7-7v28 counts as closed
+
+The app no longer has a shared limit on `/v1/pair` or the setup mailbox, so cost is the edge's. Both of these are required, not recommended:
+
+- [ ] Dispatch relay-deploy with `relay=true` and `relay_edge_rule=true` (a separate environment secret, `CLOUDFLARE_WAF_TOKEN`, scoped to Zone WAF Edit on vyre.run, used by this step only). It writes one per-address Cloudflare rate-limit rule on `/v1/pair` and `/v1/setup/mbx`, and prints the rules it wrote. Check the rule in the Cloudflare dashboard.
+- [ ] The relay's Workers and Durable Objects run on a paid plan. Every `/v1/pair` request reaches a ticket object and every random locator on the mailbox creates one, so on the Free plan's daily request cap an outsider could still stop pairing and installs until it resets. The edge rule limits one address; only the paid plan covers a distributed flood.
+- [ ] The edge rule matches the host relay.vyre.run only. `workers_dev` is off in relay/worker/wrangler.toml, so the deployed Worker has no other public address; a staging copy of the Worker, or any other hostname, is not covered by it.
+- [ ] `CLOUDFLARE_WAF_TOKEN` (Zone WAF Edit covers the whole zone) is an environment secret on the protected `deploy` environment with approval, used only by relay-deploy.yml, never a repository-wide secret, and the deploy token does not carry that scope.
+- [ ] Release note, residuals: the edge rule blocks per address whatever the answer would be (a neighbour on the same address can still get it blocked, hits included); a flood from many addresses can still use up the account's Workers and Durable Object quota on the Free plan (a hit counts too), so the paid plan stays required. The advisory stays private until released.
