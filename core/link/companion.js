@@ -53,14 +53,17 @@ export function inputDigest(input) {
  */
 export const tokenMessage = o => Buffer.from([TOKEN_TAG, o.box, o.companion, String(o.ts), o.nonce, o.tool, inputDigest(o.input)].join("\n"));
 
+/** The bytes the box signs in its answer to link.companion.hello, over the core's own token fields. @param {{ box: string, companion: string, ts: number|string, nonce: string }} o */
+export const helloMessage = o => Buffer.from(["vyre-companion-hello", o.box, o.companion, String(o.ts), o.nonce].join("\n"));
+
 /** A box's id as a companion core pins it: sha256 (base64url) of the box's public key, SPKI base64url. @param {string} pub */
 export const boxId = pub => crypto.createHash("sha256").update(String(pub)).digest("base64url");
 
 /**
  * @param {any} ctx
- * @param {{ maxNonces?: number, box?: () => { pub: string, name?: string|null } | null, db: any, now: () => number, deviceInfo: (id: string) => Promise<{ kind: string, trusted: boolean, pairedAt: number, presenceKey: string|null, removed: boolean } | null> }} o
+ * @param {{ maxNonces?: number, sign?: ((bytes: Buffer) => string) | null, box?: () => { pub: string, name?: string|null } | null, db: any, now: () => number, deviceInfo: (id: string) => Promise<{ kind: string, trusted: boolean, pairedAt: number, presenceKey: string|null, removed: boolean } | null> }} o
  */
-export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxNonces = MAX_NONCES }) {
+export function companionSide(ctx, { db, now, deviceInfo, box = () => null, sign = null, maxNonces = MAX_NONCES }) {
   /** Spent nonces live in memory only, so a token made before this start is refused: a captured one cannot be replayed after a restart. */
   const started = now();
   /** @type {Map<string, number[]>} */
@@ -212,17 +215,20 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
     if (mine.has(nonce)) throw deny("the nonce was already used");
     if (mine.size >= maxNonces) throw deny("too many calls in flight for this companion; try again in a moment");
     mine.set(nonce, ts);
-    return { id: row.id, name: row.name, device: parent.parent };
+    return { id: row.id, name: row.name, device: parent.parent, ts, nonce };
   }
 
   ctx.tool("link.companion.hello", {
     callers: ["tailnet"],
-    description: "A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id } }, or refuses. The box answers nothing the core could not already pin at pairing.",
+    description: "A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id }, proof }, where proof is the box key's Ed25519 signature (base64url) over the token's companion, time and nonce, so the core can verify the box it pinned at pairing before it trusts anything else.",
     input: { type: "object", properties: { token: { type: "string" } }, required: ["token"] },
     run: async ({ token }) => {
       const v = await verifyCall({ token, tool: "link.companion.hello", input: {} });
       const b = box();
-      return { paired: true, companion: v.id, device: v.device, box: { name: (b && b.name) || null, ...(b && b.pub ? { pub: b.pub, id: boxId(b.pub) } : {}) } };
+      if (!b || !b.pub || !sign) throw fail("failed", "this box cannot sign its answer");
+      // The box proves itself to the core: its key, the one pinned at pairing, signs this exact answer's token (companion, time and nonce),
+      // so a core that checks it knows it spoke to this box just now and not to whatever answers at the address.
+      return { paired: true, companion: v.id, device: v.device, box: { name: b.name || null, pub: b.pub, id: boxId(b.pub) }, proof: sign(helloMessage({ box: boxId(b.pub), companion: v.id, ts: v.ts, nonce: v.nonce })) };
     },
   });
 

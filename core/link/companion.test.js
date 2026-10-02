@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { companionSide, coreFingerprint, WINDOW_MS, tokenMessage, boxId, inputDigest } from "./companion.js";
+import { companionSide, coreFingerprint, WINDOW_MS, tokenMessage, boxId, inputDigest, helloMessage } from "./companion.js";
 
 const APP = "abcdefgabcdefgab", WEB = "bcdefgabcdefgabc", KEYID = "kh1";
 const spki = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
@@ -18,8 +18,8 @@ function world({ maxNonces } = {}) {
   const devices = new Map([[APP, { kind: "app", trusted: true, pairedAt: clock.t - 60_000, presenceKey: KEYID, removed: false }], [WEB, { kind: "web", trusted: true, pairedAt: clock.t - 60_000, presenceKey: "kh2", removed: false }]]);
   const tools = new Map(), events = [];
   const ctx = { tool: (n, d) => tools.set(n, d), events: { emit: (t, p) => events.push([t, p]), on: () => () => {} } };
-  const boxPub = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  const side = companionSide(ctx, { db, now: () => clock.t, maxNonces, box: () => ({ pub: boxPub, name: "alex" }), deviceInfo: async id => devices.get(id) || null });
+  const boxKeys = crypto.generateKeyPairSync("ed25519"), boxPub = boxKeys.publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const side = companionSide(ctx, { db, now: () => clock.t, maxNonces, box: () => ({ pub: boxPub, name: "alex" }), sign: bytes => crypto.sign(null, bytes, boxKeys.privateKey).toString("base64url"), deviceInfo: async id => devices.get(id) || null });
   const call = (tool, input, caller = `device:${APP}`, meta = {}) => tools.get(tool).run(input, { caller, person: { id: "ps1" }, presence: { method: "device", keyId: KEYID }, ...meta });
   const ask = (extra = {}, caller, meta) => call("link.companion.pair", { core: spki(), name: "alex's PC core", nonce: crypto.randomBytes(12).toString("base64url"), ts: clock.t, ...extra }, caller, meta);
   return { db, clock, devices, tools, events, side, call, ask, boxPub };
@@ -206,3 +206,22 @@ test("companion call: the nonce cap is per companion, so one companion cannot ma
   w.clock.t += 5 * 60_000;
   assert.ok((await verify(w, a.sign("link.companion.hello", {}), "link.companion.hello", {})).id, "after its own entries age out the first works again");
 });
+
+test("companion call: the box's hello answer is signed by the pinned box key over this token's companion, time and nonce, so a core can verify the box", async () => {
+  const w = world();
+  const c = await pairedCore(w);
+  const token = c.sign("link.companion.hello", {});
+  const [, id, ts, nonce] = token.split(".");
+  const hello = await w.tools.get("link.companion.hello").run({ token }, {});
+  const pinned = crypto.createPublicKey({ key: Buffer.from(c.boxPin.pub, "base64url"), format: "der", type: "spki" });
+  const msg = helloMessage({ box: c.boxPin.id, companion: id, ts, nonce });
+  assert.ok(crypto.verify(null, msg, pinned, Buffer.from(hello.proof, "base64url")), "the proof verifies against the key pinned at pairing");
+  assert.equal(hello.box.id, c.boxPin.id);
+  // not valid for another token, so a recorded answer cannot be replayed to a core that sent a different nonce
+  assert.ok(!crypto.verify(null, helloMessage({ box: c.boxPin.id, companion: id, ts, nonce: "another-nonce-00000" }), pinned, Buffer.from(hello.proof, "base64url")));
+  assert.ok(!crypto.verify(null, helloMessage({ box: c.boxPin.id, companion: id, ts: Number(ts) + 1, nonce }), pinned, Buffer.from(hello.proof, "base64url")));
+  // another box's key does not verify it
+  const other = crypto.generateKeyPairSync("ed25519").publicKey;
+  assert.ok(!crypto.verify(null, msg, other, Buffer.from(hello.proof, "base64url")));
+});
+

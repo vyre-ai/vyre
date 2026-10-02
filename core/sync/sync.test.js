@@ -555,6 +555,13 @@ test("sync: a companion core uploads only with a token its own key signed for th
     const sig = crypto.sign("sha256", tokenMessage({ box: boxId(boxPubKey), companion: id, ts, nonce, tool, input }), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
     return `c1.${id}.${ts}.${nonce}.${sig}`;
   };
+  // the box proves itself with its real key before anything is uploaded
+  const helloTok = sign("link.companion.hello", {});
+  const hello = await call("link.companion.hello", { token: helloTok }, "tailnet:owner", { peer });
+  assert.ok(hello.data?.proof, JSON.stringify(hello.error));
+  const [, , hts, hnonce] = helloTok.split(".");
+  const { helloMessage } = await import("../link/companion.js");
+  assert.ok(crypto.verify(null, helloMessage({ box: boxId(boxPubKey), companion: id, ts: hts, nonce: hnonce }), crypto.createPublicKey({ key: Buffer.from(boxPubKey, "base64url"), format: "der", type: "spki" }), Buffer.from(hello.data.proof, "base64url")), "the proof verifies against the box's own key");
   const text = "0123456789", h = hash(text);
   const start = { path: "a.jsonl", bytes: text.length, hash: h };
   // no token and an unknown node: not a paired device

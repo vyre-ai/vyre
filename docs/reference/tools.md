@@ -3236,7 +3236,7 @@ The person approves the waiting companion request with one tap on its card (the 
 
 ### `link.companion.hello`
 
-A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id } }, or refuses. The box answers nothing the core could not already pin at pairing.
+A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id }, proof }, where proof is the box key's Ed25519 signature (base64url) over the token's companion, time and nonce, so the core can verify the box it pinned at pairing before it trusts anything else.
 
 - Input:
   - `token` string, required
