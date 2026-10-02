@@ -34,7 +34,7 @@ async function time(/** @type {string} */ name) {
     // Find is Lumen opened; the pages are the header's labels. From Find, Done goes back first.
     const done = document.querySelector('.page[data-page="find"]:not(.away) .fd-done');
     if (done && "${name}" !== "find") { done.click(); await new Promise(r => setTimeout(r, 500)); }
-    const a = "${name}" === "find" ? document.querySelector('.cap-open') : document.querySelector('.ph-tab[data-view="${name}"]');
+    const a = "${name}" === "find" ? document.querySelector('.cap-open') : document.querySelector('.tb-item[data-view="${name}"]');
     // The pages beside the current one stay drawn in the pager, so only the page itself counts.
     const ready = () => {
       const page = document.querySelector('.page[data-page="${name}"]:not(.away)');

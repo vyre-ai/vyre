@@ -51,22 +51,18 @@ const SCREENS = [
   // The edge swipe back on a pushed screen (opened cold, so Back lands on Now).
   { name: "edge-back", path: "/agents/kit", edge: true, expect: "/now" },
   // A tap on a label jumps there.
-  { name: "label-to-agents", path: "/now", script: `await click('.ph-tab[data-view=agents]'); await wait(900);`, expect: "/agents" },
+  { name: "label-to-agents", path: "/now", script: `await click('.tb-item[data-view=agents]'); await wait(900);`, expect: "/agents" },
   // Lumen, tapped: Find as a full-height sheet.
   { name: "capsule-find", path: "/now", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
   { name: "capsule-find-paper", path: "/now", theme: "paper", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
-  // The avatar: the Places sheet over Now, and its Settings tile opens Settings pushed.
+  // The avatar: the More sheet over Now, and its Settings tile opens Settings pushed.
   { name: "places-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(600);
-      if (document.querySelectorAll('.sheet-places .plc-tile').length !== 6) throw new Error('the Places sheet has not six tiles');` },
-  // Shift+F10 on the Planner tile keeps it as a fourth page: its label joins the header, and a
-  // tap on the label lands on the page, not pushed.
-  { name: "places-kept", path: "/now", expect: "/planner", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
-      const t = document.querySelector('.plc-tile[data-place=Planner]'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
-      if (t.getAttribute('aria-description') !== 'Pinned as a page') throw new Error('the tile does not say it is pinned');
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(600);
-      const labels = [...document.querySelectorAll('.ph-tab')].map(a => a.textContent).join(',');
-      if (labels !== 'Now,Chats,Agents,Planner') throw new Error('labels: ' + labels);
-      await click('.ph-tab[data-view=planner]'); await wait(1200);` },
+      if (document.querySelectorAll('.sheet-places .plc-tile').length !== 6) throw new Error('the More sheet has not six tiles');` },
+  // The tab bar's More: the same sheet, from the bar.
+  { name: "more-tab", path: "/now", script: `await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(600);
+      if (document.querySelectorAll('.sheet-more .plc-tile').length !== 6) throw new Error('More has not six tiles');` },
+  // Projects is a page now: its tab lands on the page, not pushed.
+  { name: "tab-to-projects", path: "/now", script: `await click('.tb-item[data-view=projects]'); await wait(900);`, expect: "/projects" },
   { name: "settings-sheet", path: "/now", shell: "pushed", expect: "/settings", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
       await click('.plc-tile[data-place=Settings]'); await waitFor('.page:not(.away) .set-sec', 6000); await wait(600);` },
   { name: "find", path: "/find", shell: "find" },
@@ -201,7 +197,8 @@ for (const dev of DEVICES) {
       fs.writeFileSync(path.join(out, `${label}.png`), await tab.shot());
       const check = await tab.run(`return { sideways: document.documentElement.scrollWidth > innerWidth + 1, path: location.pathname,
         head: document.querySelector('.ph-head') ? getComputedStyle(document.querySelector('.ph-head')).display : "none",
-        labels: document.querySelector('.ph-tabs') ? getComputedStyle(document.querySelector('.ph-tabs')).display : "none",
+        title: document.querySelector('.ph-title') ? getComputedStyle(document.querySelector('.ph-title')).display : "none",
+        tabs: document.querySelector('.tabbar') ? getComputedStyle(document.querySelector('.tabbar')).display : "none",
         capsule: document.querySelector('.capsule') ? getComputedStyle(document.querySelector('.capsule')).display : "none",
         tabbar: !!document.querySelector('.tabbar'), at: document.getElementById('deck')?.dataset.at || "",
         standalone: document.documentElement.dataset.display || "" }`);
@@ -214,9 +211,10 @@ for (const dev of DEVICES) {
       const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|fonts\.g/.test(e));
       const want = s.shell || "page", phoneShell = !dev.desktop && !s.noShell;
       const bad = [s.expect && check.path !== s.expect && `opened ${check.path}, not ${s.expect}`, check.sideways && "scrolls sideways",
-        phoneShell && check.tabbar && "a tab bar is drawn",
         phoneShell && check.at !== want && `the shell is in ${check.at || "no"} mode, not ${want}`,
-        phoneShell && want === "page" && (check.head !== "flex" || check.labels !== "flex") && "no header with the page labels",
+        phoneShell && want === "page" && (check.head !== "flex" || check.title === "none") && "no header with the page title",
+        phoneShell && want === "page" && check.tabs !== "grid" && "no tab bar",
+        phoneShell && want !== "page" && check.tabs !== "none" && "the tab bar shows on a pushed screen or Find",
         phoneShell && want === "page" && check.capsule !== "flex" && "no Lumen",
         phoneShell && want !== "page" && check.capsule !== "none" && "Lumen shows on a pushed screen",
         phoneShell && want === "find" && check.head !== "none" && "the header shows over Find",

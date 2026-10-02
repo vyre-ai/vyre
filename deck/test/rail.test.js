@@ -156,8 +156,8 @@ test("rail app: the shell mounts the rail, the brand leaves the header, and the 
   // The page being left is hidden on the desk: the new address is current before leave() runs.
   assert.match(app, /current = key;\n(?: *\/\/.*\n)* *if \(was && !again\) leave\(wasKey, was, from, to, backward\);/);
   assert.match(app, /if \(phone\(\) \|\| !installed\(\)\) return;\s*const href = placeForKey/, "no rail keys on the phone, or in a browser tab (they switch the browser's own tabs)");
-  // The phone shell's own header is untouched.
-  assert.match(app, /h\("nav", \{ class: "ph-tabs", "aria-label": "Pages" \}, phLabels\)/);
+  // The phone shell's own header and tab bar (v2).
+  assert.match(app, /h\("nav", \{ class: "tabbar", "aria-label": "Pages" \}, phLabels, moreTab\)/);
   assert.match(read("sw.js"), /"\/js\/rail\.js"/, "kept at install");
   const icons = read("js/icons.js");
   assert.match(icons, /\n {2}planner: '/);

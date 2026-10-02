@@ -2,10 +2,11 @@
 // The Deck's shell: the rail, the header, search, and the router that loads one view at a time
 // from deck/views/. From 720 px up the rail (js/rail.js) is a 72 px column on the left, and the
 // header, a view's own list column and the view sit to its right. On a phone (under 720 px,
-// docs/design/phone.md section 3) there is no rail and no tab bar: a 48 tall header with the three page labels (Now,
-// Chats, Agents), the three pages side by side in a pager you swipe, Lumen floating at the
-// bottom, and every other address pushed over them from the right. The avatar opens the Places
-// sheet (js/places.js); a place held there becomes a fourth page after Agents.
+// docs/design/phone.md section 3) there is no rail: a 48 tall header (the mark, the page's title, search,
+// the avatar), the four pages (Now, Chat, Projects, Agents) side by side in a pager you swipe, Lumen
+// floating above a glass tab bar of five (the four and More), and every other address pushed over them
+// from the right. The tab bar's More and the avatar open the More sheet (js/more.js): Memory, Vault,
+// Drive, Planner, Devices, Settings. v2 of the phone shell (team/0.2.2/ux-prototype.html).
 //
 // A view is a module in deck/views/ whose default export is `async (ctx) => void`:
 //   ctx.root     the empty element to render into
@@ -32,7 +33,8 @@ import { offerEnroll } from "./enroll-grant.js";
 import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
-import { fillPlaces, readPin } from "./places.js";
+import { fillMore } from "./more.js";
+import { haptic } from "./haptics.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
@@ -81,24 +83,16 @@ const ROUTES = [
   ["/pair/scan", "wink"],
 ];
 // The places and their order are the rail's (js/rail.js PLACES).
-// The phone's three pages, in pager order. Every other address is pushed over them.
+// The phone's four pages, in pager order, each a tab of the glass tab bar (the fifth tab is More).
+// Every other address is pushed over them.
 const PAGER = [
-  { href: "/now", label: "Now", view: "now" },
-  { href: "/chat", label: "Chats", view: "chat" },
-  { href: "/agents", label: "Agents", view: "agents" },
+  { href: "/now", label: "Now", view: "now", icon: "now" },
+  { href: "/chat", label: "Chat", view: "chat", icon: "chat" },
+  { href: "/projects", label: "Projects", view: "projects", icon: "projects" },
+  { href: "/agents", label: "Agents", view: "agents", icon: "agents" },
 ];
-/**
- * The pager's pages now: the three, then the place kept from the Places sheet (js/places.js), if
- * any, as a fourth. `key` is the address the page is at (pathname and search, the router's key):
- * Devices is kept as Settings scrolled to its section, so its key is /settings.
- * @type {{ href: string, label: string, view: string, key?: string }[]}
- */
+/** @type {{ href: string, label: string, view: string, icon: string, key?: string }[]} */
 const strip = [...PAGER];
-/** The kept place as a page of the pager. @param {{ href: string, label: string }} t */
-function fourth(t) {
-  const [path] = t.href.split("#");
-  return { href: t.href, label: t.label, view: match(path).view, key: path };
-}
 const keyOf = (/** @type {{ href: string, key?: string }} */ p) => p.key || p.href;
 /** Which page of the pager an address is (0 to 3), or -1 for a pushed screen. */
 export const slotOf = (/** @type {string} */ key) => strip.findIndex(p => keyOf(p) === key);
@@ -114,8 +108,6 @@ function match(pathname) {
   }
   return { view: "missing", params: {} };
 }
-
-{ const kept = readPin(); if (kept) strip.push(fourth(kept)); }
 
 // Theme: dark unless the viewer chose paper in Settings. A per-viewer convenience.
 try { if (localStorage.getItem("vyre.theme") === "paper") document.documentElement.dataset.theme = "paper"; } catch {}
@@ -143,20 +135,25 @@ const sideSync = () => { side.hidden = !pins.childNodes.length && !railLower.chi
 const view = h("main", { class: "view", id: "view" });
 // ---- the phone's header, pager and Lumen ---------------------------------------------------
 
-const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "ph-tab", "data-view": p.view,
-  onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); toPage(i); } }, p.label);
+const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "tb-item", "data-view": p.view,
+  onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); haptic("tick"); toPage(i); } },
+  icon(/** @type {any} */ (p.icon), 24), h("span", { class: "tb-label" }, p.label));
 const phLabels = strip.map(tab);
 const phBackLabel = h("span", { class: "ph-back-to" }, "Now");
 const phBack = h("button", { type: "button", class: "ph-back", "aria-label": "Back", onclick: () => back(lastPage) }, icon("left", 22), phBackLabel);
 const phInitial = h("span", { class: "ph-initial", "aria-hidden": "true" }, "V");
-const phAvatar = h("button", { type: "button", class: "ph-avatar", "aria-label": "Places and account", "aria-haspopup": "dialog", onclick: () => openPlaces() }, phInitial);
+const phAvatar = h("button", { type: "button", class: "ph-avatar", "aria-label": "More and account", "aria-haspopup": "dialog", onclick: () => openMore() }, phInitial);
 const phPlus = h("button", { type: "button", class: "ph-plus", "aria-label": "New agent", hidden: true,
   onclick: () => window.dispatchEvent(new Event("deck:new-agent")) }, icon("plus", 22));
-const phTabs = h("nav", { class: "ph-tabs", "aria-label": "Pages" }, phLabels);
+const phSearch = h("button", { type: "button", class: "ph-search", "aria-label": "Search", onclick: () => openFind(undefined) }, icon("search", 22));
+const phTitle = h("h1", { class: "ph-title" }, "Now");
+const moreTab = h("button", { type: "button", class: "tb-item tb-more", "aria-label": "More", "aria-haspopup": "dialog", onclick: () => { haptic("tick"); openMore(); } },
+  icon("more", 24), h("span", { class: "tb-label" }, "More"));
+const tabBar = h("nav", { class: "tabbar", "aria-label": "Pages" }, phLabels, moreTab);
 const phHead = h("header", { class: "ph-head" },
   h("span", { class: "ph-mark" }, mark(22)), phBack,
-  phTabs,
-  h("div", { class: "ph-grow" }), phPlus, phAvatar);
+  phTitle,
+  h("div", { class: "ph-grow" }), phPlus, phSearch, phAvatar);
 const slots = strip.map(p => h("div", { class: "pager-slot", "data-slot": p.view }));
 const pager = h("div", { class: "pager" }, slots);
 view.append(pager);
@@ -174,7 +171,8 @@ put(deck,
         fixtureNote,
         needsPill),
       h("div", { class: "panes" }, side, view))),
-  cap.el);
+  cap.el,
+  tabBar);
 
 function drawNeeds() {
   // waiting's one count where the box has it (reminders and pairings included), else the list's.
@@ -185,6 +183,8 @@ function drawNeeds() {
   // The phone: the mark's dot takes the attention colour, and Now says how many.
   phHead.toggleAttribute("data-needs", n > 0);
   phLabels[0].setAttribute("aria-label", n ? `Now, ${n} need${n === 1 ? "s" : ""} you` : "Now");
+  // The tab's badge: the count, nothing else on the bar carries one.
+  if (n) phLabels[0].dataset.count = n > 9 ? "9+" : String(n); else delete phLabels[0].dataset.count;
 }
 needs.watch(drawNeeds);
 
@@ -361,20 +361,16 @@ function setMode(/** @type {string} */ m, /** @type {string} */ name, /** @type 
   if (slot >= 0) lastPage = strip[slot].href;
   mark_(slot >= 0 ? slot : slotOf(keyOf(strip.find(p => p.href === lastPage) || { href: lastPage })));
   put(phBackLabel, strip.find(p => p.href === lastPage)?.label || "Now");
-  phPlus.hidden = slot !== 2;
-  phAvatar.hidden = slot === 2;
+  phPlus.hidden = slot !== 3;
+  phAvatar.hidden = slot === 3;
 }
 let marked = -1;
 function mark_(/** @type {number} */ i) {
   phLabels.forEach((a, j) => { if (i === j) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
   if (i === marked) return;
   marked = i;
-  // Four labels can be wider than the header: the current one scrolls into sight, never shrinks.
-  const a = phLabels[i];
-  if (!a || !phTabs.clientWidth) return;
-  const left = a.offsetLeft - phTabs.offsetLeft, right = left + a.offsetWidth;
-  if (left < phTabs.scrollLeft) phTabs.scrollLeft = left;
-  else if (right > phTabs.scrollLeft + phTabs.clientWidth) phTabs.scrollLeft = right - phTabs.clientWidth;
+  // The header's title is the page's own name; the tab bar says where you are, the title says what it is.
+  if (strip[i]) put(phTitle, strip[i].label);
 }
 
 /** Run fn once when el's animation ends (or at once when there is none to wait for). */
@@ -681,7 +677,7 @@ matchMedia(PHONE_QUERY).addEventListener("change", () => {
   route();
 });
 
-// ---- Find, Places ----------------------------------------------------------------------------
+// ---- Find, More ----------------------------------------------------------------------------
 
 /** Lumen opened: Find, with the keyboard up; dictated words go into its box, unsent. */
 function openFind(/** @type {string | undefined} */ words) {
@@ -694,19 +690,13 @@ function openFind(/** @type {string | undefined} */ words) {
   input.focus({ preventScroll: true });
 }
 
-/** The Places sheet, from the avatar (js/places.js in js/sheet.js's sheet). A tap on a place
- * opens it pushed, or goes to its page when it is the one kept as a fourth page. */
-function openPlaces() {
+/** The More sheet, from the tab bar's last tab or the avatar (js/more.js in js/sheet.js's sheet): the places
+ * that are not a tab. A tap opens one pushed. */
+function openMore() {
   let stop = () => {};
-  const s = openSheet({ title: "Places", label: "Places", build(body, close, parts) {
-    stop = fillPlaces(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
-      health: watchHealth, line: linkLine, pinned: keep,
-      open: t => {
-        // The kept place is a page: go there without a history entry, as a label tap does.
-        if (!phone() || slotOf(t.href.split("#")[0]) < 0) { go(t.href); return; }
-        if (location.pathname + location.search + location.hash !== t.href) history.replaceState(history.state, "", t.href);
-        route();
-      } }).stop;
+  const s = openSheet({ title: "More", label: "More", build(body, close, parts) {
+    stop = fillMore(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
+      health: watchHealth, line: linkLine, open: t => go(t.href) }).stop;
   }, onClose() {
     stop();
     matchMedia(PHONE_QUERY).removeEventListener("change", shut);
@@ -714,37 +704,6 @@ function openPlaces() {
   // Out of the phone layout (a rotation, a wider window) the rail has the places: the sheet goes.
   const shut = () => s.close();
   matchMedia(PHONE_QUERY).addEventListener("change", shut);
-}
-
-/**
- * The Places sheet kept a place as the fourth page (or let it go): the pager gains, swaps or
- * loses its fourth slot and the header its fourth label. Pages move to where they now belong,
- * and the router runs again when the page on screen changed shape (a page now pushed, or back).
- * @param {{ href: string, label: string } | null} t
- */
-function keep(t) {
-  const was = strip[3] ? keyOf(strip[3]) : null;
-  strip.splice(3);
-  if (t) strip.push(fourth(t));
-  const now = strip[3] ? keyOf(strip[3]) : null;
-  // Devices and Settings are the same page (/settings): only the label and its address change.
-  if (was === now) { if (strip[3]) { put(phLabels[3], strip[3].label); phLabels[3].setAttribute("href", strip[3].href); } return; }
-  const oldSlot = slots.splice(3)[0];
-  phLabels.splice(3).forEach(a => a.remove());
-  if (strip[3]) {
-    const slot = h("div", { class: "pager-slot", "data-slot": strip[3].view });
-    slots.push(slot);
-    pager.append(slot);
-    phLabels.push(tab(strip[3], 3));
-    phTabs.append(phLabels[3]);
-  }
-  for (const [k, p] of pages) place(k, p.page);
-  oldSlot?.remove();
-  marked = -1;
-  if (!strip.some(p => p.href === lastPage)) lastPage = "/now";
-  // The page on screen, or the address under a pushed one, moved in or out of the pager.
-  if (current === was || current === now) route();
-  else if (mode === "page") { mark_(slotOf(current)); toSlot(slotOf(current), false); }
 }
 
 /** Lumen's placeholder names the assistant: read once, and again after a visit to Agents. */
