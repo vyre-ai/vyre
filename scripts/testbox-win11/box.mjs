@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../../core/daemon/index.js";
-import { HUMAN_ONLY } from "../../core/presence/index.js";
+import { HUMAN_ONLY, Presence } from "../../core/presence/index.js";
 import { wordsToSeed } from "../../relay/client/seedwords.js";
 import { nodeCrypto } from "../../relay/client/nodecrypto.js";
 
@@ -43,9 +43,17 @@ const lenient = {
 const PROOF = { proof: { method: "passkey", id: "x" } };
 const log = (m) => console.log(`${new Date().toISOString()} ${m}`);
 
-const d = await start({ presence: lenient, root, log: (m) => log("vyred: " + m) });
+// BOX_REAL_PRESENCE=1: the real presence layer decides every device proof (the app's ES256 key, enrolled at its pairing); only the
+// fixed test passkey proof this script itself sends to mint a ticket is taken as given. Used by the companion join proof.
+const hybrid = ({ db, events, log }) => {
+  const real = new Presence({ db, events, log, role: "server", network: () => ({}) });
+  const h = Object.create(real);
+  h.verify = async (a) => (a.proof && a.proof.method === "passkey" && a.proof.id === "x" ? lenient.verify(a) : real.verify(a));
+  return h;
+};
+const d = await start({ presence: process.env.BOX_REAL_PRESENCE === "1" ? hybrid : lenient, root, log: (m) => log("vyred: " + m) });
 log(`box up, home ${root}, relay ${RELAY}`);
-for (const ev of ["device.paired", "relay.paired", "relay.connected", "relay.disconnected", "device.removed"]) {
+for (const ev of ["companion.paired", "companion.requested", "companion.refused", "device.paired", "relay.paired", "relay.connected", "relay.disconnected", "device.removed"]) {
   try { d.events.on ? d.events.on(ev, (e) => log(`event ${ev} ${JSON.stringify(e).slice(0, 200)}`)) : null; } catch {}
 }
 

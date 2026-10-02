@@ -327,6 +327,14 @@ fn app_version() -> Result<&'static str, String> {
 
 /// The installed folder for this app's version, downloading and checking what is missing.
 fn ensure_installed(paths: &Paths) -> Result<PathBuf, String> {
+    // Test builds only (--features selftest): a package and Node zip from files, for the VM proofs. The Node zip's pin is still checked.
+    #[cfg(feature = "selftest")]
+    if let (Ok(pkg), Ok(zip)) = (std::env::var("VYRE_TEST_CORE_PKG"), std::env::var("VYRE_TEST_NODE_ZIP")) {
+        let version = "0.0.1-selftest.1";
+        let dir = core_install::version_dir(&paths.core_root, version)?;
+        if dir.join("core.lock").is_file() { return Ok(dir); }
+        return core_install::install(&paths.core_root, version, &std::fs::read(pkg).map_err(|e| e.to_string())?, &std::fs::read(zip).map_err(|e| e.to_string())?);
+    }
     let version = app_version()?;
     let dir = core_install::version_dir(&paths.core_root, version)?;
     if dir.join("core.lock").is_file() { return Ok(dir); }

@@ -461,6 +461,8 @@ async fn finish_pair(app: AppHandle, live: State<'_, Live>, link: serde_json::Va
     ensure_link_window(&app);
     // The helper may ask the app to vouch for it for the next fifteen minutes, once.
     app.state::<core_host::CoreHost>().note_paired();
+    #[cfg(feature = "selftest")]
+    if std::env::var("VYRE_TEST_OPEN_HISTORY").as_deref() == Ok("1") { show_history(&app); }
     show_panel(&app, "/quick");
     Ok(())
 }
@@ -673,6 +675,9 @@ fn main() {
             // Start in the tray; show the panel only when first-run is needed.
             if pinned(&handle).is_none() { show_first_run(&handle); }
             ensure_link_window(&handle);
+            // Test builds only: open the import screen at start (the VM join proof has no tray to click).
+            #[cfg(feature = "selftest")]
+            if std::env::var("VYRE_TEST_OPEN_HISTORY").as_deref() == Ok("1") && pinned(&handle).is_some() { show_history(&handle); }
             // A "keep them in sync" import the person started earlier gets its helper back.
             if pinned(&handle).is_some() && handle.state::<core_host::CoreHost>().restore_sync(&handle) {
                 let h = handle.clone();
