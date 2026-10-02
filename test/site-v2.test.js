@@ -75,3 +75,13 @@ test("site v2: the pages leave the installers and the setup page alone", () => {
   const gen = fs.readFileSync(path.join(SITE, "..", "scripts", "gen-site.mjs"), "utf8");
   assert.ok(!/writeFileSync\(join\(site, ['"`](setup|box|install|i|w)\b/.test(gen), "the generator never writes the installers or setup");
 });
+
+test("mac download: off until a release carries the files, and the picker is in the page script", () => {
+  const mac = fs.readFileSync(path.join(SITE, "mac", "index.html"), "utf8");
+  assert.ok(!mac.includes("data-mac-dl"), "no download button before MAC_DMG=1");
+  const js = fs.readFileSync(path.join(SITE, "v2.js"), "utf8");
+  assert.ok(js.includes("getHighEntropyValues(['architecture'])"));
+  assert.ok(js.includes("Intel Mac?") && js.includes("Apple silicon?"));
+  const gen = fs.readFileSync(path.join(SITE, "..", "scripts", "gen-site.mjs"), "utf8");
+  assert.ok(gen.includes("Vyre-Lumen-${a}.dmg") && gen.includes("MAC_DMG"));
+});

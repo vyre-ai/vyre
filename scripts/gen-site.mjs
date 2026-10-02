@@ -17,6 +17,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const site = resolve(here, '..', 'site');
 const SITE = 'https://vyre.run';
 const VERSION = '0.2.1';
+// A signed Mac download ships with a release (Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg). Until one is published the Mac pages say Lumen is
+// built on the Mac; set MAC_DMG=1 when the release carries the files and the copy below switches. The page picks the file for the visitor's Mac (site/v2.js).
+const MAC_DMG = process.env.MAC_DMG === '1';
+const DMG = (a) => `https://github.com/vyre-ai/vyre/releases/latest/download/Vyre-Lumen-${a}.dmg`;
 const MODIFIED = new Date().toISOString().slice(0, 10);
 // A hash of each asset goes in its URL, so a deploy never meets a stale copy in a browser cache (see site/_headers).
 const hash = (f) => createHash('sha256').update(readFileSync(join(site, f))).digest('hex').slice(0, 10);
@@ -543,16 +547,16 @@ devicePage({
   steps: { h: 'Install the command line, <b>then build Lumen.</b>', lead: 'Set up your server first, at <a href="/setup/">vyre.run/setup</a>. Then, on your Mac:', items: [
     `<b>Install the command line.</b> Vyre is not on npm yet, so it installs from a tarball on vyre.run.${term('npm i -g https://vyre.run/box/vyre.tgz')}`,
     `<b>Pair this Mac with your server.</b> It looks for your server on your tailnet and prints a code. Approve it in your Deck.${term('vyre up')}`,
-    `<b>Build Vyre Lumen.</b> It builds from the package on your Mac; nothing is downloaded. If it asks for the Command Line Tools, run <code>xcode-select --install</code> first.${term('vyre capsule install')}`,
+    MAC_DMG ? `<b>Download Vyre Lumen.</b> Open the disk image and drag Lumen to Applications.<p class="dl"><a class="btn primary" data-mac-dl href="${DMG('aarch64')}" data-arm="${DMG('aarch64')}" data-intel="${DMG('x86_64')}">Download for Apple silicon</a> <a class="sm" data-mac-alt href="${DMG('x86_64')}">Intel Mac?</a></p>` : `<b>Build Vyre Lumen.</b> It builds from the package on your Mac; nothing is downloaded. If it asks for the Command Line Tools, run <code>xcode-select --install</code> first.${term('vyre capsule install')}`,
     `<b>Press Option-Space.</b> No extra permission is needed. Control twice needs Input Monitoring.`,
   ] },
   needs: [['Mac', 'macOS, with Node 22.5 or newer'], ['Server', 'A Linux server, or another Mac that stays on'], ['Network', 'Tailscale signed in, free plan'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
   extra: `<p class="lead rv" style="margin-top:28px">A Mac that stays on can be your server too. The same setup line works there.</p>`,
-  gapList: ['Lumen is built on your Mac, not downloaded. There is no signed Mac download yet.', 'Lumen is self-signed, not notarized, so macOS may ask for your permissions again after an update. Notarization comes next.', 'Some Lumen features come later: text expansion, script commands, AI presets and browser tabs.'],
+  gapList: [MAC_DMG ? 'The Mac download is not notarized yet.' : 'Lumen is built on your Mac, not downloaded. There is no signed Mac download yet.', 'Lumen is self-signed, not notarized, so macOS may ask for your permissions again after an update. Notarization comes next.', 'Some Lumen features come later: text expansion, script commands, AI presets and browser tabs.'],
   faq: [
     ['Do I need the Mac app to use Vyre?', 'No. Your agents run on your server and the Deck opens in any browser. Lumen is the fastest way to ask from your Mac.'],
     ['Can my Mac be the server?', 'Yes, a Mac that stays on can be the server. A Linux server is the best home, because agents keep working when a laptop sleeps.'],
-    ['Why does it build instead of download?', 'There is no signed Mac download yet. Building on your Mac from the package means nothing unsigned is installed. A notarized download comes next.'],
+    MAC_DMG ? ['Apple silicon or Intel?', 'Pick Apple silicon for any Mac from late 2020 on (M1 and later). Older Macs are Intel. If you are not sure, open the Apple menu and choose About This Mac: a Chip line means Apple silicon, a Processor line means Intel.'] : ['Why does it build instead of download?', 'There is no signed Mac download yet. Building on your Mac from the package means nothing unsigned is installed. A notarized download comes next.'],
     ['Does Lumen need Touch ID?', 'Only to unlock your vault. Asking and sending what you asked for do not.'],
   ],
 });

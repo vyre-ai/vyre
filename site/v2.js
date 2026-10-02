@@ -136,4 +136,17 @@
   doc.querySelectorAll('canvas.field').forEach(field);
   doc.querySelectorAll('canvas.markart').forEach(mark);
   var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(paintAll, 150); });
+
+  // Mac download: pick the file for the visitor's Mac. Chrome and Edge can say which chip; Safari and Firefox cannot, so they get Apple silicon (every Mac sold since 2020) with the Intel link beside it.
+  (function () {
+    var dl = doc.querySelector('[data-mac-dl]'), alt = doc.querySelector('[data-mac-alt]');
+    if (!dl || !alt) return;
+    var arm = dl.getAttribute('data-arm'), intel = dl.getAttribute('data-intel');
+    function show(isArm) {
+      dl.href = isArm ? arm : intel; dl.textContent = isArm ? 'Download for Apple silicon' : 'Download for Intel';
+      alt.href = isArm ? intel : arm; alt.textContent = isArm ? 'Intel Mac?' : 'Apple silicon?';
+    }
+    var ud = navigator.userAgentData;
+    if (ud && ud.getHighEntropyValues) ud.getHighEntropyValues(['architecture']).then(function (v) { if (v && v.architecture) show(v.architecture !== 'x86'); }).catch(function () {});
+  })();
 })();
