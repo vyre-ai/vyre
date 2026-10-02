@@ -33,6 +33,17 @@ export function cardWords(r) {
 }
 
 /**
+ * The line a phone shows while it waits for the screen's Confirm: its own key's fingerprint, in the format the box's
+ * pairing.requested card uses, so the person compares two. Plain text only; empty when there is no fingerprint.
+ * @param {string | null | undefined} fingerprint
+ * @returns {string}
+ */
+export function phoneCodeWords(fingerprint) {
+  const f = String(fingerprint || "").replace(/[^A-Za-z0-9 ]/g, "").slice(0, 20).trim();
+  return f ? `This phone: ${f}` : "";
+}
+
+/**
  * A ticket to a paired box: ONE lookup, the card, and the pairing from the record that lookup returned. A lookup uses the ticket up
  * at the relay, so nothing here looks it up twice; the pairing takes the held record. Nothing is paired unless the person taps Pair.
  * @template F @template B

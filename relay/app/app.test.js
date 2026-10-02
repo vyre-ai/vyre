@@ -281,7 +281,7 @@ test("service worker: /app/<path> is answered from the build the loader named, h
   assert.equal((await w2.fire("fetch", { request: new Request("https://app.vyre.run/app/app.css") })).status, 404);
 });
 
-import { pairTicketFrom, HOSTED_RELAY, cardWords } from "./loader/fragment.js";
+import { pairTicketFrom, HOSTED_RELAY, cardWords, phoneCodeWords } from "./loader/fragment.js";
 import nodeCrypto from "node:crypto";
 
 test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and nothing else is taken for one", () => {
@@ -369,4 +369,12 @@ test("loader: the confirm card says who the code claims to be, as short plain te
   assert.equal(cardWords({ name: "Harlow's box", handle: null, fingerprint: "abcd efgh" }).says, "Harlow's box");
   const hostile = cardWords({ name: "<img src=x onerror=alert(1)>" + "x".repeat(200), handle: null, fingerprint: "f".repeat(100) });
   assert.ok(hostile.says.length <= 80 && hostile.fingerprint.length <= 20, "capped; the loader writes it with textContent, never as markup");
+});
+
+test("loader: the phone shows its own key's fingerprint while it waits for Confirm, as plain capped text", () => {
+  assert.equal(phoneCodeWords("abcd efgh"), "This phone: abcd efgh");
+  assert.equal(phoneCodeWords(""), "");
+  assert.equal(phoneCodeWords(null), "");
+  assert.ok(!/[<>]/.test(phoneCodeWords("<b>abcd</b>")), "markup characters are dropped");
+  assert.ok(phoneCodeWords("f".repeat(100)).length <= "This phone: ".length + 20);
 });

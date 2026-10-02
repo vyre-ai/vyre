@@ -17,7 +17,7 @@ import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
-import { Leases, TTL } from "./lease.js";
+import { Leases, TTL, ownSurface } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
@@ -254,7 +254,7 @@ async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
   // keystore, so no test goes near the login keychain.
   const transcripts = path.join(root, "transcripts");
   fs.mkdirSync(transcripts);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [transcripts],
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", network: { owner: "owner@example" }, transcripts: [transcripts],
     ...(vault ? { vault: { keystore: "file" },
       // A Gate sender, so an agent's gate.request shows which thread vyred verified. Nothing is sent.
       gate: { senders: { mail: { type: "gmail", vault: "no-such-item", from: "alex@example.com" } } } } : {}) }));
@@ -308,7 +308,7 @@ const of = (events, thread, type) => events.filter(e => e.thread === thread && e
 
 test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
   const w = await boot(t);
-  const { root, work, tool, launches } = w;
+  const { root, work, tool, launches, d } = w;
   const a = sse(root), b = sse(root);
   t.after(() => { a.close(); b.close(); });
 
@@ -380,22 +380,50 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
     { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
-  const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data;
+  // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
+  assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
+  // The owner over the tailnet (the verified label whose login is the recorded owner) is the person's Deck, not a participant of its own.
+  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true });
+  assert.equal((await asOwner("threads.send", { thread: id, text: "over the tailnet", surface: "whatever" })).data.sent, true);
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck");
+  // Two different people: taking the keyboard really moves it, and the taker types at once; the owner is read-only until they take it back.
+  const asBob = (name, input) => d.registry.call(name, input, "tailnet:bob@example", { person: true });
+  assert.equal((await asBob("threads.send", { thread: id, text: "bob without the keyboard" })).data.sent, false, "another login contests the owner's keyboard");
+  const took = (await asBob("threads.lease", { thread: id })).data;
+  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "deck"], "the keyboard moved to the other person");
+  assert.equal((await asBob("threads.send", { thread: id, text: "bob types at once" })).data.sent, true);
+  const locked = (await asOwner("threads.send", { thread: id, text: "owner while bob has it" })).data;
+  assert.deepEqual([locked.sent, locked.holder], [false, "tailnet:bob@example"]);
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await asOwner("threads.send", { thread: id, text: "owner again" })).data.sent, true);
+  await until(() => of(a.got, id, "thread.finished").length >= 3, "the turns before the lease checks go on");
+  // A module (or any non-person caller) naming the holder's surface does not join it: a live terminal's name and the link's name each still contest.
+  const asModule = (name, input) => d.registry.call(name, input, "module:planner");
+  for (const held of [`cli:${process.pid}`, "box:x", "agent:kit"]) {
+    assert.equal((await tool("threads.lease", { thread: id, surface: held })).data.holder, held, `the holder is ${held}`);
+    const joined = (await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held })).data;
+    assert.deepEqual([joined.sent, joined.holder], [false, held], `a module naming ${held} is refused while it holds the keyboard`);
+  }
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  // A surface name in a call is not an identity: a person's socket caller saying "tailnet:owner@example" is just another label, which contests.
+  assert.equal((await tool("threads.send", { thread: id, text: "claimed", surface: "tailnet:owner@example" })).data.sent, false);
+  assert.equal((await tool("threads.send", { thread: id, text: "back on the deck", surface: "deck:1" })).data.sent, true);
+  const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "box:phone" })).data;
   assert.deepEqual(refused.sent, false);
   assert.equal(refused.holder, "deck:1");
-  const moved = (await tool("threads.lease", { thread: id, surface: "phone" })).data;
+  const moved = (await tool("threads.lease", { thread: id, surface: "box:phone" })).data;
   assert.equal(moved.previous, "deck:1");
-  await until(() => of(a.got, id, "lease.changed").some(e => e.payload.holder === "phone" && e.payload.previous === "deck:1"), "lease.changed");
-  assert.equal((await tool("threads.send", { thread: id, text: "typed on the deck", surface: "deck:1" })).data.holder, "phone");
-  assert.equal((await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data.sent, true);
-  await until(() => of(a.got, id, "thread.sent").some(e => e.payload.surface === "phone"), "thread.sent");
+  await until(() => of(a.got, id, "lease.changed").some(e => e.payload.holder === "box:phone" && e.payload.previous === "deck:1"), "lease.changed");
+  assert.equal((await tool("threads.send", { thread: id, text: "typed on the deck", surface: "deck:1" })).data.holder, "box:phone");
+  assert.equal((await tool("threads.send", { thread: id, text: "from the phone", surface: "box:phone" })).data.sent, true);
+  await until(() => of(a.got, id, "thread.sent").some(e => e.payload.surface === "box:phone"), "thread.sent");
 
   // Stop, and a send brings it back with --resume under the same id.
   await until(() => of(a.got, id, "thread.finished").length >= 3, "the phone's turn");
   assert.equal((await tool("threads.stop", { thread: id })).data.stopped, true);
   await until(() => of(a.got, id, "thread.stopped")[0], "thread.stopped");
   assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "stopped");
-  assert.equal((await tool("threads.send", { thread: id, text: "still there?", surface: "phone" })).data.sent, true);
+  assert.equal((await tool("threads.send", { thread: id, text: "still there?", surface: "box:phone" })).data.sent, true);
   await until(() => of(a.got, id, "thread.text").some(e => e.payload.text === "echo: still there?"), "the resumed reply");
   const last = launches().at(-1);
   assert.deepEqual(last.argv.slice(last.argv.indexOf("--resume"), last.argv.indexOf("--resume") + 2), ["--resume", id]);
@@ -640,7 +668,7 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   const launch = await until(() => launches().at(-1), "the launch");
   assert.ok(launch.argv.includes("--resume") && launch.argv.includes(quiet.id), "resumed, not started anew");
   await until(async () => (await tool("threads.get", { thread: quiet.id })).data.events.some(e => e.type === "thread.text" && e.payload.text === "echo: add a phone field"), "the reply");
-  assert.equal((await tool("threads.send", { thread: quiet.id, text: "and a note", surface: "deck" })).data.holder, "capsule", "the lease holds");
+  assert.equal((await tool("threads.send", { thread: quiet.id, text: "and a note", surface: "box:deck" })).data.holder, "capsule", "the lease holds");
 
   // Written a moment ago: someone is working in it.
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
@@ -1472,4 +1500,88 @@ test("switchedLine: what carries over is said plainly, per kind of move", async 
   assert.equal(switchedLine({ from: "grok", to: "claude", had: true, reason: "back" }), "Back on Claude. It has this session's memory and files, and what Grok said this turn.");
   assert.equal(modelName("claude-opus-4-1[high]"), "claude-opus-4-1");
   assert.equal(providerName("openrouter"), "OpenRouter");
+});
+
+test("ownSurface: only the person's own surface names, anchored; every other string is a contest", () => {
+  for (const own of ["deck", "deck:1", "phone", "phone:ab", "capsule", "capsule:x", "glass", "lumen", "mac", "mac:studio", "web"]) assert.equal(ownSurface(own), true, own);
+  for (const not of ["machine", "webhook:x", "deckx", "phones", "webby", "tailnet:other@x", "tailnet:owner@example", "tailnet:agent:a", "tailnet-guest:g@x", "device:x", "device:aaaaaaaaaaaaaaaa",
+    "box:phone", "cli:123", "chat", "person", "you", "vyre", "", "mcp", "xdeck"]) assert.equal(ownSurface(not), false, not);
+});
+
+test("surfaceFor: identity comes from the verified caller, never from the surface a call names", async () => {
+  const { surfaceFor } = await import("./index.js");
+  const owner = "Owner@Example";
+  // The owner's own devices.
+  assert.equal(surfaceFor({}, "tailnet:owner@example", owner), "deck", "the login equals the recorded owner (case aside)");
+  assert.equal(surfaceFor({ surface: "capsule" }, "tailnet:owner@example", owner), "capsule");
+  assert.equal(surfaceFor({ surface: "tailnet:other@x" }, "tailnet:owner@example", owner), "deck", "the owner cannot be turned into another label by input");
+  assert.equal(surfaceFor({}, "device:abcdefghijklmnop", owner), "phone", "a verified paired device");
+  assert.equal(surfaceFor({ surface: "glass" }, "device:abcdefghijklmnop", owner), "glass");
+  // A person's own socket caller says which of their surfaces.
+  assert.equal(surfaceFor({ surface: "deck:2" }, "deck", owner), "deck:2");
+  assert.equal(surfaceFor({ surface: "cli:123" }, "cli", owner), "cli:123", "a terminal is its own, contested surface");
+  assert.equal(surfaceFor({}, "cli", owner), "cli");
+  // Not the owner: its own label, and never an own surface by claiming one.
+  assert.equal(surfaceFor({}, "tailnet:other@x", owner), "tailnet:other@x", "another login is another person");
+  assert.equal(surfaceFor({ surface: "deck" }, "tailnet:other@x", owner), "via:tailnet:other@x");
+  assert.equal(surfaceFor({}, "tailnet:owner@example", ""), "tailnet:owner@example", "no recorded owner, so nobody is the owner");
+  assert.equal(surfaceFor({}, "tailnet:agent:a", owner), "tailnet:agent:a");
+  assert.equal(surfaceFor({ surface: "deck" }, "tailnet:agent:a", owner), "via:tailnet:agent:a");
+  assert.equal(surfaceFor({}, "tailnet-guest:g@x", owner), "tailnet-guest:g@x");
+  assert.equal(surfaceFor({ surface: "phone" }, "tailnet-guest:g@x", owner), "via:tailnet-guest:g@x");
+  assert.equal(surfaceFor({ surface: "device:aaaaaaaaaaaaaaaa" }, "mcp", owner), "via:mcp", "a device claimed from input");
+  for (const bad of ["deck", "deck:1", "phone", "capsule", "glass", "lumen", "mac", "web", "device:x", "tailnet:other@x", "tailnet:owner@example", "tailnet:agent:a"]) {
+    for (const caller of ["mcp", "harness", "hook", "module:planner", "mcp:agent:kit"]) assert.equal(ownSurface(surfaceFor({ surface: bad }, caller, owner)), false, `${caller} naming ${bad}`);
+  }
+  for (const odd of ["machine", "webhook:x", "deckx", "tailnet:other@x", "tailnet:agent:a", "device:x"]) assert.equal(ownSurface(surfaceFor({ surface: odd }, "mcp", owner)), false, odd);
+  // Any caller that is not the owner or a person's own socket gets its own label, or via:<label> for any other name: it never joins another holder.
+  for (const caller of ["mcp", "harness", "module:planner", "mcp:agent:kit", "hook"]) {
+    for (const name of [`cli:${process.pid}`, "box:x", "agent:kit", "mcp:agent:juno", "another-holder", "machine", "webhook:x"]) {
+      const got = surfaceFor({ surface: name }, caller, owner);
+      assert.equal(got, `via:${caller}`, `${caller} naming ${name}`);
+      assert.notEqual(got, name);
+    }
+    assert.equal(surfaceFor({}, caller, owner), caller, "no name asked: its own label");
+    assert.equal(surfaceFor({ surface: caller }, caller, owner), caller, "its own label asked: itself");
+  }
+  // Not by prefix: a login that merely starts like the owner's is another person.
+  assert.equal(surfaceFor({}, "tailnet:owner@example.evil", owner), "tailnet:owner@example.evil");
+  // The link's words are always the box's.
+  assert.equal(surfaceFor({ surface: "deck" }, "link:abc", owner), "box:via:link:abc");
+  assert.equal(surfaceFor({ surface: "box:deck" }, "link:box", owner), "box:deck", "the box's own surface, as core/link/mac.js marks it, stands");
+  assert.equal(surfaceFor({ surface: "cli:123" }, "link:box", owner), "box:via:link:box", "a terminal's name is never the link's");
+  // The computers module names the person's screen it already checked; no other module does.
+  assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:computers", owner), "glass:laptop");
+  assert.equal(surfaceFor({ surface: "cli:123" }, "module:computers", owner), "via:module:computers");
+  assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:planner", owner), "via:module:planner");
+});
+
+test("one model per turn (#41): the thread follows what the provider reports, says so once, and a switch labels old and new replies apart", async t => {
+  const { root, work, tool } = await boot(t);
+  // The account's default is not the alias the thread asked for: the provider says what it really runs.
+  const had = process.env.FAKE_CLAUDE_REPORT_MODEL;
+  process.env.FAKE_CLAUDE_REPORT_MODEL = "claude-opus-5-5";
+  t.after(() => { if (had === undefined) delete process.env.FAKE_CLAUDE_REPORT_MODEL; else process.env.FAKE_CLAUDE_REPORT_MODEL = had; });
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, name: "model truth", prompt: "first", model: "sonnet", surface: "deck:1" })).data.id;
+  await until(() => of(s.got, id, "thread.finished").length >= 1, "the first turn");
+  const textOf = (n) => of(s.got, id, "thread.text").filter(e => e.payload.done && !e.payload.notice && e.payload.kind !== "reasoning")[n];
+
+  const said = of(s.got, id, "model.switched");
+  assert.equal(said.length, 1, "the changed answer is said once, so the header and the picker move with it");
+  assert.equal(said[0].payload.model, "claude-opus-5-5");
+  assert.equal((await tool("threads.get", { thread: id })).data.thread.model, "claude-opus-5-5", "the record agrees with the header, the picker and the reply");
+  assert.equal(textOf(0).payload.model, "claude-opus-5-5", "the first reply is stamped with the model that answered it");
+
+  // Switching mid-thread: the next reply carries the new model, the earlier one keeps its own.
+  delete process.env.FAKE_CLAUDE_REPORT_MODEL;
+  assert.equal((await tool("threads.model", { thread: id, model: "haiku" })).error, undefined);
+  await until(() => of(s.got, id, "model.switched").length >= 2, "the switch event");
+  assert.equal(of(s.got, id, "model.switched")[1].payload.model, "haiku");
+  await tool("threads.send", { thread: id, text: "second", surface: "deck:1" });
+  await until(() => of(s.got, id, "thread.finished").length >= 2, "the second turn");
+  assert.equal(textOf(0).payload.model, "claude-opus-5-5", "the old reply is not relabelled");
+  assert.match(textOf(1).payload.model, /haiku/, "the new reply says the new model");
+  assert.equal(of(s.got, id, "model.switched").length, 2, "an answer that matches the switch says nothing more");
 });

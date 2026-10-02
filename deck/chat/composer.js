@@ -1007,7 +1007,7 @@ export function mountComposer(opts) {
       return;
     }
     // A steer: the box's uuid names the words drawn under ours (thread.steered will use it).
-    if (drawn && d.uuid) patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
+    if (drawn) patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
     if (d.sent === false) {
       back();
       say([h("span", null, d.note || "The session did not take the message."), " ", retry()]);
