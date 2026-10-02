@@ -205,6 +205,10 @@
    "module": "chrome",
    "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
   },
+  "chrome.parallel": {
+   "module": "chrome",
+   "reason": "read-only: only reading ops (a snapshot, a screenshot, net list, api route) run, one per tab, each through the same floor and stop as a single call, so nothing is changed in a page; an agent caller needs the person's grant (requireGrant) first, and a step that writes is refused outright (use chrome.batch, which holds writes at the Gate). test: local/hands-chrome-mac/ext-batch.test.js"
+  },
   "chrome.plan": {
    "module": "chrome",
    "reason": "posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
