@@ -43,10 +43,17 @@ test("more: the head names the person and the box; a tap closes the sheet and op
   assert.equal(stopped, 1);
 });
 
-test("the phone keeps the hold-to-pin page: the kept place is read at start, joins the pager and the tab bar, and More's holds change it", () => {
+test("the phone keeps the hold-to-pin page, with no sixth tab: the kept place is a swipe page, More says where you are, and its tile leads More", async () => {
   const app = fs.readFileSync(path.join(import.meta.dirname, "../js/app.js"), "utf8");
   assert.match(app, /\{ const kept = readPin\(\); if \(kept\) strip\.push\(fifth\(kept\)\); \}/);
   assert.match(app, /pinned: keep,/);
-  assert.match(app, /tabBar\.insertBefore\(phLabels\[N\], moreTab\)/);
-  assert.match(fs.readFileSync(path.join(import.meta.dirname, "../css/tabbar.css"), "utf8"), /\.tabbar\[data-tabs="6"\] \{ grid-template-columns: repeat\(6/);
+  assert.match(app, /const phLabels = PAGER\.map\(tab\);/, "four tabs, whatever is kept");
+  assert.match(app, /moreTab\.setAttribute\("aria-current", "page"\)/);
+  const lib = await load();
+  const store = { v: /** @type {string | null} */ ("/vault"), getItem() { return this.v; }, setItem(/** @type {string} */ _k, /** @type {string} */ v) { this.v = v; }, removeItem() { this.v = null; } };
+  const body = document.createElement("div"), head = document.createElement("div"), sheet = document.createElement("div");
+  const r = lib.fillMore(body, () => {}, { head, sheet }, { open: () => {}, store });
+  assert.equal(r.tiles[0].getAttribute("data-place"), "Vault", "the kept place is the first tile");
+  assert.ok(r.tiles[0].hasAttribute("data-kept"), "marked as pinned");
+  assert.equal(r.tiles.length, 6);
 });

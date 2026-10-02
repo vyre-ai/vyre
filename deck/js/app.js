@@ -151,7 +151,8 @@ const view = h("main", { class: "view", id: "view" });
 const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "tb-item", "data-view": p.view,
   onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); haptic("tick"); toPage(i); } },
   icon(/** @type {any} */ (p.icon), 24), h("span", { class: "tb-label" }, p.label));
-const phLabels = strip.map(tab);
+// Four tabs and More, never more (the platform limit is five): a kept place is a swipe page with no tab of its own.
+const phLabels = PAGER.map(tab);
 const phBackLabel = h("span", { class: "ph-back-to" }, "Now");
 const phBack = h("button", { type: "button", class: "ph-back", "aria-label": "Back", onclick: () => back(lastPage) }, icon("left", 22), phBackLabel);
 const phInitial = h("span", { class: "ph-initial", "aria-hidden": "true" }, "V");
@@ -162,7 +163,7 @@ const phSearch = h("button", { type: "button", class: "ph-search", "aria-label":
 const phTitle = h("h1", { class: "ph-title" }, "Now");
 const moreTab = h("button", { type: "button", class: "tb-item tb-more", "aria-label": "More", "aria-haspopup": "dialog", onclick: () => { haptic("tick"); openMore(); } },
   icon("more", 24), h("span", { class: "tb-label" }, "More"));
-const tabBar = h("nav", { class: "tabbar", "aria-label": "Pages", "data-tabs": String(strip.length + 1) }, phLabels, moreTab);
+const tabBar = h("nav", { class: "tabbar", "aria-label": "Pages" }, phLabels, moreTab);
 const phHead = h("header", { class: "ph-head" },
   h("span", { class: "ph-mark" }, mark(22)), phBack,
   phTitle,
@@ -333,6 +334,8 @@ function setMode(/** @type {string} */ m, /** @type {string} */ name, /** @type 
 let marked = -1;
 function mark_(/** @type {number} */ i) {
   phLabels.forEach((a, j) => { if (i === j) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  // The kept place has no tab: while it is on screen, More (where it is the first tile) says where you are.
+  if (i >= PAGER.length) moreTab.setAttribute("aria-current", "page"); else moreTab.removeAttribute("aria-current");
   if (i === marked) return;
   marked = i;
   // The header's title is the page's own name; the tab bar says where you are, the title says what it is.
@@ -724,9 +727,9 @@ function openMore() {
 }
 
 /**
- * The More sheet kept a place as a fifth page (or let it go): the pager gains, swaps or loses its last slot and the tab bar its
- * extra tab. Pages move to where they now belong, and the router runs again when the page on screen changed shape (a page now
- * pushed, or back).
+ * The More sheet kept a place as a fifth page (or let it go): the pager gains, swaps or loses its last slot. It has no tab (the
+ * bar is four and More); its tile in More moves to the front. Pages move to where they now belong, and the router runs again when
+ * the page on screen changed shape (a page now pushed, or back).
  * @param {{ href: string, label: string, icon?: string } | null} t
  */
 function keep(t) {
@@ -735,17 +738,13 @@ function keep(t) {
   strip.splice(N);
   if (t) strip.push(fifth(t));
   const now = strip[N] ? keyOf(strip[N]) : null;
-  tabBar.setAttribute("data-tabs", String(strip.length + 1));
-  // Devices and Settings are the same page (/settings): only the label and its address change.
-  if (was === now) { if (strip[N]) { put(phLabels[N].querySelector(".tb-label"), strip[N].label); phLabels[N].setAttribute("href", strip[N].href); } return; }
+  // Devices and Settings are the same page (/settings): only the address changes.
+  if (was === now) return;
   const oldSlot = slots.splice(N)[0];
-  phLabels.splice(N).forEach(a => a.remove());
   if (strip[N]) {
     const slot = h("div", { class: "pager-slot", "data-slot": strip[N].view });
     slots.push(slot);
     pager.append(slot);
-    phLabels.push(tab(strip[N], N));
-    tabBar.insertBefore(phLabels[N], moreTab);
   }
   for (const [k, p] of pages) place(k, p.page);
   oldSlot?.remove();
