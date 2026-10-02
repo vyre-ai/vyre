@@ -58,18 +58,19 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 
 ## Doing
 
-- 2 Oct, v0.2.2 emergency patch: cut on work/stage-0.2 at 166f72883 (worktree ../vyre-patch-022, branch work/patch-0.2.2), waiting for its hosted runs (node 36966576508 queued). Then: set repo variable VYRE_RELEASES=go (it is unset; lead told), tag v0.2.2 via gh api, run release.yml, stop at the `release` environment and send the lead the run id.
-- Contents: #38 (0443092a0, ffe8464ef, 1369e7f73 as 7dbde9698, 9095404b0, f9374289d), #40 (e6eea3f66 as 77171da97; the box-image proof 6aeea66f6 left out, it only edits box-image.yml), #39 (c3392e171), #42 (4b7e5e7a7 hand-ported without its parent 16504761f, API-key accounts, because #20 has an open IPv6 bypass; plus a test). #13 left out: its node job was queued, not green. The named shas were branch heads over unlanded chains, so cherry-picking them alone conflicts.
-- patch-release.mjs and check-release-lineage.mjs exist only on work/rc-0.2.2, so the tag line is stage (the old guard accepts a commit on work/stage-0.2) and the signing-path diff is empty.
-- PR #67 (work/ci-queue 8b5272861): reviewer-2's edits pushed (six workflows plus watcher-wall on stage pushes). Merge into stage after the v0.2.2 runs finish, then the relay-test-loop trigger on work/rc-0.2.2.
-- Stage green (work/stage-green-022 b5bf76ad0): context.changed test now uses the module's `now` option and mocked setTimeout; files.deliver test waits for the box receiver's own `tailscale status` call (the box always starts its receiver) before counting calls. Stage node 22's other red was perf-check CPU sustained 13.25% (one burst, run 36954232874); watching 166f72883 for a repeat.
+- Watching hosted CI on stage 793d28ce0 (v0.2.2 + relay-deploy cb8298799 merge 5b80477e9 + #67 + stage-green tests). Stage node 24 perf-check stays red until issue #71 (exact-ticks probe and the once-a-minute 0.1 s blip) lands in 0.2.3.
+
+## Done (2 Oct)
+
+- v0.2.2 released: stage 12b601daa tagged, release run 36976078738 green, signature and 13 hashes verified against the pinned key, vyre.run/box serves 0.2.2 byte for byte (site deployed from main's assemble-site.sh and deploy-site.sh). No app deploy (apps/app unchanged). Contents: #38 (0443092a0, ffe8464ef, 1369e7f73 plus the surfaceFor fixes 5d149c866: link box: names, module:computers, own-surface lease.changed), #40 (e6eea3f66), #39, #42 (hand-ported, no API-key parent). #13 and the box-image proof left out.
+- Landed on stage: relay-deploy cb8298799 (5b80477e9), PR #67 and work/stage-green-022 (793d28ce0). relay-test-loop trigger on work/rc-0.2.2 (5c75dd4ec). On main: memory-sealed-record.yml and the gen-og.sh chrome flags (51be1aa0f).
+- reviewer-2 follow-ups for later (not gates): narrow module:computers in surfaceFor to glass|deck|phone|capsule and add tests for mac, web, lumen and other modules staying via:; test that the phone's onFingerprint equals the box's pairing.requested fingerprint.
 
 ## Next
 
-1. Tag and release v0.2.2, then assemble-site --tag v0.2.2 and the site deploy; the app deploy only if the Deck changed (it did: deck/chat, so yes).
-2. Land #67, then work/stage-green-022, on stage with normal merges.
-3. relay-test-loop dispatch-or-rc trigger on work/rc-0.2.2.
-4. Older plan: release.yml v2 (superseded by the single Ed25519 design), box-image isolation checks.
+1. Confirm stage CI green on 793d28ce0 (perf-check aside); fix forward.
+2. 0.2.3: issue #71 (probe plus budgets, find the blip); reviewer-2's two follow-ups.
+3. Older plan: release.yml v2 (superseded by the single Ed25519 design), box-image isolation checks.
 
 ## Needs from others
 
