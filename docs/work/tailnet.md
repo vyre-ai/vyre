@@ -1082,3 +1082,9 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 Suggested merge order: link and names, daemon and presence, vault, files, computers, watchers and
 hooks, then deck, capsule and onboard. They are one branch here, so this matters only if the
 integrator splits it.
+
+## 2 Oct 2026 status (relaunch)
+
+- Pushed, each after targeted tests plus docs, reach, boundaries and hygiene on the test box: 023-pair-window af1a30e7c, 023-companion e448cd652 (not usable until a transport exists), 023-app-relay-check 7fa12e885 (app-boot run 36966573078), 022-device-names f299fc4c1 (#65), and 023-relay-deploy b8339c039 (pair-window merged with pair-limit a9c9d8dd9, the one branch for the relay redeploy). 022-relay-flake cd691f322 (#13) was already pushed and its relay loop is green on Node 22 and 24.
+- Next: relay-deploy.yml needs the sha on work/stage-0.2; I dispatch it once the integrator lands 023-relay-deploy, then the lead approves the deploy environment. The edge rule stays off until CLOUDFLARE_WAF_TOKEN exists. 023-presence-trim is held, unpushed.
+- 0.3: ADR 0050 claimed (the built-in network, supersedes 0046's transport). Section 12b of team/0.3/PLAN-built-in-network.md is my confirmation of platform's sections 5 to 8 and 12; the spike list is there.
