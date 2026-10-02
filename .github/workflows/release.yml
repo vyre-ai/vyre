@@ -124,6 +124,8 @@ jobs:
             head -n 300 "$RUNNER_TEMP/lock-changes.txt"
             echo '```'
             if [ "$(wc -l < "$RUNNER_TEMP/lock-changes.txt")" -gt 301 ]; then echo "**The list is cut at 300 lines; read apps/app/package-lock.json's diff.**"; fi
+            # Lumen's Swift sources are built into the app that gets signed, but are too many to read here: say how many files changed.
+            echo "Lumen sources changed since the base: $(git diff --name-only "$base" HEAD -- local/capsule/native/Sources | wc -l | tr -d ' ') files (local/capsule/native/Sources; read them in the full diff or the compare view)"
             # shellcheck disable=SC2086
             if git diff --quiet "$base" HEAD -- $paths; then
               echo "no changes to the signing path"

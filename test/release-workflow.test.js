@@ -54,6 +54,7 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   assert.ok(prepare < i && i < images, "it is a step of the prepare job, which needs no approval");
   const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
   for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js", "scripts/mac-app-package.sh", "scripts/mac-app", "scripts/install-mac-server.sh", "local/capsule/native/Lumen.entitlements", "local/capsule/native/build.sh", "local/capsule/native/Package.swift", "local/capsule/native/Package.resolved"]) assert.ok(step.includes(p), `the diff covers ${p}`);
+  assert.match(step, /Lumen sources changed since the base: .*local\/capsule\/native\/Sources/, "the summary counts the changed Lumen source files");
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });
 
