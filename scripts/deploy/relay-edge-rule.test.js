@@ -22,7 +22,7 @@ test("edge rule: it counts per address on exactly the two routes, and merges wit
 test("edge rule: it reads, then PUTs, and says which scope is missing when Cloudflare refuses", async () => {
   const calls = [];
   const ok = async (url, init = {}) => { calls.push([init.method || "GET", url]); return init.method === "PUT" ? { ok: true, status: 200, json: async () => ({}) } : { status: 404, ok: false, json: async () => ({}) }; };
-  assert.deepEqual(await upsert({ token: "t", zone: ZONE, fetch: /** @type {any} */ (ok) }), { rules: 1, dryRun: false });
+  assert.deepEqual(await upsert({ token: "t", zone: ZONE, fetch: /** @type {any} */ (ok) }), { rules: 1, dryRun: false, refs: ["vyre-relay-edge-cap"] });
   assert.deepEqual(calls.map(c => c[0]), ["GET", "PUT"]);
   assert.match(calls[0][1], /rulesets\/phases\/http_ratelimit\/entrypoint$/);
   calls.length = 0;

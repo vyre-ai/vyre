@@ -62,7 +62,7 @@ namespace_id = "26005"
 simple = { limit = 10, period = 60 }
 [[ratelimits]]
 name = "SETUP_LOC_LIMITER"
-namespace_id = "26006"
+namespace_id = "26007"
 simple = { limit = 60, period = 60 }
 
 [observability]

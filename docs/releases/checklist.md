@@ -36,3 +36,11 @@ A box that pulls its image checks the release before it pulls (`vyre update` in 
 ## After 0.2.0 lands on stage: redeploy the site for vyre.run/w
 
 `https://vyre.run/w` is `scripts/install-windows.ps1`, put at `site/w` by `scripts/build-site.sh` and served as plain text by `site/_headers`. It only exists once the site is redeployed from the commit that carries 0.2.0 (the site is built from main only; `scripts/deploy-site.sh`). Check afterwards: `curl -sI https://vyre.run/w` is 200 with `content-type: text/plain`, and `curl -s https://vyre.run/w | cmp - scripts/install-windows.ps1`. `release-check.sh --live` does both.
+
+
+## Before the relay fix for GHSA-25xh-w9j7-7v28 counts as closed
+
+The app no longer has a shared limit on `/v1/pair` or the setup mailbox, so cost is the edge's. Both of these are required, not recommended:
+
+- [ ] Dispatch relay-deploy with `relay=true` and `relay_edge_rule=true` (the token needs Zone WAF Edit on vyre.run). It writes one per-address Cloudflare rate-limit rule on `/v1/pair` and `/v1/setup/mbx`, and prints the rules it wrote. Check the rule in the Cloudflare dashboard.
+- [ ] The relay's Workers and Durable Objects run on a paid plan. Every `/v1/pair` request reaches a ticket object and every random locator on the mailbox creates one, so on the Free plan's daily request cap an outsider could still stop pairing and installs until it resets. The edge rule limits one address; only the paid plan covers a distributed flood.

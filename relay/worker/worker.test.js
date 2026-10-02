@@ -661,6 +661,7 @@ test("worker: /v1/pair serves a hit and a contested ticket with no charge, charg
   b.s.ws.send(JSON.stringify({ t: "ticket", loc: "f".repeat(43), record: sealed, mac: "b".repeat(43), exp }));
   await rt.settle();
   let global = 0, charged = [];
+  // the old global binding, bound here as always-refusing to prove it is never consulted
   rt.env.PAIR_LIMITER_GLOBAL = { limit: async () => { global++; return { success: false }; } };
   rt.env.PAIR_LIMITER = { limit: async ({ key }) => { charged.push(key); return { success: key !== "203.0.113.7" }; } };
   const resolve = (loc, ip = "203.0.113.5") => worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ loc }) }), rt.env);
