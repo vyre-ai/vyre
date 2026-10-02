@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 3: the one thread row
+
+- `deck/js/thread-row.js` and `deck/css/thread-row.css`: the one thread row, 56 high (phone 64): the project's emblem or the agent's mark, a title, a last line (where it is and how many messages), a stack of up to three participants, the time, and the state in words ("Running", "2 need you"). No ids. Chat's Recent list and a project's chats draw it. Both open the one thread view (a project's chats open in Chat, #47). Now's run list and search results take it in the Now pass.
+
 #### deck: rename a device in place (#65)
 
 - Settings > Your devices: a pencil by each name (this server, paired Macs, phones, PCs and browsers paired through the relay) opens a field in the row; Enter or Save keeps it, Esc leaves it, one to 64 characters. It calls `relay.devices.rename`, `link.rename` or `system.rename` by kind, and a `device.renamed` event changes the name on screen. Agents' computers (`computers.rename`) take the same control on the Agents screen pass.
