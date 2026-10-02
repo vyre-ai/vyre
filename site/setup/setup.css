@@ -55,3 +55,43 @@ a:hover { text-decoration-color: var(--focus); }
 .qr-slot { margin: 12px 0 0; width: 220px; max-width: 100%; border-radius: var(--radius-field); overflow: hidden; }
 .qr-slot svg { width: 100%; height: auto; display: block; }
 a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* The step timeline: a rail beside the step at 900px and wider, a segmented bar with the list one tap away below that. One list drawn twice; the other is display:none, so a screen reader hears it once. */
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+[data-region="timeline"] { margin: 0 0 32px; }
+[data-region="timeline"]:empty { margin: 0; }
+.tl-rail { display: none; list-style: none; margin: 0; padding: 0; }
+.tl-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.tl-group { margin: 16px 0 6px; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); text-transform: uppercase; letter-spacing: 0.08em; }
+.tl-group:first-child { margin-top: 0; }
+.tl-step { display: flex; align-items: center; gap: 10px; min-height: 28px; color: var(--label); font-size: 14px; line-height: 20px; }
+.tl-dot { flex: none; width: 18px; height: 18px; border-radius: 999px; border: 1.5px solid var(--rule-strong); display: grid; place-items: center; font-size: 11px; line-height: 1; color: var(--primary-ink); }
+.tl-step.done { color: var(--text-2); }
+.tl-step.done .tl-dot { background: var(--text-2); border-color: var(--text-2); }
+.tl-step.skipped { color: var(--label); }
+.tl-step.skipped .tl-dot { color: var(--label); }
+.tl-step.current { color: var(--text); font-weight: 600; }
+.tl-step.current .tl-dot { border-color: var(--focus); background: var(--focus); box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus) 22%, transparent); }
+.tl-step.failed { color: var(--text); font-weight: 600; }
+.tl-step.failed .tl-dot { border-color: var(--beacon-ink); }
+.tl-opt { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); }
+.tl-segs { display: flex; gap: 3px; }
+.tl-segs .seg { flex: 1; height: 4px; border-radius: 2px; background: var(--rule-strong); }
+.tl-segs .seg.done { background: var(--text-2); }
+.tl-segs .seg.skipped { background: var(--rule); }
+.tl-segs .seg.current { background: var(--focus); }
+.tl-segs .seg.failed { background: var(--beacon-ink); }
+.tl-more { margin-top: 10px; }
+.tl-more summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 20px; color: var(--text-2); min-height: 28px; }
+.tl-more summary::-webkit-details-marker { display: none; }
+.tl-more summary b { color: var(--text); font-weight: 600; }
+.tl-all { color: var(--label); text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
+.tl-more summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+@media (min-width: 900px) {
+  .col { max-width: 950px; display: grid; grid-template-columns: 220px minmax(0, 640px); column-gap: 48px; align-content: start; }
+  .col > section { grid-column: 2; }
+  .col > [data-region="timeline"] { grid-column: 1; grid-row: 1 / span 12; align-self: start; position: sticky; top: 24px; margin: 6px 0 0; }
+  .tl-rail { display: block; }
+  .tl-bar { display: none; }
+}
+@media (max-width: 899px) { [data-region="timeline"]:not(:empty) ~ [data-region="head"] .lbl { display: none; } }

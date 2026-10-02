@@ -362,14 +362,26 @@ async function atNamed(t, box) {
   return flow;
 }
 
-test("steps: AI sign-in comes before Tailscale, needs one done login, and a pasted code finishes the ones that want it", async t => {
+/** Through Tailscale (connected, address live) to the AI step. */
+async function toAi(flow, box) {
+  flow.continueToTailscale();
+  box.st.ts = "connected"; box.st.claimPhase = "serving";
+  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  flow.continueToAi();
+}
+
+test("steps: Tailscale comes before the AI sign-in, one done login is needed to go on, and a pasted code finishes the ones that want it", async t => {
   const box = stepsBox();
   const flow = await atNamed(t, box);
-  flow.continueToTailscale();
-  assert.equal(flow.state.stage, "named", "Tailscale is not reachable from the naming screen");
   flow.continueToAi();
-  assert.equal(flow.state.stage, "ai");
+  assert.equal(flow.state.stage, "named", "the AI step is not reachable from the naming screen");
   flow.continueToTailscale();
+  assert.equal(flow.state.stage, "tailscale");
+  flow.continueToAi();
+  assert.equal(flow.state.stage, "tailscale", "the address is not live yet");
+  await toAi(flow, box);
+  assert.equal(flow.state.stage, "ai");
+  flow.continueToDevices();
   assert.equal(flow.state.stage, "ai", "no login is done yet");
 
   flow.startAi("codex");
@@ -390,8 +402,8 @@ test("steps: AI sign-in comes before Tailscale, needs one done login, and a past
   const again = flow.state.ai.accounts.find(a => a.provider === "claude" && a.step === "url");
   await flow.submitAiCode(again.id, "good-code");
   await until(() => flow.state.ai.accounts.find(a => a.id === again.id).step === "done");
-  flow.continueToTailscale();
-  assert.equal(flow.state.stage, "tailscale");
+  flow.continueToDevices();
+  assert.equal(flow.state.stage, "devices");
   flow.stop();
 });
 
@@ -400,7 +412,7 @@ test("steps: a sign-in link that is not a plain https address is not shown", asy
   const orig = box.call;
   box.call = async (tool, input) => { const r = await orig(tool, input); return tool === "sessions.accounts.signin" && input.provider ? { ...r, url: "javascript:alert(1)" } : r; };
   const flow = await atNamed(t, box);
-  flow.continueToAi();
+  await toAi(flow, box);
   flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].error);
   assert.equal(flow.state.ai.accounts[0].url, null);
@@ -411,8 +423,6 @@ test("steps: a sign-in link that is not a plain https address is not shown", asy
 test("steps: Tailscale shows a checked sign-in link, waits for the join, then publishes the address once and stops", async t => {
   const box = stepsBox();
   const flow = await atNamed(t, box);
-  flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
   flow.continueToTailscale();
   await until(() => flow.state.tailscale.status);
   assert.equal(flow.state.tailscale.status.state, "needs-login");
@@ -429,8 +439,6 @@ test("steps: Tailscale shows a checked sign-in link, waits for the join, then pu
   // Not Tailscale's page: refused.
   const bad = stepsBox({ loginUrl: "https://evil.example/login" });
   const f2 = await atNamed(t, bad);
-  f2.continueToAi(); f2.startAi("codex");
-  await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
   f2.continueToTailscale();
   await f2.connectTailscale();
   assert.equal(f2.state.tailscale.loginUrl, null);
@@ -451,7 +459,13 @@ test("steps: the screens render, links are real https anchors only where the box
   await until(() => flow.state.stage === "found");
   flow.confirmWords();
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi();
+  await flow.claim(); flow.markSaved(); flow.continueToTailscale();
+  await until(() => flow.state.tailscale.address);
+  assert.ok(root.textContent.includes("This is a work network"), "the work-network warning");
+  assert.ok(root.textContent.includes("Publishing your address"));
+  box.st.namesPhase = "serving";
+  await until(() => flow.state.tailscale.address.phase === "serving");
+  flow.continueToAi();
   flow.startAi("claude");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "url");
   const anchors = () => root.all().filter(e => e.tag === "a");
@@ -466,20 +480,14 @@ test("steps: the screens render, links are real https anchors only where the box
   first.value = "good-code";
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Finish")).listeners.click();
   await until(() => flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  await until(() => flow.state.tailscale.address);
-  assert.ok(root.textContent.includes("This is a work network"), "the work-network warning");
-  assert.ok(root.textContent.includes("Publishing your address"));
   flow.stop();
 });
 
 async function atDevices(t, box, extra = {}) {
   const flow = await atNamed(t, box);
-  flow.continueToAi(); flow.startAi("codex");
+  await toAi(flow, box);
+  flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
-  box.st.ts = "connected"; box.st.claimPhase = "serving";
-  await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
   flow.continueToDevices();
   return flow;
 }
@@ -535,11 +543,13 @@ test("devices: the screen draws the ring into its slot only while showing, and n
   await until(() => flow.state.stage === "found");
   flow.confirmWords();
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
+  await flow.claim(); flow.markSaved(); flow.continueToTailscale();
   box.st.ts = "connected"; box.st.claimPhase = "serving";
   await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
+  root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Continue")).listeners.click();
+  assert.equal(flow.state.stage, "ai");
+  flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Continue")).listeners.click();
   assert.equal(flow.state.stage, "devices");
   assert.deepEqual(drawn, []);
@@ -565,8 +575,6 @@ test("tailscale: with the box's event stream it reads status when told, not on a
   let followed = 0;
   box.follow = (type, onEvent, onEnd) => { followed++; assert.equal(type, "tailscale.changed"); poke = () => onEvent({ type }); endStream = err => onEnd(err); return () => {}; };
   const flow = await atNamed(t, box);
-  flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
   flow.continueToTailscale();
   await until(() => flow.state.tailscale.status && followed === 1);
   const statusCalls = () => box.calls.filter(c => c[0] === "network.tailscale.status").length;
@@ -583,8 +591,6 @@ test("tailscale: with the box's event stream it reads status when told, not on a
   const b2 = stepsBox();
   b2.follow = (type, onEvent, onEnd) => { setTimeout(() => onEnd(new Error("stream broke")), 10); return () => {}; };
   const f2 = await atNamed(t, b2);
-  f2.continueToAi(); f2.startAi("codex");
-  await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
   f2.continueToTailscale();
   await until(() => b2.calls.filter(c => c[0] === "network.tailscale.status").length >= 3);
   const orig = b2.call;
@@ -600,7 +606,8 @@ test("ai: with a list of provider hosts, a sign-in link elsewhere is refused", a
   const box = stepsBox();
   const flow = await foundFlow(t, box, { flow: { signinHosts: ["example.org", "claude.ai"] } });
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi();
+  await flow.claim(); flow.markSaved();
+  await toAi(flow, box);
   flow.startAi("codex");
   await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
   assert.equal(flow.state.ai.accounts[0].error, null);
@@ -692,12 +699,10 @@ test("claim: the setup ending before its hour means claimed and ends the page on
   await until(() => late.state.stage === "found");
   late.confirmWords();
   await until(() => late.state.naming.check);
-  await late.claim(); late.markSaved(); late.continueToAi(); late.startAi("codex");
-  await until(() => late.state.ai.accounts[0] && late.state.ai.accounts[0].step === "done");
-  late.continueToTailscale();
+  await late.claim(); late.markSaved(); late.continueToTailscale();
   b3.st.ts = "connected"; b3.st.claimPhase = "serving";
   await until(() => late.state.tailscale.address && late.state.tailscale.address.phase === "serving");
-  late.continueToDevices(); late.continueToClaim();
+  late.continueToAi(); late.skipAi(); late.continueToClaim();
   clock += 61 * 60_000;
   closed3(4401, "setup ended");
   assert.equal(late.state.stage, "stopped");
@@ -720,12 +725,10 @@ test("claim: the screen offers the link as a real anchor to the person's own add
   await until(() => flow.state.stage === "found");
   flow.confirmWords();
   await until(() => flow.state.naming.check);
-  await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
-  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-  flow.continueToTailscale();
+  await flow.claim(); flow.markSaved(); flow.continueToTailscale();
   box.st.ts = "connected"; box.st.claimPhase = "serving";
   await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "serving");
-  flow.continueToDevices();
+  flow.continueToAi(); flow.skipAi();
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Skip for now")).listeners.click();
   assert.equal(flow.state.stage, "claim");
   root.all().find(e => e.tag === "button" && e.children.some(c => c.value === "Get my link")).listeners.click();
@@ -831,7 +834,7 @@ test("steps: a sign-in that fails while the page polls shows the box's message (
   const box = stepsBox({ ts: "connected" });
   const flow = await atNamed(t, box);
   try {
-    flow.continueToAi();
+    await toAi(flow, box);
     flow.startAi("codex");
     await until(() => box.st.flows["f-codex"]);
     box.st.flows["f-codex"].failStatus = true;
@@ -844,8 +847,6 @@ test("steps: the address goes from certificate to serving on the certificate's o
   const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
   const flow = await atNamed(t, box);
   try {
-    flow.continueToAi(); flow.startAi("codex");
-    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
     flow.continueToTailscale();
     await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
     // Another name's certificate is not this box's.
@@ -860,8 +861,6 @@ test("steps: the address goes from certificate to serving on the certificate's o
   const bad = stepsBox({ ts: "connected", claimPhase: "certificate" });
   const f2 = await atNamed(t, bad);
   try {
-    f2.continueToAi(); f2.startAi("codex");
-    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
     f2.continueToTailscale();
     await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "certificate");
     bad.st.events = [{ id: 1, type: "certificate.failed", payload: { name: "harlow-legal-server.vyre.run", why: "the certificate authority said no" } }];
@@ -874,8 +873,6 @@ test("steps: names.status is the backstop: serving (or failed) on the box's own 
   const box = stepsBox({ ts: "connected", claimPhase: "certificate" });
   const flow = await atNamed(t, box);
   try {
-    flow.continueToAi(); flow.startAi("codex");
-    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
     flow.continueToTailscale();
     await until(() => flow.state.tailscale.address && flow.state.tailscale.address.phase === "certificate");
     box.st.namesPhase = "certificate";
@@ -887,8 +884,6 @@ test("steps: names.status is the backstop: serving (or failed) on the box's own 
   const bad = stepsBox({ ts: "connected", claimPhase: "certificate", namesPhase: "failed", namesWhy: "the certificate authority is unreachable" });
   const f2 = await atNamed(t, bad);
   try {
-    f2.continueToAi(); f2.startAi("codex");
-    await until(() => f2.state.ai.accounts[0] && f2.state.ai.accounts[0].step === "done");
     f2.continueToTailscale();
     await until(() => f2.state.tailscale.address && f2.state.tailscale.address.phase === "failed", 8000);
     assert.equal(f2.state.tailscale.address.why, "the certificate authority is unreachable");
@@ -909,9 +904,7 @@ test("steps: a sign-in link that is not Tailscale's is shown as a refusal with t
     await until(() => flow.state.stage === "found");
     flow.confirmWords();
     await until(() => flow.state.naming.check);
-    await flow.claim(); flow.markSaved(); flow.continueToAi(); flow.startAi("codex");
-    await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
-    flow.continueToTailscale();
+    await flow.claim(); flow.markSaved(); flow.continueToTailscale();
     await until(() => flow.state.tailscale.status);
     const button = () => root.all().find(e => e.tag === "button" && e.children.some(c => /Connect my server|Getting the link/.test(String(c.value))));
     await button().listeners.click();
@@ -951,7 +944,7 @@ test("machine: the start screen offers a Linux server or a Mac, the choice reach
   await flow.begin("mac");
   assert.equal(flow.state.machine, "mac");
   draw();
-  assert.match(root.textContent, /Run this on the Mac/);
+  assert.match(root.textContent, /Run the line on the Mac/);
   assert.match(root.textContent, /with FileVault on, the Mac waits for someone to unlock it at the screen, and Vyre is off until then/);
   assert.match(root.textContent, /anyone who takes the Mac can read Vyre's files, notes and conversations; the vault stays locked behind its password/);
   assert.match(root.textContent, /"Start up automatically after a power failure" is on in System Settings, under Energy, and it starts off on a Mac mini/);
@@ -960,7 +953,7 @@ test("machine: the start screen offers a Linux server or a Mac, the choice reach
   assert.equal(flow.state.machine, "mac", "Start again keeps the choice");
   await flow.begin("linux");
   draw();
-  assert.match(root.textContent, /Run this on your server/);
+  assert.match(root.textContent, /Run the line on your server/);
   assert.ok(!/FileVault/.test(root.textContent), "no Mac words on a Linux install");
   flow.stop();
 });
@@ -999,4 +992,64 @@ test("the setup page's own code makes no request to a private address: its only 
     assert.ok(!/XMLHttpRequest|sendBeacon|new EventSource/.test(text), `${f} opens a request of another kind`);
     assert.ok(!/["'`](?:https?|wss?):\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1)/.test(text.replace(/\/\/.*$/gm, "")), `${f} names a private address`);
   }
+});
+
+test("timeline: ten steps in order, the current one from the flow's stage, optional ones tagged, skipped ones stay listed", async t => {
+  const { stepList, stepNumber, STEPS } = await import("./flow.js");
+  assert.deepEqual(STEPS.map(x => x.title), ["Install", "Check the words", "Choose your address", "Connect Tailscale", "Sign in to your AI", "Add your phone", "Create your passkey", "You and your assistant", "Your computers", "Your history"]);
+  assert.deepEqual(STEPS.filter(x => x.optional).map(x => x.id), ["phone", "computers", "history"]);
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  assert.equal(stepNumber(flow.state), 3);
+  assert.deepEqual(stepList(flow.state).map(x => x.status).join(","), "done,done,current,todo,todo,todo,todo,todo,todo,todo");
+  await toAi(flow, box);
+  assert.equal(stepNumber(flow.state), 5);
+  flow.skipAi();
+  assert.equal(flow.state.stage, "devices", "no AI yet is allowed, and it goes on to the phone");
+  assert.deepEqual(flow.state.skipped, ["ai"]);
+  flow.continueToClaim();
+  const l = stepList(flow.state);
+  assert.equal(l[4].status, "skipped");
+  assert.equal(l[5].status, "skipped", "a phone not added is skipped too");
+  assert.equal(l[6].status, "current");
+  assert.equal(stepNumber(flow.state), 7);
+  flow.stop();
+});
+
+test("timeline: skipping the AI is refused once one is signed in, and a stopped page marks the step it stopped on", async t => {
+  const { stepList } = await import("./flow.js");
+  const box = stepsBox();
+  const flow = await atNamed(t, box);
+  await toAi(flow, box);
+  flow.startAi("codex");
+  await until(() => flow.state.ai.accounts[0] && flow.state.ai.accounts[0].step === "done");
+  flow.skipAi();
+  assert.equal(flow.state.stage, "ai", "a signed-in AI is not skipped");
+  flow.stop();
+  const f2 = createFlow({ client: clientWith(async () => offer()), relay: "ws://127.0.0.1:1", supported: async () => false });
+  await f2.begin();
+  assert.equal(f2.state.stage, "stopped");
+});
+
+test("timeline: the screen draws the same ten steps as a rail and as a bar, with the current one marked and all text as text", async t => {
+  const box = stepsBox();
+  const doc = new FakeDoc(), root = doc.createElement("main");
+  let flow;
+  const actions = { begin() {}, copy() {}, setName() {}, claim() {}, confirmWords: () => flow.confirmWords(), denyWords() {}, markSaved: () => flow.markSaved(), continueToTailscale: () => flow.continueToTailscale() };
+  const w = await world(t);
+  flow = createFlow({ client: clientWith(async () => offer()), relay: w.base, sleep: fastSleep, pollMs: 5, debounceMs: 1, connect: async () => box,
+    onChange: s => render(s, { doc: /** @type {any} */ (doc), root: /** @type {any} */ (root), actions }) });
+  await flow.begin();
+  await until(() => flow.state.stage === "found");
+  assert.ok(root.textContent.includes("Step 2 of 10"));
+  assert.ok(root.textContent.includes("Check the four words"));
+  flow.confirmWords();
+  await until(() => flow.state.naming.check);
+  assert.ok(root.textContent.includes("Step 3 of 10"));
+  const rail = root.all().find(e => e.attrs && e.attrs.class === "tl-rail");
+  const items = rail.all().filter(e => e.tag === "li" && String(e.attrs.class).startsWith("tl-step"));
+  assert.equal(items.length, 10);
+  assert.equal(items.filter(e => e.attrs["aria-current"] === "step").length, 1);
+  assert.equal(doc.innerHtmlWrites, 0);
+  flow.stop();
 });

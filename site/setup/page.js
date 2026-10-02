@@ -26,6 +26,7 @@ const actions = {
   setDomain: text => flow.setDomain(text),
   checkDomain: () => flow.checkDomain(),
   continueToAi: () => flow.continueToAi(),
+  skipAi: () => flow.skipAi(),
   continueToTailscale: () => flow.continueToTailscale(),
   connectTailscale: () => flow.connectTailscale(),
   startAi: p => flow.startAi(p),

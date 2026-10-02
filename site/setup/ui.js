@@ -6,6 +6,8 @@
 // The screen is a few regions, each rebuilt only when what it shows changes, so a progress line arriving never
 // takes the caret out of the name being typed or the focus off a button.
 
+import { stepList, stepNumber } from "./flow.js";
+
 /** @param {Document} doc @param {string} tag @param {Record<string, string>|null} attrs @param {...(string|Node|null|false)} kids */
 export function h(doc, tag, attrs, ...kids) {
   const el = doc.createElement(tag);
@@ -15,14 +17,14 @@ export function h(doc, tag, attrs, ...kids) {
 }
 
 /** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
- *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
+ *   continueToAi: () => void, continueToTailscale: () => void, skipAi?: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
  *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
  *   openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["head", "words", "naming", "domain", "ai", "tailscale", "devices", "claim", "log"];
+const REGIONS = ["timeline", "head", "words", "naming", "domain", "ai", "tailscale", "devices", "claim", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -47,9 +49,37 @@ export function render(s, ctx) {
     return true;
   };
   const found = s.stage === "found" || s.stage === "named" ? s.box : null;
+  const steps = stepList(s), at = stepNumber(s), cur = steps[at - 1] || null;
+  /** The small label above each heading: where this is in the ten. */
+  const stepLabel = () => (cur ? `Step ${at} of ${steps.length}${cur.optional ? ", optional" : ""}` : "Set up");
+
+  // ---- timeline: ten steps, the same list as a rail (wide) and a segmented bar with the list one tap away (narrow) ----
+  const tlKey = at ? steps.map(x => x.status).join(",") : "none";
+  region("timeline", tlKey, () => {
+    if (!at) return [];
+    const mark = x => (x.status === "done" ? "Done" : x.status === "skipped" ? "Skipped" : x.status === "failed" ? "Stopped here" : x.status === "current" ? "Now" : "");
+    const list = cls => {
+      let last = "";
+      const kids = [];
+      for (const x of steps) {
+        if (x.where !== last) { kids.push(el("li", { class: "tl-group", "aria-hidden": "true" }, x.where)); last = x.where; }
+        kids.push(el("li", { class: `tl-step ${x.status}`, ...(x.status === "current" ? { "aria-current": "step" } : {}) },
+          el("span", { class: "tl-dot", "aria-hidden": "true" }, x.status === "done" ? "\u2713" : x.status === "skipped" ? "\u2013" : ""),
+          el("span", { class: "tl-name" }, x.title), x.optional ? el("span", { class: "tl-opt" }, "optional") : null,
+          mark(x) ? el("span", { class: "sr" }, `, ${mark(x).toLowerCase()}`) : null));
+      }
+      return el("ol", { class: cls, "aria-label": "Setup steps" }, ...kids);
+    };
+    const segs = el("div", { class: "tl-segs", "aria-hidden": "true" }, ...steps.map(x => el("span", { class: `seg ${x.status}` })));
+    return [
+      list("tl-rail"),
+      el("div", { class: "tl-bar" }, segs,
+        el("details", { class: "tl-more" }, el("summary", null, el("span", { class: "tl-now" }, `Step ${at} of ${steps.length}`, " ", el("b", null, cur ? cur.title : "")), el("span", { class: "tl-all" }, "All steps")), list("tl-list"))),
+    ];
+  });
 
   // ---- head: what this screen is, in words ----
-  const headKey = `${s.stage}|${s.stage === "stopped" ? s.error?.code : ""}|${found?.name || ""}|${s.installLine}`;
+  const headKey = `${at}|${s.stage}|${s.stage === "stopped" ? s.error?.code : ""}|${found?.name || ""}|${s.installLine}`;
   const rebuiltHead = region("head", headKey, () => {
     if (s.stage === "start") return [
       el("p", { class: "lbl" }, "Set up"),
@@ -62,8 +92,8 @@ export function render(s, ctx) {
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       copy.addEventListener("click", ev => actions.copy(s.installLine, /** @type {HTMLElement} */ (ev.currentTarget)));
       return [
-        el("p", { class: "lbl" }, "Install"),
-        el("h1", { tabindex: "-1" }, s.machine === "mac" ? "Run this on the Mac" : "Run this on your server"),
+        el("p", { class: "lbl" }, stepLabel()),
+        el("h1", { tabindex: "-1" }, s.machine === "mac" ? "Run the line on the Mac" : "Run the line on your server"),
         el("p", { class: "lead" }, s.machine === "mac"
           ? "Open Terminal on the Mac as yourself, not root, and paste the line. It asks for your Mac password once, to set Vyre up as a service that starts when the Mac does, with nobody signed in."
           : "Open a terminal on the server as yourself, not root, and paste the line. It asks for sudo itself only when it needs it."),
@@ -75,33 +105,34 @@ export function render(s, ctx) {
       ];
     }
     if ((s.stage === "found" || s.stage === "named") && found) return [
-      el("p", { class: "lbl" }, s.stage === "named" ? "Named" : "Found your server"),
-      el("h1", { tabindex: "-1" }, s.stage === "named" && s.named ? (s.named.address || s.named.name) : found.name),
-      s.stage === "found" ? el("p", { class: "lead" }, "It answered this page. Look at your server's terminal: it printed four words. Do they match these?") : null,
+      el("p", { class: "lbl" }, stepLabel()),
+      el("h1", { tabindex: "-1" }, s.stage === "named" && s.named ? (s.named.address || s.named.name) : s.confirm === "pending" ? "Check the four words" : found.name),
+      s.stage === "found" && s.confirm === "pending" ? el("p", { class: "lead" }, "Your server answered this page. Look at its terminal: it printed four words. Do they match these?") : null,
     ];
     if (s.stage === "ai") return [
-      el("p", { class: "lbl" }, "Your AI"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Sign in to your AI"),
-      el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on; you can add more later."),
+      el("p", { class: "lead" }, "Each one signs in with its own provider's page, on any browser. Vyre never sees your password. One is enough to go on. Your assistant needs one to answer, and you can add more later."),
     ];
     if (s.stage === "claim") return [
-      el("p", { class: "lbl" }, "Arrive"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Open your server"),
-      el("p", { class: "lead" }, "Your server has its own address. Open it once from here: it asks for your fingerprint, face or security key, and that makes you its owner. Nothing else can."),
+      el("p", { class: "lead" }, `Your server is ready at ${s.named ? `${s.named.name}.vyre.run` : "its own address"}. Open it to make your passkey, which makes you its owner. Steps 8 to 10 continue there.`),
     ];
     if (s.stage === "done") return [
-      el("p", { class: "lbl" }, "Done"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "You're in"),
-      el("p", { class: "lead" }, "Your server knows you now. Carry on at its own address."),
-      s.named ? el("div", { class: "actions" }, el("a", { class: "btn primary", href: `https://${s.named.name}.vyre.run/`, rel: "noopener" }, "Open your server")) : null,
+      el("p", { class: "lead" }, `Your passkey is made and your server knows you now. Steps 8 to 10, you and your assistant, your computers and your history, continue at ${s.named ? `${s.named.name}.vyre.run` : "its own address"}.`),
+      s.skipped.length ? el("p", { class: "note" }, `Skipped: ${s.skipped.map(id => (stepList(s).find(x => x.id === id) || { title: id }).title).join(", ")}. You can do them later in Settings, under Setup.`) : null,
+      s.named ? el("div", { class: "actions" }, el("a", { class: "btn primary", href: `https://${s.named.name}.vyre.run/`, rel: "noopener" }, `Open ${s.named.name}.vyre.run`)) : null,
     ];
     if (s.stage === "devices") return [
-      el("p", { class: "lbl" }, "Devices"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Add your phone"),
       el("p", { class: "lead" }, "Your phone pairs by scanning a ring with the Vyre app's camera. The ring works once, for five minutes, and this page can make only one."),
     ];
     if (s.stage === "tailscale") return [
-      el("p", { class: "lbl" }, "Tailscale"),
+      el("p", { class: "lbl" }, stepLabel()),
       el("h1", { tabindex: "-1" }, "Connect your server to Tailscale"),
       el("p", { class: "lead" }, "Tailscale is the private network your devices and this server share. You sign in on Tailscale's own page."),
     ];
@@ -144,7 +175,7 @@ export function render(s, ctx) {
       const code = saved ? null : s.named.recoveryCode;
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       if (code) copy.addEventListener("click", ev => actions.copy(code, /** @type {HTMLElement} */ (ev.currentTarget)));
-      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi()));
+      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToTailscale()));
       return code ? [
         el("h2", { class: "sub" }, "Your recovery code"),
         el("p", { class: "lead" }, "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
@@ -219,7 +250,10 @@ export function render(s, ctx) {
       if (a.error) kids.push(el("p", { class: "warn", role: "alert" }, a.error));
       return el("div", { class: "account" }, ...kids);
     }),
-    s.ai.accounts.some(a => a.step === "done") ? el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToTailscale())) : null,
+    s.ai.accounts.some(a => a.step === "done")
+      ? el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToDevices()))
+      : el("div", { class: "actions" }, button("Skip for now", "quiet", () => actions.skipAi && actions.skipAi())),
+    s.ai.accounts.some(a => a.step === "done") ? null : el("p", { class: "note" }, "Skipping is fine. Add one later in Settings, under Your AI. Until you do, your assistant cannot answer."),
   ]);
 
   // ---- tailscale: the box joins the tailnet, then its address is published ----
@@ -242,7 +276,7 @@ export function render(s, ctx) {
       kids.push(el("div", { class: "actions" }, button(t.busy ? "Getting the link" : "Connect my server", "primary", () => actions.connectTailscale())));
       if (t.loginUrl) kids.push(el("p", { class: "hint" }, "Open ", el("a", { href: t.loginUrl, target: "_blank", rel: "noopener noreferrer" }, "Tailscale's sign-in page"), " and sign in. This page notices when your server joins."));
     }
-    if (ts && ts.state === "connected" && t.address && t.address.phase === "serving") kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToDevices())));
+    if (ts && ts.state === "connected" && t.address && t.address.phase === "serving") kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi())));
     if (t.error) kids.push(el("p", { class: "warn", role: "alert" }, t.error));
     return kids;
   });

@@ -29,6 +29,47 @@ export const MESSAGES = Object.freeze({
   mismatch: "The four words did not match, so that was not your server. Close this page and start again.",
 });
 
+/** The ten steps of the one flow, in order. `where` groups them on the timeline; `optional` ones carry a tag and a Skip. */
+export const STEPS = Object.freeze([
+  { id: "install", title: "Install", where: "On your server", optional: false },
+  { id: "words", title: "Check the words", where: "On your server", optional: false },
+  { id: "address", title: "Choose your address", where: "In your browser", optional: false },
+  { id: "tailscale", title: "Connect Tailscale", where: "In your browser", optional: false },
+  { id: "ai", title: "Sign in to your AI", where: "In your browser", optional: false },
+  { id: "phone", title: "Add your phone", where: "In your browser", optional: true },
+  { id: "passkey", title: "Create your passkey", where: "At your address", optional: false },
+  { id: "assistant", title: "You and your assistant", where: "At your address", optional: false },
+  { id: "computers", title: "Your computers", where: "At your address", optional: true },
+  { id: "history", title: "Your history", where: "At your address", optional: true },
+]);
+
+/** The step the person is on, 1 to 10 (0 before the setup begins). Taken only from the flow's own stage, never from a progress line. @param {FlowState} s */
+export function stepNumber(s) {
+  switch (s.stage) {
+    case "start": return 0;
+    case "install": return 1;
+    case "found": return s.confirm === "pending" ? 2 : 3;
+    case "named": return 3;
+    case "tailscale": return 4;
+    case "ai": return 5;
+    case "devices": return 6;
+    case "claim": return 7;
+    case "done": return 8;
+    default: return s.stoppedAt || 0;
+  }
+}
+
+/** Every step with where it stands: done, current, skipped, failed or todo. Pure, so the same list draws on the page and (from the server) at the person's address. @param {FlowState} s */
+export function stepList(s) {
+  const at = stepNumber(s), stopped = s.stage === "stopped";
+  return STEPS.map((st, i) => {
+    const n = i + 1;
+    const skipped = s.skipped.includes(st.id) && n < at;
+    const status = stopped && n === at ? "failed" : skipped ? "skipped" : n < at ? "done" : n === at && s.stage !== "start" ? "current" : "todo";
+    return { ...st, n, status };
+  });
+}
+
 /** A first guess at an address from the server's own name: lower case letters, digits and hyphens. */
 export function suggestName(text) {
   const s = String(text || "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 30).replace(/-+$/g, "");
@@ -49,6 +90,7 @@ export function suggestName(text) {
  *   ai: { accounts: { id: string, provider: string, flow: string|null, step: "starting"|"code"|"url"|"waiting"|"done"|"failed", url: string|null, code: string|null, paste: boolean, error: string|null }[] },
  *   devices: { phone: "idle"|"minting"|"showing"|"paired"|"expired"|"failed", expiresAt: number, error: string|null, paired: string|null },
  *   claim: { phase: "idle"|"minting"|"ready"|"expired"|"failed", url: string|null, expiresAt: number, error: string|null },
+ *   skipped: string[], stoppedAt: number,
  *   error: null | { code: string, message: string }, expiresAt: number, listening: boolean }} FlowState
  * @typedef {{ createSetupKey: Function, setupCode: Function, resolveSetup: Function, setupWords: Function, mailboxReader: Function }} SetupClient
  * @typedef {{ call: (tool: string, input?: object) => Promise<any>, close: () => void }} BoxChannel
@@ -72,7 +114,7 @@ export function createFlow(o) {
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
   const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
-  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
+  let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
   let chan = null;
@@ -86,7 +128,7 @@ export function createFlow(o) {
   const closeChan = () => { try { chan?.close(); } catch { /* gone */ } chan = null; };
   const emit = () => o.onChange?.(state);
   const set = patch => { state = { ...state, ...patch }; emit(); };
-  const fail = code => { run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
+  const fail = code => { const at = stepNumber(state); run++; closeChan(); pending = null; ticket = null; sess = null; set({ stage: "stopped", stoppedAt: at || state.stoppedAt, listening: false, error: { code, message: MESSAGES[code] || MESSAGES.relay } }); };
 
   /** The install line, exactly as it must be run: the variable goes on sh, the reader of the script. */
   const lineFor = code => `curl -fsSL ${installUrl} | VYRE_CODE=${code} sh`;
@@ -105,7 +147,7 @@ export function createFlow(o) {
     } catch { return fail("key"); }
     if (mine !== run) return;
     closeChan(); checkSeq++; pending = null; ticket = null; sess = null;
-    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: now() + TTL_MS, listening: true });
+    set({ stage: "install", installLine: lineFor(code), code, lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), skipped: [], stoppedAt: 0, error: null, expiresAt: now() + TTL_MS, listening: true });
     followMailbox(mine, key, secret);
     waitForBox(mine, key, secret);
     // The hour is the box's; the page stops listening when it is over.
@@ -285,17 +327,29 @@ export function createFlow(o) {
   }
   const isTailscaleHost = h => h === "tailscale.com" || h.endsWith(".tailscale.com");
 
-  /** After the recovery code is saved: on to the AI sign-in. */
-  function continueToAi() {
+  /** After the recovery code is saved: on to Tailscale. */
+  function continueToTailscale() {
     if (state.stage !== "named" || !state.named || (state.named.recoveryCode && !state.named.saved)) return;
+    set({ stage: "tailscale", tailscale: blankTs() });
+    watchTailscale(run);
+  }
+
+  /** Once the address is live: on to the AI sign-in. */
+  function continueToAi() {
+    if (state.stage !== "tailscale" || !state.tailscale.address || state.tailscale.address.phase !== "serving") return;
     set({ stage: "ai" });
   }
 
-  /** One signed-in AI is enough: on to Tailscale. */
-  function continueToTailscale() {
+  /** One signed-in AI is enough: on to the phone. */
+  function continueToDevices() {
     if (state.stage !== "ai" || !state.ai.accounts.some(a => a.step === "done")) return;
-    set({ stage: "tailscale", tailscale: blankTs() });
-    watchTailscale(run);
+    set({ stage: "devices", devices: blankDevices() });
+  }
+
+  /** "Skip for now": no AI yet. It stays on the list as skipped, and one can be added later in Settings. */
+  function skipAi() {
+    if (state.stage !== "ai" || state.ai.accounts.some(a => a.step === "done")) return;
+    set({ stage: "devices", devices: blankDevices(), skipped: [...state.skipped, "ai"] });
   }
 
   /**
@@ -454,12 +508,6 @@ export function createFlow(o) {
 
   // ---- Devices: a phone pairs by scanning a ring drawn from the one ticket this page may make ----
 
-  /** Once the address is live: on to devices. */
-  function continueToDevices() {
-    if (state.stage !== "tailscale" || !state.tailscale.address || state.tailscale.address.phase !== "serving") return;
-    set({ stage: "devices", devices: blankDevices() });
-  }
-
   /** "Add my phone": make the ticket (the setup key may make exactly one, good for five minutes) and wait for a phone to pair with it. */
   async function addPhone() {
     if (!chan || state.stage !== "devices" || (state.devices.phone !== "idle" && state.devices.phone !== "failed")) return;
@@ -500,7 +548,7 @@ export function createFlow(o) {
   /** From devices, whatever happened there (a phone can be added later): on to claiming. */
   function continueToClaim() {
     if (state.stage !== "devices" || state.devices.phone === "minting") return;
-    set({ stage: "claim", claim: blankClaim() });
+    set({ stage: "claim", claim: blankClaim(), skipped: state.devices.phone === "paired" ? state.skipped : [...state.skipped, "phone"] });
     // The box ends the setup session itself when the first owner enrols, and says so only by answering 401 setup_over or closing
     // the channel (4401). A session that ends before the hour is up was claimed (or replaced); at the hour it expired.
     const mine = run;
@@ -543,7 +591,7 @@ export function createFlow(o) {
     get state() { return state; },
     setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
     continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
-    continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
+    continueToAi, continueToTailscale, skipAi, connectTailscale, startAi, submitAiCode,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */
     begin,
     /** Stop listening (the page is closing). */
