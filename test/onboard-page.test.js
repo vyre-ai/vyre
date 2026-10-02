@@ -153,6 +153,11 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     // The name typed in step 1 is the person's, never the address (#50): it saves the person only.
     assert.equal(saved.onboard.person, "alex");
     assert.notEqual(saved.name, "alex");
+    assert.equal(saved.name, undefined, "the person's name is never config.name");
+    // Where onboard.status reads it: the person's name, from the person's own surface.
+    const status = await call("onboard.status", {}, { root, caller: "cli" });
+    assert.equal(status.data && status.data.name, "alex", JSON.stringify(status.error));
+    assert.equal(status.data.person, "alex");
   });
 
 test("onboard page: Device, already on the same Tailscale network, verifies the server's name before proceeding (reviewer-2's caught bug)",
