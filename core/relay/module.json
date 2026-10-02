@@ -1,7 +1,7 @@
 {
   "name": "relay",
   "version": "0.1.0",
-  "description": "A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.",
+  "description": "A second way to reach the server besides Tailscale: the server dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.",
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": [{ "name": "relay.status", "reach": "anyone" }, { "name": "relay.enable", "reach": "person" }, { "name": "relay.disable", "reach": "person" }, { "name": "relay.pair.start", "reach": "anyone" }, { "name": "relay.pair.first", "reach": "anyone" }, { "name": "relay.pair.ticket", "reach": "person" }, { "name": "relay.join", "reach": "person" }, { "name": "relay.devices.list", "reach": "person" }, { "name": "relay.devices.rename", "reach": "person" }, { "name": "relay.devices.remove", "reach": "person" }, { "name": "relay.devices.trust", "reach": "person" }, { "name": "relay.devices.ask-trust", "reach": "person" }, { "name": "relay.devices.path", "reach": "person" }, { "name": "relay.devices.node", "reach": "modules" }, { "name": "relay.device.presence", "reach": "modules" }, { "name": "relay.web.release", "reach": "person" }, { "name": "relay.web.pin", "reach": "person" }, { "name": "relay.devices.tailnet", "reach": "modules" }, { "name": "relay.devices.bind", "reach": "modules" }, { "name": "relay.tailnet.status", "reach": "anyone" }, { "name": "relay.setup.begin", "reach": "modules" }, { "name": "relay.setup.end", "reach": "modules" }, { "name": "relay.setup.status", "reach": "anyone" }, { "name": "relay.setup.claim-token", "reach": "person" }, { "name": "relay.setup.claim", "reach": "person" }, { "name": "relay.route.id", "reach": "modules" }, { "name": "relay.route.sign", "reach": "modules" }] },
@@ -10,7 +10,7 @@
   "needs": { "vault": ["tailscale-mint-oauth"] },
   "teaches": {
     "tips": [
-      {"id": "pair", "text": "Run `vyre relay pair` and scan the QR code with your phone's camera to reach the box without Tailscale.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay pair", "docs": "reference/cli.md#vyre-relay"},
+      {"id": "pair", "text": "Run `vyre relay pair` and scan the QR code with your phone's camera to reach the server without Tailscale.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay pair", "docs": "reference/cli.md#vyre-relay"},
       {"id": "status", "text": "Run `vyre relay` to see whether the relay is on and connected, and how many devices are paired.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay", "docs": "reference/cli.md#vyre-relay"},
       {"id": "devices", "text": "Run `vyre relay devices` to see which paired devices are connected, and whether through the relay or direct.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay devices", "docs": "reference/cli.md#vyre-relay"},
       {"id": "trust", "text": "Run `vyre relay trust <id>` to give a browser paired from the web app its full powers; `--off` limits it again.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay trust <id>", "docs": "reference/cli.md#vyre-relay"},

@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre vitals` as a person runs it: the real bin/vyre in a child process, against a box vyred in
+// `vyre vitals` as a person runs it: the real bin/vyre in a child process, against a server vyred in
 // this process in a temp home. Read only, no presence needed.
 
 import { test } from "node:test";

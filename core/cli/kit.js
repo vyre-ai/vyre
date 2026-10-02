@@ -3,7 +3,7 @@
 //
 //   Exit codes   0 ok · 1 failed · 2 usage (the CLI refused the arguments) ·
 //                3 a person must prove presence · 4 the vault is locked ·
-//                5 vyred is not running or did not answer.
+//                5 Vyre is not running or did not answer.
 //                3 and 4 are the vault's codes from before this file (core/cli/commands/vault.js),
 //                kept so a script that already checks them keeps working.
 //   Errors       one line saying what went wrong, then one dim line saying what to do next.
@@ -155,13 +155,13 @@ export function nextFor(error) {
 }
 
 /**
- * Print a tool's { error } and return its exit code. Unreachable reads as "vyred is not running".
+ * Print a tool's { error } and return its exit code. Unreachable reads as "Vyre is not running".
  * @param {{ code: string, message?: string }} error
  * @param {string} [next] overrides the default next step
  */
 export function failTool(error, next) {
   const down = DOWN.has(error.code);
-  const message = down ? (error.code === "timeout" ? `vyred did not answer${error.message ? ": " + error.message : ""}` : "vyred is not running")
+  const message = down ? (error.code === "timeout" ? `Vyre did not answer${error.message ? ": " + error.message : ""}` : "Vyre is not running")
     : error.code === "no_such_tool" ? `this vyred has no ${String(error.message || "").replace(/^no tool /, "") || "such tool"} yet`
     : String(error.message || error.code);
   return fail(message, { code: error.code, exit: exitFor(error), next: next || nextFor(error) });

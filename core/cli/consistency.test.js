@@ -129,7 +129,7 @@ test("every read takes --json and prints JSON", async t => {
   assert.equal(ctx.code, 1);
 });
 
-test("vyred not running: exit 5, and the next step is vyre up", async t => {
+test("Vyre not running: exit 5, and the next step is vyre up", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   for (const args of [["status"], ["modules"], ["tools"], ["learn"], ["watchers"], ["link"], ["memory"], ["name"]]) {
     const r = await vyre(args, env);

@@ -118,7 +118,7 @@ test("relay cli verbs: status, on, pair, devices, trust, rename, pin, unpin, rem
   assert.equal(renamed.code, 0, renamed.out);
   assert.match(renamed.out, new RegExp(`${id} is now Harlow Legal laptop`));
 
-  // pin a release this box knows, refuse one it does not, then unpin.
+  // pin a release this server knows, refuse one it does not, then unpin.
   const pin = await run(root, ["relay", "pin", "0.4.2"]);
   assert.equal(pin.code, 0, pin.out);
   assert.match(pin.out, /pinned to 0\.4\.2/);

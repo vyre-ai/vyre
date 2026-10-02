@@ -39,7 +39,7 @@ test("screen (live): a thread streams in, the keyboard is taken, an ask is allow
   process.env.VYRE_CLAUDE_BIN = FAKE;
   t.after(() => { if (saved.bin === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = saved.bin; process.chdir(saved.cwd); });
   const up = await upPresent(root);
-  assert.equal(up.code, 0, "vyred did not start");
+  assert.equal(up.code, 0, "Vyre did not start");
   t.after(() => { try { process.kill(/** @type {number} */ (up.pid), "SIGTERM"); } catch {} });
 
   // Another surface starts a thread and so holds its keyboard; an agent asks to send an email.

@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre relay`: reach the box with a QR code, no Tailscale (ADR 0026). Status, pairing with a code
+// `vyre relay`: reach the server with a QR code, no Tailscale (ADR 0026). Status, pairing with a code
 // drawn in the terminal, the device list, and turning it on and off. Every change goes through
 // the person at this terminal (presence), like the same buttons in the Deck.
 //
@@ -26,7 +26,7 @@ const ago = (ms, now = Date.now()) => {
 
 async function up() {
   const r = await ensureUp();
-  if (!r.ok) fail("vyred did not start", { code: "unreachable", exit: 5, next: `its output is in ${r.log}` });
+  if (!r.ok) fail("Vyre did not start", { code: "unreachable", exit: 5, next: `its output is in ${r.log}` });
   return r.ok;
 }
 
@@ -83,10 +83,10 @@ export default [
       { verb: "on", summary: "turn the relay on", usage: "[--url u]", person: true },
       { verb: "off", summary: "turn the relay off; paired devices stay paired", usage: "", person: true },
       { verb: "pin", summary: "trust one web app release", usage: "<release>", person: true },
-      { verb: "unpin", summary: "follow the newest web app release this box knows", usage: "", person: true },
+      { verb: "unpin", summary: "follow the newest web app release this server knows", usage: "", person: true },
     ],
-    help: "vyre relay: whether the relay is on and connected\nvyre relay pair: a QR code for one more device (once, 10 minutes)\nvyre relay devices: paired devices, which are connected, and how\nvyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)\nvyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts",
-    summary: "reach this box from your phone with a QR code, no Tailscale",
+    help: "vyre relay: whether the relay is on and connected\nvyre relay pair: a QR code for one more device (once, 10 minutes)\nvyre relay devices: paired devices, which are connected, and how\nvyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)\nvyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this server trusts",
+    summary: "reach this server from your phone with a QR code, no Tailscale",
     async run(args) {
       const { flags, pos } = parse(args, { bool: ["off"], values: ["url"], cmd: "relay" });
       const [verb = "status", a, ...rest] = pos;
@@ -99,8 +99,8 @@ export default [
             if (colour) { out(""); for (const l of terminal(qr(d.url))) out(l); out(""); out("  Scan this with your phone's camera. It works once, for 10 minutes."); }
             else out("  Open this address on your phone (the QR code shows in a colour terminal). It works once, for 10 minutes.");
             out(dim(`  ${d.url}`));
-            if (!d.connected) out(dim("  the box is not at the relay yet; the code works as soon as it is (vyre relay)"));
-          }, d => ({ kind: "qr", text: String(d.url), caption: `Scan this with your phone's camera. It works once, for 10 minutes.${d.connected ? "" : " The box is not at the relay yet; it works as soon as it is."}` }));
+            if (!d.connected) out(dim("  the server is not at the relay yet; the code works as soon as it is (vyre relay)"));
+          }, d => ({ kind: "qr", text: String(d.url), caption: `Scan this with your phone's camera. It works once, for 10 minutes.${d.connected ? "" : " The server is not at the relay yet; it works as soon as it is."}` }));
         case "remove":
           if (!a) return usage("vyre relay remove needs a device id", "vyre relay devices lists them");
           return asPerson("relay.devices.remove", { id: a }, () => out(`  removed ${a}; its connections are closed`));
@@ -118,7 +118,7 @@ export default [
           if (!a) return usage("vyre relay pin needs a release", "vyre relay pin 0.4.2, or vyre relay unpin");
           return asPerson("relay.web.pin", { release: a }, d => out(`  the web app is pinned to ${d.pinned}`));
         case "unpin":
-          return asPerson("relay.web.pin", { release: "" }, () => out("  the web app follows the newest release this box knows"));
+          return asPerson("relay.web.pin", { release: "" }, () => out("  the web app follows the newest release this server knows"));
         default:
           return usage(`vyre relay ${verb} is not a thing`, USAGE);
       }

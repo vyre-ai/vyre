@@ -65,7 +65,7 @@ More in [Projects and threads](../using/projects-and-threads.md).
 
 ## Launch an agent
 
-An agent is a named, headless Claude Code worker that runs on the box. It uses your Claude subscription (a setup token in the vault) or an API key with a budget, and it sees only the projects you give it.
+An agent is a named, headless Claude Code worker that runs on the server. It uses your Claude subscription (a setup token in the vault) or an API key with a budget, and it sees only the projects you give it.
 
 - **In the Deck:** open Agents and press **New agent**. Give it a name, and say what it does and what it must ask you before doing.
 - **In the terminal:**
@@ -76,7 +76,7 @@ vyre agents create kit --projects harlow-legal --budget 20 \
 vyre agents ask kit "List the documents that came in this week."
 ```
 
-`--budget` is in dollars and applies to API-key use: the thread is told at 80%, and stops at 100% with a note saying how to raise it. `--vault` and `--fallback` name the vault items holding the subscription token and the API key; without any auth set, the agent uses the Claude Code sign-in on the box.
+`--budget` is in dollars and applies to API-key use: the thread is told at 80%, and stops at 100% with a note saying how to raise it. `--vault` and `--fallback` name the vault items holding the subscription token and the API key; without any auth set, the agent uses the Claude Code sign-in on the server.
 
 If an agent stops on a permission question, `vyre agents ask` prints it with the command to answer it (`vyre threads answer <id> allow|deny`). See what your agents are doing with `vyre agents`, and what they have spent with `vyre agents usage`. More in [Agents](../using/agents.md).
 
@@ -103,7 +103,7 @@ The value reaches only that process's environment, and is scrubbed from its outp
 
 ## Find something from last week
 
-Recall searches every session you have had, on this machine and indexed from your history. In the Deck on your box, the paired Mac's sessions are listed too, marked with the Mac's name.
+Recall searches every session you have had, on this machine and indexed from your history. In the Deck on your server, the paired Mac's sessions are listed too, marked with the Mac's name.
 
 ```
 vyre recall "retainer template"
@@ -129,8 +129,8 @@ You can also ask for it in words. In Lumen, ask your assistant ("what did we dec
 
 - A date filter for recall, as above.
 - A phone app from an app store. Native iPhone and Android builds exist, but you build and install them yourself. On the phone, open your address in Safari or Chrome and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
-- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
-- Updates on a Mac by themselves. Run `vyre update` on the Mac. A server updates from Settings, with `vyre update`, or by itself between 2 and 5 in the morning if you turn on **Update automatically** (off by default). Updates are signed. See [Looking after the box](../using/box-care.md).
+- Replying to a Mac session from the server. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
+- Updates on a Mac by themselves. Run `vyre update` on the Mac. A server updates from Settings, with `vyre update`, or by itself between 2 and 5 in the morning if you turn on **Update automatically** (off by default). Updates are signed. See [Looking after the server](../using/box-care.md).
 
 ## Where to go next
 

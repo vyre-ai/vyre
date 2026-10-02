@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre hooks` as a person runs it: the real bin/vyre in a child process, against a box vyred in
+// `vyre hooks` as a person runs it: the real bin/vyre in a child process, against a server vyred in
 // this process in a temp home, with `present` as its verifier (opening a route needs a person) and
 // a fake tailscale that answers `status` and `funnel status` for hooks.status. The listener stays
 // off, so nothing listens; no route is ever published.

@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre phone` against a real vyred in a temp home: the box's address, a code minted through the
+// `vyre phone` against a real vyred in a temp home: the server's address, a code minted through the
 // real presence verifier (the code it writes to the login terminal, typed back by a fake
 // terminal), a fake push service on 127.0.0.1, and a phone played by the test (push.subscribe and
 // presence.enroll as the Deck would send them). adb is a fake binary. No network, no dialogs.
@@ -123,14 +123,14 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
 
   const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
   const text = lines.join("\n");
-  assert.match(text, /Pairing a phone with the box \(vyre\.tail0000\.ts\.net\)/);
+  assert.match(text, /Pairing a phone with the server \(vyre\.tail0000\.ts\.net\)/);
   assert.match(text, /Network\s+Tailscale, tailnet tail0000/);
-  assert.match(text, /This box has no relay yet, so the phone pairs over Tailscale/, "the relay is the default; no relay tool on this box");
+  assert.match(text, /This server has no relay yet, so the phone pairs over Tailscale/, "the relay is the default; no relay tool on this server");
   assert.match(text, new RegExp(`Open Vyre\\s+${BOX.replace(/\./g, "\\.")}`));
   assert.match(text, /Type this address on the phone/, "no QR code into a pipe");
   assert.match(text, /iPhone: Safari: Share, then Add to Home Screen/);
   assert.match(text, /Android: Chrome/);
-  assert.match(text, /· Phone reached the box/);
+  assert.match(text, /· Phone reached the server/);
   assert.doesNotMatch(text, /✓/, "nothing passes before the phone does anything");
 
   // The phone turns on notifications; Enter makes the laptop look again, and the new device gets a test.
@@ -141,9 +141,9 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   await until(() => lines.some(l => /· Test notification arrived · sent, waiting for the phone/.test(l)), "sent, not yet shown");
   await shows(svc, root, "/push/phone");
   await until(() => lines.some(l => /✓ Test notification arrived/.test(l)), "the push check");
-  assert.ok(lines.some(l => /✓ Phone reached the box/.test(l)));
+  assert.ok(lines.some(l => /✓ Phone reached the server/.test(l)));
   assert.ok(lines.some(l => /✓ Secure address works \(HTTPS\)/.test(l)));
-  assert.ok(lines.some(l => /\? Opened as an app, not a browser tab/.test(l)), "the box cannot tell app from tab on this service");
+  assert.ok(lines.some(l => /\? Opened as an app, not a browser tab/.test(l)), "the server cannot tell app from tab on this service");
 
   // The phone adds its passkey with the code: presence.enrolled on the stream ends the watch.
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -182,7 +182,7 @@ test("phone add: the watch ends when the code runs out, naming what never arrive
   assert.equal(code, 1);
   const text = lines.join("\n");
   assert.doesNotMatch(text, /Android:/, "--iphone shows the iPhone step only");
-  assert.match(text, /the code ran out before: phone reached the box, secure address works \(https\), test notification arrived, face id key saved/i);
+  assert.match(text, /the code ran out before: phone reached the server, secure address works \(https\), test notification arrived, face id key saved/i);
   assert.match(text, /next: vyre phone add again/);
 });
 
@@ -197,13 +197,13 @@ test("phone add --json: the address, the code and the steps as one value, withou
   assert.equal(v.url, BOX + "/");
   assert.match(v.code, /^[A-Z0-9]{8}$/);
   assert.ok(v.expires > Date.now() + 9 * 60_000, "the code lasts 10 minutes");
-  assert.equal(v.network, "tailscale", "no relay on this box, so Tailscale");
+  assert.equal(v.network, "tailscale", "no relay on this server, so Tailscale");
   assert.deepEqual(v.tailscale, { tailnet: "tail0000", login: null, address: BOX + "/" });
-  assert.equal(v.relay, "this box has no relay yet");
+  assert.equal(v.relay, "this server has no relay yet");
   assert.deepEqual(v.checks.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
 });
 
-test("phone add --json: a box with the Deck's /pair screen gets the QR pointed there", async t => {
+test("phone add --json: a server with the Deck's /pair screen gets the QR pointed there", async t => {
   const { io } = await box(t);
   const lines = capture(t);
   setJson(true);
@@ -411,7 +411,7 @@ test("phone add --android --usb: without the relay it installs and says how to p
   const lines = capture(t);
   const deps = { base: srv.base, target: fakeTarget(), pair: async () => ({ error: { code: "no_such_tool", message: "no such tool" } }) };
   assert.equal(await android({}, deps), 0);
-  assert.match(lines.join("\n"), /Installing Vyre 0\.14\.2[\s\S]*Open Vyre on the phone and scan the pairing QR: vyre phone add on the box/);
+  assert.match(lines.join("\n"), /Installing Vyre 0\.14\.2[\s\S]*Open Vyre on the phone and scan the pairing QR: vyre phone add on the server/);
   assert.ok(adb.argv().some(a => a.includes("install")));
   assert.ok(!adb.argv().some(a => a.includes("am")), "no offer, nothing to open");
   setJson(true);
@@ -428,24 +428,24 @@ test("phone add --android --usb: a sha256 or size that does not match is refused
   const srv = await appServer(t, manifest);
   const lines = capture(t);
   assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
-  assert.match(lines.join("\n"), /the APK's sha256 is not what the box says: the download was not what the box says it built; nothing was installed/);
+  assert.match(lines.join("\n"), /the APK's sha256 is not what the server says: the download was not what the server says it built; nothing was installed/);
   assert.ok(srv.hits.some(h => h.endsWith(".apk")), "it did download");
   assert.deepEqual(fs.readdirSync(adb.tmp), [], "and deleted it");
   manifest.value = { ...good(), size: APK.length + 1 };
   lines.length = 0;
   assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
-  assert.match(lines.join("\n"), /the APK's size is not what the box says/);
+  assert.match(lines.join("\n"), /the APK's size is not what the server says/);
   manifest.value = { ...good(), size: APK.length - 1 };
   lines.length = 0;
   assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
-  assert.match(lines.join("\n"), /the APK's size is not what the box says/, "a bigger file stops at the promised size");
+  assert.match(lines.join("\n"), /the APK's size is not what the server says/, "a bigger file stops at the promised size");
   assert.deepEqual(fs.readdirSync(adb.tmp), []);
   assert.ok(!adb.argv().some(a => a.includes("install")), "never installed");
-  // The box refuses its own copy (409 release_mismatch): said plainly, nothing installed.
+  // The server refuses its own copy (409 release_mismatch): said plainly, nothing installed.
   const refusing = await appServer(t, { value: good() }, { refuse: true });
   lines.length = 0;
   assert.equal(await android({}, { base: refusing.base, target: fakeTarget() }), 1);
-  assert.match(lines.join("\n"), /the box's copy of the app does not match what CI built/);
+  assert.match(lines.join("\n"), /the server's copy of the app does not match what CI built/);
   assert.deepEqual(fs.readdirSync(adb.tmp), []);
   assert.ok(!adb.argv().some(a => a.includes("install")), "never installed");
 });
@@ -456,7 +456,7 @@ test("phone add --android: no manifest is no_apk, a phone too old is refused, ad
   const srv = await appServer(t, manifest);
   const lines = capture(t);
   assert.equal(await android({}, { base: srv.base, target: fakeTarget() }), 1);
-  assert.match(lines.join("\n"), /Found Pixel 8 over USB[\s\S]*the box has no Android app to serve yet[\s\S]*next: vyre phone add for the web app/);
+  assert.match(lines.join("\n"), /Found Pixel 8 over USB[\s\S]*the server has no Android app to serve yet[\s\S]*next: vyre phone add for the web app/);
 
   manifest.value = good();
   lines.length = 0;
@@ -492,7 +492,7 @@ test("phone add --android: a phone that has not allowed this computer is told to
   assert.match(lines.join("\n"), /has not allowed this computer[\s\S]*next: tap Allow on the phone/);
 });
 
-test("phone add --json: a box that serves the Android app adds its address; the manifest is checked whole", async t => {
+test("phone add --json: a server that serves the Android app adds its address; the manifest is checked whole", async t => {
   const { io } = await box(t);
   const srv = await appServer(t, { value: good() });
   const lines = capture(t);
@@ -541,7 +541,7 @@ test("phone add --view: a qr frame with the --json data, then a checks frame per
   assert.deepEqual(waiting.view.items.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
   assert.equal(waiting.data, null);
 
-  // The phone subscribes: push.subscribed makes it look at once, and a new frame says it reached the box.
+  // The phone subscribes: push.subscribed makes it look at once, and a new frame says it reached the server.
   // The command opens its event stream a moment after its first frames, and an event before that is
   // not replayed, so on a slow runner one subscribe can land before anyone listens: subscribe again
   // (harmless) until the frame says so, and wait on the condition, not on a fixed time.

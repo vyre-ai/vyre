@@ -55,7 +55,7 @@ export default {
     // A read never starts vyred for itself; open and close do, since they are why it runs.
     if (verb !== "status") {
       const up = await ensureUp();
-      if (!up.ok) return fail("vyred did not start", { code: "unreachable", exit: 5, next: `its output is in ${up.log}` });
+      if (!up.ok) return fail("Vyre did not start", { code: "unreachable", exit: 5, next: `its output is in ${up.log}` });
     }
     const r = await call(`sideview.${verb}`, verb === "open" ? parse(words.slice(words[0] === "open" ? 1 : 0)) : {});
     if (r.error) return failTool(r.error);

@@ -11,7 +11,7 @@ status: draft
 On a phone, Vyre is the [Deck](deck.md) installed as a web app. You add it to your home screen
 from the browser, it opens full screen like an app, and it can notify you when a session asks
 permission, a draft waits at the Gate, a thread you watch finishes, or Vyre proposes a lesson.
-The phone reaches your box over Tailscale, like every other device (see
+The phone reaches your server over Tailscale, like every other device (see
 [Tailscale](tailscale.md)).
 
 Installing the web app is the way to put Vyre on a phone in 0.2.0, and the rest of this page
@@ -20,10 +20,10 @@ describes it. Native iPhone and Android builds of the same app exist too (see
 
 ## Set up the phone
 
-1. Install the Tailscale app and sign in with the box owner's login. Onboarding's last step shows
-   a QR code for the Tailscale app and one for your box's `/now`. Step by step for iPhone and
+1. Install the Tailscale app and sign in with the server owner's login. Onboarding's last step shows
+   a QR code for the Tailscale app and one for your server's `/now`. Step by step for iPhone and
    Android: [Tailscale, from zero](../get-started/tailscale.md#2-install-tailscale-on-each-device).
-2. Open your box's address in Safari (iPhone) or Chrome (Android), for example
+2. Open your server's address in Safari (iPhone) or Chrome (Android), for example
    `https://vyre.tail1234.ts.net/now`.
 3. Add it to the home screen. On an iPhone: the Share button, then Add to Home Screen. On Android:
    the browser menu, then Install app or Add to Home screen.
@@ -42,9 +42,9 @@ Now then shows **Set up this phone**, three steps with what is left:
 **Not now** hides the card on that phone.
 
 > [!SNAG] The phone QR code says "After Tailscale and your address"
-> Onboarding never shows a QR code for `127.0.0.1`: until your box has its address, the phone has
+> Onboarding never shows a QR code for `127.0.0.1`: until your server has its address, the phone has
 > nowhere to go. Finish the Tailscale and address steps (see [Tailscale](tailscale.md)), and the
-> QR code for your box's `/now` appears.
+> QR code for your server's `/now` appears.
 
 ## What you can do from the phone
 
@@ -61,16 +61,16 @@ the bottom of the three pages; tap it, or pull down from the top of a screen, to
 - **Answer a permission question**: swipe its row in Now right to allow or left to deny, or tap it
   and choose Allow or Deny. Neither asks for Face ID.
 - **Chat**: your Claude Code sessions, including the ones you run in a terminal, mirrored a
-  moment after each turn. With a Mac paired to the box, the Mac's sessions are listed too, each
+  moment after each turn. With a Mac paired to the server, the Mac's sessions are listed too, each
   with the Mac's name on a chip; you can read them, and continue them on the Mac. If a session is
-  busy in your Mac's terminal, what you send waits and the line above the box says "Queued for"
+  busy in your Mac's terminal, what you send waits and the line above the server says "Queued for"
   the session's name; it goes in when that turn ends.
 - **Find**: one box for sessions, files, agents, memory and projects, and for asking your
   assistant. It is the phone's Lumen: open it from the bar at the bottom or by pulling down. `@kit ...` asks an agent,
   `tell <session> to ...` types into a session, and `watch <session>` notifies you when it
-  finishes or asks. The line under the box says what Enter will do.
+  finishes or asks. The line under the server says what Enter will do.
 - **Ask**: talk to your assistant or any agent, at `/ask`.
-- **Drive**: browse the folders your box shares as Vyre Drive, at `/files`. A phone cannot mount a
+- **Drive**: browse the folders your server shares as Vyre Drive, at `/files`. A phone cannot mount a
   share, so it reads them: a preview for a picture, text or PDF up to 8 MB, otherwise a download.
 - **Glass**: watch an agent's computer and take over. A tap is a click, a long press a right
   click, two fingers scroll, pinch zooms your view, and a keyboard button opens the soft
@@ -109,10 +109,10 @@ Only that something needs you, and a link. The title is a fixed sentence per kin
 waiting for your approval"), and the link holds only an id. It never carries a draft's words, a
 recipient, a tool's input or anything you typed: a push crosses Apple's, Google's or Mozilla's
 servers, and a lock screen shows it to whoever holds the phone. The payload is encrypted end to
-end. The details load after you tap, over your own connection to the box. The decision is
+end. The details load after you tap, over your own connection to the server. The decision is
 [ADR 0011](../adr/0011-web-push.md).
 
-During quiet hours nothing is sent and nothing is queued; the moment stays in Now. A box that
+During quiet hours nothing is sent and nothing is queued; the moment stays in Now. A server that
 cannot reach the internet cannot notify, but the Deck still shows everything when you open it.
 
 ## Approving from the phone
@@ -126,10 +126,10 @@ approve. To make one on the phone itself, see [Deck](deck.md#add-a-passkey).
 
 ## Offline
 
-When the box is out of reach, the installed app still opens. One line says "This phone is
-offline." or "Your box is not answering.", with **Retry**. Now shows the counts from your last
+When the server is out of reach, the installed app still opens. One line says "This phone is
+offline." or "Your server is not answering.", with **Retry**. Now shows the counts from your last
 visit and when they were taken, and Chat shows your recent session list. Nothing can be sent or
-approved until the box answers.
+approved until the server answers.
 
 ## What it will not do
 
@@ -142,14 +142,14 @@ approved until the box answers.
 
 ## Native builds
 
-The phone app is one app, in `apps/app`. It runs as the web app your box serves, and the same code
+The phone app is one app, in `apps/app`. It runs as the web app your server serves, and the same code
 builds an Android APK and an iPhone app. The native builds keep the phone's signing key in the
 phone's hardware (Secure Enclave on an iPhone, Keystore on Android), and approvals ask for Face ID
-or a fingerprint. You type your box's name, and the Deck's passkey approves the phone once.
+or a fingerprint. You type your server's name, and the Deck's passkey approves the phone once.
 
 In 0.2.0 you build these yourself: [`apps/RELEASE.md`](https://github.com/vyre-ai/vyre/blob/main/apps/RELEASE.md)
 has the steps for a cable install, TestFlight and an Android APK, and they need your own Apple or
-Google developer account. Native push is not on the box yet, so the web app is the one that
+Google developer account. Native push is not on the server yet, so the web app is the one that
 notifies you.
 
 ## Next

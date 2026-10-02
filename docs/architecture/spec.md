@@ -19,7 +19,7 @@ the changelog.
 Vyre runs Claude Code on a machine you own and adds the things that do not belong inside
 Claude Code itself:
 
-1. **Claude Code on your box.** It runs on a server you control, not your laptop. Simpler to set
+1. **Claude Code on your server.** It runs on a server you control, not your laptop. Simpler to set
    up, reachable from anywhere, and untrusted code never touches your own computer.
 2. **Structure.** Projects, threads and context instead of one pile of sessions.
 3. **Memory.** Search across every session, and a memory layer that marks in gold what came
@@ -53,11 +53,11 @@ npm install -g vyre
 vyre up
 ```
 
-On a Mac, `vyre up` finds the box on the tailnet, or asks where Vyre should run. The recommended
-answer is a server, which is `vyre box add user@host`: it installs Docker and the box over SSH,
+On a Mac, `vyre up` finds the server on the tailnet, or asks where Vyre should run. The recommended
+answer is a server, which is `vyre server add user@host`: it installs Docker and the server over SSH,
 opens the tunnel and the browser itself, and waits, so the person never opens a shell on the
 server. On a server, `curl -fsSL https://vyre.run/install.sh | sh` does the same from the inside.
-Either way the box's `vyre up` makes one link: `http://127.0.0.1:<port>/onboard?t=<one-time
+Either way the server's `vyre up` makes one link: `http://127.0.0.1:<port>/onboard?t=<one-time
 token>` (on a headless server, reached over an SSH tunnel; the `ssh -L` line is printed). The
 onboarding is the Deck's first screen, and walks through, one step a screen:
 
@@ -97,7 +97,7 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
    in one place (`core/switchboard/runner.js`), and a thread without it denies every question.
 2. **Local first.** Everything runs on machines the user owns. Nothing leaves them except
    through the Gate, and nothing about the user reaches Vyre AI beyond a DNS record.
-3. **One process per machine.** `vyred` runs every service on that machine. On the box it runs
+3. **One process per machine.** `vyred` runs every service on that machine. On the server it runs
    Core; on the Mac it runs Local. Same binary, different modules enabled.
 4. **Everything is a module.** Core services, the Harness pieces, surfaces and third-party
    additions all use the same contract (section 5). No special cases.
@@ -145,7 +145,7 @@ vyre/
     ship/                  preview, repo, live                     (later)
     computers/             agents' containers and the screen pool  (workstream: computers)
     names/                 <you>.vyre.run, Tailscale, certificates (workstream: box)
-    link/                  the Mac and the box as one system: pairing, ctx.remote, box events (workstream: link)
+    link/                  the Mac and the server as one system: pairing, ctx.remote, box events (workstream: link)
     files/                 search, preview and fetch files on both machines, inside their roots (workstream: link)
     planner/               alarms, timers, reminders, todos, notes, a calendar; one scheduler (workstream: planner)
     cli/                   every `vyre` command
@@ -377,7 +377,7 @@ Port from: `the prototype's bin/curator.cjs`, `graph.cjs`.
 
 Credentials, sealed at rest, released one item at a time to a module or agent that declared it.
 No screen, log or event ever shows a value. Passes share an item with another person's Vyre:
-**relayed** by default (the value never leaves your box; their calls go through your Gate over
+**relayed** by default (the value never leaves your server; their calls go through your Gate over
 Tailscale; revoke ends it at once) or **sealed** (an encrypted copy; revoking means rotating).
 Offboarding is one action: revoke everything a person holds and list what must be rotated.
 
@@ -438,7 +438,7 @@ frozen. Glass streams a screen to the Deck and supports take-over.
 
 ### 7.10 Names and network · workstream
 
-`<you>.vyre.run` points at your box's Tailscale address, so only your devices can reach it.
+`<you>.vyre.run` points at your server's Tailscale address, so only your devices can reach it.
 Certificates are issued by DNS challenge, which works for a private address. vyred serves the
 Deck itself on the tailnet interface and identifies the person by `tailscale whois` of the
 connection's source address, never by a header, so there is no separate login and no local

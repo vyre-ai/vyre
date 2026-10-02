@@ -87,7 +87,7 @@ const fail = r => {
   last = r;
   if (JSON_MODE) jsonLine({ error: r.error });
   else if (r.error.code === "no_such_tool") out(beacon(`  this vyred has no ${String(r.error.message || "").replace(/^no tool /, "") || "such tool"} yet `) + dim("· update Vyre and run vyre restart"));
-  else out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
+  else out(unreachable(r) ? `  Vyre is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return exitFor(r);
 };
 const oops = msg => {
@@ -1230,7 +1230,7 @@ async function audit(args) {
 const REASONS = [
   ["weak", "weak", "easy to guess · vyre vault generate <name> makes a strong one"],
   ["reused", "reused", "the same value is in more than one item"],
-  ["rotate", "rotate", "a copy left this box · replace the value to clear it"],
+  ["rotate", "rotate", "a copy left this server · replace the value to clear it"],
   ["old", "old", "not changed for more than a year"],
   ["2fa-available", "two-factor available", "the site offers one-time codes · vyre vault edit <item> --field totp"],
   ["passkey-available", "passkey available", "the site takes a passkey instead of this password · sign in there and add one"],
@@ -1939,7 +1939,7 @@ const HELP = [
   ["vaults [list | create <name> | rotate <vault> | sync [vault]]", "vaults shared with a team; items appear as <vault>/<item>"],
   ["members invite <vault> <person> [--role r] | accept <invite> | role <vault> <person> <role> | remove <vault> <person>", "who is in a shared vault"],
   ["move <item> <vault>", "move an item into a shared vault"],
-  ["device join [--role full|storage] [--approval a] | approve <code> | list | sync", "your other devices: a Mac, or a box that stores and runs agents"],
+  ["device join [--role full|storage] [--approval a] | approve <code> | list | sync", "your other devices: a Mac, or a server that stores and runs agents"],
   ["pass create <holder> <item...> [--sealed] [--card c] [--host h ...] [--method M ...] [--path /p ...] [--expires 30d] [--note n]", "share without handing over"],
   ["pass list | pass revoke <id> | pass accept <ticket>", ""],
   ["relay <item> <url> [--header 'Name: {{vault}}'] [--data d]", "use an item relayed to you; the value is added on its owner's box"],
@@ -2112,7 +2112,7 @@ const VERBS = [
   { verb: "vaults", summary: "vaults shared with a team", usage: "[list|create|rotate|sync] [vault]" },
   { verb: "members", summary: "who is in a shared vault", usage: "<invite|accept|role|remove> [args...] [--role r]", person: true },
   { verb: "move", summary: "move an item into a shared vault", usage: "<item> <vault>", person: true },
-  { verb: "device", summary: "your other devices: a Mac, or a box that stores and runs agents", usage: "[join|approve|list|sync] [code] [--role r] [--approval a]" },
+  { verb: "device", summary: "your other devices: a Mac, or a server that stores and runs agents", usage: "[join|approve|list|sync] [code] [--role r] [--approval a]" },
   { verb: "pass", summary: "share without handing over", usage: "[create|list|revoke|accept] [args...] [--sealed] [--card c] [--host h] [--method m] [--path p] [--expires e] [--note n]" },
   { verb: "offboard", summary: "revoke everything a person holds, list what to rotate", usage: "<person>", person: true },
   { verb: "unlock", summary: "unlock the passphrase keystore", usage: "[--stdin]", person: true },

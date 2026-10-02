@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre assistant` as a surface runs it: the real bin/vyre in a child process against a box vyred
+// `vyre assistant` as a surface runs it: the real bin/vyre in a child process against a server vyred
 // in this process in a temp home. It takes no verbs, only a name; with none and no assistant yet
 // it prints null under --json and says how to make one under --view.
 

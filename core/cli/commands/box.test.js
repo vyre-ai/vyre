@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre box` end to end against fakes: an ssh that runs the "remote" command here, a remote PATH
+// `vyre server` end to end against fakes: an ssh that runs the "remote" command here, a remote PATH
 // with fake uname, docker, sudo and vyre, a fake Tailscale on the Mac and a fake browser. Nothing
 // real is reached: no server, no Docker, no Tailscale.
 import test from "node:test";
@@ -35,7 +35,7 @@ exec sh -c "$*"
 `;
 
 // Docker on the "server": logs each call with the ssh target, streams a line of "data" for a
-// volume tar, and fails a volume named in the box's missing or fail files.
+// volume tar, and fails a volume named in the server's missing or fail files.
 const FAKE_DOCKER = `#!/bin/sh
 echo "\${FAKE_TARGET:-} $*" >> "$FAKE_BOX/docker.log"
 case "$1 $2" in
@@ -55,7 +55,7 @@ fi
 exit 0
 `;
 
-// The box's vyre: canned `up` output, and onboard.status from status.1.json, status.2.json, ...
+// The server's vyre: canned `up` output, and onboard.status from status.1.json, status.2.json, ...
 // one per call, repeating the last once they run out.
 const FAKE_VYRE = `#!/bin/sh
 echo "$*" >> "$FAKE_BOX/vyre.log"
@@ -63,7 +63,7 @@ case "$1" in
   up) cat "$FAKE_BOX/up.out" ;;
   call)
     [ "$2" = onboard.link ] && [ -f "$FAKE_BOX/link.json" ] && { cat "$FAKE_BOX/link.json"; exit 0; }
-    # The box's passkeys: keys.json once (then keys.next.json takes its place), else one passkey.
+    # The server's passkeys: keys.json once (then keys.next.json takes its place), else one passkey.
     if [ "$2" = presence.keys ]; then
       if [ -f "$FAKE_BOX/keys.json" ]; then cat "$FAKE_BOX/keys.json"; [ -f "$FAKE_BOX/keys.next.json" ] && mv "$FAKE_BOX/keys.next.json" "$FAKE_BOX/keys.json"
       else echo '[{"kind":"passkey"}]'; fi
@@ -149,7 +149,7 @@ test("box: the link comes from --json, or from the text before --json exists", (
   assert.deepEqual(parseLink(`  your address: ${ADDRESS}\n`), { url: null, port: null, address: ADDRESS });
   assert.equal(parseLink("vyre: no box in /srv/vyre"), null);
   assert.equal(settled(status(3)), false);
-  assert.equal(settled(status(4)), true, "a box too old to say arrived: the address serving is enough");
+  assert.equal(settled(status(4)), true, "a server too old to say arrived: the address serving is enough");
   assert.equal(settled(status(4, { arrived: false })), false, "the page still needs the tunnel for Switch to");
   assert.equal(settled(status(4, { arrived: true })), true, "the owner reached the address");
   assert.equal(newer("0.2.0", "0.1.9"), 1);
@@ -194,7 +194,7 @@ test("box add --yes: installs, opens the link, waits step by step, saves, and en
   assert.equal(c.network.box, ADDRESS);
 });
 
-test("box add: a box already set up skips install and the browser, and finishes", async t => {
+test("box add: a server already set up skips install and the browser, and finishes", async t => {
   const r = rig(t);
   fs.mkdirSync(r.stack, { recursive: true });
   fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
@@ -225,7 +225,7 @@ test("box add: a finished box pairs this Mac and asks for the approval in the De
   assert.equal(code, 0, text);
   assert.deepEqual(asked, ["link.status", "link.pair", "link.status"]);
   assert.match(text, /this Mac is paired with/);
-  assert.doesNotMatch(r.read("vyre.log"), /link approve/, "anything in the box's container could approve over SSH");
+  assert.doesNotMatch(r.read("vyre.log"), /link approve/, "anything in the server's container could approve over SSH");
   assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
   assert.equal(r.read("opened"), "");
   assert.match(text, /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
@@ -288,7 +288,7 @@ test("box add: a signed-out Mac stops before touching the server", async t => {
   assert.equal(fs.existsSync(path.join(r.root, "ssh.log")), false);
 });
 
-test("box remove --yes: uninstalls on the server and forgets the box", async t => {
+test("box remove --yes: uninstalls on the server and forgets the server", async t => {
   const r = rig(t);
   config.save({ box: { ssh: "alex@203.0.113.9" }, network: { box: ADDRESS } });
   const run = /** @type {any} */ (box[0]).run;
@@ -335,7 +335,7 @@ test("box add: the wait gives up when the link expires, and says how to carry on
   const { code, text } = await capture(() => add(OLD));
   assert.equal(code, 1);
   assert.match(text, /setup link has expired/);
-  assert.match(text, /run vyre box add alex@203\.0\.113\.9 again to carry on/);
+  assert.match(text, /run vyre server add alex@203\.0\.113\.9 again to carry on/);
 });
 
 test("box update: runs vyre update on the saved box and compares versions; a failed update and no box are exit 1", async t => {
@@ -343,8 +343,8 @@ test("box update: runs vyre update on the saved box and compares versions; a fai
   const run = /** @type {any} */ (box[0]).run;
   const none = await capture(() => run(["update"]));
   assert.equal(none.code, 1);
-  assert.match(none.text, /no server yet: vyre box add <user@host>/);
-  assert.equal(r.read("vyre.log"), "", "nothing ran without a box");
+  assert.match(none.text, /no server yet: vyre server add <user@host>/);
+  assert.equal(r.read("vyre.log"), "", "nothing ran without a server");
 
   config.save({ box: { ssh: OLD } });
   r.put("version", VERSION + "\n");
@@ -593,9 +593,9 @@ test("box --view: a plan that wants a yes is a prompt frame to run again with --
   assert.equal(code, 2);
   const f = lines.join("").trim().split("\n").map(l => JSON.parse(l));
   assert.equal(f[0].view.kind, "prompt");
-  assert.deepEqual([f[0].view.name, f[0].view.choices, f[0].view.args], ["yes", ["yes", "no"], ["box", "remove", "--purge", "--yes"]]);
+  assert.deepEqual([f[0].view.name, f[0].view.choices, f[0].view.args], ["yes", ["yes", "no"], ["server", "remove", "--purge", "--yes"]]);
   assert.match(f[0].view.label, /stop the stack.*Go ahead\?$/);
   assert.equal(f[0].data.question, "Go ahead?");
   assert.equal(r.read("installer.log"), "", "nothing ran on the server");
-  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9", "the box is still remembered");
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9", "the server is still remembered");
 });

@@ -105,7 +105,7 @@ Claude config on its own.
 ## Connect an app from the catalog
 
 Most apps you would want to connect already run their own hosted MCP server. Vyre keeps a catalog of
-them, so connecting one is a sign-in, not a setup. Nothing passes through a Vyre server: your box signs
+them, so connecting one is a sign-in, not a setup. Nothing passes through a Vyre server: your server signs
 in to the vendor directly, and the credential is a [vault](vault.md) item that only that vendor's own
 address can receive.
 
@@ -118,7 +118,7 @@ vyre connect add app notion --label work   # a second account of the same app
 There are three ways an app signs in, and Vyre picks the one the vendor offers:
 
 - **Sign in.** The vendor lets an app register itself. You open the address Vyre prints, approve, and
-  it is done. On a browser that is not on the box, paste the address the browser lands on back into the
+  it is done. On a browser that is not on the server, paste the address the browser lands on back into the
   terminal, or into the Deck's Connections screen.
 - **Your own app.** The vendor wants you to make an OAuth app in your own account first (Asana,
   HubSpot, Google Workspace). `vyre connect apps` says so, and `vyre connect add app <id>` prints the

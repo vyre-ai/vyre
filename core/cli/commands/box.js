@@ -1,10 +1,10 @@
 // @ts-check
-// `vyre box`: put Vyre on a server from the Mac, and look after it from there (ADR 0008
+// `vyre server`: put Vyre on a server from the Mac, and look after it from there (ADR 0008
 // sections 2 and 8). Everything on the server happens over SSH (../ssh.js), so the person never
-// opens a shell on it. `vyre box add` is also what `vyre up` runs when the person says "a server".
+// opens a shell on it. `vyre server add` is also what `vyre up` runs when the person says "a server".
 //
 // Every step is worked out from what the server says, not from what this command remembers, so
-// running `vyre box add` again after a Ctrl-C carries on from where the box stands.
+// running `vyre server add` again after a Ctrl-C carries on from where the server stands.
 //
 // --json shapes: status {box, address, answering, version}. The other verbs work over SSH and
 // print what happens as it goes. Under --view nothing is read from the terminal: a plan that
@@ -106,7 +106,7 @@ export function plan(p, env = process.env) {
   ];
 }
 
-/** Why this server cannot take a box, or null when it can. */
+/** Why this server cannot take a server, or null when it can. */
 export function unfit(p) {
   if (p.os !== "Linux") return `${p.os || "this server"} is not Linux; a Vyre box runs on Linux with Docker`;
   if (!p.tun) return "this server has no /dev/net/tun, which Tailscale needs. Try: sudo modprobe tun. On a VPS, turn on TUN in the provider's panel";
@@ -119,7 +119,7 @@ export function unfit(p) {
 const terminal = () => !viewing() && Boolean(process.stdin.isTTY);
 
 /** The words that ran this verb, for a prompt frame to run again with --yes. */
-let AGAIN = /** @type {string[]} */ (["box"]);
+let AGAIN = /** @type {string[]} */ (["server"]);
 
 /** Ask once. true or false; null when there is no terminal to ask on. */
 async function ask(question, yes) {
@@ -149,7 +149,7 @@ async function agree(lines, question, yes) {
 // ---- the link (step 5) ----
 
 /**
- * The box's answer to `vyre up --json`, or its text when that flag is not there yet.
+ * The server's answer to `vyre up --json`, or its text when that flag is not there yet.
  * @returns {{ url: string|null, port: number|null, address: string|null } | null}
  */
 export function parseLink(text) {
@@ -228,7 +228,7 @@ function onInterrupt(fn) {
   return () => { process.off("SIGINT", h); };
 }
 
-const resume = target => `run vyre box add ${target} again to carry on.`;
+const resume = target => `run vyre server add ${target} again to carry on.`;
 
 // ---- add ----
 
@@ -332,24 +332,24 @@ async function install(r, args, env, group = false) {
   } finally { await r.run(line("rm", "-f", tmp)); }
 }
 
-/** Step 5: the one-time link from the box. */
+/** Step 5: the one-time link from the server. */
 async function link(r, env) {
   const res = await r.run(vyre(["up", "--json"], env));
   const l = parseLink(res.stdout);
-  if (!l || (!l.url && !l.address)) throw new Error(res.stderr.trim().split("\n")[0] || res.stdout.trim().split("\n")[0] || "vyre up on the box printed no link");
+  if (!l || (!l.url && !l.address)) throw new Error(res.stderr.trim().split("\n")[0] || res.stdout.trim().split("\n")[0] || "vyre up on the server printed no link");
   return l;
 }
 
 /**
- * Step 7: remember the box, start this Mac's vyred, pair, and print the ending. Pairing shows a
- * code on the Mac for the box's owner to approve with the passkey onboarding enrolled (ADR 0008
- * section 7). SSH cannot approve it: anything run in the box's container could do the same.
+ * Step 7: remember the server, start this Mac's vyred, pair, and print the ending. Pairing shows a
+ * code on the Mac for the server's owner to approve with the passkey onboarding enrolled (ADR 0008
+ * section 7). SSH cannot approve it: anything run in the server's container could do the same.
  */
 async function finish(r, target, s, t, env, tool = call) {
   config.save({ box: { ssh: target }, network: { box: s.address || undefined } });
   if (!s.address) {
     // Onboarding finished with the address step skipped: nothing on the tailnet to pair with yet.
-    out(beacon("  your server has no address yet.") + ` Run ${signal(`vyre box add ${target}`)} again to finish ${signal("Your address")} in the browser.`);
+    out(beacon("  your server has no address yet.") + ` Run ${signal(`vyre server add ${target}`)} again to finish ${signal("Your address")} in the browser.`);
     printEnding({ address: null, assistant: s.assistant });
     return 0;
   }
@@ -364,9 +364,9 @@ async function finish(r, target, s, t, env, tool = call) {
   return 0;
 }
 
-/** Pair this Mac with the box, approving the code on the box over the SSH connection. */
+/** Pair this Mac with the server, approving the code on the server over the SSH connection. */
 /**
- * The owner's first passkey, made at the box's address before anything asks for one. The box hands
+ * The owner's first passkey, made at the server's address before anything asks for one. The server hands
  * its one-time enrollment link only to its own terminal; null once a passkey exists.
  */
 async function passkey(r, env) {
@@ -379,7 +379,7 @@ async function passkey(r, env) {
 /**
  * The pairing code is approved with a passkey, so it is made only once one exists: before that it
  * would tick away its 10 minutes while the person is still making the passkey. Waits up to
- * VYRE_BOX_WAIT_MS; a box too old to list its keys is taken to have one.
+ * VYRE_BOX_WAIT_MS; a server too old to list its keys is taken to have one.
  */
 async function passkeyMade(r, address, env) {
   const every = Number(env.VYRE_BOX_POLL_MS) || 5000;
@@ -426,14 +426,14 @@ async function pairOver(address, tool, env = process.env) {
 }
 
 /**
- * `vyre box add user@host`: ADR 0008 section 2, steps 1 to 7. `vyre up` calls this too.
+ * `vyre server add user@host`: ADR 0008 section 2, steps 1 to 7. `vyre up` calls this too.
  * @param {string} target user@host
  * @param {{ yes?: boolean, env?: NodeJS.ProcessEnv, call?: typeof call }} [opts] call stands in for this Mac's vyred in tests
  * @returns {Promise<number>} exit code
  */
 export async function add(target, opts = {}) {
   const env = opts.env || process.env;
-  if (!validTarget(target)) { out("  vyre box add <user@host>"); return 1; }
+  if (!validTarget(target)) { out("  vyre server add <user@host>"); return 1; }
   const t = await macFirst(env);
   if (!t) return 1;
   /** @type {import("../ssh.js").Remote|null} */
@@ -463,9 +463,9 @@ export async function add(target, opts = {}) {
 
 /** Steps 5 to 7: link, tunnel, browser, wait, finish. */
 async function onboard(r, target, t, env, tool) {
-  // A finished box needs no browser: go straight to the end (resuming, or a box set up by curl).
+  // A finished box needs no browser: go straight to the end (resuming, or a server set up by curl).
   const before = await r.json(vyre(["call", "onboard.status"], env)).catch(() => ({}));
-  // An address still to set up is finished in the browser, so only a box with one skips it.
+  // An address still to set up is finished in the browser, so only a server with one skips it.
   if (before.finished && before.address) return finish(r, target, before, t, env, tool);
   const l = await link(r, env);
   if (!l.url) return finish(r, target, await r.json(vyre(["call", "onboard.status"], env)), t, env, tool);
@@ -489,7 +489,7 @@ async function onboard(r, target, t, env, tool) {
 function saved() {
   const c = /** @type {any} */ (config.load());
   const t = c.box && c.box.ssh;
-  if (!t) out(`  no server yet: ${signal("vyre box add <user@host>")}`);
+  if (!t) out(`  no server yet: ${signal("vyre server add <user@host>")}`);
   return t || null;
 }
 
@@ -508,10 +508,10 @@ async function status() {
     const target = (c.box && c.box.ssh) || null;
     const address = target ? c.network.box || null : null;
     const h = address ? await tailnet.probe(address) : null;
-    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null }, { kind: "card", title: "Your box", state: !target ? "wait" : h ? "ok" : "failed",
+    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null }, { kind: "card", title: "Your server", state: !target ? "wait" : h ? "ok" : "failed",
       fields: target ? [{ label: "Address", value: address || "no address yet" }, { label: "Server", value: String(target) },
         { label: "Answering", value: h ? `yes${h.version ? " · " + h.version : ""}` : "not from here: is this Mac on your tailnet?" }]
-        : [{ label: "No box yet", value: "vyre box add <user@host>" }] });
+        : [{ label: "No server yet", value: "vyre server add <user@host>" }] });
     return target && !h ? 1 : 0;
   }
   const target = saved();
@@ -608,7 +608,7 @@ async function carry(from, to, v) {
   out(`  ${v.padEnd(16)} ${signal("moved")}`);
 }
 
-/** Wait for the box's address to answer from this Mac, up to VYRE_BOX_PROBE_MS (default 2 minutes). */
+/** Wait for the server's address to answer from this Mac, up to VYRE_BOX_PROBE_MS (default 2 minutes). */
 async function answers(address, probe, env = process.env) {
   const until = Date.now() + (Number(env.VYRE_BOX_PROBE_MS ?? 120_000));
   for (;;) {
@@ -619,7 +619,7 @@ async function answers(address, probe, env = process.env) {
 }
 
 /**
- * `vyre box move user@newhost` (ADR 0008 section 8). Once the old stack stops, every way out
+ * `vyre server move user@newhost` (ADR 0008 section 8). Once the old stack stops, every way out
  * either finishes the move or starts the old stack again, and says which.
  * @param {string} newTarget
  * @param {{ yes?: boolean }} [flags]
@@ -629,9 +629,9 @@ export async function move(newTarget, flags = {}, deps = {}) {
   const probe = deps.probe || tailnet.probe;
   const oldTarget = saved();
   if (!oldTarget) return 1;
-  if (!validTarget(newTarget)) { out("  vyre box move <user@newhost>"); return 1; }
+  if (!validTarget(newTarget)) { out("  vyre server move <user@newhost>"); return 1; }
   const env = { ...process.env, VYRE_NO_UP: "1" };
-  // The new server gets the same Tailscale SSH preference as vyre box add; the old one is reached
+  // The new server gets the same Tailscale SSH preference as vyre server add; the old one is reached
   // as saved, which is already the target that worked.
   const t = await tailnet.status(env);
   const from = remote(oldTarget);
@@ -712,7 +712,7 @@ async function remove(flags) {
   out(`\n  Vyre will, on ${target}:`);
   const no = await agree(["stop the stack and remove /usr/local/bin/vyre",
     flags.purge ? "then ask on the server before deleting the volumes (vault, Claude's sign-in, store, /work)" : "keep the volumes, so a reinstall picks up where it left off",
-    "and this Mac forgets the box"], "Go ahead?", flags.yes);
+    "and this Mac forgets the server"], "Go ahead?", flags.yes);
   if (no !== null) return no;
   return withBox(target, async r => {
     const code = await install(r, ["--uninstall", ...(flags.purge ? ["--purge"] : [])], process.env);
@@ -724,7 +724,7 @@ async function remove(flags) {
 }
 
 async function run(args) {
-  AGAIN = ["box", ...args.filter(a => a !== "--json")];
+  AGAIN = ["server", ...args.filter(a => a !== "--json")];
   const flags = Object.fromEntries(args.filter(a => a.startsWith("--")).map(a => [a.slice(2), true]));
   const rest = args.filter(a => !a.startsWith("--"));
   const [sub, arg] = rest;
@@ -735,12 +735,12 @@ async function run(args) {
     case "backup": return backup(arg, flags);
     case "move": return move(arg, flags);
     case "remove": return remove(flags);
-    default: return usageError(`vyre box ${sub}: not a subcommand`, USAGE);
+    default: return usageError(`vyre server ${sub}: not a subcommand`, USAGE);
   }
 }
 
-const usage = "vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]";
-const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
+const usage = "vyre server [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]";
+const USAGE = "vyre server add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
 
 const verbs = [
   { verb: "status", summary: "your server's address, and whether it answers from here", usage: "", read: true },
@@ -751,4 +751,4 @@ const verbs = [
   { verb: "remove", summary: "take Vyre off the server; --purge deletes its volumes too", usage: "[--purge] [--yes]" },
 ];
 
-export default [{ name: "box", order: 12, usage, verbs, summary: "put Vyre on a server from this Mac, and look after it", run }];
+export default [{ name: "server", aliases: ["box"], order: 12, usage, verbs, summary: "put Vyre on a server from this Mac, and look after it", run }];

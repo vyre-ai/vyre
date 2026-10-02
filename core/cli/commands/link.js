@@ -1,21 +1,21 @@
 // @ts-check
-// `vyre link`: the Mac and the box as one system.
+// `vyre link`: the Mac and the server as one system.
 //
-//   vyre link                   on the Mac: paired or not, and whether the box answers;
-//                               on the box: paired Macs and waiting requests
+//   vyre link                   on the Mac: paired or not, and whether the server answers;
+//                               on the server: paired Macs and waiting requests
 //   vyre link pair <address>    on the Mac: start pairing, and show the code to approve in the Deck
-//   vyre link approve <code>    on the box: approve the Mac showing that code. On a box this needs
+//   vyre link approve <code>    on the server: approve the Mac showing that code. On a server this needs
 //                               the owner's passkey, which only the Deck can give, so this points
 //                               there when the passkey is missing (docs/adr/0004-presence.md)
-//   vyre link deny <id>         on the box: refuse a request
-//   vyre link unpair [id]       forget the box (on the Mac) or a Mac (on the box)
+//   vyre link deny <id>         on the server: refuse a request
+//   vyre link unpair [id]       forget the server (on the Mac) or a Mac (on the server)
 //   vyre link signin            on the Mac: sign this Mac's command line and Capsule in as you on
-//                               the box for 30 days (your passkey, on the box's page), so they can
+//                               the server for 30 days (your passkey, on the server's page), so they can
 //                               answer asks and approve there (core/presence/person.js)
-//   vyre link signout           on the Mac: only a device on the box again
+//   vyre link signout           on the Mac: only a device on the server again
 //
 // --json shapes: status, on a Mac, link.status {role, linked, box?, reachable?, pending?,
-// signedIn?, error?}; on a box {role, peers, pending, waiting:[...], macs:[...]} · pair {code,
+// signedIn?, error?}; on a server {role, peers, pending, waiting:[...], macs:[...]} · pair {code,
 // expires} · approve {name, ...} · deny {refused} · unpair {unpaired} · signin {url, expires} ·
 // signout {signedOut}. link pair shows a code to type, not a QR, so its view is a card.
 
@@ -61,7 +61,7 @@ async function status() {
         { label: "Box", value: s.linked ? where : "not paired" },
         ...(s.linked ? [{ label: "Answers", value: s.reachable ? "yes" : `not now${s.error ? ": " + s.error : ""}` }] : []),
         ...(s.pending ? [{ label: "Waiting for approval", value: `code ${s.pending.code}` }] : []),
-        ...(s.linked ? [{ label: "Signed in on the box", value: s.signedIn ? `until ${new Date(s.signedIn.expires).toISOString().slice(0, 10)}` : "no: vyre link signin" }] : [])] });
+        ...(s.linked ? [{ label: "Signed in on the server", value: s.signedIn ? `until ${new Date(s.signedIn.expires).toISOString().slice(0, 10)}` : "no: vyre link signin" }] : [])] });
     }
     const [p, peers] = await Promise.all([call("link.pending"), call("link.peers")]);
     const waiting = p.data || [], macs = peers.data || [];
@@ -78,31 +78,31 @@ async function status() {
     return 0;
   }
   if (s.pending) out(`  waiting for approval: ${bold(s.pending.code)} ${dim("· approve it in the Deck, on this Mac or your phone, with your passkey")}`);
-  if (!s.linked) { out(`  not paired with a box${s.error ? dim(" · " + s.error) : ""} ${dim("· vyre link pair <address>")}`); return 0; }
+  if (!s.linked) { out(`  not paired with a server${s.error ? dim(" · " + s.error) : ""} ${dim("· vyre link pair <address>")}`); return 0; }
   const where = `${s.box.name || s.box.address}${s.box.node ? dim(" · " + s.box.node) : ""}`;
   out(s.reachable ? `  ${signal("●")} linked to ${where}` : `  ${beacon("○")} linked to ${where}, not reachable now${s.error ? dim(" · " + s.error) : ""}`);
-  out(s.signedIn ? dim(`  signed in on the box until ${new Date(s.signedIn.expires).toLocaleDateString()}`) : dim("  not signed in on the box: vyre link signin, to answer and approve there from this Mac"));
+  out(s.signedIn ? dim(`  signed in on the server until ${new Date(s.signedIn.expires).toLocaleDateString()}`) : dim("  not signed in on the server: vyre link signin, to answer and approve there from this Mac"));
   return 0;
 }
 
 const USAGE = "vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|signout] [--json]";
 
 export default {
-  name: "link", order: 45, usage: USAGE, summary: "pair this Mac with your box, or approve a Mac on the box",
+  name: "link", order: 45, usage: USAGE, summary: "pair this Mac with your server, or approve a Mac on the server",
   verbs: [
-    { verb: "status", summary: "on the Mac: paired or not, and whether the box answers; on the box: paired Macs and waiting requests", usage: "", read: true },
+    { verb: "status", summary: "on the Mac: paired or not, and whether the server answers; on the server: paired Macs and waiting requests", usage: "", read: true },
     { verb: "pair", summary: "on the Mac: start pairing, and show the code to approve in the Deck", usage: "<address>" },
-    { verb: "approve", summary: "on the box: approve the Mac showing that code (the Deck asks for your passkey)", usage: "<code>", person: true },
-    { verb: "deny", summary: "on the box: refuse a request", usage: "<id>" },
-    { verb: "unpair", summary: "forget the box (on the Mac) or a Mac (on the box)", usage: "[id]" },
-    { verb: "signin", summary: "on the Mac: sign this Mac in as you on the box for 30 days, with your passkey", usage: "", person: true },
-    { verb: "signout", summary: "on the Mac: only a device on the box again", usage: "" },
+    { verb: "approve", summary: "on the server: approve the Mac showing that code (the Deck asks for your passkey)", usage: "<code>", person: true },
+    { verb: "deny", summary: "on the server: refuse a request", usage: "<id>" },
+    { verb: "unpair", summary: "forget the server (on the Mac) or a Mac (on the server)", usage: "[id]" },
+    { verb: "signin", summary: "on the Mac: sign this Mac in as you on the server for 30 days, with your passkey", usage: "", person: true },
+    { verb: "signout", summary: "on the Mac: only a device on the server again", usage: "" },
   ],
   async run(args) {
     const [sub, arg] = args.filter(a => a !== "--json");
     if (!sub || sub === "status") return status();
     if (sub === "pair") {
-      if (!arg) return usage("vyre link pair needs your box's address", "vyre link pair <address>, e.g. vyre link pair alex.vyre.run");
+      if (!arg) return usage("vyre link pair needs your server's address", "vyre link pair <address>, e.g. vyre link pair alex.vyre.run");
       const r = await call("link.pair", { box: arg });
       if (r.error) return fail(r);
       if (json()) {
@@ -116,7 +116,7 @@ export default {
     if (sub === "approve") {
       if (!arg) return usage("vyre link approve needs the code the Mac shows", "vyre link approve <code>, or approve it in the Deck");
       const r = await call("link.pair.approve", { code: arg });
-      // A terminal is not proof the owner is here (a model can ssh in with the code), so the box
+      // A terminal is not proof the owner is here (a model can ssh in with the code), so the server
       // asks for a passkey, and only the Deck can give one.
       if (r.error && r.error.code === "presence_required") {
         if (json()) return failWith("approving a Mac needs your passkey, which only the Deck can give", { code: "presence_required", exit: 3, next: `approve it in the Deck, on that Mac or your phone (the code is ${arg})` });
@@ -147,22 +147,22 @@ export default {
       const r = await call("link.signin", {});
       if (r.error) return fail(r);
       if (json()) return emit(r.data, { kind: "card", title: "Confirm with your passkey", state: "wait", fields: [{ label: "Open", value: String(r.data.url) },
-        { label: "Then", value: "this Mac's command line and Capsule can answer and approve on the box for 30 days" }] });
+        { label: "Then", value: "this Mac's command line and Capsule can answer and approve on the server for 30 days" }] });
       openUrl(r.data.url);
-      out(`  confirm with your passkey on your box's page: ${bold(r.data.url)}`);
-      out(dim(`  This Mac's command line and Capsule can then answer and approve on the box for 30 days. The page is open for ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
+      out(`  confirm with your passkey on your server's page: ${bold(r.data.url)}`);
+      out(dim(`  This Mac's command line and Capsule can then answer and approve on the server for 30 days. The page is open for ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
       // At a terminal, wait for the passkey and say how it went; a script gets the link and goes.
       if (!process.stdout.isTTY) return 0;
       const expires = await signedIn(r.data.expires, { before: had });
       if (!expires) { out("  the sign-in page closed before a passkey confirmed it: run vyre link signin again"); return 1; }
-      out(`  signed in on the box until ${new Date(expires).toLocaleDateString()}`);
+      out(`  signed in on the server until ${new Date(expires).toLocaleDateString()}`);
       return 0;
     }
     if (sub === "signout") {
       const r = await call("link.signout", {});
       if (r.error) return fail(r);
       if (json()) return emit(r.data);
-      out(r.data.signedOut ? "  signed out on the box" : "  was not signed in");
+      out(r.data.signedOut ? "  signed out on the server" : "  was not signed in");
       return 0;
     }
     return usage(`vyre link ${sub}: not a subcommand`, USAGE.replace(" [--json]", ""));

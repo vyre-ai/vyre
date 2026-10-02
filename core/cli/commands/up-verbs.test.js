@@ -1,5 +1,5 @@
 // @ts-check
-// The box's system verbs from core/cli/commands/up.js as a person runs them: the real bin/vyre in
+// The server's system verbs from core/cli/commands/up.js as a person runs them: the real bin/vyre in
 // a child process with VYRE_HOME at a temp home. backup and restore need no vyred (one run shows
 // restore refusing while one is up). `vyre name` and `vyre owner` talk to a fake vyred: a socket
 // in the temp home that answers the names.* tools from a table, so nothing reaches Tailscale,
@@ -199,11 +199,11 @@ test("owner: sets the login, shows it, --json is never a login, and no vyred is 
   assert.match((await run(root, ["owner"])).out, /^\s+alex@example\.com$/m);
   assert.ok(!calls.some(c => c.input.login === "--json"), "--json never became the owner");
 
-  // No vyred at all: the read fails as vyred not running, exit 5, not a 0 with an error printed.
+  // No vyred at all: the read fails as Vyre not running, exit 5, not a 0 with an error printed.
   const empty = tempHome(t);
   const down = await run(empty, ["owner"]);
   assert.equal(down.code, 5, down.out);
-  assert.match(down.out, /vyred is not running/);
+  assert.match(down.out, /Vyre is not running/);
   assert.match(down.out, /next: vyre up starts it/);
 });
 

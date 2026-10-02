@@ -4,7 +4,7 @@
 // signed in, has none, and `vyre up` used to end on "your assistant  not set up yet" with nothing
 // to do about it. This makes it with the same input the Deck's "Create your assistant" card sends
 // (deck/js/assistant-setup.js): the name slugged, kind assistant, every project, the Vault items
-// the Claude step stored, the same instructions. On a paired Mac it asks the box.
+// the Claude step stored, the same instructions. On a paired Mac it asks the server.
 
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
@@ -23,7 +23,7 @@ const authFor = via => via === "subscription" ? { vault: "claude-setup-token", f
   : via === "api-key" ? { fallback: "anthropic-api-key" } : {};
 
 /**
- * A tool on the machine the assistant lives on: the box. On a Mac paired with one, through the
+ * A tool on the machine the assistant lives on: the server. On a Mac paired with one, through the
  * link; otherwise here.
  * @param {(name: string, input?: any) => Promise<any>} [tool]
  */
@@ -50,7 +50,7 @@ export default {
   summary: "your assistant, or make one: vyre assistant Juno",
   // No verbs: the one word it takes is a name.
   verbs: [],
-  help: "With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.\nOn a Mac paired with a box, the assistant lives on the box.",
+  help: "With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.\nOn a Mac paired with a server, the assistant lives on the server.",
   /** @param {string[]} args */
   async run(args = []) {
     const words = args.filter(a => !a.startsWith("--"));
@@ -78,12 +78,12 @@ export default {
     const input = { name: slug(display), kind: "assistant", projects: "*", auth: authFor(via),
       instructions: `Your name is ${display}.${person ? ` You work for ${person}.` : ""} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` };
     // Making an agent needs the person (ADR 0004): here, the code on this terminal or Touch ID.
-    // Through the link the box cannot see this terminal, so the Deck at the box's address asks.
+    // Through the link the server cannot see this terminal, so the Deck at the server's address asks.
     const cfg = config.load();
     const remote = cfg.role === "local" && cfg.network && cfg.network.box;
     const r = remote ? await t("agents.create", input) : await callAsPerson("agents.create", input);
     if (r.error && remote && /presence/.test(String(r.error.code))) {
-      return fail("making the assistant needs you on the box", { code: r.error.code, exit: 3, next: `open ${remote} on your phone: Now, Create your assistant` });
+      return fail("making the assistant needs you on the server", { code: r.error.code, exit: 3, next: `open ${remote} on your phone: Now, Create your assistant` });
     }
     if (r.error) return failTool(r.error);
     if (json()) return emit(r.data, card(r.data));

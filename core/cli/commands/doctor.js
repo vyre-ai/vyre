@@ -8,9 +8,9 @@
 // every check runs at once, each has its own timeout, and the whole run is cut off at 2 s, so a
 // box that does not answer is a line that says so, not a hang.
 //
-// On a Mac it checks vyred, Tailscale here, the box (through Tailscale, its address, and through
-// the link for what only the box knows), the phone, the Capsule, whether every module on THIS
-// machine started, and the install. On a box it checks the same things from the box's side.
+// On a Mac it checks vyred, Tailscale here, the server (through Tailscale, its address, and through
+// the link for what only the server knows), the phone, the Capsule, whether every module on THIS
+// machine started, and the install. On a server it checks the same things from the server's side.
 //
 // --json: { ok, role, ms, checks: [{ id, label, ok, detail?, fix? }] }. --view draws the same
 // checks live: a checks frame as each one answers (data null), then the whole result as the last.
@@ -92,9 +92,9 @@ export async function diagnose(deps = {}) {
   // --------------------------------------------------------------- vyred
   const vyred = h.then(d => d
     ? pass("vyred", "vyred is running", buildLabel({ version: d.version, commit: d.commit ?? null, dirty: d.dirty ?? null }))
-    : failed("vyred", "vyred is not running", null, "vyre up"));
+    : failed("vyred", "Vyre is not running", null, "vyre up"));
 
-  // Box-only facts come through vyred. On a Mac they come through the link, from the box.
+  // Box-only facts come through vyred. On a Mac they come through the link, from the server.
   const remote = (name, input = {}) => role === "box" ? tool(name, input) : tool("link.call", { tool: name, input });
   const up = await h;
   const linkStatus = role === "box" || !up ? Promise.resolve(null) : within(tool("link.status"), STEP_MS, () => ({ error: { message: "no answer" } }));
@@ -106,7 +106,7 @@ export async function diagnose(deps = {}) {
   })();
 
   // --------------------------------------------------------------- Tailscale here
-  const here = role === "box" ? "this box" : "this Mac";
+  const here = role === "box" ? "this server" : "this Mac";
   const tailscale = ts.then(t => {
     if (!t) return unknown("tailscale", `Tailscale on ${here}`, "tailscale status did not answer in time", "open Tailscale and check it is running");
     if (!t.installed) return failed("tailscale", `Tailscale on ${here}`, "not installed", "install it: https://tailscale.com/download");
@@ -120,17 +120,17 @@ export async function diagnose(deps = {}) {
     return pass("magicdns", "MagicDNS and HTTPS on the tailnet", t.certDomains[0]);
   });
 
-  // --------------------------------------------------------------- the box, over the tailnet
+  // --------------------------------------------------------------- the server, over the tailnet
   const boxTailscale = Promise.all([ts, box]).then(([t, address]) => {
-    const labelBox = "Tailscale on the box, same account";
+    const labelBox = "Tailscale on the server, same account";
     if (role === "box") return null;
-    if (!address) return unknown("tailscale-box", labelBox, "this Mac knows no box yet", "vyre up --connect <your box's address>");
+    if (!address) return unknown("tailscale-box", labelBox, "this Mac knows no box yet", "vyre up --connect <your server's address>");
     if (!t || !t.running) return unknown("tailscale-box", labelBox, "Tailscale is not running on this Mac");
     const name = host(address);
     const peer = t.peers.find(p => p.dnsName === name || name.startsWith(p.dnsName.split(".")[0] + "."));
-    if (!peer) return failed("tailscale-box", labelBox, `${name} is not on this Mac's tailnet`, `sign the box in to Tailscale as ${t.login || "you"}, or share it with you`);
-    if (!peer.online) return failed("tailscale-box", labelBox, `${peer.hostName} is offline on the tailnet`, "on the box: sudo tailscale up");
-    if (!peer.tagged && t.userId && peer.userId !== t.userId) return failed("tailscale-box", labelBox, `${peer.hostName} is signed in to another account`, `on the box: sudo tailscale up, and sign in as ${t.login || "you"}`);
+    if (!peer) return failed("tailscale-box", labelBox, `${name} is not on this Mac's tailnet`, `sign the server in to Tailscale as ${t.login || "you"}, or share it with you`);
+    if (!peer.online) return failed("tailscale-box", labelBox, `${peer.hostName} is offline on the tailnet`, "on the server: sudo tailscale up");
+    if (!peer.tagged && t.userId && peer.userId !== t.userId) return failed("tailscale-box", labelBox, `${peer.hostName} is signed in to another account`, `on the server: sudo tailscale up, and sign in as ${t.login || "you"}`);
     return pass("tailscale-box", labelBox, `${peer.hostName}${peer.tagged ? ", a tagged node" : ""}`);
   });
   const phone = ts.then(t => {
@@ -143,10 +143,10 @@ export async function diagnose(deps = {}) {
     return pass("phone", labelPhone, on.hostName);
   });
   const address = box.then(async a => {
-    const labelAddr = "The box's address answers";
+    const labelAddr = "The server's address answers";
     if (!a) return role === "box"
-      ? failed("address", labelAddr, "this box has no address yet", "vyre name")
-      : unknown("address", labelAddr, "this Mac knows no box yet", "vyre up --connect <your box's address>");
+      ? failed("address", labelAddr, "this server has no address yet", "vyre name")
+      : unknown("address", labelAddr, "this Mac knows no box yet", "vyre up --connect <your server's address>");
     if (role === "box") {
       // A box cannot ask its own address (its listener refuses itself, ADR 0002): names.status says.
       const n = await names;
@@ -157,48 +157,48 @@ export async function diagnose(deps = {}) {
     const found = await within((deps.resolve || (x => dns.lookup(x)))(name), STEP_MS, () => null);
     if (!found) return failed("address", labelAddr, `${name} does not resolve`, "turn on MagicDNS on this Mac: open Tailscale, Settings, Use Tailscale DNS");
     const hh = await within((deps.probe || probe)(a, STEP_MS), STEP_MS, () => null);
-    if (!hh) return failed("address", labelAddr, `${a} does not answer`, "on the box: vyre status, then vyre up");
+    if (!hh) return failed("address", labelAddr, `${a} does not answer`, "on the server: vyre status, then vyre up");
     return pass("address", labelAddr, `${a} · ${buildLabel({ version: hh.version, commit: hh.commit ?? null, dirty: hh.dirty ?? null })}`);
   });
 
-  // --------------------------------------------------------------- what only the box knows
+  // --------------------------------------------------------------- what only the server knows
   const paired = role === "box"
     ? (up ? within(tool("link.peers"), STEP_MS, () => null) : Promise.resolve(null)).then(r => {
         const n = r && r.data ? (Array.isArray(r.data) ? r.data : r.data.peers || []).length : null;
-        if (n === null) return unknown("paired", "A Mac is paired", up ? "link.peers did not answer" : "vyred is not running");
+        if (n === null) return unknown("paired", "A Mac is paired", up ? "link.peers did not answer" : "Vyre is not running");
         return n ? pass("paired", "A Mac is paired", `${n} Mac${n === 1 ? "" : "s"}`) : failed("paired", "A Mac is paired", "none yet", "on your Mac: vyre up");
       })
     : linkStatus.then(l => {
-        if (!up) return unknown("paired", "This Mac is paired", "vyred is not running", "vyre up");
+        if (!up) return unknown("paired", "This Mac is paired", "Vyre is not running", "vyre up");
         const d = l && l.data;
         if (!d) return unknown("paired", "This Mac is paired", (l && l.error && l.error.message) || "link.status did not answer");
-        if (!d.linked) return failed("paired", "This Mac is paired", d.pending ? `waiting for approval, code ${d.pending.code}` : "not paired", d.pending ? `on the box: vyre link approve ${d.pending.code}` : "vyre up");
-        return d.reachable ? pass("paired", "This Mac is paired", d.box.name || host(d.box.address)) : failed("paired", "This Mac is paired", "paired, but the box is not answering", "check the box is on: vyre status on the box");
+        if (!d.linked) return failed("paired", "This Mac is paired", d.pending ? `waiting for approval, code ${d.pending.code}` : "not paired", d.pending ? `on the server: vyre link approve ${d.pending.code}` : "vyre up");
+        return d.reachable ? pass("paired", "This Mac is paired", d.box.name || host(d.box.address)) : failed("paired", "This Mac is paired", "paired, but the server is not answering", "check the server is on: vyre status on the server");
       });
   const linked = paired.then(p => role === "box" || p.ok === true);
   const passkey = Promise.all([box, linked]).then(async ([a, ok]) => {
-    const labelKey = "A passkey for the box's address";
+    const labelKey = "A passkey for the server's address";
     if (!a) return unknown("passkey", labelKey, "no box address yet");
-    if (!up) return unknown("passkey", labelKey, "vyred is not running", "vyre up");
-    if (!ok) return unknown("passkey", labelKey, "the box is not reachable from this Mac");
+    if (!up) return unknown("passkey", labelKey, "Vyre is not running", "vyre up");
+    if (!ok) return unknown("passkey", labelKey, "the server is not reachable from this Mac");
     const r = await within(remote("presence.keys"), STEP_MS, () => ({ error: { message: "no answer" } }));
-    if (r.error) return unknown("passkey", labelKey, `the box did not say: ${r.error.message}`);
+    if (r.error) return unknown("passkey", labelKey, `the server did not say: ${r.error.message}`);
     const rp = host(a);
     const keys = (Array.isArray(r.data) ? r.data : []).filter(k => k.kind === "passkey");
     if (keys.some(k => String(k.rp_id || "").toLowerCase() === rp.toLowerCase())) return pass("passkey", labelKey, rp);
-    const fix = "on the box: vyre up, then open the passkey link it prints from your phone";
+    const fix = "on the server: vyre up, then open the passkey link it prints from your phone";
     return failed("passkey", labelKey, keys.length ? `passkeys exist, but none for ${rp}` : "none enrolled", fix);
   });
   const claude = Promise.all([linked]).then(async ([ok]) => {
-    const labelClaude = "Claude is signed in on the box";
-    if (!up) return unknown("claude", labelClaude, "vyred is not running", "vyre up");
-    if (!ok) return unknown("claude", labelClaude, "the box is not reachable from this Mac");
+    const labelClaude = "Claude is signed in on the server";
+    if (!up) return unknown("claude", labelClaude, "Vyre is not running", "vyre up");
+    if (!ok) return unknown("claude", labelClaude, "the server is not reachable from this Mac");
     const r = await within(remote("onboard.status"), STEP_MS, () => ({ error: { message: "no answer" } }));
     // onboard.status keeps each step's facts under detail.
     const c = r.data && ((r.data.detail && r.data.detail.claude) || r.data.claude);
-    if (r.error || !c) return unknown("claude", labelClaude, `the box did not say${r.error ? ": " + r.error.message : ""}`);
-    if (!c.installed) return failed("claude", labelClaude, "Claude Code is not installed on the box", "reinstall the box: curl -fsSL https://vyre.run/box | sh");
-    if (!c.signedIn) return failed("claude", labelClaude, "not signed in", "open the box's address, Settings, Setup, Claude");
+    if (r.error || !c) return unknown("claude", labelClaude, `the server did not say${r.error ? ": " + r.error.message : ""}`);
+    if (!c.installed) return failed("claude", labelClaude, "Claude Code is not installed on the server", "reinstall the server: curl -fsSL https://vyre.run/box | sh");
+    if (!c.signedIn) return failed("claude", labelClaude, "not signed in", "open the server's address, Settings, Setup, Claude");
     return pass("claude", labelClaude, c.via === "api-key" ? "with an API key" : "with your subscription");
   });
 
@@ -252,7 +252,7 @@ export async function diagnose(deps = {}) {
     if (!bad.length) return pass("modules", labelMods, `${r.data.filter(m => m.state === "running").length} running`);
     const names = bad.map(m => m.name).join(", ");
     return failed("modules", labelMods, `${bad.length === 1 ? bad[0].name : `${bad.length} modules (${names})`}: ${bad[0].error}`, "check vyred's log for the module and manifest key it names");
-  }) : Promise.resolve(unknown("modules", "Every module started", "vyred is not running", "vyre up"));
+  }) : Promise.resolve(unknown("modules", "Every module started", "Vyre is not running", "vyre up"));
 
   // Recall's index: keyword search works at once; meaning trickles in at low priority.
   const recall = up ? within(tool("recall.status"), STEP_MS, () => ({ error: { message: "no answer" } })).then(r => {
@@ -272,7 +272,7 @@ export async function diagnose(deps = {}) {
 
 /** Every check's id and short label, in the order diagnose runs them. */
 export const IDS = ["vyred", "tailscale", "magicdns", "tailscale-box", "phone", "address", "paired", "passkey", "claude", "capsule", "modules", "recall", "path", "install"];
-const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the box", "Your phone", "The box's address", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
+const LABELS = ["vyred", "Tailscale", "MagicDNS and HTTPS", "Tailscale on the server", "Your phone", "The server's address", "Paired", "Passkey", "Claude on the server", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
 
 /**
  * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.
@@ -305,7 +305,7 @@ async function live() {
 
 export default {
   name: "doctor", order: 12, usage: "vyre doctor [--json]",
-  summary: "check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix",
+  summary: "check vyred, Tailscale, the server, your phone, passkey, pairing, Claude and the Capsule, and say what to fix",
   help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
   /** @param {string[]} args */
   async run(args = []) {

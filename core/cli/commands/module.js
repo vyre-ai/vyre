@@ -19,7 +19,7 @@
 //                   home. The staged copy is checked (so what was checked is what goes in), shown,
 //                   confirmed, and renamed into <home>/modules/<name>/ without its .git. Then
 //                   vyred restarts the way `vyre up` restarts it, and the module's state comes
-//                   from /v1/modules. In the box's container the host restarts it instead.
+//                   from /v1/modules. In the server's container the host restarts it instead.
 //
 // Adding a module is trusted like installing an npm package: it runs inside vyred. `add` says so
 // in one line. A module named like one of Vyre's own is refused, and so is one that says
@@ -611,17 +611,17 @@ function summary(m) {
 /** Restart a local vyred the way `vyre up` does: stop, then ensureUp, then wait for its health. */
 async function restartLocal() {
   const h = await health();
-  if (!h) return { ok: true, running: false, note: "vyred is not running; vyre up starts it with the module" };
+  if (!h) return { ok: true, running: false, note: "Vyre is not running; vyre up starts it with the module" };
   if (h.supervisor === "systemd") {
     // systemd starts it again (Restart=always).
     try { process.kill(h.pid, "SIGTERM"); } catch {}
     return (await waitFor(h.version, 15_000)) ? { ok: true, running: true } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
   }
   const s = await stop({ pid: h.pid });
-  if (!s.ok) return { ok: false, note: s.why || "the running vyred did not stop; vyre down, then vyre up" };
+  if (!s.ok) return { ok: false, note: s.why || "the running Vyre did not stop; vyre down, then vyre up" };
   const r = await ensureUp();
-  if (!r.ok) return { ok: false, note: `vyred did not start; its output is in ${r.log}` };
-  return (await waitFor(h.version, 15_000)) ? { ok: true, running: true } : { ok: false, note: "vyred did not answer on /v1/health" };
+  if (!r.ok) return { ok: false, note: `Vyre did not start; its output is in ${r.log}` };
+  return (await waitFor(h.version, 15_000)) ? { ok: true, running: true } : { ok: false, note: "Vyre did not answer on /v1/health" };
 }
 
 async function install(args, flags, o, deps) {
@@ -705,15 +705,15 @@ async function reload(o, deps, { home, name, version, dest, src, skipped, fields
   const base = { installed: true, module: name, version, dir: dest, from: src, skipped };
   const card = (/** @type {string} */ state, /** @type {{ label: string, value: any }[]} */ more) => ({ kind: "card", title: `added ${name}`, state, fields: [...fields, { label: "Folder", value: dest }, ...more] });
   if ((deps.supervisor ?? process.env.VYRE_SUPERVISOR) === "docker") {
-    // In the box's container vyred is the container's main process; only the host restarts it.
-    const next = "on the server, in the box's folder: docker compose restart vyre";
+    // In the server's container vyred is the container's main process; only the host restarts it.
+    const next = "on the server, in the server's folder: docker compose restart vyre";
     return o.done(EXIT.OK, { ...base, reload: "host", state: null, next }, card("wait", [{ label: "Next", value: next }]), () => out(dim(`  next: ${next}`)));
   }
   const b = await (deps.restart || restartLocal)(home);
   if (!b.ok) {
     return o.refuse(`${name} is in ${dest}, but vyred did not restart: ${b.note}`, { code: "restart_failed", next: "vyre up" });
   }
-  if (!b.running) return o.done(EXIT.OK, { ...base, reload: "not_running", state: null }, card("wait", [{ label: "Next", value: "vyre up" }]), () => out(dim(`  ${b.note || "vyred is not running"} · next: vyre up`)));
+  if (!b.running) return o.done(EXIT.OK, { ...base, reload: "not_running", state: null }, card("wait", [{ label: "Next", value: "vyre up" }]), () => out(dim(`  ${b.note || "Vyre is not running"} · next: vyre up`)));
   let rows = [];
   try { const r = await (deps.modules || defaultModules)(home); rows = r && Array.isArray(r.data) ? r.data : []; } catch {}
   // A home module with a name already loaded is listed as <name>@<folder>; that row is this one.
@@ -779,7 +779,7 @@ export default {
     "",
     "A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's",
     "own is refused, and in 0.2 an added module may not say \"replaces\".",
-    "In the box's container, the host restarts vyred: docker compose restart vyre.",
+    "In the server's container, the host restarts vyred: docker compose restart vyre.",
     "--view prints frames for the Capsule and the phone (docs/reference/cli-json.md).",
   ].join("\n"),
   run: (/** @type {string[]} */ args) => moduleCommand(args),

@@ -22,7 +22,7 @@ export const VERBS = [
 const fail = r => {
   if (json()) return failTool(r.error);
   const down = ["unreachable", "timeout"].includes(r.error.code);
-  out(down ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
+  out(down ? `  Vyre is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return 1;
 };
 /** The usage line, as a usage mistake: exit 2, a JSON error under --json. */

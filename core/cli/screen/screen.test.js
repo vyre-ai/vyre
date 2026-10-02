@@ -225,11 +225,11 @@ test("layout: exactly rows lines, none wider than the terminal, at every size, i
   assert.match(render(model.initial(d), { columns: 100, rows: 30 }).map(stripAnsi)[0], /1 working · 1 ask · 1 held/);
 });
 
-test("status line: link.health's real shape reads as a phrase; a box, or an unpaired Mac, shows none", () => {
+test("status line: link.health's real shape reads as a phrase; a server, or an unpaired Mac, shows none", () => {
   assert.equal(formatLink({ path: "direct", latencyMs: 23.4, relay: null }), "link direct 23 ms");
   assert.equal(formatLink({ path: "relay", relay: "fra", latencyMs: 80 }), "link relayed 80 ms");
   assert.equal(formatLink({ path: "unknown", why: "the node is offline" }), "link down");
-  assert.equal(formatLink({ path: "unknown", why: "this Mac is not paired with a box" }), "");
+  assert.equal(formatLink({ path: "unknown", why: "this Mac is not paired with a server" }), "");
   assert.equal(formatLink({ path: "unknown", why: "say which node: a paired Mac's node id (vyre link peers)" }), "");
 });
 

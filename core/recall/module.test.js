@@ -131,7 +131,7 @@ test("recall cli: up, index, recall, down against a temp home", async t => {
   assert.equal(ev.code, 0);
   assert.match(ev.out, /14 questions/);
   assert.match(ev.out, /keyword +MRR@10 \d\.\d{3}/);
-  assert.match((await run(["down"], env)).out, /vyred stopped/);
+  assert.match((await run(["down"], env)).out, /Vyre stopped/);
 });
 
 test("recall module: a completed turn indexes that session soon, without waiting for a pass", async t => {

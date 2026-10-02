@@ -50,9 +50,9 @@ else { /* r.data */ }
 
 It is the only way to use another module. Never import another module's files.
 
-On a Mac, `ctx.remote(tool, input)` does the same against the paired box, and resolves to `{ error: { code: "box_unreachable" } }` at once while the box is away, so you can fall back to local results.
+On a Mac, `ctx.remote(tool, input)` does the same against the paired box, and resolves to `{ error: { code: "box_unreachable" } }` at once while the server is away, so you can fall back to local results.
 
-On a box, six read tools can take in the paired Mac's rows: `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and `threads.list`. A module gets them only when it passes `machines: "all"`; each row then carries `source` (`"box"` or `"mac"`) and `machine`. A Mac that is away answers `mac_offline` at once and the box's rows come back alone; `projects.catalog` and `projects.list` say which machines answered in `sources`. Without `machines: "all"` a module gets the box's rows, unlabelled. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+On a server, six read tools can take in the paired Mac's rows: `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread` and `threads.list`. A module gets them only when it passes `machines: "all"`; each row then carries `source` (`"box"` or `"mac"`) and `machine`. A Mac that is away answers `mac_offline` at once and the server's rows come back alone; `projects.catalog` and `projects.list` say which machines answered in `sources`. Without `machines: "all"` a module gets the server's rows, unlabelled. See [The server and the Mac](../concepts/box-and-mac.md#the-server-reads-the-macs-sessions).
 
 Every built-in tool, with its input, is on [tools](../reference/tools.md).
 

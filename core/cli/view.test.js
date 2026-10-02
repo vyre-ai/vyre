@@ -86,7 +86,7 @@ test("verbs: the usage grammar gives verbs, arguments, flags and choices", () =>
   assert.equal(relay.find(v => v.verb === "status")?.read, true);
   assert.equal(relay.find(v => v.verb === "pair")?.read, false);
   assert.deepEqual(parseUsage("vyre connect list|add|remove|test", "connect").map(v => v.verb), ["list", "add", "remove", "test"]);
-  assert.deepEqual(parseUsage("vyre box add <user@host> | update | backup [file]", "box").map(v => [v.verb, v.args.map(a => a.required)]), [["add", [true]], ["update", []], ["backup", [false]]]);
+  assert.deepEqual(parseUsage("vyre server add <user@host> | update | backup [file]", "server").map(v => [v.verb, v.args.map(a => a.required)]), [["add", [true]], ["update", []], ["backup", [false]]]);
   assert.deepEqual(parseUsage("vyre new [name]", "new"), [], "one bracketed word is an argument");
   assert.deepEqual(parseUsage("vyre send <file> [more files]", "send"), []);
   assert.deepEqual(argsOf(["<text...>", "--mode", "default|plan"]), { args: [{ name: "text", required: true, repeat: true }], flags: [{ name: "mode", value: "choice", choices: ["default", "plan"] }] });
@@ -129,7 +129,7 @@ test("--view: frames only, a done frame with the exit code, and no colour even w
   assert.deepEqual([c[0].v, c[0].cmd, c[0].view.kind, c[0].view.title], [1, "commands", "table", "Commands"]);
   assert.equal(c[0].data.v, 1, "data is what --json prints");
   assert.deepEqual(c.at(-1), { v: 1, done: true, exit: 0 });
-  // A failure: an error frame, then done with the usual exit code (vyred is not running: 5).
+  // A failure: an error frame, then done with the usual exit code (Vyre is not running: 5).
   const s = await run(root, ["phone", "list", "--view"]);
   const f = frames(s.stdout);
   assert.equal(f[0].view.kind, "error");

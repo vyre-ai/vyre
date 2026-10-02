@@ -26,7 +26,7 @@ const where = (/** @type {any} */ s) => (s.source === "project" ? signal("projec
 
 /** @param {any} r */
 const failed = r => {
-  if (["unreachable", "timeout"].includes(r.error.code)) return fail("vyred is not running", { next: "vyre up", code: r.error.code, exit: exitFor(r.error) });
+  if (["unreachable", "timeout"].includes(r.error.code)) return fail("Vyre is not running", { next: "vyre up", code: r.error.code, exit: exitFor(r.error) });
   return fail(r.error.message, { code: r.error.code, exit: exitFor(r.error) });
 };
 

@@ -85,7 +85,7 @@ terminal. [Section 5.3](../architecture/spec.md#53-one-tool-three-surfaces) of t
 also describes a `vyre notes add` command for tools listed under `shows.cli`; the loader does not <!-- terms: ignore -->
 make those commands yet.
 
-A module runs on both a box and a Mac unless its manifest sets `roles` to `["box"]` or
+A module runs on both a server and a Mac unless its manifest sets `roles` to `["box"]` or
 `["local"]`. It starts after everything in its `requires` list.
 
 ## The rules the loader enforces
@@ -118,7 +118,7 @@ vyre down
 unset VYRE_HOME
 ```
 
-`--json` keeps `vyre up` on a Mac from asking where your box runs. A temporary home never
+`--json` keeps `vyre up` on a Mac from asking where your server runs. A temporary home never
 raises a Touch ID or keychain dialog.
 
 Inside the Vyre repository, tests use `test/helpers.js`: `tempHome(t)` gives each test its own

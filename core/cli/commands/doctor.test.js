@@ -12,7 +12,7 @@ import { tempHome } from "../../../test/helpers.js";
 const BOX = "https://vyre.tail0000.ts.net";
 const me = "alex@example.com";
 
-/** A tailnet as core/cli/tailnet.js parses it: alex's Mac, the box, and alex's phone. */
+/** A tailnet as core/cli/tailnet.js parses it: alex's Mac, the server, and alex's phone. */
 const tailnet = (o = {}) => ({
   installed: true, running: true, backend: "Running", login: me, userId: "1", why: null, magicDNS: true, certDomains: ["mac.tail0000.ts.net"],
   self: { dnsName: "mac.tail0000.ts.net", hostName: "mac", ips: [] },
@@ -84,8 +84,8 @@ test("doctor: each thing the user tripped on is a cross with the one thing to do
   assert.equal(c.install.ok, false);
   assert.match(c.install.fix, /npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz/);
   const text = lines(c.passkey).map(stripAnsi);
-  assert.match(text[0], /^  ✗ A passkey for the box's address · passkeys exist/);
-  assert.match(text[1], /^      on the box: vyre up/);
+  assert.match(text[0], /^  ✗ A passkey for the server's address · passkeys exist/);
+  assert.match(text[1], /^      on the server: vyre up/);
 });
 
 test("doctor: a module whose manifest under-declares a tool or event is a named cross, not a silent gap", async () => {
@@ -120,11 +120,11 @@ test("doctor: with vyred down, it says start it, and what it cannot check is a q
 
 test("doctor: an unpaired Mac waiting for approval says the code to approve", async () => {
   const c = byId(await diagnose(deps({ tool: tools({ link: { linked: false, reachable: false, pending: { code: "123-456" } } }) })));
-  assert.deepEqual([c.paired.ok, c.paired.fix], [false, "on the box: vyre link approve 123-456"]);
+  assert.deepEqual([c.paired.ok, c.paired.fix], [false, "on the server: vyre link approve 123-456"]);
   assert.equal(c.passkey.ok, null, "not reachable yet is not a missing passkey");
 });
 
-test("doctor: a box that never answers costs its timeout, not a hang: the run stays under 2 s", async () => {
+test("doctor: a server that never answers costs its timeout, not a hang: the run stays under 2 s", async () => {
   const never = () => new Promise(() => {});
   const t0 = Date.now();
   const r = await diagnose(deps({ probe: never, tailscale: never, tool: async (n, i) => (n === "link.call" ? never() : tools()(n, i)) }));
@@ -136,7 +136,7 @@ test("doctor: a box that never answers costs its timeout, not a hang: the run st
   assert.equal(c.tailscale.ok, null);
 });
 
-test("doctor: on a box it checks the box's side: its address, its passkey, Claude, paired Macs", async () => {
+test("doctor: on a server it checks the server's side: its address, its passkey, Claude, paired Macs", async () => {
   const tool = async name => ({
     "names.status": { data: { address: BOX, phase: "serving" } },
     "presence.keys": { data: [] },
@@ -145,7 +145,7 @@ test("doctor: on a box it checks the box's side: its address, its passkey, Claud
   })[name] || { error: { code: "no_such_tool", message: name } };
   const c = byId(await diagnose(deps({ role: "box", tool })));
   assert.equal(c.address.ok, true);
-  assert.equal(c["tailscale-box"], undefined, "a box does not check itself as a peer");
+  assert.equal(c["tailscale-box"], undefined, "a server does not check itself as a peer");
   assert.equal(c.capsule, undefined);
   assert.deepEqual([c.passkey.ok, c.passkey.detail], [false, "none enrolled"]);
   assert.deepEqual([c.claude.ok, c.claude.detail], [true, "with an API key"]);
@@ -161,9 +161,9 @@ test("doctor: the real command against a temp home answers in under 2 s, as JSON
   const r = await new Promise(res => execFile(process.execPath, [bin, "doctor", "--json"], { env }, (e, stdout) => res({ code: e ? e.code : 0, out: stdout })));
   const took = Date.now() - t0;
   const j = JSON.parse(r.out);
-  assert.equal(r.code, 1, "vyred is not running here, which fails");
+  assert.equal(r.code, 1, "Vyre is not running here, which fails");
   assert.equal(j.ok, false);
-  assert.deepEqual(j.checks.find(c => c.id === "vyred"), { id: "vyred", label: "vyred is not running", ok: false, fix: "vyre up" });
+  assert.deepEqual(j.checks.find(c => c.id === "vyred"), { id: "vyred", label: "Vyre is not running", ok: false, fix: "vyre up" });
   assert.equal(j.checks.find(c => c.id === "tailscale").ok, false);
   assert.ok(j.ms < BUDGET_MS, `diagnose took ${j.ms} ms`);
   assert.ok(took < BUDGET_MS + 1500, `the whole command took ${took} ms, node start included`);
@@ -224,7 +224,7 @@ test("doctor --view: checks frames as each check answers, all waiting first, the
   const doc = JSON.parse(c.out).commands[0];
   assert.deepEqual([doc.verbs, doc.flags], [[], [{ name: "json" }]]);
   const r = /** @type {any} */ (await vyre(["doctor", "--view"]));
-  assert.equal(r.code, 1, "vyred is not running here, which fails");
+  assert.equal(r.code, 1, "Vyre is not running here, which fails");
   const f = r.out.trim().split("\n").map(l => JSON.parse(l));
   const done = f.pop();
   assert.deepEqual(done, { v: 1, done: true, exit: 1 });

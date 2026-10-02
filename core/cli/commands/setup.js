@@ -3,8 +3,8 @@
 //
 // It is a front for the exact flow the page runs: names.check, then names.claim, the same two tools through the same registry
 // (so the same validation, the same one-time recovery code, the same refusals). There is no second path. The passkey step that makes a
-// person the box's owner stays in a browser by design (it is the person's fingerprint, face or key), so this command names the box and
-// stops there; the box is claimed by the person at its address afterwards.
+// person the server's owner stays in a browser by design (it is the person's fingerprint, face or key), so this command names the server and
+// stops there; the server is claimed by the person at its address afterwards.
 //
 // The recovery code is printed once, with a plain line to store it. A name that is taken, not valid, or fails to claim exits 1 with the
 // reason in words. Claiming is for good, so without --yes a terminal is asked and a script is refused.
@@ -24,7 +24,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 export default [
   {
-    name: "setup", order: 29, usage: "vyre setup --name <n> [--yes] [--json]", summary: "name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs)",
+    name: "setup", order: 29, usage: "vyre setup --name <n> [--yes] [--json]", summary: "name this server, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs)",
     async run(args) {
       /** @type {string|null} */ let name = null;
       let yes = false;
@@ -36,7 +36,7 @@ export default [
         else if (a.startsWith("--name=")) name = a.slice(7);
         else return usage(`vyre setup: unknown option ${a}`, "vyre setup --name alex --yes");
       }
-      if (!name) return usage("vyre setup needs --name <n>: this command names the box; the rest of setup is the page", "vyre setup --name alex --yes");
+      if (!name) return usage("vyre setup needs --name <n>: this command names the server; the rest of setup is the page", "vyre setup --name alex --yes");
       const want = name.trim().toLowerCase();
 
       const checked = await call("names.check", { name: want });
@@ -48,7 +48,7 @@ export default [
       if (!yes) {
         if (!process.stdin.isTTY) return usage("claiming a name is for good, so a script must pass --yes", `vyre setup --name ${want} --yes`);
         const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-        const a = (await rl.question(`  Claim ${c.address || want + ".vyre.run"} for this box for good? [y/N] `)).trim().toLowerCase();
+        const a = (await rl.question(`  Claim ${c.address || want + ".vyre.run"} for this server for good? [y/N] `)).trim().toLowerCase();
         rl.close();
         if (a !== "y" && a !== "yes") return fail("not claimed", { code: "declined" });
       }
@@ -76,7 +76,7 @@ export default [
         out(`  Recovery code: ${bold(recoveryCode)}`);
         out("  Store it somewhere safe now (a password manager). It is shown once and cannot be shown again; with it you can take this name back after a reinstall.");
         out("");
-      } else out(dim("  This box already held that name, so there is no new recovery code."));
+      } else out(dim("  This server already held that name, so there is no new recovery code."));
       if (d.phase === "named" && d.why) out(dim(`  ${d.why}`));
       return 0;
     },

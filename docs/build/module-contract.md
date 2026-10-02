@@ -41,7 +41,7 @@ A module is a folder with a `module.json` and an entry file. The loader in `core
 | `name` | yes | the module's name; every tool and table starts with it |
 | `version` | yes | semver, such as `0.1.0` |
 | `description` | no | one line, shown in listings |
-| `roles` | no | `box`, `local` or both; both when omitted. See [the box and the Mac](../concepts/box-and-mac.md) |
+| `roles` | no | `box`, `local` or both; both when omitted. See [the server and the Mac](../concepts/box-and-mac.md) |
 | `requires` | no | modules that must be running before this one starts |
 | `main` | no | the entry file, default `index.js` |
 | `apiVersion` | no | the module API major it is written for; `1` today. The loader checks it from phase 1 of [ADR 0033](../adr/0033-hackable-vyre.md) |
@@ -156,7 +156,7 @@ ctx.tool("invoices.file", {
 | `description` | what the tool does; Claude reads this |
 | `input` | a JSON schema. The loader checks `type` (`object`, `array`, `string`, `number`, `integer`, `boolean`), `required`, `enum`, nested `properties` and `items`. Anything subtler, check in `run` |
 | `run` | `async (input, meta)`. Return any JSON value; it becomes `{ data }`. Throw to fail |
-| `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings. On a box the Deck arrives as `tailnet:<login>`, the owner at the box's address, so a tool open to `deck` is open to that caller too; an agent's node (`tailnet:agent:<name>`) and a guest (`tailnet-guest:...`) are not |
+| `callers` | caller kinds that may use it: `cli`, `local`, `deck`, `capsule`, `mcp`, `module` and others. Omitted means any. Others get `denied` and do not see it in listings. On a server the Deck arrives as `tailnet:<login>`, the owner at the server's address, so a tool open to `deck` is open to that caller too; an agent's node (`tailnet:agent:<name>`) and a guest (`tailnet-guest:...`) are not |
 | `internal` | only other modules may call it, and it is left out of every listing |
 | `hook` | the tool answers only the webhook route and no other caller. The route `POST /v1/<module>/<name>/hook` calls the tool `<module>.hook` with `{ name, token, body }` as the caller `hook`, so name the tool `<module>.hook`. The tool checks the token itself |
 | `presence` | the call needs a person present. See [presence](../concepts/presence.md) |
@@ -170,7 +170,7 @@ A thrown error with a `code` of lowercase letters, digits and underscores (such 
 A tool is defined once and reaches every caller through one function, `Registry.call`:
 
 - **Claude**, through the Harness MCP server `vyre`. Dots become underscores: `invoices.list` is `invoices_list`, which Claude Code shows as `mcp__vyre__invoices_list` (or `mcp__plugin_vyre_vyre__invoices_list` when installed as a plugin). Tools named `harness.*` are not offered. Inside an agent that is not the assistant, `threads.*` and `agents.*` are not offered either. See [the MCP hub](mcp-hub.md).
-- **Surfaces**, over HTTP: `POST /v1/tools/invoices.list` on vyred's socket, or on the box's tailnet listener. `GET /v1/tools` lists what the caller may use.
+- **Surfaces**, over HTTP: `POST /v1/tools/invoices.list` on vyred's socket, or on the server's tailnet listener. `GET /v1/tools` lists what the caller may use.
 - **The terminal**: `vyre call invoices.list '{"limit":5}'`. `vyre tools` lists every tool.
 
 The spec also promises a generated `vyre <module> <tool>` command for modules that list it under `shows.cli`. Not built yet: CLI commands are files in `core/cli/commands/`.

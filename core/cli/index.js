@@ -72,7 +72,7 @@ export function help(all) {
   }
   return `\n  vyre ${VERSION}\n\n    ${"vyre".padEnd(31)} ${dim("your projects, threads, drafts and asks, live")}\n\n${blocks.join("\n\n")}\n\n`
     + dim(`  vyre help <command> for one command · --json on any read prints JSON\n`)
-    + dim(`  exit codes: 0 ok · 1 failed · 2 usage · 3 presence · 4 vault locked · 5 vyred not running\n`);
+    + dim(`  exit codes: 0 ok · 1 failed · 2 usage · 3 presence · 4 vault locked · 5 Vyre not running\n`);
 }
 
 /** `vyre help <cmd>`: its usage, summary, aliases and any longer help. Returns an exit code. */

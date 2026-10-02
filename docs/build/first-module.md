@@ -80,7 +80,7 @@ Save this as `module.json` in the folder:
 - `does.tools` lists every tool the module registers. Registering one that is not listed fails
   the module.
 - `watches.emits` lists every event it emits. Emitting one that is not listed throws.
-- `roles` says where it runs: on the box, on the Mac, or both. Both is the default.
+- `roles` says where it runs: on the server, on the Mac, or both. Both is the default.
 - `settings` declares `bake.unit` in the settings registry's shape.
 
 > [!NOTE] Coming in phase 1
@@ -225,7 +225,7 @@ passes and 1 when one fails. `--json` prints `{ ok, module, dir, problems }` on 
 
 ## 5. Start vyred and see the module
 
-Start vyred in the throwaway home. `--json` keeps `vyre up` on a Mac from asking where your box
+Start vyred in the throwaway home. `--json` keeps `vyre up` on a Mac from asking where your server
 runs:
 
 ```console
@@ -463,7 +463,7 @@ running. Pass `--yes` where there is no terminal to ask on. It also takes a git 
 A module runs inside vyred with Vyre's own access to your machine, so add only code you trust.
 `vyre module add` refuses a name that is already in `~/.vyre/modules/` or is one of Vyre's own
 modules. Replacing one of Vyre's own needs `"replaces"` set to that name in `module.json` and
-`--yes` on the command line: your explicit consent. In the box's container, vyred restarts from
+`--yes` on the command line: your explicit consent. In the server's container, vyred restarts from
 the host (`docker compose restart vyre`), and `vyre module add` says so.
 
 juno can now call `bake.log` when alex says "log 24 sourdough", and `bake.today` when alex asks

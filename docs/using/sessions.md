@@ -89,7 +89,7 @@ sends nothing; it never falls back to another one.
 ## What runs them
 
 Vyre runs Claude sessions on the Claude Agent SDK, which runs Claude Code itself. The SDK is
-installed on first use into `~/.vyre/sessions-sdk` (on a box, the home's volume), and sessions run
+installed on first use into `~/.vyre/sessions-sdk` (on a server, the home's volume), and sessions run
 directly on the `claude` command until it is ready. To install it now and wait:
 
 ```sh
@@ -144,7 +144,7 @@ thinking on.
 
 ## Your existing sessions
 
-Every session is in one list, whether a terminal, Vyre, your Mac or your box started it. Send one
+Every session is in one list, whether a terminal, Vyre, your Mac or your server started it. Send one
 a message from Chat and Vyre resumes it where it ran, on the machine that has it; from then on it
 works like any session Vyre started. If it is open in a terminal right now, your message waits and
 is handed over when that terminal's turn ends, or you can fork it: `threads.fork` carries on the

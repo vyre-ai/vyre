@@ -76,14 +76,14 @@ No test runs the real `claude`, `tailscale`, `ssh`, `docker` or a browser. Each 
 | `VYRE_CLAUDE_BIN` | `claude` | `core/switchboard`, `core/onboard` |
 | `VYRE_TAILSCALE_BIN` | `tailscale` | `core/names`, `core/cli/tailnet.js`, `core/link` |
 | `VYRE_SSH_BIN` | `ssh` | `core/cli/ssh.js` |
-| `VYRE_OPEN_BIN` | the command that opens a browser | `vyre up`, `vyre box` |
+| `VYRE_OPEN_BIN` | the command that opens a browser | `vyre up`, `vyre server` |
 | `VYRE_HANDS_BIN` | the macOS accessibility helper | `local/hands-mac` |
 
 The fakes themselves:
 
 - `core/switchboard/testing/fake-claude.js`: a `claude` that speaks `stream-json`, so the Switchboard and agents run end to end against a real `vyred`.
-- `core/computers/driver/fake.js`: an in-memory Docker driver that enforces the Engine's state rules (no pausing a stopped container), so a pool bug fails here as it would on the box.
-- `test/journey/`: the install journey rig. `rig.js` builds a fresh Mac and a fresh Linux server as two temp homes on this machine, with fake `ssh`, `docker`, `tailscale` and a port forward. The `vyred` on each side, `vyre box add`, `vyre up`, the installer and the onboarding page are real. `test/journey.test.js` drives it.
+- `core/computers/driver/fake.js`: an in-memory Docker driver that enforces the Engine's state rules (no pausing a stopped container), so a pool bug fails here as it would on the server.
+- `test/journey/`: the install journey rig. `rig.js` builds a fresh Mac and a fresh Linux server as two temp homes on this machine, with fake `ssh`, `docker`, `tailscale` and a port forward. The `vyred` on each side, `vyre server add`, `vyre up`, the installer and the onboarding page are real. `test/journey.test.js` drives it.
 - `test/fixtures/corpus.js`: a small fictional corpus (alex, Harlow Legal, Northwind Bakery, the agents juno and kit), written as real Claude Code transcripts for the transcripts adapter and Recall.
 - `deck/fixtures/*.json`: canned tool replies for Deck views.
 
@@ -114,7 +114,7 @@ Run from the repository root. A targeted run skips the `tmp-guard` wrapper, so c
 
 ## Measured, not only passed
 
-- `npm run perf-check` (`scripts/perf-check`) holds `vyred` to the idle budget in [Section 2 of the spec](../architecture/spec.md#2-principles), principle 8. It builds a throwaway home, seeds the fixture corpus plus a synthetic one of about 20,000 turns, starts a real `vyred`, waits for indexing to finish, then samples it for 60 seconds of idle. It fails on CPU above budget, more than 50 MB of heap in use after a full GC, a settled resident size over 150 MB or a startup peak over 200 MB in the first 30 seconds (both on the Node the box ships), or any timer that repeats faster than once a minute. CI runs it after `npm test`. See [Performance](../architecture/performance.md).
+- `npm run perf-check` (`scripts/perf-check`) holds `vyred` to the idle budget in [Section 2 of the spec](../architecture/spec.md#2-principles), principle 8. It builds a throwaway home, seeds the fixture corpus plus a synthetic one of about 20,000 turns, starts a real `vyred`, waits for indexing to finish, then samples it for 60 seconds of idle. It fails on CPU above budget, more than 50 MB of heap in use after a full GC, a settled resident size over 150 MB or a startup peak over 200 MB in the first 30 seconds (both on the Node the server ships), or any timer that repeats faster than once a minute. CI runs it after `npm test`. See [Performance](../architecture/performance.md).
 - `npm run eval:memory` (`scripts/eval-memory.js`) scores memory on a fictional world: whether facts are right, and that none leaks from one project to another. `test/eval/memory-eval.test.js` runs it under `npm test` against `test/eval/memory-baseline.json`; `npm run eval:memory -- --write-baseline` rewrites the baseline.
 - `npm run docs:check` holds these docs to their contract. See [Writing the docs](../CONTRIBUTING-DOCS.md).
 

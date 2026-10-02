@@ -13,7 +13,7 @@ wide opens over whatever app you are in, where Spotlight would. One box does two
 local things (apps, settings, files, contacts, sums) the way Spotlight does, and it sends words
 to your assistant, an agent or a running session. It also holds the list of what is waiting on
 you: permission questions from sessions and drafts held at the Gate. The Vyre on your Mac runs
-it. Local search keeps working when Vyre or your box is down.
+it. Local search keeps working when Vyre or your server is down.
 
 ::: demo capsule
 Type in Lumen and it finds your threads, projects and agents, and offers to ask your assistant about the rest.
@@ -59,7 +59,7 @@ Type in Lumen and it finds your threads, projects and agents, and offers to ask 
 3. Allow double-Control (next section). Until then, Option-Space opens it.
 
 Lumen lives in the menu bar as "Vyre Lumen". Click its mark for a small panel that shows who you
-are, whether Vyre is running (with a **Start Vyre** button when it is not), how your box is
+are, whether Vyre is running (with a **Start Vyre** button when it is not), how your server is
 reached, and buttons to open Lumen, turn on Control twice and quit.
 
 ## Allow double-Control
@@ -69,7 +69,7 @@ needs no permission, so it always works.
 
 1. Click Lumen's mark in the menu bar. If the panel offers **Turn on Control twice**, press it,
    or open System Settings, Privacy and Security, Input Monitoring, and turn on Vyre.
-2. Press Control twice. Lumen opens with the caret in the box.
+2. Press Control twice. Lumen opens with the caret in the server.
 
 When Control twice is off, Lumen says so in plain words and names the key that still opens it.
 
@@ -82,14 +82,14 @@ Only two bare taps of Control within 450 ms count, so Control-C and Control-arro
 
 ## Find something on this Mac
 
-Type in the box without `@`. One list ranks:
+Type in the server without `@`. One list ranks:
 
 - apps and System Settings panes;
 - a sum or a unit conversion (`12 * 18`, `5 km in mi`); Enter copies the answer;
 - contacts (the first time, a "Show contacts here" row asks macOS for access; typing never does);
 - a definition: `define ledger`;
-- files and folders, through Spotlight's index (`mdfind`), and up to three files from your box
-  once a box is paired;
+- files and folders, through Spotlight's index (`mdfind`), and up to three files from your server
+  once a server is paired;
 - your agents, projects and threads, from Vyre;
 - logins from the [Vault](vault.md) (see below);
 - clipboard history: type `clipboard`, `clip` or `paste`. Enter puts the item back on the
@@ -111,7 +111,7 @@ The Vault may ask for Touch ID first. See [Vault](vault.md).
 
 ## Ask your assistant, or a model
 
-Type a question and press Enter. The "Sends to" row under the box shows where it will go before
+Type a question and press Enter. The "Sends to" row under the server shows where it will go before
 anything is sent, and Enter uses exactly that destination:
 
 - A question about your own work ("what did I promise Harlow Legal?") goes to your assistant,
@@ -176,11 +176,11 @@ you choose.
 
 For an agent that has a computer, Lumen offers "Open Glass", which opens that agent's
 screen in the Deck in your browser. Type `glass` to list what you can open, `glass juno` for one
-agent, or `glass box` for the box's files. See [Glass](glass.md).
+agent, or `glass box` for the server's files. See [Glass](glass.md).
 
 > [!SNAG] No "Open Glass" row
-> The row only shows when this Mac is paired with a box (`vyre link`) and the agent has a
-> computer. Pair the Mac first: [Connect a Mac to your box](tailscale.md).
+> The row only shows when this Mac is paired with a server (`vyre link`) and the agent has a
+> computer. Pair the Mac first: [Connect a Mac to your server](tailscale.md).
 
 ## Keys
 
@@ -195,11 +195,11 @@ agent, or `glass box` for the box's files. See [Glass](glass.md).
 | Command-Enter | send a held draft, allow an ask, or take a session's keyboard |
 | Escape | hide Lumen and give the keyboard back to the app behind |
 
-## When Vyre or the box is down
+## When Vyre or the server is down
 
 When Vyre on your Mac is not running, everything that came from it is cleared from Lumen
-and it says so. Apps, settings, files, sums and the clipboard keep working. When your box is out
-of reach, box features say the box is not reachable; they never hang.
+and it says so. Apps, settings, files, sums and the clipboard keep working. When your server is out
+of reach, box features say the server is not reachable; they never hang.
 
 ## Start it with Vyre
 

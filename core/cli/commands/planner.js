@@ -2,7 +2,7 @@
 // `vyre alarm`, `timer`, `remind`, `todo`, `notes`, `agenda`, `snooze`, `ringing` and `dismiss`:
 // the planner from the terminal (docs/adr/0025-planner.md). Words go to planner.parse and
 // planner.add; `edit <id>` and `rm <id>` on each kind are planner.update and planner.delete. Times
-// print in the planner's zone, never this machine's, since the box keeps the time.
+// print in the planner's zone, never this machine's, since the server keeps the time.
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";

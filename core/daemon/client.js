@@ -7,7 +7,7 @@ import * as config from "../config/index.js";
 
 /**
  * One request to vyred over its socket. Resolves to the parsed { data } or { error } body, or to
- * { error: { code: "unreachable" } } when vyred is not running, so callers can degrade instead
+ * { error: { code: "unreachable" } } when Vyre is not running, so callers can degrade instead
  * of throwing. The Harness hooks rely on that: no vyred means Claude Code behaves as if Vyre
  * were not installed. `opts.headers` adds headers, such as a presence proof; the caller header
  * and the body's own headers win on a clash.
@@ -34,8 +34,8 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
       res.on("data", c => { raw += c; });
       res.on("end", () => { try { resolve(JSON.parse(raw)); } catch { resolve({ error: { code: "bad_response", message: raw.slice(0, 200) } }); } });
     });
-    req.on("error", () => resolve({ error: { code: "unreachable", message: "vyred is not running" } }));
-    req.on("timeout", () => { req.destroy(); resolve({ error: { code: "timeout", message: `vyred did not answer within ${timeout}ms` } }); });
+    req.on("error", () => resolve({ error: { code: "unreachable", message: "Vyre is not running" } }));
+    req.on("timeout", () => { req.destroy(); resolve({ error: { code: "timeout", message: `Vyre did not answer within ${timeout}ms` } }); });
     if (data) req.write(data);
     req.end();
   });

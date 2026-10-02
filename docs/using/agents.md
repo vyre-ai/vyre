@@ -133,7 +133,7 @@ bare MCP session and a guest are refused with "denied", and nobody is asked.
 
 If you skipped the assistant at onboarding, Now and Agents show **Create your assistant**:
 
-![Now on a box whose setup just finished: the Create your assistant card, and the Mac alex-mbp asking to pair.](shots/deck-new-box.png)
+![Now on a server whose setup just finished: the Create your assistant card, and the Mac alex-mbp asking to pair.](shots/deck-new-box.png)
 
 1. Type its name under **Its name**, for example juno.
 2. Tick **Give it its own computer, from the pool.** if it should have a computer (see

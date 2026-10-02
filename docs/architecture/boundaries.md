@@ -44,7 +44,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 
 | Edge | Files | Why | Becomes |
 |---|---|---|---|
-| `core/cli -> core/names` | backup.js, system.js | `vyre backup` and `vyre up` write the box backup and the systemd unit in-process | ctx.call |
+| `core/cli -> core/names` | backup.js, system.js | `vyre backup` and `vyre up` write the server backup and the systemd unit in-process | ctx.call |
 | `core/cli -> core/recall` | embed.js, progress.js | `vyre status` and `vyre doctor` read index progress and the embedder's state directly | ctx.call |
 | `core/cli -> core/resilience` | backoff.js, node.js, stream.js | the reference client every surface uses, a pure library | lib |
 | `core/cli -> core/vault` | backup.js, cli-io.js, refs.js | `vyre vault`'s terminal side: no-echo prompts, `vault://` refs, the sealed backup format | surface |
@@ -55,12 +55,12 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/files -> core/link` | transport.js | Mac to box file transfer over the tailnet transport | lib |
 | `core/files -> core/names` | tailscale.js | runs the tailscale CLI (Taildrive) | lib |
 | `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
-| `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
+| `core/link -> core/names` | tailscale.js | finds the server on the tailnet | lib |
 | `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |
 | `core/network -> core/names` | guests.js, identity.js, tailscale.js | the listeners identify tailnet peers (ADR 0002) | lib |
 | `core/onboard -> core/names` | service.js, tailscale.js | onboarding reserves the name and starts the tailnet listener in-process | ctx.call |
 | `core/recall -> core/transcripts` | index.js | transcripts is the one reader of Claude Code's files | lib |
-| `core/watchers -> core/spawner` | client.js | the box's watcher wall is the root spawner's; loaded only when a spawner socket exists | lib |
+| `core/watchers -> core/spawner` | client.js | the server's watcher wall is the root spawner's; loaded only when a spawner socket exists | lib |
 | `core/sessions -> core/spawner` | client.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/sessions -> core/switchboard` | runner.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/sessions -> core/transcripts` | sanitize.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
@@ -70,7 +70,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/term -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote, a pure helper | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
-| `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |
+| `core/vault -> core/link` | transport.js | the vault relay between the Mac and the server | lib |
 | `core/vault -> core/names` | identity.js, tailscale.js | who is on the other end of a vault relay, and the tailscale CLI | lib |
 | `local/capsule -> core/cli` | commands/capsule-native.js | where the native Lumen app is built, shared with `vyre capsule` | lib |
 | `local/hands-mac -> local/screen-mac` | floor.js | the floor for Vyre's hands and eyes on the Mac (SPEC section 11) | lib |

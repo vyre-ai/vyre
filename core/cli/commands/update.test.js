@@ -322,7 +322,7 @@ test("update --rollback --restore-data says what it drops and needs a typed conf
   assert.equal(await update(["--restore-data"], d.w.deps), 2);
 });
 
-test("update: a checkout refuses and points at git; so does the box's container", async t => {
+test("update: a checkout refuses and points at git; so does the server's container", async t => {
   const w = await world(t, { stamped: false });
   assert.equal(await update(["--check"], w.deps), 1);
   assert.match(w.text(), /this vyre runs from a checkout; update it with git/);

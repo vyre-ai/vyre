@@ -1,20 +1,10 @@
 // @ts-check
-// delight: the rare, quiet things. A fortune line the title bar shows once in a long while, and
-// the words `vyre high-five` prints (core/cli/commands/high-five.js, hidden from `vyre help`).
+// delight: the one hidden easter egg. The words `vyre high-five` prints (core/cli/commands/high-five.js, hidden from `vyre help`).
 //
 // Off for --json, CI, NO_COLOR, non-TTY and prefers-reduced-motion (docs/work/launch-surfaces.md,
 // "Easter eggs"). No network, no sound, never on real data: every line below is invented, never
 // pulled from a session, a name or a file. Pure functions only, so a test can pin the odds
 // without sleeping or touching a real screen.
-
-/** One line at a time, never a name, a project or anything a person typed. */
-const FORTUNES = [
-  "the thread is still here.",
-  "nothing dropped while you were gone.",
-  "still your box, still your key.",
-  "quiet is a feature.",
-  "the long way round is still the way.",
-];
 
 /**
  * Whether any delight is allowed to show at all, given the environment a caller passes in. The
@@ -31,22 +21,7 @@ export function allowed({ json = false, env = process.env, stream = process.stdo
   return true;
 }
 
-/**
- * The fortune line for the title bar, or "" most of the time. `odds` is how often it can win (1
- * in `odds`), `rand` is injectable so a test can pin it, `now` picks which fortune so the same
- * minute always shows the same line rather than flickering between repaints.
- * @param {{ json?: boolean, env?: Record<string, string|undefined>, stream?: { isTTY?: boolean },
- *   odds?: number, rand?: () => number, now?: number }} [o]
- */
-export function fortune({ odds = 200, rand = Math.random, now = Date.now(), ...gate } = {}) {
-  if (!allowed(gate)) return "";
-  if (rand() >= 1 / odds) return "";
-  const i = Math.floor(now / 60000) % FORTUNES.length;
-  return FORTUNES[i];
-}
-
-/** What `vyre high-five` prints. Never the same line as the title bar's fortune, so finding the
- *  command feels like a different door, not a repeat. */
+/** What `vyre high-five` prints. It only answers when someone types it on purpose. */
 const HIGH_FIVES = [
   "right back at you.",
   "nice one.",

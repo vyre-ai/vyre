@@ -358,7 +358,7 @@ test("add refuses a failing module, a name that is there, a shipped name, and as
   assert.equal(await moduleCommand(["check", "--yes"], w.deps), EXIT.USAGE);
 });
 
-test("add in the box's container leaves the restart to the host", async t => {
+test("add in the server's container leaves the restart to the host", async t => {
   const w = world(t);
   const c = capture(t);
   const good = bakery(path.join(w.home, "good"));
@@ -368,11 +368,11 @@ test("add in the box's container leaves the restart to the host", async t => {
 });
 
 test("add says so when vyred did not restart", async t => {
-  const w = world(t, { restart: { ok: false, note: "the running vyred did not stop" } });
+  const w = world(t, { restart: { ok: false, note: "the running Vyre did not stop" } });
   const c = capture(t);
   const good = bakery(path.join(w.home, "good"));
   assert.equal(await moduleCommand(["add", good, "--yes"], w.deps), EXIT.FAILED);
-  assert.match(text(c), /did not restart: the running vyred did not stop/);
+  assert.match(text(c), /did not restart: the running Vyre did not stop/);
   assert.ok(fs.existsSync(path.join(w.modules, "bakery")), "the module stays in");
 });
 

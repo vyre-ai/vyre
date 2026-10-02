@@ -74,7 +74,7 @@ export const CONCEPTS = [
   { name: "module", page: "concepts/modules.md", match: /\bmodules?\b/i, code: "core/modules/index.js" },
   { name: "onboarding", page: "get-started/onboarding.md", match: /\bonboarding\b/i, code: "core/onboard/index.js" },
   { name: "owner", page: "concepts/tailnet.md#the-owner", match: /\bowner\b/i },
-  { name: "pairing", page: "using/tailscale.md#connect-your-mac-to-the-box", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
+  { name: "pairing", page: "using/tailscale.md#connect-your-mac-to-the-server", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
   { name: "pass", page: "using/vault.md#share-with-another-person", match: /\b(?:a|the|by|each|every|one|your|sealed|relayed|shared)\s+pass(?:es)?\b|\bpasses\b/i, code: "core/vault/index.js" },
   { name: "passkey", page: "concepts/presence.md#enroll-your-keys", match: /\bpasskeys?\b/i, code: "core/presence/index.js" },
   { name: "presence", page: "concepts/presence.md", match: /\bpresence\b/i, code: "core/presence/index.js" },

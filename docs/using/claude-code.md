@@ -87,14 +87,14 @@ Nothing is written to disk.
 
 ## Put Vyre's line under every session
 
-Vyre's status line shows what needs you, whether your box answers, and what the assistant is
+Vyre's status line shows what needs you, whether your server answers, and what the assistant is
 doing:
 
 ```output
 vyre · 2 need you · box ok · juno idle
 ```
 
-The line is empty while Vyre is not running, and the box part appears only once this Mac is
+The line is empty while Vyre is not running, and the server part appears only once this Mac is
 paired with your server.
 
 1. In your own terminal, run:

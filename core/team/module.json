@@ -16,7 +16,7 @@
       {"id": "ask-cli", "text": "Send work to a teammate from the terminal: `vyre team ask design \"Make the estate intake calmer\"`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre team ask design \"Make the estate intake calmer\"", "docs": "reference/cli.md#vyre-team"},
       {"id": "list", "text": "See this project's teammates, their state and queue with `vyre team`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre team", "docs": "reference/cli.md#vyre-team"},
       {"id": "add", "text": "Give the project a teammate: `vyre team add design --brief \"visual design and UI copy\"`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre team add design --brief \"visual design and UI copy\"", "docs": "reference/cli.md#vyre-team"},
-      {"id": "urgent", "text": "A request that cannot wait: `vyre team ask design \"...\" --urgent`. It jumps its teammate's own queue, never the box-wide slot queue.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "reference/cli.md#vyre-team"},
+      {"id": "urgent", "text": "A request that cannot wait: `vyre team ask design \"...\" --urgent`. It jumps its teammate's own queue, never the server-wide slot queue.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "reference/cli.md#vyre-team"},
       {"id": "default-off", "text": "Stop steering new work at teammates in this project with `team.default.set`. Existing teammates still work.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "reference/cli.md#vyre-team"}
     ]
   }

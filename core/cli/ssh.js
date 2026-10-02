@@ -1,7 +1,7 @@
 // @ts-check
 // ssh: the Mac's reach into a server, over the system `ssh` binary (ADR 0008 section 2).
 //
-// `vyre box` does every server chore through this, so the person never opens a shell there. One
+// `vyre server` does every server chore through this, so the person never opens a shell there. One
 // master connection is opened first and held (ControlMaster), and every later call rides on it:
 // a server without a key set up asks for its password once, not once per step. The control
 // socket lives in a fresh 0700 folder under /tmp, because a socket path is limited to about 104
@@ -170,7 +170,7 @@ export function remote(target, { env = process.env } = {}) {
 
     async tunnel(localPort, remotePort) {
       if (!Number.isInteger(localPort) || !Number.isInteger(remotePort) || localPort <= 0 || remotePort <= 0) {
-        throw new Error(`the box gave no port to forward (${localPort}); run vyre up on it and try again`);
+        throw new Error(`the server gave no port to forward (${localPort}); run vyre up on it and try again`);
       }
       if (!(await portFree(localPort))) {
         const who = await holder(localPort);

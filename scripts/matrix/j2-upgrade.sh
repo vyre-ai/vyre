@@ -16,7 +16,7 @@ rec() { # rec STEP ok|false [why]
 }
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; }
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
-ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
+ready() { i=0; until vyre status 2>/dev/null | grep -q ' is running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 upd() { VYRE_BOX_URL="http://127.0.0.1:$1/" VYRE_RELEASES_API="" VYRE_UPDATE_WAIT=180 vyre update --yes "${@:2}" </dev/null 2>&1; }
 : >"$OUT/pids"
 serve "$OLD" 18081; serve "$NEW" 18082

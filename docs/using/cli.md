@@ -22,7 +22,7 @@ The host's `vyre` (in `/usr/local/bin`) is a small wrapper that runs the same CL
 box's container, so every command on this page works there. The wrapper adds a few of its own:
 
 ```sh
-vyre update               # fetch the newest stable release, check it, back up, rebuild and recreate the box
+vyre update               # fetch the newest stable release, check it, back up, rebuild and recreate the server
 vyre update --rollback    # put the previous release back
 vyre logs                 # follow Vyre's output
 vyre uninstall            # stop Vyre and take it off this server; it asks whether to delete the data
@@ -31,14 +31,14 @@ vyre uninstall            # stop Vyre and take it off this server; it asks wheth
 `vyre update` checks every file against the release's checksums and the checksums against
 Vyre's release signature, and refuses an unsigned release. The stable channel never installs a
 prerelease; `--channel beta` does. If the new release does not come up, it puts the old one
-back. It looks for the box in `/srv/vyre`; set `VYRE_DIR` if you put it elsewhere.
+back. It looks for the server in `/srv/vyre`; set `VYRE_DIR` if you put it elsewhere.
 ::: tab On this Mac
-`vyre` talks to the Vyre running on your Mac. `vyre box` looks after a box on a server from here:
+`vyre` talks to the Vyre running on your Mac. `vyre server` looks after a server on a server from here:
 
 ```sh
 vyre box            # which box, and whether it answers
-vyre box update
-vyre box backup
+vyre server update
+vyre server backup
 ```
 
 See [Box care](box-care.md).
@@ -47,14 +47,14 @@ See [Box care](box-care.md).
 ## Start Vyre and check on it
 
 ```sh
-vyre up        # start Vyre; print the onboarding link, or your box's address
+vyre up        # start Vyre; print the onboarding link, or your server's address
 vyre status    # is it running, which version, how many modules
 vyre modules   # every module and whether it started
 vyre down      # stop Vyre
 ```
 
 ```output
-  vyred running · 0.2.0 · box · pid 412 · up 3600s
+  Vyre 0.2.0 is running · pid 412 · up 1h 0m
 ```
 
 `vyre up` is safe to run any time. After an upgrade it restarts an older Vyre. When it has

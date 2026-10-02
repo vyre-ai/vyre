@@ -18,7 +18,7 @@ Vyre has two setup pages, and which one you meet depends on how you started.
 - **The server's own setup** is six screens at `http://127.0.0.1:7300/onboard?t=...`: they name
   you and your assistant, sign the server in to Claude and Tailscale, give it an HTTPS address on
   your tailnet, read your Claude Code history and put Vyre on your other devices. You meet them
-  when you set up from your Mac with `vyre box add`, when you run `vyre up --box` on a Mac, or
+  when you set up from your Mac with `vyre server add`, when you run `vyre up --box` on a Mac, or
   when you run the installer on the server without a setup code. The rest of this page is the
   reference for those six screens.
 
@@ -35,7 +35,7 @@ The terminal side of the six screens (choosing the server, approving your Mac, t
 6. ![Step 6 of 6, Your devices: Pair this Mac, with the install command, vyre up and a field for the Mac's code, and Open Vyre on your phone, with QR codes for Tailscale and for the address](shots/onboarding-devices.png "Your devices")
 :::
 
-> [!WHY] Why does `vyre box add` start on the Mac?
+> [!WHY] Why does `vyre server add` start on the Mac?
 > The Mac already has your SSH key, your browser and your Tailscale sign-in. Starting there means
 > you never copy a link or open a tunnel by hand: the Mac holds the tunnel to the server's setup
 > page and opens it for you. The full reasoning is in [ADR 0008](../adr/0008-install-journey.md).
@@ -43,8 +43,8 @@ The terminal side of the six screens (choosing the server, approving your Mac, t
 ## How the screens work
 
 - The page opens at `http://127.0.0.1:7300/onboard?t=...`. The link works once, for an hour, and
-  the page listens only on the box's own loopback: from a Mac it runs through the SSH tunnel
-  that `vyre box add` holds open. See [Install](install.md#other-ways-to-install).
+  the page listens only on the server's own loopback: from a Mac it runs through the SSH tunnel
+  that `vyre server add` holds open. See [Install](install.md#other-ways-to-install).
 - The list on the left shows the six steps, with **Done** under each finished one. Click a step
   to go back to it.
 - Every screen but the first has **Back**. Every screen but the last has **Skip for now**.
@@ -59,7 +59,7 @@ The terminal side of the six screens (choosing the server, approving your Mac, t
 **What should we call you?** asks for two names.
 
 - **Your name**: lowercase letters, numbers and hyphens, 3 to 32 long, starting with a letter,
-  such as `alex`. Under the box the page says "Your address will be on your tailnet, set up in
+  such as `alex`. Under the server the page says "Your address will be on your tailnet, set up in
   step 4."
 - **Your assistant's name**: any name, such as `juno`. The assistant can see every project and
   drive any session. You can rename it later.
@@ -73,7 +73,7 @@ The terminal side of the six screens (choosing the server, approving your Mac, t
 
 
 **Connect Claude Code.** Vyre's sessions and agents run on your own Claude account. The page
-first looks for Claude Code on the box and shows its version. On a Docker box it is always there:
+first looks for Claude Code on the server and shows its version. On a Docker box it is always there:
 it is part of the image.
 
 Choose how Vyre signs in:
@@ -94,7 +94,7 @@ your Claude subscription. The token is in the Vault." (or "Signed in with an API
 > it still fails, press **Try another way**, then **Sign in with Claude** again for a fresh code.
 
 > [!SNAG] "Claude Code is not installed on this machine."
-> You see this only on a box without Docker. Run the command the page shows
+> You see this only on a server without Docker. Run the command the page shows
 > (`npm install -g @anthropic-ai/claude-code`) on the server, then press **Check again**.
 
 ## 3. Tailscale
@@ -122,7 +122,7 @@ IP. While it waits the button reads **Waiting for Tailscale**. Once the machine 
 ## 4. Your address
 
 
-**Your address.** Vyre gets an HTTPS certificate for the box's name on your tailnet, such as
+**Your address.** Vyre gets an HTTPS certificate for the server's name on your tailnet, such as
 `https://vyre.tail1234.ts.net`. Only devices on your tailnet can open it. Press
 **Get your address** and wait for the three rows: **Reserve your address**, **Point it at this
 machine on your tailnet** and **Get the certificate**. If one fails, the button becomes
@@ -135,11 +135,11 @@ When all three are done, the button reads **Switch to** and your address. Press 
    confirm with Touch ID (or your phone).
 2. It says "Passkey added." Press **Continue setting up** to go on to step 5.
 
-The passkey approves anything important on your box from now on, including a new Mac. See
+The passkey approves anything important on your server from now on, including a new Mac. See
 [Presence](../concepts/presence.md).
 
 When the Mac started the setup, its terminal moves on by itself as soon as the address works. It
-closes the tunnel, asks your box to pair with this Mac, and prints "Vyre is ready." That part is
+closes the tunnel, asks your server to pair with this Mac, and prints "Vyre is ready." That part is
 in [Install](install.md#other-ways-to-install).
 
 > [!SNAG] "HTTPS certificates are off for your tailnet"
@@ -158,7 +158,7 @@ in [Install](install.md#other-ways-to-install).
 
 > [!SNAG] "This browser cannot create a passkey."
 > Open the link in Safari or Chrome, on a device on your tailnet. **Continue setting up** skips
-> the passkey for now; `vyre box add alex@192.0.2.10` from the Mac prints a fresh passkey link
+> the passkey for now; `vyre server add alex@192.0.2.10` from the Mac prints a fresh passkey link
 > later.
 
 > [!WHY] What about a `vyre.run` name or my own domain?
@@ -183,11 +183,11 @@ Under **Make your first projects** you can group sessions into a project, such a
 
 Press **Continue** when you are done, or at once.
 
-On a new server the box has no sessions of its own, and the page says "This box has no sessions
+On a new server the server has no sessions of its own, and the page says "This server has no sessions
 of its own. Your Mac's sessions show up here once you pair it, right after setup." with a
 **Pair your Mac** link to step 6. Once the Mac is paired, the picker lists its sessions too. They
-stay on the Mac: the box reads them through the link. See
-[The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+stay on the Mac: the server reads them through the link. See
+[The server and the Mac](../concepts/box-and-mac.md#the-server-reads-the-macs-sessions).
 
 On a Mac that is its own box, with no sessions yet, it says "No Claude Code sessions found on this
 machine yet."
@@ -201,7 +201,7 @@ screen and stacked on a narrow one.
 **Pair this Mac**:
 
 1. **Install Vyre**: `npm i -g https://vyre.run/box/vyre.tgz` on the Mac.
-2. **Pair it with this box**: `vyre up` on the Mac. It finds the box on your tailnet, asks
+2. **Pair it with this server**: `vyre up` on the Mac. It finds the server on your tailnet, asks
    whether to pair with it, and shows a code once you say yes (`vyre link pair <address>` does the
    same without the question).
 3. A card appears here, "A Mac wants to pair:" and the Mac's name, with a field for **Code on that
@@ -212,7 +212,7 @@ When it is done the card says the Mac's name "is paired", and "press Control twi
 Lumen." Lumen itself is in [Install, step 10](install.md#10-put-the-lumen-on-your-mac).
 
 > [!SNAG] "The Mac that is asking can approve itself only with a passkey."
-> You are on the Mac you are pairing. The box takes its approval only with a fresh passkey made
+> You are on the Mac you are pairing. The server takes its approval only with a fresh passkey made
 > on that Mac. Approve again and use Touch ID, or open Vyre on your phone (the card beside this
 > one) and approve the request on Now.
 
@@ -243,7 +243,7 @@ want it to browse and use apps you can watch in Glass, and press **Create**.
 
 > [!SNAG] "Your address is not set up yet, so this page cannot open the Deck."
 > You skipped **Your address**. The Deck is served only at your address, so go back to step 4 and
-> finish it. If the terminal already stopped waiting, run `vyre box add alex@192.0.2.10` again.
+> finish it. If the terminal already stopped waiting, run `vyre server add alex@192.0.2.10` again.
 
 ## Finish a skipped step
 
@@ -253,9 +253,9 @@ history), and a **Finish** button beside each one left, which opens the same scr
 `vyre up` picks up at the first step not finished.
 
 **Your devices** in Settings lists your devices on the tailnet, online or offline, and marks a
-paired Mac "Paired with this box". **Add a device** opens step 6.
+paired Mac "Paired with this server". **Add a device** opens step 6.
 
-If you skipped **Your address**, the Deck cannot open yet: run `vyre box add alex@192.0.2.10`
+If you skipped **Your address**, the Deck cannot open yet: run `vyre server add alex@192.0.2.10`
 from the Mac, or `vyre up` on the server, for a fresh setup link. The page keeps every step you
 already finished.
 

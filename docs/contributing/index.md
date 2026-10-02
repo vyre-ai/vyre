@@ -34,7 +34,7 @@ unset VYRE_HOME
 }
 ```
 
-`--json` keeps `vyre up` on a Mac from asking where your box runs. A temp `VYRE_HOME` also means Vyre raises no dialogs (Touch ID, keychain, browser tabs) unless you set `VYRE_ALLOW_DIALOGS=1`. See [Testing](testing.md#dialogs).
+`--json` keeps `vyre up` on a Mac from asking where your server runs. A temp `VYRE_HOME` also means Vyre raises no dialogs (Touch ID, keychain, browser tabs) unless you set `VYRE_ALLOW_DIALOGS=1`. See [Testing](testing.md#dialogs).
 
 ## Where things live
 

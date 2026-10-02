@@ -1,6 +1,6 @@
 ---
 title: Deck
-summary: Open the Deck, Vyre's web app on your box, and use its views to see what needs you, follow your projects and agents, and change settings from a laptop or a phone.
+summary: Open the Deck, Vyre's web app on your server, and use its views to see what needs you, follow your projects and agents, and change settings from a laptop or a phone.
 audience: users
 owner: polish-surfaces
 status: draft
@@ -8,19 +8,19 @@ status: draft
 
 # Deck
 
-The Deck is Vyre's web app. Your box serves it at its own address, usually
+The Deck is Vyre's web app. Your server serves it at its own address, usually
 `https://vyre.<tailnet>.ts.net`, and only your devices on your tailnet can open it: there is no
 separate login, because Tailscale says who is on the other end (see [Tailscale](tailscale.md)).
 It shows what needs you, what is running, your projects, agents, memory and vault, and every
 setting the onboarding made or skipped. The same pages work on a phone, and it installs as an app
 there (see [Mobile](mobile.md)). The Deck reads and writes only through Vyre's API, so it never
-disagrees with the terminal or the [Lumen](capsule.md). On a box with a paired Mac, it also lists
+disagrees with the terminal or the [Lumen](capsule.md). On a server with a paired Mac, it also lists
 the Mac's projects and sessions, read from the Mac as you look (see
-[Your Mac's sessions on the box](#your-macs-sessions-on-the-box)).
+[Your Mac's sessions on the server](#your-macs-sessions-on-the-server)).
 
 ## Open it
 
-Run `vyre up` on the box, or on your Mac once it is paired. It prints the address:
+Run `vyre up` on the server, or on your Mac once it is paired. It prints the address:
 
 ```output
   Vyre is ready.
@@ -30,7 +30,7 @@ Run `vyre up` on the box, or on your Mac once it is paired. It prints the addres
     next            vyre      (your projects and threads)
 ```
 
-Open that address in a browser on any device signed in to your tailnet as the box's owner. A
+Open that address in a browser on any device signed in to your tailnet as the server's owner. A
 device signed in as anyone else gets `403 not_owner` ("This Vyre serves only its owner.").
 
 > [!SNAG] The last line reads "Almost there: your server has no address yet."
@@ -48,18 +48,18 @@ the rest (see [Mobile](mobile.md)).
 | Now | `/now` | what needs you (held drafts, permission questions), what is running, recent projects, and what memory learned today |
 | Chat | `/chat` | sessions as conversations; see [Chat](chat.md) |
 | Agents | `/agents` | each agent, what it is doing, its threads, usage and computer |
-| Projects | `/projects` | every project, its threads, and each thread's live output with a box to type into |
+| Projects | `/projects` | every project, its threads, and each thread's live output with a server to type into |
 | Planner | `/planner` | today's agenda, the next alarms, open todos and notes; see [Planner](planner.md) |
 | Memory | `/memory` | what memory holds, with its sources; see [Memory](memory.md) |
 | Vault | `/vault` | credentials, never their values; see [Vault](vault.md) |
-| Drive | `/files` | the folders your box shares as Vyre Drive, to browse and preview |
+| Drive | `/files` | the folders your server shares as Vyre Drive, to browse and preview |
 | Settings | `/settings` | setup, connections, network, devices, spend, notifications, passkeys, modules, appearance |
 | Find | `/find` | one box for sessions, files, agents, memory and projects, and for asking your assistant (the phone's Lumen) |
 | Ask | `/ask` | talk to your assistant or any agent (open it by its path) |
 
 A view whose module is not running says which module is missing instead of failing.
 
-The Deck draws its first screen at once. It asks the box whether setup is finished, but waits at
+The Deck draws its first screen at once. It asks the server whether setup is finished, but waits at
 most a moment for the answer: if the answer comes later and says there is no owner yet, the page
 then moves to the onboarding.
 
@@ -96,9 +96,9 @@ and choose Allow or Deny. Answering asks for no passkey.
 
 1. Open Projects, then a project, then a thread. Its output streams in as the session works:
    text as it is written, tool calls as lines.
-2. Type in the box at the bottom. It types into the session as you.
+2. Type in the server at the bottom. It types into the session as you.
 
-Only one surface holds a session's keyboard at a time. When another holds it, the box reads
+Only one surface holds a session's keyboard at a time. When another holds it, the server reads
 "<surface> is typing"; press **Take the keyboard** to take it.
 
 A thread from your paired Mac has no box to type into. In its place: "On alex-mac. Open it there
@@ -120,7 +120,7 @@ instead: type its name, tick **Give it its own computer, from the pool.** if you
 press **Create**. The assistant is made on every project with the Claude sign-in onboarding
 stored, the same as onboarding would have made it.
 
-![kit's page in the Deck: its job, the projects it works in, a box to talk to it, what wakes it, its usage and its model](shots/deck-agent.png)
+![kit's page in the Deck: its job, the projects it works in, a server to talk to it, what wakes it, its usage and its model](shots/deck-agent.png)
 
 ## Finish setup, or change it
 
@@ -143,7 +143,7 @@ History and memory, Spend (today's spend per provider and its daily cap; see
 machine, and Update, export and uninstall. `/settings#devices` or `/settings?section=devices` jumps to a section.
 
 **Your devices** lists your devices on the tailnet as Tailscale reports them, phones and tablets
-first, each Online or Offline. The Mac paired with this box says "Paired with this box". A phone
+first, each Online or Offline. The Mac paired with this server says "Paired with this server". A phone
 that is offline says so in plain words: "Your iPhone is offline in Tailscale. Open the Tailscale
 app and turn it on." **Add a device** opens the onboarding's devices step.
 
@@ -151,13 +151,13 @@ app and turn it on." **Add a device** opens the onboarding's devices step.
 
 **Appearance** switches this browser between Dark and Paper; the choice stays in that browser
 only. To change the colours themselves for every device, set `theme.colors` in `config.json` on
-the box, for example:
+the server, for example:
 
 ```json
 { "theme": { "colors": { "dark": { "signal": "#B8E65A" } } } }
 ```
 
-The Deck loads `/theme.css`, which the box writes from `theme.colors`: `dark` keys override the
+The Deck loads `/theme.css`, which the server writes from `theme.colors`: `dark` keys override the
 dark theme and `light` keys the Paper theme. A value that is not a plain CSS colour is dropped.
 Reload the Deck to see the change. The token names and their defaults are in
 [Design tokens](../design/TOKENS.md).
@@ -168,11 +168,11 @@ A passkey proves a person is at the device, for approving a send, a payment or a
 Gate, approving a new Mac, or showing a vault value ([ADR 0004](../adr/0004-presence.md)). One
 proof lasts 30 minutes on that device.
 
-Your first passkey comes from a one-time link that the box hands only to its own terminal. Until
+Your first passkey comes from a one-time link that the server hands only to its own terminal. Until
 you have one, Now shows **Make your first passkey** with the two commands that print the link:
 
-- on your Mac, `vyre box add`;
-- or on the box, `vyre up`.
+- on your Mac, `vyre server add`;
+- or on the server, `vyre up`.
 
 Open the link on the device you want the passkey on, from your tailnet. It works once, for 10
 minutes. A passkey made in Safari syncs to your other Apple devices through iCloud Keychain, so
@@ -189,33 +189,33 @@ To add a passkey on another device from the Deck:
 Passkey added.
 ```
 
-A code works only where it was made. The box never takes a terminal as proof, so on the box
+A code works only where it was made. The server never takes a terminal as proof, so on the server
 `vyre presence code` stops and asks for a passkey; a code from your Mac enrolls a passkey on the
-Mac's own Vyre, not the box's.
+Mac's own Vyre, not the server's.
 
 > [!SNAG] "This browser cannot create or use a passkey."
 > The browser must reach the Deck at its real address over your tailnet, in Safari or Chrome. A
 > passkey cannot be made on `127.0.0.1` or through an SSH tunnel.
 
-## Your Mac's sessions on the box
+## Your Mac's sessions on the server
 
-With a Mac paired, the box's Deck lists the Mac's projects and sessions beside its own
-([ADR 0021](../adr/0021-box-reads-the-mac.md)). The box asks the Mac while you look and keeps
-nothing: no transcript from the Mac is written to the box.
+With a Mac paired, the server's Deck lists the Mac's projects and sessions beside its own
+([ADR 0021](../adr/0021-box-reads-the-mac.md)). The server asks the Mac while you look and keeps
+nothing: no transcript from the Mac is written to the server.
 
 - Every row from the Mac carries a chip with the Mac's name, for example `alex-mac`: in Chat, in
   Now's working and recent rows, in search results and on a project board.
-- A Mac thread is read-only here. It opens, with its turns, but in place of the box to type into
+- A Mac thread is read-only here. It opens, with its turns, but in place of the server to type into
   it says "On alex-mac. Open it there to continue." Sending, answering and stopping happen on the
   Mac.
 - A Mac project is listed with its chip and that note, but it has no board and cannot be pinned.
 - When the Mac is not reachable, Chat and Now show a dashed "alex-mac offline" chip, and only the
   box's own rows are listed. The Deck never waits on the Mac for this: it reads which Macs are
-  online from the box's own record.
+  online from the server's own record.
 
-## When the box is out of reach
+## When the server is out of reach
 
-The Deck's files are cached, so it opens when the box is briefly out of reach. Now shows
+The Deck's files are cached, so it opens when the server is briefly out of reach. Now shows
 "Offline. As of ... ago" with counts from the last visit, never a draft's words. Only two reads,
 `projects.list` and `threads.get` for threads you opened, are kept for offline use: the last 20,
 for up to a week. Nothing you can send or approve works offline.

@@ -53,12 +53,12 @@ turn completes, not word by word.
 
 ## Type into a session
 
-1. Type in the box at the bottom. Enter sends, Shift+Enter makes a new line.
+1. Type in the server at the bottom. Enter sends, Shift+Enter makes a new line.
 2. `@` opens a small menu of files in the session's folder, people and agents, and, as the first
    word of a message, your signed-in AI accounts. `@codex fix the failing test` sends that one
    message to Codex and leaves the session on its own provider (see
    [one message on another provider](sessions.md#one-message-on-another-provider)). While you
-   type it, the box says "This turn runs on" the account that will answer.
+   type it, the server says "This turn runs on" the account that will answer.
 3. Anything starting with `/` goes to Claude Code as is, so its own commands (`/rename`, for
    example) work. A line starting with `!` runs as a shell command in the session's folder.
 4. Paste an image to send it with the words (up to 5 pictures of 5 MB each: png, jpeg, gif or webp).
@@ -73,11 +73,11 @@ On a phone, Enter makes a new line and the send button sends.
 
 **While a session works.** On a Claude session, a message you send joins the running turn at its
 next step (steering). Press Alt+Enter, or turn on "Queue for after this turn", to hold it until
-the turn ends. A held message shows above the box as "Queued for after" with **Edit**,
+the turn ends. A held message shows above the server as "Queued for after" with **Edit**,
 **Take back** and **Steer now**. A session that is busy in your terminal queues every message,
 and sends it when that turn ends.
 
-**Who answers.** The chip above the box shows the provider's logo, its model and the effort, for
+**Who answers.** The chip above the server shows the provider's logo, its model and the effort, for
 example "Codex · GPT-5 high". Press it to choose another account, a model or (for Claude) an
 effort. Moving a session to another provider puts a line in the thread, such as "Switched to
 Codex. It has this session's memory and files." You cannot switch while a turn is running:
@@ -113,10 +113,10 @@ The first Send may ask for your passkey (see [Deck](deck.md#add-a-passkey)); one
 30 minutes on this device. Editing and Discard ask for nothing. If the send fails,
 the card says "failed:" with the reason, and Send tries again.
 
-## Open a terminal on the box
+## Open a terminal on the server
 
 Press **Folders** at the top of Chat, go to a folder, and press **Open in terminal**. A shell
-opens in that folder on the box, in the Deck. It asks for no passkey: it is your own screen.
+opens in that folder on the server, in the Deck. It asks for no passkey: it is your own screen.
 Agents, tailnet guests and Claude's sessions can't open one.
 
 A terminal belongs to the screen that opened it; another device can't pick it up. It outlives
@@ -153,13 +153,13 @@ server keeps no copy.
 A message you type into a Mac session goes to the Mac, and the line above the conversation says
 "On alex-mac". The Mac holds that session's keyboard, so there is no **Take**, and the chip
 with the provider and model is not shown. If the Mac does not answer, Chat says "alex-mac is
-offline; your message was not sent", puts your words back in the box and offers to retry. If it
+offline; your message was not sent", puts your words back in the server and offers to retry. If it
 times out, the message may have gone through, so check before you send again.
 
 When the Mac cannot be reached, the Chat header shows a dashed "alex-mac offline" chip and lists
 only the server's sessions.
 
-## When the box is out of reach
+## When the server is out of reach
 
 Chat shows the session list from your last visit, with the time it was saved. The list holds
 names, ids, projects and times, never a message's words. A session you opened before may also open

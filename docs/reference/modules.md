@@ -240,7 +240,7 @@ Every event type the running modules may emit, and the old names still accepted 
 
 ## files
 
-Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.
+Find, look at and bring over files on this machine and the server, inside the folders the user chose and never anywhere secret.
 
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
@@ -373,7 +373,7 @@ Discover this device's Claude Code sessions, choose what to import, and follow t
 
 ## link
 
-Makes the Mac and the box one system: pairing, box tools from the Mac, box events on the Mac, and the Mac's sessions read from the box.
+Makes the Mac and the server one system: pairing, box tools from the Mac, box events on the Mac, and the Mac's sessions read from the server.
 
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
@@ -439,7 +439,7 @@ The # tag: one picker over everything the person may mention, from the modules t
 
 ## network
 
-Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the box's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.
+Who besides the owner the server's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the server's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.
 
 - Folder: `core/network`, version 0.1.0
 - Runs on: `box`
@@ -460,7 +460,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 
 ## planner
 
-Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut.
+Alarms, timers, reminders, todos, notes and a calendar, kept on the server so something rings when the Mac is shut.
 
 - Folder: `core/planner`, version 0.1.0
 - Runs on: `box`, `local`
@@ -523,7 +523,7 @@ providers.list: every session provider on this machine, each with its own accoun
 
 ## relay
 
-A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
+A second way to reach the server besides Tailscale: the server dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
 
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
@@ -536,7 +536,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 
 ## releases
 
-The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.
+The Android app from the server: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.
 
 - Folder: `core/apps`, version 0.1.0
 - Runs on: `box`
@@ -617,7 +617,7 @@ One ledger of what agents, sessions and memory spend, per provider and per day (
 
 ## statusline
 
-One short line for Claude Code's status line: what needs the user, the box, the assistant.
+One short line for Claude Code's status line: what needs the user, the server, the assistant.
 
 - Folder: `core/statusline`, version 0.1.0
 - Runs on: `box`, `local`
@@ -640,7 +640,7 @@ Predictive text for every surface: names after @, commands after /, entities, ac
 
 ## sync
 
-A paired device (a Mac or a Windows PC) sends its own Claude Code session files to the box, once its person turns import on for it (ADR 0008 5a).
+A paired device (a Mac or a Windows PC) sends its own Claude Code session files to the server, once its person turns import on for it (ADR 0008 5a).
 
 - Folder: `core/sync`, version 0.1.0
 - Runs on: `box`, `local`

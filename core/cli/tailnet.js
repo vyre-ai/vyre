@@ -1,8 +1,8 @@
 // @ts-check
 // tailnet — what the person's own computer can see of their tailnet, read-only (ADR 0008).
 //
-// `vyre up` and `vyre box` use it on the Mac to check it is signed in, and to say why a box does
-// not answer. Finding the box among the peers is the link module's `link.find`. It only ever runs `tailscale status --json`: Vyre never changes a Mac's Tailscale
+// `vyre up` and `vyre server` use it on the Mac to check it is signed in, and to say why a server does
+// not answer. Finding the server among the peers is the link module's `link.find`. It only ever runs `tailscale status --json`: Vyre never changes a Mac's Tailscale
 // state. VYRE_TAILSCALE_BIN points tests at a fake; otherwise the CLI on PATH, then the one inside
 // the Mac app (which acts as the CLI when TAILSCALE_BE_CLI=1).
 
@@ -69,7 +69,7 @@ export function parse(s) {
     userId,
     self: self ? { dnsName: trim(self.DNSName), hostName: String(self.HostName || ""), ips: self.TailscaleIPs || [] } : null,
     peers,
-    // MagicDNS names and HTTPS certificates: a box's https://<name>.<tailnet>.ts.net needs both.
+    // MagicDNS names and HTTPS certificates: a server's https://<name>.<tailnet>.ts.net needs both.
     magicDNS: s.CurrentTailnet && typeof s.CurrentTailnet.MagicDNSEnabled === "boolean" ? s.CurrentTailnet.MagicDNSEnabled : null,
     certDomains: (s.CertDomains || []).map(String),
     why: running ? null : s.BackendState === "NeedsLogin" ? "Tailscale is signed out: open Tailscale and sign in" : `Tailscale is ${s.BackendState || "not running"}`,

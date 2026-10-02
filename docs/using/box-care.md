@@ -1,6 +1,6 @@
 ---
 title: Box care
-summary: Keep your box healthy by checking it, upgrading it, backing it up and restoring it, reading its logs, moving it to another server, and removing it.
+summary: Keep your server healthy by checking it, upgrading it, backing it up and restoring it, reading its logs, moving it to another server, and removing it.
 audience: users, operators
 owner: integrator
 status: draft
@@ -8,19 +8,19 @@ status: draft
 
 # Box care
 
-Your box is the always-on server that runs Vyre. On a Linux server it is a Docker Compose stack in
+Your server is the always-on server that runs Vyre. On a Linux server it is a Docker Compose stack in
 `/srv/vyre` with two containers, `tailscale` and `vyre`, and its data in Docker volumes. You look
 after it from your Mac with `vyre box ...`, which runs each step over SSH so you never open a shell
 on the server, or on the server itself with the host's `vyre` command. This page covers the care
-tasks. What each folder and volume holds, and who can reach the box, is in
-[The box and the Mac](../concepts/box-and-mac.md#folders-and-volumes).
+tasks. What each folder and volume holds, and who can reach the server, is in
+[The server and the Mac](../concepts/box-and-mac.md#folders-and-volumes).
 
 ## Check on it
 
 ::: tabs
 ::: tab On this Mac
 ```
-vyre box       # the box's address and SSH target, and whether it answers from here
+vyre box       # the server's address and SSH target, and whether it answers from here
 ```
 
 ```output
@@ -34,7 +34,7 @@ vyre modules   # each module, and the error of any that failed
 ```
 
 ```output
-  vyred running · 0.0.1 · box · pid 7 · up 5312s
+  Vyre 0.0.1 is running · pid 7 · up 1h 28m
   17 modules running
 ```
 :::
@@ -44,18 +44,18 @@ command in the `vyre` container, except three it handles itself: `vyre up` start
 is not running, waits up to a minute for Vyre, then prints the setup link or your address;
 `vyre update` upgrades (below); `vyre logs` follows Vyre's output.
 
-> [!SNAG] `vyre box` says "no box yet: vyre box add <user@host>"
-> The `vyre box` commands work only for a box this Mac knows the SSH target of. If you installed
-> the box with the curl installer on the server, run `vyre box add alex@192.0.2.10` once: it finds
+> [!SNAG] `vyre server` says "no box yet: vyre server add <user@host>"
+> The `vyre server` commands work only for a server this Mac knows the SSH target of. If you installed
+> the server with the curl installer on the server, run `vyre server add alex@192.0.2.10` once: it finds
 > Vyre already there and carries on from where it stands.
 
-> [!SNAG] `vyre box` says "not answering from here"
-> This Mac is not on your tailnet, or the box is down. Open Tailscale on the Mac, then check the
+> [!SNAG] `vyre server` says "not answering from here"
+> This Mac is not on your tailnet, or the server is down. Open Tailscale on the Mac, then check the
 > box with `vyre status` on the server. See [Tailscale](tailscale.md).
 
 ## Read its logs
 
-On the box:
+On the server:
 
 ```
 vyre logs      # follow Vyre's output (docker compose logs -f vyre)
@@ -91,16 +91,16 @@ with a way to change each cap.
 1. Run:
 
    ```
-   vyre box update
+   vyre server update
    ```
 
    It runs `vyre update` on the server over SSH, then compares versions.
 
-2. If the box is now newer than your Mac, it says so and prints the command that upgrades the
+2. If the server is now newer than your Mac, it says so and prints the command that upgrades the
    Mac:
 
    ```output
-     the box runs 0.0.2, newer than this Mac's 0.0.1: npm install -g https://vyre.run/box/vyre.tgz && vyre up
+     the server runs 0.0.2, newer than this Mac's 0.0.1: npm install -g https://vyre.run/box/vyre.tgz && vyre up
    ```
 ::: tab On a server
 ```
@@ -108,9 +108,9 @@ vyre update
 ```
 :::
 
-`vyre update` brings the box to the newest release. It asks GitHub Releases for `vyre-ai/vyre`:
+`vyre update` brings the server to the newest release. It asks GitHub Releases for `vyre-ai/vyre`:
 `stable` (the default) is the newest release that is not a prerelease, and `beta` is the newest of
-either. A stable box never takes a prerelease, such as `0.2.0-rc.1`: only a box you set to `beta`
+either. A stable box never takes a prerelease, such as `0.2.0-rc.1`: only a server you set to `beta`
 would. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a release by version
 with `--to 0.2.0`. While GitHub has no release yet, or when you set `VYRE_BOX_URL` yourself, it
 uses the site instead (`https://vyre.run/box/` by default), as it always has.
@@ -120,20 +120,20 @@ Vyre looks for a newer release once a day and keeps the answer, so Settings can 
 Turn on **Update automatically** in Settings (off by default) and Vyre asks for a new release by itself between 2 and 5 in the morning, once per version, the same way. The channel is the host's own: set `VYRE_CHANNEL=beta` in the server's `.env`, or leave it on stable. Set `auto` to `"off"` inside the `update` object in `config.json` to stop the daily look. On a Mac there is no update button: run `vyre update` (see Update Vyre on a Mac, below).
 
 Updates are signed. Every file comes from the release and is checked against its `SHA256SUMS`
-before anything on the box changes. The `SHA256SUMS` list itself is checked against its Ed25519
+before anything on the server changes. The `SHA256SUMS` list itself is checked against its Ed25519
 signature (`SHA256SUMS.sig`) from Vyre's release key, which is built into the `vyre` command. An
 unsigned or badly signed release is refused, and `vyre update --allow-unsigned` installs it anyway
 after a plain warning that nothing proves it came from Vyre. The same holds for `vyre update` on
-a Mac. A box that pulls its image instead of building it also checks every Vyre image of the
+a Mac. A server that pulls its image instead of building it also checks every Vyre image of the
 release with cosign against the release workflow's identity, and refuses to pull one it cannot
 check. Then, in order:
 
 1. It backs up the database with `vyre backup`, into `/home/vyre/.vyre/backups/pre-<version>.tar.gz`
    in the container, with a copy in `/srv/vyre/backups/` that only you can read. It is sealed like
    any `vyre backup` file and holds the sealed vault, so treat it like the vault.
-2. It tags the image that runs now as `vyre:prev`, and keeps the box files as they are in
+2. It tags the image that runs now as `vyre:prev`, and keeps the server files as they are in
    `/srv/vyre/box.prev/`.
-3. It refreshes the box files (`compose.yml`, `compose.build.yml`, `vyre.env.example`, `Dockerfile`,
+3. It refreshes the server files (`compose.yml`, `compose.build.yml`, `vyre.env.example`, `Dockerfile`,
    `dockerignore`) from the release. `.env` and `vyre.env` are never touched.
 4. When `/srv/vyre/.env` lists `compose.build.yml` in `COMPOSE_FILE` and `VYRE_SOURCE` is
    `/srv/vyre/src`, it swaps in the new `vyre.tgz` and keeps the old one as `/srv/vyre/src.prev`,
@@ -173,11 +173,11 @@ That drops everything written since the update, so it says what it would drop an
 type `restore`. Off a terminal, pass `--yes` instead.
 
 The image carries the Claude Agent SDK that Vyre's own sessions run on, with the Claude Code it
-bundles, in `/opt/vyre-sessions-sdk` ([ADR 0030](../adr/0030-sessions.md)). The box never
+bundles, in `/opt/vyre-sessions-sdk` ([ADR 0030](../adr/0030-sessions.md)). The server never
 downloads it at runtime. Its version is pinned as `VERSION` in `core/sessions/sdk-pin.js`: a bump there
 rebuilds the image, and `vyre update` brings it in like any other change.
 
-`vyre update` refreshes the box files and the wrapper. Running the installer again does too, and
+`vyre update` refreshes the server files and the wrapper. Running the installer again does too, and
 it also leaves `.env` and `vyre.env` alone:
 
 ```
@@ -237,12 +237,12 @@ asks you to type `restore`. With `--json`, or with no terminal, it needs `--yes`
 > A release sometimes needs an older one in between. Run the command it names, for example
 > `vyre update --to 0.2.0`, then `vyre update` again.
 
-On a box, the host's `vyre update` (above) does the job; inside the box's container,
+On a server, the host's `vyre update` (above) does the job; inside the server's container,
 `vyre update` says so and stops.
 
 ## Run the installer by hand
 
-`vyre box add` from the Mac runs the installer for you. On the server you can run it yourself:
+`vyre server add` from the Mac runs the installer for you. On the server you can run it yourself:
 
 ```
 curl -fsSL https://vyre.run/install.sh | sh
@@ -255,7 +255,7 @@ Pass options after `sh -s --`, for example `curl -fsSL https://vyre.run/install.
 |---|---|
 | `--dry-run` | prints every change and makes none (read-only checks still run) |
 | `--yes`, `-y` | answers yes to every question |
-| `--from DIR` | uses the box files in a local checkout and builds the image from it |
+| `--from DIR` | uses the server files in a local checkout and builds the image from it |
 | `--print-link` | ends with only two lines on stdout for a program to read, VYRE_LINK with the setup link and, when there is one, VYRE_SSH with the `ssh -L` line; everything else goes to stderr |
 | `--uninstall` | stops Vyre and removes `/usr/local/bin/vyre`; your data stays |
 | `--purge` | with `--uninstall`: also deletes the volumes, after listing them and asking |
@@ -263,7 +263,7 @@ Pass options after `sh -s --`, for example `curl -fsSL https://vyre.run/install.
 | Variable | Default | Does |
 |---|---|---|
 | `VYRE_DIR` | `/srv/vyre` | where the stack goes |
-| `VYRE_BOX_URL` | `https://vyre.run/box/` | where the box files come from |
+| `VYRE_BOX_URL` | `https://vyre.run/box/` | where the server files come from |
 | `VYRE_IMAGE` | `ghcr.io/vyre-ai/vyre:latest` | the image to pull |
 | `VYRE_BUILD=tgz` | | builds from `vyre.tgz` even when the image can be pulled |
 | `VYRE_LINK_ONLY=1` | | the same as `--print-link` |
@@ -282,7 +282,7 @@ What it does, in order:
    wrapper and, for a build, `vyre.tgz`, and checks each against its line. A missing line or a
    different hash stops the install before anything is written. With `--from DIR` the files come
    from the checkout instead.
-6. Creates `/srv/vyre`, owned by you (the account that ran `sudo`, if you did), writes the box
+6. Creates `/srv/vyre`, owned by you (the account that ran `sudo`, if you did), writes the server
    files into it, and unpacks `vyre.tgz` into `/srv/vyre/src` for a build.
 7. Writes `/srv/vyre/.env` (mode 0600) with `COMPOSE_PROJECT_NAME=vyre`, `COMPOSE_FILE`
    (plus `VYRE_SOURCE` for a build) and `DOCKER_GID`, the group that owns the Docker socket. It
@@ -299,7 +299,7 @@ sudo and says so; from then on the host's commands need `sudo vyre`.
 > [!WHY] Why not just add me to the docker group?
 > Membership of the `docker` group saves typing `sudo vyre`, and makes your account
 > root-equivalent on that server: anyone who can talk to Docker can start a container that mounts
-> `/`. The installer leaves that choice to you. `vyre box add` offers it in its plan, because
+> `/`. The installer leaves that choice to you. `vyre server add` offers it in its plan, because
 > later steps over SSH cannot type a sudo password.
 
 > [!SNAG] "Docker is installed but not running."
@@ -313,7 +313,7 @@ sudo and says so; from then on the host's commands need `sudo vyre`.
 
 There are two kinds of backup.
 
-**Vyre's own data**, taken while Vyre runs, on the box:
+**Vyre's own data**, taken while Vyre runs, on the server:
 
 ```
 vyre backup                  # vyre-backup-YYYY-MM-DD.vyre in /home/vyre, asks for a passphrase
@@ -323,31 +323,31 @@ It asks for a passphrase twice (12 characters or more) and seals the file with i
 unencrypted backup, and the file opens only with that passphrase. It holds `config.json`, a
 consistent copy of the store (taken with SQLite's `VACUUM INTO` while Vyre writes), `vault/`,
 `watchers/`, `modules/`, `certs/`, `names/` and `data/` (your artifacts), plus your project files
-(the box's `/work`) and your session transcripts. Add `--skip-projects` if your projects live in
+(the server's `/work`) and your session transcripts. Add `--skip-projects` if your projects live in
 git or Drive, and `--skip-transcripts` to leave the transcripts out. It leaves out `models/`,
 `logs/`, the socket and the pid file, and your Claude, Codex and Grok sign-ins: sign in again after
 a restore, or pass `--with-provider-logins` to carry them. An unfinished backup resumes when you run
 the same command again. The file lands in `/home/vyre`, inside the `vyre_vyre-home` volume. Copy
-it off the box:
+it off the server:
 
 ```
 cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.vyre .
 ```
 
-**Everything**, Claude Code's sign-in and transcripts, your projects in `/work` and the box's
+**Everything**, Claude Code's sign-in and transcripts, your projects in `/work` and the server's
 Tailscale identity included, from the Mac:
 
 ```
-vyre box backup                         # vyre-box-backup-YYYY-MM-DD.tar.gz here
-vyre box backup ~/Backups/box.tar.gz
+vyre server backup                         # vyre-box-backup-YYYY-MM-DD.tar.gz here
+vyre server backup ~/Backups/box.tar.gz
 ```
 
-The box is stopped while this runs: it stops the stack, copies the `vyre-home`, `vyre-work` and
+The server is stopped while this runs: it stops the stack, copies the `vyre-home`, `vyre-work` and
 `tailscale-state` volumes into one file on your Mac (mode 0600), and starts the stack again, even
 if the copy fails or you press Control-C. `--force` replaces an existing file.
 
 Both files contain your sealed vault. Keep them somewhere only you can read. The `vyre backup`
-file is already sealed with its passphrase; encrypt the `vyre box backup` file yourself
+file is already sealed with its passphrase; encrypt the `vyre server backup` file yourself
 (`age -r <key> file`).
 
 ## Restore
@@ -363,7 +363,7 @@ docker compose run --rm vyre vyre restore /home/vyre/vyre-backup-2026-09-27.vyre
 vyre up
 ```
 
-Restore asks for the backup's passphrase. Without `--force`, it refuses to replace a store the box already has. It also refuses an
+Restore asks for the backup's passphrase. Without `--force`, it refuses to replace a store the server already has. It also refuses an
 archive with paths outside the known folders, or with links in it.
 
 The backup carries the artifacts your agents made (`data/artifacts`: every version, a dashboard's
@@ -374,7 +374,7 @@ failed restore keeps what was there. If the power fails between those two steps,
 your artifacts are there. Public links come back as they were when the backup was made: a link that
 was on then is on again.
 
-A `vyre box backup` file holds the three volumes as folders (`vyre-home/`, `vyre-work/`,
+A `vyre server backup` file holds the three volumes as folders (`vyre-home/`, `vyre-work/`,
 `tailscale-state/`). To put it on a server that has no Vyre volumes yet, install without starting,
 create the volumes the way Compose would, unpack into them, then start:
 
@@ -389,9 +389,9 @@ docker run --rm -i -v vyre_vyre-home:/b/vyre-home -v vyre_vyre-work:/b/vyre-work
 vyre up
 ```
 
-Because `tailscale-state` comes back too, the box returns with the same Tailscale name and
+Because `tailscale-state` comes back too, the server returns with the same Tailscale name and
 address. Start the old server's stack again only after you have taken Vyre off it: two nodes with
-one identity fight over it. To go from one live server to another, `vyre box move` (next) does all
+one identity fight over it. To go from one live server to another, `vyre server move` (next) does all
 of this for you.
 
 ## Move to another server
@@ -399,42 +399,42 @@ of this for you.
 From the Mac:
 
 ```
-vyre box move alex@192.0.2.20
+vyre server move alex@192.0.2.20
 ```
 
 It installs Vyre on the new server, stops the old stack, streams the three volumes from old to
 new through your Mac, starts the new one, and waits for it to answer at the same address. Because
-`tailscale-state` moves too, the box keeps its Tailscale name, address and certificate. Once the
+`tailscale-state` moves too, the server keeps its Tailscale name, address and certificate. Once the
 new box answers, Vyre is taken off the old server, whose volumes stay until you delete them.
 
-The new server must not already hold a box or Vyre volumes. If anything fails after the old stack
+The new server must not already hold a server or Vyre volumes. If anything fails after the old stack
 stops, the move stops the new one and starts the old one again, and says which.
 
 ## Turn on agents' computers
 
 Agents' computers run as their own containers through Vyre's Docker proxy, which is off by
-default. On the box, add to `/srv/vyre/.env`:
+default. On the server, add to `/srv/vyre/.env`:
 
 ```
 COMPOSE_PROFILES=computers
 ```
 
 then run `vyre up`. What the proxy allows is in
-[The box and the Mac](../concepts/box-and-mac.md#the-agents-computers). See [Glass](glass.md) for
+[The server and the Mac](../concepts/box-and-mac.md#the-agents-computers). See [Glass](glass.md) for
 using the computers.
 
 ## Remove it
 
-If you claimed a `vyre.run` name, run `vyre name release` on the box first to give it up. A name that was pointed at a server stays reserved afterwards, so nobody, you included, can claim it again.
+If you claimed a `vyre.run` name, run `vyre name release` on the server first to give it up. A name that was pointed at a server stays reserved afterwards, so nobody, you included, can claim it again.
 
 ::: tabs
 ::: tab On this Mac
 ```
-vyre box remove           # stop the stack, remove /usr/local/bin/vyre, keep the volumes
-vyre box remove --purge   # also delete the volumes, after the server asks
+vyre server remove           # stop the stack, remove /usr/local/bin/vyre, keep the volumes
+vyre server remove --purge   # also delete the volumes, after the server asks
 ```
 
-It lists what it will do and asks first. Afterwards this Mac forgets the box.
+It lists what it will do and asks first. Afterwards this Mac forgets the server.
 ::: tab On a server
 ```
 curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall
@@ -451,7 +451,7 @@ with `sudo rm -rf /srv/vyre`. The installer never removes Docker, and leaves the
 
 On the Mac, `vyre down && npm rm -g vyre` removes Vyre and leaves `~/.vyre`.
 
-## A box without Docker
+## A server without Docker
 
 A Linux box installed from npm with systemd units is upgraded with
 `sudo npm install -g https://vyre.run/box/vyre.tgz && vyre up`, and removed with
@@ -460,15 +460,15 @@ A Linux box installed from npm with systemd units is upgraded with
 
 ## Next
 
-- [The box and the Mac](../concepts/box-and-mac.md): what runs where, the folders and volumes, and
-  who can reach the box.
+- [The server and the Mac](../concepts/box-and-mac.md): what runs where, the folders and volumes, and
+  who can reach the server.
 - [Troubleshooting](../get-started/troubleshooting.md), when something does not start.
-- [CLI reference](../reference/cli.md#vyre-box), every `vyre box` form.
+- [CLI reference](../reference/cli.md#vyre-server), every `vyre server` form.
 
 ## What root runs, and what it reads
 
-Updates that run as root (the automatic path from Settings and `sudo vyre update`) never read a file you or an agent on your account can write as configuration. Root starts compose from its own copies of the released compose.yml, in a folder only root can write, with a root-written env file and every file, project and folder named explicitly. It refuses an override file or a COMPOSE_* setting, takes how the box is built (pulled, built from the released source, or from your own checkout) from a record it made when the updater was installed, and checks every ghcr.io/vyre-ai image of a release with cosign before pulling. `sudo vyre up` and the other root commands use the same copies once the updater is installed. A host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
+Updates that run as root (the automatic path from Settings and `sudo vyre update`) never read a file you or an agent on your account can write as configuration. Root starts compose from its own copies of the released compose.yml, in a folder only root can write, with a root-written env file and every file, project and folder named explicitly. It refuses an override file or a COMPOSE_* setting, takes how the server is built (pulled, built from the released source, or from your own checkout) from a record it made when the updater was installed, and checks every ghcr.io/vyre-ai image of a release with cosign before pulling. `sudo vyre up` and the other root commands use the same copies once the updater is installed. A host with no updater (no systemd) keeps the stack folder's files, as the installer laid them down.
 
-One thing no script can fix: if your account may run `sudo` without a password, anything running as you can already become root, and none of this protects you from it. Keep `sudo` asking for a password on a box where agents run as your account.
+One thing no script can fix: if your account may run `sudo` without a password, anything running as you can already become root, and none of this protects you from it. Keep `sudo` asking for a password on a server where agents run as your account.
 
 Being in the docker group is equivalent to root on that host, so only the owner should be in it. The installer's own first `vyre up` runs as you, straight after it lays down the files it just verified; root's copies exist from the next step, when the updater is installed.

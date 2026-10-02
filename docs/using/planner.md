@@ -1,6 +1,6 @@
 ---
 title: Planner
-summary: Alarms, timers, reminders, todos and notes kept on your box, so they ring on your phone and in the Deck even when your Mac is shut, and your agents can add them too.
+summary: Alarms, timers, reminders, todos and notes kept on your server, so they ring on your phone and in the Deck even when your Mac is shut, and your agents can add them too.
 audience: users, agents
 owner: docs
 status: draft
@@ -8,11 +8,11 @@ status: draft
 
 # Planner
 
-The planner keeps your alarms, timers, reminders, todos and notes on your box, with one clock
+The planner keeps your alarms, timers, reminders, todos and notes on your server, with one clock
 that rings them. When something is due, every surface hears it at once: a notification on each
 device that has push on, and a banner in the Deck. Answer it on one and it stops on all of them.
 Your connected Google calendars are copied in too, so the agenda shows your whole day and an
-event reminds you before it starts. A Mac paired with a box sends every change to the box; a Mac
+event reminds you before it starts. A Mac paired with a server sends every change to the server; a Mac
 on its own runs the planner itself.
 
 ## Set an alarm, a timer or a reminder from the terminal
@@ -58,7 +58,7 @@ The agenda shows alarms, timers, reminders, the planner's own events and every c
 calendar's events in time order, then the todos due by the end of the day, overdue ones included.
 
 In the Deck, open **Planner** (`/planner`). It shows today's agenda, the next five alarms and
-timers with a box to add one in words, your open todos with a checkbox to finish each, and your
+timers with a server to add one in words, your open todos with a checkbox to finish each, and your
 notes, pinned first.
 
 ## Answer something that is ringing

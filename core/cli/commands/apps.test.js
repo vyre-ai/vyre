@@ -95,7 +95,7 @@ test("apps cli: a refused proof, an ambiguous route and a setup error print in w
 
   const down = fake({ "apps.route": { error: { code: "unreachable", message: "no socket" } } });
   assert.equal(await runApps(["timer", "1", "min"], down.deps), 1);
-  assert.match(down.lines[0], /vyred is not running/);
+  assert.match(down.lines[0], /Vyre is not running/);
 });
 
 test("apps cli: --app and --model reach apps.route; --json prints vyred's answer", async () => {

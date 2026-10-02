@@ -1,7 +1,7 @@
 {
   "name": "planner",
   "version": "0.1.0",
-  "description": "Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut.",
+  "description": "Alarms, timers, reminders, todos, notes and a calendar, kept on the server so something rings when the Mac is shut.",
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": [

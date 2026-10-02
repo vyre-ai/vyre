@@ -216,7 +216,7 @@ async function show(home = config.home()) {
     if (line) return shown(line, "file");
   } catch {}
   if (json()) return failTool(r.error || { code: "unreachable" });
-  out(`  vyred is not running ${dim("· vyre up to start it")}`);
+  out(`  Vyre is not running ${dim("· vyre up to start it")}`);
   return 1;
 }
 

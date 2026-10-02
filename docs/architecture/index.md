@@ -12,7 +12,7 @@ Vyre is one small daemon, `vyred`, on each machine you own, plus a Claude Code p
 
 ## One process per machine
 
-`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the box and on the Mac, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the box (names, onboarding, agents' computers, Glass), and the Local modules run only on the Mac. The exact split is in [The box and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
+`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the server and on the Mac, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the server (names, onboarding, agents' computers, Glass), and the Local modules run only on the Mac. The exact split is in [The server and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
 
 Everything is a module, including the core services, and every module uses the same contract: a `module.json` manifest and an entry file that registers tools and emits events. See [Modules](../concepts/modules.md) and [The module contract](../build/module-contract.md). The loaded set on this branch is listed in the [module reference](../reference/modules.md).
 
@@ -20,13 +20,13 @@ Everything is a module, including the core services, and every module uses the s
 
 | Layer | Where it runs | What it is | Code |
 | --- | --- | --- | --- |
-| Core | the box (and the Mac, for the parts a Mac needs) | The services inside `vyred`: config, the store (SQLite through `node:sqlite`), the event log, the module loader, projects and threads, recall, memory, the vault, watchers, the Gate, the Switchboard (headless sessions), agents, computers, names and certificates, pairing, files, presence, learning, push. | `core/` |
+| Core | the server (and the Mac, for the parts a Mac needs) | The services inside `vyred`: config, the store (SQLite through `node:sqlite`), the event log, the module loader, projects and threads, recall, memory, the vault, watchers, the Gate, the Switchboard (headless sessions), agents, computers, names and certificates, pairing, files, presence, learning, push. | `core/` |
 | Harness | inside every Claude Code session Vyre starts, and any session with the plugin installed | A Claude Code plugin. Vyre's own sessions load it with `--plugin-dir`, so your global Claude Code setup is never changed; you can also install it in your own Claude Code from the `vyre-ai/vyre` marketplace ([ADR 0020](../adr/0020-claude-code-plugin.md)). Hooks (Brief at session start, Enrich on each prompt, Rules before each tool call, Learn after file changes and commands, Stop at the end of each turn), the `vyre` MCP server that exposes module tools to Claude, three skills and the `/vyre` command. Every hook starts at `harness/hooks/run.js`, which runs the Vyre package's `harness/hooks/hook.js`, which calls `vyred`; with no Vyre on the machine it says how to install it once and does nothing else. If `vyred` is not running, Rules still runs in-process, so the floor holds. | `harness/` |
 | Local | the Mac only | Lumen (the Control-twice command bar) and `hands-mac` (computer use through the macOS accessibility tree). | `local/` |
 
 Optional first-party modules live in `modules/`: `hands-desktop` and `hands-chrome` (module name `chrome`) for agents' computers. `modules/vault-extension` is not a vyred module: it is the browser extension for vault autofill.
 
-The box and the Mac are paired into one system by `core/link`: the Mac can call the box's tools, the box's events reach the Mac, and the box reads the Mac's sessions through a request the Mac holds open, so the Mac opens no port ([ADR 0021](../adr/0021-box-reads-the-mac.md)). See [The box and the Mac](../concepts/box-and-mac.md).
+The server and the Mac are paired into one system by `core/link`: the Mac can call the server's tools, the server's events reach the Mac, and the server reads the Mac's sessions through a request the Mac holds open, so the Mac opens no port ([ADR 0021](../adr/0021-box-reads-the-mac.md)). See [The server and the Mac](../concepts/box-and-mac.md).
 
 The floor's rules run twice: in Claude Code's `PreToolUse` hook, and in `vyred` for every tool call that does not come from you at your own surface. See [the security floor](../concepts/floor.md#where-the-floor-lives).
 
@@ -64,7 +64,7 @@ docs/             these pages, the spec, the ADRs
 test/             cross-module tests; unit tests sit beside their code
 ```
 
-Runtime data never lives in the repository. It lives in `~/.vyre/` (override with `VYRE_HOME`): `config.json`, the store `vyre.db`, the sealed `vault/`, installed `modules/`, `watchers/`, `certs/`, `models/` and `embedder/` (the search model, fetched on first use), `logs/` and the socket. On a Docker box that folder is inside the `vyre_vyre-home` volume. See [Looking after the box](../using/box-care.md).
+Runtime data never lives in the repository. It lives in `~/.vyre/` (override with `VYRE_HOME`): `config.json`, the store `vyre.db`, the sealed `vault/`, installed `modules/`, `watchers/`, `certs/`, `models/` and `embedder/` (the search model, fetched on first use), `logs/` and the socket. On a Docker box that folder is inside the `vyre_vyre-home` volume. See [Looking after the server](../using/box-care.md).
 
 ## Principles that shape the code
 
@@ -98,7 +98,7 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | [0016](../adr/0016-connectors.md) | Connectors, the MCP hub and native accounts (proposed) |
 | [0019](../adr/0019-docs-site.md) | This docs site: one source in `docs/`, checked and built without a framework |
 | [0020](../adr/0020-claude-code-plugin.md) | Vyre as an installable Claude Code plugin |
-| [0021](../adr/0021-box-reads-the-mac.md) | The box reads the paired Mac through the link |
+| [0021](../adr/0021-box-reads-the-mac.md) | The server reads the paired Mac through the link |
 
 ## Where to go next
 

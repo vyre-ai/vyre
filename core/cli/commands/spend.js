@@ -21,7 +21,7 @@ export default {
   async run(args) {
     const words = args.filter(a => !a.startsWith("--"));
     const up = await ensureUp();
-    if (!up.ok) { out(beacon("  vyred did not start") + dim(` · its output is in ${up.log}`)); return 1; }
+    if (!up.ok) { out(beacon("  Vyre did not start") + dim(` · its output is in ${up.log}`)); return 1; }
     if (words[0] === "raise") {
       const [, provider, amount] = words;
       if (!provider || !amount) throw new UsageError("vyre spend raise <provider> <usd|+usd|off>");

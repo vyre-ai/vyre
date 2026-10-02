@@ -24,7 +24,7 @@ test("cli: up, status, call, down against a temp home", async t => {
   const env = { VYRE_HOME: tempHome(t) };
   t.after(() => run(["down"], env));
   // A fresh home gets the welcome; an existing one the status line.
-  assert.match((await run(["up"], env)).out, /Vyre is installed|vyred running/);
+  assert.match((await run(["up"], env)).out, /Vyre is installed|is running/);
   assert.match((await run(["up"], env)).out, /already running/);
   assert.match((await run(["status"], env)).out, /modules running/);
   const echo = await run(["call", "system.echo", '{"text":"hi"}'], env);
@@ -33,9 +33,9 @@ test("cli: up, status, call, down against a temp home", async t => {
   const bad = await run(["call", "system.echo", "{}"], env);
   assert.equal(bad.code, 1);
   assert.match(bad.out, /bad_input/);
-  assert.match((await run(["down"], env)).out, /vyred stopped/);
+  assert.match((await run(["down"], env)).out, /Vyre stopped/);
   const after = await run(["status"], env);
-  assert.equal(after.code, 5, "vyred not running is exit 5");
+  assert.equal(after.code, 5, "Vyre not running is exit 5");
   assert.match(after.out, /not running/);
 });
 

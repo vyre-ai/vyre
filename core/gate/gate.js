@@ -144,7 +144,7 @@ export class Gate {
    */
   recover() {
     const r = this.db.prepare("UPDATE gate_items SET state = 'held', error = ? WHERE state = 'sending'")
-      .run("vyred stopped while this was being sent; it may already have gone out. Check before approving again.");
+      .run("Vyre stopped while this was being sent; it may already have gone out. Check before approving again.");
     return Number(r.changes);
   }
 

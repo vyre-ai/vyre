@@ -33,7 +33,7 @@ function parse(args) {
 
 async function up() {
   const r = await ensureUp();
-  if (!r.ok) fail("vyred did not start", { code: "unreachable", exit: 5, next: `its output is in ${r.log}` });
+  if (!r.ok) fail("Vyre did not start", { code: "unreachable", exit: 5, next: `its output is in ${r.log}` });
   return r.ok;
 }
 

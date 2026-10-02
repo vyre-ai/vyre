@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre send <file> [more files]`: send files from this Mac to the box with Taildrop.
+// `vyre send <file> [more files]`: send files from this Mac to the server with Taildrop.
 //
 // Each file is one files.send call, in turn, with one line for each. A refused or failed file
 // does not stop the rest; the exit code says whether any failed. --json prints one value at the
@@ -17,7 +17,7 @@ const TIMEOUT = 61 * 60_000;
 const size = n => n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;
 
 export default {
-  name: "send", order: 46, usage: "vyre send <file...> [--json]", summary: "send files from this Mac to your box with Taildrop",
+  name: "send", order: 46, usage: "vyre send <file...> [--json]", summary: "send files from this Mac to your server with Taildrop",
   // No verbs: every word is a file (vyre commands --json reads its args from the usage line).
   verbs: [],
   async run(args) {
@@ -28,7 +28,7 @@ export default {
       const r = await call("files.send", { path: path.resolve(f) }, { timeout: TIMEOUT });
       if (r.error && r.error.code === "unreachable") {
         if (json()) return failTool(r.error);
-        out(`  vyred is not running ${dim("· vyre up to start it")}`);
+        out(`  Vyre is not running ${dim("· vyre up to start it")}`);
         return 1;
       }
       if (r.error) {

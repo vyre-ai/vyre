@@ -25,7 +25,7 @@ version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 # own version does not move with them, and the file the update writes is the honest record.
 # An install has no VERSION file until its first update, so until then the running image's version is the record.
 hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else version; fi; }
-ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
+ready() { i=0; until vyre status 2>/dev/null | grep -q ' is running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
 mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
 statusf() { sudo cat "$ST/status/status.json" 2>/dev/null | tr -d '\n'; }

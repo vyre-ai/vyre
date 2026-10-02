@@ -1,24 +1,24 @@
 // @ts-check
-// `vyre phone`: put a phone on the box, and look after the phones it has.
+// `vyre phone`: put a phone on the server, and look after the phones it has.
 //
 //   vyre phone add [--iphone|--android]    the steps the Deck's "Add your phone" sheet shows: the
 //                                          box's address (and a QR of it), the network, a one-time
 //                                          code for the passkey, how to install, then live checks
 //                                          The relay is the default: a single-use QR from
 //                                          relay.pair.start, then Tailscale as an optional last step
-//   vyre phone add --tailscale-only        Tailscale on the phone first, and the box's address
+//   vyre phone add --tailscale-only        Tailscale on the phone first, and the server's address
 //   vyre phone add --android --usb         the native app over a cable (adb); --wireless for
-//                                          Wireless debugging. The APK comes from the box
+//                                          Wireless debugging. The APK comes from the server
 //   vyre phone list                        the devices that get notifications, and the passkeys
 //   vyre phone remove <id>...              forget a notification device or remove a passkey
 //   vyre phone test [id]                   send a test notification
 //
-// The phone pairs with the box, so on a box every call is local; on a Mac linked to a box the
-// reads go over link.call. Minting the code and removing a passkey need presence on the box
-// itself, which a Mac cannot give over the link (a passkey is the only proof the box takes from
-// another machine, ADR 0004), so from a Mac those two point at the box or the Deck instead.
+// The phone pairs with the server, so on a server every call is local; on a Mac linked to a server the
+// reads go over link.call. Minting the code and removing a passkey need presence on the server
+// itself, which a Mac cannot give over the link (a passkey is the only proof the server takes from
+// another machine, ADR 0004), so from a Mac those two point at the server or the Deck instead.
 //
-// The checks watch what the box can see, on one event stream: a new push device (push.subscribed
+// The checks watch what the server can see, on one event stream: a new push device (push.subscribed
 // triggers a read at once; push.devices is also read again every 60 s and whenever Enter is
 // pressed), a new passkey (presence.enrolled), a test notification the phone showed (push.test with
 // a receipt, then push.delivered carrying it back), and the app opened installed (push.seen with
@@ -26,12 +26,12 @@
 // HTTPS is inferred: a browser offers push and passkeys only on a secure page. Without push.seen,
 // opened as an app is known only for an iPhone (Apple sends web push to Home Screen apps alone).
 // Whether the phone's path is direct or relayed: the relay says so for its own devices
-// (relay.devices.list path "relay"); for a phone on the tailnet the box cannot say yet.
-// The relay tools (ADR 0026) are found by trying them: a box without the relay module answers
+// (relay.devices.list path "relay"); for a phone on the tailnet the server cannot say yet.
+// The relay tools (ADR 0026) are found by trying them: a server without the relay module answers
 // no_such_tool, and everything here works without them.
 //
-// The native Android app: the box's releases module serves <box>/v1/releases/android (version,
-// sha, sha256, size, minSdk, file) and the APK at <box>/v1/releases/android?file=<file>. CI builds and signs it; the box and
+// The native Android app: the server's releases module serves <box>/v1/releases/android (version,
+// sha, sha256, size, minSdk, file) and the APK at <box>/v1/releases/android?file=<file>. CI builds and signs it; the server and
 // this command never re-sign. --usb and --wireless download it over the tailnet, check its size
 // and sha256, install it with adb and open it on the pairing offer.
 //
@@ -70,7 +70,7 @@ const APPLE = /(^|\.)push\.apple\.com$/;
 // ------------------------------------------------------------ where the phone pairs
 
 /**
- * The box this terminal reaches, and how to call it. On a box: this vyred. On a Mac: the box it
+ * The server this terminal reaches, and how to call it. On a server: this vyred. On a Mac: the server it
  * is linked to, over link.call. Null after printing why there is none.
  * @returns {Promise<{ local: boolean, address: string|null, tool: (name: string, input?: any) => Promise<any> } | null>}
  */
@@ -84,7 +84,7 @@ export async function target() {
     return { local: true, address, tool: (name, input = {}) => call(name, input) };
   }
   if (!s.data || !s.data.linked) {
-    fail("this Mac is not paired with a box, and a phone pairs with the box", { next: "vyre link pair <address>, or run vyre phone add on the box" });
+    fail("this Mac is not paired with a server, and a phone pairs with the server", { next: "vyre link pair <address>, or run vyre phone add on the server" });
     return null;
   }
   return { local: false, address: s.data.box.address, tool: async (name, input = {}) => call("link.call", { tool: name, input }) };
@@ -93,14 +93,14 @@ export async function target() {
 const hostOf = a => { try { return new URL(String(a)).hostname; } catch { return String(a || ""); } };
 /** "tail0000" from vyre.tail0000.ts.net; null for any other name. */
 const tailnetOf = a => { const m = /^[^.]+\.([^.]+)\.ts\.net$/.exec(hostOf(a)); return m ? m[1] : null; };
-/** A code is typed by hand: shown in fours, and the box ignores the dash. */
+/** A code is typed by hand: shown in fours, and the server ignores the dash. */
 const spaced = c => String(c).replace(/(.{4})(?=.)/g, "$1-");
 const list = r => (Array.isArray(r.data) ? r.data : []);
-/** relay.devices.list's devices, or [] when the box has no relay (no_such_tool) or it fails. */
+/** relay.devices.list's devices, or [] when the server has no relay (no_such_tool) or it fails. */
 const relayDevices = r => (r && r.data && Array.isArray(r.data.devices) ? r.data.devices : []);
 
 /**
- * Whether the box serves a page: one HEAD, 3 s, no retry. Any failure is "no".
+ * Whether the server serves a page: one HEAD, 3 s, no retry. Any failure is "no".
  * @param {string} url @param {typeof fetch} f
  */
 async function hasPage(url, f) {
@@ -119,7 +119,7 @@ async function hasPage(url, f) {
  */
 
 /**
- * The five checks from what the box has seen since the start. Pure, for tests. `delivered`: the
+ * The five checks from what the server has seen since the start. Pure, for tests. `delivered`: the
  * phone posted back the test's receipt (push.delivered); `standalone`: a screen said it runs as an
  * installed app (push.seen) since the start.
  * @param {Seen} before @param {Seen} now
@@ -132,7 +132,7 @@ export function evaluate(before, now, { address = null, tested = null, delivered
   const relayed = (now.relay || []).filter(r => !had.has("relay:" + r.id));
   const keys = now.keys.filter(k => k.kind === "passkey" && !had.has(k.id));
   const any = devices.length > 0 || keys.length > 0 || relayed.length > 0;
-  // path and rtt: the relay says how each device reaches the box (relay, or direct once the app
+  // path and rtt: the relay says how each device reaches the server (relay, or direct once the app
   // has linked its tailnet node) and the round trip, when it has one.
   const viaRelay = relayed.find(r => r.path === "relay" || r.path === "direct");
   // A device paired through the relay enrolls its own presence key (relay.devices.list presence).
@@ -140,7 +140,7 @@ export function evaluate(before, now, { address = null, tested = null, delivered
   const https = String(address || "").startsWith("https:");
   const apple = devices.some(d => APPLE.test(String(d.service)));
   // A receipt means the phone says when it shows the test; without one (an older vyred) the
-  // push service taking it is all the box can know.
+  // push service taking it is all the server can know.
   const receipted = !tested || Boolean(tested.receipt);
   const push = !tested ? { state: "wait" }
     : tested.sent === 0 ? { state: "failed", note: `the push service refused it · vyre phone test ${tested.device}` }
@@ -148,19 +148,19 @@ export function evaluate(before, now, { address = null, tested = null, delivered
     : delivered ? { state: "ok", note: "the phone showed it" }
     : { state: "wait", note: "sent, waiting for the phone" };
   return [
-    { id: "reached", label: "Phone reached the box", state: any ? "ok" : "wait",
-      note: viaRelay ? `${viaRelay.path === "direct" ? "direct" : "via relay"}${viaRelay.rtt != null && Number.isFinite(Number(viaRelay.rtt)) ? ` ${Math.round(Number(viaRelay.rtt))} ms` : ""}` : any ? "direct or relayed: the box cannot tell for a tailnet phone yet" : undefined },
+    { id: "reached", label: "Phone reached the server", state: any ? "ok" : "wait",
+      note: viaRelay ? `${viaRelay.path === "direct" ? "direct" : "via relay"}${viaRelay.rtt != null && Number.isFinite(Number(viaRelay.rtt)) ? ` ${Math.round(Number(viaRelay.rtt))} ms` : ""}` : any ? "direct or relayed: the server cannot tell for a tailnet phone yet" : undefined },
     { id: "https", label: "Secure address works (HTTPS)", state: any && https ? "ok" : !https && address ? "failed" : "wait",
       note: any && https ? "a browser offers notifications and passkeys only on a secure page" : !https && address ? `${address} is not https` : undefined },
     { id: "app", label: "Opened as an app, not a browser tab", state: standalone || apple ? "ok" : devices.length ? "unknown" : "wait",
-      note: standalone ? "Vyre said it runs installed" : apple ? "an iPhone sends notifications only from the Home Screen app" : devices.length ? "the box cannot tell an Android app from a tab yet" : undefined },
+      note: standalone ? "Vyre said it runs installed" : apple ? "an iPhone sends notifications only from the Home Screen app" : devices.length ? "the server cannot tell an Android app from a tab yet" : undefined },
     { id: "push", label: receipted ? "Test notification arrived" : "Test notification sent", state: /** @type {Check["state"]} */ (push.state), note: push.note },
     { id: "passkey", label: "Face ID key saved for approvals", state: keyed ? "ok" : "wait",
       note: keys.length ? String(keys[0].name || keys[0].id) : keyed ? String((relayed.find(r => r.presence) || {}).name || "through the relay") : undefined },
   ];
 }
 
-/** Everything the box can prove is done: all but "opened as an app" on Android. */
+/** Everything the server can prove is done: all but "opened as an app" on Android. */
 const finished = checks => checks.every(c => c.state === "ok" || (c.id === "app" && c.state === "unknown"));
 
 const mark = c => c.state === "ok" ? signal("✓") : c.state === "failed" ? beacon("✗") : c.state === "unknown" ? dim("?") : dim("·");
@@ -172,7 +172,7 @@ const checkLine = c => `    ${mark(c)} ${c.state === "ok" ? c.label : c.state ==
 const payloadOf = f => { try { const e = JSON.parse(f.data || "{}"); return (e && e.payload) || e || {}; } catch { return {}; } };
 
 /**
- * Follow some of the box's events: this vyred's stream on a box, the link's copy of the box's
+ * Follow some of the server's events: this vyred's stream on a server, the link's copy of the server's
  * stream on a Mac. The stream filters by one type only, so for several it takes everything and
  * keeps these here. Returns a stop function. Losing the stream only leaves the 60 s re-read.
  * @param {boolean} local @param {string[]} types @param {(type: string, payload: any) => void} onEvent
@@ -214,23 +214,23 @@ function follow(local, types, onEvent) {
 export async function add(flags, deps = {}) {
   const t = await target();
   if (!t) return EXIT.FAILED;
-  if (!t.address) return fail("the box has no address yet, so a phone cannot reach it", { next: "vyre name, then vyre phone add" });
+  if (!t.address) return fail("the server has no address yet, so a phone cannot reach it", { next: "vyre name, then vyre phone add" });
   const address = t.address.replace(/\/$/, "");
   const io = deps.io || personIO();
 
   // The pairing first: it is the one step that asks the person, and nothing is worth showing
   // without it. The relay's single-use QR (https://vyre.run/pair#<offer>); on a Mac it is minted
-  // on the box through the link. A box without the relay falls back to Tailscale and says so.
+  // on the server through the link. A box without the relay falls back to Tailscale and says so.
   let code = null, expires = Date.now() + (deps.life ?? CODE_LIFE);
   /** @type {string|null} */ let offer = null;
   let noRelay = false;
-  // From a Mac the box cannot check a proof made here (link.call refuses human-only tools, and a
-  // Touch ID on the Mac is not something the box can verify), so pairing happens on the box.
+  // From a Mac the server cannot check a proof made here (link.call refuses human-only tools, and a
+  // Touch ID on the Mac is not something the server can verify), so pairing happens on the server.
   // TODO(e2e, ADR 0032): the Mac's Secure Enclave device key (approved, after batch 2) will let
-  // the Mac prove human-only calls to the box; then call relay.pair.start through the link here.
+  // the Mac prove human-only calls to the server; then call relay.pair.start through the link here.
   if (!t.local && !flags.tailscaleOnly) {
-    return fail("pairing a phone needs you at the box, and this Mac cannot prove that to it",
-      { next: "open your box's Deck (Settings, Devices, Add a device), or run vyre phone add on the box itself" });
+    return fail("pairing a phone needs you at the server, and this Mac cannot prove that to it",
+      { next: "open your server's Deck (Settings, Devices, Add a device), or run vyre phone add on the server itself" });
   }
   if (!flags.tailscaleOnly) {
     const r = await callAsPerson("relay.pair.start", {}, { io });
@@ -249,7 +249,7 @@ export async function add(flags, deps = {}) {
   }
 
   const ts = await (deps.tailscale || (() => tailnet.status()))().catch(() => null);
-  // The native Android app, when the box serves one: one manifest fetch, no retries.
+  // The native Android app, when the server serves one: one manifest fetch, no retries.
   const served = flags.iphone ? null : appManifest((deps.base || address).replace(/\/$/, ""), deps.fetch || globalThis.fetch);
   const [d0, k0, r0, am] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list"), served]);
   const app = am && am.manifest ? { version: am.manifest.version, url: `${address}/v1/releases/android?file=${encodeURIComponent(apkName(am.manifest))}` } : null;
@@ -258,7 +258,7 @@ export async function add(flags, deps = {}) {
   const before = { devices: list(d0), keys: list(k0), relay: relayDevices(r0) };
 
   const phone = flags.iphone ? "iPhone" : flags.android ? "Android" : null;
-  // The Deck's /pair screen (code, notifications, install, the same checks) when this box has it;
+  // The Deck's /pair screen (code, notifications, install, the same checks) when this server has it;
   // an older box gets its home page, where the passkey step is under Settings.
   const pairPage = !offer && await hasPage((deps.base || address).replace(/\/$/, "") + "/pair", deps.fetch || globalThis.fetch) ? address + "/pair" : address + "/";
   const tailscale = { tailnet: tailnetOf(address), login: ts && ts.login ? ts.login : null, address: pairPage };
@@ -270,10 +270,10 @@ export async function add(flags, deps = {}) {
   if (json()) {
     const url = offer || pairPage;
     emit({ box: address, phone, network: offer ? "relay" : "tailscale", url, code, expires,
-      install: installFor, ...(app ? { app } : {}), tailscale, ...(noRelay ? { relay: "this box has no relay yet" } : {}),
+      install: installFor, ...(app ? { app } : {}), tailscale, ...(noRelay ? { relay: "this server has no relay yet" } : {}),
       checks: evaluate(before, before, { address }) },
     { kind: "qr", text: url, caption: offer ? "Scan this with the phone's camera; nothing to install first. It works once, for 10 minutes."
-      : `Get Tailscale on the phone and sign in as ${tailscale.login || "the same account as the box"}, then open this.${code ? ` When it asks for a code, type ${spaced(code)}.` : ""}` });
+      : `Get Tailscale on the phone and sign in as ${tailscale.login || "the same account as the server"}, then open this.${code ? ` When it asks for a code, type ${spaced(code)}.` : ""}` });
     // --json is the one value; --view goes on to draw the checks live, a frame per change.
     if (!viewing()) return 0;
     return watch(t, { address, before, expires }, deps);
@@ -281,9 +281,9 @@ export async function add(flags, deps = {}) {
 
   const pad = s => bold(s.padEnd(14));
   const indent = "                   ";
-  out(`  Pairing a phone with the box ${dim("(" + hostOf(address) + ")")}`);
+  out(`  Pairing a phone with the server ${dim("(" + hostOf(address) + ")")}`);
   out(dim(offer ? "  Confirmed · the QR works once, for 10 minutes" : code ? "  Confirmed · the code works once, for 10 minutes" : ""));
-  if (noRelay && !flags.tailscaleOnly) out(dim("  This box has no relay yet, so the phone pairs over Tailscale"));
+  if (noRelay && !flags.tailscaleOnly) out(dim("  This server has no relay yet, so the phone pairs over Tailscale"));
   out("");
   out(`  1 ${pad("Which phone?")}${phone || "iPhone or Android"}${phone ? "" : dim("  (--iphone or --android shows one)")}`);
   let n = 2;
@@ -293,12 +293,12 @@ export async function add(flags, deps = {}) {
     out(dim(`${indent}${offer}`));
   } else {
     out(`  ${n++} ${pad("Network")}Tailscale${tailscale.tailnet ? ", tailnet " + tailscale.tailnet : ""}`);
-    out(dim(`${indent}Get Tailscale on the phone, and sign in as ${tailscale.login || "the same account as the box"}`));
+    out(dim(`${indent}Get Tailscale on the phone, and sign in as ${tailscale.login || "the same account as the server"}`));
     out(`  ${n++} ${pad("Open Vyre")}${pairPage.replace(/\/$/, "")}`);
     if (colour) for (const l of terminal(qr(pairPage), { indent: "     " })) out(l);
     else out(dim(`${indent}Type this address on the phone (the QR code shows in a colour terminal)`));
     out(code ? `${indent}${dim("When it asks for a code (Passkey, Add), type")} ${signal(spaced(code))}`
-      : dim(`${indent}The passkey code comes from the box: vyre presence code there, then type it on the phone`));
+      : dim(`${indent}The passkey code comes from the server: vyre presence code there, then type it on the phone`));
   }
   const steps = Object.entries(installFor).map(([k, v]) => [k === "iphone" ? "iPhone" : "Android", v]);
   out(`  ${n++} ${pad("Install")}${steps[0][0]}: ${steps[0][1]}`);
@@ -312,7 +312,7 @@ export async function add(flags, deps = {}) {
   if (offer) {
     // The optional step after the checks: the relay works everywhere; Tailscale makes it direct.
     const tail = [`  ${n} ${pad("Faster and private: add Tailscale")}${dim("(optional)")}`,
-      dim(`${indent}Get Tailscale on the phone and sign in as ${tailscale.login || "the same account as the box"}; Vyre switches`),
+      dim(`${indent}Get Tailscale on the phone and sign in as ${tailscale.login || "the same account as the server"}; Vyre switches`),
       dim(`${indent}to ${address} by itself when the phone answers there`)];
     const code0 = await watch(t, { address, before, expires }, deps);
     out("");
@@ -422,7 +422,7 @@ function watch(t, { address, before, expires }, deps) {
         if (again && !done) { again = false; check(); }
       }
     };
-    /** Evaluate what is known now, show it, and end when everything the box can prove is done. */
+    /** Evaluate what is known now, show it, and end when everything the server can prove is done. */
     const settle = () => {
       if (done) return;
       checks = evaluate(before, now, seen());
@@ -509,9 +509,9 @@ export function adbDevices(text) {
 export const apkName = (/** @type {AppManifest} */ m) => m.file || `vyre-${m.version}-${String(m.sha).slice(0, 7)}.apk`;
 
 /**
- * The Android app the box serves: GET <box>/v1/releases/android. One fetch, no retries.
- * { manifest } when it serves one; { missing } for a 404, a box without the route, or a manifest
- * that is not whole; { error } when the box did not answer at all.
+ * The Android app the server serves: GET <box>/v1/releases/android. One fetch, no retries.
+ * { manifest } when it serves one; { missing } for a 404, a server without the route, or a manifest
+ * that is not whole; { error } when the server did not answer at all.
  * @param {string} base @param {typeof fetch} [f]
  * @returns {Promise<{ manifest?: AppManifest, missing?: boolean, error?: string }>}
  */
@@ -530,7 +530,7 @@ export async function appManifest(base, f = globalThis.fetch) {
 /**
  * Download the APK into a fresh temp folder, counting its size and sha256 on the way.
  * { file, dir } when both match the manifest; { mismatch: "size"|"sha256" } (the file already
- * deleted) when not; { missing } when the box does not serve it.
+ * deleted) when not; { missing } when the server does not serve it.
  * @param {string} url @param {AppManifest} m @param {typeof fetch} f
  * @returns {Promise<{ file?: string, dir?: string, mismatch?: "size"|"sha256"|"box", missing?: boolean, error?: string }>}
  */
@@ -543,7 +543,7 @@ async function download(url, m, f) {
   const hash = crypto.createHash("sha256");
   try {
     const r = await f(url, { cache: "no-store", signal: AbortSignal.timeout(5 * 60_000) });
-    // 409: the box's own copy does not match CI's android.json, so it refuses to serve it.
+    // 409: the server's own copy does not match CI's android.json, so it refuses to serve it.
     if (r.status === 409) { drop(); return { mismatch: "box" }; }
     if (!r.ok || !r.body) { drop(); return { missing: true }; }
     // Stop reading past the promised size: a bigger file is already the wrong one.
@@ -568,8 +568,8 @@ async function download(url, m, f) {
  */
 
 /**
- * `vyre phone add --android --usb|--wireless`: the native app from the box, installed over adb,
- * then opened on a relay pairing offer. deps are for tests: fetch, the box's base URL, the target
+ * `vyre phone add --android --usb|--wireless`: the native app from the server, installed over adb,
+ * then opened on a relay pairing offer. deps are for tests: fetch, the server's base URL, the target
  * and the pairing call.
  * @param {{ wireless?: boolean }} flags @param {AndroidDeps} [deps]
  */
@@ -594,11 +594,11 @@ export async function android(flags, deps = {}) {
 
   const t = await (deps.target || target)();
   if (!t) return EXIT.FAILED;
-  if (!t.address && !deps.base) return fail("the box has no address yet, so this computer cannot fetch the app from it", { next: "vyre name, then vyre phone add --android --" + how });
+  if (!t.address && !deps.base) return fail("the server has no address yet, so this computer cannot fetch the app from it", { next: "vyre name, then vyre phone add --android --" + how });
   const base = (deps.base || /** @type {string} */ (t.address)).replace(/\/$/, "");
-  const noApk = () => fail("the box has no Android app to serve yet, so there is nothing to install", { code: "no_apk", next: "vyre phone add for the web app; the native app comes with a box that serves its APK" });
+  const noApk = () => fail("the server has no Android app to serve yet, so there is nothing to install", { code: "no_apk", next: "vyre phone add for the web app; the native app comes with a server that serves its APK" });
   const got = await appManifest(base, f);
-  if (got.error) return fail(`could not reach the box at ${hostOf(base)} for the app: ${got.error}`, { code: "unreachable", next: "check this computer is on the tailnet (tailscale status), then again" });
+  if (got.error) return fail(`could not reach the server at ${hostOf(base)} for the app: ${got.error}`, { code: "unreachable", next: "check this computer is on the tailnet (tailscale status), then again" });
   if (!got.manifest) return noApk();
   const m = got.manifest;
 
@@ -610,8 +610,8 @@ export async function android(flags, deps = {}) {
   const dl = await download(`${base}/v1/releases/android?file=${encodeURIComponent(apkName(m))}`, m, f);
   if (dl.missing) return noApk();
   if (dl.error) return fail(`the download from ${hostOf(base)} stopped: ${dl.error}`, { code: "download_failed", next: "vyre phone add --android --" + how + " again" });
-  if (dl.mismatch === "box") return fail("the box's copy of the app does not match what CI built, so it will not serve it; nothing was installed", { code: "release_mismatch", next: "vyre update fetches the release again" });
-  if (dl.mismatch) return fail(`the APK's ${dl.mismatch} is not what the box says: the download was not what the box says it built; nothing was installed`, { code: "mismatch", next: "vyre phone add --android --" + how + " again; if it repeats, the box's app build needs a look" });
+  if (dl.mismatch === "box") return fail("the server's copy of the app does not match what CI built, so it will not serve it; nothing was installed", { code: "release_mismatch", next: "vyre update fetches the release again" });
+  if (dl.mismatch) return fail(`the APK's ${dl.mismatch} is not what the server says: the download was not what the server says it built; nothing was installed`, { code: "mismatch", next: "vyre phone add --android --" + how + " again; if it repeats, the server's app build needs a look" });
 
   const result = { phone: { serial: phone.serial, model: phone.model, via: how }, version: m.version, sha: m.sha || null, installed: false, opened: false, paired: /** @type {boolean|null} */ (null) };
   try {
@@ -628,9 +628,9 @@ export async function android(flags, deps = {}) {
   }
 
   // The pairing: the relay's offer, handed to the app as a vyre://pair link. Minting it needs
-  // the person at the box; a Mac cannot prove that yet (see add), and a box without the relay
+  // the person at the server; a Mac cannot prove that yet (see add), and a server without the relay
   // has no offer. Then the phone pairs by the QR, as the web app does.
-  const scan = "Open Vyre on the phone and scan the pairing QR: vyre phone add on the box";
+  const scan = "Open Vyre on the phone and scan the pairing QR: vyre phone add on the server";
   /** @type {string|null} */ let offer = null, expiresAt = null;
   if (t.local) {
     const r = await (deps.pair || (() => callAsPerson("relay.pair.start", {}, { io: deps.io || personIO() })))();
@@ -657,7 +657,7 @@ export async function android(flags, deps = {}) {
     const end = (/** @type {number} */ code, /** @type {string} */ line) => { if (done) return; done = true; stop(); clearTimeout(timer); process.off("SIGINT", onInt); out(line); resolve(code); };
     onPaired = p => end(0, `  ${signal("●")} Paired${p && p.name ? dim(" · " + p.name) : ""}`);
     const onInt = () => end(0, dim("  stopped watching · vyre phone list shows whether it paired"));
-    const timer = setTimeout(() => end(EXIT.FAILED, beacon("  the pairing offer ran out before the phone used it") + "\n" + dim("  next: vyre phone add on the box for a new QR")), life);
+    const timer = setTimeout(() => end(EXIT.FAILED, beacon("  the pairing offer ran out before the phone used it") + "\n" + dim("  next: vyre phone add on the server for a new QR")), life);
     process.on("SIGINT", onInt);
   });
 }
@@ -718,8 +718,8 @@ export async function remove(ids, deps = {}) {
       if (r.error) return failTool(r.error);
       removed.push({ id, kind: "device" });
     } else if (list(k).some(x => x.id === id)) {
-      // Removing a passkey needs presence on the box; a Mac cannot give it over the link.
-      if (!t.local) return fail(`${id} is a passkey, and removing one needs you at the box`, { next: `vyre phone remove ${id} on the box, or remove it in the Deck` });
+      // Removing a passkey needs presence on the server; a Mac cannot give it over the link.
+      if (!t.local) return fail(`${id} is a passkey, and removing one needs you at the server`, { next: `vyre phone remove ${id} on the server, or remove it in the Deck` });
       const r = await callAsPerson("presence.remove", { id }, { io: deps.io || personIO() });
       if (r.error) return failTool(r.error);
       removed.push({ id, kind: "passkey" });
@@ -754,10 +754,10 @@ export async function testPush(id) {
 // ------------------------------------------------------------ the command
 
 const HELP = `
-  vyre phone add               the steps to put a phone on the box, then live checks
+  vyre phone add               the steps to put a phone on the server, then live checks
       --iphone | --android     only that phone's install step
-      --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
-      --android --usb          the native app over a cable: downloads the APK the box serves,
+      --tailscale-only         skip the relay: Tailscale on the phone first, then the server's address
+      --android --usb          the native app over a cable: downloads the APK the server serves,
                                checks its size and sha256, installs it with adb, opens it to pair
       --android --wireless     the same over Wireless debugging
   vyre phone list              the devices that get notifications, and the passkeys
@@ -766,15 +766,15 @@ const HELP = `
 
   add pairs through the relay by default: it asks you first, then shows a QR that works once
   for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
-  path direct and private. With --tailscale-only (or on a box without the relay) it mints a
+  path direct and private. With --tailscale-only (or on a server without the relay) it mints a
   one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new
   notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.`;
 
 export default {
-  name: "phone", order: 46, usage: USAGE, summary: "add a phone to your box, list, remove and test the ones it has", help: HELP,
+  name: "phone", order: 46, usage: USAGE, summary: "add a phone to your server, list, remove and test the ones it has", help: HELP,
   verbs: [
-    { verb: "add", aliases: ["pair"], summary: "the steps to put a phone on the box, then live checks", usage: "[--iphone] [--android] [--tailscale-only] [--usb] [--wireless] [--relay]", person: true, live: true },
+    { verb: "add", aliases: ["pair"], summary: "the steps to put a phone on the server, then live checks", usage: "[--iphone] [--android] [--tailscale-only] [--usb] [--wireless] [--relay]", person: true, live: true },
     { verb: "list", aliases: ["ls"], summary: "the devices that get notifications, and the passkeys", usage: "", read: true },
     { verb: "remove", aliases: ["rm"], summary: "forget a notification device, or remove a passkey", usage: "<id...>", person: true },
     { verb: "test", summary: "send a test notification to every device, or one", usage: "[id]" },

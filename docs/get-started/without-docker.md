@@ -46,13 +46,13 @@ matches keywords. `vyre recall --setup` fetches it now.
 ::: tab On this Mac
 
 ```
-vyre up                  # role local: this Mac talks to your box
-vyre up --box            # or: this Mac is the box
-vyre up --connect https://alex.vyre.run   # a box you already set up
+vyre up                  # role local: this Mac talks to your server
+vyre up --box            # or: this Mac is the server
+vyre up --connect https://alex.vyre.run   # a server you already set up
 ```
 
-A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, finds your box on the
-tailnet (or asks where Vyre should run), asks the box to pair this Mac (you approve it in the
+A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, finds your server on the
+tailnet (or asks where Vyre should run), asks the server to pair this Mac (you approve it in the
 Deck on your phone), offers once to add Vyre's line to Claude Code's status line, and builds and
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
 [Install, step 10](install.md#10-put-the-lumen-on-your-mac).

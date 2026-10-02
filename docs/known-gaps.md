@@ -80,7 +80,7 @@ What to do today: stop sessions you are done with, or lower `idle_minutes` or `m
 - **Windows Hello is untested on a real PC.** Passkey sign-in with Windows Hello has passed its tests with generated keys, not a captured real one.
 - **Grok video and privacy.** With a Grok account's privacy switch on, xAI does not keep your sessions and Grok cannot make video. With it off, xAI keeps sessions and may train on them, and Grok can make video. Vyre shows the choice on the account and records it, but xAI holds the setting itself.
 - **Vyre for Chrome cannot see everything.** It does not read cross-origin iframes. A script can get around the guard on WebRTC and on DNS hints in some forms, and by writing with `innerHTML` or building an iframe. See [Connectors](using/connectors.md).
-- **Sessions you start by hand on a box.** The sessions Vyre runs on a Docker box run as a separate user that cannot open Vyre's socket. A Claude Code you start by hand in the box's container does not, so Vyre's checks on its tool calls are the protection there. See [Presence](concepts/presence.md).
+- **Sessions you start by hand on a server.** The sessions Vyre runs on a Docker box run as a separate user that cannot open Vyre's socket. A Claude Code you start by hand in the server's container does not, so Vyre's checks on its tool calls are the protection there. See [Presence](concepts/presence.md).
 - **No Gate on shell sends or shell file changes.** A message sent some other way, such as `curl` to a mail API, is not recognised as a send, and files a shell command changes are not recorded. See [the security floor](concepts/floor.md).
 
 ## The first Windows install checks a checksum, not a signature

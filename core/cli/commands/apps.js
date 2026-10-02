@@ -138,7 +138,7 @@ const real = {
   person: (tool, input) => callAsPerson(tool, input),
   up: async () => {
     const r = await ensureUp();
-    if (!r.ok) out(beacon("  vyred did not start") + dim(` · its output is in ${r.log}`));
+    if (!r.ok) out(beacon("  Vyre did not start") + dim(` · its output is in ${r.log}`));
     return r.ok;
   },
   print: line => out(line),
@@ -227,7 +227,7 @@ export async function runApps(args, deps = real) {
   /** Print a refusal in words; the exit code says it failed. */
   const fail = (/** @type {{ code: string, message: string }} */ e) => {
     if (flags.json) put({ error: e });
-    else if (e.code === "unreachable") p(`  vyred is not running ${dim("· vyre up to start it")}`);
+    else if (e.code === "unreachable") p(`  Vyre is not running ${dim("· vyre up to start it")}`);
     else p(`  ${beacon(e.code)}: ${e.message}`);
     return 1;
   };

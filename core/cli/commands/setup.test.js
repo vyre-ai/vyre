@@ -85,7 +85,7 @@ test("setup: a script must pass --yes (claiming is for good), and the options ar
   assert.equal((await run(root, ["setup", "--name", "alex", "--wat"])).code, 2);
 });
 
-test("setup --name: a name this box already holds says there is no new recovery code, and the claim waits for the box to rest", async t => {
+test("setup --name: a name this server already holds says there is no new recovery code, and the claim waits for the server to rest", async t => {
   const root = tempHome(t);
   let polls = 0;
   const t2 = tools({ claim: async () => ({ data: { address: "https://alex.vyre.run", phase: "certificate", recoveryCode: null } }) });

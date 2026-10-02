@@ -35,7 +35,7 @@ test("voice: vyre commands lists talk, status and key, the verbs run() handles; 
   }
 });
 
-test("voice status --json: one error object and exit 5 when vyred is not running", async t => {
+test("voice status --json: one error object and exit 5 when Vyre is not running", async t => {
   const r = await run(tempHome(t), ["voice", "status", "--json"]);
   assert.equal(r.code, 5, r.all);
   assert.equal(r.stdout.trim().split("\n").length, 1);

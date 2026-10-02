@@ -73,7 +73,7 @@ get() { "$RC_DOCKER" exec -u vyre "$C" node /opt/rc/get.js "$1"; }
 # "running" passed at once, and step 3 then met a vyred that was not up yet.
 ready() {
   i=0
-  until "$RC_DOCKER" exec "$C" vyre status 2>/dev/null | grep -q 'vyred running'; do
+  until "$RC_DOCKER" exec "$C" vyre status 2>/dev/null | grep -q ' is running'; do
     i=$((i + 1)); [ $i -ge "${1:-90}" ] && return 1; sleep 1
   done
 }

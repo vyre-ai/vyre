@@ -55,7 +55,7 @@ async function open(flags) {
   if (!dialogsAllowed()) return refuse("no_dialogs", "Lumen does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).", "  Lumen does not open under tests (VYRE_TEST_DIALOGS=1 to allow it).");
   if (!nativeAvailable()) return refuse("no_source", "Lumen's source is missing from this package", beacon("  Lumen's source is missing from this package") + dim(` · ${path.relative(process.cwd(), NATIVE) || NATIVE}`));
   const up = await ensureUp();
-  if (!up.ok) say(dim("  vyred did not start; Lumen will open and say it is offline."));
+  if (!up.ok) say(dim("  Vyre did not start; Lumen will open and say it is offline."));
   return openNative(flags);
 }
 

@@ -19,7 +19,7 @@ vyre doctor
 ```
 
 It checks that Vyre is running, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
-phone on the tailnet, the box's address, a passkey for that address, pairing, Claude on the box and
+phone on the tailnet, the server's address, a passkey for that address, pairing, Claude on the server and
 Lumen, in under two seconds. Each line is a check that passed, failed (with the one thing to
 do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
 opens anything. `vyre doctor --json` gives the same list to a script.
@@ -39,7 +39,7 @@ If your account on the server is not in the `docker` group, every `vyre` command
 ```
 vyre status
 vyre modules                # every module, and whether it started
-vyre link                   # paired with the box, and does the box answer
+vyre link                   # paired with the server, and does the server answer
 ```
 
 Vyre's own output is in `~/.vyre/logs/vyred.out`, and its daily log in `~/.vyre/logs/` (one file a day, such as `2026-09-27.log`).
@@ -103,29 +103,29 @@ It works once, for two minutes. Press **Get a new link** on the setup page, and 
 
 ### "Tailscale is not running"
 
-`vyre box add` (and `vyre up`, when it sets up a server) checks this Mac's Tailscale first and changes nothing on the server until it is up. Open Tailscale on the Mac, sign in, and run the command again. If Tailscale is not installed, the line is followed by its download link. New to Tailscale? See [Tailscale, from zero](tailscale.md).
+`vyre server add` (and `vyre up`, when it sets up a server) checks this Mac's Tailscale first and changes nothing on the server until it is up. Open Tailscale on the Mac, sign in, and run the command again. If Tailscale is not installed, the line is followed by its download link. New to Tailscale? See [Tailscale, from zero](tailscale.md).
 
 ### "... is not Linux" or "this server has no /dev/net/tun"
 
-A Vyre box runs on Linux with Docker, and Tailscale needs `/dev/net/tun`. Nothing changed on the server. For the second one, run `sudo modprobe tun` on the server, or turn on TUN in your VPS provider's panel, then run `vyre box add alex@192.0.2.10` again.
+A Vyre box runs on Linux with Docker, and Tailscale needs `/dev/net/tun`. Nothing changed on the server. For the second one, run `sudo modprobe tun` on the server, or turn on TUN in your VPS provider's panel, then run `vyre server add alex@192.0.2.10` again.
 
 ### "nothing changed. Run it in a terminal to answer, or add --yes."
 
-`vyre box add` shows its plan and asks before it changes anything. Without a terminal to ask on (in a script, say), it stops. Run it in a terminal, or add `--yes` once you have read the plan.
+`vyre server add` shows its plan and asks before it changes anything. Without a terminal to ask on (in a script, say), it stops. Run it in a terminal, or add `--yes` once you have read the plan.
 
 ### "The setup link has expired."
 
-The Mac waited more than an hour for the browser steps. Your box is as you left it: run `vyre box add alex@192.0.2.10` again for a fresh link. The page keeps every step you already finished.
+The Mac waited more than an hour for the browser steps. Your server is as you left it: run `vyre server add alex@192.0.2.10` again for a fresh link. The page keeps every step you already finished.
 
 ## Onboarding in the browser
 
 ### "This onboarding link has already been used or has expired"
 
-The link works once, for an hour. Run `vyre up` on the box for a new one, or `vyre box add` again from the Mac. The page keeps what you already did and resumes from there.
+The link works once, for an hour. Run `vyre up` on the server for a new one, or `vyre server add` again from the Mac. The page keeps what you already did and resumes from there.
 
 ### The onboarding page will not load
 
-This matters when you set up from the server itself (`curl ... | sh`). The page listens only on the box's loopback, so from your Mac you reach it through an SSH tunnel.
+This matters when you set up from the server itself (`curl ... | sh`). The page listens only on the server's loopback, so from your Mac you reach it through an SSH tunnel.
 
 1. Check that the `ssh -N -L 7300:127.0.0.1:7300 alex@192.0.2.10` line `vyre up` printed is still running in a Terminal tab. It prints nothing while it works.
 2. Open the link exactly as printed. Do not change the port: the page checks that it is reached on the port it listens on, and answers "Not here." otherwise.
@@ -159,9 +159,9 @@ It claims `alex.vyre.run` for good, waits for the address and its certificate, a
 
 ### Your address does not open
 
-Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the server. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
 
-## The box
+## The server
 
 ### "vyre: no box in /srv/vyre (set VYRE_DIR)"
 
@@ -193,12 +193,12 @@ After an upgrade of a systemd install, `vyre up` asks you to rewrite the units. 
 
 The reason follows on the same line:
 
-- **"this Mac is not on the tailnet"**, followed in brackets by "Tailscale is not installed", "Tailscale is signed out: open Tailscale and sign in", or Tailscale's own state: install Tailscale on the Mac and sign in with the same account as the box.
-- **"the box is offline or unreachable"**: the Mac is on the tailnet but the box did not answer. Check the box is up (`vyre status` on the box) and that the address is right. `vyre up --connect https://vyre.tail1234.ts.net` names it directly.
+- **"this Mac is not on the tailnet"**, followed in brackets by "Tailscale is not installed", "Tailscale is signed out: open Tailscale and sign in", or Tailscale's own state: install Tailscale on the Mac and sign in with the same account as the server.
+- **"the server is offline or unreachable"**: the Mac is on the tailnet but the server did not answer. Check the server is up (`vyre status` on the server) and that the address is right. `vyre up --connect https://vyre.tail1234.ts.net` names it directly.
 
-### "the box serves ... and this Mac is signed in to Tailscale as ..."
+### "the server serves ... and this Mac is signed in to Tailscale as ..."
 
-The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tailscale as the box's owner, then run `vyre up`. See [Sign every device into the same account](tailscale.md#3-sign-every-device-into-the-same-account).
+The Mac and the server are on different Tailscale accounts. Sign the Mac in to Tailscale as the server's owner, then run `vyre up`. See [Sign every device into the same account](tailscale.md#3-sign-every-device-into-the-same-account).
 
 ### "more than one Vyre box answers on your tailnet"
 
@@ -206,19 +206,19 @@ The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tail
 
 ### The pairing code expired
 
-The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
+The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the server, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
 
 ### "The Mac that is asking can approve itself only with a passkey."
 
-You approved the pairing in the Deck on the Mac you are pairing, without a passkey made on that Mac. The box takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
+You approved the pairing in the Deck on the Mac you are pairing, without a passkey made on that Mac. The server takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
 
 ### "That code does not match. Check the code on the Mac and try again."
 
-Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`. After too many wrong codes the box cancels every request ("Too many wrong codes, so every request was cancelled. Start again on the Mac."): run `vyre up` on the Mac again.
+Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`. After too many wrong codes the server cancels every request ("Too many wrong codes, so every request was cancelled. Start again on the Mac."): run `vyre up` on the Mac again.
 
-### A Mac's sessions show "offline" on the box
+### A Mac's sessions show "offline" on the server
 
-The Deck on the box lists the paired Mac's sessions while the Mac is awake and on the tailnet. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check Tailscale is connected, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+The Deck on the server lists the paired Mac's sessions while the Mac is awake and on the tailnet. When it is not, the Deck shows the server's own sessions and a chip such as "alex-mac offline". Wake the Mac, check Tailscale is connected, and run `vyre link` on it. See [The server and the Mac](../concepts/box-and-mac.md#the-server-reads-the-macs-sessions).
 
 ## Lumen
 
@@ -273,6 +273,6 @@ A thread that needs permission stops and asks. `vyre agents` shows it as waiting
 ## Where to go next
 
 - [Install](install.md) and [Onboarding](onboarding.md), the steps in order
-- [Looking after the box](../using/box-care.md): updates, backups, logs
+- [Looking after the server](../using/box-care.md): updates, backups, logs
 - [Tailscale, from zero](tailscale.md#when-something-is-wrong): tailnet snags, device by device
 - [CLI reference](../reference/cli.md)

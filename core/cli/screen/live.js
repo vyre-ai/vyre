@@ -117,7 +117,7 @@ export function stream({ onEvent, onOpen, onDown, root, since = 0 }) {
           let e;
           try { e = JSON.parse(f.data); } catch { continue; }
           const id = Number(e.id) || 0;
-          // The box's log is behind this cursor: follow from where it says, and reload the lists.
+          // The server's log is behind this cursor: follow from where it says, and reload the lists.
           if (e.type === "stream.reset") { last = id; onOpen?.(); continue; }
           if (id && id <= last) continue;
           if (id) last = id;

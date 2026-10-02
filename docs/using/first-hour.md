@@ -28,7 +28,7 @@ Vyre is running.
 ## 2. Sign in to your AI (2 minutes)
 
 On setup's **Sign in to your AI** screen, press **Sign in with Claude** (or ChatGPT or Grok). A
-page on the provider asks you to approve, and the page shows a code to enter or a box to paste the
+page on the provider asks you to approve, and the page shows a code to enter or a server to paste the
 code the provider gives you. The token goes straight into the vault, sealed on your server: you
 never copy it into a terminal or a file.
 
@@ -104,7 +104,7 @@ screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes sti
 
 ## 7. Open Deck Settings (1 minute)
 
-Open the Deck (your box's address, or the phone icon) and go to **Settings**. Every section has
+Open the Deck (your server's address, or the phone icon) and go to **Settings**. Every section has
 its own link, so `/settings#devices` jumps straight to your devices. Look at **Your devices**,
 **Notifications** (quiet hours) and **Security** (your passkeys).
 
@@ -112,7 +112,7 @@ its own link, so `/settings#devices` jumps straight to your devices. Look at **Y
 
 **Settings**, **Appearance** switches this browser between Dark and Paper.
 
-To change a colour on every device, add a `theme` block to `config.json` on the box and reload
+To change a colour on every device, add a `theme` block to `config.json` on the server and reload
 the Deck. For example, a different accent in the dark theme:
 
 ```json

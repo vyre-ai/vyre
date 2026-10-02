@@ -22,8 +22,8 @@ In the order `vyre help` lists them.
 | [`vyre needs`](#vyre-needs) | everything waiting on you: held drafts and open asks, newest first, each with the command that answers it |
 | [`vyre up`](#vyre-up) | start Vyre and print the setup link, or this server's address |
 | [`vyre down`](#vyre-down) | stop it |
-| [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
-| [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
+| [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the server, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
+| [`vyre server`](#vyre-server) | put Vyre on a server from this Mac, and look after it |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
 | [`vyre config`](#vyre-config) | every setting, at account or project level (the Deck's Settings, in the terminal) |
 | [`vyre projects`](#vyre-projects) | every project; on a server, move moves the homes to /work/projects |
@@ -39,7 +39,7 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
-| [`vyre setup`](#vyre-setup) | name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
+| [`vyre setup`](#vyre-setup) | name this server, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
 | [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
@@ -62,10 +62,10 @@ In the order `vyre help` lists them.
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
-| [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
-| [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
-| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
-| [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre link`](#vyre-link) | pair this Mac with your server, or approve a Mac on the server |
+| [`vyre phone`](#vyre-phone) | add a phone to your server, list, remove and test the ones it has |
+| [`vyre relay`](#vyre-relay) | reach this server from your phone with a QR code, no Tailscale |
+| [`vyre send`](#vyre-send) | send files from this Mac to your server with Taildrop |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
@@ -118,17 +118,9 @@ Stop it.
 vyre down [--json]
 ```
 
-### vyre box
-
-Put Vyre on a server from this Mac, and look after it.
-
-```
-vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
-```
-
 ### vyre doctor
 
-Check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix.
+Check vyred, Tailscale, the server, your phone, passkey, pairing, Claude and the Capsule, and say what to fix.
 
 ```
 vyre doctor [--json]
@@ -136,6 +128,16 @@ vyre doctor [--json]
 
 Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.
 Exit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.
+
+### vyre server
+
+Put Vyre on a server from this Mac, and look after it.
+
+```
+vyre server [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
+```
+
+Also: `vyre box`.
 
 ### vyre status
 
@@ -327,7 +329,7 @@ vyre unpick <project> <thread>...
 
 ### vyre setup
 
-Name this box, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
+Name this server, with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
 
 ```
 vyre setup --name <n> [--yes] [--json]
@@ -495,7 +497,7 @@ vyre assistant [name] [--json]
 ```
 
 With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.
-On a Mac paired with a box, the assistant lives on the box.
+On a Mac paired with a server, the assistant lives on the server.
 
 ### vyre todo
 
@@ -589,7 +591,7 @@ vyre hooks [list|status|on|off|open <name>|close <name>] [--json]
 
 ### vyre link
 
-Pair this Mac with your box, or approve a Mac on the box.
+Pair this Mac with your server, or approve a Mac on the server.
 
 ```
 vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|signout] [--json]
@@ -597,16 +599,16 @@ vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|sig
 
 ### vyre phone
 
-Add a phone to your box, list, remove and test the ones it has.
+Add a phone to your server, list, remove and test the ones it has.
 
 ```
 vyre phone [add [--iphone|--android] [--tailscale-only] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
 ```
 
-vyre phone add               the steps to put a phone on the box, then live checks
+vyre phone add               the steps to put a phone on the server, then live checks
       --iphone | --android     only that phone's install step
-      --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
-      --android --usb          the native app over a cable: downloads the APK the box serves,
+      --tailscale-only         skip the relay: Tailscale on the phone first, then the server's address
+      --android --usb          the native app over a cable: downloads the APK the server serves,
                                checks its size and sha256, installs it with adb, opens it to pair
       --android --wireless     the same over Wireless debugging
   vyre phone list              the devices that get notifications, and the passkeys
@@ -615,14 +617,14 @@ vyre phone add               the steps to put a phone on the box, then live chec
 
   add pairs through the relay by default: it asks you first, then shows a QR that works once
   for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
-  path direct and private. With --tailscale-only (or on a box without the relay) it mints a
+  path direct and private. With --tailscale-only (or on a server without the relay) it mints a
   one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new
   notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.
 
 ### vyre relay
 
-Reach this box from your phone with a QR code, no Tailscale.
+Reach this server from your phone with a QR code, no Tailscale.
 
 ```
 vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
@@ -632,11 +634,11 @@ vyre relay: whether the relay is on and connected
 vyre relay pair: a QR code for one more device (once, 10 minutes)
 vyre relay devices: paired devices, which are connected, and how
 vyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)
-vyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts
+vyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this server trusts
 
 ### vyre send
 
-Send files from this Mac to your box with Taildrop.
+Send files from this Mac to your server with Taildrop.
 
 ```
 vyre send <file...> [--json]
@@ -736,7 +738,7 @@ vyre update [--check] [--channel stable|beta] [--to <version>] [--yes] [--allow-
 --rollback       put the previous release back and keep the current data
 --restore-data   with --rollback: also put back the data from before the update
 
-Every download is checked against the release's SHA256SUMS. On a box, the host's
+Every download is checked against the release's SHA256SUMS. On a server, the host's
 vyre update does this; from a checkout, update with git.
 
 ### vyre backup
@@ -786,7 +788,7 @@ add <source>      a folder or a git URL (https://, git@, file://): check it, sho
 
 A module runs inside vyred, trusted like an npm package. A module named like one of Vyre's
 own is refused, and in 0.2 an added module may not say "replaces".
-In the box's container, the host restarts vyred: docker compose restart vyre.
+In the server's container, the host restarts vyred: docker compose restart vyre.
 --view prints frames for the Capsule and the phone (docs/reference/cli-json.md).
 
 ### vyre modules

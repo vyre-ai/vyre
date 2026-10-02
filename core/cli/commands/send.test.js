@@ -1,7 +1,7 @@
 // @ts-check
 // `vyre send` as a person runs it: the real bin/vyre in a child process, against a Mac-role vyred
-// in this process in a temp home. The home is paired with a box on a dead loopback port, and
-// tailscale is a fake that knows the box as a peer and records `file cp` instead of sending
+// in this process in a temp home. The home is paired with a server on a dead loopback port, and
+// tailscale is a fake that knows the server as a peer and records `file cp` instead of sending
 // anything. Nothing leaves this machine.
 
 import { test } from "node:test";
@@ -49,7 +49,7 @@ test("send: one line per file, and --json prints what was sent and what failed",
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   fs.writeFileSync(path.join(work, "report.pdf"), "hello");
   fs.writeFileSync(path.join(work, ".env"), "KEY=1\n");
-  // Paired, as `vyre link pair` leaves it, with a box at a loopback port nothing answers on, so the
+  // Paired, as `vyre link pair` leaves it, with a server at a loopback port nothing answers on, so the
   // link module's hello goes nowhere.
   fs.writeFileSync(path.join(root, "link.json"), JSON.stringify({ box: { address: "https://127.0.0.1:9", stableId: BOX_ID, node: "box.tail0000.ts.net", name: "box" },
     key: "fixture-key", peer: "fixture-peer", pairedAt: 0 }), { mode: 0o600 });

@@ -52,7 +52,7 @@ const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.
 export const fail = r => {
   if (json()) return failTool(r.error, r.error.code === "no_such_tool" ? "is the module running? vyre modules" : undefined);
   if (r.error.code === "no_such_tool") out(beacon(`  this vyred has no ${String(r.error.message || "").replace(/^no tool /, "") || "such tool"} ${dim("· is the module running? vyre modules")}`));
-  else out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
+  else out(unreachable(r) ? `  Vyre is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return 1;
 };
 export const oops = msg => { if (json()) return kitFail(msg, { code: "bad_input" }); out(beacon(`  ${msg}`)); return 1; };

@@ -1,14 +1,14 @@
 ---
-title: The box and the Mac
+title: The server and the Mac
 summary: What runs on your server and what runs on your Mac, why each machine runs one vyred, and how the two talk over your tailnet.
 audience: users, builders, operators, agents
 owner: integrator
 status: stable
 ---
 
-# The box and the Mac
+# The server and the Mac
 
-Vyre runs on two kinds of machine. The **box** is a server you own: a Linux machine, or a Mac that stays on. Your sessions, agents, watchers and the Deck live there. The **Mac** is the computer you sit at: it runs Lumen and your own terminal sessions, and reaches the box over your private [tailnet](tailnet.md). A Windows PC is a device in the same way as the Mac, with an app instead of Lumen (see [Windows](../using/windows.md)). Each machine runs one `vyred`, the Vyre daemon, with a different set of [modules](modules.md) switched on.
+Vyre runs on two kinds of machine. The **box** is a server you own: a Linux machine, or a Mac that stays on. Your sessions, agents, watchers and the Deck live there. The **Mac** is the computer you sit at: it runs Lumen and your own terminal sessions, and reaches the server over your private [tailnet](tailnet.md). A Windows PC is a device in the same way as the Mac, with an app instead of Lumen (see [Windows](../using/windows.md)). Each machine runs one `vyred`, the Vyre daemon, with a different set of [modules](modules.md) switched on.
 
 ## One process per machine
 
@@ -26,13 +26,13 @@ Every module declares the machines it runs on (`"roles"` in its `module.json`: `
 
 | Runs on | Modules |
 |---|---|
-| Server only | `names` (address, certificates, the tailnet listener), `network`, `hooks`, `computers`, `glass`, `artifacts`, `releases`, `hands-desktop`, and the box's side of `chrome` |
+| Server only | `names` (address, certificates, the tailnet listener), `network`, `hooks`, `computers`, `glass`, `artifacts`, `releases`, `hands-desktop`, and the server's side of `chrome` |
 | Mac only | `capsule` (Lumen), `hands` (computer use on macOS), `screen`, `sideview`, `voice`, `apps`, and the Mac's side of `chrome` |
 | Both | most of the rest, including `projects`, `recall`, `memory`, `vault`, `watchers`, `threads`, `sessions`, `agents`, `gate`, `learn`, `harness`, `presence`, `link`, `relay`, `onboard`, `github`, `team`, `spend`, `files`, `push`, `settings` and `update` |
 
 [Modules](../reference/modules.md) has the full list with each module's machines. A Mac chosen as the server runs the Mac-only modules too, so Lumen stays on it.
 
-A module that runs on both machines works on that machine's own data: recall on the Mac searches the Mac's Claude Code transcripts, recall on the box searches the box's. The one exception is reading and messaging a session: on the box, you see the paired Mac's sessions beside the box's own and can message them, through the link (see [The box reads the Mac's sessions](#the-box-reads-the-macs-sessions)). `vyre modules` lists what started on the machine you run it on, and why anything failed.
+A module that runs on both machines works on that machine's own data: recall on the Mac searches the Mac's Claude Code transcripts, recall on the server searches the server's. The one exception is reading and messaging a session: on the server, you see the paired Mac's sessions beside the server's own and can message them, through the link (see [The server reads the Mac's sessions](#the-server-reads-the-macs-sessions)). `vyre modules` lists what started on the machine you run it on, and why anything failed.
 
 You can move a module on or off with `modules.enable` and `modules.disable` in `config.json`. `enable` starts a module even when its roles do not include this machine's kind.
 
@@ -51,10 +51,10 @@ The only published port is the onboarding page, on the host's `127.0.0.1:7300`. 
 
 The alternative without Docker is a systemd unit, installed with `sudo vyre up --system --user <account>` (the account vyred runs as, never root). See [without Docker](../get-started/without-docker.md).
 
-### Who can reach the box
+### Who can reach the server
 
 - **The `tailscale` container is the only way in.** It runs the official image with kernel networking and publishes one port: 7300, on the host's `127.0.0.1`, for the onboarding page.
-- **vyred has no network of its own.** It binds the tailnet addresses on 443 and serves them with its own certificate: `tailscale cert` for the box's ts.net name, or an ACME certificate for a `vyre.run` name. There is no `tailscale serve` in the path.
+- **vyred has no network of its own.** It binds the tailnet addresses on 443 and serves them with its own certificate: `tailscale cert` for the server's ts.net name, or an ACME certificate for a `vyre.run` name. There is no `tailscale serve` in the path.
 - **Callers are identified by `tailscale whois` of the WireGuard source address**, never by a header. A process on the host, or in another container, cannot produce a tailnet source address, so it cannot pose as you.
 - **The onboarding listener binds only the `vyred` alias on the `vyre` network**, where Docker delivers the published port, never `0.0.0.0`, which would include `tailscale0`. It also needs the one-time token in the link, and answers "Not here." to any `Host` other than its loopback address and port. That is why the tunnel uses port 7300 on both ends.
 - **vyred runs as uid 1000 (`vyre`), not root.** It is Tailscale's operator, so it can run `tailscale up` and `tailscale cert` during setup. Only the spawner is root in the container, with every capability dropped except the few it needs to start a process as another user.
@@ -85,7 +85,7 @@ The data lives in Docker volumes, all labelled `run.vyre=1`:
 | `vyre_vyre-agent-home` | `/home/vyre-agent` | the home of the sessions Vyre runs (their own `~/.claude` and transcripts) |
 | `vyre_vyre-accounts` | `/home/acct` | one private home per signed-in AI account (uids 2000 to 2063), holding that account's own login |
 | `vyre_docker-api-bearer` | `/var/lib/vyre-secrets` | the secret vyred uses to talk to the computers' Docker proxy |
-| `vyre_tailscale-state` | `/var/lib/tailscale` | the node's identity; delete it and the box is a new node |
+| `vyre_tailscale-state` | `/var/lib/tailscale` | the node's identity; delete it and the server is a new node |
 | `vyre_tailscale-sock` | `/var/run/tailscale` | tailscaled's socket, shared with the `vyre` container |
 
 A container can be recreated at any time: nothing in it matters but the volumes. Backing them up and moving them is in [Box care](../using/box-care.md).
@@ -115,11 +115,11 @@ On a Docker box it is `/home/vyre/.vyre`, inside the `vyre_vyre-home` volume.
 On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault, search model and logs, and no `certs/` or `names/`, because the Mac serves nothing on the tailnet. It also holds `link.json` (0600), the key that pairs this Mac with its box, and `capsule/Vyre.app`, Lumen as built on this Mac.
 :::
 
-### AI accounts and Claude Code on the box
+### AI accounts and Claude Code on the server
 
-- **Your accounts.** Sessions run on your own accounts: Claude (through the Claude Agent SDK), Codex and Grok (through the Agent Client Protocol), and OpenRouter. A login account (Claude, Codex, Grok) is signed in once, by asking your assistant to start the provider's own sign-in (Claude's is also part of setup), and its login lives in that account's own private home on the box (`vyre_vyre-accounts`). A key (an Anthropic or OpenRouter API key) lives in the Vault. Either way the secret reaches the session's process at start and is never shown to a model.
+- **Your accounts.** Sessions run on your own accounts: Claude (through the Claude Agent SDK), Codex and Grok (through the Agent Client Protocol), and OpenRouter. A login account (Claude, Codex, Grok) is signed in once, by asking your assistant to start the provider's own sign-in (Claude's is also part of setup), and its login lives in that account's own private home on the server (`vyre_vyre-accounts`). A key (an Anthropic or OpenRouter API key) lives in the Vault. Either way the secret reaches the session's process at start and is never shown to a model.
 - **Claude Code itself** is installed in the image, and its state, `~/.claude/` and `~/.claude.json`, lives in `vyre_vyre-home`, so a new image keeps it.
-- To run `claude` by hand on the box, run it in the container:
+- To run `claude` by hand on the server, run it in the container:
 
   ```
   cd /srv/vyre && docker compose exec vyre claude
@@ -133,7 +133,7 @@ Agents get their own containers ([Specification](../architecture/spec.md#79-comp
 
 - The host's Docker socket is mounted into the proxy and nowhere else. vyred reaches it at `http://docker-api:2375` on an internal network.
 - The proxy allows only what agents' computers use (create, start, stop, pause, unpause, inspect, list, remove, exec on a computer, volume inspect) and refuses every other endpoint.
-- It checks request bodies too: a create must match `core/computers/driver/policy.js` and the box's `VYRE_COMPUTERS_*` settings, and every per-container call is checked against the labels the Docker Engine itself reports.
+- It checks request bodies too: a create must match `core/computers/driver/policy.js` and the server's `VYRE_COMPUTERS_*` settings, and every per-container call is checked against the labels the Docker Engine itself reports.
 - It runs as uid 1000 with a read-only root, no capabilities, and the socket's group, `DOCKER_GID` in `/srv/vyre/.env`, which the installer fills in from the socket.
 
 > [!WHY] Why a proxy, and not the Docker socket?
@@ -143,64 +143,64 @@ Agents get their own containers ([Specification](../architecture/spec.md#79-comp
 
 On the Mac, `vyre up` starts vyred in the background with the local set of modules. It opens no tailnet listener. It serves its API on `~/.vyre/vyred.sock` to the CLI, the Harness hooks in your terminal sessions, and Lumen. A Mac you chose as the server is different: it also serves the Deck on your tailnet and keeps itself awake while it runs.
 
-## How the Mac finds the box
+## How the Mac finds the server
 
 `vyre up` on a Mac with no box configured calls `link.find`, which looks for a Vyre box on your tailnet:
 
 - One box answers: its address is saved as `network.box`.
 - Several answer: you pick one, or run `vyre up --connect <address>`.
-- None answer: you choose where the box runs.
+- None answer: you choose where the server runs.
 
 ```
-vyre box add alex@192.0.2.10                     # put the box on a server you can SSH to
-vyre up --box                                    # make this Mac the box
-vyre up --connect https://vyre.tail1234.ts.net   # a box you already set up
+vyre server add alex@192.0.2.10                     # put the server on a server you can SSH to
+vyre up --box                                    # make this Mac the server
+vyre up --connect https://vyre.tail1234.ts.net   # a server you already set up
 ```
 
 ## How they talk
 
-The Mac's vyred is a client of the box's tailnet listener, at `network.box`. The box sees the Mac as `tailnet:<login>`, like any of your devices, because it identifies callers by `tailscale whois` of the WireGuard source address and never by a header ([ADR 0002](../adr/0002-network-and-identity.md)).
+The Mac's vyred is a client of the server's tailnet listener, at `network.box`. The server sees the Mac as `tailnet:<login>`, like any of your devices, because it identifies callers by `tailscale whois` of the WireGuard source address and never by a header ([ADR 0002](../adr/0002-network-and-identity.md)).
 
 The `link` module turns the two machines into one system:
 
-- **Pairing.** On the Mac, `vyre link pair <address>` (or `vyre up --connect <address>`, or a yes to `vyre up`'s question) asks the box and shows a code. Starting Vyre never asks a box on its own, and a home other than `~/.vyre` never talks to a real box unless `VYRE_ALLOW_REAL_BOX=1` is set. The Deck shows the request on Now, and on onboarding's **Your devices** step: type the code, press **Approve**, and confirm with your passkey (see [presence](presence.md)). You can approve from the Mac that is asking or from your phone. From the asking Mac the box asks for a fresh passkey proof and checks the typed code, so a model on the Mac cannot approve for you. The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the box's Tailscale node, so a different node at that address is refused.
-- **Box tools from the Mac.** A module on the Mac calls `ctx.remote(tool, input)`; a surface calls `link.call`. Both reach `POST /v1/tools/<tool>` on the box.
-- **Box events on the Mac.** The Mac proxies the box's event stream at `/v1/link/events`, so Lumen sees box threads as they happen.
-- **The Mac's sessions on the box.** The box reads the paired Mac's sessions through the link. See the next section.
+- **Pairing.** On the Mac, `vyre link pair <address>` (or `vyre up --connect <address>`, or a yes to `vyre up`'s question) asks the server and shows a code. Starting Vyre never asks a server on its own, and a home other than `~/.vyre` never talks to a real box unless `VYRE_ALLOW_REAL_BOX=1` is set. The Deck shows the request on Now, and on onboarding's **Your devices** step: type the code, press **Approve**, and confirm with your passkey (see [presence](presence.md)). You can approve from the Mac that is asking or from your phone. From the asking Mac the server asks for a fresh passkey proof and checks the typed code, so a model on the Mac cannot approve for you. The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the server's Tailscale node, so a different node at that address is refused.
+- **Box tools from the Mac.** A module on the Mac calls `ctx.remote(tool, input)`; a surface calls `link.call`. Both reach `POST /v1/tools/<tool>` on the server.
+- **Box events on the Mac.** The Mac proxies the server's event stream at `/v1/link/events`, so Lumen sees box threads as they happen.
+- **The Mac's sessions on the server.** The server reads the paired Mac's sessions through the link. See the next section.
 
 ```
-vyre link                 # on the Mac: paired or not, and whether the box answers
+vyre link                 # on the Mac: paired or not, and whether the server answers
 vyre link pair https://vyre.tail1234.ts.net
-vyre link unpair          # forget the box
+vyre link unpair          # forget the server
 ```
 
-## The box reads the Mac's sessions
+## The server reads the Mac's sessions
 
-Your Claude Code history stays on the Mac. The box reads it through the link when you ask, so the Deck on the box, and your phone, list the Mac's sessions beside the box's own, and you can answer one's question or send it a message from there ([ADR 0021](../adr/0021-box-reads-the-mac.md)).
+Your Claude Code history stays on the Mac. The server reads it through the link when you ask, so the Deck on the server, and your phone, list the Mac's sessions beside the server's own, and you can answer one's question or send it a message from there ([ADR 0021](../adr/0021-box-reads-the-mac.md)).
 
-- **No port on the Mac.** While paired, the Mac holds one request open to the box (`link.serve`). The box answers it with a question, or with nothing after 60 seconds; the Mac runs the question and sends the answer back (`link.reply`), then asks again. An idle Mac costs one request a minute.
+- **No port on the Mac.** While paired, the Mac holds one request open to the server (`link.serve`). The server answers it with a question, or with nothing after 60 seconds; the Mac runs the question and sends the answer back (`link.reply`), then asks again. An idle Mac costs one request a minute.
 - **A short list of reads.** Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread`, `recall.transcript`, `threads.list` and `threads.asks` cross, and both ends check the list (`core/link/allow.js`). The Mac runs them as `module:link`.
-- **Two writes, yours only.** `threads.send` types into a Mac session, and `threads.answer` answers one of its questions. Both cross only when you make the call from your own surface, never an agent, MCP, a guest or a module, and the Mac checks that again before it runs one. An answer also carries a one-use proof, signed by the box and tied to that question and those exact words, that the Mac checks. If a terminal or Lumen holds the session, your message waits until it is free and says so ("alex-mac is busy in your terminal").
-- **Only for you.** On the box these tools take `machines: "all"` or `"local"`. They ask the Mac when you call them from the Deck, the CLI, Lumen or your own device on the tailnet, or when a module passes `machines: "all"`. Agents, MCP and guests get the box's rows alone. Each row the Mac sends is labelled `source: "mac"` and `machine` (the Mac's paired name); the box's rows say `source: "box"`.
-- **Nothing is copied.** Nothing the Mac answers is written to the box's store. Only `recall.thread` and `recall.transcript` carry a conversation, and only when you open a session the box does not have.
-- **Marked as the Mac's.** The Deck shows a Mac session with the Mac's name on a chip. You can add a Mac session to a box project; the project's thread list reads it from the Mac.
-- **An absent Mac is an answer.** A Mac that is not polling answers `mac_offline` at once and the box shows its own rows, with an "alex-mac offline" chip read from `link.macs`, and a message to it is not sent. A slow Mac delays a read by at most 5 seconds. A Mac that dropped off in the middle of a request looks online for up to a minute, and a read in that window ends in `timeout`.
+- **Two writes, yours only.** `threads.send` types into a Mac session, and `threads.answer` answers one of its questions. Both cross only when you make the call from your own surface, never an agent, MCP, a guest or a module, and the Mac checks that again before it runs one. An answer also carries a one-use proof, signed by the server and tied to that question and those exact words, that the Mac checks. If a terminal or Lumen holds the session, your message waits until it is free and says so ("alex-mac is busy in your terminal").
+- **Only for you.** On the server these tools take `machines: "all"` or `"local"`. They ask the Mac when you call them from the Deck, the CLI, Lumen or your own device on the tailnet, or when a module passes `machines: "all"`. Agents, MCP and guests get the server's rows alone. Each row the Mac sends is labelled `source: "mac"` and `machine` (the Mac's paired name); the server's rows say `source: "box"`.
+- **Nothing is copied.** Nothing the Mac answers is written to the server's store. Only `recall.thread` and `recall.transcript` carry a conversation, and only when you open a session the server does not have.
+- **Marked as the Mac's.** The Deck shows a Mac session with the Mac's name on a chip. You can add a Mac session to a server project; the project's thread list reads it from the Mac.
+- **An absent Mac is an answer.** A Mac that is not polling answers `mac_offline` at once and the server shows its own rows, with an "alex-mac offline" chip read from `link.macs`, and a message to it is not sent. A slow Mac delays a read by at most 5 seconds. A Mac that dropped off in the middle of a request looks online for up to a minute, and a read in that window ends in `timeout`.
 
-The box cannot search the Mac's files: files are not on the list.
+The server cannot search the Mac's files: files are not on the list.
 
-## When the box is away
+## When the server is away
 
-The Mac keeps working without the box (floor rule 9, see [the security floor](floor.md)). Once a call to the box fails, the next ones fail fast with `box_unreachable` and are retried with a growing pause, up to 30 seconds. The link emits `link.lost` and, when the box answers again, `link.connected`. A module that asked the box for something gets the error at once and can fall back to what the Mac has.
+The Mac keeps working without the server (floor rule 9, see [the security floor](floor.md)). Once a call to the server fails, the next ones fail fast with `box_unreachable` and are retried with a growing pause, up to 30 seconds. The link emits `link.lost` and, when the server answers again, `link.connected`. A module that asked the server for something gets the error at once and can fall back to what the Mac has.
 
 ## What it will not do
 
-- The Mac never serves the Deck on the tailnet. The Deck lives on the box.
-- The box never trusts the Mac because of a header or a shared secret alone: every connection is identified by its tailnet source address first.
-- Link tools on the box (`link.*`) cannot be driven through `ctx.remote` or `link.call`.
-- The box never runs a tool on the Mac outside the reads and the two writes above, and never as an agent or a module.
+- The Mac never serves the Deck on the tailnet. The Deck lives on the server.
+- The server never trusts the Mac because of a header or a shared secret alone: every connection is identified by its tailnet source address first.
+- Link tools on the server (`link.*`) cannot be driven through `ctx.remote` or `link.call`.
+- The server never runs a tool on the Mac outside the reads and the two writes above, and never as an agent or a module.
 
 ## Next
 
 - [The tailnet](tailnet.md): addresses, identity and certificates.
 - [Presence](presence.md): why approving a pairing needs you, not a model.
-- [Box care](../using/box-care.md): updating, backing up and moving the box.
+- [Box care](../using/box-care.md): updating, backing up and moving the server.

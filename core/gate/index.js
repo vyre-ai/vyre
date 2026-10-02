@@ -69,7 +69,7 @@ export default {
     });
 
     const stuck = gate.recover();
-    if (stuck) ctx.log(`${stuck} item(s) were mid-send when vyred stopped; back to held, marked as possibly sent`);
+    if (stuck) ctx.log(`${stuck} item(s) were mid-send when Vyre stopped; back to held, marked as possibly sent`);
 
     /** Only a person, or a module the person named, lets something go. */
     const person = caller => {

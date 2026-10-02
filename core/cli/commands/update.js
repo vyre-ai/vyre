@@ -10,7 +10,7 @@
 // database returns from the backup. Once the new vyred has answered, nothing restores the data on
 // its own, so nothing written after a good update is ever lost.
 //
-// The box's own `vyre update` is the host wrapper (box/vyre); inside the container this refuses.
+// The server's own `vyre update` is the host wrapper (box/vyre); inside the container this refuses.
 // A checkout has no build.json stamp and is updated with git, so this refuses there too.
 
 import fs from "node:fs";
@@ -36,7 +36,7 @@ const REPO_PATH = "repos/vyre-ai/vyre/releases";
 // automatic and unattended (nobody is at a terminal to type one, including during an unattended
 // rollback minutes or days later), so it gets a random one, written once beside the backup file
 // as `<file>.key`, mode 0600, in the same root-owned <home>/backups/ folder the backup itself sits
-// in: the same trust boundary the vault's own master key already lives in on this box, not a
+// in: the same trust boundary the vault's own master key already lives in on this server, not a
 // weaker one. The person's own `vyre backup <file>` (up.js) never uses this path; it always asks.
 const KEY_SUFFIX = ".key";
 
@@ -212,7 +212,7 @@ export async function update(args, deps = {}) {
   const say = json() ? () => {} : out;
 
   if ((deps.supervisor ?? process.env.VYRE_SUPERVISOR) === "docker") {
-    return fail("inside Vyre's container, the server's own vyre update does this", { code: "wrong_place", next: "run vyre update on the server itself, or vyre box update from your Mac" });
+    return fail("inside Vyre's container, the server's own vyre update does this", { code: "wrong_place", next: "run vyre update on the server itself, or vyre server update from your Mac" });
   }
   const mine = (deps.build || build)();
   if (!mine.stamped || fs.existsSync(path.join(deps.repo || REPO, ".git"))) {
@@ -298,7 +298,7 @@ async function install(ctx, releases, target, channel) {
       });
     }
     // The signature first: an unsigned or badly signed release is refused before anything is downloaded or changed, and only
-    // --allow-unsigned installs one, with a plain warning (one policy on the box and on a Mac).
+    // --allow-unsigned installs one, with a plain warning (one policy on the server and on a Mac).
     const sig = await fetchSig(target, dir);
     const signed = sig !== null && sumsSigned(fs.readFileSync(path.join(dir, "SHA256SUMS")), sig, ctx.key);
     if (!signed) {
@@ -353,7 +353,7 @@ async function install(ctx, releases, target, channel) {
   if (!inst.ok) return undo(`npm install failed: ${inst.why}`, false);
   const next = buildOf(target.version, meta);
   const b = await ctx.bring(ctx.role, () => next);
-  if (!b.ok) return undo(b.note || "vyred did not start", true);
+  if (!b.ok) return undo(b.note || "Vyre did not start", true);
   const h = await ctx.waitFor(target.version, ctx.window, next.commit);
   if (!h) return undo(`vyred did not report ${target.version} on /v1/health within ${Math.round(ctx.window / 1000)}s`, true);
 
@@ -435,7 +435,7 @@ export default {
     "--rollback       put the previous release back and keep the current data",
     "--restore-data   with --rollback: also put back the data from before the update",
     "",
-    "Every download is checked against the release's SHA256SUMS. On a box, the host's",
+    "Every download is checked against the release's SHA256SUMS. On a server, the host's",
     "vyre update does this; from a checkout, update with git.",
   ].join("\n"),
   run: args => update(args),

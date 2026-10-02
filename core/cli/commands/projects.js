@@ -76,7 +76,7 @@ async function prompter() {
 /** vyred, started when it is not running. False after saying why not (the caller exits 5). */
 export async function up() {
   const r = await ensureUp();
-  if (!r.ok) { kitFail("vyred did not start", { code: "unreachable", exit: 5, next: r.log ? `its output is in ${r.log}` : "vyre up" }); return false; }
+  if (!r.ok) { kitFail("Vyre did not start", { code: "unreachable", exit: 5, next: r.log ? `its output is in ${r.log}` : "vyre up" }); return false; }
   return true;
 }
 
@@ -300,7 +300,7 @@ async function emptyCatalog(q) {
   return "no Claude Code sessions on this machine yet · they show up here once you have some; vyre threads list shows headless ones";
 }
 
-/** `vyre projects move [--dry-run]`: the box's homes to /work/projects, through projects.move. */
+/** `vyre projects move [--dry-run]`: the server's homes to /work/projects, through projects.move. */
 async function moveHomes(args) {
   const { flags, pos } = parse(args, { bool: ["dry-run"], values: [], cmd: "projects" });
   if (pos.length) return usage("vyre projects move takes no names", "vyre projects move --dry-run shows what would move");

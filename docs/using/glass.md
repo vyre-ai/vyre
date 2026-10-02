@@ -1,6 +1,6 @@
 ---
 title: Glass and agent computers
-summary: Give an agent its own computer on your box, watch its screen live from the Deck, take the keyboard and hand it back, sign in to a site privately, browse its files, and change its limits.
+summary: Give an agent its own computer on your server, watch its screen live from the Deck, take the keyboard and hand it back, sign in to a site privately, browse its files, and change its limits.
 audience: users
 owner: polish-surfaces
 status: draft
@@ -8,9 +8,9 @@ status: draft
 
 # Glass and agent computers
 
-An agent can have its own computer on your box: a desktop with Chrome and a terminal, in its own
+An agent can have its own computer on your server: a desktop with Chrome and a terminal, in its own
 container. Glass lets you watch that screen live in the [Deck](deck.md), take over the keyboard,
-and browse the computer's files. It also browses the box's own folders. Glass works only from your
+and browse the computer's files. It also browses the server's own folders. Glass works only from your
 own tailnet, and only you, the tailnet owner, can open it; a guest from another tailnet cannot.
 The design is in [ADR 0005](../adr/0005-glass.md), and
 how the screen is streamed in [ADR 0003](../adr/0003-glass-stream.md).
@@ -34,7 +34,7 @@ The panel then says:
 Not made yet. It is made the first time kit or you need it.
 ```
 
-It also shows Processor 2 cores, Memory 3 GB and Screen 1440 × 900, the box's defaults. Nothing
+It also shows Processor 2 cores, Memory 3 GB and Screen 1440 × 900, the server's defaults. Nothing
 runs yet. The computer is made the first time kit uses it or you open Glass.
 
 ## Watch kit's screen
@@ -44,7 +44,7 @@ Other ways to the same page:
 
 - The path `/agents/<name>/glass`, or `/glass/<name>`.
 - In the [Lumen](capsule.md), type `glass kit`, or pick Open Glass on one of kit's threads.
-- `/glass/box` opens the box itself, which has files and no screen.
+- `/glass/box` opens the server itself, which has files and no screen.
 
 The first time, the computer is made and starts, which takes a few seconds. Then the screen
 appears with a LIVE badge, and the title reads "kit's computer" and "running". Below the screen:
@@ -57,13 +57,13 @@ Watching keeps the computer awake. About a minute after nobody is watching or us
 computer rests: it is frozen and uses no processor time. The next time kit or you need it, it
 wakes where it left off.
 
-> [!SNAG] "No box is paired yet" or "kit's computer runs on your box"
+> [!SNAG] "No box is paired yet" or "kit's computer runs on your server"
 > You opened Glass on a Deck that has no box behind it, such as your Mac's own. Agents' computers
-> run on the box. Put Vyre on a server with `vyre box add you@your-server`, or open the box's
+> run on the server. Put Vyre on a server with `vyre server add you@your-server`, or open the server's
 > Deck instead.
 
-> [!SNAG] "The box is not answering."
-> Vyre did not answer. Check the box with `vyre status` on it, or `vyre box` from the Mac.
+> [!SNAG] "The server is not answering."
+> Vyre did not answer. Check the server with `vyre status` on it, or `vyre server` from the Mac.
 
 ## Take the keyboard, then hand it back
 
@@ -80,7 +80,7 @@ You handed the keyboard back to kit. Your note is in its thread.
 
 kit carries on from where it stopped and gets a note in its thread: who had the keyboard, for how
 long, and your note. It never sees what you typed. The activity list shows "You took the
-keyboard." and "You handed back to kit." If you close the tab, or the hold lapses on the box, the
+keyboard." and "You handed back to kit." If you close the tab, or the hold lapses on the server, the
 keyboard goes back to kit on its own.
 
 If you stop typing and moving for 5 minutes, the keyboard also goes back to kit. Ten seconds
@@ -96,8 +96,8 @@ The change applies to a take-over already running. From a terminal:
 `vyre call computers.handback.set '{"minutes":15}'` (0 turns it off; config
 `computers.handbackIdleMin`).
 
-> [!SNAG] "This box still asks for a passkey to take the keyboard."
-> The box runs an older Vyre. Update it with `vyre box update` from the Mac (see
+> [!SNAG] "This server still asks for a passkey to take the keyboard."
+> The server runs an older Vyre. Update it with `vyre server update` from the Mac (see
 > [Box care](box-care.md#upgrade)). Take-over needs no passkey now.
 
 ## Sign in to a site in kit's Chrome
@@ -117,7 +117,7 @@ limits. Chrome's own password saving is off, because passwords belong in the
 ## Browse and move files
 
 Open the **Files** tab in Glass. It shows "kit's home": its folders and files, with size and
-date. On `/glass/box` it shows the box's folders you chose for Glass.
+date. On `/glass/box` it shows the server's folders you chose for Glass.
 
 - Choose a file to preview it (text and images), then download, rename or trash it.
 - Drop files onto the list to upload them into the folder you are in.
@@ -126,7 +126,7 @@ date. On `/glass/box` it shows the box's folders you chose for Glass.
 Every change says what happened. Downloads and uploads use a one-time ticket, so a link cannot be
 reused. Trash goes to a `.vyre-trash` folder, not away, so you can take a file back out.
 
-![Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash](shots/glass-files.png)
+![Glass on the server: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash](shots/glass-files.png)
 
 Secret places are hidden and refused at any depth, whatever their case. Among them: `.vyre`,
 `.claude`, `.ssh`, `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.npmrc`, `.env` and `.env.*`,
@@ -154,24 +154,24 @@ panel says Stopped:
 
 ```output
 kit's computer did not start
-kit's computer stopped as soon as it started (exit code 3). Press Restart computer on kit's page, then Retry. If it fails again, the box's log says why.
+kit's computer stopped as soon as it started (exit code 3). Press Restart computer on kit's page, then Retry. If it fails again, the server's log says why.
 ```
 
 Under it are **Retry** and **Open kit's page**. Retry starts the same computer again. **Restart
-computer** on kit's page makes a new one from the current image, so press it first when the box's
+computer** on kit's page makes a new one from the current image, so press it first when the server's
 software was fixed, then Retry.
 
-To see the full reason, run this on the box:
+To see the full reason, run this on the server:
 
 ```sh
 vyre call computers.checkout '{"agent":"kit"}'
 ```
 
 ```output
-kit's computer stopped as soon as it started (exit code 3); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the box
+kit's computer stopped as soon as it started (exit code 3); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the server
 ```
 
-The same message is in Vyre's log on the box. Run the `docker logs` command it names for the
+The same message is in Vyre's log on the server. Run the `docker logs` command it names for the
 details.
 
 ## On a phone
@@ -184,7 +184,7 @@ with the same Take over and Hand back. See [Mobile](mobile.md).
 - An agent cannot open Glass, take or release a keyboard. Those are for people.
 - Let an agent undo a pause. An agent can pause its own hands, but only you resume them.
 - Let an agent use another agent's computer. Each agent's hands reach its own computer only.
-- It does not show your Mac's screen. Glass is for agents' computers and the box.
+- It does not show your Mac's screen. Glass is for agents' computers and the server.
 - It never lets two people type at once.
 - The Terminal tab is not in this version.
 

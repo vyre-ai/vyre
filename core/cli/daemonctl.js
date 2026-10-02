@@ -17,7 +17,7 @@ export async function ensureUp() {
   }
   const p = config.ensure();
   if (await ping(p.socket)) return { ok: true, started: false };
-  // In the box's container a supervisor owns vyred (the loop under the spawner, core/daemon/loop.sh)
+  // In the server's container a supervisor owns vyred (the loop under the spawner, core/daemon/loop.sh)
   // and brings it back 2 s after it exits. A `vyre` run with docker exec in that gap must not start
   // a second vyred of its own: that one lacks the spawner, makes the loop's vyred exit "already
   // running" until the loop gives up, and dies with the exec. Wait for the supervisor's instead.

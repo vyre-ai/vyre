@@ -114,7 +114,7 @@ test("up on a Mac: exactly one box answers on the tailnet, so it is saved and th
   assert.doesNotMatch(f.text(), /link:/);
 });
 
-test("up --json on a Mac with its box answering: ready, and the box named", async t => {
+test("up --json on a Mac with its box answering: ready, and the server named", async t => {
   world(t, running([peer("vyre")]));
   const f = fakes(t, { answering: [BOX], found: [BOX] });
   assert.equal(await up(["--json"], f.deps), 0);
@@ -150,7 +150,7 @@ test("up on a Mac with no terminal and no box: the three commands, exit 0", asyn
   world(t, running([]));
   const f = fakes(t, { tty: false });
   assert.equal(await up([], f.deps), 0);
-  for (const c of ["vyre box add user@host", "vyre up --box", "vyre up --connect <address>"]) assert.ok(f.text().includes(c), c);
+  for (const c of ["vyre server add user@host", "vyre up --box", "vyre up --connect <address>"]) assert.ok(f.text().includes(c), c);
   assert.doesNotMatch(f.text(), /\? /, "nothing asked");
 });
 
@@ -186,7 +186,7 @@ test("up on a Mac: a known box that does not answer says why and exits 1", async
   assert.equal(JSON.parse(j.lines[0]).error.code, "box_unreachable");
 });
 
-test("up on a Mac: a box named in config is never sent a pairing request by starting; --connect or a yes does it", async t => {
+test("up on a Mac: a server named in config is never sent a pairing request by starting; --connect or a yes does it", async t => {
   world(t, running([]));
   config.save({ network: { box: BOX } });
   const tools = { "link.status": () => ({ data: { linked: false, pending: null } }), "link.pair": () => ({ data: { code: "123-456" } }) };
@@ -200,14 +200,14 @@ test("up on a Mac: a box named in config is never sent a pairing request by star
   const no = fakes(t, { answering: [BOX], answers: [""], tools });
   assert.equal(await up([], no.deps), 0);
   assert.ok(!no.calls.some(c => c[0] === "link.pair"));
-  assert.match(no.text(), /\? +Pair this Mac with \S+\? It sends the box a request to approve\. \(y\/N\)/);
+  assert.match(no.text(), /\? +Pair this Mac with \S+\? It sends the server a request to approve\. \(y\/N\)/);
   t.mock.restoreAll();
   const yes = fakes(t, { answering: [BOX], answers: ["y"], tools });
   assert.equal(await up([], yes.deps), 0);
   assert.ok(yes.calls.some(c => c[0] === "link.pair"));
   assert.match(yes.text(), /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
   t.mock.restoreAll();
-  // --connect is the person asking for this box: it pairs without a question.
+  // --connect is the person asking for this server: it pairs without a question.
   const connect = fakes(t, { answering: [BOX], tty: false, tools });
   assert.equal(await up(["--connect", BOX], connect.deps), 0);
   assert.deepEqual(connect.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
@@ -247,7 +247,7 @@ test("up --box on a Mac: the one-time link is printed and opened; --json gives u
   assert.deepEqual(j.opened, [], "a caller parsing JSON opens what it wants");
 });
 
-test("up on a box after onboarding: the ending block, the same as on the Mac", async t => {
+test("up on a server after onboarding: the ending block, the same as on the Mac", async t => {
   world(t, running([]));
   config.save({ role: "box", onboard: { assistant: "Juno" } });
   const done = { data: { url: null, port: null, user: "alex", address: BOX } };
@@ -342,7 +342,7 @@ test("up on a Mac: a pairing already waiting shows its code instead of starting 
 
 test("up on a Mac: already linked goes straight to the Capsule; --no-capsule skips it", async () => {
   const linked = { linked: true };
-  // Linked: the ending asks the box for its assistant, over the link.
+  // Linked: the ending asks the server for its assistant, over the link.
   assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked })).calls.map(c => c[0]), ["link.status", "capsule", "link.call"]);
   assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked, capsule: false })).calls.map(c => c[0]), ["link.status", "link.call"]);
 });
@@ -397,7 +397,7 @@ test("up --json: a throw anywhere is still exactly one error object and exit 1",
   await assert.rejects(up([], f.deps), /bring broke/);
 });
 
-test("up on a box while setup runs at vyre.run/setup: one next step, no local link, no ssh tunnel, no link minted (#11)", async t => {
+test("up on a server while setup runs at vyre.run/setup: one next step, no local link, no ssh tunnel, no link minted (#11)", async t => {
   world(t, running([]));
   config.save({ role: "box" });
   const link = { data: { url: "http://127.0.0.1:7300/onboard?t=abc", port: 7300, user: "alex", address: null } };
@@ -434,7 +434,7 @@ test("up on a box while setup runs at vyre.run/setup: one next step, no local li
   assert.equal(JSON.parse(j.lines[0]).url, link.data.url);
 });
 
-test("up --keep-link on a box (vyre update): reports the open link, mints none, opens nothing", async t => {
+test("up --keep-link on a server (vyre update): reports the open link, mints none, opens nothing", async t => {
   world(t, running([]));
   config.save({ role: "box" });
   const open = { data: { url: null, pending: true, expires: Date.now() + 42 * 60_000, port: 7300, user: "alex", address: null, passkeyUrl: null } };
@@ -471,6 +471,6 @@ test("up on a Mac, the very first time: the welcome, the three choices, and choi
   assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a server/);
   assert.match(text, /Asking https:\/\/vyre\.example-tail\.ts\.net to pair with this Mac/);
   assert.match(text, /Approve this Mac on your phone at https:\/\/vyre\.example-tail\.ts\.net[\s\S]*Code: 123-456/);
-  assert.doesNotMatch(text, /vyred running ·/, "a first run gets the welcome, not a status line");
+  assert.doesNotMatch(text, /Vyre \S+ is running/, "a first run gets the welcome, not a status line");
   assert.deepEqual(f.opened, [], "nothing is opened in a browser");
 });

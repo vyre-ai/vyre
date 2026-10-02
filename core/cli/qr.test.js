@@ -1,6 +1,6 @@
 // @ts-check
 // The terminal QR code: the vendored encoder (deck/vendor/qrcode.js) at level M in byte mode,
-// pinned for a box address and a relay pair URL longer than version 10 holds, plus the parts a
+// pinned for a server address and a relay pair URL longer than version 10 holds, plus the parts a
 // scanner reads first and the half-block drawing.
 
 import { test } from "node:test";
@@ -10,7 +10,7 @@ import { qr, terminal } from "./qr.js";
 
 const hash = m => crypto.createHash("sha256").update(m.map(r => r.map(b => (b ? "1" : "0")).join("")).join("\n")).digest("hex").slice(0, 16);
 
-test("qr: a box address matches the encoder this file was checked against, and a relay pair URL fits", () => {
+test("qr: a server address matches the encoder this file was checked against, and a relay pair URL fits", () => {
   // The same matrix the previous, independently checked encoder gave for this address.
   const short = qr("https://vyre.tail0000.ts.net/");
   assert.equal(short.length, 29, "version 3");

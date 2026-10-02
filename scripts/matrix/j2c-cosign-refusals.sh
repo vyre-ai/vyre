@@ -26,7 +26,7 @@ rec() { # rec STEP ok|false [why]
 }
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else version; fi; }
-ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
+ready() { i=0; until vyre status 2>/dev/null | grep -q ' is running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
 mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
 : >"$OUT/pids"

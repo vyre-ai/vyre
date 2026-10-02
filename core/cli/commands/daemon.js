@@ -13,6 +13,17 @@ import { stop } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
 import { personIO } from "./presence.js";
 import { out, dim, signal, beacon } from "../style.js";
+
+/** An uptime a person reads: 42s, 5m, 1h 28m, 2d 3h. */
+export function uptime(/** @type {number} */ ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ${m % 60}m`;
+  return `${Math.floor(h / 24)}d ${h % 24}h`;
+}
 import { EXIT, json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
 export default [
@@ -22,13 +33,13 @@ export default [
       const r = await stop();
       if (json()) {
         const d = { stopped: r.ok && r.wasRunning, wasRunning: r.wasRunning, ...(r.pid ? { pid: r.pid } : {}) };
-        emit(d, { kind: "card", title: "vyred", state: r.ok ? "ok" : "failed",
-          fields: [{ label: "vyred", value: !r.wasRunning ? "was not running" : r.ok ? "stopped" : `did not stop within 5 seconds (pid ${r.pid})` }] });
+        emit(d, { kind: "card", title: "Vyre", state: r.ok ? "ok" : "failed",
+          fields: [{ label: "Vyre", value: !r.wasRunning ? "was not running" : r.ok ? "stopped" : `did not stop within 5 seconds (pid ${r.pid})` }] });
         return r.ok ? 0 : 1;
       }
-      if (!r.wasRunning) { out("  vyred is not running"); return 0; }
-      if (r.ok) { out("  vyred stopped"); return 0; }
-      return fail(`vyred did not stop within 5 seconds (pid ${r.pid})`, { next: `kill ${r.pid}, then vyre up` });
+      if (!r.wasRunning) { out("  Vyre is not running"); return 0; }
+      if (r.ok) { out("  Vyre stopped"); return 0; }
+      return fail(`Vyre did not stop within 5 seconds (pid ${r.pid})`, { next: `kill ${r.pid}, then vyre up` });
     },
   },
   {
@@ -37,7 +48,7 @@ export default [
       const h = await request("GET", "/v1/health");
       if (h.error) {
         if (json()) return failTool(h.error);
-        out(`  vyred ${beacon("not running")} ${dim("· vyre up to start it")}`);
+        out(`  Vyre ${beacon("is not running")} ${dim("· vyre up to start it")}`);
         return EXIT.UNREACHABLE;
       }
       const d = h.data;
@@ -48,11 +59,11 @@ export default [
       const mem = memoryLine(personal);
       if (json()) {
         return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
-          { label: "vyred", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${Math.round(d.uptime / 1000)} s · pid ${d.pid}` },
+          { label: "Vyre", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${uptime(d.uptime)} · pid ${d.pid}` },
           { label: "Modules", value: `${d.modules.running} running${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
           ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
       }
-      out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
+      out(`  Vyre ${d.version} ${signal("is running")} ${dim(`· pid ${d.pid} · up ${uptime(d.uptime)}`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));

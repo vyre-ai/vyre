@@ -167,7 +167,7 @@ Press **Continue**.
 
 Press **Sign in with Claude**, **Sign in with ChatGPT (Codex)** or **Sign in with Grok**. Each
 signs in on its own provider's page, in any browser, and Vyre never sees your password. The page
-shows a link to the sign-in page, and then either a code to enter there or a box to paste the
+shows a link to the sign-in page, and then either a code to enter there or a server to paste the
 code the provider shows you. One signed-in account is enough to go on, and you can add the others
 later. Press **Continue**.
 
@@ -324,7 +324,7 @@ keeps the Lumen's permissions across updates.
 > Grant Input Monitoring to Vyre in System Settings, Privacy & Security, then run `vyre capsule`
 > again. Option-Space opens it meanwhile.
 
-> [!SNAG] "the box serves alex@example.com, and this Mac is signed in to Tailscale as ..."
+> [!SNAG] "the server serves alex@example.com, and this Mac is signed in to Tailscale as ..."
 > The Mac and the server are on different Tailscale accounts. Sign the Mac in to Tailscale as the
 > account the server names, then run `vyre up`.
 
@@ -340,15 +340,15 @@ code-signed at 0.2.0, so Windows says it does not recognize the app: choose **Mo
 checksums. You can also use your server from any browser on the PC, at your address, once
 Tailscale is installed and signed in there. The app, the CLI and WSL2 are in [Windows](../using/windows.md).
 
-## Looking after the box
+## Looking after the server
 
 Updates, logs, moving to a new server and removing Vyre are in [Box care](../using/box-care.md).
 How the server and the Mac fit together, and what runs where, is in
-[The box and the Mac](../concepts/box-and-mac.md).
+[The server and the Mac](../concepts/box-and-mac.md).
 
 ### Backup
 
-From the Mac, `vyre box backup` copies the whole server into one file; the box stops while it
+From the Mac, `vyre server backup` copies the whole server into one file; the server stops while it
 copies and starts again after. On the server itself, `vyre backup` writes
 `vyre-backup-YYYY-MM-DD.vyre`, one file sealed with a passphrase you type (12 characters or more).
 It holds your settings, the store, the sealed vault, watchers, modules, certificates, names and
@@ -367,7 +367,7 @@ in. It sets the server up over SSH and holds the SSH tunnel to the server's own 
 you.
 
 ```sh
-vyre box add alex@192.0.2.10
+vyre server add alex@192.0.2.10
 ```
 
 ```output
@@ -415,7 +415,7 @@ with this Mac, and prints the ready block. Approve the Mac in the Deck, as in
 > that server. Say no and nothing changes.
 
 > [!SNAG] You pressed Ctrl-C, or the terminal closed
-> Nothing is lost. Run `vyre box add alex@192.0.2.10` again. It looks at what the server has and
+> Nothing is lost. Run `vyre server add alex@192.0.2.10` again. It looks at what the server has and
 > carries on from there.
 ::: tab I already have a server
 Your server is set up (at vyre.run/setup, or from another Mac) and this is a new Mac. Install
@@ -490,16 +490,16 @@ install Vyre on the Mac as in [step 10](#10-put-the-lumen-on-your-mac).
 > on the server, then paste the fresh line. Your data stays.
 
 > [!SNAG] The setup link has expired (the SSH and loopback paths)
-> The link works once, for an hour. From the Mac, run `vyre box add alex@192.0.2.10` again. On
+> The link works once, for an hour. From the Mac, run `vyre server add alex@192.0.2.10` again. On
 > the server, run `vyre up`. Either prints a fresh link, and the page keeps every step you
 > already finished.
 
 > [!SNAG] "Almost there: your server has no address yet."
 > You skipped the address screen on the SSH path, so there is nothing for your Mac or phone to
-> reach yet. Run `vyre box add alex@192.0.2.10` again and finish **Your address** in the browser.
+> reach yet. Run `vyre server add alex@192.0.2.10` again and finish **Your address** in the browser.
 
 > [!SNAG] your server https://alex.vyre.run did not answer from here
 > The reason follows on the same line. "this Mac is not on the tailnet": sign in to Tailscale on
-> the Mac. "the box is offline or unreachable": on the server, run `vyre status`.
+> the Mac. "the server is offline or unreachable": on the server, run `vyre status`.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).
