@@ -21,6 +21,7 @@ import { follow } from "../../core/resilience/stream.js";
 import { open, cursorStore, cacheStore, lifecycle, idbStore } from "../../core/resilience/web.js";
 import { outbox } from "../../core/resilience/outbox.js";
 import { backoff } from "../../core/resilience/backoff.js";
+import { callStart, lagMs } from "./trace.js";
 
 const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const q = new URLSearchParams(location.search);
@@ -76,6 +77,23 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  */
 export async function call(name, input = {}, opts = {}) {
   if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
+  // The same read asked for twice at once (the rail, the view and the avatars all want projects.list) is one request: they share its answer.
+  if (!opts.write && !opts.key && !opts.presence && !opts.keepalive && READS.test(name)) {
+    const k = name + "\n" + JSON.stringify(input);
+    let p = inflight.get(k);
+    if (!p) { p = callOnce(name, input, opts).finally(() => inflight.delete(k)); inflight.set(k, p); }
+    return p;
+  }
+  return callOnce(name, input, opts);
+}
+
+/** Tools that only read, by their last word: safe to share one answer between identical calls in flight. */
+const READS = /\.(?:list|get|info|status|summary|names|search|read|show|ls|current)$/;
+/** @type {Map<string, Promise<any>>} */
+const inflight = new Map();
+
+/** @param {string} name @param {Record<string, any>} input @param {any} opts */
+async function callOnce(name, input, opts) {
   // The person session (tailnet): a box that wants one answers person_session_required. With a
   // handler set (js/person.js, from app.js), it asks the person to sign in on this device, and
   // the call is retried exactly once after that; a refused sign-in rejects as before. No handler:
@@ -130,17 +148,21 @@ async function once(name, input, opts) {
 /** One POST to a tool, with any presence headers; resolves to the data or rejects with an ApiError.
  * @param {string} name @param {Record<string, any>} input @param {Record<string, string>} extra @param {boolean} [keepalive] */
 async function post(name, input, extra, keepalive) {
+  const done = callStart(name);
   let res, body;
   try {
+    if (lagMs) await new Promise(r => setTimeout(r, lagMs)); // ?trace=1&lag=<ms>: a far-away server, for measuring
     res = await fetch("/v1/tools/" + encodeURIComponent(name), {
       method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...extra, ...headers },
       body: JSON.stringify(input), ...(keepalive ? { keepalive: true } : {}),
     });
     body = await res.json().catch(() => null);
   } catch {
+    done(false);
     reach(false);
     return fallback(name, input, new ApiError("offline", "Your server did not answer", name));
   }
+  done(!!body && "data" in body && !body.error);
   // The service worker answers a read it kept with offline: true; the box itself was not reached.
   reach(!body?.offline);
   // The box answered while the stream is still backing off (its sockets were cut, the network

@@ -34,6 +34,7 @@ import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
 import { starButton } from "./star-button.js";
 import { installRows } from "./rows.js";
+import * as trace from "./trace.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
@@ -435,6 +436,7 @@ async function route() {
     newAgent = true;
   }
   const { view: name, params } = match(location.pathname);
+  trace.routeStart(location.pathname + location.search, name);
   // /quick is the hotkey panel: the compact ask alone, no rail (css/views/quick.css reads this).
   document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
@@ -506,6 +508,8 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
   const page = h("div", { class: "page", "data-page": name });
   away(page, hidden);
   place(key, page);
+  // The frame is on screen in the same frame as the tap: a quiet placeholder until the view's code and data arrive, so nothing is ever blank.
+  if (!hidden) { page.append(skeleton()); trace.mark("frame"); }
   const offs = /** @type {(() => void)[]} */ ([]);
   const entry = { page, name, shows: /** @type {(() => void)[]} */ ([]), rail: /** @type {any} */ (null), alive: true,
     leave: () => { for (const f of offs.splice(0)) { try { f(); } catch {} } } };
@@ -529,10 +533,12 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
     rail: (/** @type {any} */ el) => { entry.rail = el; if (current === key) { put(railLower, el); sideSync(); } },
   };
   try {
-    await style(name);
-    const mod = await import(`../views/${name}.js`);
+    // The stylesheet and the view's code are asked for together, not one after the other: two round trips become one.
+    const [, mod] = await Promise.all([style(name).then(() => trace.mark("css")), import(`../views/${name}.js`).then(m => { trace.mark("code"); return m; })]);
     if (!entry.alive) return;
     await mod.default(ctx);
+    page.querySelector("[data-skel]")?.remove();
+    trace.mark("draw");
   } catch (e) {
     if (!entry.alive) return;
     // The view's file did not arrive (the box out of reach before the service worker kept it):
@@ -545,6 +551,29 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
       h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
   }
 }
+
+/** The placeholder a page shows until its view has drawn: a header bar and a few rows. */
+function skeleton() {
+  return h("div", { class: "page-skel", "data-skel": "", "aria-hidden": "true" }, h("span", { class: "page-skel-h" }), [0, 1, 2, 3].map(() => h("span", { class: "page-skel-r" })));
+}
+
+// ---- warming: a link about to be used has its view ready ----------------------------------------
+// Pointing at an internal link (or touching it, or focusing it) fetches that screen's stylesheet and code, so the tap that follows has them
+// already. Once per screen; a failure is nothing (the real navigation asks again and says why).
+const warmed = new Set();
+function warmLink(/** @type {EventTarget|null} */ t) {
+  const a = /** @type {HTMLAnchorElement|null} */ (/** @type {any} */ (t)?.closest?.("a[href]"));
+  if (!a || a.target === "_blank" || a.origin !== location.origin) return;
+  const { view: name } = match(a.pathname);
+  if (!name || name === "missing" || warmed.has(name)) return;
+  warmed.add(name);
+  void style(name);
+  void import(`../views/${name}.js`).catch(() => warmed.delete(name));
+}
+document.addEventListener("pointerover", e => { if (/** @type {PointerEvent} */ (e).pointerType !== "touch") warmLink(e.target); }, { passive: true });
+document.addEventListener("pointerdown", e => { trace.pressed(); warmLink(e.target); }, { passive: true, capture: true });
+document.addEventListener("touchstart", e => { trace.pressed(); warmLink(e.target); }, { passive: true });
+document.addEventListener("focusin", e => warmLink(e.target));
 
 /** A module that failed to load over the network (Chrome, Firefox, Safari word it differently). @param {any} e */
 const unfetched = e => e instanceof TypeError && /dynamically imported module|module script failed|error loading dynamically imported/i.test(String(e.message));
