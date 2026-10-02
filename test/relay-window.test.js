@@ -15,7 +15,7 @@ import { parsePairUrl, pairUrl } from "../core/relay/pairing.js";
 import { macCoreRefusal, seams as relaySeams } from "../core/relay/index.js";
 import { useReleasesFile } from "../core/relay/releases.js";
 import { signed } from "../core/presence/person.js";
-import { pairTicket, resolveTicket, pairOffer, connect } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, pairOffer, connect, keyFingerprint } from "../relay/client/client.js";
 import { shellDeviceKey } from "../relay/client/shellkey.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
@@ -199,10 +199,14 @@ test("pairing window: 'Not you?' frees the pending slot at once, the window stay
   const waitFor = (n) => new Promise((resolve, reject) => { const iv = setInterval(() => { const es = w.events.filter(x => x[0] === "pairing.requested"); if (es.length >= n) { clearInterval(iv); resolve(es[n - 1][1]); } }, 20); setTimeout(() => { clearInterval(iv); reject(new Error("no pairing.requested event")); }, 8000); });
   // a stranger's phone redeems first and sits in the one pending slot
   let junkFp = null;
-  const junk = pairTicket(fromBase64url(open.ticket), { relay: w.status.url, name: "Stranger", crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "junk-key.json")), timeout: 20_000, onFingerprint: fp => { junkFp = fp; } });
+  const junkStore = fileKeyStore(path.join(tempHome(t), "junk-key.json"));
+  const junk = pairTicket(fromBase64url(open.ticket), { relay: w.status.url, name: "Stranger", crypto: nodeCrypto(), keyStore: junkStore, timeout: 20_000, onFingerprint: fp => { junkFp = fp; } });
   const junkRefused = assert.rejects(junk);
   const first = await waitFor(1);
   assert.equal(junkFp, first.fingerprint, "the phone's own screen shows the fingerprint the box shows");
+  // one key, three readings: the callback, the box's pairing.requested event, and the client's own fingerprint of the key it holds
+  assert.equal(await keyFingerprint((await junkStore.get()).publicKey, nodeCrypto()), first.fingerprint, "the same key gives the same fingerprint on both ends");
+  // one key, three readings: the callback, the box's event, and the client's own fingerprint of the key it holds
   assert.equal((await w.call("relay.pair.window.reject", { window: id, device: "nope" }, SCREEN, A2)).error?.code, "not_found");
   assert.equal((await w.call("relay.pair.window.reject", { window: id, device: first.device }, SCREEN, B)).error?.code, "denied", "only the screen that opened the window");
   assert.equal((await w.call("relay.pair.window.reject", { window: id, device: first.device }, SCREEN, A2)).data.rejected, true);

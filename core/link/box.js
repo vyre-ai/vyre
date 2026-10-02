@@ -31,6 +31,7 @@
 // connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
 import crypto from "node:crypto";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { boxKey, signAnswer } from "./assert.js";
@@ -107,6 +108,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const id = crypto.randomUUID(), code = newCode(), secret = crypto.randomBytes(32).toString("base64url");
       const peer = peerOf(meta), created = now();
       const k = kind === "device" ? "device" : "mac";
+      name = friendlyDeviceName(name, { kind: k, owner: (ctx.config.onboard || {}).person });
       pending.set(id, { id, name: String(name).slice(0, 80), login, peer, kind: k, code: mac(code), secret: mac(secret), created, expires: created + TTL });
       ctx.events.emit("link.pair-requested", { id, name: String(name).slice(0, 80), login, kind: k, expires: created + TTL });
       return { id, code: showCode(code), secret, expires: created + TTL, box: { name: ctx.config.name || null } };
@@ -272,6 +274,19 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         return { ...rest, reach: "direct", why: "Connected over your Tailscale network.", since: reachSince.at(asked, "direct") };
       }
       return h;
+    },
+  });
+
+  ctx.tool("link.rename", {
+    description: "Rename a paired Mac or device: the person's own label, kept on the box and shown wherever the device appears (the Deck, session rows, Drive, Now). A new name replaces what the device called itself.",
+    input: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"] },
+    run: async ({ id, name }) => {
+      const label = cleanLabel(name);
+      if (!label || label.length > 64) throw new Error("a name is 1 to 64 printable characters");
+      const r = db.prepare("UPDATE link_peers SET name = ? WHERE id = ?").run(label, String(id));
+      if (!r.changes) throw new Error("no such paired Mac");
+      ctx.events.emit("device.renamed", { kind: "mac", id: String(id), name: label });
+      return { id: String(id), name: label };
     },
   });
 

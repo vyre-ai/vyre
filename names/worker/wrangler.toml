@@ -40,5 +40,6 @@ simple = { limit = 30, period = 60 }
 [triggers]
 crons = ["17 * * * *"]
 
+# Cloudflare keeps request logs, with addresses, whenever this is on; Vyre needs none of them (#70). A specific failure may switch it on for a day, and the privacy page says so.
 [observability]
-enabled = true
+enabled = false

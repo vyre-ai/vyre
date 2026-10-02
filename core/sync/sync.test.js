@@ -259,7 +259,7 @@ test("sync: link.macs and link.macs.call never see a device-kind peer", async t 
   const macs = await call("link.macs", {}, "cli");
   assert.deepEqual(macs.data.map(m => m.name), ["alex-mac"]);
   const peers = await call("link.peers", {}, "cli");
-  assert.deepEqual(peers.data.map(p => [p.name, p.kind]).sort(), [["alex-mac", "mac"], ["win-pc", "device"]]);
+  assert.deepEqual(peers.data.map(p => [p.name, p.kind]).sort(), [["alex-mac", "mac"], ["win pc", "device"]]);
 });
 
 test("sync: a chunk can never grow an upload past what it declared, and finish books the real size (e2e review, quota bypass)", async t => {

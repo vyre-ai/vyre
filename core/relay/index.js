@@ -17,6 +17,7 @@
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
 import { within } from "../../lib/within.js";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
@@ -132,7 +133,7 @@ export default {
     const route = () => routeId(keys.route.pub);
     // The box's name as the names module knows it (config.name), never the machine's hostname: it rides in QR codes and
     // shows in screenshots.
-    const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
+    const boxName = () => String(ctx.config.serverName || ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
     // The claimed <handle>.vyre.run subdomain (core/names/service.js's own `ctx.config.name`,
     // set only once a name is actually claimed), not boxName()'s fallback chain, since a display
     // name is not necessarily a real, resolvable handle. Null when nothing is claimed yet: the
@@ -306,7 +307,7 @@ export default {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
         if (match.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
-        const name = promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64);
+        const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: hello.kind === "web" ? "web" : "device", owner: (ctx.config.onboard || {}).person });
         // A ticket from a pairing window enrols nothing until the screen that opened it confirms this exact phone.
         if (match.window) await holdForConfirm(match.window, pub, name);
         const kind = hello.kind === "web" ? "web" : "app";
@@ -874,10 +875,11 @@ export default {
       input: obj({ id: str, name: str }, ["id", "name"]),
       run: async (input, meta = {}) => {
         owner(meta.caller, meta, "renaming a device");
-        const name = String(input.name).trim();
+        const name = cleanLabel(input.name);
         if (!NAME.test(name)) throw fail("bad_input", "a name is 1 to 64 printable characters");
         const r = db.prepare("UPDATE relay_devices SET name = ? WHERE id = ? AND removed_at IS NULL").run(name, String(input.id));
         if (!r.changes) throw fail("not_found", `no paired device ${input.id}`);
+        ctx.events.emit("device.renamed", { kind: "relay", id: String(input.id), name });
         return { id: String(input.id), name };
       },
     });
