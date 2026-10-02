@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(sessions): a provider's only account is its default (set when it is added or finished, kept when another is removed, and filled in once on existing installs), so a start never finds "no account" on a box with one sign-in. An account's identity that reads empty right after sign-in is asked again after 15 seconds instead of staying empty until a restart. Refs #37, #42
 #### chat: Send gives feedback and never sends twice (#39)
 
 - A message you send is on screen at once and says "Sending…" until the box answers; then the mark goes. A send that fails takes the row back and puts your words back in the box with the reason. The composer clears at once and holds any further send until the first is answered, and every send carries a client message id (`uuid`) the box already uses to drop a repeat. Five quick presses of Enter send one message (test). A queued message now reads "Queued for after this turn" (or "Sending to the queue" until the box names it) instead of "Queued for after". The repeated "hey" came from the project board's old thread view, which had no such guard and is gone from the board (see the board fix).
