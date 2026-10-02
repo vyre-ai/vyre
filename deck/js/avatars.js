@@ -41,7 +41,7 @@ import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
 import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
 // A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
 // Lumen ports it against its vectors). core/daemon serves it at /lib/avatar-seed/index.js.
-import { projectBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";
+import { projectBytes, entityBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";
 
 export { projectBytes };
 
@@ -52,7 +52,7 @@ export { projectBytes };
 /** How many looks the person's circle has (defaultAvatarOption's modulus). */
 export const PERSON_OPTIONS = USER_GRADIENTS.length;
 
-/** At or above this size the person's circle wears its Vyre code ring (ADR 0043 section 2). */
+/** At or above this size an avatar can wear its Vyre code ring (ADR 0043 section 2; design-system.md section 6: the card and the Wink screen, never a small avatar). */
 export const RING_AT = 96;
 /** Characters drop their badges below 32 (characters.js), so 24 and 32 are different drawings. */
 const band = (/** @type {Family} */ family, /** @type {number} */ size) => family === "teammate" ? (size >= 32 ? "l" : "s") : "";
@@ -170,10 +170,46 @@ export function avatarSource(family, seed, size, o = {}) {
     if (o.ring && o.fp) return renderCode2(bitsToLevels(bytesToBits(buildCodeword(o.fp))), { userOption: option, style: "ticksSunburst", theme: th, size });
     return userAvatar(option, size);
   }
+  const bytes = o.ring ? ringBytes(family, seed, o) : null;
+  if (bytes) {
+    // The same mark inside the same ring: the family's own drawing is the ring's centre (the faceSvg hook).
+    return renderCode2(bitsToLevels(bytesToBits(buildCodeword(bytes))), {
+      userOption: bytes[0] % PERSON_OPTIONS, style: "ticksSunburst", theme: th, size,
+      faceSvg: d => inClearCentre(mark(family, seed, d, o)),
+    });
+  }
+  return mark(family, seed, size, o);
+}
+
+/** A non-person family's own mark. @param {Family} family @param {string} seed @param {number} size @param {{ theme?: "dark"|"paper", draft?: boolean, color?: string|null }} o */
+function mark(family, seed, size, o) {
+  const th = o.theme || "dark";
   if (family === "assistant") return creature(seed, size);
   if (family === "teammate") return character(seed, size, th, o.color || null);
   if (family === "project") return emblem(projectBytes(seed), { draft: !!o.draft, theme: th, size });
   return agentV2(seed, size, th);
+}
+
+/**
+ * The 8 bytes a ring carries, or null where it must not draw one. The person's and the assistant's are
+ * their real fingerprint8 (no fingerprint, no ring); a project's are the bytes its emblem is drawn from;
+ * an agent's and a teammate's come from lib/avatar-seed entityBytes. A draft tile is no identity yet.
+ * @param {Family} family @param {string} seed @param {{ fp?: number[]|null, draft?: boolean }} o @returns {number[]|null}
+ */
+export function ringBytes(family, seed, o = {}) {
+  if (family === "person" || family === "assistant") return o.fp && o.fp.length === 8 ? o.fp : null;
+  if (family === "project") return o.draft ? null : projectBytes(seed);
+  return seed ? entityBytes(family, seed) : null;
+}
+
+/**
+ * A mark drawn at 120 units, kept inside the ring's clear centre: scaled to 0.86 (a rounded tile's
+ * corners reach 1.16 times the centre's radius) and clipped to the centre circle, so no mark can
+ * touch the ticks. @param {string} svg a mark's own SVG, viewBox 0 0 120 120
+ */
+function inClearCentre(svg) {
+  const inner = svg.replace(/<svg[^>]*>|<\/svg>/g, "");
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><defs><clipPath id="vy-cc"><circle cx="60" cy="60" r="60"/></clipPath></defs><g clip-path="url(#vy-cc)"><g transform="translate(60 60) scale(0.86) translate(-60 -60)">${inner}</g></g></svg>`;
 }
 
 const MAX = 256;
@@ -243,8 +279,9 @@ function drawing(/** @type {{ family: Family, seed: string, size: number, fp: nu
  */
 export function avatar(family, seed, o = {}) {
   const size = o.size || 24;
-  const ring = !!(o.ring && o.fp && family === "person" && size >= RING_AT);
-  const draft = family === "project" && !!o.draft;
+  const draftTile = family === "project" && !!o.draft;
+  const ring = !!(o.ring && size >= RING_AT && ringBytes(family, seed, { fp: o.fp, draft: draftTile }));
+  const draft = draftTile;
   const el = document.createElement("span");
   el.setAttribute("class", `vy-av vy-av-${family}${ring ? " vy-av-ring" : ""}${draft ? " vy-av-draft" : ""}${o.cls ? " " + o.cls : ""}`);
   el.setAttribute("style", `--av:${size}px`);
@@ -273,7 +310,7 @@ export function personAvatar(/** @type {Opts & { ring?: boolean }} */ o = {}) {
 export function assistantAvatar(/** @type {Opts} */ o = {}) {
   const fp = who.assistant.fp;
   const seed = fp ? fp.map(b => b.toString(16).padStart(2, "0")).join("") : "vyre:assistant:fallback:" + (who.assistant.name || "vyre");
-  return avatar("assistant", seed, o);
+  return avatar("assistant", seed, { ...o, fp });
 }
 
 /** An agent by its stable id (its name): a blob, or a character when team.list says it is a teammate. */

@@ -7,11 +7,13 @@
 
 import { h, put, go as goTo, isPhone } from "./dom.js";
 import { attempt as liveAttempt } from "./api.js";
-import { avatar, personAvatar, whoIs, projectAvatar, whoAvatar, RING_AT } from "./avatars.js";
+import { avatar, personAvatar, whoIs, projectAvatar, whoAvatar, teammateAvatar } from "./avatars.js";
 import { openSheet } from "./sheet.js";
 import { plural } from "./fmt.js";
 
 export const NOD_MS = 460, CARD_AT_MS = 170;
+/** The card's Wink ring (design-system.md section 4). */
+const WINK_SIZE = 210;
 
 /**
  * What a card says and offers for one avatar: its name, a kind line, up to five rows, up to three actions. Pure (the reads are done by the caller and handed in).
@@ -81,11 +83,13 @@ export function createAvatarCards(deps = {}) {
     return { owner: w.owner, assistant: w.assistant, agents: Array.isArray(ag.data) ? ag.data : [], projects: pl.data?.projects || [], threads: Array.isArray(th.data) ? th.data : [] };
   }
 
-  /** The big mark: the person's at ring size, else the entity's own mark at 132. @param {any} spec */
+  /** The big mark: every entity's own mark inside its Wink ring at 210 (the ring is drawn where the entity has bytes to carry, else the plain mark at 132). @param {any} spec */
   function bigMark(spec) {
-    if (spec.family === "person") return personAvatar({ size: RING_AT + 114, ring: true, label: "You" });
-    if (spec.family === "project") return projectAvatar(spec.ref || "", { size: 132 });
-    if (spec.family === "assistant" || spec.family === "agent") return whoAvatar(spec.ref || null, { size: 132 });
+    const big = { size: WINK_SIZE, ring: true };
+    if (spec.family === "person") return personAvatar({ ...big, label: "You" });
+    if (spec.family === "project") return projectAvatar(spec.ref || "", big);
+    if (spec.family === "assistant" || spec.family === "agent") return whoAvatar(spec.ref || null, big);
+    if (spec.family === "teammate") return teammateAvatar(spec.seed, { ...big, ref: spec.ref });
     return avatar(spec.family, spec.seed, { size: 132, ref: spec.ref });
   }
 

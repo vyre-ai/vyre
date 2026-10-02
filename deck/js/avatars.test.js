@@ -96,6 +96,30 @@ test("the Vyre code ring: only with a real fingerprint and at RING_AT or above",
   assert.ok(!av.personAvatar({ size: 160, ring: true }).getAttribute("class").includes("vy-av-ring"), "a fallback never draws a ring");
 });
 
+test("Wink ring on every family (design-system.md step 6): same ring, the family's own mark in the centre, only at RING_AT and above", async () => {
+  const { projectBytes, entityBytes } = await import("../../lib/avatar-seed/index.js");
+  const fp = fp8(assistantHex);
+  const ringed = (/** @type {any} */ family, /** @type {string} */ seed, /** @type {any} */ o = {}) => av.avatarSource(family, seed, 210, { ring: true, ...o });
+  for (const [family, seed, o] of /** @type {[any, string, any][]} */ ([["agent", "juno", {}], ["teammate", "reviewer-northwind", { color: "#2F93DA" }], ["project", "northwind", {}], ["assistant", "x", { fp }]])) {
+    const svg = ringed(family, seed, o);
+    assert.match(svg, /viewBox="0 0 600 600"/, `${family}: the ring's 600 canvas`);
+    assert.ok((svg.match(/<line /g) || []).length >= 72, `${family}: the 72 ticks`);
+    assert.match(svg, /id="vy-cc"/, `${family}: the mark sits inside the clear centre`);
+    assert.doesNotMatch(av.avatarSource(family, seed, 210, o), /viewBox="0 0 600 600"/, `${family}: no ring unless asked`);
+  }
+  assert.deepEqual(av.ringBytes("project", "northwind"), projectBytes("northwind"), "a project carries the bytes its emblem is drawn from");
+  assert.deepEqual(av.ringBytes("agent", "juno"), entityBytes("agent", "juno"));
+  assert.deepEqual(av.ringBytes("assistant", "x", { fp }), fp, "the assistant carries its real fingerprint");
+  assert.equal(av.ringBytes("assistant", "x", { fp: null }), null, "no fingerprint, no ring");
+  assert.equal(av.ringBytes("project", "chat-1", { draft: true }), null, "a draft tile is no identity yet");
+  assert.doesNotMatch(av.avatarSource("project", "chat-1", 210, { ring: true, draft: true }), /viewBox="0 0 600 600"/);
+  av._reset();
+  av.setIdentity({});
+  for (const make of [() => av.agentAvatar("juno", { size: 210, ring: true }), () => av.projectAvatar("northwind", { size: 210, ring: true }), () => av.teammateAvatar("reviewer-northwind", { size: 210, ring: true })])
+    assert.ok(make().getAttribute("class").includes("vy-av-ring"));
+  assert.ok(!av.agentAvatar("juno", { size: 40, ring: true }).getAttribute("class").includes("vy-av-ring"), "everyday sizes are the mark alone");
+});
+
 test("no owner.id yet: person and assistant still draw, from their names", () => {
   av._reset();
   av.setIdentity({ owner: null, assistant: null });

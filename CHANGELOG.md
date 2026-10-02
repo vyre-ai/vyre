@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 6: the Wink ring on every avatar
+
+- The avatar card draws every entity inside its Wink ring at 210: person, assistant, agent, teammate and project. The ring is the same 72-tick Vyre code; the family's own mark is its centre (the `faceSvg` hook), scaled to 0.86 and clipped to the clear centre so a rounded tile's corners never touch a tick. Under 96 px an avatar stays a plain mark, and a draft project tile has no ring (it is no identity yet).
+- What a ring carries: the person's and the assistant's real `fingerprint8` (no fingerprint, no ring); a project's own emblem bytes (`projectBytes`); an agent's and a teammate's `entityBytes(family, seed)`, new in `lib/avatar-seed` (the project rule with `vyre:<family>:v1:` as the prefix, with vectors for the ports). A teammate's card now wears its project colour.
+- `deck/test/wink-scan-browser.js` is the scan test: each family, Dark and Paper, drawn at 120 px in headless Chrome and read back with the phone's decoder (decode-core2, Reed-Solomon, CRC). All 56 reads decode, at 5x, 3x, 2x and 1x density. Unit tests in `deck/js/avatars.test.js` and `lib/avatar-seed/index.test.js`.
+
 #### deck v2: the v2 tokens and the project emblem join lib/theme/tokens.json (screen kit)
 
 - `lib/theme/tokens.json` gains a `v2` group: the v2 colours (dark and paper), type roles, 4-grid space, shapes, controls, layout, motion with springs and stagger, three elevations as structured layers, icons, and the project emblem (palette, ink, four cells, eight shapes as data, the byte rules). v1 groups are untouched, so no screen changes.
