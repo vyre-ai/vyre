@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "root": "C:\\Users\\alex\\.vyre",
+      "token": "0123456789abcdef0123456789abcdef",
+      "pipe": "\\\\.\\pipe\\vyre-4d23dfdad920eff3-0123456789abcdef0123456789abcdef"
+    },
+    {
+      "root": "D:\\data\\vyre home",
+      "token": "ffffffffffffffffffffffffffffffff",
+      "pipe": "\\\\.\\pipe\\vyre-3e63c3d311d99359-ffffffffffffffffffffffffffffffff"
+    }
+  ]
+}
