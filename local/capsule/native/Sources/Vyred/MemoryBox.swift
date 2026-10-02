@@ -1,12 +1,9 @@
-// MemoryBox: what memory said about the words in the box, and the lines a quick question is sent
-// with. Every answer comes from vyred's memory.answer, which weighs where a fact came from (the
-// person's own words, never dev, test or tool text). The Capsule ranks nothing itself: its old
-// local ranker (Said) read any first-person line in any transcript as a fact about the user, and
-// answered "Jordan" from a test session. Removed on 2026-09-27 (the user's bug report).
+// MemoryBox: what memory.ask answered, for the card Ask memory shows (its sources, Wrong?, Forget). Memory answers only when asked
+// for (#46); it is never shown above or instead of the assistant, and nothing here is sent with a question. The Capsule ranks nothing
+// itself: its old local ranker read any first-person line in any transcript as a fact about the user, and answered "Jordan" from a test
+// session (removed on 2026-09-27, the user's bug report).
 
 import Foundation
-
-// MARK: the memory box
 
 /// What memory said about the words in the box: the distilled fact, and up to three sources.
 public struct MemoryAnswer: Sendable, Equatable {
@@ -89,44 +86,5 @@ public enum Memo {
             }
         }
         return out
-    }
-
-    /// The memory items as the model reads them, one line each.
-    public static func lines(_ m: MemoryAnswer?) -> [String] {
-        items(m).filter { !$0.said }.map { x in
-            x.kind == .quote
-                ? "\(x.who == "Claude" ? "Claude said" : "The user said")\(x.age.isEmpty ? "" : ", \(ago(x.age))"): \"\(x.text)\""
-                : "\(x.text)\(x.age.isEmpty ? "" : " (noted \(ago(x.age)))")"
-        }
-    }
-
-    /// The system-prompt append for a quick question: only the lines on screen, nothing else.
-    /// Empty with none: how to answer is sessions' Vyre IQ prompt, on the box.
-    public static func append(_ m: MemoryAnswer?) -> String {
-        let l = lines(m)
-        if l.isEmpty { return "" }
-        return "What the user's own notes say:\n\(l.map { "- \($0)" }.joined(separator: "\n"))\n\n" +
-            "If these answer the question, answer from them and say when the user said it, like \"a blue Volvo XC40 (you said so 2 weeks ago)\". They may be old or partial; say so if it matters."
-    }
-
-    /// A memory.answer result as the box shows it: its answer (nil when memory does not know),
-    /// how sure it is, and the turns it came from. Nothing is added or ranked here.
-    public static func fromAnswer(text: String, _ data: Any?, now: Double = vyNowMs()) -> MemoryAnswer {
-        let d = (data as? [String: Any]) ?? [:]
-        let kind = VJ.s(d["kind"])
-        let sources: [MemorySource] = ((d["sources"] as? [[String: Any]]) ?? []).map { x in
-            MemorySource(kind: kind == "fact" ? .fact : .quote, role: "user", session: VJ.s(x["session"]), seq: VJ.int(x["seq"]),
-                         name: VJ.nonEmpty(x["name"]) ?? String(VJ.s(x["session"]).prefix(8)), quote: VJ.s(x["quote"]),
-                         age: Route.age(VJ.num(x["ts"]), now: now), confidence: nil)
-        }
-        let answer = VJ.nonEmpty(d["answer"])
-        var m = MemoryAnswer(text: text.trimmingCharacters(in: .whitespacesAndNewlines),
-                             answer: answer,
-                             answerKind: answer == nil ? nil : kind == "said" ? .said : .memory,
-                             answerAge: sources.first.map(\.age).flatMap { $0.isEmpty ? nil : $0 },
-                             confidence: VJ.num(d["confidence"]),
-                             sources: Array(sources.prefix(3)))
-        if let n = VJ.int(d["from"]), n > 0 { m.conversations = n }
-        return m
     }
 }

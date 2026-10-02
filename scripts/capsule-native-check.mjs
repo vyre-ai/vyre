@@ -173,6 +173,47 @@ try {
       await send({ text: "" });
     } catch (e) { console.log(`screen capture failed: ${String(e && e.message || e).split("\n")[0]}`); }
   }
+  // Deep glass, on the built app: the panel shown over a window that is white on the left half of the screen and black on
+  // the right, captured by macOS itself. With the glass on, the panel's left half is brighter than its right half. With
+  // Reduce Transparency forced on, the ground is the opaque tint and the two halves match.
+  try {
+    const probe = path.join(home, "glassprobe");
+    execFileSync("swiftc", ["-O", "-o", probe, path.join(path.dirname(new URL(import.meta.url).pathname), "mac-glass-probe.swift")], { timeout: 120_000, stdio: "inherit" });
+    const rows = [];
+    for (const look of ["dark", "light"]) {
+      for (const display of ["glass", "reduced"]) {
+        const bd = spawn(probe, ["backdrop", "split"], { stdio: ["ignore", "pipe", "inherit"] });
+        await new Promise(res => { bd.stdout.once("data", () => res(0)); setTimeout(res, 8000); });
+        try {
+          await send({ appearance: look }); const d = await send({ display });
+          await send({ show: true }); await send({ text: "zzzzqq" }); await pause(1200);
+          const w = await send({ windowid: true });
+          const dir = process.env.VYRE_CAPSULE_SCREENS || home; fs.mkdirSync(dir, { recursive: true });
+          const f = path.join(dir, `glass-${look}-${display}.png`);
+          execFileSync("/usr/sbin/screencapture", ["-x", "-o", "-l", String(w.windowid), f], { timeout: 20_000 });
+          const [wmean, wleft, wright] = execFileSync(probe, ["luma", f], { timeout: 20_000 }).toString().trim().split(/\s+/).map(Number);
+          // The same panel as the screen shows it: the screen region under it, with the window server's blur composed in. A window
+          // capture of the window alone may leave the behind-window blur out, so this is the one that counts.
+          const fr = await send({ windowframe: true });
+          const g = path.join(dir, `glass-${look}-${display}-screen.png`);
+          execFileSync("/usr/sbin/screencapture", ["-x", "-R", `${Math.round(fr.x)},${Math.round(fr.y)},${Math.round(fr.w)},${Math.round(fr.h)}`, g], { timeout: 20_000 });
+          const [mean, left, right] = execFileSync(probe, ["luma", g], { timeout: 20_000 }).toString().trim().split(/\s+/).map(Number);
+          rows.push({ look, display, mean, left, right, gap: left - right });
+          console.log(`glass ${look} ${display}: screen mean ${mean} left ${left} right ${right} gap ${(left - right).toFixed(2)}; window-only mean ${wmean} left ${wleft} right ${wright} gap ${(wleft - wright).toFixed(2)}; system reduce transparency ${d.systemReduced}`);
+        } finally { bd.kill("SIGTERM"); await pause(300); }
+      }
+    }
+    await send({ display: "system" }); await send({ appearance: "system" }); await send({ text: "" });
+    const get = (look, display) => rows.find(r => r.look === look && r.display === display);
+    for (const look of ["dark", "light"]) {
+      const g = get(look, "glass"), r = get(look, "reduced");
+      if (g && r) {
+        budget(Math.abs(r.gap) < 3, `${look} reduced transparency: the two halves match (gap ${r.gap.toFixed(2)})`);
+        budget(Math.abs(g.gap) > Math.abs(r.gap) + 6, `${look} glass: the ground shows what is behind it (gap ${g.gap.toFixed(2)} against ${r.gap.toFixed(2)} reduced)`);
+      }
+    }
+    if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Deep glass\n\n| look | ground | mean | left (white behind) | right (black behind) | gap |\n|---|---|---|---|---|---|\n${rows.map(r => `| ${r.look} | ${r.display} | ${r.mean} | ${r.left} | ${r.right} | ${r.gap.toFixed(2)} |`).join("\n")}\n`);
+  } catch (e) { console.log(`glass proof failed: ${String(e && e.message || e).split("\n")[0]}`); failures.push("the Deep glass proof did not run"); }
   console.log(`wake: ${wake.length} shows, median ${pct(wake, 0.5).toFixed(1)} ms, 95th ${pct(wake, 0.95).toFixed(1)} ms`);
   budget(pct(wake, 0.95) < BUDGET.wakeP95Ms, `wake 95th percentile under ${BUDGET.wakeP95Ms} ms`);
   if (process.env.GITHUB_STEP_SUMMARY) {

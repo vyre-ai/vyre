@@ -145,7 +145,7 @@ let stateSuite = Suite("state") { t in
         idle.idle = false
         r = VyState.applyReply(r, ev(10, "thread.stopped", ["code": 0, "reason": "stopped"], thread: "t1"))
         t.eq(r.finished, true); t.eq(r.ok, false); t.eq(r.error, "the thread stopped: stopped")
-        t.eq(Bridge.explain(code: "busy", message: ""), "The box is running as many sessions as it allows. Stop one, or try again when one finishes.")
+        t.eq(Bridge.explain(code: "busy", message: ""), "Your server is running as many sessions as it allows. Stop one, or try again when one finishes.")
         t.ok(Bridge.explain(code: "error", message: "no thread abc").contains("runs in a terminal"))
     }
 

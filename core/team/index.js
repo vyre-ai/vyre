@@ -29,7 +29,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { boundedWait } from "./bounded.js";
-import { duties as makeDuties, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
+import { duties as makeDuties, makeWake, DUTIES_MIGRATION, DUTIES_SEEN_MIGRATION, DUTIES_TITLE_MIGRATION } from "./duties.js";
 import { isPerson } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
@@ -1408,6 +1408,11 @@ export default {
     // session is a teammate's own thread with a request still running, its notes and that
     // request are put back, the same way a result reaches a caller (threads.post), so what
     // survives compaction is what the teammate wrote down, not what it remembers saying.
+    // The duty wake (0.2.2): a firing duty that acts queues one request to its teammate; the filed items arrive as quoted data (dutyNewsBlock).
+    const wake = makeWake({ dutyApi, live: agent => Boolean(byAgent(agent) && !byAgent(agent).retired_at),
+      waiting: (agent, from) => Boolean(db.prepare("SELECT 1 FROM team_requests WHERE teammate = ? AND from_label = ? AND state = 'queued' LIMIT 1").get(agent, from)),
+      queue: r => queueRequest(r) });
+    const offFired = ctx.events.on("watcher.fired", e => { if (!stopped) { try { wake(e); } catch (err) { ctx.log?.(`team: duty wake failed: ${/** @type {Error} */ (err).message}`); } } });
     const offCompact = ctx.events.on("thread.started", async e => {
       const source = e.payload && e.payload.source, session = e.payload && e.payload.session;
       if (source !== "compact" || !session) return;
@@ -1446,6 +1451,7 @@ export default {
     return { async stop() {
       stopped = true;
       offCompact();
+      offFired();
       for (const off of [...waiting]) off();
       waiting.clear();
       // Bounded: a hung job (a stuck git call, say) must never hold daemon shutdown. It is logged, then left behind.

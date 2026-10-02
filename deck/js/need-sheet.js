@@ -49,10 +49,10 @@ export function glyph(name, size = 16) {
 /** An error, in plain words: a fact, not an alarm (section 11). */
 export function problem(/** @type {any} */ e) {
   if (e?.missing) return `The ${e.module || "needed"} module is not running, so this cannot be answered here yet.`;
-  if (e?.code === "offline") return "Can't reach your box. Nothing was sent.";
+  if (e?.code === "offline") return "Can't reach your server. Nothing was sent.";
   if (e?.code === "cancelled") return "Face ID was cancelled. Nothing was sent.";
   if (e?.code === "no_passkey") return "This phone has no passkey yet, so it cannot send. Add one in Settings.";
-  if (e?.code === "denied") return "The box does not let this phone answer this. Answer it from the terminal or chat.";
+  if (e?.code === "denied") return "Your server does not let this phone answer this. Answer it from the terminal or chat.";
   return String(e?.message || e || "It did not go through.");
 }
 

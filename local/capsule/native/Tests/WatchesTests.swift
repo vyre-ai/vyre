@@ -129,7 +129,7 @@ let glassSuite = Suite("glass") { t in
         t.eq(Glass.results("glass harper", glassCatalog()).map(\.id), ["glass:harper"])
         t.eq(Glass.results("Glass HAR", glassCatalog()).map(\.id), ["glass:harper"])
         t.eq(Glass.results("glass juno", glassCatalog()).count, 0, "no computer, no row, even when asked by name")
-        t.eq(Glass.results("glass box", glassCatalog()).map { "\($0.id)|\($0.label)" }, ["glass:box|Open the box's files in Glass"])
+        t.eq(Glass.results("glass box", glassCatalog()).map { "\($0.id)|\($0.label)" }, ["glass:box|Open your server's files in Glass"])
         t.eq(Glass.results("glass", glassCatalog()).map(\.id).sorted(), ["glass:box", "glass:harper", "glass:night owl"])
     }
 
@@ -138,7 +138,7 @@ let glassSuite = Suite("glass") { t in
         t.eq(Glass.open(box: BOX, target: "night owl", opener: { opened.append($0.absoluteString); return true }), .close(nil))
         t.eq(opened, ["https://alex.vyre.run/glass/night%20owl"])
         guard case .failed(let why) = Glass.open(box: nil, target: "harper", opener: { opened.append($0.absoluteString); return true }) else { t.ok(false); return }
-        t.ok(why.contains("No box is paired"))
+        t.ok(why.contains("No server is paired"))
         t.eq(opened.count, 1, "no address, nothing opened")
         guard case .failed = Glass.open(box: BOX, target: "harper", opener: { _ in false }) else { t.ok(false, "a browser that failed is not success"); return }
     }

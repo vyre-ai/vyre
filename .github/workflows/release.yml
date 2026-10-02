@@ -58,12 +58,20 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: The tag's commit is on main or the 0.2 stage line (a publishing run signs; a commit off both never does)
+      - name: The tag's commit is on main or the 0.2 stage line, or is a proper patch of the newest published stable release (a publishing run signs; any other commit never does)
         if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --no-tags origin main work/stage-0.2
-          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2 \
-            || { echo "the tag's commit is on neither main nor work/stage-0.2; refusing to build and sign a release from it"; exit 1; }
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2; then
+            echo "the tag's commit is on main or work/stage-0.2"
+          else
+            # a patch release: the newest published stable release is its ancestor, the tag is that release's next patch, and the commit is on hotfix/<tag>
+            git fetch --no-tags origin "+refs/heads/hotfix/$GITHUB_REF_NAME:refs/remotes/origin/hotfix/$GITHUB_REF_NAME" || true
+            node scripts/check-release-lineage.mjs "$GITHUB_SHA" "$GITHUB_REF_NAME" \
+              || { echo "the tag's commit is not on main or work/stage-0.2 and is not a proper patch release; refusing to build and sign a release from it"; exit 1; }
+          fi
       - name: Version, channel, notes
         id: v
         env:
@@ -102,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
@@ -150,11 +158,13 @@ jobs:
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
           sh scripts/build-site.sh
-          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
+          for f in install-box.sh install-mac-server.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
             [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
             cp "site/box/$f" dist/
           done
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
+          # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
+          node scripts/setup-hashes.mjs dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: prepared
@@ -427,9 +437,9 @@ jobs:
       - name: Gate before anything is signed further or published, the release must be what the updater needs
         run: |
           if [ "$PUBLISH" = true ]; then
-            node scripts/check-release-dist.mjs dist --pulled --installer --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
+            node scripts/check-release-dist.mjs dist --pulled --installer --setup --pubkey "$(sed -n 's/^RELEASE_KEY=//p' dist/vyre)"
           else
-            node scripts/check-release-dist.mjs dist --installer
+            node scripts/check-release-dist.mjs dist --installer --setup
           fi
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:

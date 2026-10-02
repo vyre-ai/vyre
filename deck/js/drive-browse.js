@@ -109,7 +109,7 @@ export async function listAll(call, share, path) {
 
 /** The one plain line for a refusal. @param {any} err */
 export function whyNot(err) {
-  if (err && err.missing) return "This box does not have the Files tools yet. Update it, then open Files again.";
+  if (err && err.missing) return "Your server does not have the Files tools yet. Update it, then open Files again.";
   if (err && (err.code === "not_available" || err.code === "denied")) return "That folder is not available.";
   return String((err && err.message) || err || "Something went wrong.");
 }

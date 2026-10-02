@@ -159,9 +159,9 @@ export async function prComments({ token, full_name, pr, project, login, since }
   ]);
   const by = u => (u && login && u.login === login ? "person" : "outside");
   const all = [
-    ...(issue || []).map(c => ({ id: c.id, kind: "conversation", author: c.user && c.user.login, by: by(c.user), text: c.body || "", at: c.created_at })),
-    ...(inline || []).map(c => ({ id: c.id, kind: "inline", author: c.user && c.user.login, by: by(c.user), path: c.path, line: c.line ?? c.original_line ?? undefined, in_reply_to: c.in_reply_to_id ?? undefined, text: c.body || "", at: c.created_at })),
-    ...(reviews || []).filter(r => r.body).map(r => ({ id: r.id, kind: "review", state: String(r.state || "").toLowerCase(), author: r.user && r.user.login, by: by(r.user), text: r.body, at: r.submitted_at })),
+    ...(issue || []).map(c => ({ id: c.id, kind: "conversation", url: c.html_url, author: c.user && c.user.login, by: by(c.user), text: c.body || "", at: c.created_at })),
+    ...(inline || []).map(c => ({ id: c.id, kind: "inline", url: c.html_url, author: c.user && c.user.login, by: by(c.user), path: c.path, line: c.line ?? c.original_line ?? undefined, in_reply_to: c.in_reply_to_id ?? undefined, text: c.body || "", at: c.created_at })),
+    ...(reviews || []).filter(r => r.body).map(r => ({ id: r.id, kind: "review", url: r.html_url, state: String(r.state || "").toLowerCase(), author: r.user && r.user.login, by: by(r.user), text: r.body, at: r.submitted_at })),
   ].sort((a, b) => String(a.at).localeCompare(String(b.at)));
   const cut = typeof since === "string" && since ? all.filter(c => String(c.at) > since) : all;
   return { project, pr: n, outside: true, comments: cut };

@@ -18,12 +18,15 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { closure } from "../wink/closure.js";
 import { buildManifest, signManifest, verifyManifest, sha256Hex, folderOf, sri, MANIFEST, SIGNATURE } from "./manifest.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 /** The loader's own files: the page, its module and the device client it imports. */
-export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "manifest.js",
+/** The scanner the installed app opens to on its first launch (pairing.js): the camera page's own files, shipped under their repo paths. */
+export const SCANNER_ENTRIES = ["relay/wink/page.js", "deck/js/scan.js", "deck/js/haptics.js", "deck/js/scan-worker.js"];
+export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "fragment.js", "pairing.js", "manifest.js",
   // What makes "Add to Home Screen" install the app and not a bookmark: the web app manifest and its icons (the Deck's own).
   "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
   ...["bytes.js", "channel.js", "client.js", "noise.js", "paths.js", "response.js", "sse.js", "webcrypto.js"].map(f => `client/${f}`)];
@@ -97,7 +100,7 @@ export function keygen(file) {
 }
 
 /** Sign a set of files into <dir> with its manifest. Returns the manifest's sha256 hex. */
-async function sealed(files, dir, o) {
+export async function sealed(files, dir, o) {
   const bytes = await buildManifest({ release: o.release, entry: o.entry, files, created: o.created });
   const sig = await signManifest(bytes, await loadKey(o.key));
   for (const [p, b] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(dir, p)), { recursive: true }); fs.writeFileSync(path.join(dir, p), b); }
@@ -140,8 +143,12 @@ export async function loader(o) {
     let text = fs.readFileSync(src, "utf8");
     // In the served tree the loader's modules sit beside the client's: fix the one relative import.
     if (f === "manifest.js") text = text.replace('"../client/bytes.js"', '"./client/bytes.js"');
+    // pairing.js loads the shipped scanner from its repo paths: in the served tree they sit beside the loader.
+    if (f === "pairing.js") text = text.replaceAll('"../../wink/', '"./relay/wink/').replaceAll('"../../../deck/', '"./deck/');
     files[f] = new Uint8Array(Buffer.from(text));
   }
+  const ROOT = path.resolve(HERE, "..", "..");
+  for (const rel of [...closure(SCANNER_ENTRIES, ROOT), "relay/wink/wink.css"]) if (!(rel in files)) files[rel] = new Uint8Array(fs.readFileSync(path.join(ROOT, rel)));
   const pub = Buffer.from(publicOf(o.key)).toString("base64url");
   files["loader.js"] = new Uint8Array(Buffer.from(Buffer.from(files["loader.js"]).toString().replace("{{RELEASE_PUB}}", pub)));
   // index.html pins loader.js (stamped) and loader.css by SRI.

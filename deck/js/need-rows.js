@@ -312,7 +312,7 @@ export function ariaLabel(n, now = Date.now()) {
   const who = n.kind === "pair" ? (n.pair?.name || "A Mac") : (n.agent || (n.kind === "draft" ? "An agent" : "A session"));
   const where = n.kind === "pair" ? null : (n.projectName || n.threadName);
   const t = titleOf(n);
-  const want = n.kind === "question" ? "has a question" : n.kind === "pair" ? "wants to pair with this box"
+  const want = n.kind === "question" ? "has a question" : n.kind === "pair" ? "wants to pair with your server"
     : `wants to ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
   const line = secondLine(n).text;
   const time = n.kind === "pair" ? null : agoLong(n.at, now);
