@@ -51,6 +51,39 @@ const views = hash => {
   try { const n = Number(fs.readFileSync(f, "utf8")) || 0; fs.writeFileSync(f, String(n + 1)); } catch { try { fs.writeFileSync(f, "1"); } catch {} }
 };
 
+// Published media: one file named media.<ext>. The type comes from the extension here, never from meta.json, and the bytes
+// were checked against it when they were kept.
+const MEDIA_TYPES = /** @type {Record<string,string>} */ ({ png: "image/png", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg", m4a: "audio/mp4" });
+/** @param {string|undefined} h @param {number} size @returns {{ start: number, end: number } | null | "bad"} */
+function range(h, size) {
+  if (!h) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(h.trim());
+  if (!m || (m[1] === "" && m[2] === "")) return "bad";
+  let start, end;
+  if (m[1] === "") { const n = Number(m[2]); if (!n) return "bad"; start = Math.max(0, size - n); end = size - 1; }
+  else { start = Number(m[1]); end = m[2] === "" ? size - 1 : Math.min(Number(m[2]), size - 1); }
+  return !Number.isFinite(start) || start >= size || end < start ? "bad" : { start, end };
+}
+/** @param {http.IncomingMessage} req @param {http.ServerResponse} res @param {string} hash @param {string} dir @param {{ file?: string }} media */
+function serveMedia(req, res, hash, dir, media) {
+  const m = /^media\.(png|jpeg|webp|gif|mp4|webm|mp3|wav|ogg|m4a)$/.exec(String(media && media.file));
+  if (!m) return plain(res, 404, "Not found");
+  const file = path.join(dir, m[0]);
+  let size;
+  try { const st = fs.lstatSync(file); if (!st.isFile()) return plain(res, 404, "Not found"); size = st.size; } catch { return plain(res, 404, "Not found"); }
+  const r = range(req.headers.range, size);
+  const head = { "content-type": MEDIA_TYPES[m[1]], "x-content-type-options": "nosniff", "accept-ranges": "bytes", "content-security-policy": "sandbox; default-src 'none'", "content-disposition": "inline",
+    "referrer-policy": "no-referrer", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-frame-options": "DENY", "cross-origin-resource-policy": "same-origin" };
+  if (r === "bad") { res.writeHead(416, { "content-range": `bytes */${size}`, "cache-control": "no-store" }); return res.end(); }
+  const [start, end] = r ? [r.start, r.end] : [0, size - 1];
+  res.writeHead(r ? 206 : 200, { ...head, "content-length": end - start + 1, ...(r ? { "content-range": `bytes ${start}-${end}/${size}` } : {}) });
+  if (req.method === "HEAD") return res.end();
+  if (!r || start === 0) views(hash);
+  const stream = fs.createReadStream(file, { start, end });
+  stream.on("error", () => res.destroy());
+  stream.pipe(res);
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || "/", "http://share.invalid");
   const m = /^\/s\/([^/]+)\/?$/.exec(url.pathname);
@@ -71,6 +104,7 @@ const server = http.createServer((req, res) => {
     try { fs.rmSync(dir, { recursive: true, force: true }); fs.writeFileSync(path.join(DIR, `${hash}.gone`), ""); } catch {}
     return plain(res, 410, "This link has expired");
   }
+  if (meta.media) return serveMedia(req, res, hash, dir, meta.media);
   let body;
   try { body = fs.readFileSync(path.join(dir, "index.html")); } catch { return plain(res, 404, "Not found"); }
   const headers = meta.headers && typeof meta.headers === "object" ? meta.headers : {};
