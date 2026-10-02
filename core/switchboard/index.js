@@ -271,6 +271,47 @@ export function taintOf(name) {
   return { outside: false, private: false };
 }
 
+/** Command names that reach the network, whatever their arguments. */
+const NET_COMMANDS = new Set(["curl", "wget", "http", "https", "httpie", "xh", "aria2c", "nc", "ncat", "netcat", "socat", "telnet", "ssh", "scp", "sftp", "ftp", "rsync", "lynx", "w3m", "links", "gh", "dig", "nslookup", "ping", "openssl"]);
+/** Words that only wrap another command. */
+const WRAPPERS = new Set(["sudo", "env", "command", "exec", "time", "nohup", "xargs", "nice", "timeout", "stdbuf", "doas", "builtin", "setsid"]);
+
+/**
+ * Does a shell command reach the network? By command name (curl, wget, ssh, nc and the like, after any wrapper such as sudo or env) in any part of a
+ * pipeline or list, by git or a package manager given a remote, or by a URL in its arguments that is not this machine. A guess from text, so it only ever
+ * adds the outside flag; a command written to hide it can still pass, which is why the Gate does not rely on this alone.
+ * @param {any} command
+ */
+export function commandReachesNetwork(command) {
+  const text = String(command || "");
+  if (!text) return false;
+  for (const m of text.matchAll(/(?:https?|ftp|wss?):\/\/([^\s/'"`:?#]+)/gi)) if (!/^(?:localhost|127\.0\.0\.1|\[::1\])$/i.test(m[1])) return true;
+  for (const part of text.split(/&&|\|\||[;|&\n(){}`]|\$\(/)) {
+    const words = part.trim().split(/\s+/).filter(Boolean);
+    let i = 0;
+    while (i < words.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i]) || WRAPPERS.has(path.basename(words[i])) || /^-/.test(words[i]))) i++;
+    const cmd = words[i] ? path.basename(words[i].replace(/^['"]|['"]$/g, "")) : "";
+    if (NET_COMMANDS.has(cmd)) return true;
+    const rest = words.slice(i + 1).join(" ");
+    if (cmd === "git" && /\b(clone|fetch|pull|push|ls-remote|submodule)\b/.test(rest)) return true;
+    if (/^(npm|pnpm|yarn|pip|pip3|uv|cargo|go|gem|brew|apt|apt-get|apk|composer)$/.test(cmd) && /\b(install|add|get|update|upgrade|fetch|publish|i)\b/.test(rest)) return true;
+    if (/^(python3?|node|ruby|perl|php|deno|bun)$/.test(cmd) && /\b(urllib|requests|httpx|fetch|http\.get|https\.get|net\/http|LWP|XMLHttpRequest|socket)\b/.test(rest)) return true;
+  }
+  return false;
+}
+
+/**
+ * The taint of one tool event: by the tool's name (taintOf), and for a command run or a fetch by what it does: a shell command that reaches the network is
+ * outside, as is any fetch-kind call whatever its provider calls it.
+ * @param {any} payload a thread.tool event's payload
+ */
+export function taintOfCall(payload) {
+  const p = payload || {};
+  const t = taintOf(p.name || p.tool);
+  if (!t.outside && (p.kind === "fetch" || (p.kind === "run" && commandReachesNetwork(p.command || p.summary)))) return { ...t, outside: true };
+  return t;
+}
+
 /** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
 export function purposeOf(o, project) {
   if (o.purpose) return String(o.purpose);
@@ -888,7 +929,7 @@ export class Switchboard {
 
   /** A tool call that brings outside or private material into a thread flags it, for good: the flags are sticky and nothing clears them (threads.get thread.taint). @param {string} id @param {any} name */
   taint(id, name) {
-    const t = taintOf(name);
+    const t = name && typeof name === "object" ? taintOfCall(name) : taintOf(name);
     if (!t.outside && !t.private) return;
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     if (!row) return;
@@ -1077,7 +1118,7 @@ export class Switchboard {
         // A one-shot thread (a job, not a conversation) ends with its first answer.
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
-      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload.name || e.payload.tool); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
+      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
       if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; this.releaseSlots(id, st, e.payload.call); }
       // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
       if (e.type === "thread.finished") this.cancelTools(id, st, project);

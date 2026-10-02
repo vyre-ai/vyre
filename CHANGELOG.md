@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(sessions): thread.taint also marks a thread outside when a shell command reaches the network (curl, wget, ssh, nc and the like by command name, even behind sudo, env or a pipe; git with a remote; package installs; a URL that is not this machine) and when a call is of fetch kind whatever the provider names it. A guess from the command text that only adds the flag.
 - feat(threads): threads.get gives thread.taint {outside, private}: sticky flags set when a tool call brings in outside material (the web, mail, a calendar, a connector, an MCP server that is not Vyre's) or the person's private things (the vault, mail, files, private memory); nothing clears them, a fork inherits them. For the Gate on interactive pages.
 
 - sessions: a Vyre-started Claude session loads only Vyre's own MCP server (--strict-mcp-config with an explicit config, on the CLI and the Agent SDK path), not the servers the account or the machine adds. scripts/claude-connector-check.mjs checks it against a real Claude Code.
