@@ -190,6 +190,7 @@ export function createFlow(o) {
     if (mine !== run) { try { c.close(); } catch { /* gone */ } return; }
     chan = c;
     set({ channel: "ready", error: null });
+    followLog(mine);
     const guess = suggestName(boxName);
     if (guess) await setName(guess);
   }
@@ -476,6 +477,31 @@ export function createFlow(o) {
       set({ devices: { ...state.devices, phone: "showing", expiresAt: Number(r.expiresAt) || now() + 5 * 60_000 } });
     } catch (e) { if (mine === run) set({ devices: { ...state.devices, phone: "failed", error: String(/** @type {Error} */ (e).message).slice(0, 200) } }); return; }
     watchPairing(mine, baseline);
+  }
+
+  /**
+   * After the install lines end, the box goes on writing one live line per thing it does (setup.log events on the
+   * setup channel), and this adds them to the same panel: "claiming x.vyre.run", "done: the address is yours".
+   * Plain words from the box, never read for meaning and never a secret.
+   * @param {number} mine
+   */
+  async function followLog(mine) {
+    let since = 0;
+    while (mine === run && chan && typeof chan.events === "function" && state.stage !== "stopped" && state.stage !== "done") {
+      try {
+        const got = await chan.events("setup.log", since);
+        if (mine !== run) return;
+        const add = [];
+        for (const e of got) {
+          since = Math.max(since, e.id);
+          const text = e.payload && typeof e.payload.text === "string" ? e.payload.text.slice(0, MAX_LINE) : "";
+          if (text) add.push(e.payload.kind === "done" ? `done: ${text}` : e.payload.kind === "failed" ? `failed: ${text}` : text);
+        }
+        if (add.length) set({ lines: [...state.lines, ...add].slice(-MAX_LINES) });
+      } catch { /* a dropped poll: ask again */ }
+      // A real timer, not the injectable sleep: this loop must never spin, and it must not keep a test process alive.
+      await new Promise(r => { const t = setTimeout(r, Math.max(pollMs, 1000)); /** @type {any} */ (t).unref?.(); });
+    }
   }
 
   /** Follows the one ticket until a phone pairs with it or it runs out. */

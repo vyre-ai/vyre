@@ -1000,3 +1000,14 @@ test("the setup page's own code makes no request to a private address: its only 
     assert.ok(!/["'`](?:https?|wss?):\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1)/.test(text.replace(/\/\/.*$/gm, "")), `${f} names a private address`);
   }
 });
+
+test("log: the panel goes on after the install, one live line per step the box reports on the setup channel", async t => {
+  const box = fakeBox();
+  const sent = [{ id: 1, payload: { text: "claiming harlow.vyre.run", kind: "start" } }, { id: 2, payload: { text: "the address is yours", kind: "done" } },
+    { id: 3, payload: { text: "could not finish: the certificate was refused", kind: "failed" } }, { id: 4, payload: { kind: "start" } }];
+  box.events = async (type, since) => (type === "setup.log" ? sent.filter(e => e.id > since) : []);
+  const flow = await foundFlow(t, box);
+  await until(() => flow.state.lines.includes("done: the address is yours"));
+  assert.deepEqual(flow.state.lines.slice(-3), ["claiming harlow.vyre.run", "done: the address is yours", "failed: could not finish: the certificate was refused"]);
+  flow.stop();
+});

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":857,"event":339,"config":239,"env":192,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":857,"event":340,"config":239,"env":192,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1037,6 +1037,7 @@
     {"kind":"tool","name":"settings.write","definedIn":"core/settings/index.js","page":"reference/tools.md#settingswrite","module":"settings","mentions":[{"page":"adr/0033-hackable-vyre.md","line":210,"anchor":"3-user-modules-and-the-one-hub-both-surviving-updates"},{"page":"adr/0035-settings-hub.md","line":99,"anchor":"2-the-hub-file"},{"page":"adr/0035-settings-hub.md","line":169,"anchor":"5-the-live-read"},{"page":"adr/0035-settings-hub.md","line":236,"anchor":"who-does-what"}]},
     {"kind":"event","name":"setup.contested","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"setup.ended","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
+    {"kind":"event","name":"setup.log","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
     {"kind":"event","name":"setup.paired","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"config","name":"sideview","definedIn":"local/sideview/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"sideview.activate","definedIn":"local/sideview/index.js","page":null,"mentions":[]},

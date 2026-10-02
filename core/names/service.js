@@ -141,7 +141,13 @@ export function names(deps) {
     }
   }
 
-  const fail = e => { state.phase = "failed"; state.why = /** @type {Error} */ (e).message; ctx.log("names: " + state.why); };
+  /**
+   * One live line for the setup page's "What your server is doing" panel (the setup channel carries setup.log). Plain
+   * words about a step, never a secret: a name, an address, a reason the step gave.
+   * @param {string} text @param {"start"|"done"|"failed"} [kind]
+   */
+  const say = (text, kind = "start") => { try { ctx.events.emit("setup.log", { text: String(text).slice(0, 200), kind }); } catch { /* a log line never breaks the step */ } };
+  const fail = e => { state.phase = "failed"; state.why = /** @type {Error} */ (e).message; ctx.log("names: " + state.why); say(`could not finish: ${state.why}`, "failed"); };
 
   const dir = deps.directory || null;
   /** The zone client for the development path. */
@@ -205,27 +211,35 @@ export function names(deps) {
     const fqdn = `${name}.${domain()}`;
     state.phase = "dns"; state.why = null;
     let code = null;
+    say(`claiming ${fqdn}`);
     try {
       const r = await /** @type {NonNullable<typeof dir>} */ (dir).claim(name);
       code = r.code;
       deps.save({ name, network: { via: "vyre.run" } });
       if (code) ctx.events.emit("name.claimed", { name: fqdn });
+      say(code ? "the address is yours" : "this address was already yours", "done");
     } catch (e) { fail(e); return { ...status(), recoveryCode: null }; }
     working = (async () => {
       const s = await tailscale();
       const ip = v4(s);
       if (!ip || !s.tun) { state.phase = "named"; state.why = "connect Tailscale, then claim again to publish the address"; return; }
+      say("publishing your address");
       await /** @type {NonNullable<typeof dir>} */ (dir).point(name, ip);
+      say(`${fqdn} points at this server's tailnet address`, "done");
       // IPv4 only: a resolver that filters DNS rebinding (Pi-hole, dnsmasq with --stop-dns-rebind, many routers) drops an
       // fd7a:: AAAA answer, so the name would need a router setting the person cannot be asked to change. The 100.64/10 A
       // record always passes, and the tailnet carries IPv4 everywhere (T2b and T2c on the matrix).
       state.phase = "certificate";
+      say("asking Let's Encrypt for a certificate (this can take a minute)");
       const got = await deps.issue({ names: [fqdn], dns: await acmeDns() });
       deps.certs.save(ctx.paths.certs, fqdn, got);
       ctx.events.emit("certificate.issued", { name: fqdn, expires: got.expires });
+      say("the certificate is issued", "done");
+      say(`starting HTTPS at ${fqdn}`);
       await serve();
       deps.save({ network: { address: address(fqdn) } });
       state.phase = "serving";
+      say(`${address(fqdn)} answers`, "done");
     })().catch(fail).finally(() => { working = null; });
     // The code is the answer to this one call. It is not in status(), an event or a log.
     return { ...status(), recoveryCode: code };
@@ -235,6 +249,7 @@ export function names(deps) {
   function fallback() {
     if (working) return status();
     state.phase = "certificate"; state.why = null;
+    say("getting a certificate for this server's tailnet name");
     working = (async () => {
       const s = await tailscale();
       if (!s.node) throw new Error("this machine is not on a tailnet yet");
@@ -249,6 +264,7 @@ export function names(deps) {
       await serve();
       deps.save({ network: { address: address(host) } });
       state.phase = "serving";
+      say(`${address(host)} answers`, "done");
     })().catch(fail).finally(() => { working = null; });
     return status();
   }
@@ -643,7 +659,7 @@ export function names(deps) {
   }
 
   return { status, check, claim, fallback, release, claimCode, tailscale, setOwner, serve, close, renew, recover, watch, domainCheck, serveDomain,
-    connect: () => ts.up(), wait: () => working, onRequest, onUpgrade };
+    connect: () => { say("joining Tailscale"); return ts.up(); }, wait: () => working, onRequest, onUpgrade };
 }
 
 function issuerOf(pem) {
