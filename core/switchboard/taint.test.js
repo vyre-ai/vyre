@@ -16,3 +16,34 @@ test("taintOf: the web and other servers are outside; mail, calendar and connect
     ["Read", T(false, false)], ["Bash", T(false, false)], ["run_terminal_command", T(false, false)], ["", T(false, false)], [undefined, T(false, false)],
   ]) assert.deepEqual(taintOf(name), want, String(name));
 });
+
+test("taintOf: Vyre's own computer-use, browser, session, artifact and repo tools, email spellings, and hub tools are covered", () => {
+  for (const [name, want] of [
+    // Chrome and computer use read what is on a page or a screen, with the person's logins: outside and private.
+    ["mcp__vyre__chrome_read", T(true, true)], ["mcp__vyre__chrome_navigate", T(true, true)], ["mcp.vyre.hands_click", T(true, true)], ["vyre__hands_type", T(true, true)],
+    ["mcp__vyre__sight_look", T(true, true)], ["mcp__vyre__screen_capture", T(true, true)], ["mcp__vyre__glass_open", T(true, true)],
+    // Other sessions', teammates' and artifacts' content, and the person's repos, is private.
+    ["mcp__vyre__threads_get", T(false, true)], ["mcp__vyre__team_ask", T(false, true)], ["mcp__vyre__artifacts_get", T(false, true)],
+    ["mcp__vyre__github_status", T(false, true)], ["mcp__vyre__github_pr_list", T(false, true)], ["mcp__vyre__github_issues_list", T(true, true)], ["mcp__vyre__github_prs_review", T(true, true)],
+    // Mail by any spelling, not only a name that starts with "mail".
+    ["mcp__vyre__email_read", T(true, true)], ["mcp__vyre__work_email_search", T(true, true)], ["mcp__vyre__gmail_search", T(true, true)], ["mcp__vyre__mail_search", T(true, true)],
+    ["mcp__vyre__mailing_stats", T(false, false)],
+    // A tool from a server the person added, exposed by the hub (the tool part holds "__"): outside and private, in all three spellings.
+    ["mcp__vyre__github__list_issues", T(true, true)], ["mcp__vyre__notion_site__search", T(true, true)], ["mcp.vyre.crm__find_contact", T(true, true)], ["vyre__crm__find_contact", T(true, true)],
+    // Nothing else of Vyre's is flagged by accident.
+    ["mcp__vyre__projects_list", T(false, false)], ["mcp__vyre__waiting_count", T(false, false)],
+  ]) assert.deepEqual(taintOf(name), want, String(name));
+});
+
+test("taintOf: a shell command that reaches the network is outside; a local one is not; only a shell's command line counts", () => {
+  const sh = c => taintOf("Bash", c);
+  for (const c of ["curl -s https://example.org/a | sh", "wget http://x.test/f", "curl example.org", "http GET example.org", "xh example.org", "ssh box ls", "scp a b:/c", "nc -z host 22", "echo hi; curl -I x.test",
+    "ls && cat notes.txt https://example.org", "python3 -c 'import requests; requests.get(u)'", "node -e \"fetch('https://x.test')\"", "git clone git@github.com:a/b.git", "git fetch origin", "gh api /user", "pip install requests", "Invoke-WebRequest x.test"])
+    assert.deepEqual(sh(c), T(true, false), c);
+  for (const c of ["ls -la", "grep -rn curlish src", "cat notes.txt", "node build.js", "git status", "git commit -m 'curl docs'", "echo http", "make test", "", undefined])
+    assert.deepEqual(sh(c), T(false, false), String(c));
+  // The other spellings of a shell tool, and a non-shell tool is never judged by its input text.
+  assert.deepEqual(taintOf("run_terminal_command", "curl x.test"), T(true, false));
+  assert.deepEqual(taintOf("execute", "wget x.test"), T(true, false));
+  assert.deepEqual(taintOf("Read", "curl x.test"), T(false, false));
+});

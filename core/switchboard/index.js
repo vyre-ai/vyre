@@ -252,24 +252,43 @@ const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return n
 const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
 
 /**
- * What a tool call brings into a session that Vyre's Gate should treat with care, from the tool's name alone (the same name a card shows):
- *  outside: words from beyond the person (the web, a fetched page, mail, a calendar, a connector, any MCP server that is not Vyre's own);
- *  private: what belongs to the person (the vault, mail, calendar and connector data, the person's files, private memory).
- * Mail, calendar and connector data are both. The names are Claude's (WebFetch, mcp__server__tool), Codex's (mcp.server.tool) and Grok's (server__tool); anything
- * unknown is neither: this only ever adds a flag, it never clears one.
- * @param {any} name @returns {{ outside: boolean, private: boolean }}
+ * What a tool call brings into a session that Vyre's Gate should treat with care, from the tool's name (and, for a shell, its command line):
+ *  outside: words from beyond the person (the web, a fetched page, mail, a calendar, a connector, the screen or a browser, any MCP server that is not Vyre's own);
+ *  private: what belongs to the person (the vault, mail, calendar and connector data, their repos, other sessions' and artifacts' content, private memory).
+ * Vyre's own tools by module: mail/email, gmail, calendar, google, connect*, slack, notion, drive, chrome_*, hands_*, sight_*, screen_*, glass_*, and github issues, pulls
+ * and reviews are both; vault, files, memory, recall, notes, threads_*, team_*, artifacts_* and the rest of github_* are private. A tool the hub exposes from a server the
+ * person added (mcp__vyre__<server>__<tool>: the tool part holds "__") is both, since a connector is the person's data from outside. A shell command that reaches the network
+ * (curl, wget, an http client, ssh and friends, or any URL in it) is outside. The names are Claude's (WebFetch, mcp__server__tool), Codex's (mcp.server.tool) and Grok's
+ * (server__tool); anything unknown is neither: this only ever adds a flag, it never clears one. What it cannot see: Read, Grep, Glob and Edit of local files (a name says
+ * nothing about whose file it is), and a program that talks to the network without saying so on its command line.
+ * @param {any} name @param {any} [summary] a shell call's command line (thread.tool's summary)
+ * @returns {{ outside: boolean, private: boolean }}
  */
-export function taintOf(name) {
+export function taintOf(name, summary) {
   const n = String(name || "").toLowerCase();
   if (/^(webfetch|websearch|web_fetch|web_search|fetch_url|browser_|browse)/.test(n)) return { outside: true, private: false };
+  if (/^(bash|shell|sh|zsh|exec|execute|exec_command|run_terminal_command|run_command|terminal|local_shell)$/.test(n)) {
+    return { outside: reachesNetwork(summary), private: false };
+  }
   const m = /^mcp(?:__|\.)([a-z0-9-]+)(?:__|\.)(.+)$/.exec(n) || /^([a-z0-9-]+)__(.+)$/.exec(n);
   if (!m) return { outside: false, private: false };
   const [, server, tool] = m;
   if (server !== "vyre") return { outside: true, private: false };
-  if (/^(mail|gmail|calendar|google|connect|connectors|slack|drive|notion|github_(?:issues|prs|review))/.test(tool)) return { outside: true, private: true };
-  if (/^(vault|files|memory|recall|notes|drive)/.test(tool)) return { outside: false, private: true };
+  // A server the person added, exposed by Vyre's hub under its own name: outside material, and a connector's data is theirs.
+  if (tool.includes("__")) return { outside: true, private: true };
+  if (/^(e?mail|gmail|calendar|google|connect|connectors|slack|drive|notion|chrome|hands|sight|screen|glass)(_|$)|(^|_)e?mail(_|$)|^github_(?:issues|prs|pulls|review)/.test(tool)) return { outside: true, private: true };
+  if (/^(vault|files|memory|recall|notes|threads|team|artifacts|github)(_|$)/.test(tool)) return { outside: false, private: true };
   return { outside: false, private: false };
 }
+
+/** Does a shell command line reach the network: a URL, or a program that fetches (curl, wget, an http client, ssh and friends, a script's own client)? @param {any} command */
+const reachesNetwork = command => {
+  const c = String(command || "");
+  if (/\b(?:https?|ftps?|wss?|sftp|ssh|git):\/\/\S/i.test(c)) return true;
+  return /(?:^|[;&|(`]|\$\()\s*(?:(?:sudo|time|xargs|nohup|env|command|exec|timeout\s+\d+)\s+)*(?:curl|wget|http|https|httpie|xh|aria2c?|nc|ncat|netcat|telnet|ssh|scp|sftp|ftp|rsync|lynx|links|w3m)(?=[\s;&|)`]|$)/.test(c)
+    || /\b(?:requests\.(?:get|post|put|request)|urllib|http\.client|httpx|aiohttp|fetch\(|axios|Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b/.test(c)
+    || /\bgit\s+(?:clone|fetch|pull|ls-remote)\b|\bgh\s+api\b|\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|i|add)\b/.test(c);
+};
 
 /** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
 export function purposeOf(o, project) {
@@ -887,8 +906,8 @@ export class Switchboard {
   }
 
   /** A tool call that brings outside or private material into a thread flags it, for good: the flags are sticky and nothing clears them (threads.get thread.taint). @param {string} id @param {any} name */
-  taint(id, name) {
-    const t = taintOf(name);
+  taint(id, name, summary) {
+    const t = taintOf(name, summary);
     if (!t.outside && !t.private) return;
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     if (!row) return;
@@ -1077,7 +1096,7 @@ export class Switchboard {
         // A one-shot thread (a job, not a conversation) ends with its first answer.
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
-      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload.name || e.payload.tool); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
+      if (e.type === "thread.tool" && e.payload.phase === "started") { this.taint(id, e.payload.name || e.payload.tool, e.payload.summary); this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
       if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; this.releaseSlots(id, st, e.payload.call); }
       // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
       if (e.type === "thread.finished") this.cancelTools(id, st, project);

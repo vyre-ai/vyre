@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(threads): thread.taint covers what reviewer-2 found missing. Vyre's own chrome_*, hands_*, sight_*, screen_*, glass_*, email (any spelling) and GitHub issue, pull and review tools set both flags; threads_*, team_*, artifacts_* and the rest of github_* set private; any tool the hub exposes from a server the person added (mcp__vyre__<server>__<tool>) sets both; a shell command that reaches the network (curl, wget, http clients, ssh, git clone or fetch, a package install, any URL) sets outside. Read, Grep, Glob and Edit of local files are not flagged, and the docs say so (docs/concepts/floor.md).
+
 - feat(threads): threads.get gives thread.taint {outside, private}: sticky flags set when a tool call brings in outside material (the web, mail, a calendar, a connector, an MCP server that is not Vyre's) or the person's private things (the vault, mail, files, private memory); nothing clears them, a fork inherits them. For the Gate on interactive pages.
 
 - sessions: a Vyre-started Claude session loads only Vyre's own MCP server (--strict-mcp-config with an explicit config, on the CLI and the Agent SDK path), not the servers the account or the machine adds. scripts/claude-connector-check.mjs checks it against a real Claude Code.

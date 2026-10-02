@@ -79,6 +79,16 @@ Enforced:
 
 Enforced: Lumen's launcher (apps, files, settings, the calculator) runs from the Mac alone, with vyred down and no network. On the Mac, calls to the box fail fast with `box_unreachable` while the box is away, so nothing waits on it.
 
+## What marks a thread as having taken in outside or private material
+
+`threads.get` gives every thread a `taint` of two flags, `outside` and `private`. They are set from the name of each tool the harness reports (a session cannot rename its own tool), they only ever turn on, a fork inherits them, and the Gate for pages and apps that carry script reads them: a page made by a thread with both flags is held for you.
+
+- **Both flags:** mail and email, calendar, Google and connector tools, Slack, Notion, Drive, Vyre for Chrome, computer use (hands, sight, screen, Glass), GitHub issues, pull requests and reviews, and any tool from a server you added that Vyre's hub exposes under its own name.
+- **Private only:** the vault, your files, memory and recall, notes, other sessions (threads and team), artifacts, and the rest of GitHub.
+- **Outside only:** the web (WebFetch, WebSearch, browsing), any MCP server that is not Vyre's own, and a shell command that reaches the network: curl, wget, an http client, ssh, scp, git clone or fetch, `gh api`, a package install, a script's own http client, or any URL on the command line.
+
+Still not flagged: Claude's Read, Grep, Glob and Edit of local files (the name says nothing about whose file it is), and a program that reaches the network without saying so on the command line.
+
 ## What the floor does not cover
 
 Root on the box, and anyone who can reach its Docker socket. Code that runs as you (on a Mac, or a Claude Code you start by hand in the box's container) and rewrites Vyre itself. A filter over shell text can be dodged by a determined enough command, which is why the human-only actions rest on [presence](presence.md), not on the Harness filter alone.
