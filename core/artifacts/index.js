@@ -214,9 +214,14 @@ export default {
     const HELD_WHY = "It runs its own code, and it was made in a session that read content from outside and used your private data, so Vyre is holding it until you open it on purpose.";
     /** A thread is tainted when its session both read outside content and touched private data (sessions supplies thread.taint; none means not tainted). @param {string|null|undefined} thread */
     const taintedThread = async thread => { const t = /** @type {any} */ (await threadOf(thread)); return Boolean(t && t.taint && t.taint.outside && t.taint.private); };
-    /** Hold a page or an app from a tainted session. @param {any} r @param {string|null|undefined} thread @param {boolean} byModel */
-    const holdIfTainted = async (r, thread, byModel) => {
-      if (!byModel || r.format !== "html" || !thread || !(await taintedThread(thread))) return r;
+    /** A model's (or a captured session file's) page or app from a tainted thread is to be held. @param {string} format @param {any} meta */
+    const shouldHold = async (format, meta) => {
+      if (format !== "html" || !meta || !meta.thread) return false;
+      if (trustedCaller(meta) && meta.asModel !== true) return false;
+      return taintedThread(meta.thread);
+    };
+    /** Mark an artifact held, after the commit that decided it. @param {any} r */
+    const markHeld = r => {
       db.prepare("UPDATE artifacts_items SET held_at = ?, held_why = ? WHERE id = ?").run(now(), HELD_WHY, r.id);
       const fresh = row(r.id);
       emit("artifact.held", fresh, { why: HELD_WHY });
@@ -322,7 +327,7 @@ export default {
      * link on the latest" is the person's own choice (the user's approved option, lead 30 Sep), so
      * every later version goes public, whoever saved it; the share sheet says so plainly.
      * @param {any} r @param {Record<string,string>} files @param {number} size @param {any} by @param {string} message */
-    const commit = async (r, files, size, by, message) => {
+    const commit = async (r, files, size, by, message, hold = false) => {
       const n = r.head + 1;
       const sha = await store.write(r.project, r.id, files, `v${n}${message ? `: ${message}` : ""}`);
       const at = now();
@@ -330,7 +335,9 @@ export default {
       db.prepare("UPDATE artifacts_items SET head = ?, text = ?, updated_at = ? WHERE id = ?").run(n, textOf(files), at, r.id);
       const fresh = row(r.id);
       const s = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_shares WHERE artifact = ?").get(r.id));
-      if (s && s.version === null) await publish(fresh, s.token, null, s.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
+      // A version that is being held is not put on an always-latest link: the link keeps the last version the person had, and
+      // gets this one when the person opens it (artifacts.release).
+      if (s && s.version === null && !hold) await publish(fresh, s.token, null, s.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
       return fresh;
     };
 
@@ -439,9 +446,10 @@ export default {
       db.prepare(`INSERT INTO artifacts_items (id, project, title, kind, format, made_by, thread, untrusted, head, text, created_at, updated_at)
         VALUES (?,?,?,?,?,?,?,?,0,'',?,?)`).run(id, project, title, kind, format, JSON.stringify(by), (meta && meta.thread) || null, trustedCaller(meta) ? 0 : 1, at, at);
       let r;
-      try { r = await commit(row(id), files, size, by, i.message || "first version"); }
+      const hold = await shouldHold(format, meta);
+      try { r = await commit(row(id), files, size, by, i.message || "first version", hold); }
       catch (e) { db.prepare("DELETE FROM artifacts_items WHERE id = ?").run(id); throw e; }
-      r = await holdIfTainted(r, meta && meta.thread, !trustedCaller(meta));
+      if (hold) r = markHeld(r);
       emit("artifact.created", r, { made_by: by });
       if (r.thread) emit("thread.artifact", r, { thread: r.thread });
       return shape(r);
@@ -465,9 +473,10 @@ export default {
         const content = i.content !== undefined ? i.content : /** @type {any} */ (cur)[MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (r.format)]];
         const dataIn = r.format === "chart" ? (i.data !== undefined ? i.data : /** @type {any} */ (cur)[DATA_FILE]) : i.data;
         const { files, size } = filesFor(r.format, content, dataIn);
-        fresh = await commit(fresh, files, size, by, i.message || "");
+        const hold = await shouldHold(r.format, meta);
+        fresh = await commit(fresh, files, size, by, i.message || "", hold);
         if (!trustedCaller(meta) && !r.untrusted) db.prepare("UPDATE artifacts_items SET untrusted = 1 WHERE id = ?").run(r.id), fresh = row(r.id);
-        fresh = await holdIfTainted(fresh, meta && meta.thread, !trustedCaller(meta)); // changed content from a tainted session is held again
+        if (hold) fresh = markHeld(fresh); // changed content from a tainted session is held again, and is not put on a public link
       } else if (i.title === undefined) throw refuse("nothing to change: give content, data or a title", "bad_input");
       emit("artifact.updated", fresh, { made_by: by });
       const thread = meta && meta.thread;
@@ -793,7 +802,7 @@ export default {
         if (cur.archived_at) return;
         const { files } = await filesAt(cur);
         if (files[MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (cur.format)]] === content) return;
-        await update({ id: cur.id, content, message: `saved ${rel}` }, meta).catch(() => {});
+        await update({ id: cur.id, content, message: `saved ${rel}` }, { ...meta, asModel: true }).catch(() => {});
         return;
       }
       const made = await create({ kind: how.kind, format: how.format, content, title: titleOf(content) || path.basename(rel, ext), message: `saved ${rel}` }, meta).catch(() => null);
@@ -802,7 +811,7 @@ export default {
       const t = await threadOf(e.thread);
       const by = { kind: t && t.agent ? "agent" : "session", ...(t && t.agent ? { name: t.agent } : {}), ...(t && t.provider ? { provider: t.provider } : {}), thread: e.thread, via: "folder" };
       db.prepare("UPDATE artifacts_items SET made_by = ?, thread = ?, untrusted = 1 WHERE id = ?").run(JSON.stringify(by), e.thread, made.id);
-      await holdIfTainted(row(made.id), e.thread, true);
+      if (await shouldHold(row(made.id).format, { caller: "module:artifacts", firstParty: true, thread: e.thread, asModel: true })) markHeld(row(made.id));
       db.prepare("INSERT OR REPLACE INTO artifacts_capture_files (thread, name, artifact) VALUES (?,?,?)").run(e.thread, rel, made.id);
       emit("thread.artifact", row(made.id), { thread: e.thread });
     };
@@ -958,7 +967,9 @@ export default {
         const { files } = await filesAt(r, i.version);
         const size = Object.values(files).reduce((n, v) => n + Buffer.byteLength(v), 0);
         const by = await madeBy(meta);
-        const fresh = await commit(r, files, size, by, `back to v${i.version}`);
+        const hold = await shouldHold(r.format, meta);
+        let fresh = await commit(r, files, size, by, `back to v${i.version}`, hold);
+        if (hold) fresh = markHeld(fresh);
         emit("artifact.restored", fresh, { from: i.version, made_by: by });
         emit("artifact.updated", fresh, { made_by: by });
         return shape(fresh);
@@ -1155,6 +1166,9 @@ export default {
         if (!r.held_at) return shape(r);
         db.prepare("UPDATE artifacts_items SET held_at = NULL, held_why = NULL WHERE id = ?").run(r.id);
         const fresh = row(r.id);
+        // An always-latest link catches up now that the person has opened the page.
+        const link = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_shares WHERE artifact = ?").get(r.id));
+        if (link && link.version === null) await publish(fresh, link.token, null, link.expires_at).catch(e => ctx.log(`artifacts: republish ${r.id}: ${e.message}`));
         emit("artifact.released", fresh, {});
         return shape(fresh);
       },

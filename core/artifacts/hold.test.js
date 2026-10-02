@@ -5,11 +5,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { Writable } from "node:stream";
+import { spawn } from "node:child_process";
+import http from "node:http";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { _test } from "./index.js";
 
 const THREADS = `
   const T = {
@@ -38,7 +41,7 @@ async function boot(t) {
   const call = (tool, input, caller = "deck", meta = {}) => reg.call(tool, input, caller, meta);
   const ok = async (tool, input, caller, meta) => { const r = await call(tool, input, caller, meta); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
   const as = (thread, tool, input) => call(tool, input, `mcp:agent:${AGENT_OF[thread]}`, { thread });
-  return { reg, events, call, ok, as };
+  return { home, reg, events, call, ok, as };
 }
 async function serve(reg, id) {
   const route = reg.routes.get("/v1/artifacts/content");
@@ -111,4 +114,43 @@ test("hold: changed content from a tainted session is held again, a held page is
   await new Promise(r => setTimeout(r, 500));
   const saved = (await ok("artifacts.list", {})).find(x => x.title === "tool" || x.made_by.via === "folder");
   assert.ok(saved && saved.held, "a saved file is held too");
+});
+
+const PRETEND_VYRED = 99999;
+async function shareServer(t, home) {
+  const dir = path.join(home, "data", "artifacts", "public");
+  fs.mkdirSync(dir, { recursive: true, mode: 0o770 });
+  const script = path.join(import.meta.dirname, "share-server.js");
+  const child = spawn(process.execPath, ["--permission", `--allow-fs-read=${dir}`, `--allow-fs-read=${script}`, `--allow-fs-write=${dir}`, script, "--dir", dir, "--port", "0", "--not-uid", String(PRETEND_VYRED)], { stdio: ["ignore", "pipe", "inherit"] });
+  const port = await new Promise((resolve, reject) => {
+    let out = "";
+    child.stdout.on("data", b => { out += b; const m = /listening (\d+)/.exec(out); if (m) resolve(Number(m[1])); });
+    child.on("exit", c => reject(new Error(`share server exited ${c}`)));
+  });
+  const own = _test.ownUid;
+  _test.ownUid = () => PRETEND_VYRED;
+  t.after(() => { _test.ownUid = own; child.kill("SIGTERM"); });
+  return { port };
+}
+const getBody = (port, p) => new Promise((resolve, reject) => { http.get({ host: "127.0.0.1", port, path: p }, res => { const c = []; res.on("data", d => c.push(d)); res.on("end", () => resolve(Buffer.concat(c).toString("utf8"))); }).on("error", reject); });
+
+test("hold: a tainted update never reaches an always-latest public link; the link catches up when the person opens the page", async t => {
+  const { home, ok, as } = await boot(t);
+  const { port } = await shareServer(t, home);
+  await ok("artifacts.public.set", { on: true });
+  const page = await ok("artifacts.create", { kind: "app", project: "harlow-legal", title: "Calculator", content: "<!doctype html><p>version one</p>" });
+  const shared = await ok("artifacts.share", { id: page.id, version: "latest" });
+  assert.match(await getBody(port, shared.share.path), /version one/);
+  // The tainted session changes it: the page is held, and the public link still shows the version the person had.
+  const up = (await as("tainted", "artifacts.update", { id: page.id, content: "<!doctype html><p>version two</p><script>fetch('/steal')</script>" })).data;
+  assert.ok(up.held);
+  const publicNow = await getBody(port, shared.share.path);
+  assert.match(publicNow, /version one/, "the public link is unchanged");
+  assert.ok(!publicNow.includes("version two") && !publicNow.includes("steal"), "none of the held code is public");
+  // A restore from the tainted session is held the same way.
+  await ok("artifacts.release", { id: page.id });
+  assert.match(await getBody(port, shared.share.path), /version two/, "opened by the person: the link catches up");
+  const back = (await as("tainted", "artifacts.restore", { id: page.id, version: 1 })).data;
+  assert.ok(back.held, "a restore from the tainted session is held too");
+  assert.match(await getBody(port, shared.share.path), /version two/, "and the link did not change");
 });
