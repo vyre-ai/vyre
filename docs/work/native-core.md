@@ -8,6 +8,16 @@ back.
 
 Definition of done: the user uses Vyre chat for a full working day instead of the terminal.
 
+## 2026-10-02 (late): redesign on work/023-shell, resume here
+Worktree ../vyre-022-feel (branch work/023-shell, pushed). Deck v2 steps 1 to 5 are in. This session:
+- Rename controls (#65 follow-up): the computers.rename pencil and every Devices name field show only when the server has the tool (c84e15bc1).
+- Screen kit (417971a64): `v2` group in lib/theme/tokens.json (colours, type roles, space, shapes, controls, layout, motion and springs, elevation layers, icons, project emblem spec). gen-tokens writes deck/css/tokens-v2.css (declarations identical to the hand copy) and Tokens.V2 in Tokens.generated.swift; the Expo tokens.ts carries tokens.v2. v1 untouched. checkV2() in lib/theme; one miss, #68 (paper ok on its wash, 4.46:1). Expo `tsc --noEmit` clean; Tokens.generated.swift compiles and its V2 asserts pass standalone; the full capsule suite was not run (Mac disk at 100%). Note for pwa and capsule-pro in team/0.2/CHAT.md.
+- Step 6 (Wink ring on every avatar): avatars.js ring for every family at 96 and above (mark inside the clear centre), card at 210, `entityBytes` in lib/avatar-seed, scan test deck/test/wink-scan-browser.js (56 of 56 decode). Open point for platform and pwa: section 2 of wink-registry.md says a ring means pair.device, so scanning an agent or project ring today resolves a locator that no ticket owns. A card ring needs a purpose before the phone scans it (a QR or link, per that note, or a new ring version).
+Phone fixes from the width test (lead ruled: a screen pushed from More keeps the tab bar, with Back and More lit; a thread or project with its own Back covers it): tabbar.css and app.js, page headers wrap actions under the title, Settings rows stack the control under the label. pwa's pin-walk edits are in deck/test/pwa-shots.js. Green: pwa-shots run 36970578723 (6aaf1ead2). #42 on the board needs nothing (newsession.js shows error.message and clears starting).
+Doing: pwa-shots rerun on bf32458e2 (work/023-shell-shots) with pwa's edits.
+Next: send team-lead the run URL; hosted runs on work/023-shell; land with launch.
+Needs from others: app-design owns #68's colour; capsule-pro ports entityBytes and the emblem renderer against the spec and vectors; platform decides what a card ring means to the scanner.
+
 ## 2026-09-28: the four avatar families (0.1.1, user decision: avatars LOCKED)
 Branch work/native-core-avatars off stage/0.1.1 (4a595c99).
 Done:

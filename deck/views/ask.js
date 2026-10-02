@@ -23,7 +23,7 @@ import { clock } from "../js/fmt.js";
 
 const threadHref = (thread, project) => project ? `/projects/${encodeURIComponent(project)}/${encodeURIComponent(thread)}` : `/threads/${encodeURIComponent(thread)}`;
 const why = err => err?.missing
-  ? (err.module === "switchboard" ? "Sessions are not available on this box, so agents cannot answer here yet." : `The ${err.module} module is not running on this machine.`) // internal-word: the module id, compared in code and never drawn
+  ? (err.module === "switchboard" ? "Sessions are not available on your server, so agents cannot answer here yet." : `The ${err.module} module is not running on this machine.`) // internal-word: the module id, compared in code and never drawn
   : String(err?.message || err || "");
 const day = t => { const d = new Date(t); return `${d.getDate()} ${d.toLocaleDateString(undefined, { month: "short" })}`; };
 const secs = ms => `${(Number(ms) / 1000).toFixed(1)} s`;

@@ -21,12 +21,13 @@ import { assistantCard } from "../js/assistant-setup.js";
 import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
 import { chatCounts, chatsWord } from "../js/chat-counts.js";
-import { threadAvatar } from "../js/avatars.js";
+import { threadAvatar, whoAvatar, unknownActorAvatar } from "../js/avatars.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref, elsewhere, fromMac } from "../js/need-rows.js";
+import { sessionHref, elsewhere, fromMac, plainSummary, requestFacts } from "../js/need-rows.js";
+import { threadHref } from "../chat/lib/routes.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
 const phone = () => isPhone();
@@ -45,33 +46,49 @@ export default async function now(ctx) {
   ctx.cleanup(mountGlassMini(glassMini, { attempt, on }));
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
+  // The right column (from 1000 px): the last things that happened. Under it, on a narrow window, it stacks below.
+  const side = h("aside", { class: "now-side", "aria-label": "Recent" });
 
   // A Mac asking to pair waits on the person, so it sits above everything else.
   const pairing = pairRequests();
   ctx.cleanup(pairing.stop);
-  // No passkey on the box at all: nothing above can be approved until there is one.
-  const firstKey = firstPasskeyCard();
+  // Finish setup (right column): a passkey when the box has none, and the assistant when there is none. One quiet card, shown while either is open.
+  const finish = h("section", { class: "now-finish", hidden: true, "aria-labelledby": "fs-h" }, h("h2", { id: "fs-h", class: "lbl" }, "Finish setup"));
+  const asstRow = h("div", { class: "fs-row", hidden: true });
+  const syncFinish = () => { finish.hidden = firstKey.el.hidden && asstRow.hidden; };
+  const firstKey = firstPasskeyCard({ onChange: () => syncFinish() });
   ctx.cleanup(firstKey.stop);
+  finish.append(firstKey.el, asstRow);
 
-  put(ctx.root, h("div", { class: "now" },
+  put(ctx.root, h("div", { class: "now now-cols" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
-      // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
-      firstKey.el,
       pairing.el,
-      setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
-      needsBox, glassMini, working, learned, recentProjects)));
+      needsBox, glassMini, working, learned, recentProjects),
+    side));
+  // Finish setup (while it is open: install, notifications, a passkey), then Next up, then Recent: the right column's order.
+  const setup = setupCard();
+  const nextUp = h("section", { class: "now-next", "aria-labelledby": "next-h" });
+  put(side, finish, setup, nextUp);
+  const eventsBox = h("div", { class: "now-ev" });
+  side.append(eventsBox);
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
   // No assistant yet (onboarding's first step was skipped): the card to make one stands in its
   // place, and the line is drawn from what agents.create hands back.
   const drawAssistant = (/** @type {any} */ a) => {
-    assistant.classList.toggle("has-card", !a);
-    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle")
-      : assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle") : null);
+    asstRow.hidden = !!a;
+    if (!a) {
+      const open = () => put(asstRow, assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+      put(asstRow,
+        h("div", { class: "fs-main" }, h("div", { class: "fs-title" }, "Create your assistant"), h("p", { class: "small muted" }, "It sees every project and asks before anything goes out.")),
+        h("div", { class: "fs-act" }, h("button", { type: "button", class: "btn btn-sm", onclick: open }, "Name it")));
+    }
+    syncFinish();
   };
   (async () => {
     const r = await attempt("agents.list");
@@ -152,8 +169,38 @@ export default async function now(ctx) {
       r.error ? empty("Nothing is running.", r.error) : h("div", { class: "empty" }, "Nothing is running."),
       c.data?.sessions?.length ? h("div", { class: "rows" }, c.data.sessions.map(recentRow)) : null);
   };
+  // Recent: the last six things that happened, one line each: who, what, when. A tap opens the thread.
+  const drawEvents = async () => {
+    const r = await attempt("threads.list", {}, { share: true });
+    if (!ctx.alive()) return;
+    const rows = (Array.isArray(r.data) ? r.data : []).filter(t => t && t.id && (t.last || t.started)).sort((a, b) => (b.last || b.started || 0) - (a.last || a.started || 0)).slice(0, 6);
+    const hd = h("h2", { class: "lbl", id: "events-h" }, "Recent");
+    if (r.error && r.error.code !== "offline") { put(eventsBox, hd, empty("Could not load what happened.", r.error)); return; }
+    put(eventsBox, hd, rows.length
+      ? h("div", { class: "now-events" }, rows.map(t => link(threadHref({ id: t.id, project: t.project || null }, null), { class: "now-event" },
+        threadAvatar({ agent: t.agent, project: t.project, thread: t.id }, { size: 24 }),
+        h("span", { class: "now-event-t ellipsis" }, t.name || t.label || "New chat"),
+        h("span", { class: "now-event-w" }, when(t.last || t.started)))))
+      : h("div", { class: "empty" }, "Nothing yet. Things your agents do will appear here."));
+  };
+  // Next up: the next three things on the planner, from now on. Nothing is drawn while there are none.
+  const drawNext = async () => {
+    const r = await attempt("planner.agenda", {}, { ifPresent: true });
+    if (!ctx.alive()) return;
+    const now = Date.now();
+    const rows = (r.data?.entries || []).filter((/** @type {any} */ e) => e && (e.all_day || (e.at || 0) >= now)).slice(0, 3);
+    if (r.error && r.error.code === "no_such_tool") { put(nextUp); return; }
+    const hd = h("div", { class: "now-next-h" }, h("h2", { class: "lbl", id: "next-h" }, "Next up"), link("/planner", { class: "link small muted" }, rows.length ? "Planner" : "Add something"));
+    if (r.error || !rows.length) { put(nextUp, hd, h("div", { class: "empty" }, "Nothing planned. Add a reminder or a todo in Planner.")); return; }
+    put(nextUp, hd,
+      h("div", { class: "now-events" }, rows.map((/** @type {any} */ e) => link("/planner", { class: "now-event" },
+        h("span", { class: "now-event-w now-event-at" }, e.all_day ? "All day" : clock(e.at)),
+        h("span", { class: "now-event-t ellipsis" }, e.title || "Reminder")))));
+  };
+  drawNext();
+  drawEvents();
   drawWorking();
-  for (const t of ["thread.started", "thread.finished", "thread.stopped", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(drawWorking, 300); });
+  for (const t of ["thread.started", "thread.finished", "thread.stopped", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(() => { void drawWorking(); void drawEvents(); }, 300); });
   let wt = 0;
 
   // Learned today
@@ -241,14 +288,16 @@ function needCard(n) {
     h("div", { style: { flexGrow: "1" } }),
     threadHref && n.kind === "ask" ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
 
+  // Who is acting: the agent's own face and name from the record (its thread's agent when the item names none). Unknown is a neutral face and "An agent", never someone else.
+  const actor = n.agent || "An agent";
   const heading = n.kind === "ask"
     ? h("h3", null, `May ${n.agent || "this session"} run `, h("code", { class: "need-cmd" }, n.command || ""), "?")
     : n.kind === "question" ? h("h3", null, n.questions?.[0]?.question || n.title)
     : h("h3", null, n.title);
   return h("div", { class: "need-row" },
-    h("div", { class: "need-time mono" }, clock(n.at)),
     h("article", { class: "held need" + (n.kind === "draft" ? " is-draft" : "") },
-      h("div", { class: "need-top" }, heading, h("span", { class: "small muted nowrap" }, where)),
+      h("div", { class: "need-top" }, h("div", { class: "need-who" }, n.agent ? whoAvatar(n.agent, { size: 28, label: actor }) : unknownActorAvatar({ size: 28, label: actor }), heading),
+        h("span", { class: "caption muted nowrap" }, [where, clock(n.at)].filter(Boolean).join(" · "))),
       n.why ? h("p", { class: "need-why" }, n.why) : null,
       n.kind === "draft" ? heldBody(n, f) : null,
       buttons, status),
@@ -269,13 +318,17 @@ function heldBody(n, f) {
   const recalled = g?.recalled || g?.sources?.[0]?.text || "";
   if (!f) {
     return h("div", { class: "need-body" },
-      g?.summary ? h("p", { class: "need-text" }, g.summary) : null,
+      g?.summary ? h("p", { class: "need-text" }, plainSummary(g)) : null,
       h("p", { class: "small muted" }, g?.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here."));
   }
   // A previous Send was approved but the sender failed: it came back held, with the edit kept.
   return h("div", { class: "need-body" },
     g?.error ? h("p", { class: "need-why need-error" }, `Held again: ${problem(g.error)}`) : null,
-    f.el,
+    // A request (a payment, a deletion, an API call) says what it does in labelled rows; its method, URL and body wait under Details, still editable.
+    g?.draft && (g.draft.url || g.draft.method)
+      ? [h("div", { class: "need-facts" }, requestFacts(g).map(([k, v]) => h("div", { class: "ed-row" }, h("span", { class: "lbl ed-lbl" }, k), h("span", { class: "ed-val" }, v)))),
+        h("details", { class: "need-details" }, h("summary", { class: "small muted" }, "Details"), f.el)]
+      : f.el,
     recalled ? h("div", { class: "need-recalled" }, h("span", { class: "dot recall", "aria-hidden": "true" }),
       h("span", null, g.recalled ? g.recalled : `From memory: ${recalled}`)) : null);
 }

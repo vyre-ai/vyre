@@ -1,0 +1,19 @@
+/* The nod and the avatar card (js/avatar-card.js), on the v2 tokens. The card is glass over the page, solid under Reduce Transparency. */
+.vy-av:not([data-no-nod]) { cursor: pointer; }
+.vy-av.nod { animation: av-nod 460ms var(--spring) both; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent); transition: box-shadow 600ms var(--ease); }
+@keyframes av-nod { 0% { transform: scale(1) rotate(0); } 30% { transform: scale(.86) rotate(-5deg); } 65% { transform: scale(1.1) rotate(2deg); } 100% { transform: scale(1) rotate(0); } }
+.ac { position: fixed; z-index: 60; width: 380px; max-width: calc(100vw - 24px); padding: var(--s-5); border-radius: var(--r-card); border: 1px solid var(--edge); box-shadow: var(--elev-2);
+  background: color-mix(in srgb, var(--surface-3) 80%, transparent); -webkit-backdrop-filter: blur(28px) saturate(1.3); backdrop-filter: blur(28px) saturate(1.3);
+  transform-origin: top left; animation: ac-in 380ms var(--spring) both; }
+@keyframes ac-in { from { opacity: 0; transform: scale(.82); } }
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .ac { background: var(--surface-3); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+@media (prefers-reduced-motion: reduce) { .vy-av.nod, .ac { animation: none; } }
+.ac-mark { display: grid; place-items: center; margin: 0 auto var(--s-4); }
+.ac-name { margin: 0; text-align: center; font: 600 var(--fs-title)/var(--lh-title) var(--sans); color: var(--text); }
+.ac-kind { margin: 2px 0 var(--s-4); text-align: center; font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); color: var(--label); }
+.ac-rows { margin: 0 0 var(--s-4); }
+.ac-row { display: flex; justify-content: space-between; gap: var(--s-4); padding: var(--s-2) 0; border-top: 1px solid var(--edge); font: 400 var(--fs-body)/var(--lh-body) var(--sans); }
+.ac-row dt { color: var(--label); }
+.ac-row dd { margin: 0; color: var(--text); text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.ac-acts { display: flex; gap: var(--s-2); flex-wrap: wrap; justify-content: center; }
+.md-tools { margin: 0; padding: 0; list-style: none; text-align: right; }

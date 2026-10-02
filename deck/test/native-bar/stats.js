@@ -78,7 +78,7 @@ export function rng(seed) {
 }
 
 const WORDS = ("the Northwind Bakery menu lists sourdough rye and a seasonal tart alex asked juno to check every price "
-  + "before the site update goes out kit reviews the copy and the tests run on the box each morning").split(" ");
+  + "before the site update goes out kit reviews the copy and the tests run on your server each morning").split(" ");
 
 /**
  * The reply a burst turn streams: prose, a list, a code fence and a table, long enough for about

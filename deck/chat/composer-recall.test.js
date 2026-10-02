@@ -78,7 +78,7 @@ test("a command ('/...') never asks, even with plenty of text", async () => {
   c.stop();
 });
 
-test("no hits hides the box; dismissing (its own close, or Esc) hides it and it stays hidden until the box empties", async () => {
+test("no hits hides your server; dismissing (its own close, or Esc) hides it and it stays hidden until your server empties", async () => {
   relatedAnswer = { hits: [] };
   const c = mountComposer({ thread: thread(), cwd: () => "/home/alex/work/harlow", onRecall: () => {} });
   type(c, "nothing relevant was ever said about this");
@@ -97,13 +97,13 @@ test("no hits hides the box; dismissing (its own close, or Esc) hides it and it 
   assert.equal($(c.el, ".composer-hints").hidden, true, "dismissed for this compose: typing more does not bring it back");
 
   c.setText("");
-  type(c, "a brand new thought entirely, once the box is empty again");
+  type(c, "a brand new thought entirely, once your server is empty again");
   await tick();
-  assert.equal($(c.el, ".composer-hints").hidden, false, "a fresh compose (the box went empty) gets its own hint again");
+  assert.equal($(c.el, ".composer-hints").hidden, false, "a fresh compose (your server went empty) gets its own hint again");
   c.stop();
 });
 
-test("Esc dismisses the hint before anything else the box's own Esc would do", async () => {
+test("Esc dismisses the hint before anything else your server's own Esc would do", async () => {
   relatedAnswer = { hits: [HIT] };
   const c = mountComposer({ thread: thread(), cwd: () => "/home/alex/work/harlow", onRecall: () => {} });
   type(c, "something worth asking recall.related about");

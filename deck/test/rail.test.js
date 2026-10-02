@@ -31,12 +31,12 @@ async function load() {
   return { ...mod, $, $$ };
 }
 
-test("rail: the places in the spec's order and words, the bottom group last, keys 1 to 9", async () => {
+test("rail: the places in the spec's order and words, the bottom group last, keys 1 to 8", async () => {
   const { PLACES } = await load();
-  assert.deepEqual(PLACES.map(p => p.label), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Drive", "Devices", "Settings"]);
-  assert.deepEqual(PLACES.map(p => p.key), ["1", "2", "3", "4", "5", "6", "7", undefined, "8", "9"], "Drive has no digit");
-  assert.deepEqual(PLACES.filter(p => p.end).map(p => p.label), ["Devices", "Settings"]);
-  assert.deepEqual(PLACES.map(p => p.href), ["/now", "/chat", "/agents", "/projects", "/planner", "/memory", "/vault", "/files", "/settings#devices", "/settings"]);
+  assert.deepEqual(PLACES.map(p => p.label), ["Now", "Chat", "Projects", "Agents", "Memory", "Vault", "Drive", "Settings"]);
+  assert.deepEqual(PLACES.map(p => p.key), ["1", "2", "3", "4", "5", "6", "7", "8"]);
+  assert.deepEqual(PLACES.filter(p => p.end).map(p => p.label), ["Settings"]);
+  assert.deepEqual(PLACES.map(p => p.href), ["/now", "/chat", "/projects", "/agents", "/memory", "/vault", "/files", "/settings"]);
   for (const p of PLACES) assert.doesNotMatch(p.label, /^(Home|Inbox|Dashboard|Sessions|Threads)$|^[A-Z]{2,}$/);
 });
 
@@ -47,13 +47,14 @@ test("rail: nav named Vyre, the home mark to Now, links named by their labels, t
   assert.equal(r.el.getAttribute("aria-label"), "Vyre");
   assert.equal(r.home.getAttribute("href"), "/now");
   assert.equal(r.home.getAttribute("aria-label"), "Vyre home");
-  const places = $$(r.el, "a.rail-place");
-  assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Drive", "Devices", "Settings"]);
+  const places = $$(r.el, ".rail-place");
+  assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Projects", "Agents", "Memory", "Vault", "Drive", "Search", "Settings"]);
   // The top group, then the bottom group with the avatar last.
   const groups = $$(r.el, ".rail-set");
   assert.equal(groups.length, 2);
-  assert.equal($$(groups[0], "a.rail-place").length, 8);
+  assert.equal($$(groups[0], "a.rail-place").length, 7);
   assert.ok(groups[1].className.includes("rail-end"));
+  assert.equal(r.search.getAttribute("aria-label"), "Search");
   assert.equal(groups[1].childNodes.at(-1), r.avatar);
   assert.equal(r.avatar.getAttribute("href"), "/settings");
   assert.equal(r.avatar.getAttribute("aria-label"), "Account");
@@ -93,7 +94,7 @@ test("rail: Now carries the 18 badge (aria-hidden), reads 'Now, 5 need you', and
   for (const a of r.links.slice(1)) assert.equal($(a, ".sm-badge"), null);
 });
 
-test("rail: one current place, aria-current page; needs is Now, Glass is Agents, Settings#devices is Devices", async () => {
+test("rail: one current place, aria-current page; needs is Now, Glass is Agents, Settings#devices is Settings", async () => {
   const { rail, placeOf } = await load();
   const r = rail();
   const current = () => r.links.filter((/** @type {any} */ a) => a.getAttribute("aria-current") === "page").map((/** @type {any} */ a) => a.getAttribute("data-place"));
@@ -104,11 +105,11 @@ test("rail: one current place, aria-current page; needs is Now, Glass is Agents,
   r.setCurrent("glass");
   assert.deepEqual(current(), ["Agents"]);
   r.setCurrent("settings", "#devices");
-  assert.deepEqual(current(), ["Devices"]);
+  assert.deepEqual(current(), ["Settings"], "Devices is a part of Settings");
   r.setCurrent("settings", "#appearance");
   assert.deepEqual(current(), ["Settings"]);
   r.setCurrent("planner");
-  assert.deepEqual(current(), ["Planner"]);
+  assert.deepEqual(current(), ["Now"], "Planner is folded into Now");
   r.setCurrent("missing");
   assert.deepEqual(current(), []);
   assert.equal(placeOf("find"), null);
@@ -120,11 +121,11 @@ test("rail keys: Cmd+1 to Cmd+9 on a Mac, Ctrl off it, in rail order; never whil
   const k = (/** @type {string} */ key, /** @type {any} */ o = {}) => ({ key, target: div, ...o });
   assert.equal(placeForKey(k("1", { metaKey: true }), true), "/now");
   assert.equal(placeForKey(k("2", { metaKey: true }), true), "/chat");
-  assert.equal(placeForKey(k("5", { metaKey: true }), true), "/planner");
-  assert.equal(placeForKey(k("8", { metaKey: true }), true), "/settings#devices");
-  assert.equal(placeForKey(k("9", { metaKey: true }), true), "/settings");
-  assert.equal(placeForKey(k("4", { ctrlKey: true }), false), "/projects");
-  assert.equal(placeForKey(k("7", { ctrlKey: true }), false), "/vault");
+  assert.equal(placeForKey(k("3", { metaKey: true }), true), "/projects");
+  assert.equal(placeForKey(k("8", { metaKey: true }), true), "/settings");
+  assert.equal(placeForKey(k("9", { metaKey: true }), true), null);
+  assert.equal(placeForKey(k("4", { ctrlKey: true }), false), "/agents");
+  assert.equal(placeForKey(k("6", { ctrlKey: true }), false), "/vault");
   // The other platform's modifier, extra modifiers, other keys, and a press already taken.
   assert.equal(placeForKey(k("1", { ctrlKey: true }), true), null);
   assert.equal(placeForKey(k("1", { metaKey: true }), false), null);
@@ -151,13 +152,15 @@ test("rail app: the shell mounts the rail, the brand leaves the header, and the 
   assert.match(app, /import \{ rail, placeForKey \} from "\.\/rail\.js"/);
   assert.doesNotMatch(app, /class: "brand"|wordmark|class: "avatar"|rail-foot/, "no brand, wordmark or avatar in the header, no machine footer");
   assert.doesNotMatch(app, /const PLACES = \[/, "the order lives in js/rail.js only");
-  assert.match(app, /railEl\.el,\s*h\("div", \{ class: "stage" \},\s*h\("header", \{ class: "top" \}/, "the rail is left of the header, not under it");
+  assert.match(app, /railEl\.el,\s*h\("div", \{ class: "stage" \}/, "the rail is left of the stage");
+  assert.doesNotMatch(app, /class: "top"|needs-pill|search-pop/, "the top bar is gone: the command bar and the rail's Search replace it");
+  assert.match(app, /createCmdBar\(\)/);
   assert.match(app, /const href = placeForKey\(e, MAC\);/);
   // The page being left is hidden on the desk: the new address is current before leave() runs.
   assert.match(app, /current = key;\n(?: *\/\/.*\n)* *if \(was && !again\) leave\(wasKey, was, from, to, backward\);/);
   assert.match(app, /if \(phone\(\) \|\| !installed\(\)\) return;\s*const href = placeForKey/, "no rail keys on the phone, or in a browser tab (they switch the browser's own tabs)");
-  // The phone shell's own header is untouched.
-  assert.match(app, /h\("nav", \{ class: "ph-tabs", "aria-label": "Pages" \}, phLabels\)/);
+  // The phone shell's own header and tab bar (v2).
+  assert.match(app, /h\("nav", \{ class: "tabbar", "aria-label": "Pages" \}, phLabels, moreTab\)/);
   assert.match(read("sw.js"), /"\/js\/rail\.js"/, "kept at install");
   const icons = read("js/icons.js");
   assert.match(icons, /\n {2}planner: '/);
@@ -196,9 +199,37 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
     }
   }
   // The phone shell hides the rail and the list column; the header is still the first rule there.
-  assert.match(css, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n {2}\.top \{ display: none; \}\n {2}\.rail \{ display: none; \}\n {2}\.rail-lower \{ display: none; \}/);
+  assert.match(css, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n {2}\.rail \{ display: none; \}\n {2}\.rail-lower \{ display: none; \}/);
   // The list column is its own width, not the old rail's.
   decl(css, ".rail-lower", /width: 240px; min-width: 0; flex-shrink: 0/);
   decl(css, ".rail-lower", /overflow-x: hidden; overflow-y: auto/);
   assert.doesNotMatch(read("chat/chat.css"), /\.rail-set\b/, "the rail's groups do not share a name with chat's");
+});
+
+test("rail: a label on hover and focus, a labelled rail from 1200 px, and below 720 px the phone layout (the rail is gone)", () => {
+  const css = noComments(read("css/shell-v2.css"));
+  assert.match(css, /\.rail-place:hover \.rail-label, \.rail-place:focus-visible \.rail-label \{ opacity: 1;/);
+  assert.match(css, /@media \(min-width: 1200px\) \{\s*:root:not\(\[data-rail="icons"\]\) \.rail \{/);
+  assert.match(css, /pointer: none\) \{\s*:root\[data-rail="labels"\] \.rail \{/);
+  assert.match(read("js/app.js"), /dataset\.rail = readRailMode\(\)/);
+  assert.match(read("views/settings.js"), /"aria-label": "Rail"/, "the setting is in Settings, Appearance");
+  // The phone layout starts below 720, so a 390 screen gets the tab bar and no rail.
+  const deck = noComments(read("css/deck.css"));
+  assert.match(deck, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\s*\.rail \{ display: none; \}/);
+});
+
+test("rail mode: auto by default, icons or labels kept per device, junk reads as auto", async () => {
+  const { readRailMode, setRailMode, MODES } = await import("../js/rail-mode.js");
+  const mem = () => { const m = new Map(); return { getItem: (/** @type {string} */ k) => m.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => { m.set(k, v); }, removeItem: (/** @type {string} */ k) => { m.delete(k); } }; };
+  const s = mem();
+  const doc = /** @type {any} */ ({ documentElement: { dataset: {} } });
+  assert.deepEqual([...MODES], ["auto", "icons", "labels"]);
+  assert.equal(readRailMode(s), "auto");
+  assert.equal(setRailMode("labels", { doc, store: s }), "labels");
+  assert.equal(doc.documentElement.dataset.rail, "labels");
+  assert.equal(readRailMode(s), "labels");
+  setRailMode("auto", { doc, store: s });
+  assert.equal(s.getItem("vyre.rail"), null, "auto is the absence of a choice");
+  s.setItem("vyre.rail", "wide");
+  assert.equal(readRailMode(s), "auto");
 });

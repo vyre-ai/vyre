@@ -75,12 +75,16 @@ export function head(label, right, cls = "") {
 }
 
 /**
- * What a view shows when a tool is not there: which module is not running, in plain words.
- * @param {string} text
+ * What a view shows when there is nothing, or a tool is not there (the state kit, js/states.js, in the Deck's one look): a plain line for an
+ * empty list; for an error, what failed, a quiet reason, and Try again when the view can retry. An error is never drawn as an empty list.
+ * @param {string} text what is empty, or what failed ("Projects are not available.")
  * @param {any} [err] an ApiError from api.js, whose module is named
+ * @param {(() => void) | null} [retry] what Try again does
  */
-export function empty(text, err) {
-  const why = err && err.missing ? `The ${err.module} module is not running on this machine.`
-    : err ? String(err.message || err) : null;
-  return h("div", { class: "empty" }, text, why ? h("span", { class: "code" }, why) : null);
+export function empty(text, err, retry = null) {
+  if (!err) return h("div", { class: "empty" }, text);
+  const reason = err.missing ? `The ${err.module} module is not running on this machine.` : String(err.message || err);
+  return h("div", { class: "empty state-error", role: "alert" }, text,
+    h("span", { class: "code" }, reason),
+    retry ? h("button", { class: "btn btn-primary btn-sm", type: "button", "data-act": "retry", onclick: () => retry() }, "Try again") : null);
 }

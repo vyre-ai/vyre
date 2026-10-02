@@ -73,7 +73,7 @@ const TEXT_KINDS = new Set(["doc", "report", "markdown", "note"]);
 const WIDE_KINDS = new Set(["page", "deck"]);
 const GLYPH = { doc: "file", report: "lines", page: "watch", dashboard: "planner", diagram: "branch", deck: "laptop", app: "terminal" };
 const ID = /^[A-Za-z0-9][\w.-]{0,79}$/;
-const NOT_YET = "This box can't show artifacts yet.";
+const NOT_YET = "Your server can't show artifacts yet.";
 
 // ---- the route ----------------------------------------------------------------------------
 

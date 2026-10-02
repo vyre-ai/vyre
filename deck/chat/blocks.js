@@ -374,7 +374,7 @@ export function handoffCard(b) {
         if (!plain.error) { unmark(project, role); put(madeLine, `Retired ${role}.`); return; }
         r = plain;
       }
-      if (r.error) { undo.disabled = false; put(madeLine, `Made ${role}, a new teammate. Could not undo it: ${r.error.missing ? "this box cannot remove teammates yet" : r.error.message || r.error.code}`, undo); return; }
+      if (r.error) { undo.disabled = false; put(madeLine, `Made ${role}, a new teammate. Could not undo it: ${r.error.missing ? "your server cannot remove teammates yet" : r.error.message || r.error.code}`, undo); return; }
       unmark(project, role);
       put(madeLine, `Undone. ${role} is gone.`);
     } }, "Undo") : null;

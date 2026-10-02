@@ -254,6 +254,15 @@ async function main() {
     for (const body of heldItems(w.threads)) {
       try { await fetch(base + "gate.request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); } catch {}
     }
+    // The Gate hears an agent's name only from a verified thread, which a fixture has none of, so the world files the actor the way a real
+    // request would have: on the held row itself (what gate.held then returns), so Now can show who is asking.
+    try {
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(path.join(root, "vyre.db"));
+      db.exec("PRAGMA busy_timeout=5000");
+      for (const b of heldItems(w.threads)) db.prepare("UPDATE gate_items SET agent = ? WHERE state = 'held' AND via = ? AND kind = ? AND agent IS NULL").run(b.agent, b.via, b.kind);
+      db.close();
+    } catch {}
   });
 
   const quit = () => {

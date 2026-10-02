@@ -64,3 +64,75 @@ test("tokens: every output names the root folder that must exist before it is wr
     assert.ok(rel.startsWith(ROOTS[rel] + "/"), `${rel} is under ${ROOTS[rel]}`);
   }
 });
+
+// ---- Deck v2 ----
+import { cssV2 } from "../scripts/lib/tokens.js";
+import { checkV2, tokens as shippedTokens } from "../lib/theme/index.js";
+import { emblem } from "../deck/vendor/vyrecode/emblem.js";
+import { PROJECT_COLORS } from "../deck/vendor/vyrecode/identity.js";
+
+test("tokens v2: both schemes name the same roles, every one a colour, and v1 is untouched", () => {
+  assert.deepEqual(Object.keys(t.v2.color.dark), Object.keys(t.v2.color.paper));
+  for (const theme of ["dark", "paper"]) for (const v of Object.values(t.v2.color[theme])) rgba(v);
+  assert.equal(t.color.dark.beacon, t.v2.color.dark.accent, "the accent is the attention colour");
+  assert.equal(t.color.paper.beacon, t.v2.color.paper.accent);
+  assert.equal(t.type.desktop.base[0], 13, "the v1 type scale is still there for the screens that have not moved");
+});
+
+test("tokens v2: the colour rules hold (the one known miss is filed, and the list may only shrink)", () => {
+  // Paper's ok word on its own wash over a card is 4.46:1, 0.04 under AA. app-design owns the value (issue #68).
+  assert.deepEqual(checkV2(shippedTokens()), ["v2 paper: ok on okWash over surface2 is 4.46:1, needs 4.5:1"]);
+});
+
+test("tokens v2: the CSS has the Deck's names, both schemes, and the phone sizes", () => {
+  const c = cssV2(t);
+  assert.match(c, /^:root \{/m);
+  assert.match(c, /^:root\[data-theme="paper"\] \{/m);
+  for (const name of ["--surface-1:", "--surface-3:", "--edge-strong:", "--edge-top:", "--accent-wash:", "--ok-wash:", "--err:", "--primary-ink:", "--code-bg:",
+    "--fs-caption:", "--lh-display:", "--fs-label:", "--s-1:", "--s-16:", "--r-card:", "--r-sheet:", "--elev-1:", "--elev-3:", "--dur-4:", "--spring:", "--rail-w:", "--row-h:"])
+    assert.ok(c.includes(name), name);
+  assert.match(c, /--elev-2: 0 1px 0 var\(--edge-top\) inset, 0 8px 24px -8px rgba\(0,0,0,\.6\), 0 2px 6px rgba\(0,0,0,\.35\);/);
+  assert.match(c, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n  :root \{ --fs-body: 16px; --lh-body: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 26px; --fs-page: 28px; --lh-page: 34px; --control: 44px; --control-sm: 36px; --row-h: 64px; \}/);
+  assert.equal(cssV2(t), c, "stable output");
+});
+
+test("tokens v2: the Swift file carries the v2 roles, the type roles, springs and the emblem", () => {
+  const s = swift(t);
+  for (const k of Object.keys(t.v2.color.dark)) assert.match(s, new RegExp(`public let ${k}: Color`));
+  assert.match(s, /public enum V2 \{/);
+  assert.match(s, /public static let body: \(size: CGFloat, line: CGFloat\) = \(14, 20\)/);
+  assert.match(s, /public static let `default` = Spring\(damping: 0\.8, stiffness: 380\)/);
+  assert.equal([...s.matchAll(/^ {16}\.(circle|rect|ring|path)\(/gm)].length, t.v2.emblem.shapes.length);
+});
+
+test("tokens v2: the emblem spec draws exactly what the Deck's renderer draws", () => {
+  const e = t.v2.emblem;
+  assert.deepEqual(e.palette, PROJECT_COLORS, "the emblem palette is the project colours");
+  const f = (/** @type {number} */ n) => String(n);
+  const shape = (/** @type {any} */ s, /** @type {number} */ r, /** @type {number} */ x, /** @type {number} */ y, /** @type {string} */ fill) => {
+    const rot = s.rotates ? ` transform="rotate(${r * 90} ${x + 30} ${y + 30})"` : "";
+    if (s.kind === "circle") return `<circle cx="${x + s.cx}" cy="${y + s.cy}" r="${s.r}" fill="${fill}"/>`;
+    if (s.kind === "ring") return `<circle cx="${x + s.cx}" cy="${y + s.cy}" r="${s.r}" fill="none" stroke="${fill}" stroke-width="${s.stroke}"/>`;
+    if (s.kind === "rect") return `<rect x="${x + s.x}" y="${y + s.y}" width="${s.w}" height="${s.h}" rx="${s.rx}" fill="${fill}"/>`;
+    const d = s.ops.map((/** @type {any[]} */ o) => o[0] === "M" || o[0] === "L" ? `${o[0]}${x + o[1]} ${y + o[2]}`
+      : o[0] === "A" ? `A${o[1]} ${o[2]} ${o[3]} ${o[4]} ${o[5]} ${x + o[6]} ${y + o[7]}` : "Z").join(" ");
+    return `<path d="${d}" fill="${fill}"${rot}/>`;
+  };
+  const render = (/** @type {number[]} */ b, /** @type {{ draft: boolean, theme: "dark"|"paper" }} */ { draft, theme }) => {
+    const n = e.palette.length, c1 = e.palette[b[0] % n], c2 = e.palette[(b[0] + 2 + (b[1] % (n - 2))) % n], ink = e.ink[theme];
+    const cells = e.cells.map((/** @type {number[]} */ [x, y], /** @type {number} */ i) =>
+      shape(e.shapes[b[2 + i] % e.shapes.length], (b[2 + i] >> 3) % 4, x, y, (b[6] >> i) & 1 ? c2 : draft ? c1 : ink)).join("");
+    const d = e.draft;
+    const frame = draft
+      ? `<rect x="${d.frame}" y="${d.frame}" width="${e.canvas - 2 * d.frame}" height="${e.canvas - 2 * d.frame}" rx="${e.corner}" fill="none" stroke="${c1}" stroke-width="${d.stroke}" stroke-dasharray="${d.dash.join(" ")}"/><g opacity="${f(d.cellOpacity).replace(/^0/, "")}">${cells}</g>`
+      : `<g clip-path="url(#em)"><rect width="${e.canvas}" height="${e.canvas}" fill="${c1}"/>${cells}</g>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.canvas} ${e.canvas}" width="${e.canvas}" height="${e.canvas}"><defs><clipPath id="em"><rect x="${e.inset}" y="${e.inset}" width="${e.canvas - 2 * e.inset}" height="${e.canvas - 2 * e.inset}" rx="${e.corner}"/></clipPath></defs>${frame}</svg>`;
+  };
+  let seed = 12345;
+  const next = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0) >>> 24;
+  for (let i = 0; i < 400; i++) {
+    const b = Array.from({ length: 8 }, next);
+    for (const theme of /** @type {const} */ (["dark", "paper"])) for (const draft of [false, true])
+      assert.equal(emblem(b, { draft, theme }), render(b, { draft, theme }), `bytes ${b} ${theme}${draft ? " draft" : ""}`);
+  }
+});

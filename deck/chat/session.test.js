@@ -439,7 +439,7 @@ test("thinking folds to its length, a run of tools is one row that counts up, th
 // "Send now" is "Steer now" (threads.send-now in the sessions contract), and each button is on until
 // the box says it has no such tool (core/caps.js), not off from the start. Rows are named by the
 // box's row id (`queued`): a row without one yet has its buttons off.
-test("queued rows sit above the composer: Edit, Take back, Steer now by row id; a box without the tool turns that button off", async () => {
+test("queued rows sit above the composer: Edit, Take back, Steer now by row id; a server without the tool turns that button off", async () => {
   at("thread.queued", { uuid: "q0", text: "Summarise the Northwind order" });
   assert.equal($(box3, ".cv-queued-row .cv-q-take").disabled, true, "no row id yet");
   at("thread.unqueued", { uuid: "q0", reason: "taken" });
@@ -574,7 +574,7 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code and conversation", "both is the default");
   press3("Enter");
   await wait();
-  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1", restore: "both" }, "the box's uuid for the message");
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1", restore: "both" }, "your server's uuid for the message");
   assert.deepEqual(went, [], "the same thread: nothing opens");
   assert.equal($(box4, ".cv-rewind"), null);
   assert.equal($(box4, ".cv-rewind-scrim").hidden, true);
@@ -697,7 +697,7 @@ test("a reconnect or a stream reset re-reads threads.get, threads.asks and the t
 
 // ---- sessions 034c71e5: background tasks, thinking, ! shell, # memory, images ---------------------
 
-test("the box's background tasks, thinking, ! and # and pasted images, on their real shapes; an older box keeps them off", async () => {
+test("your server's background tasks, thinking, ! and # and pasted images, on their real shapes; an older box keeps them off", async () => {
   const { CAPS, SEND_IMAGES } = await import("./core/caps.js");
   newTasks = [{ id: "task_1", kind: "shell", title: "npm run dev", status: "running", call: null, background: true }];
   const box6 = new El("div");
@@ -825,7 +825,7 @@ test("the composer grows with its text once a frame, and a key on a line that fi
   sh = 72;
   type("Harlow Legal\nNorthwind Bakery\njuno");
   await wait(30);
-  assert.equal(ta.style.height, "72px", "more lines grow the box");
+  assert.equal(ta.style.height, "72px", "more lines grow your server");
   sh = 400;
   type("x".repeat(2000));
   await wait(30);

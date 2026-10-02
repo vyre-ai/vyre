@@ -21,6 +21,83 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Lumen: with no vyre on the Mac, Start Vyre runs the app's bundled installer with its own Node and asks for the Mac password in a dialog instead of a terminal (so a Mac with no npm and no Node can set Vyre up from the app). Without a bundled setup it says what it said before.
 - link (tailnet, companion core transport, box side, v0.2.3): a companion core proves its own P-256 key on every call, with no dependence on the tailnet node. A token `c1.<companion>.<ts>.<nonce>.<sig>` signs the tool, the input digest and the box id; the box checks the companion row, that its parent app device is live and trusted right now, the time, a fresh nonce and the signature (`verifyCall` in core/link/companion.js). New tools `link.companion.hello` (tailnet callers) and internal `link.companion.verify`; the pair and approve answers carry `box: { pub, id }` for the core to pin; the five `sync.upload.*` tools accept `companion`, and the chunk route reads it from `x-vyre-companion`. A token made before the daemon started is refused (nonces are in memory only, so a restart cannot replay a captured one), and the nonce table is per companion. A companion may call only those tools; nothing is forwarded to it. The wire contract is in docs/work/tailnet.md.
 - fix(install): install-box.sh ends on the next step, not a send-off. The closing "Go do your best work. We'll keep the thread.", the Friday "Nice way to end the week." and the "a fine moment for a coffee" wait line are gone, and the wait line no longer names apt. test/installer-copy.test.js keeps sign-offs and filler out of the three installers' output.
+#### deck v2: Now, the rail and held requests, after the lead's review of the real screens
+
+- Now (desktop): the passkey banner and the "Create your assistant" form leave the top of the page. Both are rows of one quiet "Finish setup" card in the right column, shown only while something is open. The passkey row is one button, "Make a passkey": it asks the server for a one-time code (`presence.code`) and then runs the browser's passkey prompt on the next tap (Safari needs the tap). Where the server will not hand this device a code, the `vyre box add` and `vyre up` commands show under "Other ways". The assistant row is one line and a "Name it" button that opens the name form in place.
+- Held requests are said in words: `plainSummary()` turns a payment, a deletion or a raw `POST https://...` summary into a sentence ("Spend 150 USD on northwind-ads through billing"), on Now, the needs page, and the sheet. The raw request stays in the details.
+- A held request's card on Now (a payment, a deletion, an API call) shows labelled rows (Spend through billing, Amount 150 USD, Account northwind-ads); its method, URL and body wait under Details, still editable.
+- A needs-you row shows who is asking: the acting agent's own avatar and name (read from the Gate record, then its thread's agent), on the phone rows and the desktop cards. When the record names none, a neutral silhouette and "An agent": never the assistant's face. The sample world files each held row's agent, so the shots show it. The time moved from the left gutter into the card's top line in the caption role, muted.
+- The rail: Search no longer wears the browser's button box (it looked like a focused input), and the account row has no empty pill: avatar and the person's name (or "Account").
+
+#### deck v2, step 6: the Wink ring on every avatar
+
+- The avatar card draws every entity inside its Wink ring at 210: person, assistant, agent, teammate and project. The ring is the same 72-tick Vyre code; the family's own mark is its centre (the `faceSvg` hook), scaled to 0.86 and clipped to the clear centre so a rounded tile's corners never touch a tick. Under 96 px an avatar stays a plain mark, and a draft project tile has no ring (it is no identity yet).
+- What a ring carries: the person's and the assistant's real `fingerprint8` (no fingerprint, no ring); a project's own emblem bytes (`projectBytes`); an agent's and a teammate's `entityBytes(family, seed)`, new in `lib/avatar-seed` (the project rule with `vyre:<family>:v1:` as the prefix, with vectors for the ports). A teammate's card now wears its project colour.
+- `deck/test/wink-scan-browser.js` is the scan test: each family, Dark and Paper, drawn at 120 px in headless Chrome and read back with the phone's decoder (decode-core2, Reed-Solomon, CRC). All 56 reads decode, at 5x, 3x, 2x and 1x density. Unit tests in `deck/js/avatars.test.js` and `lib/avatar-seed/index.test.js`.
+
+#### deck v2: the v2 tokens and the project emblem join lib/theme/tokens.json (screen kit)
+
+- `lib/theme/tokens.json` gains a `v2` group: the v2 colours (dark and paper), type roles, 4-grid space, shapes, controls, layout, motion with springs and stagger, three elevations as structured layers, icons, and the project emblem (palette, ink, four cells, eight shapes as data, the byte rules). v1 groups are untouched, so no screen changes.
+- `scripts/gen-tokens` now writes `deck/css/tokens-v2.css` (it was copied by hand; the declarations are the same) and adds `Tokens.V2` to the Capsule's `Tokens.generated.swift`. The Expo app's `tokens.ts` carries `tokens.v2` because it is the JSON as a typed constant.
+- `lib/theme` `checkV2()` holds the v2 colours to AA. One pair misses, filed as #68: paper's ok word on its own wash is 4.46:1.
+- Tests: `test/tokens.test.js` checks the v2 roles, the generated CSS and Swift, the contrast list, and that the emblem spec draws the same SVG as `deck/vendor/vyrecode/emblem.js` for 400 random seeds in both schemes and as a draft. `ThemeTokensTests.swift` reads `Tokens.V2`.
+
+#### deck v2, step 5: Agents, Memory, Vault, Drive and Settings passes; "your server" wording
+
+- Agents, Vault, Drive and Settings open with the one page header; Memory's title takes the page title type. An agent's computer has a name you can change in place (`computers.rename`).
+- Every person-visible "this box", "the box" and "your box" in the Deck's views, chat, Glass and shared scripts now says "your server" (commands and comments unchanged), with the tests that asserted the old words.
+
+#### deck v2, step 5: the Projects shell and the Planner pass
+
+- Projects: the one page header; the board's header wears the project's emblem; a project's chats are the one thread row, and every chat still opens in Chat.
+- Planner (add and edit stay as built in #48): the one page header with the quick-add hint. Now's Next up always links to Planner ("Add something" when nothing is planned), since Planner is no longer a rail place.
+
+#### deck v2, step 5: the Chat pass
+
+- Chat and a project's chats open with the one page header (title, meta line, actions) and list the one thread row; projects in Chat's list draw their emblem on the same row. Every chat still opens in the one thread view.
+- Now's right column is Finish setup (while it is open), Next up (the next three planner entries), then Recent.
+
+#### deck v2, step 5: the Now pass (and the labels, agent faces and width test it carries)
+
+- Now has a right column from 1200 px (it stacks below on a narrower window): Recent, the last six things that happened, one line each with the actor's avatar and the time; a tap opens the thread. Empty: "Nothing yet. Things your agents do will appear here."
+- Section labels are the body role in sentence case, semibold (`.lbl`, the command bar's group names, the Chat and Vault rail headings); mono capitals stay for code, keys and addresses only.
+- Agents have the new face (`deck/vendor/vyrecode/agent2.js`, ported unchanged from `team/0.2.2/deck-v2/agent-v2.js`): a superellipse body, one light, one rim, and fixed sets of eyes, mouths and marks so a dozen agents differ at 24 px. Every agent is drawn once afresh.
+- `deck/test/phone-widths.js`, run by the pwa-shots workflow on a runner: at 320, 360, 390, 430, 600 and 719 every place has no rail, the bottom bar, no sideways scroll and no one-word-per-line; at 720 and 768 the rail shows and the bar does not.
+
+#### deck v2: one list of places, the rail setting
+
+- Merged pwa's `work/pwa-v2-pin` (phone: four tabs plus More, hold-to-pin as a page). `deck/js/place-list.js` is the one list of places: the desk rail and the phone's Places and More sheets all read it, so they cannot drift.
+- Settings > Appearance > Rail: Auto (names beside the icons from 1200 px, the default), Icons, Labels. Icons and Labels override Auto from 720 px. The labelled rail is 216 wide with the wordmark by the logo and the person's name by their avatar; tooltips apply only to the icon form.
+
+#### deck v2, step 4: the emblem, the nod, the avatar card and message details
+
+- Project avatars are the new emblem (`deck/vendor/vyrecode/emblem.js`): four cells of eight shapes and four rotations on a ground, chosen by the project's eight seed bytes, so projects stop looking alike. A draft is the same emblem dashed. The seed rule is unchanged (the stored avatar seed, never the name).
+- `deck/js/avatar-card.js`: tapping an avatar nods it (scale 0.86 to 1.1 to 1 with a tilt and an accent ring, 460 ms) and 170 ms in opens its card, a glass popover on a desk and a sheet on a phone, for a person, the assistant, an agent, a teammate or a project: name, kind, a few rows, up to three actions. Avatars inside a link or a button keep their row's job.
+- `deck/js/message-details.js`: the avatar, name or time on a message opens its details (who, model, time, tools, turn), read from the rows already drawn. Cost and sources come with the Chat pass.
+- Not in this step: the Wink ring on the non-person cards (step 6), devices and spaces cards.
+
+#### deck v2, step 3: the one thread row
+
+- `deck/js/thread-row.js` and `deck/css/thread-row.css`: the one thread row, 56 high (phone 64): the project's emblem or the agent's mark, a title, a last line (where it is and how many messages), a stack of up to three participants, the time, and the state in words ("Running", "2 need you"). No ids. Chat's Recent list and a project's chats draw it. Both open the one thread view (a project's chats open in Chat, #47). Now's run list and search results take it in the Now pass.
+
+#### deck: rename a device in place (#65)
+
+- Settings > Your devices: a pencil by each name (this server, paired Macs, phones, PCs and browsers paired through the relay) opens a field in the row; Enter or Save keeps it, Esc leaves it, one to 64 characters. It calls `relay.devices.rename`, `link.rename` or `system.rename` by kind, and a `device.renamed` event changes the name on screen. Agents' computers (`computers.rename`) take the same control on the Agents screen pass.
+
+#### deck v2, step 2: the rail, the page header and the command bar
+
+- The rail is seven places (Now, Chat, Projects, Agents, Memory, Vault, Drive) with Search, Settings and the person's avatar at the bottom, 64 wide, keys Cmd or Ctrl 1 to 8. Planner is folded into Now and Devices into Settings, so both addresses still work and highlight their parent.
+- The top bar is gone: no address chip, no search box, no needs pill (Now's badge on the rail carries it). `deck/js/cmdbar.js` is the command bar: Cmd or Ctrl K or the rail's Search opens a glass panel; projects, people and agents, threads and actions, `p `, `t ` and `u ` to narrow, what was said through recall.search, recent choices remembered per device.
+- Rail labels show on hover and focus; from 1200 px a person can keep them beside the icons (`localStorage vyre.rail = "labels"`). Below 720 px the phone layout has no rail.
+- Merged `work/pwa-v2` (the phone shell: tab bar, More sheet) into the v2 chain. The More sheet keeps its own tile list until the phone pass.
+- `deck/js/page-header.js`: the one page header (title, meta line, actions). `deck/css/shell-v2.css` holds the rail, header and command bar styles over the v2 tokens. The phone's Places sheet keeps its own seven tiles until the phone pass.
+
+#### deck v2, step 1: tokens and the state kit
+
+- `deck/css/tokens-v2.css`: the v2 design tokens (design-system.md, final): the surfaces, edges, text, accent and status colours with their washes, the type roles (caption 12, body 14, read 15, title 18, page 24, display 32, the 11 px label; larger body, read and title on a phone), the 4-grid space, the shapes, three elevations, motion durations and easings, and the layout sizes, in dark and paper. The names are new, so they sit beside the old roles and a screen moves to them when its pass lands; nothing changes on a screen yet.
+- `deck/css/kit.css` and `deck/js/states.js`, the state kit every list and panel renders through: skeleton rows at the real row height (the shine stops under reduced motion; a line says Vyre is slow to answer after 10 seconds), an empty state (one bold line, one sentence, one action), an error state (what failed, a quiet reason, Try again, and the real code behind Copy details), and `whyFailed` to turn an API error into those words. `empty()` in `js/dom.js`, used by every view, now draws the error form with its reason and can take a retry; a page's placeholder before its view draws is the skeleton.
+- `deck/test/type-roles.test.js`: a stylesheet may not use a text size outside the roles. The v2 files hold to it outright; the older ones are on a shrink-only list that each screen's pass takes down.
+
 - test(matrix): J1 presses "A Linux server" on the setup page, not "Set up my server", which the page stopped showing when it began to ask Linux server or Mac first. J1 had been red at the install-line step on stage, v0.2.1 and the rc since then, with nothing wrong in the product.
 - feat(release): the patch fast lane. scripts/patch-release.mjs makes a hotfix branch off the last stable tag from fix commits (cherry-picked, version bumped, notes drafted from the subjects); release.yml accepts a tag off main and stage only when check-release-lineage.mjs passes (the newest published stable release is an ancestor, the tag is its next patch, the commit is on origin/hotfix/<tag>; reviewer-2's condition); release-verify.yml runs the post-publish checks (pinned key from the previous release, both signatures, both images with and without a login, a real update from the previous release) by itself after a stable release. Written down in docs/releases/checklist.md. Needs reviewer-2 on the release.yml guard change.
 - feat(release): site-deploy.yml puts vyre.run on a published stable release by itself: it assembles the site from main's pages and the tag's signed files, deploys behind the `deploy` environment's reviewer, then checks the served copy byte for byte. It runs from main (the deploy environment takes only main and stage, not tags), so it takes effect once it is on main. Fixes #16.
@@ -138,6 +215,13 @@ While the phone waits for the screen's Confirm it shows "This phone: <fingerprin
 
 - Whole rows open, not just their title: a session on Now, a project in the Projects list and a remembered fact open their main link wherever the row is clicked, except on a control inside it, or when words were selected (`deck/js/rows.js`). Ctrl or Cmd click and Shift click behave as on a link. Right-click on such a row opens a small menu (Open, Open in a new tab, Copy link), and Up and Down move between the rows of a list. Rows get hover, keyboard-focus and pressed states (`deck/css/rows.css`), and on a touch screen rows and the small buttons in them are at least 44 px. A new list joins by adding its row class to `ROW_CLASSES`.
 - The dashed draft tile, which read as a warning triangle, is gone from replies: a chat in no project now wears the assistant's own avatar, and the "Not in a project" line in a session shows a quiet folder mark instead of the tile.
+#### phone shell v2 (v0.2.3, approved UX prototype): a glass tab bar, More, search prefixes, haptics
+
+- The phone has a glass tab bar of five (Now, Chat, Projects, Agents, More) instead of page labels in the header; Projects is a page; the header shows the page's title, a search button and the avatar; Lumen floats above the bar. More (and the avatar) open a sheet of Planner, Memory, Vault, Drive, Devices and Settings (`js/more.js`); the Places sheet and its hold-to-keep fourth page are gone. The bar is glass with a 16 px blur and opaque under Reduce Transparency or More Contrast (`css/tabbar.css`). Now's tab carries the needs count.
+- Find takes the command bar's prefixes: `p ` projects, `t ` threads, `u ` people and agents, strict word start (`js/find-prefix.js`), with Projects and People groups and scopes, a hint under the empty box, recents as before.
+- Haptics (`js/haptics.js`): a tick for a tab, a success for an approval, a warning for a refusal; Android vibrates, iOS 18 Safari plays the system selection haptic through a hidden switch, anywhere else nothing; off with localStorage vyre.haptics = off.
+- `.github/workflows/pwa-shots.yml` takes the phone screenshots on a runner (a push to work/*-shots, or by hand). Not tried on a real phone.
+
 - feat(onboard): the box holds the setup step list (#11): `onboard.setup` answers the ten steps the page draws (install, words, address, tailscale, ai, phone, passkey, assistant, computers, history; each {id, title, where, optional, n, status} with status done, current, skipped or todo) plus `current`, `finished`, `skipped`, the person's `name`, `accountName` and the assistant's state. The box decides what it can see (address serving, Tailscale connected, an AI account signed in, a passkey, a paired phone or computer, the person set); the person's own skips (ai, phone, computers, history; skipped steps stay listed) and the history pass are saved on the box, so closing the page loses nothing. `sudo vyre setup` with no name prints where setup stands and the one place to continue, and `--new-link` makes a fresh one-time link. #50: the address is never derived from the person's name (onboard.you no longer saves it as an address candidate), onboard.status `name` is the person (trimmed, any letters, up to 60) or null, and `accountName` is the signed-in AI account's own display name (identity gains `name`) to prefill it. The assistant retry is `onboard.assistant {retry: true}`. Changing the name, the skips or the assistant (onboard.you, onboard.skip, onboard.assistant, onboard.setup skip, unskip and pass) is for the person on their own surface or the setup page only, and onboard.status and onboard.setup tell only them the person's name and accountName: a model on the box, a module or a guest is denied the writes and reads null.
 
 - fix(onboard): the assistant named in the You step is made right then, not only at the end and only with a Claude step sign-in. It needs no credentials to exist, so a person whose Claude Code is signed in outside the wizard still has it (Agents page and Lumen find it), and it takes the Vault items when the Claude step stores them. Finishing no longer skips it without a stored sign-in (the greeting waits for one). An install that named it but never made it gets it on the next start. A failure is kept (onboard.status `assistantState` {state, why, at}) and `onboard.assistant` is the retry. Tool allowed on the setup page's loopback.
@@ -228,6 +312,9 @@ While the phone waits for the screen's Confirm it shows "This phone: <fingerprin
 
 - The hosted app's loader page had no web app manifest, icons or iOS tags (`/manifest.json` answered with a redirect to `/`), so Add to Home Screen made a bookmark. The loader now ships `manifest.webmanifest` (standalone, start `/`, the Deck's colours), the Deck's 192, 512 and maskable PNG icons and the apple-touch-icon, all inside the signed loader manifest, and `index.html` links them with the apple-mobile-web-app tags. `release.js loader` copies the icons as bytes; the loader's service worker types them. Test in `relay/app/app.test.js`. Nothing deployed.
 
+- The public site no longer says "vyred" (site/start and site/llms.txt say "Vyre"); `test/site-words.test.js` keeps the internal words out of the site's copy.
+
+- vyre.run carries the new Vyre master icon (app-design's glass mark, approved by the user): favicon (.svg and .ico), 32 px, apple-touch, 192 and 512 px icons, and the links to them on the landing, start and 404 pages. The site is built from main only, so this is the site's icon change alone, without the rest of stage. The social preview (og.png) has the glass master in place of the old flat tile: the same layout and text, the tile area repainted with vyre-master-1024.png at 300 px.
 #### release: the real app-out path is proven with a test key and a stable version
 
 - `test/build-app-out.test.js` runs `scripts/build-app-out.mjs` the way the release does (a signing key from the environment, not `--throwaway`) with a generated test key made the pinned one through a `pinned` seam, release `0.2.0`: the loader and the build seal, both folders verify, both manifests say 0.2.0. A key that is not the pinned one is refused, and so is a prerelease (`0.2.0-rc.1`): the hosted app's manifest, rollback floor and releases.json take plain `x.y.z`, and a prerelease is never served, so the release workflow skips this step for one.

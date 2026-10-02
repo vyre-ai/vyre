@@ -114,7 +114,7 @@ test("reconnect: the same rev reads once and changes nothing; a moved rev swaps"
   assert.equal(links.at(-1).href, "/theme.css?rev=6");
 });
 
-test("a box without the hub: /theme.css and the device's scheme stay, and it is not asked again", async () => {
+test("a server without the hub: /theme.css and the device's scheme stay, and it is not asked again", async () => {
   const { doc, links } = fakeDoc();
   const hub = fakeHub([{ error: { code: "no_such_tool" } }]);
   doc.documentElement.dataset.theme = "paper";

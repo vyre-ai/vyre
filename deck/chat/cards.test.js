@@ -338,7 +338,7 @@ test("permission card: the pressed button goes busy with its own verb; the other
 });
 
 test("permission card: a failed answer gives the buttons back, none busy", async () => {
-  vyred({ "threads.answer": { $error: { code: "failed", message: "The box did not answer. Try again." } } });
+  vyred({ "threads.answer": { $error: { code: "failed", message: "Your server did not answer. Try again." } } });
   const card = askCard({ ...structuredClone(fx.asks[1]), id: "ask_f1" });
   card.onKey(key("a"));
   await settle();
@@ -437,7 +437,7 @@ test("Mac ask: the usual buttons, 'on <mac>', and threads.answer carries the mac
   assert.deepEqual(api.of("threads.answer")[1].input, { ask: "ask_m2", decision: "deny", surface: "deck", machine: MACHINE });
 });
 
-test("Mac ask refused: person_session_required sends the person to the box's sign-in page, then Try again (no proof on the answer)", async () => {
+test("Mac ask refused: person_session_required sends the person to your server's sign-in page, then Try again (no proof on the answer)", async () => {
   let signedIn = false;
   const api = vyred({ "threads.answer": () => signedIn ? { answered: true, source: "mac", machine: MACHINE }
     : { $error: { code: "person_session_required", message: "answering a Mac's ask is the person's own action: sign in on this device with your passkey first" } } });
@@ -446,7 +446,7 @@ test("Mac ask refused: person_session_required sends the person to the box's sig
   await settle();
   assert.match(text(card), /Sign this browser in to answer asks on alex's MacBook Pro/);
   const a = /** @type {any} */ ($(card, "a.cv-person-signin"));
-  assert.equal(a.getAttribute("href"), "/person/signin", "e2e's sign-in page on the box");
+  assert.equal(a.getAttribute("href"), "/person/signin", "e2e's sign-in page on your server");
   assert.equal(a.getAttribute("target"), "_blank");
   assert.equal(card.isOpen(), true, "the card stays open");
   signedIn = true;
@@ -503,7 +503,7 @@ test("Mac ask refused: mac_offline and timeout say so with Try again; the card s
   assert.match(text(q), /Answered/);
 });
 
-test("Mac refusals, by code: which step each needs; only an unknown tool, bad input or unsupported means the box cannot forward", async () => {
+test("Mac refusals, by code: which step each needs; only an unknown tool, bad input or unsupported means your server cannot forward", async () => {
   const { macRefusal } = await import("./presence.js");
   assert.equal(macRefusal({ code: "person_session_required" }), "sign_in");
   assert.equal(macRefusal({ code: "presence_required" }), "presence");
@@ -512,14 +512,14 @@ test("Mac refusals, by code: which step each needs; only an unknown tool, bad in
   assert.equal(macRefusal({ code: "no_such_tool" }), "held");
   assert.equal(macRefusal({ code: "bad_input" }), "held");
   assert.equal(macRefusal({ code: "unsupported" }), "held");
-  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, {}), null, "a relayed ask already means the box forwards: its words, not the fallback");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, {}), null, "a relayed ask already means your server forwards: its words, not the fallback");
   assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, { node: "nMacStable1" }), null);
   assert.equal(macRefusal({ code: "denied", message: "pair again" }, { node: "nMacStable1" }), null);
 });
 
 // ---- the rewind sheet: what it restores ------------------------------------------------------
 
-test("the rewind sheet: Claude Code's three restores, code off on a box that restores the conversation only", async () => {
+test("the rewind sheet: Claude Code's three restores, code off on a server that restores the conversation only", async () => {
   const { rewindSheet } = await import("./pickers.js");
   /** @type {any[]} */
   const chose = [];
@@ -535,7 +535,7 @@ test("the rewind sheet: Claude Code's three restores, code off on a box that res
   assert.equal(sheet.restore(), "conversation", "arrows skip what is off");
   codeOk = true;
   sheet.refresh();
-  assert.equal(sheet.restore(), "both", "the default once the box can put files back");
+  assert.equal(sheet.restore(), "both", "the default once your server can put files back");
   sheet.key(/** @type {any} */ ({ key: "ArrowDown" }));
   sheet.key(/** @type {any} */ ({ key: "ArrowRight" }));
   assert.equal(text($(sheet.el, ".cv-rw-opt[aria-checked=true]")), "Restore conversation");

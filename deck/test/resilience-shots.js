@@ -75,8 +75,8 @@ async function pill() {
     let now = before;
     for (let i = 0; i < 40 && !now.shown; i++) { await sleep(250); now = await tab.run(PILL); }
     fs.writeFileSync(path.join(out, "390-pill-reconnecting.png"), await tab.shot());
-    const bad = [before.shown && "the pill shows while the box answers",
-      !now.shown && "no pill after the box stopped answering",
+    const bad = [before.shown && "the pill shows while your server answers",
+      !now.shown && "no pill after your server stopped answering",
       now.shown && !/^Reconnecting/.test(now.words) && `the pill says "${now.words}"`,
       now.shown && !/Retry/.test(now.words) && "no Retry on the pill",
       now.position !== "absolute" && now.position !== "fixed" && `the pill is in the flow (position ${now.position})`,
@@ -98,26 +98,26 @@ async function pill() {
     const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|fonts\.g/.test(e));
     const waiting = await tab.run(`await wait(1500); return document.querySelectorAll('.page-wait').length`);
     report("390-pill-back", /** @type {string[]} */ ([back.shown && `the pill stays after Retry ("${back.words}")`,
-      waiting > 0 && `${waiting} page(s) still say they load when the box answers`,
+      waiting > 0 && `${waiting} page(s) still say they load when your server answers`,
       errs.length && `errors: ${errs.join(" | ").slice(0, 300)}`].filter(Boolean)));
   } finally { await tab.close(); }
 }
 
 async function outbox() {
   const { tab, box, drop } = await phone();
-  const words = "sent from the phone while the box was away " + Date.now().toString(36);
+  const words = "sent from the phone while your server was away " + Date.now().toString(36);
   try {
     await tab.go(base + "/chat", 2500);
     await tab.run(`await click('.chat-recent a.thread-row:nth-of-type(2)'); await wait(2500);`);
     await drop();
     await tab.run(`const ta = document.querySelector('.composer textarea'); ta.value = ${JSON.stringify(words)}; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send').click();
-      for (let i = 0; i < 80 && !/Sending when your box answers/.test(document.querySelector('.composer-note')?.innerText || ''); i++) await wait(100);`);
+      for (let i = 0; i < 80 && !/Sending when your server answers/.test(document.querySelector('.composer-note')?.innerText || ''); i++) await wait(100);`);
     const waiting = await tab.run(`return { note: document.querySelector('.composer-note')?.innerText || '', box: document.querySelector('.composer textarea')?.value || '',
       sendOff: !!document.querySelector('.composer-send')?.disabled }`);
     fs.writeFileSync(path.join(out, "390-outbox-waiting.png"), await tab.shot());
-    report("390-outbox-waiting", /** @type {string[]} */ ([!/Sending when your box answers/.test(waiting.note) && `the note says "${waiting.note}"`,
-      waiting.box !== "" && "the words stayed in the box", waiting.sendOff && "Send stays off while it waits"].filter(Boolean)));
+    report("390-outbox-waiting", /** @type {string[]} */ ([!/Sending when your server answers/.test(waiting.note) && `the note says "${waiting.note}"`,
+      waiting.box !== "" && "the words stayed in your server", waiting.sendOff && "Send stays off while it waits"].filter(Boolean)));
 
     box.down = false;
     await tab.run(`window.dispatchEvent(new Event("online")); document.querySelector('.reach button')?.click();`);
@@ -128,7 +128,7 @@ async function outbox() {
     fs.writeFileSync(path.join(out, "390-outbox-sent.png"), await tab.shot());
     const sends = box.reached.filter(r => r.startsWith("threads.send ") && r.includes(words));
     const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|fonts\.g/.test(e));
-    report("390-outbox-sent", /** @type {string[]} */ ([sends.length !== 1 && `${sends.length} threads.send reached the box, not 1`,
+    report("390-outbox-sent", /** @type {string[]} */ ([sends.length !== 1 && `${sends.length} threads.send reached your server, not 1`,
       // A session not running in this world queues the message for after its turn: the words then show once, in the queued row.
       echoed.echo ? echoed.mine !== 2 && `the words show ${echoed.mine} times (want 2: the message and its echo)`
         : !echoed.queued && "the message is neither answered nor queued",

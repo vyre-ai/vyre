@@ -76,7 +76,7 @@ export function termError(err) {
     too_many: "Eight terminals are already open. Close one first.",
     not_found: "That terminal has ended.",
     terminal_closed: "The server was updated and this terminal was closed.",
-    offline: "The box did not answer. It may be asleep or out of reach.",
+    offline: "Your server did not answer. It may be asleep or out of reach.",
   };
   return words[err.code] || String(err.message || err);
 }

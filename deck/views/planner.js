@@ -16,6 +16,7 @@
 import { h, put, head, empty } from "../js/dom.js";
 import { attempt as liveAttempt, queued as liveQueued } from "../js/api.js";
 import { clock, when } from "../js/fmt.js";
+import { pageHeader } from "../js/page-header.js";
 import { showToast } from "../js/toast.js";
 
 /** Events that change what the lists show. */
@@ -92,7 +93,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
   const todosBox = h("section", { class: "pl-sec", "data-sec": "todos" });
   const notesBox = h("section", { class: "pl-sec", "data-sec": "notes" });
   put(el, h("div", { class: "pl" }, h("div", { class: "pl-col" },
-    h("div", { class: "pl-head" }, h("div", { class: "lbl" }, "Planner"), h("h1", { class: "h2 pl-title" }, "Today")),
+    pageHeader({ title: "Planner", meta: "Today, what is coming, and what is open. Type to add: call Dana tomorrow 3pm." }),
     quickBox, banners, focus, agendaBox, alarmsBox, todosBox, notesBox)));
 
   // ---- banners: one per firing, from planner.fired until planner.acked --------------------------

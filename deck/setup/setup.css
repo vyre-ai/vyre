@@ -2,14 +2,14 @@
 .setup8 { display: grid; gap: 32px; max-width: 920px; margin: 0 auto; padding: 48px 24px; color: var(--text); font-family: var(--sans); }
 .setup8 h1 { margin: 0 0 12px; font-size: 28px; line-height: 34px; font-weight: 600; } .setup8 h1:focus { outline: none; }
 .setup8 .lbl { margin: 0 0 14px; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); text-transform: uppercase; letter-spacing: .08em; }
-.setup8 .lead { margin: 0; color: var(--text-2); max-width: 540px; } .setup8 .hint { margin: 10px 0 0; color: var(--text-2); font-size: 13px; }
-.setup8 .warn { margin: 16px 0 0; padding: 10px 14px; border: 1px solid var(--rule-strong); border-left: 3px solid var(--beacon-ink); border-radius: var(--radius-field); font-size: 13px; max-width: 540px; }
+.setup8 .lead { margin: 0; color: var(--text-2); max-width: 540px; } .setup8 .hint { margin: 10px 0 0; color: var(--text-2); font-size: 14px; }
+.setup8 .warn { margin: 16px 0 0; padding: 10px 14px; border: 1px solid var(--rule-strong); border-left: 3px solid var(--beacon-ink); border-radius: var(--radius-field); font-size: 14px; max-width: 540px; }
 .setup8 .actions { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
 .setup8 .btn { font: inherit; min-height: 44px; padding: 0 20px; border-radius: var(--radius-button); border: 1px solid transparent; cursor: pointer; }
 .setup8 .btn.primary { background: var(--primary-bg); color: var(--primary-ink); font-weight: 600; }
 .setup8 .btn.quiet { background: transparent; color: var(--text-2); border-color: var(--rule-strong); }
 .setup8 .btn[disabled] { opacity: .45; cursor: default; } .setup8 .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.setup8 .fields { display: grid; gap: 16px; margin-top: 24px; max-width: 420px; } .setup8 .f > span { font-size: 13px; color: var(--text-2); }
+.setup8 .fields { display: grid; gap: 16px; margin-top: 24px; max-width: 420px; } .setup8 .f > span { font-size: 14px; color: var(--text-2); }
 .setup8 .field { margin-top: 6px; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--radius-field); } .setup8 .field:focus-within { border-color: var(--focus); }
 .setup8 .field .name { width: 100%; min-height: 44px; padding: 0 14px; background: transparent; border: 0; color: var(--text); font: inherit; outline: none; }
 .setup8 .account { margin-top: 20px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card); max-width: 540px; } .setup8 .row-title { margin: 0 0 6px; font-weight: 600; }
@@ -25,7 +25,7 @@
 .setup8 .tl-opt { font-family: var(--mono); font-size: 11px; color: var(--label); }
 .setup8 .tl-segs { display: flex; gap: 3px; } .setup8 .seg { flex: 1; height: 4px; border-radius: 2px; background: var(--rule-strong); }
 .setup8 .seg.done { background: var(--text-2); } .setup8 .seg.skipped { background: var(--rule); } .setup8 .seg.current { background: var(--focus); }
-.setup8 .tl-more { margin-top: 10px; } .setup8 .tl-more summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; font-size: 13px; color: var(--text-2); min-height: 28px; }
+.setup8 .tl-more { margin-top: 10px; } .setup8 .tl-more summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; font-size: 14px; color: var(--text-2); min-height: 28px; }
 .setup8 .tl-more summary::-webkit-details-marker { display: none; } .setup8 .tl-more b { color: var(--text); } .setup8 .tl-all { color: var(--label); text-decoration: underline; }
 @media (min-width: 900px) { .setup8 { grid-template-columns: 220px minmax(0, 640px); column-gap: 48px; } .setup8 .tl-rail { display: block; } .setup8 .tl-bar { display: none; } }
 @media (max-width: 899px) { .setup8 { padding: 32px 16px; } .setup8 .setup8-step .lbl { display: none; } }

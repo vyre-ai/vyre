@@ -9,7 +9,7 @@ import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { since } from "../js/fmt.js";
 import { wantSheet } from "../js/now-phone.js";
-import { elsewhere, fromMac } from "../js/need-rows.js";
+import { elsewhere, fromMac, plainSummary } from "../js/need-rows.js";
 
 /** @param {any} ctx */
 export default async function view(ctx) {
@@ -129,7 +129,7 @@ function draft(n) {
     f ? [g.error ? h("p", { class: "small nd-error" }, `Held again: ${problem(g.error)}`) : null,
         h("div", { class: "nd-body nd-form" }, f.el)]
       : h("div", { class: "nd-body" },
-      g.summary ? h("p", null, g.summary) : null,
+      plainSummary(g) ? h("p", null, plainSummary(g)) : null,
       h("p", { class: "small muted" }, g.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here.")),
     g.sources?.length ? [
       h("div", { class: "nd-memhead" }, h("span", { class: "lbl recall" }, `From memory · ${g.sources.length}`), h("span", { class: "lbl" }, "No model used")),

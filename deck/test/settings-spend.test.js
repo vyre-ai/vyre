@@ -55,7 +55,7 @@ test("Change cap opens a field; Set cap sends spend.raise to that amount, No cap
 test("no spend module: one plain line", async () => {
   const m = mount({ "spend.summary": { $error: { code: "no_such_tool", message: "no such tool", missing: true, module: "spend" } } });
   await m.run();
-  assert.match(text(m.el), /Spend is not tracked on this box yet/);
+  assert.match(text(m.el), /Spend is not tracked on your server yet/);
 });
 
 test("the cap over every provider is its own row, changed through spend.raise with provider all", async () => {

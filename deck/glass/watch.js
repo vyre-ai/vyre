@@ -130,8 +130,8 @@ export function mountScreen(o) {
     stage.classList.toggle("gl-held", tk.mine());
     stage.classList.toggle("gl-private", !!(tk.mine() && s.holder?.private));
     put(badge, conn === "live" ? [h("span", { class: "dot signal" }), tk.mine() ? "You have control" : "Live",
-      relayed(link) ? h("span", { class: "gl-badge-note", title: "The box reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null,
-      latencyLabel(link) ? h("span", { class: "gl-badge-note mono", title: "Round-trip time to the box when this screen opened" }, latencyLabel(link)) : null]
+      relayed(link) ? h("span", { class: "gl-badge-note", title: "Your server reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null,
+      latencyLabel(link) ? h("span", { class: "gl-badge-note mono", title: "Round-trip time to your server when this screen opened" }, latencyLabel(link)) : null]
       : conn === "hidden" ? "Paused" : conn === "refused" || conn === "error" || conn === "ended" ? "Offline" : "Connecting");
     badge.classList.toggle("gl-badge-live", conn === "live");
     put(panelSize, conn === "live" ? `${s.width} × ${s.height}` : "");
@@ -168,15 +168,15 @@ export function mountScreen(o) {
   /** [title, detail] for the overlay. */
   function overText() {
     switch (conn) {
-      case "connecting": return [`Connecting to ${name}'s screen`, "Asking the box for a one-time ticket."];
-      case "noscreen": return [`Connecting to ${name}'s screen`, why || "The box did not hand out a screen stream. It may still be starting."];
+      case "connecting": return [`Connecting to ${name}'s screen`, "Asking your server for a one-time ticket."];
+      case "noscreen": return [`Connecting to ${name}'s screen`, why || "Your server did not hand out a screen stream. It may still be starting."];
       case "waiting": return [`Reconnecting to ${name}'s screen`, why];
       case "hidden": return ["Paused while this tab was hidden", `Glass let go of ${name}'s screen so it can rest. It reconnects when you come back.`];
-      case "refused": return ["The box refused the screen ticket", "Reload the page to ask for a new one."];
+      case "refused": return ["Your server refused the screen ticket", "Reload the page to ask for a new one."];
       case "ended": return [`${name}'s screen closed`, why];
       case "error": return [`Could not open ${name}'s screen`, why];
       case "failed": return [`${name}'s computer did not start`,
-        `${why}. Press Restart computer on ${name}'s page, then Retry. If it fails again, the box's log says why.`];
+        `${why}. Press Restart computer on ${name}'s page, then Retry. If it fails again, your server's log says why.`];
       default: return ["", ""];
     }
   }
@@ -319,10 +319,10 @@ export function mountScreen(o) {
       if (code === 4003) { conn = "refused"; draw(); return; }
       // The computer did not boot: say why, and wait for a person rather than retrying a broken one.
       if (code === 4001 && reason) { conn = "failed"; why = reason; draw(); return; }
-      if (code === 1000 && e.detail?.clean) { conn = "ended"; why = "The box closed the stream."; draw(); return; }
+      if (code === 1000 && e.detail?.clean) { conn = "ended"; why = "Your server closed the stream."; draw(); return; }
       later(code === 4001 ? `${name}'s computer is not running yet.` : code === 4008 ? "The stream hit a protocol error." : "The connection dropped.");
     });
-    r2.addEventListener("securityfailure", (/** @type {any} */ e) => { why = e.detail?.reason || "The box refused the screen."; });
+    r2.addEventListener("securityfailure", (/** @type {any} */ e) => { why = e.detail?.reason || "Your server refused the screen."; });
     if (phone) {
       zoom?.detach();
       zoom = pinchZoom(host, zoomView, z => { zoomReset.hidden = z === 1; });

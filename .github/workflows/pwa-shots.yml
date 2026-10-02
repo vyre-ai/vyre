@@ -1,0 +1,69 @@
+# Screenshots of the Deck as the installed phone app (deck/test/pwa-shots.js), on a clean runner, uploaded as an
+# artifact. It also fails when a screen threw, scrolled sideways or drew the wrong shell (tab bar, header, Lumen).
+# The Deck is the sample world's (deck/test/world.js: alex, Harlow Legal, juno, kit), never anyone's real data.
+# Run it from a push to a work/*-shots branch, or by hand; ONLY narrows the screens (a regex on their names).
+name: pwa-shots
+on:
+  push:
+    branches: ["work/*-shots"]
+  workflow_dispatch:
+    inputs:
+      desktop:
+        description: "Laptop sizes to add, e.g. 1440x900 (empty: phones only)"
+        required: false
+      only:
+        description: "A regex on screen names (empty: all)"
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: pwa-shots-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts || npm i --ignore-scripts
+      # vyred refuses calls that need the person when it runs under a program it does not recognise (the runner's
+      # own agent is an ancestor of every step), so the world, Chrome and the shots run re-parented to init, as
+      # docs-shots does, and the step waits for the exit code.
+      - name: pwa-shots (detached from the runner's process tree)
+        env:
+          # A push to a work/*-shots branch takes the Deck v2 screens at the laptop and the phone; a manual run says what it wants.
+          ONLY: ${{ github.event_name == 'push' && '^v2-' || github.event.inputs.only }}
+          DESKTOP: ${{ github.event_name == 'push' && '1440x900' || github.event.inputs.desktop }}
+        run: |
+          rm -f "$RUNNER_TEMP/shots.exit"
+          cat > "$RUNNER_TEMP/run-shots.sh" <<'SH'
+          set -u
+          node deck/test/world.js 4790 > "$RUNNER_TEMP/world.log" 2>&1 &
+          WORLD=$!
+          /usr/bin/google-chrome --headless=new --no-sandbox --disable-gpu --use-mock-keychain --password-store=basic \
+            --remote-debugging-port=9422 --user-data-dir="$RUNNER_TEMP/chrome" about:blank > "$RUNNER_TEMP/chrome.log" 2>&1 &
+          CHROME=$!
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:4790/ > /dev/null 2>&1 && curl -sf http://127.0.0.1:9422/json/version > /dev/null 2>&1 && break
+            sleep 2
+          done
+          CDP=http://127.0.0.1:9422 node deck/test/pwa-shots.js http://127.0.0.1:4790 "$RUNNER_TEMP/out"
+          CODE=$?
+          # Below 720 px the Deck is the phone layout at every width, on every place (deck/test/phone-widths.js).
+          CDP=http://127.0.0.1:9422 node deck/test/phone-widths.js http://127.0.0.1:4790 || CODE=1
+          kill $WORLD $CHROME 2> /dev/null
+          echo $CODE > "$RUNNER_TEMP/shots.exit"
+          SH
+          ( setsid sh "$RUNNER_TEMP/run-shots.sh" > "$RUNNER_TEMP/shots.log" 2>&1 < /dev/null & )
+          while [ ! -f "$RUNNER_TEMP/shots.exit" ]; do sleep 5; done
+          cat "$RUNNER_TEMP/shots.log"
+          echo "--- world"; tail -20 "$RUNNER_TEMP/world.log" || true
+          exit "$(cat "$RUNNER_TEMP/shots.exit")"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pwa-shots
+          path: ${{ runner.temp }}/out/*.png

@@ -16,7 +16,7 @@ test("createAgent: a computer asked for and recorded by agents.create needs no s
   const f = fake({ "agents.create": { data: { name: "kit", computer: true } } });
   const r = await createAgent({ name: "kit", kind: "agent", projects: ["harlow-legal"], computer: true }, f.call);
   assert.deepEqual(f.calls.map(c => c[0]), ["agents.create"]);
-  assert.equal(f.calls[0][1].computer, true, "the box's tick is in the create payload");
+  assert.equal(f.calls[0][1].computer, true, "your server's tick is in the create payload");
   assert.equal(r.data.computer, true);
   assert.equal(r.error, null);
   assert.equal(r.computerError, null);

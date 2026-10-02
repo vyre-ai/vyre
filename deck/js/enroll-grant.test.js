@@ -12,7 +12,7 @@ test("grantFromHash: only a well-formed #enroll= grant", () => {
   for (const bad of ["", "#", "#enroll=", "#enroll=short", `#enroll=${G}&x=1`, `#other=${G}`, `#enroll=${"!".repeat(43)}`, `#enroll=${G}${"A".repeat(200)}`]) assert.equal(grantFromHash(bad), null, bad);
 });
 
-test("enrollUrl: the box's own host and the grant in the fragment, nothing else", () => {
+test("enrollUrl: your server's own host and the grant in the fragment, nothing else", () => {
   assert.equal(enrollUrl({ grant: G, rpId: "Alex.vyre.run" }), `https://alex.vyre.run/#enroll=${G}`);
   assert.equal(enrollUrl({ grant: G, rpId: "evil.com/x" }), null);
   assert.equal(enrollUrl({ grant: G, rpId: "a.b:8080" }), null);

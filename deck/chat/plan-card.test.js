@@ -136,7 +136,7 @@ test("plan card: Keep planning denies with no note; answered elsewhere says wher
 });
 
 test("plan card: a failed answer gives the buttons back and says why; a failed mode change keeps the approval", async () => {
-  vyred({ "threads.answer": { $error: { code: "timeout", message: "The box did not answer" } } });
+  vyred({ "threads.answer": { $error: { code: "timeout", message: "Your server did not answer" } } });
   const c = planCard(ask(), { thread: "t-plan", phone: false });
   $(c, "[data-act=start]").click();
   await settle(); await settle();

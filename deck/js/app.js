@@ -2,10 +2,11 @@
 // The Deck's shell: the rail, the header, search, and the router that loads one view at a time
 // from deck/views/. From 720 px up the rail (js/rail.js) is a 72 px column on the left, and the
 // header, a view's own list column and the view sit to its right. On a phone (under 720 px,
-// docs/design/phone.md section 3) there is no rail and no tab bar: a 48 tall header with the three page labels (Now,
-// Chats, Agents), the three pages side by side in a pager you swipe, Lumen floating at the
-// bottom, and every other address pushed over them from the right. The avatar opens the Places
-// sheet (js/places.js); a place held there becomes a fourth page after Agents.
+// docs/design/phone.md section 3) there is no rail: a 48 tall header (the mark, the page's title, search,
+// the avatar), the four pages (Now, Chat, Projects, Agents) side by side in a pager you swipe, Lumen
+// floating above a glass tab bar of five (the four and More), and every other address pushed over them
+// from the right. The tab bar's More and the avatar open the More sheet (js/more.js): Memory, Vault,
+// Drive, Planner, Devices, Settings. v2 of the phone shell (team/0.2.2/ux-prototype.html).
 //
 // A view is a module in deck/views/ whose default export is `async (ctx) => void`:
 //   ctx.root     the empty element to render into
@@ -20,11 +21,11 @@ import { h, put, link, go, back, isPhone, PHONE_QUERY } from "./dom.js";
 import { attempt, on, onResume, fromFixtures, fixturesOn, canProve, onDeviceRemoved } from "./api.js";
 import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
-import { when, base, initials } from "./fmt.js";
+import { initials } from "./fmt.js";
 import * as pwa from "./pwa.js";
 // Loaded with the shell, not with Now, so it hears Chrome's one beforeinstallprompt.
 import "./phone-setup.js";
-import { isMac, machineChip } from "./machine.js";
+import { isMac } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
@@ -35,12 +36,19 @@ import { rail, placeForKey } from "./rail.js";
 import { starButton } from "./star-button.js";
 import { installRows } from "./rows.js";
 import * as trace from "./trace.js";
-import { fillPlaces, readPin } from "./places.js";
+import { skeleton as kitSkeleton } from "./states.js";
+import { fillMore } from "./more.js";
+import { readPin } from "./places.js";
+import { haptic } from "./haptics.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
 import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
-import { installed, kbd, mac } from "./platform.js";
+import { installed, mac } from "./platform.js";
+import { createCmdBar } from "./cmdbar.js";
+import { readRailMode } from "./rail-mode.js";
+import { createAvatarCards } from "./avatar-card.js";
+import { messageHit, openMessageDetails } from "./message-details.js";
 import { reportContext } from "./context-report.js";
 import { homePath } from "./home.js";
 import { installTrustAsk } from "./trust-ask.js";
@@ -87,23 +95,20 @@ const ROUTES = [
   ["/pair/scan", "wink"],
 ];
 // The places and their order are the rail's (js/rail.js PLACES).
-// The phone's three pages, in pager order. Every other address is pushed over them.
+// The phone's four pages, in pager order, each a tab of the glass tab bar (the fifth tab is More).
+// Every other address is pushed over them.
 const PAGER = [
-  { href: "/now", label: "Now", view: "now" },
-  { href: "/chat", label: "Chats", view: "chat" },
-  { href: "/agents", label: "Agents", view: "agents" },
+  { href: "/now", label: "Now", view: "now", icon: "now" },
+  { href: "/chat", label: "Chat", view: "chat", icon: "chat" },
+  { href: "/projects", label: "Projects", view: "projects", icon: "projects" },
+  { href: "/agents", label: "Agents", view: "agents", icon: "agents" },
 ];
-/**
- * The pager's pages now: the three, then the place kept from the Places sheet (js/places.js), if
- * any, as a fourth. `key` is the address the page is at (pathname and search, the router's key):
- * Devices is kept as Settings scrolled to its section, so its key is /settings.
- * @type {{ href: string, label: string, view: string, key?: string }[]}
- */
+/** @type {{ href: string, label: string, view: string, icon: string, key?: string }[]} */
 const strip = [...PAGER];
-/** The kept place as a page of the pager. @param {{ href: string, label: string }} t */
-function fourth(t) {
+/** The kept place as a page of the pager. @param {{ href: string, label: string, icon?: string }} t */
+function fifth(t) {
   const [path] = t.href.split("#");
-  return { href: t.href, label: t.label, view: match(path).view, key: path };
+  return { href: t.href, label: t.label, view: match(path).view, icon: t.icon || "settings", key: path };
 }
 const keyOf = (/** @type {{ href: string, key?: string }} */ p) => p.key || p.href;
 /** Which page of the pager an address is (0 to 3), or -1 for a pushed screen. */
@@ -121,7 +126,7 @@ function match(pathname) {
   return { view: "missing", params: {} };
 }
 
-{ const kept = readPin(); if (kept) strip.push(fourth(kept)); }
+{ const kept = readPin(); if (kept) strip.push(fifth(kept)); }
 
 // Theme: dark unless the viewer chose paper in Settings. A per-viewer convenience.
 try { if (localStorage.getItem("vyre.theme") === "paper") document.documentElement.dataset.theme = "paper"; } catch {}
@@ -131,15 +136,12 @@ const info = { projects: /** @type {any[]} */ ([]) };
 
 // ---- shell ---------------------------------------------------------------------------------
 
-const address = h("div", { class: "address" }, icon("lock", 12), h("span", null, location.host, h("b", null, "/now")));
-const searchIn = /** @type {HTMLInputElement} */ (h("input", { type: "search", placeholder: "Search threads, files, people", "aria-label": "Search threads, files, people",
-  autocomplete: "off", role: "combobox", "aria-expanded": "false", "aria-controls": "search-pop" }));
-const pop = h("div", { class: "search-pop", id: "search-pop", role: "listbox", hidden: true });
-const needsPill = link("/now", { class: "needs-pill", hidden: true }, h("span", { class: "dot beacon" }), h("span", null, ""));
 // Sample data stands in for a module that is not merged yet: said once, quietly, in the header.
 const fixtureNote = h("span", { class: "fixture-note", hidden: true }, "Sample data for modules not merged yet");
 installRows();
-const railEl = rail();
+document.documentElement.dataset.rail = readRailMode();
+const cmd = createCmdBar();
+const railEl = rail({ onSearch: () => cmd.open() });
 // The list column, right of the rail: a view's own list (ctx.rail, e.g. Chat's sessions; the
 // deck:rail event, e.g. Vault's places), or the pinned and recent projects beside a project.
 // Hidden while empty, so a view that has no list gets the whole width.
@@ -150,20 +152,26 @@ const sideSync = () => { side.hidden = !pins.childNodes.length && !railLower.chi
 const view = h("main", { class: "view", id: "view" });
 // ---- the phone's header, pager and Lumen ---------------------------------------------------
 
-const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "ph-tab", "data-view": p.view,
-  onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); toPage(i); } }, p.label);
-const phLabels = strip.map(tab);
+const tab = (/** @type {typeof strip[number]} */ p, /** @type {number} */ i) => h("a", { href: p.href, class: "tb-item", "data-view": p.view,
+  onclick: (/** @type {MouseEvent} */ e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); haptic("tick"); toPage(i); } },
+  icon(/** @type {any} */ (p.icon), 24), h("span", { class: "tb-label" }, p.label));
+// Four tabs and More, never more (the platform limit is five): a kept place is a swipe page with no tab of its own.
+const phLabels = PAGER.map(tab);
 const phBackLabel = h("span", { class: "ph-back-to" }, "Now");
 const phBack = h("button", { type: "button", class: "ph-back", "aria-label": "Back", onclick: () => back(lastPage) }, icon("left", 22), phBackLabel);
 const phInitial = h("span", { class: "ph-initial", "aria-hidden": "true" }, "V");
-const phAvatar = h("button", { type: "button", class: "ph-avatar", "aria-label": "Places and account", "aria-haspopup": "dialog", onclick: () => openPlaces() }, phInitial);
+const phAvatar = h("button", { type: "button", class: "ph-avatar", "aria-label": "More and account", "aria-haspopup": "dialog", onclick: () => openMore() }, phInitial);
 const phPlus = h("button", { type: "button", class: "ph-plus", "aria-label": "New agent", hidden: true,
   onclick: () => window.dispatchEvent(new Event("deck:new-agent")) }, icon("plus", 22));
-const phTabs = h("nav", { class: "ph-tabs", "aria-label": "Pages" }, phLabels);
+const phSearch = h("button", { type: "button", class: "ph-search", "aria-label": "Search", onclick: () => openFind(undefined) }, icon("search", 22));
+const phTitle = h("h1", { class: "ph-title" }, "Now");
+const moreTab = h("button", { type: "button", class: "tb-item tb-more", "aria-label": "More", "aria-haspopup": "dialog", onclick: () => { haptic("tick"); openMore(); } },
+  icon("more", 24), h("span", { class: "tb-label" }, "More"));
+const tabBar = h("nav", { class: "tabbar", "aria-label": "Pages" }, phLabels, moreTab);
 const phHead = h("header", { class: "ph-head" },
   h("span", { class: "ph-mark" }, mark(22)), phBack,
-  phTabs,
-  h("div", { class: "ph-grow" }), phPlus, phAvatar);
+  phTitle,
+  h("div", { class: "ph-grow" }), phPlus, phSearch, phAvatar);
 const slots = strip.map(p => h("div", { class: "pager-slot", "data-slot": p.view }));
 const pager = h("div", { class: "pager" }, slots);
 view.append(pager);
@@ -174,25 +182,20 @@ put(deck,
   h("div", { class: "body" },
     railEl.el,
     h("div", { class: "stage" },
-      h("header", { class: "top" },
-        address,
-        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, kbd("K")), pop),
-        h("div", { style: { flexGrow: "1" } }),
-        fixtureNote,
-        starButton(),
-        needsPill),
+      h("div", { class: "shell-note" }, fixtureNote, starButton()),
       h("div", { class: "panes" }, side, view))),
-  cap.el);
+  cap.el,
+  tabBar);
 
 function drawNeeds() {
   // waiting's one count where the box has it (reminders and pairings included), else the list's.
   const n = needs.count();
-  needsPill.hidden = n === 0;
-  put(/** @type {HTMLElement} */ (needsPill.lastChild), `${n} need${n === 1 ? "s" : ""} you`);
   railEl.setNeeds(n);
   // The phone: the mark's dot takes the attention colour, and Now says how many.
   phHead.toggleAttribute("data-needs", n > 0);
   phLabels[0].setAttribute("aria-label", n ? `Now, ${n} need${n === 1 ? "s" : ""} you` : "Now");
+  // The tab's badge: the count, nothing else on the bar carries one.
+  if (n) phLabels[0].dataset.count = n > 9 ? "9+" : String(n); else delete phLabels[0].dataset.count;
 }
 needs.watch(drawNeeds);
 
@@ -244,52 +247,20 @@ let owner = { name: /** @type {string | null} */ (null), letter: "V" };
 
 // ---- search --------------------------------------------------------------------------------
 
-let searchSeq = 0, active = -1;
-/** @type {{ href: string }[]} */ let hits = [];
-async function search() {
-  const q = searchIn.value.trim();
-  const n = ++searchSeq;
-  if (q.length < 2) { pop.hidden = true; searchIn.setAttribute("aria-expanded", "false"); return; }
-  const r = await attempt("recall.search", { q, limit: 8 });
-  if (n !== searchSeq) return;
-  active = -1;
-  if (r.error) { put(pop, h("div", { class: "empty", style: { padding: "10px" } }, r.error.missing ? "Search needs the recall module, which is not running." : String(r.error.message))); }
-  else if (!r.data.length) { put(pop, h("div", { class: "empty", style: { padding: "10px" } }, "Nothing said matches that.")); hits = []; }
-  else {
-    hits = r.data.map(t => ({ href: threadHref(t.session) }));
-    put(pop, r.data.map((t, i) => link(hits[i].href, { role: "option", id: "hit-" + i, onclick: () => closeSearch() },
-      h("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px" } },
-        h("span", { class: "small ellipsis", style: { flexGrow: "1" } }, t.name || t.title || t.session),
-        machineChip(t),
-        h("span", { class: "code", style: { flexShrink: "0" } }, when(t.ts))),
-      h("div", { class: "small muted", style: { marginTop: "2px" } }, snippet(t.snippet || t.text)),
-      h("div", { class: "code faint", style: { marginTop: "2px" } }, base(t.cwd), " · ", t.role))));
-  }
-  pop.hidden = false;
-  searchIn.setAttribute("aria-expanded", "true");
-}
 /** Recall marks matches with «»; shown in Bone against Stone, as text nodes only. */
-export function snippet(s) {
+export function snippet(/** @type {any} */ s) {
   return String(s || "").split(/(«[^»]*»)/).map(part => part.startsWith("«") ? h("span", { style: { color: "var(--text)" } }, part.slice(1, -1)) : part);
 }
-const threadHref = session => `/threads/${encodeURIComponent(session)}`;
-function closeSearch() { pop.hidden = true; searchIn.setAttribute("aria-expanded", "false"); searchIn.blur(); }
-let st = 0;
-searchIn.addEventListener("input", () => { clearTimeout(st); st = window.setTimeout(search, 180); });
-searchIn.addEventListener("keydown", e => {
-  const opts = [...pop.querySelectorAll("a")];
-  if (e.key === "Escape") { closeSearch(); return; }
-  if (!opts.length) return;
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    e.preventDefault();
-    active = (active + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
-    opts.forEach((o, i) => o.classList.toggle("on", i === active));
-    searchIn.setAttribute("aria-activedescendant", "hit-" + active);
-  }
-  if (e.key === "Enter" && active >= 0) { e.preventDefault(); go(hits[active].href); closeSearch(); }
+// The command bar (js/cmdbar.js): Cmd or Ctrl K from anywhere, and the rail's Search button.
+document.addEventListener("keydown", cmd.onGlobalKey);
+// An avatar nods and opens its card; the avatar, name or time of a message opens that message's details.
+const cards = createAvatarCards();
+document.addEventListener("click", e => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  const row = messageHit(e.target);
+  if (row) { openMessageDetails(row); return; }
+  cards.onClick(e);
 });
-document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target)).closest(".search")) pop.hidden = true; });
-document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
 // Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
 // phone has no rail, so no rail keys.
 const MAC = mac();
@@ -367,22 +338,22 @@ function setMode(/** @type {string} */ m, /** @type {string} */ name, /** @type 
   deck.toggleAttribute("data-own-back", m === "pushed" && ownBack(name, params));
   const slot = slotOf(key);
   if (slot >= 0) lastPage = strip[slot].href;
-  mark_(slot >= 0 ? slot : slotOf(keyOf(strip.find(p => p.href === lastPage) || { href: lastPage })));
+  // A screen pushed from More (Memory, Vault, Drive, Settings) keeps the tab bar, with More lit; one with its own Back (a thread, a project) covers it.
+  if (m === "pushed" && !ownBack(name, params)) mark_(PAGER.length);
+  else mark_(slot >= 0 ? slot : slotOf(keyOf(strip.find(p => p.href === lastPage) || { href: lastPage })));
   put(phBackLabel, strip.find(p => p.href === lastPage)?.label || "Now");
-  phPlus.hidden = slot !== 2;
-  phAvatar.hidden = slot === 2;
+  phPlus.hidden = slot !== 3;
+  phAvatar.hidden = slot === 3;
 }
 let marked = -1;
 function mark_(/** @type {number} */ i) {
   phLabels.forEach((a, j) => { if (i === j) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  // The kept place has no tab: while it is on screen, More (where it is the first tile) says where you are.
+  if (i >= PAGER.length) moreTab.setAttribute("aria-current", "page"); else moreTab.removeAttribute("aria-current");
   if (i === marked) return;
   marked = i;
-  // Four labels can be wider than the header: the current one scrolls into sight, never shrinks.
-  const a = phLabels[i];
-  if (!a || !phTabs.clientWidth) return;
-  const left = a.offsetLeft - phTabs.offsetLeft, right = left + a.offsetWidth;
-  if (left < phTabs.scrollLeft) phTabs.scrollLeft = left;
-  else if (right > phTabs.scrollLeft + phTabs.clientWidth) phTabs.scrollLeft = right - phTabs.clientWidth;
+  // The header's title is the page's own name; the tab bar says where you are, the title says what it is.
+  if (strip[i]) put(phTitle, strip[i].label);
 }
 
 /** Run fn once when el's animation ends (or at once when there is none to wait for). */
@@ -397,7 +368,7 @@ function afterAnim(/** @type {HTMLElement} */ el, /** @type {() => void} */ fn) 
 /** Show a page coming in: pushed from the right, Find risen from the bottom, a crossfade under
  * Reduce Motion. A page coming back under a Back is already there, beneath the one leaving. */
 function enter(/** @type {HTMLElement} */ page, /** @type {string} */ m, /** @type {boolean} */ backward, /** @type {boolean} */ crossfade) {
-  if (m === "pushed" || m === "find") { if (!backward) page.style.zIndex = String(++z); }
+  if (m === "pushed" || m === "find") { if (!backward) page.style.zIndex = String(Math.min(++z, 24)); }
   const cls = !phone() ? "" : reduced() ? (m === "page" && !crossfade ? "" : "ph-fade")
     : backward || m === "page" ? "" : m === "find" ? "ph-rise" : "ph-push";
   const hide = covered; covered = null;
@@ -448,7 +419,6 @@ async function route() {
   // /quick is the hotkey panel: the compact ask alone, no rail (css/views/quick.css reads this).
   document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
-  put(address.lastChild, location.host, h("b", null, location.pathname));
   railEl.setCurrent(name, location.hash);
   // A detail (a session, a project's board or thread): under 900 it takes the list column's place.
   deck.toggleAttribute("data-detail", (name === "chat" && !!params.thread) || (name === "projects" && !!(params.slug || params.thread)));
@@ -565,9 +535,12 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
   }
 }
 
-/** The placeholder a page shows until its view has drawn: a header bar and a few rows. */
+/** The placeholder a page shows until its view has drawn: the state kit's skeleton rows (js/states.js). */
 function skeleton() {
-  return h("div", { class: "page-skel", "data-skel": "", "aria-hidden": "true" }, h("span", { class: "page-skel-h" }), [0, 1, 2, 3].map(() => h("span", { class: "page-skel-r" })));
+  const el = kitSkeleton(6);
+  el.setAttribute("data-skel", "");
+  el.classList.add("page-skel");
+  return el;
 }
 
 // ---- warming: a link about to be used has its view ready ----------------------------------------
@@ -594,7 +567,7 @@ const unfetched = e => e instanceof TypeError && /dynamically imported module|mo
 /** A page whose view could not be fetched: one quiet line, and a fresh mount when the box answers again.
  * @param {string} key @param {{ alive: boolean }} entry @param {HTMLElement} page */
 function waitForBox(key, entry, page) {
-  put(page, h("div", { class: "page-wait", role: "status" }, h("p", { class: "muted" }, "This page loads when your box answers.")));
+  put(page, h("div", { class: "page-wait", role: "status" }, h("p", { class: "muted" }, "This page loads when your server answers.")));
   const back = (/** @type {Event} */ ev) => {
     if (ev.type === "deck:stream" && /** @type {CustomEvent} */ (ev).detail?.state !== "open") return;
     window.removeEventListener("deck:stream", back);
@@ -732,7 +705,7 @@ matchMedia(PHONE_QUERY).addEventListener("change", () => {
   route();
 });
 
-// ---- Find, Places ----------------------------------------------------------------------------
+// ---- Find, More ----------------------------------------------------------------------------
 
 /** Lumen opened: Find, with the keyboard up; dictated words go into its box, unsent. */
 function openFind(/** @type {string | undefined} */ words) {
@@ -745,15 +718,15 @@ function openFind(/** @type {string | undefined} */ words) {
   input.focus({ preventScroll: true });
 }
 
-/** The Places sheet, from the avatar (js/places.js in js/sheet.js's sheet). A tap on a place
- * opens it pushed, or goes to its page when it is the one kept as a fourth page. */
-function openPlaces() {
+/** The More sheet, from the tab bar's last tab or the avatar (js/more.js in js/sheet.js's sheet): the places
+ * that are not a tab. A tap opens one pushed, or goes to its page when it is the one kept as a fifth; a hold keeps or lets go. */
+function openMore() {
   let stop = () => {};
-  const s = openSheet({ title: "Places", label: "Places", build(body, close, parts) {
-    stop = fillPlaces(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
+  const s = openSheet({ title: "More", label: "More", build(body, close, parts) {
+    stop = fillMore(body, close, parts, { name: owner.name, letter: owner.letter, host: location.host,
       health: watchHealth, line: linkLine, pinned: keep,
       open: t => {
-        // The kept place is a page: go there without a history entry, as a label tap does.
+        // The kept place is a page: go there without a history entry, as a tab tap does.
         if (!phone() || slotOf(t.href.split("#")[0]) < 0) { go(t.href); return; }
         if (location.pathname + location.search + location.hash !== t.href) history.replaceState(history.state, "", t.href);
         route();
@@ -768,32 +741,29 @@ function openPlaces() {
 }
 
 /**
- * The Places sheet kept a place as the fourth page (or let it go): the pager gains, swaps or
- * loses its fourth slot and the header its fourth label. Pages move to where they now belong,
- * and the router runs again when the page on screen changed shape (a page now pushed, or back).
- * @param {{ href: string, label: string } | null} t
+ * The More sheet kept a place as a fifth page (or let it go): the pager gains, swaps or loses its last slot. It has no tab (the
+ * bar is four and More); its tile in More moves to the front. Pages move to where they now belong, and the router runs again when
+ * the page on screen changed shape (a page now pushed, or back).
+ * @param {{ href: string, label: string, icon?: string } | null} t
  */
 function keep(t) {
-  const was = strip[3] ? keyOf(strip[3]) : null;
-  strip.splice(3);
-  if (t) strip.push(fourth(t));
-  const now = strip[3] ? keyOf(strip[3]) : null;
-  // Devices and Settings are the same page (/settings): only the label and its address change.
-  if (was === now) { if (strip[3]) { put(phLabels[3], strip[3].label); phLabels[3].setAttribute("href", strip[3].href); } return; }
-  const oldSlot = slots.splice(3)[0];
-  phLabels.splice(3).forEach(a => a.remove());
-  if (strip[3]) {
-    const slot = h("div", { class: "pager-slot", "data-slot": strip[3].view });
+  const N = PAGER.length;
+  const was = strip[N] ? keyOf(strip[N]) : null;
+  strip.splice(N);
+  if (t) strip.push(fifth(t));
+  const now = strip[N] ? keyOf(strip[N]) : null;
+  // Devices and Settings are the same page (/settings): only the address changes.
+  if (was === now) return;
+  const oldSlot = slots.splice(N)[0];
+  if (strip[N]) {
+    const slot = h("div", { class: "pager-slot", "data-slot": strip[N].view });
     slots.push(slot);
     pager.append(slot);
-    phLabels.push(tab(strip[3], 3));
-    phTabs.append(phLabels[3]);
   }
   for (const [k, p] of pages) place(k, p.page);
   oldSlot?.remove();
   marked = -1;
   if (!strip.some(p => p.href === lastPage)) lastPage = "/now";
-  // The page on screen, or the address under a pushed one, moved in or out of the pager.
   if (current === was || current === now) route();
   else if (mode === "page") { mark_(slotOf(current)); toSlot(slotOf(current), false); }
 }

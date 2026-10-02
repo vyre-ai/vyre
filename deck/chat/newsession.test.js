@@ -139,15 +139,15 @@ test("new session: an agent switches the folder off, asks without waiting, and o
   stop();
 });
 
-test("new session: a refusal is shown as the box said it, and nothing navigates", async () => {
-  vyred({ ...WORLD, "threads.start": { $error: { code: "failed", message: "claude is not installed on this box" } } });
+test("new session: a refusal is shown as your server said it, and nothing navigates", async () => {
+  vyred({ ...WORLD, "threads.start": { $error: { code: "failed", message: "claude is not installed on your server" } } });
   went.length = 0;
   const box = /** @type {any} */ (document.createElement("div"));
   const stop = mountNewSession(box, { onDone: () => {} });
   await tick(); await tick();
   $$(box, "button").find(b => text(b) === "Start session").click();
   await tick(); await tick();
-  assert.match(text($(box, ".ns-error")), /Could not start: claude is not installed on this box/);
+  assert.match(text($(box, ".ns-error")), /Could not start: claude is not installed on your server/);
   assert.deepEqual(went, []);
   stop();
 });
@@ -228,7 +228,7 @@ test("folders: pick mode chooses a folder instead of starting one, and offers no
   stop();
 });
 
-test("folders: a refusal from the box reads plainly", async () => {
+test("folders: a refusal from your server reads plainly", async () => {
   vyred({ ...WORLD, "files.dirs": { $error: { code: "not_available", message: "not available" } } });
   const box = /** @type {any} */ (document.createElement("div"));
   const stop = mountFolders(box, { at: "/etc", onNewSession: () => {}, onTerminal: () => {} });

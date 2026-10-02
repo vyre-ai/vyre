@@ -20,7 +20,7 @@ import { form, gateFields } from "./editable.js";
 import { pairCard } from "./pair.js";
 import { initial, clock, since } from "./fmt.js";
 import { coveredUntil } from "./api.js";
-import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget, elsewhere } from "./need-rows.js";
+import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget, elsewhere, plainSummary } from "./need-rows.js";
 
 const NS = "http://www.w3.org/2000/svg";
 /**
@@ -199,7 +199,7 @@ function draftBody(n, o, { close, actions, body }, offs) {
   put(body,
     g.error ? h("p", { class: "nsh-status nsh-sec" }, h("span", { class: "nsh-failed" }, "failed"), h("span", null, `It came back held: ${problem(g.error)}`)) : null,
     f ? f.el : h("div", { class: "nsh-sec" },
-      g.summary ? h("p", { class: "nsh-why" }, g.summary) : null,
+      plainSummary(g) ? h("p", { class: "nsh-why" }, plainSummary(g)) : null,
       h("p", { class: "nsh-note", style: { marginTop: "8px" } }, "The full draft cannot be shown here, so it cannot be sent from here. Open it on the Deck or in the session.")),
     recalled.length ? h("div", { class: "nsh-recall" },
       h("div", { class: "nsh-recall-h" }, glyph("history", 14), "From memory"),

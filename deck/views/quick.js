@@ -16,7 +16,7 @@ export default async function quick(ctx, deps = {}) {
   const href = await homePath(attempt);
   if (!ctx.alive()) return;
   const thread = href.startsWith("/chat/thread/") ? decodeURIComponent(href.slice("/chat/thread/".length)) : null;
-  if (!thread) { put(root, empty("Ask needs the assistant, which is not on this box yet.")); return; }
+  if (!thread) { put(root, empty("Ask needs the assistant, which is not on your server yet.")); return; }
   const body = h("div", { class: "quick-body" });
   put(root, h("div", { class: "quick-head" }, h("span", { class: "lbl" }, "Ask"), h("span", { class: "quick-grow" }),
     link(href, { class: "btn btn-ghost btn-sm quick-full" }, "Open in full", icon("right", 12))), body);

@@ -91,7 +91,7 @@ export default async function memory(ctx) {
   const foot = h("div", { class: "mem-foot" });
   const side = h("aside", { class: "mem-side", "aria-label": "Selected fact", hidden: true });
   const controls = h("div", { class: "mem-controls" }, seg, todayChip, projectPick);
-  const head = h("div", { class: "mem-head" }, h("h1", { class: "vh" }, "Memory"), tabs, controls, h("div", { class: "mem-grow" }), counts);
+  const head = h("div", { class: "mem-head" }, h("h1", { class: "page-title" }, "Memory"), tabs, controls, h("div", { class: "mem-grow" }), counts);
   const main = h("div", { class: "mem-main", id: "mem-panel", role: "tabpanel" }, crumbs, body, foot);
   put(ctx.root, h("div", { class: "mem" }, h("div", { class: "mem-col" }, head, main), side));
 

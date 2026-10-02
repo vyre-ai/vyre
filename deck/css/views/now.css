@@ -27,7 +27,10 @@
 .nowrap { white-space: nowrap; }
 
 .need-row { display: flex; }
-.need-time { width: 64px; flex-shrink: 0; padding-top: 18px; font-size: 12px; line-height: 16px; color: var(--beacon-ink); }
+/* Who is asking: their face, then what they want. The time sits in the card's top line, in the body role, muted. */
+.need-who { display: flex; align-items: flex-start; gap: var(--s-3); min-width: 0; }
+.need-who .vy-av { flex-shrink: 0; margin-top: 1px; }
+.need-top .caption { font: 400 var(--fs-caption)/var(--lh-caption) var(--sans); font-variant-numeric: tabular-nums; }
 .need { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 15px 19px; }
 .need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
 .need h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
@@ -66,7 +69,7 @@
   .now-label .dot { display: none; }
   .now-sec { padding-left: 0; margin-top: 24px; }
   .phone-only { display: inline; }
-  .need-row .need-time, .need-row .need { display: none; }
+  .need-row .need { display: none; }
   .need-compact { display: flex; flex-direction: column; gap: 4px; padding: 13px 15px; text-decoration: none; color: var(--text); flex-grow: 1; }
   .need-compact-top { display: flex; justify-content: space-between; align-items: center; }
   .need-compact-top .lbl { display: flex; align-items: center; gap: 8px; }
@@ -207,3 +210,39 @@
   .gm-card { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .gm-step { transition: none; } }
+
+/* The right column (v2): Recent, from 1000 px; below that it stacks under the left. */
+.now-cols { display: block; }
+.now-side { width: 880px; max-width: 100%; margin: 0 auto; padding: 0 24px 48px 88px; }
+.now-events { display: flex; flex-direction: column; }
+.now-event { display: flex; align-items: center; gap: var(--s-3, 12px); min-height: 44px; padding: 6px 4px; border-bottom: 1px solid var(--edge, var(--rule)); text-decoration: none; color: var(--text); font-size: var(--fs-body, 14px); line-height: 20px; }
+.now-event:hover { background: var(--hover); }
+.now-event-t { flex: 1; min-width: 0; }
+.now-event-w { flex: none; font-size: var(--fs-caption, 12px); line-height: 16px; color: var(--label); }
+@media (min-width: 1000px) {
+  .now-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; max-width: 1120px; margin: 0 auto; }
+  .now-cols .now-col { margin: 0; width: auto; }
+  .now-side { width: auto; margin: 0; padding: 28px 24px 48px 0; }
+}
+@media (min-width: 1000px) and (max-width: 1199px) { .now-cols { display: block; } .now-side { padding-left: 88px; } }
+.now-side > * + * { margin-top: 20px; }
+.now-event-at { width: 56px; text-align: left; }
+.now-next-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+
+/* Finish setup, in the right column: one quiet card for what is still open (a passkey, the assistant). Commands never show here except under "Other ways". */
+.now-finish { display: flex; flex-direction: column; gap: var(--s-3); margin: 0 0 var(--s-6); padding: var(--s-4); border-radius: var(--r-card); background: var(--surface-2); border: 1px solid var(--edge); box-shadow: var(--elev-1); }
+.now-finish[hidden], .now-finish .fs-row[hidden] { display: none; }
+.now-finish > .lbl { margin: 0; }
+.fs-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2) var(--s-3); align-items: center; }
+.fs-row + .fs-row { padding-top: var(--s-3); border-top: 1px solid var(--edge); }
+.fs-title { font: 600 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); }
+.fs-main p { margin: 2px 0 0; }
+.fs-status, .fp-more { grid-column: 1 / -1; margin: 0; }
+.fs-status:empty { display: none; }
+.fp-more summary { cursor: pointer; color: var(--label); }
+.fp-more .fp-cmds { grid-template-columns: 1fr; margin-top: var(--s-2); }
+.now-finish .asst-card { grid-column: 1 / -1; }
+.np-tile:has(.vy-av) { background: none; border: 0; }
+.need-facts .ed-val { font: 400 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); }
+.need-details { margin-top: var(--s-2); }
+.need-details > summary { cursor: pointer; width: max-content; }

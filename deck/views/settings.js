@@ -13,7 +13,7 @@
 // per group under "Sessions and Claude"; ?key=<key> scrolls to one and highlights it.
 
 import { h, put, link, head, empty } from "../js/dom.js";
-import { attempt, modules, canProve, on } from "../js/api.js";
+import { attempt, modules, canProve, on, hasTool } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { personAvatar, readSystem } from "../js/avatars.js";
@@ -27,6 +27,9 @@ import { fmtBytes, pieceLabel, pieceLine, totalBytes, piecePct, readyToConfirm, 
 import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
 import { watchTrustAsks } from "../js/trust-ask.js";
+import { pageHeader } from "../js/page-header.js";
+import { renameField, renameCall } from "../js/rename-field.js";
+import { readRailMode, setRailMode } from "../js/rail-mode.js";
 import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
@@ -93,9 +96,7 @@ export default async function settings(ctx) {
       h("nav", { class: "set-nav", "aria-label": "Settings sections" }, navLinks.slice(0, at), keysNav, navLinks.slice(at)),
       h("div", { class: "set-col" },
         h("header", { class: "set-top" },
-          h("h1", { class: "h2" }, "Settings"),
-          h("p", { class: "muted" }, "Everything the setup did, and everything it skipped. Each part can be finished here or with a vyre command."),
-          jumpSel),
+          pageHeader({ title: "Settings", meta: "Everything the setup did, and everything it skipped. Each part can be finished here or with a vyre command.", actions: [jumpSel] })),
         secs.slice(0, at), keysBody, secs.slice(at)))));
 
   // #section: scroll there without a history entry (a hash navigation would re-run the router).
@@ -184,7 +185,7 @@ const errText = e => (e?.missing ? `The ${e.module} module is not running, so th
 async function drawSetup(el) {
   const r = await attempt("onboard.status");
   if (r.error) {
-    put(el, empty("Setup progress is kept by the box module.", r.error),
+    put(el, empty("Setup progress is kept by your server module.", r.error),
       h("div", { class: "rows" }, STEPS.map(s => stepRow(s, null))));
     return;
   }
@@ -220,7 +221,7 @@ async function drawYou(el) {
   const [r] = await Promise.all([attempt("onboard.status"), readSystem(attempt)]);
   const here = row("This page", mono(location.host),
     h("div", { class: "small muted" }, onTailnet() ? "Served on your tailnet. Only your devices can open it." : "Served on this machine only, not on your tailnet."));
-  if (r.error) { put(el, empty("Your name is kept by the box module.", r.error), h("div", { class: "rows" }, here)); return; }
+  if (r.error) { put(el, empty("Your name is kept by your server module.", r.error), h("div", { class: "rows" }, here)); return; }
   const name = r.data?.name || "";
   put(el, youAvatar(name), h("div", { class: "rows" },
     row("Name", name ? h("span", null, name) : h("span", { class: "muted" }, "Not chosen yet"), name ? null : toOnboard("you")),
@@ -235,7 +236,7 @@ async function drawYou(el) {
 async function drawAssistant(el, ctx) {
   const r = await attempt("agents.list");
   if (!ctx.alive()) return;
-  if (r.error) { put(el, empty("The assistant could not be read from the box.", r.error)); return; }
+  if (r.error) { put(el, empty("The assistant could not be read from your server.", r.error)); return; }
   const a = (Array.isArray(r.data) ? r.data : r.data?.agents || []).find(x => x.kind === "assistant");
   if (!a) { put(el, h("div", { class: "empty" }, "There is no assistant yet. The setup makes one."), foot(toOnboard("you"))); return; }
   const show = () => put(el, h("div", { class: "rows" },
@@ -276,7 +277,7 @@ async function drawAssistant(el, ctx) {
 
 async function drawClaude(el) {
   const r = await attempt("onboard.claude", { mode: "detect" });
-  if (r.error) { put(el, empty("Claude Code is checked by the box module.", r.error), foot(toOnboard("claude", "Connect"))); return; }
+  if (r.error) { put(el, empty("Claude Code is checked by your server module.", r.error), foot(toOnboard("claude", "Connect"))); return; }
   const c = r.data || {};
   const via = c.via === "setup-token" ? "Your Claude subscription (setup token)" : c.via === "api-key" ? "An Anthropic API key" : "Signed in";
   put(el, h("div", { class: "rows" },
@@ -297,7 +298,7 @@ async function drawNetwork(el, ctx) {
   const lockRow = h("div");
   // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
   const extra = ["shares", "hooks", "guests", "agents", "egress", "handback", "hosted"].map(() => h("div"));
-  put(el, r.error ? empty("Tailscale is checked by the box module.", r.error) : null,
+  put(el, r.error ? empty("Tailscale is checked by your server module.", r.error) : null,
     h("div", { class: "rows" },
       r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
       on ? row("Node", mono(t.node.dns || t.node.name || "")) : null,
@@ -321,9 +322,9 @@ async function drawHosted(el) {
   if (r.error || !Array.isArray(origins)) { put(el); return; }
   const hosts = origins.map(o => { try { return new URL(String(o)).host; } catch { return String(o); } });
   put(el, row("Hosted app", origins.length ? h("span", null, "On") : h("span", { class: "muted" }, "Off"),
-    origins.length ? faint(`The app at ${hosts.join(", ")} can reach this box from your browser after you sign in.`)
-      : faint("No hosted app can reach this box. The Deck at the box's own address still works."),
-    faint("Set in the box's config:"), mono("network.origins")));
+    origins.length ? faint(`The app at ${hosts.join(", ")} can reach your server from your browser after you sign in.`)
+      : faint("No hosted app can reach your server. The Deck at your server's own address still works."),
+    faint("Set in your server's config:"), mono("network.origins")));
 }
 
 /** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
@@ -394,7 +395,7 @@ function drawShares(el, ctx) {
   // Whether this box has files.drive.access: its status rows carry their own access, and a
   // no_such_tool answer turns the switches off for good.
   let canSwitch = true;
-  const intro = () => faint("VyreDrive (built on Tailscale's Taildrive) opens your box's folders in Finder on your Mac.");
+  const intro = () => faint("VyreDrive (built on Tailscale's Taildrive) opens your server's folders in Finder on your Mac.");
   return optional(el, "VyreDrive", "files.drive.status", d => {
     const shares = listOf(d.shares, "name");
     if (!d.enabled) return row("VyreDrive", onOff(false),
@@ -429,10 +430,10 @@ function drawShares(el, ctx) {
       return li;
     };
     return row("VyreDrive", h("span", null, "On"), intro(),
-      shares.length ? plainList(shares, line) : faint("The box offers no folders (files.drive.shares)."),
+      shares.length ? plainList(shares, line) : faint("Your server offers no folders (files.drive.shares)."),
       remount,
       d.error ? faint(d.error) : null,
-      shares.some(x => !x.shared) ? [faint("Share one from the box's terminal:"), cmd(`vyre call --tty files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
+      shares.some(x => !x.shared) ? [faint("Share one from your server's terminal:"), cmd(`vyre call --tty files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
       foot(check), st, found);
   });
 }
@@ -447,7 +448,7 @@ async function drawHooks(el) {
   await optional(el, "Webhooks", "hooks.list", d => {
     const routes = listOf(d.routes, "name");
     if (!d.enabled) return row("Webhooks", onOff(false),
-      faint("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you turn it on from the box's terminal:"),
+      faint("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you turn it on from your server's terminal:"),
       cmd("vyre hooks on"));
     const mism = h("div");
     st.then(r => {
@@ -464,8 +465,8 @@ async function drawHooks(el) {
         x.funnel?.open ? [faint("Publish it with Funnel:"), cmd(x.funnel.open)] : null,
         x.funnel?.close ? [faint("Stop publishing it:"), cmd(x.funnel.close)] : null]) : null,
       mism,
-      faint("Vyre never runs tailscale funnel. Run these yourself, on the box."),
-      faint("Open a route from the box's terminal:"),
+      faint("Vyre never runs tailscale funnel. Run these yourself, on your server."),
+      faint("Open a route from your server's terminal:"),
       cmd("vyre hooks open <name> --scheme hmac-sha256 --header <header> --secret <vault item>"),
       routes.length ? [faint("Close one:"), cmd(`vyre hooks close ${routes[0].name}`)] : null,
       faint("Turn webhooks off:"), cmd("vyre hooks off"));
@@ -479,8 +480,8 @@ function drawGuests(el) {
     const safe = Array.isArray(d.safe) ? d.safe : [];
     const safeLine = safe.length ? faint(`A guest can only ever call these: ${safe.join(", ")}.`) : null;
     if (!d.enabled) return row("Guests", onOff(false),
-      faint("A guest is someone on another tailnet you shared this box with. They may call only the tools you list for them, and never act as you."),
-      safeLine, faint("Turn guests on from the box's terminal:"), cmd(`vyre call --tty network.guests.enable '{"on":true}'`));
+      faint("A guest is someone on another tailnet you shared your server with. They may call only the tools you list for them, and never act as you."),
+      safeLine, faint("Turn guests on from your server's terminal:"), cmd(`vyre call --tty network.guests.enable '{"on":true}'`));
     return row("Guests", h("span", null, people.length ? `On, ${plural(people.length, "person", "people")}` : "On, no one yet"),
       people.length ? plainList(people, x => {
         const allowed = Array.isArray(x.allowed) ? x.allowed : Array.isArray(x.tools) ? x.tools : [];
@@ -489,7 +490,7 @@ function drawGuests(el) {
           asked.length ? faint(`Listed but not guest-safe, so refused: ${asked.join(", ")}.`) : null];
       }) : null,
       safeLine,
-      faint("Add someone from the box's terminal:"),
+      faint("Add someone from your server's terminal:"),
       cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["threads.list"]}'`),
       people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
       faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
@@ -527,7 +528,7 @@ function drawEgress(el) {
     return row("Glass egress", h("span", null, sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet"),
       sites.length ? h("div", { class: "set-tags" }, sites.map(x => h("span", { class: "tag" }, String(x)))) : null,
       side.answers ? faint("The egress sidecar answers.")
-        : h("div", { class: "small set-warn" }, `The egress sidecar does not answer${side.why ? ` (${side.why})` : ""}. The listed sites fail until it does, rather than show the box's address.`),
+        : h("div", { class: "small set-warn" }, `The egress sidecar does not answer${side.why ? ` (${side.why})` : ""}. The listed sites fail until it does, rather than show your server's address.`),
       d.problem ? h("div", { class: "small set-warn" }, d.problem) : null,
       d.applies ? faint(`This ${d.applies}.`) : null,
       cmd(`vyre call --tty computers.egress.set '{"enabled":false}'`));
@@ -621,13 +622,26 @@ async function drawDevices(el, ctx) {
   // A browser asking for full access (tailnet's device.trust-asked): its key first, its name as its own claim.
   const asks = h("div");
   ctx.cleanup?.(watchTrustAsks(card => put(asks, card)));
-  const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
+  const [st, macs, relayR, macsR, sysR] = await Promise.all([attempt("onboard.status"), attempt("link.peers"),
+    attempt("relay.devices.list", {}, { ifPresent: true }), attempt("link.macs", {}, { ifPresent: true }), attempt("system.info")]);
   if (!ctx.alive()) return;
-  if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
+  // #65: every device has a name the person can change here; a rename anywhere (device.renamed) changes it on screen.
+  /** @type {Map<string, any>} */ const fields = new Map();
+  // Never a control that errors: a name is editable only when this server has the tool that saves it.
+  const canRename = { relay: await hasTool("relay.devices.rename"), mac: await hasTool("link.rename"), server: await hasTool("system.rename"), computer: false };
+  const nameField = (/** @type {"relay"|"mac"|"server"|"computer"} */ kind, /** @type {string} */ id, /** @type {string} */ name, /** @type {boolean} */ allowEmpty = false) => {
+    if (!canRename[kind]) return h("span", { class: "rn-name" }, name);
+    const f = renameField({ name, allowEmpty, label: "Rename", save: async n => { const c = renameCall(kind, id, n); return attempt(c.tool, c.input); } });
+    fields.set(kind + ":" + id, f);
+    return f;
+  };
+  ctx.on("device.renamed", (/** @type {any} */ e) => { const d = e?.payload || e; fields.get(`${d.kind}:${d.id}`)?.setName(String(d.name ?? "")); });
+  if (st.error) { put(el, empty("Your devices are read by your server module.", st.error), foot(toOnboard("devices", "Open"))); return; }
   const wink = winkCard(st.data, ctx);
   const addPc = addPcCard(st.data, ctx);
   const peers = st.data?.detail?.devices?.peers || [];
-  const paired = Array.isArray(macs.data) ? macs.data : [];
+  const pairedMacs = Array.isArray(macsR.data) ? macsR.data : [];
+  const paired = pairedMacs.length ? pairedMacs : Array.isArray(macs.data) ? macs.data : [];
   const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
   const pairedHere = p => paired.some(m => same(m, p));
   const order = p => (deviceKind(p.os, p.name).handheld ? 0 : 1) * 2 + (p.online ? 0 : 1);
@@ -635,15 +649,21 @@ async function drawDevices(el, ctx) {
     const { kind, handheld } = deviceKind(p.os, p.name);
     return row(kind,
       h("span", { class: "set-inline" }, mono(p.name), stateLbl(p.online ? "Online" : "Offline", p.online ? "" : "faint")),
-      pairedHere(p) ? h("div", { class: "small muted" }, "Paired with this box") : null,
+      pairedHere(p) ? h("div", { class: "small muted" }, "Paired with your server") : null,
       handheld && !p.online ? h("div", { class: "set-off small" }, icon("phone", 14),
         h("span", null, `Your ${kind} is offline in Tailscale. Open the Tailscale app and turn it on.`)) : null);
   });
   // A paired Mac Tailscale did not list (Tailscale not running here, say) still shows.
   for (const m of paired) {
     if (peers.some(p => same(m, p))) continue;
-    rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
+    rows.push(row("Mac", h("span", { class: "set-inline" }, m.mac ? nameField("mac", String(m.mac), String(m.name || m.node || "A Mac")) : mono(m.name || m.node || "A Mac"), stateLbl(m.online === false ? "Offline" : "Paired", "faint"))));
   }
+  // Phones, PCs and browsers paired through the relay (relay.devices.list), and this server's own name.
+  for (const d of (Array.isArray(relayR.data?.devices) ? relayR.data.devices : [])) {
+    if (!d?.id) continue;
+    rows.push(row(d.kind === "web" ? "Browser" : "Phone or PC", h("span", { class: "set-inline" }, nameField("relay", String(d.id), String(d.name || "A device")), stateLbl(d.online ? "Online" : "Offline", d.online ? "" : "faint"))));
+  }
+  if (sysR.data && typeof sysR.data.serverName === "string" && sysR.data.serverName) rows.unshift(row("This server", h("span", { class: "set-inline" }, nameField("server", "server", sysR.data.serverName, true))));
   put(el,
     asks,
     wink,
@@ -678,7 +698,7 @@ async function drawDevices(el, ctx) {
 async function drawServer(el, ctx) {
   const [r, mods] = await Promise.all([attempt("onboard.status"), modules()]);
   if (r.error) {
-    put(el, empty("The server role is read by the box module.", r.error),
+    put(el, empty("The server role is read by your server module.", r.error),
       note("Once it's running, this is where you move your work to a server, or back."));
     return;
   }
@@ -1121,7 +1141,7 @@ function drawSecurity(el, ctx) {
   drawSignedIn(signedIn, ctx);
   if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet."), signedIn); return; }
   const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "one-time-code", spellcheck: "false",
-    autocapitalize: "off", placeholder: "from vyre presence code, on the box" }));
+    autocapitalize: "off", placeholder: "from vyre presence code, on your server" }));
   const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: deviceName() }));
   const st = status();
   const keysBox = h("div");
@@ -1200,12 +1220,12 @@ const STATE = { running: "running", failed: "failed", invalid: "failed", off: "d
 
 async function drawModules(el) {
   const list = await modules();
-  if (!list.length) { put(el, h("div", { class: "empty" }, "The box did not list its modules.", h("span", { class: "code" }, "It may not be running. Start it with vyre up."))); return; }
+  if (!list.length) { put(el, h("div", { class: "empty" }, "Your server did not list its modules.", h("span", { class: "code" }, "It may not be running. Start it with vyre up."))); return; }
   const order = { failed: 0, starting: 1, running: 2, disabled: 3 };
   const rows = [...list].sort((a, b) => (order[STATE[a.state] || "disabled"] - order[STATE[b.state] || "disabled"]) || a.name.localeCompare(b.name));
   const bad = rows.filter(m => STATE[m.state] === "failed").length;
   put(el,
-    note(`${plural(rows.filter(m => m.state === "running").length, "module")} running${bad ? `, ${bad} failed` : ""}. A module that fails is turned off and reported here; it never stops the box.`),
+    note(`${plural(rows.filter(m => m.state === "running").length, "module")} running${bad ? `, ${bad} failed` : ""}. A module that fails is turned off and reported here; it never stops your server.`),
     h("table", { class: "set-table" },
       h("thead", null, h("tr", null, h("th", { class: "lbl", scope: "col" }, "Module"), h("th", { class: "lbl", scope: "col" }, "Version"), h("th", { class: "lbl", scope: "col" }, "State"))),
       h("tbody", null, rows.map(m => {
@@ -1239,19 +1259,25 @@ function drawAppearance(el) {
     put(hint, hub ? "Kept for this device. Your other devices keep their own." : "Kept in this browser only. Your other devices keep their own.");
   };
   draw();
-  put(el, h("div", { class: "rows" }, row("Theme", seg, hint)));
+  // The rail's form (js/rail-mode.js): Auto shows names from 1200 px, Icons and Labels override it from 720 px.
+  const railSeg = h("div", { class: "seg", role: "group", "aria-label": "Rail" });
+  const drawRail = () => put(railSeg, [["auto", "Auto"], ["icons", "Icons"], ["labels", "Labels"]].map(([v, t]) =>
+    h("button", { type: "button", "aria-pressed": String(readRailMode() === v), onclick: () => { setRailMode(v); drawRail(); } }, t)));
+  drawRail();
+  put(el, h("div", { class: "rows" }, row("Theme", seg, hint),
+    row("Rail", railSeg, h("div", { class: "small faint" }, "Auto shows names beside the icons from 1200 px wide. Kept on this device."))));
 }
 
 // ---- 10. This machine ----------------------------------------------------------------------
 
 async function drawMachine(el) {
   const r = await attempt("system.info");
-  if (r.error) { put(el, empty("The box did not say what it runs on.", r.error)); return; }
+  if (r.error) { put(el, empty("Your server did not say what it runs on.", r.error)); return; }
   const s = r.data || {};
   put(el, h("div", { class: "rows" },
     row("Host", mono(s.host || "")),
     row("Role", h("span", null, s.role === "box" ? "Box" : s.role === "local" ? "Local" : s.role || ""),
-      h("div", { class: "small faint" }, s.role === "box" ? "Always on. Runs the agents and serves your address." : "Your own computer. Connects to your box over the tailnet.")),
+      h("div", { class: "small faint" }, s.role === "box" ? "Always on. Runs the agents and serves your address." : "Your own computer. Connects to your server over the tailnet.")),
     row("Vyre", mono(s.version || "")),
     row("Platform", mono(s.platform || "")),
     row("Node", mono(s.node || ""))));

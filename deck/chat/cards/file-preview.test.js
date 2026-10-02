@@ -80,7 +80,7 @@ test("a missing file says so, keeps its name, and is not a control", () => {
   assert.ok($(el, ".cv-fp-gone"));
 });
 
-test("a thumbnail is drawn only when it is on this box or inline, never a third party's", () => {
+test("a thumbnail is drawn only when it is on your server or inline, never a third party's", () => {
   assert.equal(safeThumb("/thumbs/a1.png"), "/thumbs/a1.png");
   assert.ok(safeThumb("data:image/png;base64,AAAA"));
   assert.equal(safeThumb("https://tracker.example/x.png"), null);
