@@ -16,7 +16,8 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { connector, isTailnet, normalize } from "./transport.js";
-import { tokenMessage, boxId } from "./companion.js";
+import { tokenMessage, boxId, helloMessage } from "./companion.js";
+export { helloMessage };
 import { handoff } from "../daemon/app-handoff.js";
 
 export const FILE = "companion.json";
@@ -50,9 +51,6 @@ export function askApp(pipe, request, timeout = 30_000) {
 /** A server address is an https origin and nothing else: no credentials, path, query or fragment. @param {any} a */
 const plainOrigin = (a, insecure = false) => { try { const u = new URL(String(a)); return (u.protocol === "https:" || (insecure && u.protocol === "http:")) && !u.username && !u.password && u.pathname === "/" && !u.search && !u.hash && String(a).replace(/\/$/, "") === u.origin; } catch { return false; } };
 
-/** The bytes the box signs to prove itself to a companion core in link.companion.hello's answer. */
-export const helloMessage = ({ box, companion, nonce }) => Buffer.from(["vyre-companion-hello", box, companion, nonce].join("\n"));
-
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
 
@@ -70,8 +68,9 @@ export function companionCoreSide(ctx, seam = {}) {
   let priv = null;
   /** @type {Promise<void> | null} */
   let joining = null;
-  /** The server proved who it is to this process (hello); nothing but hello goes out before. */
-  let verified = false;
+  /** When the server last proved who it is (hello); nothing but hello goes out before, and it proves itself again after a minute. */
+  let verifiedAt = 0;
+  const PROOF_TTL = 60_000;
   /** @type {Promise<void> | null} */
   let verifying = null;
 
@@ -134,19 +133,19 @@ export function companionCoreSide(ctx, seam = {}) {
    * @param {NonNullable<typeof saved>} s
    */
   function verifyBox(s) {
-    if (verified) return Promise.resolve();
+    if (verifiedAt && now() - verifiedAt < PROOF_TTL) return Promise.resolve();
     if (!verifying) verifying = (async () => {
       const t = token(s, "link.companion.hello", {});
-      const nonce = t.split(".")[3];
+      const [, , ts, nonce] = t.split(".");
       let r;
       try { r = await conn(s).json("POST", "/v1/tools/link.companion.hello", { token: t }, { timeout: seam.timeout || 15_000 }); }
       catch (e) { const x = /** @type {any} */ (e); throw fail("box_unreachable", `your server is not reachable from this PC (${x.code || x.message}). Is Tailscale signed in?`); }
       const d = r.body && r.body.data;
       if (!d || !d.box || d.box.id !== s.box.id || d.companion !== s.companion) throw fail("not_box", (r.body && r.body.error && r.body.error.message) || "the server at this address is not the one this PC joined, so nothing was sent");
       let good = false;
-      try { good = typeof d.proof === "string" && crypto.verify(null, helloMessage({ box: s.box.id, companion: s.companion, nonce }), crypto.createPublicKey({ key: Buffer.from(s.box.pub, "base64url"), format: "der", type: "spki" }), Buffer.from(d.proof, "base64url")); } catch { good = false; }
+      try { good = typeof d.proof === "string" && crypto.verify(null, helloMessage({ box: s.box.id, companion: s.companion, ts, nonce }), crypto.createPublicKey({ key: Buffer.from(s.box.pub, "base64url"), format: "der", type: "spki" }), Buffer.from(d.proof, "base64url")); } catch { good = false; }
       if (!good) throw fail("not_box", "the server at this address did not prove it is the one this PC joined, so nothing was sent");
-      verified = true;
+      verifiedAt = now();
     })().finally(() => { verifying = null; });
     return verifying;
   }
@@ -215,5 +214,5 @@ export function companionCoreSide(ctx, seam = {}) {
     internal: true,
     run: async ({ upload: id, offset, data }) => upload(id, offset, Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "base64")),
   });
-  return { async stop() { priv = null; verified = false; } };
+  return { async stop() { priv = null; verifiedAt = 0; } };
 }

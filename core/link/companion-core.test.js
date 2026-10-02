@@ -8,8 +8,8 @@ import http from "node:http";
 import net from "node:net";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
-import { companionCoreSide, askApp, FILE, helloMessage } from "./companion-core.js";
-import { tokenMessage, boxId } from "./companion.js";
+import { companionCoreSide, askApp, FILE } from "./companion-core.js";
+import { tokenMessage, boxId, helloMessage } from "./companion.js";
 
 const ED = crypto.generateKeyPairSync("ed25519");
 const BOX_PUB = ED.publicKey.export({ format: "der", type: "spki" }).toString("base64url");
@@ -50,7 +50,7 @@ function fakeBox(t, coreSpki, { lie = false } = {}) {
       if (!ok) { res.statusCode = 403; return res.end(JSON.stringify({ error: { code: "denied", message: "bad token" } })); }
       if (tool === "link.companion.hello") {
         const sk = lie ? crypto.generateKeyPairSync("ed25519").privateKey : ED.privateKey;
-        const proof = crypto.sign(null, helloMessage({ box: boxId(BOX_PUB), companion, nonce }), sk).toString("base64url");
+        const proof = crypto.sign(null, helloMessage({ box: boxId(BOX_PUB), companion, ts, nonce }), sk).toString("base64url");
         return res.end(JSON.stringify({ data: { paired: true, companion, box: { pub: BOX_PUB, id: boxId(BOX_PUB) }, proof } }));
       }
       res.end(JSON.stringify({ data: isChunk ? { offset: input.offset + raw.length } : tool === "sync.upload.plan" ? { new: [], changed: [], done: [], excluded: [] } : { upload: "11111111-1111-4111-8111-111111111111", offset: 0 } }));
