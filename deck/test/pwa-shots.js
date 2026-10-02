@@ -151,7 +151,7 @@ const SCREENS = [
       await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
       const first = document.querySelector('.sheet-more .plc-tile'); if (first.getAttribute('data-place') !== 'Vault' || !first.hasAttribute('data-kept')) throw new Error('the kept place is not the first tile, marked');` },
   // The pinned page is reached by swiping past Agents; More says where you are.
-  { name: "pin-swipe", path: "/now", swipe: true, swipes: 4, expect: "/vault", pin: "Vault" },
+  { name: "pin-swipe", path: "/now", swipe: true, swipes: 5, expect: "/vault", pin: "Vault" },
   // A second hold lets it go: the page and the mark are gone, the bar never changed.
   { name: "pin-unpin", path: "/now", script: `await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
       const hold = async name => { const a = document.querySelector('.sheet-more .plc-tile[data-place=' + name + ']'); const r = a.getBoundingClientRect();
