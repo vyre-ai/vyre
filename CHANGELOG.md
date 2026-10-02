@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Generated in Drive: each media entry carries width, height and length (read from the file's own header by
+  artifacts, only when it has them), and the Generated folder's listing carries a `quota` storage line
+  (this project's bytes and items against its limit, and the box-wide total against its cap) from
+  `artifacts.media.usage`. Previews use the artifact id through the content route; there are no thumbnails.
 - The public site no longer says "vyred" (site/start and site/llms.txt say "Vyre"); `test/site-words.test.js` keeps the internal words out of the site's copy.
 
 - vyre.run carries the new Vyre master icon (app-design's glass mark, approved by the user): favicon (.svg and .ico), 32 px, apple-touch, 192 and 512 px icons, and the links to them on the landing, start and 404 pages. The site is built from main only, so this is the site's icon change alone, without the rest of stage. The social preview (og.png) has the glass master in place of the old flat tile: the same layout and text, the tile area repainted with vyre-master-1024.png at 300 px.
