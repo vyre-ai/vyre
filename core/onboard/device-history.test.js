@@ -15,7 +15,7 @@ test("a Mac with history: per agent and project counts and dates, ticked unless 
   const r = deviceHistory([mac]);
   assert.equal(r.found, true);
   assert.equal(r.sessions, 5);
-  assert.match(r.summary, /^Found 5 sessions on Alex's Mac \(3 projects\)$/);
+  assert.equal(r.summary, "Found 5 sessions on Alex's Mac, in 3 projects.");
   const d = r.devices[0];
   assert.deepEqual(d.agents.map((/** @type {any} */ a) => a.agent), ["claude-code", "codex"], "an agent with no folders is not listed");
   assert.deepEqual(d.agents[0].folders.map((/** @type {any} */ f) => [f.cwd, f.ticked]), [["/home/alex/Work/harlow", true], ["/tmp/scratch", false]]);
@@ -23,10 +23,10 @@ test("a Mac with history: per agent and project counts and dates, ticked unless 
 });
 
 test("nothing found is said as nothing found, never as done: no computer, an empty one, one that did not answer", () => {
-  assert.match(deviceHistory([]).summary, /No computer is paired yet/);
+  assert.match(deviceHistory([]).summary, /^No computer is paired yet\. Go back to Your devices to pair one/);
   const empty = deviceHistory([{ mac: "m1", name: "Alex's Mac", ok: true, data: { sources: [] } }]);
   assert.equal(empty.found, false);
-  assert.match(empty.summary, /^Nothing found on Alex's Mac/);
+  assert.match(empty.summary, /^Found nothing on Alex's Mac\. It has no Claude Code, Codex or Grok history/);
   const off = deviceHistory([{ mac: "m1", name: "Alex's Mac", ok: false, error: { code: "mac_offline", message: "the Mac is offline" } }]);
   assert.equal(off.found, false);
   assert.match(off.summary, /did not answer/);

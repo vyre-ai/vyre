@@ -879,7 +879,8 @@ const SCREENS = {
             h("div", { class: "rows" }, d.agents.flatMap((/** @type {any} */ g) => g.folders.map((/** @type {any} */ f) =>
               h("div", { class: "pick" }, h("span", { class: "x" },
                 h("span", { class: "ellipsis" }, `${f.name || f.cwd || "unknown folder"} · ${g.agent}`),
-                h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · ${when(f.from)}–${when(f.to)}` + (f.why ? ` · ${f.why}` : "")))))))))
+                h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · latest ${when(f.to)}` + (f.why ? ` · ${f.why}` : ""))))))))),
+          devs.some((/** @type {any} */ d) => d.agents && d.agents.length) ? h("p", { class: "small muted", style: { marginTop: "8px" } }, "Your history stays on that computer until you choose what to send.") : null
         );
       }
     };

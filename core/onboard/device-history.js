@@ -25,9 +25,9 @@ export function deviceHistory(answers) {
   const found = sessions > 0;
   const plural = (/** @type {number} */ n, /** @type {string} */ w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   let summary;
-  if (!devices.length) summary = "No computer is paired yet. Pair your Mac in the next step and import from there.";
-  else if (found) summary = `Found ${plural(sessions, "session")} on ${devices.filter(d => d.sessions).map(d => `${d.name} (${plural(d.projects, "project")})`).join(", ")}`;
-  else if (devices.some(d => !d.ok)) summary = `${devices.filter(d => !d.ok).map(d => d.name).join(", ")} did not answer, so its history is not listed yet. Open Vyre on it and try again.`;
-  else summary = `Nothing found on ${devices.map(d => d.name).join(", ")}: no Claude Code, Codex or Grok history in their usual folders.`;
+  if (!devices.length) summary = "No computer is paired yet. Go back to Your devices to pair one, then import its history here.";
+  else if (found) summary = `Found ${plural(sessions, "session")} on ${devices.filter(d => d.sessions).map(d => d.name).join(", ")}, in ${plural(devices.reduce((n, d) => n + d.projects, 0), "project")}.`;
+  else if (devices.some(d => !d.ok)) summary = `${devices.filter(d => !d.ok).map(d => d.name).join(", ")} did not answer, so its history is not listed yet. Open Vyre on that Mac, then try again.`;
+  else summary = `Found nothing on ${devices.map(d => d.name).join(", ")}. It has no Claude Code, Codex or Grok history in the usual folders.`;
   return { devices, sessions, summary, found };
 }
