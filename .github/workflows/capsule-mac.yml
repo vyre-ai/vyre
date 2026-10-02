@@ -74,6 +74,8 @@ jobs:
         # from a real daemon in a throwaway home: the # list, the module commands, the next-meeting line.
         if: always() && hashFiles('local/capsule/native/build.sh') != ''
         timeout-minutes: 5
+        env:
+          VYRE_CAPSULE_SCREENS: ${{ runner.temp }}/lumen-screens
         run: |
           npm ci --no-audit --no-fund
           node scripts/capsule-daemon-check.mjs local/capsule/native/.build/Vyre.app

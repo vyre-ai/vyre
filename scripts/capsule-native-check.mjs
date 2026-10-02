@@ -136,6 +136,30 @@ try {
     const o = (await send({ timings: true })).timings.slice(n).find(x => x.kind === "open");
     if (o) wake.push(o.ms);
   }
+  // Real key events through the panel: "@" typed as the keyboards type it. Nothing typed may be swallowed (#30: "@" did nothing).
+  try {
+    await send({ show: true }); await send({ text: "" }); await pause(300);
+    const layouts = [
+      { name: "US, Shift-2", stroke: { chars: "@", ignoring: "2", code: 19, shift: true } },
+      { name: "German Mac, Option-L", stroke: { chars: "@", ignoring: "l", code: 37, option: true } },
+      { name: "German PC, AltGr-Q", stroke: { chars: "@", ignoring: "q", code: 12, option: true, control: true } },
+    ];
+    for (const l of layouts) {
+      await send({ text: "" }); await pause(150);
+      const r = await send({ strokes: [l.stroke, { chars: "a", code: 0 }] });
+      await pause(500);
+      const p = await send({ probe: true });
+      console.log(`@ ${l.name}: key window ${r.key}, box ${JSON.stringify(p.text)}`);
+      check(p.text === "@a", `typing @ then a gives "@a" (${l.name}, got ${JSON.stringify(p.text)})`);
+    }
+    // The list is empty here (offline, nothing to name): the character must still be in the box, alone.
+    await send({ text: "" }); await pause(150);
+    await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(600);
+    const alone = await send({ probe: true });
+    console.log(`@ alone, nothing to list: box ${JSON.stringify(alone.text)}, rows ${alone.rows.length}`);
+    check(alone.text === "@", `typing @ with nothing to list leaves "@" in the box (got ${JSON.stringify(alone.text)})`);
+    await send({ text: "" });
+  } catch (e) { console.log(`@ check failed to run: ${String(e && e.message || e).split("\n")[0]}`); failures.push("the @ key check did not run"); }
   // A real screen picture, if asked for: the panel shown with a word typed, captured by macOS itself.
   if (process.env.VYRE_CAPSULE_SCREENS) {
     fs.mkdirSync(process.env.VYRE_CAPSULE_SCREENS, { recursive: true });

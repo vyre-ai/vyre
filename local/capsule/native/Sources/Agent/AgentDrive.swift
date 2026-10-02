@@ -94,6 +94,31 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if let strokes = c["strokes"] as? [[String: Any]] {
+            // Real key events through this window alone (never posted to the system): the monitor, the key handler and the
+            // text field see them as they see a keyboard. {chars, ignoring?, code, shift?, option?, control?, command?}.
+            let panel = a.panel.panel
+            panel.makeKey()
+            var typed = 0
+            for k in strokes {
+                var f: NSEvent.ModifierFlags = []
+                if VJ.truthy(k["shift"]) { f.insert(.shift) }
+                if VJ.truthy(k["option"]) { f.insert(.option) }
+                if VJ.truthy(k["control"]) { f.insert(.control) }
+                if VJ.truthy(k["command"]) { f.insert(.command) }
+                let chars = (k["chars"] as? String) ?? ""
+                let code = UInt16((k["code"] as? Int) ?? 0)
+                for type in [NSEvent.EventType.keyDown, .keyUp] {
+                    if let e = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: f, timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: panel.windowNumber, context: nil, characters: chars,
+                                                charactersIgnoringModifiers: (k["ignoring"] as? String) ?? chars, isARepeat: false, keyCode: code) {
+                        NSApp.sendEvent(e)
+                    }
+                }
+                typed += 1
+            }
+            say(["strokes": typed, "key": panel.isKeyWindow, "text": m.text]); return
+        }
         if let mode = c["display"] as? String {
             // Deep glass proof: "glass" forces Reduce Transparency off, "reduced" on, "system" reads the Mac's setting.
             DeepGlass.reduceTransparencyOverride = mode == "glass" ? false : mode == "reduced" ? true : nil
@@ -152,7 +177,11 @@ enum Drive {
         let m = a.model
         var desk = "none"
         switch m.desk.mode { case .none: desk = "none"; case .list(let i): desk = "list:\(i)"; case .card(let k): desk = "card:\(k)" }
-        return ["shown": a.panel.isShown, "text": m.text, "rows": m.flat.map { ["kind": $0.kind, "title": $0.title, "sub": $0.subtitle] },
+        return ["shown": a.panel.isShown, "text": m.text, "rows": m.flat.map { r -> [String: Any] in
+            var row: [String: Any] = ["kind": r.kind, "title": r.title, "sub": r.subtitle]
+            // A row's symbol and whether the system has it: an unknown name drew an empty tile (the # picker's connectors, #31).
+            if case .symbol(let n, _) = r.icon { row["symbol"] = n; row["symbolOK"] = NSImage(systemSymbolName: n, accessibilityDescription: nil) != nil }
+            return row },
                 "selected": m.selected, "line": m.line ?? NSNull(), "asked": m.asked ?? NSNull(), "reply": m.replyText,
                 "finished": m.reply?.finished ?? NSNull(), "pending": m.pending, "waiting": m.desk.waiting.map(\.title), "desk": desk,
                 "direct": m.direct.dm.map { d in d.messages.map { "\($0.role.rawValue): \($0.text)" } } ?? NSNull(),
