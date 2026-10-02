@@ -66,6 +66,9 @@ Never the test box (now the user's real server) and never the user's Mac. Tests 
 - Landed on stage: relay-deploy cb8298799 (5b80477e9), PR #67 and work/stage-green-022 (793d28ce0). relay-test-loop trigger on work/rc-0.2.2 (5c75dd4ec). On main: memory-sealed-record.yml and the gen-og.sh chrome flags (51be1aa0f).
 - reviewer-2 follow-ups for later (not gates): narrow module:computers in surfaceFor to glass|deck|phone|capsule and add tests for mac, web, lumen and other modules staying via:; test that the phone's onFingerprint equals the box's pairing.requested fingerprint.
 
+- Site (main 1f9daceed): the version text now comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION; gen-site.mjs has RELEASE_NOTES per version, add a line there each release). vyre.run home says 0.2.2; roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5 (lead, 2 Oct). The 0.3 built-in network stays off the public roadmap until the user decides.
+- iq can now dispatch memory-sealed-record.yml from main (51be1aa0f).
+
 ## Next
 
 1. Confirm stage CI green on 793d28ce0 (perf-check aside); fix forward.
