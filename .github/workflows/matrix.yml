@@ -152,7 +152,12 @@ jobs:
           (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:7300 --http-host-header 127.0.0.1:7300 > cf.log 2>&1 &)
           for i in $(seq 1 60); do URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf.log | head -1); [ -n "$URL" ] && break; sleep 1; done
           mkdir rv; echo "$URL" > rv/url
-          for d in mac-chrome mac-safari ios-safari; do sh scripts/matrix/new-link.sh "rv/$d"; done
+          # Each new link replaces the last, so the Mac asks for its links one at a time, through a second tunnel.
+          SECRET=$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n'); echo "$SECRET" > rv/secret
+          (python3 scripts/matrix/link-server.py 18091 "$SECRET" &)
+          (./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:18091 > cf2.log 2>&1 &)
+          for i in $(seq 1 60); do LURL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' cf2.log | head -1); [ -n "$LURL" ] && break; sleep 1; done
+          echo "$LURL" > rv/linkurl
       - uses: actions/upload-artifact@v4
         with: { name: mac-rv, path: rv, retention-days: 1 }
       - name: Hold the box until the Mac is done, then delete the links
@@ -182,19 +187,23 @@ jobs:
           for i in $(seq 1 30); do curl -fs -o /dev/null http://127.0.0.1:7300/ -w '%{http_code}' 2>/dev/null | grep -q . && break; sleep 1; done
       - name: J0 in Chrome on the Mac
         run: |
+          sh scripts/matrix/fetch-link.sh "$RUNNER_TEMP/rv" mac-chrome
           "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome" --no-first-run about:blank >/dev/null 2>&1 &
           for i in $(seq 1 50); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
           node scripts/matrix/j0.mjs --link-file "$RUNNER_TEMP/rv/mac-chrome" --device mac-chrome --out results/mac
       - name: J0 in Safari on the Mac
         if: always()
         run: |
+          sh scripts/matrix/fetch-link.sh "$RUNNER_TEMP/rv" mac-safari
           sudo safaridriver --enable
           safaridriver -p 4444 >/dev/null 2>&1 &
           sleep 2
           node scripts/matrix/j0.mjs --webdriver http://127.0.0.1:4444 --link-file "$RUNNER_TEMP/rv/mac-safari" --device mac-safari --out results/mac
       - name: J0 in Safari on the iPhone simulator
         if: always()
-        run: sh scripts/matrix/ios-j0.sh "$RUNNER_TEMP/rv/ios-safari"
+        run: |
+          sh scripts/matrix/fetch-link.sh "$RUNNER_TEMP/rv" ios-safari
+          sh scripts/matrix/ios-j0.sh "$RUNNER_TEMP/rv/ios-safari"
       - name: Tell the box it can go
         if: always()
         run: mkdir -p done && date > done/at
@@ -231,8 +240,165 @@ jobs:
         if: always()
         with: { name: results-upgrade, path: results, retention-days: 14 }
 
+  data:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'data')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: box, path: box }
+      - name: J8, export, import and uninstall
+        run: bash scripts/matrix/j8-data.sh box results/data
+      - name: Diagnostics
+        if: failure()
+        run: for f in results/data/*.log; do echo "== $f"; tail -15 "$f"; done; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-data, path: results, retention-days: 14 }
+
+  j1:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j1')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - run: sh scripts/build-site.sh
+      - name: J1, install and onboarding through the setup page
+        run: sh scripts/matrix/j1.sh results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j1, path: results, retention-days: 14 }
+
+  j6:
+    name: j6-${{ matrix.os }}
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j6')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: J6, Vyre for Chrome on a fake GoHighLevel page
+        run: node scripts/matrix/j6.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "results-j6-${{ matrix.os }}", path: results, retention-days: 14 }
+
+  j7:
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j7')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: J7, an agent's computer in Glass (known red until the computers bugs are fixed)
+        run: node scripts/matrix/j7.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j7, path: results, retention-days: 14 }
+
+  refusals:
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'refusals')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate, one version above 0.1.1
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          sh scripts/build-site.sh
+      - name: J2b, the signed-update refusals on a real install
+        run: bash scripts/matrix/j2-update-refusals.sh site/box results/update-refusals
+      - name: Diagnostics
+        if: failure()
+        run: tail -30 results/update-refusals/install.log results/update-refusals/updater.log 2>/dev/null; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-update-refusals, path: results, retention-days: 14 }
+
+  j1b:
+    needs: build
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j1b')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - run: sh scripts/build-site.sh
+      - name: J1b, naming the box from a terminal
+        run: sh scripts/matrix/j1b-cli.sh results/j1b
+      - name: Diagnostics
+        if: failure()
+        run: tail -20 results/j1b/install.log; for f in results/j1b/*.log results/j1b/*.err; do echo "== $f"; head -c 500 "$f"; done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-j1b, path: results, retention-days: 14 }
+
+  j5:
+    name: j5-${{ matrix.os }}
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'j5')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: J5, the pairing steps an agent can walk (5.1, 5.6, 5.9)
+        run: node scripts/matrix/j5.mjs results
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "results-j5-${{ matrix.os }}", path: results, retention-days: 14 }
+
+  cosign:
+    if: contains(github.event.inputs.on || 'all', 'all') || contains(github.event.inputs.on, 'cosign')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate, with the unstripped wrapper the cosign cases need
+        run: |
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+      - name: J2c, the cosign refusals
+        run: bash scripts/matrix/j2c-cosign-refusals.sh site/box results/cosign-refusals
+      - name: Diagnostics
+        if: failure()
+        run: tail -30 results/cosign-refusals/install.log results/cosign-refusals/sign-*.log 2>/dev/null; docker ps -a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: results-cosign-refusals, path: results, retention-days: 14 }
+
   report:
-    needs: [linux, android, windows, mac, upgrade]
+    needs: [j5, cosign, j1b, linux, android, windows, mac, upgrade, data, j1, j6, j7, refusals]
     if: always()
     runs-on: ubuntu-24.04
     steps:
