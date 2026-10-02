@@ -302,6 +302,8 @@ test("person: a cookie sent by a request another site or an opaque frame started
   assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "document" })).data.signed, false, "another site");
   assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "iframe" })).data.signed, false);
   assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "iframe" })).data.signed, false, "a frame that is not from this origin");
+  assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "document" })).data.signed, false, "another box's page on a sibling name (vyre.run is not a public suffix)");
+  assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "empty" })).data.signed, false, "a same-site fetch");
   assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "embed" })).data.signed, false);
   assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "object" })).data.signed, false);
 });

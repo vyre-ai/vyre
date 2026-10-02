@@ -40,15 +40,17 @@ export const bodyHash = raw => crypto.createHash("sha256").update(raw || "").dig
 
 
 /**
- * Did something other than this origin's own page start this request? Sec-Fetch-Site "cross-site" (an opaque-origin frame counts as
- * cross-site even to the same host), or a frame, iframe, embed or object load whose site is not "same-origin". A request with no
- * Sec-Fetch headers (curl, native clients, old browsers) is untouched.
+ * Did something other than this origin's own page start this request? The cookie is the person's only when the browser says the request is
+ * same-origin, or "none" (the person typed the address, followed a bookmark or a notification), or says nothing (curl, a native client, an
+ * old browser). Cross-site is refused (an opaque-origin frame counts as cross-site even to the same host), and so is same-site: vyre.run is not
+ * on the Public Suffix List, so every box's <name>.vyre.run is same-site with every other box's, and a SameSite=Strict cookie still rides a
+ * request from one box's page to another (reviewer-2, 2 Oct 2026). A frame, iframe, embed or object load that is not from this origin is refused too.
  * @param {any} headers
  */
 export function foreignFetch(headers) {
   const site = String(headers["sec-fetch-site"] || "").toLowerCase();
   const dest = String(headers["sec-fetch-dest"] || "").toLowerCase();
-  if (site === "cross-site") return true;
+  if (site !== "" && site !== "same-origin" && site !== "none") return true;
   return ["iframe", "frame", "embed", "object"].includes(dest) && site !== "" && site !== "same-origin";
 }
 
