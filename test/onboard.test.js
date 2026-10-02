@@ -817,3 +817,31 @@ test("onboard: the box holds the setup step list: skips and passes are kept, the
   assert.equal(retry.state, "made");
   assert.equal((await setup()).data.assistant.display, "Kit");
 });
+
+test("onboard: only the person (their own surface or the setup page) changes the name, skips and the assistant, and only they are told the person's name", async t => {
+  const { root } = await box(t, { vault: { keystore: "file" } });
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  assert.equal((await (await tool(base, session, "onboard.you", { name: "Alex Smith", assistant: "Kit" })).json()).error, undefined);
+  for (const caller of ["mcp", "harness", "module:planner"]) {
+    for (const [name, input] of [["onboard.you", { name: "Mallory" }], ["onboard.skip", { step: "history" }], ["onboard.assistant", {}], ["onboard.setup", { skip: "ai" }], ["onboard.setup", { pass: "history" }]]) {
+      const r = await call(name, input, { root, caller });
+      assert.equal(r.error && r.error.code, "denied", `${caller} ${name}: ${JSON.stringify(r)}`);
+    }
+    // Reading the list is fine, but it does not hand over who the person is.
+    const stR = await call("onboard.status", {}, { root, caller });
+    const st = stR.data;
+    assert.ok(st, `${caller}: ${JSON.stringify(stR)}`);
+    assert.deepEqual([st.name, st.person, st.accountName], [null, null, null], `${caller} is not told the person's name`);
+    const sl = (await call("onboard.setup", {}, { root, caller })).data;
+    assert.deepEqual([sl.name, sl.accountName], [null, null]);
+  }
+  // The person's own surface, and the setup page, are told and may change them.
+  const mine = (await call("onboard.status", {}, { root, caller: "cli" })).data;
+  assert.deepEqual([mine.name, mine.person], ["Alex Smith", "Alex Smith"]);
+  assert.equal((await call("onboard.setup", { skip: "phone" }, { root, caller: "cli" })).error, undefined);
+  assert.equal((await (await tool(base, session, "onboard.setup", { skip: "computers" })).json()).error, undefined);
+  assert.equal((await (await tool(base, session, "onboard.status")).json()).data.name, "Alex Smith");
+  assert.equal((await call("onboard.you", { name: "Alex Smith", assistant: "Kit" }, { root, caller: "cli" })).error, undefined);
+});

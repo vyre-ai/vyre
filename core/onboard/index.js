@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
+import { isPerson } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "./steps.js";
@@ -173,6 +174,9 @@ export default {
     // one. Reviewer's condition, 28 Sep: refuse up front, through this one guard, on every wizard
     // tool but the two that are meant to work on Solo (onboard.status, which only reads, and
     // onboard.machine, which is how a Solo machine becomes a server in the first place).
+    /** The person on their own surface, or the setup page's own loopback caller: not a model on the box, a module or a guest. */
+    const personOrPage = caller => String(caller) === "onboard" || isPerson(String(caller));
+    const personOnly = caller => { if (!personOrPage(caller)) throw Object.assign(new Error("only the person, on their own surface or the setup page, changes this"), { code: "denied" }); };
     const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
@@ -281,7 +285,7 @@ export default {
       const can = canRelayJoin(process.platform);
       return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        host: (t && t.node && t.node.name) || os.hostname(), name: ob().person || null, accountName, person: ob().person || null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
+        host: (t && t.node && t.node.name) || os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
         current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
@@ -386,6 +390,7 @@ export default {
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
         boxOnly();
+        personOnly(caller);
         const p = String(name ?? "").trim(), a = String(assistant ?? "").trim();
         if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p) || !/\p{L}/u.test(p)) throw new Error("your name is any letters, one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
@@ -587,6 +592,7 @@ export default {
       input: obj({ step: { type: "string", enum: STEPS } }, ["step"]),
       run: async ({ step }, { caller }) => {
         boxOnly();
+        personOnly(caller);
         save({ onboard: { skipped: [...new Set([...skipped(), step])] } });
         return status(caller);
       },
@@ -652,6 +658,7 @@ export default {
       input: obj({ retry: { type: "boolean" } }),
       run: async (_, { caller }) => {
         boxOnly();
+        personOnly(caller);
         const a = await ensureAssistant({ fallbackName: Boolean(ob().finished) });
         return { ...a, state: a.made ? "made" : a.display ? "failed" : "unnamed" };
       },
@@ -735,6 +742,7 @@ export default {
       run: async (input, { caller }) => {
         boxOnly();
         const i = input || {};
+        if (i.skip || i.unskip || i.pass) personOnly(caller);
         const set = k => new Set(ob()[k] || []);
         if (i.skip || i.unskip) {
           const sk = set("setupSkipped");
