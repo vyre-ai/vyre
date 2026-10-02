@@ -656,7 +656,9 @@ test("root run (reviewer-2's HIGH): compose runs only from root's own copy with 
   assert.match(env, /^VYRE_DRIVE_ACCESS=rw$/m);
   assert.match(env, /^VYRE_TS_HOSTNAME=box-1$/m);
   assert.match(env, /^VYRE_DOCKER_PROXY_REPLICAS=0$/m, "the one off switch for agents' computers is passed on");
-  for (const bad of ["SYS_ADMIN", "evil/image", "DOCKER_GID", "VYRE_COMPUTERS", "VYRE_IMAGE", "VYRE_UPDATE_ROOT=/\n"]) assert.ok(!env.includes(bad), `${bad} was not passed on`);
+  for (const bad of ["SYS_ADMIN", "evil/image", "DOCKER_GID=abc", "VYRE_COMPUTERS", "VYRE_IMAGE", "VYRE_UPDATE_ROOT=/\n"]) assert.ok(!env.includes(bad), `${bad} was not passed on`);
+  // A DOCKER_GID that is not a number is not passed on; root takes the group from the socket itself when there is one (a number or nothing).
+  assert.ok(!/^DOCKER_GID=(?![0-9]+$)/m.test(env), "DOCKER_GID, when present, is a number");
   const venv = fs.readFileSync(path.join(RUNDIR, "vyre.env"), "utf8");
   assert.match(venv, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
   assert.ok(!/EVIL|BAD|\$\(|`/.test(venv), "a line with interpolation is not copied");

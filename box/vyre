@@ -456,6 +456,12 @@ prepare_run() {
     if [ -f "$DIR/.env" ]; then
       sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^VYRE_DOCKER_PROXY_REPLICAS=\([01]\)$/VYRE_DOCKER_PROXY_REPLICAS=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
     fi; } >"$ce"
+  # An older .env may have no DOCKER_GID, and the compose file's default (999) is only right when the host's docker group is 999: take the
+  # group from the socket itself (root can read it; a number or nothing) so agents' computers do not fail with a permission error.
+  if ! grep -q '^DOCKER_GID=' "$ce"; then
+    g=$(stat -c %g "${VYRE_DOCKER_SOCK:-/var/run/docker.sock}" 2>/dev/null || true)
+    case "$g" in ''|*[!0-9]*) ;; *) echo "DOCKER_GID=$g" >>"$ce"; echo "vyre: this server's Docker group is $g and $DIR/.env has no DOCKER_GID, so the update uses $g for agents' computers (add DOCKER_GID=$g to $DIR/.env to keep it)" >&2 ;; esac
+  fi
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
   if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
   else : >"$RUN/vyre.env.new"; fi
@@ -1025,6 +1031,11 @@ case "${1:-}" in up|update) expire_code ;; esac
 case "${1:-}" in
   up)
     shift
+    # Said once, in one line, when the host's docker group is not the 999 the compose file assumes and .env does not say.
+    if [ -f "$DIR/.env" ] && ! grep -q '^DOCKER_GID=' "$DIR/.env"; then
+      g=$(stat -c %g "${VYRE_DOCKER_SOCK:-/var/run/docker.sock}" 2>/dev/null || true)
+      case "$g" in ''|*[!0-9]*|999) ;; *) echo "vyre: this server's Docker group is $g, but $DIR/.env has no DOCKER_GID, so agents' computers cannot reach Docker; add DOCKER_GID=$g to $DIR/.env and run: vyre up" >&2 ;; esac
+    fi
     link=${VYRE_LINK_ONLY:-0}
     for a in "$@"; do [ "$a" != --print-link ] || link=1; done
     if [ "$link" = 1 ]; then
