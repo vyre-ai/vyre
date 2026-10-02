@@ -2,7 +2,8 @@
 // The camera page's rules, with no DOM and no camera (team/0.2.2/wink-camera.html, wink-registry.md and platform's
 // rulings): what state the page is in, what a card may say, and where a confirmed scan goes.
 //
-//   search -> seen (a ring decoded: a tick) -> locked (the relay record checked out on this phone: a firm double
+//   search -> seen (a ring decoded: a tick) -> handoff (the camera page: no lookup, no card; the app confirms)
+//   Card path (a later QR purpose, with its own rules): seen -> locked (the relay record checked out on this phone: a firm double
 //   tap) -> card (the result card rises, thumb reach) -> handoff | search (Not now) | error
 //   install: an iPhone or iPad in Safari (not the installed app). It never scans: the seed is never read, stored or sent
 //   from there (platform ruling 2); the person installs, opens the app and scans again.
@@ -19,7 +20,7 @@
 export const APP_ORIGIN = "https://app.vyre.run";
 
 /** @typedef {{ kind: "install" } | { kind: "idle" } | { kind: "search" } | { kind: "seen" } | { kind: "locked", card: Card }
- *   | { kind: "card", card: Card } | { kind: "handoff", card: Card } | { kind: "error", code: string, message: string, retryable: boolean }} State */
+ *   | { kind: "card", card: Card } | { kind: "handoff", card: Card | null } | { kind: "error", code: string, message: string, retryable: boolean }} State */
 /** @typedef {{ purpose: "pair.device", id: string, kind: string, who: string, address: string, fingerprint: string, note: string, expires: string, main: string, other: string }} Card */
 
 const CONTROL = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2069\\ufeff]+", "g");
@@ -80,7 +81,7 @@ export const initial = ({ install }) => (install ? { kind: "install" } : { kind:
 
 /**
  * @param {State} s
- * @param {{ type: "start" } | { type: "seen" } | { type: "locked", card: Card } | { type: "shown" } | { type: "notNow" }
+ * @param {{ type: "start" } | { type: "seen" } | { type: "decoded" } | { type: "locked", card: Card } | { type: "shown" } | { type: "notNow" }
  *   | { type: "confirm", id: string } | { type: "failed", code?: string, message: string, retryable?: boolean } | { type: "retry" }} e
  * @returns {State}
  */
@@ -89,6 +90,8 @@ export function step(s, e) {
   switch (e.type) {
     case "start": return s.kind === "idle" || s.kind === "error" ? { kind: "search" } : s;
     case "seen": return s.kind === "search" ? { kind: "seen" } : s;
+    // A ring decoded on the camera page: no lookup and no card there (the app's card is the only confirm), straight to the hand-off.
+    case "decoded": return s.kind === "search" || s.kind === "seen" ? { kind: "handoff", card: null } : s;
     case "locked": return s.kind === "seen" || s.kind === "search" ? { kind: "locked", card: e.card } : s;
     case "shown": return s.kind === "locked" ? { kind: "card", card: s.card } : s;
     case "notNow": return s.kind === "card" || s.kind === "locked" ? { kind: "search" } : s;

@@ -54,7 +54,7 @@ test("build: sealed, every folder verifies, the entry is pinned by SRI, no inlin
   await assert.rejects(verify(out, new Uint8Array(Buffer.from(pub, "base64url"))), /does not match/);
 });
 
-test("the page makes no request but the relay's and keeps nothing: no storage, no cookie, no fetch of its own, in any file it loads except the device-key store the relay client owns", () => {
+test("the page makes no request at all and keeps nothing: no storage, no cookie, no fetch of its own, in any file it loads except the device-key store the relay client owns", () => {
   const files = closure().filter(f => f.startsWith("relay/wink/") || f === "deck/js/scan.js" || f === "deck/js/haptics.js");
   for (const f of files) {
     const src = fs.readFileSync(path.join(import.meta.dirname, "..", "..", f), "utf8");
@@ -83,11 +83,11 @@ test("scripts/build-wink-out: the real path (a PEM key from the environment, not
   assert.equal(t.throwaway, true);
 });
 
-test("headers: no framing, no inline, no third party, camera for this origin only, no referrer, the relay as the only connection", () => {
+test("headers: no framing, no inline, no third party, camera for this origin only, no referrer, no connection", () => {
   assert.match(CSP, /frame-ancestors 'none'/);
   assert.match(CSP, /default-src 'none'/);
   assert.match(CSP, /script-src 'self'(;|$)/);
-  assert.match(CSP, /connect-src https:\/\/relay\.vyre\.run wss:\/\/relay\.vyre\.run(;|$)/);
+  assert.match(CSP, /connect-src 'none'(;|$)/, "the page looks nothing up: no connection at all");
   assert.doesNotMatch(CSP, /unsafe-inline|unsafe-eval|\*/);
   assert.equal(CSP_BODY.includes("frame-ancestors"), false, "a meta CSP cannot carry it; the header does");
   assert.equal(HEADERS["x-frame-options"], "DENY");

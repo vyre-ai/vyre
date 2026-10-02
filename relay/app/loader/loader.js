@@ -9,12 +9,12 @@
 // device key is a non-extractable CryptoKey in IndexedDB, and the box record in localStorage
 // holds no secret. release.js stamps the release public key below.
 
-import { pair, connect, PAIR_BASE } from "./client/client.js";
+import { pair, resolveTicket, pairOffer, connect, PAIR_BASE } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
 import { registerWorker, adoptInWorker } from "./adopt.js";
-import { pairTicketFrom, HOSTED_RELAY } from "./fragment.js";
+import { pairTicketFrom, HOSTED_RELAY, cardWords, pairWithCard } from "./fragment.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
 const BOX = "vyre.box";
@@ -72,6 +72,30 @@ function inject(base, manifest) {
   }
 }
 
+/**
+ * The confirm card: who the code says it is, the box key's fingerprint, and two buttons. Text only, never markup.
+ * Resolves true only on the tap on Pair.
+ * @param {{ says: string, fingerprint: string }} w @returns {Promise<boolean>}
+ */
+function confirmCard(w) {
+  return new Promise(resolve => {
+    const root = document.getElementById("vyre-loader");
+    if (!root) return resolve(false);
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
+    const card = el("div", "", "card");
+    card.setAttribute("role", "dialog");
+    card.append(el("p", `This code says it is ${w.says}.`), el("p", `Its key fingerprint is ${w.fingerprint}. Pair only if you started this on your own server and the fingerprint matches what it shows.`));
+    const pairBtn = el("button", "Pair this device", "primary"), notNow = el("button", "Not now", "quiet");
+    pairBtn.type = notNow.type = "button";
+    pairBtn.addEventListener("click", () => { card.remove(); resolve(true); }, { once: true });
+    notNow.addEventListener("click", () => { card.remove(); resolve(false); }, { once: true });
+    card.append(pairBtn, notNow);
+    status("");
+    root.append(card);
+    pairBtn.focus();
+  });
+}
+
 async function main() {
   const registered = registerWorker();
   const crypto = webCrypto();
@@ -79,16 +103,25 @@ async function main() {
   const last = load(LAST) || {};
   const about = { kind: /** @type {"web"} */ ("web"), ...(last.release ? { release: last.release, manifest: last.manifest } : {}) };
   let box = load(BOX);
-  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`: take it out of the address at once. This app then
-  // looks the ticket up again and shows its own card before it redeems anything (pairing.js), with this origin's own device key.
-  // The passkey is enrolled here too, by the app, once it is connected.
-  const handed = pairTicketFrom(location.hash);
+  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`; the installed app with no server yet scans one
+  // itself (pairing.js, the same scanner, no lookup). Anyone can send a person such a link, so nothing is redeemed on arrival: the
+  // fragment is read once and scrubbed from the address and history at once, the ticket is resolved ONCE (read only; it uses the
+  // ticket up), and the person sees who it says it is, with the key's fingerprint, and must tap Pair. The pairing then uses the
+  // record already held (a second lookup would find the ticket gone). A tap on Not now, or leaving, pairs nothing.
+  let handed = pairTicketFrom(location.hash);
   if (handed) history.replaceState(null, "", "/");
-  if (handed || (!box && location.pathname !== "/pair")) {
-    // No server yet (the installed app's first launch) opens the scanner right here, never by navigating to wink.vyre.run, which on
-    // iOS leaves the installed app for a browser sheet.
-    const { pairInApp } = await import("./pairing.js");
-    box = await pairInApp({ ticket: handed, relay: HOSTED_RELAY, name: browserName(), about, keyStore, crypto });
+  if (!handed && !box && location.pathname !== "/pair") {
+    // No server yet: the scanner opens right here, never by navigating to wink.vyre.run, which on iOS leaves the installed app.
+    const { scanTicket } = await import("./pairing.js");
+    handed = await scanTicket({ relay: HOSTED_RELAY, crypto });
+  }
+  if (handed) {
+    box = await pairWithCard(handed, {
+      resolve: () => { status("Looking up this pairing code"); return resolveTicket(handed, { relay: HOSTED_RELAY, crypto }); },
+      confirm: found => confirmCard(cardWords(found)),
+      pair: found => { status("Pairing this device with your server"); return pairOffer(found.offer, { name: browserName(), about, keyStore, crypto }); },
+    });
+    if (!box) { status("Nothing was paired."); return; }
     store(BOX, box);
   } else if (location.pathname === "/pair" && location.hash.length > 1) {
     status("Pairing this browser with your box");

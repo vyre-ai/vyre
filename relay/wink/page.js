@@ -8,14 +8,15 @@
 
 import { h, put } from "../../deck/js/dom.js";
 import { classifyError } from "../../deck/js/pair-ticket.js";
-import { initial, step, needsInstall, cardOf, cardId, handoffUrl } from "./flow.js";
+import { initial, step, needsInstall, handoffUrl } from "./flow.js";
 
 /**
- * @typedef {{ nav: any, standalone?: boolean, relay: string, crypto: any,
+ * @typedef {{ nav: any, standalone?: boolean,
  *   startScan: (o: { video: HTMLVideoElement, onFound: (ticket: Uint8Array) => void, onError: (e: Error) => void, onSlow?: () => void }) => { stop: () => void },
- *   resolveTicket: (ticket: Uint8Array, o: { relay: string, crypto: any }) => Promise<{ name: string, fingerprint: string, handle?: string | null }>,
- *   sha256: (b: Uint8Array) => Promise<Uint8Array>, haptic: (k: "tick" | "success" | "warning") => unknown,
- *   navigate: (url: string) => void, ticket?: Uint8Array, registerWorker?: () => void, redeem?: (ticket: Uint8Array) => void | Promise<void>, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
+ *   haptic: (k: "tick" | "success" | "warning") => unknown, navigate: (url: string) => void, registerWorker?: () => void,
+ *   onTicket?: (ticket: Uint8Array) => void, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
+ *   This page never looks a ticket up and shows no card: it decodes the ring and hands the ticket on, to app.vyre.run in the address
+ *   (navigate) or, inside the hosted app itself, to the loader (onTicket). The app's own card is the only confirm.
  */
 
 const SVG = {
@@ -42,8 +43,6 @@ export function mountWink(root, d) {
   const later = d.later || ((fn, ms) => setTimeout(fn, ms));
   const install = needsInstall(d.nav, !!d.standalone);
   let state = initial({ install });
-  /** The ticket and the verified record: in this closure only, dropped on Not now, on the hand-off and on any error. @type {{ ticket: Uint8Array, record: { name: string, fingerprint: string } } | null} */
-  let pending = null;
   /** @type {{ stop: () => void } | null} */ let scan = null;
   let slow = false;
   let torchOn = false;
@@ -78,12 +77,6 @@ export function mountWink(root, d) {
 
   function startCamera() {
     scan?.stop();
-    if (d.ticket) { // a ticket handed over in the app's address: no camera, the same lookup and the same card
-      const given = d.ticket; d.ticket = undefined;
-      dispatch({ type: "start" });
-      put(hint, "Reading the code"); onFound(given);
-      return;
-    }
     slow = false;
     sheet.classList.remove("up"); put(sheet);
     reticle.setAttribute("class", "reticle"); done.setAttribute("class", "done");
@@ -95,68 +88,21 @@ export function mountWink(root, d) {
   }
 
   /** @param {Uint8Array} ticket */
-  async function onFound(ticket) {
-    dispatch({ type: "seen" });
-    reticle.classList.add("found"); put(hint, "Hold still");
-    d.haptic("tick");
-    try {
-      const record = await d.resolveTicket(ticket, { relay: d.relay, crypto: d.crypto });
-      const id = await cardId(ticket, record, d.sha256);
-      pending = { ticket, record };
-      dispatch({ type: "locked", card: cardOf(record, id) });
-      reticle.classList.add("locked"); hint.hidden = true;
-      d.haptic("success");
-      scan?.stop(); scan = null; // the camera is off while a card is up: light by default
-      later(showCard, 650);
-    } catch (err) { fail(/** @type {Error} */ (err)); }
-  }
-
-  function showCard() {
-    if (state.kind !== "locked") return;
-    const card = state.card;
-    dispatch({ type: "shown" });
-    // Every word below is a text node (h() never parses markup), and came from cardOf: the record's own name, capped and cleaned.
-    put(sheet,
-      h("div", { class: "grab" }),
-      h("div", { class: "kind" }, card.kind),
-      h("h2", { class: "who" }, card.who),
-      h("span", { class: "chip" }, card.expires),
-      h("p", { class: "note" }, card.note),
-      // The server's address, a line of its own (display only: the hand-off goes to app.vyre.run whatever the record says).
-      // A claim, not a fact: any server can say any name, so it sits beside the key fingerprint, which a server cannot choose.
-      h("p", { class: "addr" }, card.address ? ["Says it is ", h("b", null, card.address)] : "This server has no name yet."),
-      h("p", { class: "fp" }, "Code ", h("b", null, card.fingerprint), ". Check it matches your Vyre screen."),
-      h("div", { class: "row" },
-        h("button", { type: "button", class: "btn", onclick: notNow }, card.other),
-        h("button", { type: "button", class: "btn btn-primary main", onclick: () => confirm(card.id) }, card.main)));
-    sheet.classList.add("up");
-  }
-
-  function notNow() {
-    pending = null;
-    dispatch({ type: "notNow" });
-    startCamera();
-  }
-
-  /** @param {string} id */
-  function confirm(id) {
-    dispatch({ type: "confirm", id });
-    if (state.kind !== "handoff" || !pending) return; // no card on screen, or not this card: nothing happens
-    // On wink.vyre.run the ticket goes to the hosted app in the URL fragment. Inside the hosted app itself (d.redeem, the unpaired
-    // app opening to its scanner) it goes straight to the app's own pairing: no URL, no navigation.
-    const ticket = pending.ticket;
-    const url = d.redeem ? "" : handoffUrl(ticket);
-    pending = null; // from here the ticket lives only in the URL, or in the app's own pairing call
-    sheet.classList.remove("up");
-    put(done, h("div", { class: "tick" }, icon("check", 34)), h("b", null, d.redeem ? "Pairing" : "Opening Vyre"), h("p", null, d.redeem ? "One moment." : "Finish pairing there."));
-    done.classList.add("on");
+  function onFound(ticket) {
+    if (state.kind !== "search") return; // one ring, one hand-off, however many frames decode it
+    dispatch({ type: "decoded" });
+    reticle.classList.add("found", "locked"); hint.hidden = true;
+    scan?.stop(); scan = null; // the camera is off once a ring is read: light by default
     d.haptic("success");
-    later(() => { if (d.redeem) Promise.resolve(d.redeem(ticket)).catch(e => fail(/** @type {Error} */ (e))); else d.navigate(url); }, 450);
+    // The ticket now lives only in the URL, or in the loader's own call: this page has no copy and looked nothing up.
+    const url = d.onTicket ? "" : handoffUrl(ticket);
+    put(done, h("div", { class: "tick" }, icon("check", 34)), h("b", null, d.onTicket ? "Got it" : "Opening Vyre\u2026"), h("p", null, d.onTicket ? "One moment." : "Finish pairing there."));
+    done.classList.add("on");
+    later(() => { if (d.onTicket) d.onTicket(ticket); else d.navigate(url); }, 450);
   }
 
   /** @param {Error & { code?: string }} err */
   function fail(err) {
-    pending = null;
     scan?.stop(); scan = null;
     const c = err && (err.code === "no_camera" || err.code === "camera_ended" || err.name === "NotAllowedError" || err.name === "NotFoundError")
       ? { code: err.code || "camera", message: err.name === "NotAllowedError" ? "Camera access is off. Allow it for this page and try again." : String(err.message || "The camera is not available."), retryable: true }
@@ -188,5 +134,5 @@ export function mountWink(root, d) {
   }
 
   startCamera();
-  return { stop() { pending = null; scan?.stop(); scan = null; }, state: () => state };
+  return { stop() { scan?.stop(); scan = null; }, state: () => state };
 }
