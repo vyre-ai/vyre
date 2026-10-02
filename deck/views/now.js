@@ -27,6 +27,7 @@ import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
 import { sessionHref, elsewhere, fromMac } from "../js/need-rows.js";
+import { threadHref } from "../chat/lib/routes.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
 const phone = () => isPhone();
@@ -45,6 +46,8 @@ export default async function now(ctx) {
   ctx.cleanup(mountGlassMini(glassMini, { attempt, on }));
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
+  // The right column (from 1000 px): the last things that happened. Under it, on a narrow window, it stacks below.
+  const side = h("aside", { class: "now-side", "aria-label": "Recent" });
 
   // A Mac asking to pair waits on the person, so it sits above everything else.
   const pairing = pairRequests();
@@ -53,7 +56,7 @@ export default async function now(ctx) {
   const firstKey = firstPasskeyCard();
   ctx.cleanup(firstKey.stop);
 
-  put(ctx.root, h("div", { class: "now" },
+  put(ctx.root, h("div", { class: "now now-cols" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
@@ -62,7 +65,8 @@ export default async function now(ctx) {
       pairing.el,
       setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
-      needsBox, glassMini, working, learned, recentProjects)));
+      needsBox, glassMini, working, learned, recentProjects),
+    side));
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
@@ -152,8 +156,23 @@ export default async function now(ctx) {
       r.error ? empty("Nothing is running.", r.error) : h("div", { class: "empty" }, "Nothing is running."),
       c.data?.sessions?.length ? h("div", { class: "rows" }, c.data.sessions.map(recentRow)) : null);
   };
+  // Recent: the last six things that happened, one line each: who, what, when. A tap opens the thread.
+  const drawEvents = async () => {
+    const r = await attempt("threads.list", {}, { share: true });
+    if (!ctx.alive()) return;
+    const rows = (Array.isArray(r.data) ? r.data : []).filter(t => t && t.id && (t.last || t.started)).sort((a, b) => (b.last || b.started || 0) - (a.last || a.started || 0)).slice(0, 6);
+    const hd = h("h2", { class: "lbl", id: "events-h" }, "Recent");
+    if (r.error && r.error.code !== "offline") { put(side, hd, empty("Could not load what happened.", r.error)); return; }
+    put(side, hd, rows.length
+      ? h("div", { class: "now-events" }, rows.map(t => link(threadHref({ id: t.id, project: t.project || null }, null), { class: "now-event" },
+        threadAvatar({ agent: t.agent, project: t.project, thread: t.id }, { size: 24 }),
+        h("span", { class: "now-event-t ellipsis" }, t.name || t.label || "New chat"),
+        h("span", { class: "now-event-w" }, when(t.last || t.started)))))
+      : h("div", { class: "empty" }, "Nothing yet. Things your agents do will appear here."));
+  };
+  drawEvents();
   drawWorking();
-  for (const t of ["thread.started", "thread.finished", "thread.stopped", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(drawWorking, 300); });
+  for (const t of ["thread.started", "thread.finished", "thread.stopped", "thread.tool"]) ctx.on(t, () => { clearTimeout(wt); wt = window.setTimeout(() => { void drawWorking(); void drawEvents(); }, 300); });
   let wt = 0;
 
   // Learned today

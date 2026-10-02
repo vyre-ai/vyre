@@ -34,8 +34,9 @@
 
 import { userAvatar, USER_GRADIENTS, PROJECT_COLORS, defaultAvatarOption } from "../vendor/vyrecode/identity.js";
 import { creature } from "../vendor/vyrecode/creature.js";
-import { blob, character } from "../vendor/vyrecode/characters.js";
+import { character } from "../vendor/vyrecode/characters.js";
 import { emblem } from "../vendor/vyrecode/emblem.js";
+import { agentV2 } from "../vendor/vyrecode/agent2.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
 import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
 // A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
@@ -172,7 +173,7 @@ export function avatarSource(family, seed, size, o = {}) {
   if (family === "assistant") return creature(seed, size);
   if (family === "teammate") return character(seed, size, th, o.color || null);
   if (family === "project") return emblem(projectBytes(seed), { draft: !!o.draft, theme: th, size });
-  return blob(seed, size);
+  return agentV2(seed, size, th);
 }
 
 const MAX = 256;

@@ -8,7 +8,7 @@
 .t-title { font: 600 var(--fs-title)/var(--lh-title) var(--sans); letter-spacing: -.012em; }
 .t-page { font: 600 var(--fs-page)/var(--lh-page) var(--sans); letter-spacing: -.02em; }
 .t-display { font: 600 var(--fs-display)/var(--lh-display) var(--sans); letter-spacing: -.025em; }
-.t-label { font: 500 var(--fs-label)/16px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--label); }
+.t-label { font: 600 var(--fs-caption)/16px var(--sans); letter-spacing: 0; text-transform: none; color: var(--label); }
 .t-num { font-feature-settings: "tnum" 1, "cv11" 1; }
 
 /* ---- loading: skeleton rows at the real row height ---- */

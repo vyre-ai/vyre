@@ -207,3 +207,18 @@
   .gm-card { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .gm-step { transition: none; } }
+
+/* The right column (v2): Recent, from 1000 px; below that it stacks under the left. */
+.now-cols { display: block; }
+.now-side { width: 880px; max-width: 100%; margin: 0 auto; padding: 0 24px 48px 88px; }
+.now-events { display: flex; flex-direction: column; }
+.now-event { display: flex; align-items: center; gap: var(--s-3, 12px); min-height: 44px; padding: 6px 4px; border-bottom: 1px solid var(--edge, var(--rule)); text-decoration: none; color: var(--text); font-size: var(--fs-body, 14px); line-height: 20px; }
+.now-event:hover { background: var(--hover); }
+.now-event-t { flex: 1; min-width: 0; }
+.now-event-w { flex: none; font-size: var(--fs-caption, 12px); line-height: 16px; color: var(--label); }
+@media (min-width: 1000px) {
+  .now-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; max-width: 1120px; margin: 0 auto; }
+  .now-cols .now-col { margin: 0; width: auto; }
+  .now-side { width: auto; margin: 0; padding: 28px 24px 48px 0; }
+}
+@media (min-width: 1000px) and (max-width: 1199px) { .now-cols { display: block; } .now-side { padding-left: 88px; } }

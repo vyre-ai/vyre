@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 5: the Now pass (and the labels, agent faces and width test it carries)
+
+- Now has a right column from 1200 px (it stacks below on a narrower window): Recent, the last six things that happened, one line each with the actor's avatar and the time; a tap opens the thread. Empty: "Nothing yet. Things your agents do will appear here."
+- Section labels are the body role in sentence case, semibold (`.lbl`, the command bar's group names, the Chat and Vault rail headings); mono capitals stay for code, keys and addresses only.
+- Agents have the new face (`deck/vendor/vyrecode/agent2.js`, ported unchanged from `team/0.2.2/deck-v2/agent-v2.js`): a superellipse body, one light, one rim, and fixed sets of eyes, mouths and marks so a dozen agents differ at 24 px. Every agent is drawn once afresh.
+- `deck/test/phone-widths.js`, run by the pwa-shots workflow on a runner: at 320, 360, 390, 430, 600 and 719 every place has no rail, the bottom bar, no sideways scroll and no one-word-per-line; at 720 and 768 the rail shows and the bar does not.
+
 #### deck v2: one list of places, the rail setting
 
 - Merged pwa's `work/pwa-v2-pin` (phone: four tabs plus More, hold-to-pin as a page). `deck/js/place-list.js` is the one list of places: the desk rail and the phone's Places and More sheets all read it, so they cannot drift.

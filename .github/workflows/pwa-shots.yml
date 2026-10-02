@@ -47,6 +47,10 @@ jobs:
           done
           CDP=http://127.0.0.1:9422 node deck/test/pwa-shots.js http://127.0.0.1:4790 "$RUNNER_TEMP/out"
           CODE=$?
+          # Below 720 px the Deck is the phone layout at every width, on every place (deck/test/phone-widths.js).
+          if [ -z "${ONLY:-}" ]; then
+            CDP=http://127.0.0.1:9422 node deck/test/phone-widths.js http://127.0.0.1:4790 || CODE=1
+          fi
           kill $WORLD $CHROME 2> /dev/null
           echo $CODE > "$RUNNER_TEMP/shots.exit"
           SH

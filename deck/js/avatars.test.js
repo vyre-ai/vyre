@@ -65,7 +65,7 @@ test("four families, four silhouettes, each deterministic from its seed", () => 
   const t = av.avatarSource("teammate", "design-harlow", 40);
   assert.match(p, /<circle cx="60" cy="60" r="58"/, "the person is a true circle");
   assert.match(a, /opacity="0\.18"/, "the assistant creature has its glow halo");
-  assert.match(b, /<path d="M [\d.]+,[\d.]+ Q/, "an agent is a blob path");
+  assert.match(b, /<path d="M[\d.]+ [\d.]+ L[\d.]+ [\d.]+ L[^"]+Z" fill="url\(#a[a-z0-9]+\)" stroke="#[0-9a-f]{6}" stroke-width="2.6"/, "an agent is a superellipse body with one light and one 2.6 rim (v2)");
   assert.match(t, /<rect x="30" y="58"/, "a teammate is a character with a body");
   const pj = av.avatarSource("project", "harlow-legal", 120);
   assert.match(pj, /<rect x="2" y="2" width="116" height="116" rx="30"/, "a project is a filled tile");

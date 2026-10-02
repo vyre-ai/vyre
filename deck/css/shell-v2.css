@@ -79,3 +79,8 @@
 
 .shell-note { padding: 0 var(--s-4); }
 .shell-note:empty, .shell-note:has(> [hidden]) { display: none; }
+
+/* Section labels (FIXES.md section 4): the body role in sentence case, never mono capitals. */
+.lbl { font: 600 var(--fs-body)/var(--lh-body) var(--sans); letter-spacing: 0; text-transform: none; color: var(--text-2); }
+.lbl.beacon { color: var(--accent); }
+.cmd-grp { font: 600 var(--fs-caption)/16px var(--sans); letter-spacing: 0; text-transform: none; }
