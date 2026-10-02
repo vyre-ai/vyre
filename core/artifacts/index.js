@@ -32,6 +32,7 @@ import { findSecrets } from "../../lib/secret-text.js";
 import { openStore } from "./store.js";
 import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf, withMetaCsp } from "./render.js";
 import { MEDIA, MAX_MEDIA, mediaFormatOf, isMediaFormat, parseRange } from "./media.js";
+import { probe } from "./probe.js";
 
 export const MIGRATIONS = [
   `
@@ -108,7 +109,7 @@ export const _test = {
   /** How long a folder event for a media file waits for the file to settle, in ms. */
   mediaDebounce: 1500,
   /** The most generated media one project and one thread may hold, in bytes (plain refusal beyond it). */
-  mediaCaps: { project: 5 * 1024 ** 3, thread: 1024 ** 3 },
+  mediaCaps: { project: 5 * 1024 ** 3, thread: 1024 ** 3, total: 20 * 1024 ** 3 },
 };
 
 const PERSONAL = "personal";
@@ -599,10 +600,21 @@ export default {
     /** Refuse when adding `bytes` would pass a cap. @param {string} project @param {string} thread @param {number} bytes */
     const checkMediaCaps = (project, thread, bytes) => {
       const gb = (/** @type {number} */ n) => (n / 1024 ** 3).toFixed(n >= 1024 ** 3 ? 0 : 1);
+      const all = Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(json_extract(media, '$.bytes')), 0) AS n FROM artifacts_items WHERE media IS NOT NULL").get()).n);
+      if (all + bytes > _test.mediaCaps.total) throw refuse(`generated media on this box is at its limit (${gb(_test.mediaCaps.total)} GB). Delete some images, video or audio to make room`, "quota");
       if (mediaHeld("project", project) + bytes > _test.mediaCaps.project) throw refuse(`this project's generated media is at its limit (${gb(_test.mediaCaps.project)} GB). Delete some images, video or audio to make room`, "quota");
       if (mediaHeld("thread", thread) + bytes > _test.mediaCaps.thread) throw refuse(`this conversation's generated media is at its limit (${gb(_test.mediaCaps.thread)} GB). Delete some to make room`, "quota");
     };
 
+
+    /** Size and length from the stored file's own header. @param {string} project @param {string} id @param {string} format @param {number} bytes */
+    const probeStored = async (project, id, format, bytes) => {
+      let fh;
+      try { fh = await fs.promises.open(store.mediaPath(project, id, MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (format)]), "r"); }
+      catch { return {}; }
+      try { return await probe(format, bytes, async (o, n) => { const b = Buffer.alloc(n); const { bytesRead } = await fh.read(b, 0, n, o); return b.subarray(0, bytesRead); }); }
+      finally { await fh.close(); }
+    };
 
     /**
      * Keep media a module hands over as bytes (a provider's content block, base64 in the stream) without a
@@ -646,7 +658,7 @@ export default {
         await store.purge(project, idNew).catch(() => {});
         throw e;
       }
-      const full = { mime: MEDIA[format].mime, bytes: bytes.length, sha256, file: MAIN_FILE[format], ...prov };
+      const full = { mime: MEDIA[format].mime, bytes: bytes.length, sha256, file: MAIN_FILE[format], ...(await probeStored(project, idNew, format, bytes.length)), ...prov };
       db.prepare("INSERT INTO artifacts_versions (artifact, n, sha, at, by, message, size) VALUES (?,?,?,?,?,?,?)").run(idNew, 1, sha, at, JSON.stringify(by), "registered", bytes.length);
       db.prepare("UPDATE artifacts_items SET head = 1, text = ?, media = ?, updated_at = ? WHERE id = ?").run([title, prov.provider, prov.model, prov.prompt].filter(Boolean).join("\n"), JSON.stringify(full), at, idNew);
       const fresh = row(idNew);
@@ -707,7 +719,7 @@ export default {
         await store.purge(project, idNew).catch(() => {});
         throw e;
       }
-      const full = { mime: MEDIA[format].mime, bytes: measured.bytes, sha256: measured.sha256, file: MAIN_FILE[format], ...prov };
+      const full = { mime: MEDIA[format].mime, bytes: measured.bytes, sha256: measured.sha256, file: MAIN_FILE[format], ...(await probeStored(project, idNew, format, measured.bytes)), ...prov };
       db.prepare("INSERT INTO artifacts_versions (artifact, n, sha, at, by, message, size) VALUES (?,?,?,?,?,?,?)").run(idNew, 1, sha, at, JSON.stringify(by), `saved ${name}`, measured.bytes);
       db.prepare("UPDATE artifacts_items SET head = 1, text = ?, media = ?, updated_at = ? WHERE id = ?").run([title, prov.provider, prov.model, prov.prompt].filter(Boolean).join("\n"), JSON.stringify(full), at, idNew);
       db.prepare("INSERT OR REPLACE INTO artifacts_capture_files (thread, name, artifact) VALUES (?,?,?)").run(i.thread, name, idNew);
@@ -1145,6 +1157,48 @@ export default {
       run: async (i, meta) => {
         const r = await reach(i.id, meta, { read: true });
         return /** @type {any[]} */ (db.prepare("SELECT at, kind, detail FROM artifacts_activity WHERE artifact = ? ORDER BY at DESC LIMIT ?").all(r.id, i.limit || 50)).map(a => ({ at: a.at, kind: a.kind, host: a.detail || null }));
+      },
+    });
+
+
+    ctx.tool("artifacts.media.gallery", {
+      description: "Generated images, video and audio as a gallery: newest first, compact rows (title, kind, type, size, width and height or length when the file says them, provider, the start of the prompt), within what the caller may reach. Page with `before` (the created_at of the last row seen).",
+      input: { type: "object", properties: { project: str, kind: { type: "string", enum: ["image", "video", "audio"] }, provider: str, before: { type: "integer" }, limit: { type: "integer", minimum: 1, maximum: 100 } } },
+      examples: [{ kind: "image", limit: 24 }],
+      run: async (i, meta) => {
+        const scope = await scopeOf(meta);
+        const where = ["deleted_at IS NULL", "archived_at IS NULL", "media IS NOT NULL"], args = [];
+        if (!("all" in scope)) { where.push("project = ?"); args.push("project" in scope ? scope.project : PERSONAL); }
+        else if (i.project) { where.push("project = ?"); args.push(i.project); }
+        if (i.kind) { where.push("kind = ?"); args.push(i.kind); }
+        if (Number.isInteger(i.before)) { where.push("created_at < ?"); args.push(i.before); }
+        const limit = i.limit || 30;
+        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM artifacts_items WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT ?`).all(...args, "own" in scope ? 5000 : limit * 3));
+        const out = [];
+        for (const r of rows) {
+          if (!inScope(r, scope)) continue;
+          const m = JSON.parse(r.media);
+          if (i.provider && String(m.provider || "").toLowerCase() !== String(i.provider).toLowerCase()) continue;
+          out.push({ id: r.id, title: r.title, kind: r.kind, format: r.format, project: r.project === PERSONAL ? null : r.project, mime: m.mime, bytes: m.bytes,
+            width: m.width ?? null, height: m.height ?? null, duration_s: m.duration_s ?? null, provider: m.provider || null, model: m.model || null,
+            prompt: m.prompt ? String(m.prompt).slice(0, 140) : null, created_at: r.created_at });
+          if (out.length >= limit) break;
+        }
+        return { items: out, next: out.length === limit ? out[out.length - 1].created_at : null };
+      },
+    });
+
+    ctx.tool("artifacts.media.usage", {
+      description: "How much generated media is kept, and the limits: the whole box, each project and each conversation. The person's own surfaces and Vyre's modules.",
+      input: { type: "object", properties: { project: str } },
+      examples: [{}],
+      run: async (i, meta) => {
+        if (!trustedCaller(meta)) throw refuse("the person's own surfaces and Vyre's modules read usage", "denied");
+        const sum = (/** @type {string} */ sql, /** @type {any[]} */ ...a) => /** @type {any[]} */ (db.prepare(sql).all(...a));
+        const total = Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(json_extract(media, '$.bytes')), 0) AS n, COUNT(*) AS c FROM artifacts_items WHERE media IS NOT NULL").get()).n);
+        const byProject = sum("SELECT project, COUNT(*) AS items, COALESCE(SUM(json_extract(media, '$.bytes')), 0) AS bytes FROM artifacts_items WHERE media IS NOT NULL" + (i.project ? " AND project = ?" : "") + " GROUP BY project ORDER BY bytes DESC", ...(i.project ? [i.project] : []))
+          .map(r => ({ project: r.project === PERSONAL ? null : r.project, items: r.items, bytes: Number(r.bytes), limit: _test.mediaCaps.project }));
+        return { total_bytes: total, limit_bytes: _test.mediaCaps.total, per_conversation_limit: _test.mediaCaps.thread, projects: byProject };
       },
     });
 

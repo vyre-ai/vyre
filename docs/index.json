@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":857,"event":338,"config":239,"env":192,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":859,"event":338,"config":239,"env":192,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -61,8 +61,10 @@
     {"kind":"tool","name":"artifacts.get","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsget","module":"artifacts","mentions":[{"page":"design/system/components/artifact-card.md","line":113,"anchor":"emission-agreed-with-artifacts-sessions-native-core---ar1ar2"}]},
     {"kind":"tool","name":"artifacts.list","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactslist","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.media.copy","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmediacopy","module":"artifacts","mentions":[]},
+    {"kind":"tool","name":"artifacts.media.gallery","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmediagallery","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.media.read","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmediaread","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.media.register","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmediaregister","module":"artifacts","mentions":[]},
+    {"kind":"tool","name":"artifacts.media.usage","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmediausage","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.mention.resolve","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmentionresolve","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.mention.search","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmentionsearch","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.move","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsmove","module":"artifacts","mentions":[]},
