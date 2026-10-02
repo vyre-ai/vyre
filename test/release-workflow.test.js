@@ -15,7 +15,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --setup --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --setup \$MAC_FLAG --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -53,22 +53,41 @@ test("release.yml: the approver's signing-path diff is written in the prepare jo
   const prepare = yml.indexOf("  prepare:"), images = yml.indexOf("\n  images:");
   assert.ok(prepare < i && i < images, "it is a step of the prepare job, which needs no approval");
   const step = yml.slice(i, yml.indexOf("\n      - name:", i + 10));
-  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js"]) assert.ok(step.includes(p), `the diff covers ${p}`);
+  for (const p of [".github/workflows", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/strip-wrapper.mjs", "box/vyre", "apps/app/package-lock.json", "scripts/lock-changes.mjs", "core/vyre-core/release.js", "scripts/mac-app-package.sh", "scripts/mac-app", "scripts/install-mac-server.sh", "local/capsule/native/Lumen.entitlements"]) assert.ok(step.includes(p), `the diff covers ${p}`);
   assert.match(step, /TRUNCATED/, "a truncated diff says so");
 });
 
 test("release.yml: the Windows installer is built in this run, required by the release job, and added to dist before SHA256SUMS is made and signed", () => {
   assert.match(yml, /\n  windows:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/capsule-win\.yml/);
-  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows\]/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac\]/);
   assert.match(yml, /needs\.windows\.result == 'success'/);
   const add = yml.indexOf("Add the Windows installer to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
   assert.ok(add > 0 && add < sums, "the installer is in dist before the signed list is made");
   assert.match(yml, /cp "\$RUNNER_TEMP\/windows\/\$exe" dist\/VyreSetup\.exe/);
 });
 
-test("release.yml: no step needs a secret or a file that does not exist: the only secret is the Ed25519 release key, and minisign is gone", () => {
+test("release.yml: the Lumen Mac app is stable only, built in this run, required by the release job on stable, and added to dist before SHA256SUMS is made and signed", () => {
+  assert.match(yml, /\n  mac:\n    needs: prepare\n    if: needs\.prepare\.outputs\.channel == 'stable'\n    uses: \.\/\.github\/workflows\/mac-app\.yml/);
+  assert.match(yml, /needs: \[prepare, images, manifests, app-web, windows, mac\]/);
+  assert.match(yml, /\(needs\.mac\.result == 'success' \|\| needs\.mac\.result == 'skipped'\)/, "a beta or rc run skips the Mac job and still releases");
+  const add = yml.indexOf("Add the Lumen Mac files to dist"), sums = yml.indexOf("- name: release.json, SHA256SUMS");
+  assert.ok(add > 0 && add < sums, "the dmgs are in dist before the signed list is made");
+  const step = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
+  assert.match(step, /if: env\.CHANNEL == 'stable'/);
+  for (const f of ["Vyre-Lumen-$arch.dmg", "Vyre-Lumen-$arch.zip"]) assert.ok(step.includes(f), `${f} is copied into dist`);
+  assert.match(step, /refusing to release without it/);
+  assert.match(yml, /MAC_FLAG=--mac/, "the gate requires the dmgs on stable");
+  // The mac job takes the Apple secrets only on a publish, like the release key, and the release job never sees them.
+  const job = yml.slice(yml.indexOf("\n  mac:\n"), yml.indexOf("\n  app-web:\n"));
+  for (const m of job.matchAll(/^      (APPLE_[A-Z0-9_]+): (.*)$/gm)) assert.match(m[2], /needs\.prepare\.outputs\.publish == 'true' && secrets\.APPLE_[A-Z0-9_]+ \|\| ''/, `${m[1]} only reaches the Mac job on a publish`);
+  assert.equal([...job.matchAll(/^      APPLE_[A-Z0-9_]+:/gm)].length, 9);
+  assert.ok(!yml.slice(yml.indexOf("\n  release:\n")).includes("APPLE_"), "the release job holds no Apple secret");
+});
+
+test("release.yml: no step needs a secret or a file that does not exist: the only signing secret is the Ed25519 release key, and minisign is gone", () => {
   const secrets = [...new Set([...yml.matchAll(/secrets\.([A-Za-z0-9_]+)/g)].map(m => m[1]))];
-  assert.deepEqual(secrets, ["VYRE_RELEASE_SIGNING_KEY"]);
+  // Plus the Apple credentials, which only the mac job takes (checked in its own test above): they are the person's, and optional.
+  assert.deepEqual(secrets.filter(x => !x.startsWith("APPLE_")), ["VYRE_RELEASE_SIGNING_KEY"]);
   assert.ok(!/minisign/i.test(yml), "no minisign step, key or public key reference");
   // Every repo path a step reads exists in the tree (release/notes is optional on a dry run; the publish path checks it itself).
   for (const f of ["release/min_from", "scripts/sign-manifest.mjs", "scripts/write-release-json.mjs", "scripts/pin-release-compose.mjs", "scripts/check-release-dist.mjs", "scripts/build-app-out.mjs", "scripts/lock-changes.mjs"]) assert.ok(yml.includes(f) ? fs.existsSync(path.join(REPO, f)) : true, `${f} is referenced and missing`);

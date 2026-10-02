@@ -66,8 +66,10 @@ if [ -n "${APPLE_DEVELOPER_ID_P12:-}" ] && [ -n "${APPLE_DEVELOPER_ID_IDENTITY:-
     xcrun notarytool submit "$zipfor" --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
     xcrun stapler staple "$stage"; notarized=yes
   else
-    echo "signed with Developer ID, but there is no notarization credential: the app is NOT notarized" >&2
+    echo "skip: notarization (no APPLE_NOTARY_KEY_P8/KEY_ID/ISSUER and no APPLE_ID/APP_PASSWORD/TEAM_ID); signed with Developer ID, the app is NOT notarized" >&2
   fi
+else
+  echo "skip: Developer ID signing and notarization (no APPLE_DEVELOPER_ID_P12 and APPLE_DEVELOPER_ID_IDENTITY); the app stays ad hoc signed" >&2
 fi
 
 zip="$out/Vyre-Lumen_${version}_${arch}.zip"; dmg="$out/Vyre-Lumen_${version}_${arch}.dmg"
