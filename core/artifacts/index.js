@@ -1313,7 +1313,7 @@ export default {
       const body = Buffer.from(html, "utf8");
       res.writeHead(200, { ...pageHeaders({ scripts, framedBy: "self" }), "content-length": body.length });
       res.end(req.method === "HEAD" ? undefined : body);
-    });
+    }, { readOnly: true });
 
     return {
       async stop() {
