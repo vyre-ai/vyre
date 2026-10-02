@@ -128,6 +128,7 @@ export function render(s, ctx) {
     if (namingKey === "form") {
       const input = el("input", { type: "text", class: "name", name: "address", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Address", "aria-describedby": "name-status", maxlength: "40" });
       /** @type {any} */ (input).value = s.naming.input;
+      input.setAttribute("data-role", "name");
       input.addEventListener("input", ev => actions.setName(/** @type {any} */ (ev.currentTarget).value));
       const claim = button("Claim this address", "primary", () => actions.claim());
       claim.setAttribute("data-role", "claim");
@@ -161,7 +162,11 @@ export function render(s, ctx) {
     const hint = m.regions.naming.querySelector ? findByRole(m.regions.naming, "hint") : null;
     const claim = findByRole(m.regions.naming, "claim");
     const c = s.naming.check;
-    const text = s.naming.error ? s.naming.error
+    // The suggestion arrives after the form is built: show it in the field, or the hint would judge a name the person cannot see.
+    const field = findByRole(m.regions.naming, "name");
+    if (field && /** @type {any} */ (field).value !== s.naming.input && (typeof document === "undefined" || document.activeElement !== field)) /** @type {any} */ (field).value = s.naming.input;
+    const text = !s.naming.input ? "3 to 32 letters, digits and dashes"
+      : s.naming.error ? s.naming.error
       : s.naming.checking ? "Checking"
       : c ? (c.available ? `${c.address || c.name} is free` : (c.why || "That name is not available")) : "";
     if (hint) hint.textContent = text;
