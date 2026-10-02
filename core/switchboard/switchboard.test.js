@@ -124,6 +124,18 @@ test("describe: a sending tool names where it goes", () => {
   assert.ok(describe("Bash", { command: "x".repeat(900) }).summary.length <= 200);
 });
 
+test("argsFor: every session loads only Vyre's own MCP server, never the account's claude.ai connectors or any other server", () => {
+  const cfg = a => JSON.parse(a[a.indexOf("--mcp-config") + 1]);
+  const withPlugin = argsFor({ id: "u1", plugin: "/p" });
+  assert.ok(withPlugin.includes("--strict-mcp-config"), "strict: nothing but --mcp-config is loaded (connectors, user and project servers, other plugins' servers)");
+  assert.deepEqual(cfg(withPlugin), { mcpServers: { vyre: { command: "node", args: ["/p/mcp/run.js"] } } });
+  for (const o of [{ id: "u2" }, { id: "u3", tools: "none" }, { id: "u4", plugin: null, resume: true }, { id: "u5", plugin: "/p", plugins: ["/learned"], settings: false }]) {
+    const a = argsFor(o);
+    assert.ok(a.includes("--strict-mcp-config"), JSON.stringify(o));
+    assert.deepEqual(Object.keys(cfg(a).mcpServers), o.plugin ? ["vyre"] : [], JSON.stringify(o));
+  }
+});
+
 test("argsFor: the flags a headless session needs, new and resumed", () => {
   const a = argsFor({ id: "u1", plugin: "/p", model: "haiku", name: "Site copy" });
   for (const f of ["-p", "--input-format", "--output-format", "--include-partial-messages", "--verbose", "--permission-prompt-tool"]) assert.ok(a.includes(f), f);
