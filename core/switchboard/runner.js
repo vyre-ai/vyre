@@ -20,7 +20,7 @@
 //   --resume <id> for an existing one; --plugin-dir <harness> so every thread loads Vyre.
 
 import { spawnSession, killGroup } from "../sessions/spawn.js";
-import { vyreMcpConfig } from "../sessions/mcp-config.js";
+import { vyreMcpConfig } from "../../lib/mcp-config.js";
 
 /**
  * The command line for a headless session. `system` is the composed system prompt (ADR 0030):

@@ -16,7 +16,7 @@
 // so the daemon's peer check and threads.pids see it as they see the runner's child.
 
 import { spawnSession, killGroup } from "./spawn.js";
-import { vyreMcpConfig } from "./mcp-config.js";
+import { vyreMcpConfig } from "../../lib/mcp-config.js";
 
 /** The permission modes Claude Code knows. "bypassPermissions" is here because a person may choose it (threads.mode, person only); no other bypass-shaped name is. */
 const CLAUDE_MODES = new Set(["default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"]);
@@ -59,7 +59,7 @@ export function optionsFor(o) {
     settingSources: o.settings === false ? [] : ["user", "project", "local"],
     ...(plugins.length ? { plugins } : {}),
     ...(o.tools === "none" ? { tools: [] } : {}),
-    // Only Vyre's own MCP server (core/sessions/mcp-config.js): the account's claude.ai connectors and every other server are not loaded.
+    // Only Vyre's own MCP server (lib/mcp-config.js): the account's claude.ai connectors and every other server are not loaded.
     strictMcpConfig: true,
     mcpServers: /** @type {any} */ (Object.fromEntries(Object.entries(vyreMcpConfig(o.plugin).mcpServers).map(([k, v]) => [k, { type: "stdio", command: v.command, args: v.args }]))),
     ...(o.model ? { model: o.model } : {}),
