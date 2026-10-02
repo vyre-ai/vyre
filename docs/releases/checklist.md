@@ -46,3 +46,13 @@ Code that runs on a server still ships only as a signed release. A patch needs n
 3. With the user's go: set `VYRE_RELEASES=go` and tag the commit `vX.Y.Z+1`. `X, builds, and waits for the user's `release` approval, which is the one approval the release needs.
 4. After the release run completes, `release-verify.yml` runs the release checks by itself (the folder against the previous release's pinned key, both signatures, both image digests with and without a login, and a real box on the previous release updating itself), and `site-deploy.yml` puts vyre.run on the new tag, waiting for the `deploy` approval. Both workflows run from main, so they are only live once they are on main.
 5. The app deploy (`relay-deploy.yml` with `app=true` and the release run id) waits for the same `deploy` approval.
+
+## Before the relay fix for GHSA-25xh-w9j7-7v28 counts as closed
+
+The app no longer has a shared limit on `/v1/pair` or the setup mailbox, so cost is the edge's. Both of these are required, not recommended:
+
+- [ ] Dispatch relay-deploy with `relay=true` and `relay_edge_rule=true` (a separate environment secret, `CLOUDFLARE_WAF_TOKEN`, scoped to Zone WAF Edit on vyre.run, used by this step only). It writes one per-address Cloudflare rate-limit rule on `/v1/pair` and `/v1/setup/mbx`, and prints the rules it wrote. Check the rule in the Cloudflare dashboard.
+- [ ] The relay's Workers and Durable Objects run on a paid plan. Every `/v1/pair` request reaches a ticket object and every random locator on the mailbox creates one, so on the Free plan's daily request cap an outsider could still stop pairing and installs until it resets. The edge rule limits one address; only the paid plan covers a distributed flood.
+- [ ] The edge rule matches the host relay.vyre.run only. `workers_dev` is off in relay/worker/wrangler.toml, so the deployed Worker has no other public address; a staging copy of the Worker, or any other hostname, is not covered by it.
+- [ ] `CLOUDFLARE_WAF_TOKEN` (Zone WAF Edit covers the whole zone) is an environment secret on the protected `deploy` environment with approval, used only by relay-deploy.yml, never a repository-wide secret, and the deploy token does not carry that scope.
+- [ ] Release note, residuals: the edge rule blocks per address whatever the answer would be (a neighbour on the same address can still get it blocked, hits included); a flood from many addresses can still use up the account's Workers and Durable Object quota on the Free plan (a hit counts too), so the paid plan stays required. The advisory stays private until released.

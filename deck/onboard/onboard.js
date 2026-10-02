@@ -33,6 +33,9 @@ const STEPS = [
   { id: "capsule", title: "Lumen" },         // 10
 ];
 
+/** The steps core/onboard knows by name (its STEPS). */
+const SERVER_STEPS = new Set(["you", "claude", "tailscale", "name", "history", "devices"]);
+
 // The session vyred gave for `vyre up`'s one-time link: the server redeems ?t= itself and
 // redirects to /onboard#s=<session>. Kept for this tab only and taken out of the address bar, so
 // it is not left in history or shown over a shoulder.
@@ -121,7 +124,8 @@ async function mark_(id, s) {
   state.status.steps ||= {};
   state.status.steps[id] = s;
   if (s === "done") justDone = id;
-  if (s === "skipped") await attempt("onboard.skip", { step: id });
+  // Only the steps the server knows (core/onboard STEPS): the Deck has screens of its own the server never heard of, and asking it to skip one is a 400 (#56).
+  if (s === "skipped" && SERVER_STEPS.has(id)) await attempt("onboard.skip", { step: id });
 }
 
 function render() {
@@ -1078,7 +1082,7 @@ const SCREENS = {
     }));
 
     async function load() {
-      const r = await attempt("github.accounts");
+      const r = await attempt("github.accounts", {}, { ifPresent: true });
       if (!alive()) return;
       accounts = Array.isArray(r.data) ? r.data : [];
       draw();

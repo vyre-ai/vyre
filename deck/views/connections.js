@@ -241,7 +241,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   void drawCatalog(catalogBox, ctx, { attempt, projects: () => (st.projects.length ? st.projects.map(x => ({ slug: x.slug, name: x.name })) : null) });
 
   async function load() {
-    const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts")]);
+    const [s, g, c, gh] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list"), attempt("github.accounts", {}, { ifPresent: true })]);
     if (!ctx.alive()) return;
     st.serverErr = s.error || null;
     st.servers = s.error ? [] : pickServers(s.data);

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { install, text, $, $$ } from "./fake-dom.js";
 
 install();
-const { drawPlanner, nextAlarms, sortNotes, repeatWord, CHANGES } = await import("../views/planner.js");
+const { drawPlanner, nextAlarms, sortNotes, repeatWord, CHANGES, splitKind, previewLine } = await import("../views/planner.js");
 
 const T = Date.UTC(2026, 8, 27, 12, 0);
 const item = (/** @type {any} */ o) => ({ title: "", body: null, pinned: false, state: "open", repeat: null, at: null, next_fire: null, snooze_until: null,
@@ -38,6 +38,9 @@ function fakeApi(/** @type {Record<string, any>} */ over = {}) {
     "planner.add": { data: item({ id: "i_new", kind: "alarm" }) },
     "planner.done": { data: { item: {}, firing: null } },
     "planner.snooze": { data: { item: {}, firing: null } },
+    "planner.update": { data: {} },
+    "planner.delete": { data: {} },
+    "planner.parse": { data: { kind: "alarm", title: "Wake", at: T + 19 * 3_600_000, tz: "Europe/London" } },
     "planner.get": { data: { item: ITEMS[0], firings: [], firing: { id: "f_1", item: "i_wake", state: "ringing", due: T, ring: 1 } } },
     ...over,
   });
@@ -66,9 +69,10 @@ async function render(/** @type {any} */ o = {}) {
   const cleanups = /** @type {Function[]} */ ([]);
   const ctx = { params: o.params || {}, alive: () => true, cleanup: (/** @type {Function} */ fn) => cleanups.push(fn),
     on: (/** @type {string} */ t, /** @type {Function} */ fn) => subs.set(t, [...(subs.get(t) || []), fn]) };
-  await drawPlanner(/** @type {any} */ (el), ctx, { attempt: /** @type {any} */ (api.attempt), doc });
+  const toasts = /** @type {any[]} */ ([]);
+  await drawPlanner(/** @type {any} */ (el), ctx, { attempt: /** @type {any} */ (api.attempt), doc, toast: (/** @type {any} */ t) => { toasts.push(t); return t; } });
   const emit = (/** @type {string} */ type, /** @type {any} */ payload) => { for (const fn of subs.get(type) || []) fn({ type, payload }); };
-  return { el, api, doc, subs, cleanups, emit };
+  return { el, api, doc, subs, cleanups, emit, toasts };
 }
 const sec = (/** @type {any} */ el, /** @type {string} */ name) => $(el, `section[data-sec=${name}]`);
 const settle = () => new Promise(r => setTimeout(r, 350));
@@ -99,7 +103,7 @@ test("renders agenda, alarms, todos and notes from the tools", async () => {
 
 test("add by text calls planner.add { text } and redraws", async () => {
   const { el, api } = await render();
-  const form = $(sec(el, "alarms"), "form");
+  const form = $(el, "form.pl-add");
   $(form, "input").value = "alarm 7am";
   await Promise.all(form.dispatchEvent(new Event("submit")));
   assert.deepEqual(api.of("planner.add").map(c => c.input), [{ text: "alarm 7am" }]);
@@ -108,10 +112,10 @@ test("add by text calls planner.add { text } and redraws", async () => {
 
 test("an add error is shown and the text stays", async () => {
   const { el } = await render({ over: { "planner.add": { error: { code: "bad_input", message: "no time in that" } } } });
-  const form = $(sec(el, "alarms"), "form");
+  const form = $(el, "form.pl-add");
   $(form, "input").value = "alarm whenever";
   await Promise.all(form.dispatchEvent(new Event("submit")));
-  assert.match(text(sec(el, "alarms")), /no time in that/);
+  assert.match(text(el), /no time in that/);
   assert.equal($(form, "input").value, "alarm whenever");
 });
 
@@ -188,4 +192,93 @@ test("the planner module not running shows it in plain words", async () => {
   const miss = { error: { code: "no_such_tool", message: "no tool", module: "planner", missing: true } };
   const { el } = await render({ over: { "planner.agenda": miss, "planner.list": miss } });
   assert.match(text(el), /The planner module is not running/);
+});
+
+
+test("splitKind reads todo/note/event/task as the kind, and previewLine says what the box read", () => {
+  assert.deepEqual(splitKind("todo send the invoice"), { kind: "todo", text: "send the invoice" });
+  assert.deepEqual(splitKind("Task: call Dana"), { kind: "todo", text: "call Dana" });
+  assert.deepEqual(splitKind("note printer code 4471"), { kind: "note", text: "printer code 4471" });
+  assert.deepEqual(splitKind("alarm 7am"), { kind: null, text: "alarm 7am" });
+  assert.deepEqual(splitKind("notebook"), { kind: null, text: "notebook" }, "a word that only starts with note is not a kind");
+  assert.match(previewLine(null, "blah"), /Start with todo or note/);
+  assert.equal(previewLine({ ambiguous: true, reason: "Which 6?" }, "x"), "Which 6?");
+  assert.match(previewLine({ kind: "alarm", title: "Wake", at: T }, "alarm 7am"), /^Alarm · Wake · /);
+});
+
+test("quick add: a typed 'todo' goes with kind todo; the preview shows what was read before Enter", async () => {
+  const { el, api } = await render();
+  const form = $(el, "form.pl-add");
+  $(form, "input").value = "todo send the invoice";
+  await Promise.all(form.dispatchEvent(new Event("submit")));
+  assert.deepEqual(api.of("planner.add").map(c => c.input), [{ text: "send the invoice", kind: "todo" }]);
+  const r2 = await render();
+  $(r2.el, "form.pl-add input").value = "alarm 7am";
+  $(r2.el, "form.pl-add input").dispatchEvent(new Event("input"));
+  await settle();
+  assert.deepEqual(r2.api.of("planner.parse").map(c => c.input), [{ text: "alarm 7am" }]);
+  assert.match(text($(r2.el, ".pl-preview")), /Alarm · Wake/);
+});
+
+test("edit: the row becomes a form; Save sends only what changed; a time is read by the planner first; Esc leaves it", async () => {
+  const { el, api } = await render();
+  const row = $(sec(el, "todos"), "[data-item=i_inv]");
+  $(row, "[data-act=edit]").click();
+  const form = $(el, "form.pl-edit");
+  assert.ok(form, "an editor");
+  $(form, "input[name=title]").value = "Send the Northwind invoice";
+  await Promise.all(form.dispatchEvent(new Event("submit")));
+  assert.deepEqual(api.of("planner.update").map(c => c.input), [{ item: "i_inv", title: "Send the Northwind invoice" }]);
+  const r = await render();
+  $(sec(r.el, "alarms"), "[data-item=i_tea] [data-act=edit]").click();
+  const f = $(r.el, "form.pl-edit");
+  $(f, "input[name=when]").value = "tomorrow 9am";
+  await Promise.all(f.dispatchEvent(new Event("submit")));
+  assert.equal(r.api.of("planner.parse")[0].input.text, "tomorrow 9am");
+  assert.equal(r.api.of("planner.update")[0].input.at, T + 19 * 3_600_000);
+  const q = await render();
+  $(sec(q.el, "todos"), "[data-item=i_inv] [data-act=edit]").click();
+  const g = $(q.el, "form.pl-edit");
+  g.dispatchEvent(Object.assign(new Event("keydown"), { key: "Escape", target: g }));
+  await new Promise(r2 => setImmediate(r2));
+  assert.equal($(q.el, "form.pl-edit"), null, "Esc closed the editor");
+  assert.equal(q.api.of("planner.update").length, 0, "nothing saved");
+});
+
+test("delete asks the planner and offers Undo, which restores it; calendar events have no actions", async () => {
+  const { el, api, toasts } = await render();
+  $(sec(el, "notes"), "[data-item=i_n1] [data-act=delete]").click();
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(api.of("planner.delete").map(c => c.input), [{ item: "i_n1" }]);
+  assert.match(String(toasts[0].text), /Deleted “Printer codes”/);
+  await toasts[0].undo();
+  assert.deepEqual(api.of("planner.delete").map(c => c.input).at(-1), { item: "i_n1", restore: true });
+  const agenda = sec(el, "agenda");
+  const cal = $$(agenda, ".pl-row").find((/** @type {any} */ r) => /Harlow Legal weekly/.test(text(r)));
+  assert.equal($(cal, "[data-act]"), null, "a calendar event is read only here");
+  assert.ok($$(agenda, "[data-act=delete]").length >= 1, "the planner's own entry can be deleted");
+});
+
+test("keyboard: n focuses the add box; arrows move between rows; Space finishes a todo with Undo; Backspace deletes; e edits; p pins a note", async () => {
+  const { el, api, toasts } = await render();
+  let focused = /** @type {any} */ (null);
+  // The page listens once on its root; the fake DOM does not bubble, so the event is handed to the root with the row as its target.
+  const key = (/** @type {any} */ target, /** @type {string} */ k) => { const ev = Object.assign(new Event("keydown"), { key: k, target }); el.dispatchEvent(ev); return ev; };
+  const quick = $(el, "input[data-quick]");
+  quick.focus = () => { focused = quick; };
+  const ev = key($(el, ".pl-col"), "n");
+  assert.equal(ev.defaultPrevented, true);
+  assert.equal(focused, quick);
+  const call = $(sec(el, "todos"), "[data-item=i_call]");
+  key(call, " "); await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r));
+  assert.deepEqual(api.of("planner.done").map(c => c.input), [{ item: "i_call" }]);
+  assert.match(String(toasts.at(-1).text), /Done: “Call alex back”/);
+  await toasts.at(-1).undo();
+  assert.deepEqual(api.of("planner.update").at(-1).input, { item: "i_call", state: "open" });
+  key($(sec(el, "notes"), "[data-item=i_n1]"), "p"); await new Promise(r => setImmediate(r));
+  assert.deepEqual(api.of("planner.update").at(-1).input, { item: "i_n1", pinned: true });
+  key($(sec(el, "notes"), "[data-item=i_n1]"), "Backspace"); await new Promise(r => setImmediate(r));
+  assert.deepEqual(api.of("planner.delete").map(c => c.input).at(-1), { item: "i_n1" });
+  key($(sec(el, "todos"), "[data-item=i_inv]"), "e");
+  assert.ok($(el, "form.pl-edit"));
 });

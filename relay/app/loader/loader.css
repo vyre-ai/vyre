@@ -8,3 +8,4 @@ html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 
 #vyre-loader .card { margin-top: 12px; }
 #vyre-loader button { font: inherit; padding: 10px 16px; margin: 6px 8px 0 0; border-radius: 10px; border: 1px solid var(--muted); background: transparent; color: var(--fg); }
 #vyre-loader button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+#vyre-loader p.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.04em; }

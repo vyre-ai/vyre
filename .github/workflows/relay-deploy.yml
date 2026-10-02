@@ -42,6 +42,10 @@ on:
         description: "Also set the names Worker's ADMIN_SECRET (the support-only rebind) from the environment's NAMES_ADMIN_SECRET"
         type: boolean
         default: false
+      relay_edge_rule:
+        description: "Also write the relay's per-address edge cap (a Cloudflare rate-limit rule on /v1/pair and /v1/setup/mbx; needs the token's Zone WAF Edit scope on vyre.run)"
+        type: boolean
+        default: false
       names_secrets:
         description: "Also set the names Worker's runtime secrets CF_API_TOKEN and CF_ZONE_ID from the environment's NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID (first deploy only)"
         type: boolean
@@ -173,6 +177,13 @@ jobs:
           [ -n "$NAMES_CF_API_TOKEN" ] && [ -n "$NAMES_CF_ZONE_ID" ] || { echo "::error::NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID must be environment secrets"; exit 1; }
           printf %s "$NAMES_CF_API_TOKEN" | "$W" secret put CF_API_TOKEN
           printf %s "$NAMES_CF_ZONE_ID" | "$W" secret put CF_ZONE_ID
+      - name: relay edge cap rule (per address, Cloudflare rate limiting)
+        if: ${{ inputs.relay && inputs.relay_edge_rule }}
+        env:
+          # A separate token, scoped to Zone WAF Edit on vyre.run, for this step only: the deploy token never needs that scope.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WAF_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.NAMES_CF_ZONE_ID }}
+        run: node scripts/deploy/relay-edge-rule.mjs --apply
       - name: names/worker admin secret (support-only rebind)
         if: ${{ inputs.names && inputs.names_admin_secret }}
         working-directory: names/worker

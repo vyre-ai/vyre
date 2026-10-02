@@ -83,16 +83,16 @@ export default async function vault(ctx) {
   }));
 
   // ---- data ----
-  const info = await attempt("system.info");
-  if (!ctx.alive()) return;
-  st.host = String(info.data?.host || "") || location.hostname;
-  await vc.loadTools();
-  if (!ctx.alive()) return;
+  // The host name, the tool list and the vault's own reads are asked for together (one round trip, not three); only the pending list
+  // needs the tool list, so it follows (see the end of this block).
+  st.host = st.host || location.hostname;
+  const infoP = attempt("system.info");
+  const toolsP = vc.loadTools();
 
-  async function load() {
+  async function load(early = false) {
     const [l, p, caps, audit, pend] = await Promise.all([
       attempt("vault.list"), attempt("vault.pass.list"), attempt("vault.caps"),
-      attempt("vault.audit", { limit: 1000 }), vc.has("vault.pending") ? attempt("vault.pending") : Promise.resolve({ data: null })]);
+      attempt("vault.audit", { limit: 1000 }), !early && vc.has("vault.pending") ? attempt("vault.pending") : Promise.resolve({ data: null })]);
     if (!ctx.alive()) return;
     st.listErr = l.error || null;
     st.locked = Boolean(l.data?.locked);
@@ -365,7 +365,13 @@ export default async function vault(ctx) {
   };
 
   drawAll();
-  await load();
+  const first = load(true);
+  const [info] = await Promise.all([infoP, toolsP, first]);
+  if (!ctx.alive()) return;
+  if (st.host === location.hostname && info.data?.host) st.host = String(info.data.host);
+  // The pending list, now that the tool list says whether this box has one.
+  if (vc.has("vault.pending")) await load();
+  else drawAll();
 }
 
 function lastWord(t) {
