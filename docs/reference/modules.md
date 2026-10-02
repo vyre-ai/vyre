@@ -21,7 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
-| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 26 | 10 | capsule, cli, deck |
+| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 27 | 12 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 36 | 16 | none |
@@ -133,8 +133,8 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Folder: `core/artifacts`, version 0.2.0
 - Runs on: `box`
 - Requires: none
-- Tools: [26](tools.md#artifacts)
-- Emits: [10 events](events.md#artifacts)
+- Tools: [27](tools.md#artifacts)
+- Emits: [12 events](events.md#artifacts)
 - Listens for: `floor.wrote`, `thread.deleted`
 - Shows on: capsule, cli, deck
 - Needs tools: `threads.get`, `agents.list`

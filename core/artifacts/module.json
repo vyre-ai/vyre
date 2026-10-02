@@ -27,6 +27,7 @@
       { "name": "artifacts.public.base", "summary": "the public address links use (network setup)", "reach": "modules" },
       { "name": "artifacts.mention.search", "summary": "the # picker's artifact results", "reach": "person" },
       { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },
+      { "name": "artifacts.release", "summary": "open a held page or app, on your own tap", "reach": "person" },
       { "name": "artifacts.activity.log", "summary": "record that an interactive artifact navigated away", "reach": "person" },
       { "name": "artifacts.activity", "summary": "what an interactive artifact has done: navigated away", "reach": "anyone" },
       { "name": "artifacts.media.register", "summary": "keep an image, video or sound a provider made, with its prompt and session", "reach": "modules" },
@@ -42,7 +43,7 @@
     { "kind": "artifact", "label": "Artifacts", "search": "artifacts.mention.search", "resolve": "artifacts.mention.resolve" }
   ],
   "watches": {
-    "emits": ["artifact.created", "artifact.updated", "artifact.moved", "artifact.archived", "artifact.deleted", "artifact.restored", "artifact.shared", "artifact.unshared", "artifact-links.changed", "thread.artifact"],
+    "emits": ["artifact.created", "artifact.updated", "artifact.moved", "artifact.archived", "artifact.deleted", "artifact.restored", "artifact.shared", "artifact.unshared", "artifact.held", "artifact.released", "artifact-links.changed", "thread.artifact"],
     "on": ["floor.wrote", "thread.deleted"]
   },
   "shows": { "deck": [], "capsule": [], "cli": ["artifacts"] },

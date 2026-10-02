@@ -83,6 +83,12 @@ first bytes match its format (png, jpeg, gif, webp, mp4, webm, mp3, wav, ogg, m4
   with that model's name and attaches the file to it. You then write what you want and send it.
 - **Download** saves the file to your device.
 
+When the agent that made a page or an app is in a session that both read content from outside (mail, a
+web page, a connector) and used your private data (your vault, mail or files), Vyre holds the page: its
+card says why, and you see a plain note instead of the page until you open it on purpose from the card.
+Changing the page from such a session holds it again. If Vyre cannot tell what a session read, it does
+not hold the page.
+
 ## Backup, restore and uninstall
 
 `vyre backup` carries your artifacts, every version and each generated file, in its sealed file, and

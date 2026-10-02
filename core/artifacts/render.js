@@ -157,6 +157,11 @@ export function withMetaCsp(html) {
 /** @param {string} title @param {string} body @param {string} [extra] a theme style element */
 const shell = (title, body, extra = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${STYLE}</style>${extra}</head><body><main>${body}</main></body></html>`;
 
+/** The static note shown in place of a held page or app: no script, the reason in plain words. @param {string} title @param {string} why */
+export function heldPage(title, why) {
+  return typed(title, ".held{max-width:560px;margin:28px auto;padding:0 16px}.held p{color:var(--t2);margin:0 0 10px}", `<div class="held"><div class="state" role="status"><b>${esc(title)} is held</b><span>${esc(why)}</span></div><p>Open it from the artifact's card when you want it to run.</p></div>`);
+}
+
 /**
  * An artifact's content as one page. For html it is the author's own page, unchanged (its
  * headers are what keep it in its box); for every other format it is built here, escaped.

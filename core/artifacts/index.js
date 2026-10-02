@@ -30,7 +30,7 @@ import { isPerson, agentName } from "../../lib/caller.js";
 import { isProjectId } from "../../lib/project-id.js";
 import { findSecrets } from "../../lib/secret-text.js";
 import { openStore } from "./store.js";
-import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf, withMetaCsp } from "./render.js";
+import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf, withMetaCsp, heldPage } from "./render.js";
 import { MEDIA, MAX_MEDIA, mediaFormatOf, isMediaFormat, parseRange } from "./media.js";
 
 export const MIGRATIONS = [
@@ -93,6 +93,11 @@ export const MIGRATIONS = [
   `
   CREATE TABLE artifacts_activity (artifact TEXT NOT NULL, at INTEGER NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
   CREATE INDEX artifacts_activity_artifact ON artifacts_activity (artifact, at);
+  `,
+  // A page or app made by a session that read outside content and touched private data is held until the person opens it.
+  `
+  ALTER TABLE artifacts_items ADD COLUMN held_at INTEGER;
+  ALTER TABLE artifacts_items ADD COLUMN held_why TEXT;
   `,
 ];
 
@@ -183,6 +188,7 @@ export default {
       media: r.media ? JSON.parse(r.media) : null,
       // A page or an app runs its own code and can send the browser anywhere (nothing in a header stops it).
       interactive: r.format === "html",
+      held: r.held_at ? { at: r.held_at, why: r.held_why } : null,
     });
     const row = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM artifacts_items WHERE id = ?").get(id));
     const versionRow = (/** @type {string} */ id, /** @type {number} */ n) => /** @type {any} */ (db.prepare("SELECT * FROM artifacts_versions WHERE artifact = ? AND n = ?").get(id, n));
@@ -201,6 +207,20 @@ export default {
       if (!thread) return null;
       const r = await ctx.call("threads.get", { thread, limit: 1 });
       return r && r.data && r.data.thread ? r.data.thread : null;
+    };
+
+    // ---- the Gate on interactive pages from a tainted session ------------------------------------
+
+    const HELD_WHY = "It runs its own code, and it was made in a session that read content from outside and used your private data, so Vyre is holding it until you open it on purpose.";
+    /** A thread is tainted when its session both read outside content and touched private data (sessions supplies thread.taint; none means not tainted). @param {string|null|undefined} thread */
+    const taintedThread = async thread => { const t = /** @type {any} */ (await threadOf(thread)); return Boolean(t && t.taint && t.taint.outside && t.taint.private); };
+    /** Hold a page or an app from a tainted session. @param {any} r @param {string|null|undefined} thread @param {boolean} byModel */
+    const holdIfTainted = async (r, thread, byModel) => {
+      if (!byModel || r.format !== "html" || !thread || !(await taintedThread(thread))) return r;
+      db.prepare("UPDATE artifacts_items SET held_at = ?, held_why = ? WHERE id = ?").run(now(), HELD_WHY, r.id);
+      const fresh = row(r.id);
+      emit("artifact.held", fresh, { why: HELD_WHY });
+      return fresh;
     };
 
     /**
@@ -421,6 +441,7 @@ export default {
       let r;
       try { r = await commit(row(id), files, size, by, i.message || "first version"); }
       catch (e) { db.prepare("DELETE FROM artifacts_items WHERE id = ?").run(id); throw e; }
+      r = await holdIfTainted(r, meta && meta.thread, !trustedCaller(meta));
       emit("artifact.created", r, { made_by: by });
       if (r.thread) emit("thread.artifact", r, { thread: r.thread });
       return shape(r);
@@ -446,6 +467,7 @@ export default {
         const { files, size } = filesFor(r.format, content, dataIn);
         fresh = await commit(fresh, files, size, by, i.message || "");
         if (!trustedCaller(meta) && !r.untrusted) db.prepare("UPDATE artifacts_items SET untrusted = 1 WHERE id = ?").run(r.id), fresh = row(r.id);
+        fresh = await holdIfTainted(fresh, meta && meta.thread, !trustedCaller(meta)); // changed content from a tainted session is held again
       } else if (i.title === undefined) throw refuse("nothing to change: give content, data or a title", "bad_input");
       emit("artifact.updated", fresh, { made_by: by });
       const thread = meta && meta.thread;
@@ -780,6 +802,7 @@ export default {
       const t = await threadOf(e.thread);
       const by = { kind: t && t.agent ? "agent" : "session", ...(t && t.agent ? { name: t.agent } : {}), ...(t && t.provider ? { provider: t.provider } : {}), thread: e.thread, via: "folder" };
       db.prepare("UPDATE artifacts_items SET made_by = ?, thread = ?, untrusted = 1 WHERE id = ?").run(JSON.stringify(by), e.thread, made.id);
+      await holdIfTainted(row(made.id), e.thread, true);
       db.prepare("INSERT OR REPLACE INTO artifacts_capture_files (thread, name, artifact) VALUES (?,?,?)").run(e.thread, rel, made.id);
       emit("thread.artifact", row(made.id), { thread: e.thread });
     };
@@ -1029,6 +1052,7 @@ export default {
         const r = await reach(i.id, meta);
         if (r.archived_at) throw refuse(`${r.id} is archived; bring it back first`, "archived");
         if (isMediaFormat(r.format)) throw refuse("public links for images, video and audio arrive in a later update", "not_available");
+        if (r.held_at) throw refuse("this page is held: open it yourself first, then share it", "held");
         if (!kv.get("public_on")) throw refuse("public links are off. Turn them on in Settings, or ask to turn them on", "public_off", { fix: { tool: "artifacts.public.set", input: { on: true } } });
         const srv = serverState();
         if (!srv.ok) throw refuse(`${NOT_YET} (${srv.why})`, "not_available");
@@ -1120,6 +1144,21 @@ export default {
     });
 
 
+
+    ctx.tool("artifacts.release", {
+      description: "Open a held page or app: the person's own tap, after seeing why it was held. From then on it runs as any page or app does. Only the person's own surfaces call this, never a model.",
+      input: { type: "object", required: ["id"], properties: { id: str } },
+      examples: [{ id: "a_3fK2x9LqWm1p" }],
+      run: async (i, meta) => {
+        if (!isPerson(meta)) throw refuse("only you open a held page", "denied");
+        const r = await reach(i.id, meta);
+        if (!r.held_at) return shape(r);
+        db.prepare("UPDATE artifacts_items SET held_at = NULL, held_why = NULL WHERE id = ?").run(r.id);
+        const fresh = row(r.id);
+        emit("artifact.released", fresh, {});
+        return shape(fresh);
+      },
+    });
 
     // ---- activity: what an interactive artifact did ---------------------------------------------
 
@@ -1221,6 +1260,12 @@ export default {
         const stream = fs.createReadStream(file, { start, end });
         stream.on("error", () => res.destroy());
         return void stream.pipe(res);
+      }
+      if (r.held_at) {
+        // Held: a plain note with no script, never the page itself, until the person releases it.
+        const body = Buffer.from(heldPage(r.title, r.held_why || HELD_WHY), "utf8");
+        res.writeHead(200, { ...pageHeaders({ scripts: false, framedBy: "self" }), "content-length": body.length });
+        return void res.end(req.method === "HEAD" ? undefined : body);
       }
       const n = url.searchParams.get("v") ? Number(url.searchParams.get("v")) : r.head;
       let files;
