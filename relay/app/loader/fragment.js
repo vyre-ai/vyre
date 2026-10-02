@@ -20,3 +20,14 @@ export function pairTicketFrom(hash) {
     return raw.length >= 8 && raw.length <= 32 ? raw : null;
   } catch { return null; }
 }
+
+/**
+ * The words on the confirm card for a resolved ticket, as plain text only (the loader writes them with textContent, never
+ * as markup). `says` is what the box CLAIMS to be; the fingerprint is the part that is checkable.
+ * @param {{ name: string, handle: string | null, fingerprint: string }} r
+ * @returns {{ says: string, fingerprint: string }}
+ */
+export function cardWords(r) {
+  const says = r.handle ? `${r.handle}.vyre.run` : String(r.name || "a Vyre box");
+  return { says: says.slice(0, 80), fingerprint: String(r.fingerprint || "").slice(0, 20) };
+}

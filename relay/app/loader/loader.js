@@ -9,12 +9,12 @@
 // device key is a non-extractable CryptoKey in IndexedDB, and the box record in localStorage
 // holds no secret. release.js stamps the release public key below.
 
-import { pair, pairTicket, connect, PAIR_BASE } from "./client/client.js";
+import { pair, resolveTicket, pairOffer, connect, PAIR_BASE } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
 import { registerWorker, adoptInWorker } from "./adopt.js";
-import { pairTicketFrom, HOSTED_RELAY } from "./fragment.js";
+import { pairTicketFrom, HOSTED_RELAY, cardWords } from "./fragment.js";
 
 const RELEASE_PUB = "{{RELEASE_PUB}}";
 const BOX = "vyre.box";
@@ -72,6 +72,30 @@ function inject(base, manifest) {
   }
 }
 
+/**
+ * The confirm card: who the code says it is, the box key's fingerprint, and two buttons. Text only, never markup.
+ * Resolves true only on the tap on Pair.
+ * @param {{ says: string, fingerprint: string }} w @returns {Promise<boolean>}
+ */
+function confirmCard(w) {
+  return new Promise(resolve => {
+    const root = document.getElementById("vyre-loader");
+    if (!root) return resolve(false);
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text) e.textContent = text; if (cls) e.className = cls; return e; };
+    const card = el("div", "", "card");
+    card.setAttribute("role", "dialog");
+    card.append(el("p", `This code says it is ${w.says}.`), el("p", `Its key fingerprint is ${w.fingerprint}. Pair only if you started this on your own server and the fingerprint matches what it shows.`));
+    const pairBtn = el("button", "Pair this device", "primary"), notNow = el("button", "Not now", "quiet");
+    pairBtn.type = notNow.type = "button";
+    pairBtn.addEventListener("click", () => { card.remove(); resolve(true); }, { once: true });
+    notNow.addEventListener("click", () => { card.remove(); resolve(false); }, { once: true });
+    card.append(pairBtn, notNow);
+    status("");
+    root.append(card);
+    pairBtn.focus();
+  });
+}
+
 async function main() {
   const registered = registerWorker();
   const crypto = webCrypto();
@@ -79,13 +103,19 @@ async function main() {
   const last = load(LAST) || {};
   const about = { kind: /** @type {"web"} */ ("web"), ...(last.release ? { release: last.release, manifest: last.manifest } : {}) };
   let box = load(BOX);
-  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`: take it out of the address at once, then
-  // redeem it here, with this origin's own device key. The passkey is enrolled here too, by the app, once it is connected.
+  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`. Anyone can send a person such a link, so
+  // nothing is redeemed on arrival: the fragment is read once and scrubbed from the address and history at once, the ticket is
+  // resolved (read only), and the person sees who it says it is, with the key's fingerprint, and must tap Pair. Only then is
+  // this origin's own device key made and the box paired. A tap on Not now, or leaving, pairs nothing.
   const handed = pairTicketFrom(location.hash);
   if (handed) {
     history.replaceState(null, "", "/");
+    status("Looking up this pairing code");
+    const found = await resolveTicket(handed, { relay: HOSTED_RELAY, crypto });
+    const yes = await confirmCard(cardWords(found));
+    if (!yes) { status("Nothing was paired."); return; }
     status("Pairing this device with your server");
-    box = await pairTicket(handed, { relay: HOSTED_RELAY, name: browserName(), about, keyStore, crypto });
+    box = await pairOffer(found.offer, { name: browserName(), about, keyStore, crypto });
     store(BOX, box);
   } else if (location.pathname === "/pair" && location.hash.length > 1) {
     status("Pairing this browser with your box");

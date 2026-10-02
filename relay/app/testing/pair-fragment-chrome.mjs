@@ -3,7 +3,10 @@
 // The hosted app's loader (the real, sealed one) must (1) clear the fragment before any network call, (2) send nothing
 // anywhere but the relay (no request to wink.vyre.run or any other host), and (3) not put the ticket in any URL.
 // The relay is stood in for by Chrome's own request interception (Fetch.requestPaused): at the very moment the first
-// outbound request is held, the page's own address is read. Run on a throwaway runner with CHROME set, never a Mac.
+// outbound request is held, the page's own address is read, and the answer is a real sealed record for the ticket. A hostile
+// link (someone else's ticket) must then show the confirm card and pair NOTHING without the tap: no socket to the relay, no
+// device key made. Not now pairs nothing either. Only the tap on Pair makes the key and opens the pairing channel. Run on a
+// throwaway runner with CHROME set, never a Mac.
 // The device key made at the app origin (and nothing at wink) holds by construction (the loader pairs with its own
 // IndexedDB key store and imports nothing of wink's); this test does not run a real pairing to the end.
 
@@ -15,6 +18,7 @@ import { spawn } from "node:child_process";
 import { CHROME_SAFE } from "../../../lib/chrome-flags/index.js";
 import { keygen, loader } from "../release.js";
 import worker from "../worker.js";
+import { ticketSeal, ticketMac } from "../../../core/relay/wire.js";
 
 const CHROME = process.env.CHROME;
 if (!CHROME) { console.error("set CHROME to a Chrome binary"); process.exit(3); }
@@ -55,45 +59,77 @@ ws.addEventListener("message", e => {
 const send = (method, params = {}) => new Promise(r => { const i = ++id; waits.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const evalIn = async expression => (await send("Runtime.evaluate", { expression, returnByValue: true })).result.result.value;
 
-// Hold every request that is not to this page's own origin (the relay and anything else), so the page's address can be read at that moment.
+const sockets = [];
+ws.addEventListener("message", e => { const m = JSON.parse(String(e.data)); if (m.method === "Network.webSocketCreated") sockets.push(m.params.url); });
 await send("Page.enable");
+await send("Network.enable");
 await send("Fetch.enable", { patterns: [{ urlPattern: "http*://*", requestStage: "Request" }] });
-const ticket = Buffer.from("0123456789abcdef", "latin1").subarray(0, 8).toString("base64url");
-await send("Page.navigate", { url: `http://localhost:${port}/#pair=${ticket}` });
 
-/** @type {Array<{ url: string, method: string, body: string, pageAddress: string }>} */ const outbound = [];
-const end = Date.now() + 30000;
-let settled = 0;
-while (Date.now() < end && settled < 6) {
-  while (paused.length) {
-    const p = paused.shift();
-    const u = new URL(p.request.url);
-    // Only what the page itself asked for counts: Chrome's own background requests carry no frame.
-    if (!p.frameId) { await send("Fetch.continueRequest", { requestId: p.requestId }); continue; }
-    if (u.origin === `http://localhost:${port}`) { await send("Fetch.continueRequest", { requestId: p.requestId }); continue; }
-    outbound.push({ url: p.request.url, method: p.request.method, body: p.request.postData || "", pageAddress: String(await evalIn("location.href")) });
-    await send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: 404, responseHeaders: [{ name: "content-type", value: "application/json" }, { name: "access-control-allow-origin", value: "*" }], body: Buffer.from("{}").toString("base64") });
-  }
-  await sleep(500);
-  if (outbound.length) settled++;
+/** A real sealed record for this ticket, the way a box would register it, so resolveTicket accepts it. */
+function recordFor(ticketBytes) {
+  const rec = { v: 1, name: "alex", relay: "wss://relay.vyre.run", route: "abcdefghijklmnopqrstuvwxyz".slice(0, 26).replace(/[01689]/g, "a"), box: Buffer.alloc(32, 7).toString("base64url"), exp: Date.now() + 300000, handle: "alex" };
+  const sealed = ticketSeal(Buffer.from(ticketBytes), JSON.stringify(rec));
+  return { record: sealed, mac: ticketMac(Buffer.from(ticketBytes), sealed).toString("base64url") };
 }
-const addressAfter = String(await evalIn("location.href"));
-const statusText = String(await evalIn("document.getElementById('vyre-status') ? document.getElementById('vyre-status').textContent : ''"));
-c.kill(); server.close();
+const clickButton = label => evalIn(`(() => { const b = [...document.querySelectorAll("#vyre-loader button")].find(x => x.textContent.trim() === ${JSON.stringify(label)}); if (b) { b.click(); return true; } return false; })()`);
+const loaderText = () => evalIn("document.getElementById('vyre-loader') ? document.getElementById('vyre-loader').innerText : ''");
+const keyDatabases = async () => String(await evalIn("indexedDB.databases ? indexedDB.databases().then(d => JSON.stringify(d.map(x => x.name))) : '[]'"));
+/** @type {Array<{ url: string, method: string, pageAddress: string }>} */ const outbound = [];
+/** Answer what the page asks outside its own origin: the relay's /v1/pair with the sealed record, anything else with 404. */
+async function pump(ticketBytes, ms) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    while (paused.length) {
+      const p = paused.shift();
+      const u = new URL(p.request.url);
+      if (!p.frameId || u.origin === `http://localhost:${port}`) { await send("Fetch.continueRequest", { requestId: p.requestId }); continue; }
+      outbound.push({ url: p.request.url, method: p.request.method, pageAddress: String(await evalIn("location.href")) });
+      const hit = /^https:\/\/relay\.vyre\.run\/v1\/pair$/.test(p.request.url);
+      await send("Fetch.fulfillRequest", { requestId: p.requestId, responseCode: hit ? 200 : 404,
+        responseHeaders: [{ name: "content-type", value: "application/json" }, { name: "access-control-allow-origin", value: "*" }],
+        body: Buffer.from(JSON.stringify(hit ? recordFor(ticketBytes) : {})).toString("base64") });
+    }
+    await sleep(300);
+  }
+}
 
 const failures = [];
-const relay = outbound.filter(o => /^https:\/\/relay\.vyre\.run\//.test(o.url));
-const elsewhere = outbound.filter(o => !/^https:\/\/relay\.vyre\.run\//.test(o.url));
-if (!relay.length) failures.push("the loader never asked the relay to resolve the ticket");
-for (const o of relay) {
-  if (o.pageAddress.includes("#") || o.pageAddress.includes(ticket)) failures.push(`the fragment was still in the address at the first relay request: ${o.pageAddress}`);
-  if (o.url.includes(ticket)) failures.push("the ticket is in a URL");
-}
-if (elsewhere.length) failures.push(`something other than the relay was contacted: ${elsewhere.map(o => o.url).join(", ")}`);
-if (relay.some(o => o.method !== "POST" || !/\/v1\/pair$/.test(o.url))) failures.push("the relay was asked for something other than POST /v1/pair first");
-if (addressAfter.includes("#pair") || addressAfter.includes(ticket)) failures.push(`the ticket is still in the address: ${addressAfter}`);
-if (localRequests.some(r => r.includes(ticket))) failures.push("the ticket reached the page's own server");
-console.log(JSON.stringify({ relayRequests: relay.map(o => [o.method, o.url, o.pageAddress]), elsewhere: elsewhere.map(o => o.url), addressAfter, statusText }, null, 2));
+const note = (ok, why) => { if (!ok) failures.push(why); };
+
+// 1. A hostile link: someone else's ticket. It resolves (read only), shows the card, and pairs nothing without the tap.
+const t1 = Buffer.from("0123456789abcdef", "latin1").subarray(0, 8);
+await send("Page.navigate", { url: `http://localhost:${port}/#pair=${t1.toString("base64url")}` });
+await pump(t1, 6000);
+const card = String(await loaderText());
+const addressAfter = String(await evalIn("location.href"));
+note(/says it is alex\.vyre\.run/.test(card), `the confirm card did not say who it claims to be: ${card.slice(0, 160)}`);
+note(/fingerprint is [a-z2-7 ]{9}/.test(card), "the confirm card shows no key fingerprint");
+note(!addressAfter.includes("#") && !addressAfter.includes(t1.toString("base64url")), `the ticket is still in the address: ${addressAfter}`);
+const relayAsks = outbound.filter(o => /^https:\/\/relay\.vyre\.run\//.test(o.url));
+note(relayAsks.length >= 1 && relayAsks.every(o => o.method === "POST" && /\/v1\/pair$/.test(o.url)), "the loader's only relay call before the tap should be POST /v1/pair");
+note(relayAsks.every(o => !o.pageAddress.includes("#")), "the fragment was still in the address at a relay request");
+note(outbound.every(o => /^https:\/\/relay\.vyre\.run\//.test(o.url)), `something other than the relay was contacted: ${outbound.filter(o => !/^https:\/\/relay\.vyre\.run\//.test(o.url)).map(o => o.url)}`);
+note(sockets.length === 0, `a socket to the relay opened before any tap: ${sockets}`);
+note(!(await keyDatabases()).includes("vyre-relay"), `a device key store exists before any tap: ${await keyDatabases()}`);
+note(!localRequests.some(r => r.includes(t1.toString("base64url"))), "the ticket reached the page's own server");
+// Not now: still nothing.
+note(await clickButton("Not now"), "no Not now button on the card");
+await pump(t1, 1500);
+note(/Nothing was paired/.test(String(await loaderText())), "Not now did not say nothing was paired");
+note(sockets.length === 0, "a socket opened after Not now");
+note(!(await keyDatabases()).includes("vyre-relay"), "a device key store exists after Not now");
+
+// 2. Only the tap on Pair makes the key and opens the pairing channel.
+const t2 = Buffer.from("fedcba9876543210", "latin1").subarray(0, 8);
+await send("Page.navigate", { url: `http://localhost:${port}/#pair=${t2.toString("base64url")}` });
+await pump(t2, 5000);
+note(sockets.length === 0, "a socket opened before the tap on Pair");
+note(await clickButton("Pair this device"), "no Pair button on the card");
+await pump(t2, 6000);
+note(sockets.some(u => /^wss:\/\/relay\.vyre\.run\//.test(u)), `the tap on Pair did not start pairing over the relay (sockets: ${sockets})`);
+c.kill(); server.close();
+
+console.log(JSON.stringify({ outbound: outbound.map(o => [o.method, o.url]), sockets, card: card.slice(0, 200) }, null, 2));
 if (failures.length) { console.log("THE HAND-OFF DID NOT HOLD:\n- " + failures.join("\n- ")); process.exit(1); }
-console.log("The fragment was cleared before the first request, only the relay was contacted, and the ticket was in no URL.");
+console.log("A #pair= link shows its card and pairs nothing without the tap; the fragment is gone first; only the relay is contacted; the tap alone starts pairing.");
 await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});

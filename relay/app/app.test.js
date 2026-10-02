@@ -280,7 +280,7 @@ test("service worker: /app/<path> is answered from the build the loader named, h
   assert.equal((await w2.fire("fetch", { request: new Request("https://app.vyre.run/app/app.css") })).status, 404);
 });
 
-import { pairTicketFrom, HOSTED_RELAY } from "./loader/fragment.js";
+import { pairTicketFrom, HOSTED_RELAY, cardWords } from "./loader/fragment.js";
 import nodeCrypto from "node:crypto";
 
 test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and nothing else is taken for one", () => {
@@ -295,4 +295,11 @@ test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and not
   assert.equal(pairTicketFrom(`#enroll=${ticket.toString("base64url")}`), null);
   assert.equal(pairTicketFrom(""), null);
   assert.equal(pairTicketFrom("#pair=!!!!!!!!!!!!"), null);
+});
+
+test("loader: the confirm card says who the code claims to be, as short plain text", () => {
+  assert.deepEqual(cardWords({ name: "Harlow's box", handle: "harlow", fingerprint: "abcd efgh" }), { says: "harlow.vyre.run", fingerprint: "abcd efgh" });
+  assert.equal(cardWords({ name: "Harlow's box", handle: null, fingerprint: "abcd efgh" }).says, "Harlow's box");
+  const hostile = cardWords({ name: "<img src=x onerror=alert(1)>" + "x".repeat(200), handle: null, fingerprint: "f".repeat(100) });
+  assert.ok(hostile.says.length <= 80 && hostile.fingerprint.length <= 20, "capped; the loader writes it with textContent, never as markup");
 });
