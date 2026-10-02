@@ -95,3 +95,29 @@ test("firstboot: the key baked into the image is the release key pinned in relea
   const text = fs.readFileSync(SCRIPT, "utf8");
   assert.ok(!/password|passwd|VYRE_CODE|VYRE_SETUP_CODE/i.test(text.replace(/Nothing in this script asks for or stores a password[^\n]*\n/, "")), "no code or password is handled by the first boot");
 });
+
+test("firstboot: --stage-only checks and stages a release without installing; --from-baked installs it offline and re-checks it", { skip: SKIP }, t => {
+  const s = site(t);
+  const env = (/** @type {string[]} */ a, /** @type {string} */ web) => spawnSync("sh", [SCRIPT, ...a], { encoding: "utf8", timeout: 60_000, env: { PATH: process.env.PATH || "", VYRE_BOX_URL: `file://${web}/`, VYRE_RELEASE_KEY_PEM: path.join(path.dirname(s.web), "key.pem"), VYRE_STATE_DIR: s.state, VYRE_FIRSTBOOT_RETRIES: "1", VYRE_FIRSTBOOT_WAIT: "0", STUB_LOG: path.join(path.dirname(s.web), "stub.log") } });
+  const a = env(["--stage-only"], s.web);
+  assert.equal(a.status, 0, a.stdout + a.stderr);
+  assert.match(s.status(), /^staged 0\.2\.2$/);
+  assert.equal(s.ran(), "", "staging installs nothing");
+  assert.ok(fs.existsSync(path.join(s.state, "release", "SHA256SUMS.sig")), "the signature is kept for the offline re-check");
+  // The network is gone: the baked release installs from disk.
+  const b = env(["--from-baked"], "/nonexistent");
+  assert.equal(b.status, 0, b.stdout + b.stderr);
+  assert.match(s.status(), /^ok 0\.2\.2$/);
+  assert.match(s.ran(), /installer-ran/);
+  // A baked file changed after the build is caught by the re-check, and nothing runs.
+  fs.rmSync(path.join(path.dirname(s.web), "stub.log"));
+  fs.writeFileSync(path.join(s.state, "release", "compose.yml"), "services: {tampered: {}}\n");
+  const c = env(["--from-baked"], "/nonexistent");
+  assert.notEqual(c.status, 0);
+  assert.match(s.status(), /compose\.yml does not match the signed release/);
+  assert.equal(s.ran(), "");
+  // No baked release: it says so instead of reaching for the network.
+  fs.rmSync(path.join(s.state, "release"), { recursive: true });
+  assert.notEqual(env(["--from-baked"], "/nonexistent").status, 0);
+  assert.match(s.status(), /no baked release in this image/);
+});

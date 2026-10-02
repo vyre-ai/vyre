@@ -24,6 +24,12 @@ variable "version" {
   description = "A label for the snapshot name. The image installs the LATEST release at first boot whatever this says."
 }
 
+variable "bake" {
+  type        = bool
+  default     = false
+  description = "true: stage the latest release INTO the image (the fallback if DigitalOcean does not allow a first-boot download). false: the first boot installs the latest."
+}
+
 variable "region" {
   type    = string
   default = "nyc3"
@@ -36,7 +42,7 @@ source "digitalocean" "vyre" {
   // The smallest size: a disk cannot be shrunk, so a small base lets people pick any plan.
   size          = "s-1vcpu-1gb"
   ssh_username  = "root"
-  snapshot_name = "vyre-${var.version}-{{timestamp}}"
+  snapshot_name = "vyre-${var.version}${var.bake ? "-baked" : ""}-{{timestamp}}"
   // No monitoring agent, no IPv6, no private networking on the build droplet (DigitalOcean's image check flags them).
   monitoring    = false
   ipv6          = false
@@ -56,11 +62,12 @@ build {
   }
 
   provisioner "shell" {
-    environment_vars = ["DEBIAN_FRONTEND=noninteractive"]
+    environment_vars = ["DEBIAN_FRONTEND=noninteractive", "BAKE=${var.bake ? 1 : 0}"]
     scripts = [
       "scripts/010-base.sh",
       "scripts/020-docker.sh",
       "scripts/030-vyre.sh",
+      "scripts/035-bake-release.sh",
       "scripts/090-cleanup-and-check.sh",
     ]
   }
