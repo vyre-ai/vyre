@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- Lumen: a quick question about the screen waits for the screen chip again (that wait lived in the memory-first path I removed, so the screen would have gone without the question). Found by running the Swift suite locally before the next Mac run.
 - Fixes from the first Mac run of the paired-Mac work (36958350321): the wiring test's fixture now answers agents.list through link.call, since a linked Mac asks its server for agents; the paired-Mac check reads the link afresh when it looks for the server being away, clears the earlier answer, and asserts the question reached the assistant's thread on the box.
 - Lumen says "server", never "the box" or "your box", to a person (team/RULES.md): the menu's "Server direct" and "No server", "Send to server", the Glass rows, the session-limit message and the chat-link messages. The guard suite now fails on those words too.
 - Lumen tells vyred the Mac's IANA time zone name (context.report {surface, device, tz}, nothing else about where it is) when it finds vyred, when it shows, and when the zone changes, so the Planner reads "6pm" in the person's zone (#58).

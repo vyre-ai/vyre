@@ -110,27 +110,30 @@ public struct IQFixShown: Sendable, Equatable {
 }
 
 extension CapsuleModel {
+    /// Only words that may be about the screen (they point at it, or text may be selected) wait for the screen chip; any other
+    /// question does not wait. Returns true when the words are about the screen, with the chips settled into `attachments`, so the
+    /// caller sends them with the question (the lead, 2026-09-27: Lumen always knows the screen).
+    func settleScreenChips(_ words: String) async -> Bool {
+        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        let asking = attachers.filter { $0.mayBeAbout(w) }
+        guard !asking.isEmpty else { return false }
+        // The chips already asked for these words, else ask now (⏎ can beat the search, and the follow-up box empties the words as this runs).
+        var got = attachedWords == w ? attachments : []
+        if got.isEmpty {
+            for a in asking {
+                if let x = await a.attachment(for: w, to: .ask), !removedAttachments.contains(x.id) { got.append(x) }
+            }
+        }
+        if got.contains(where: \.aboutIt) { attachments = got; return true }
+        return false
+    }
+
     /// A plain quick question through memory.ask. Nil: this vyred has no memory.ask, so the caller
     /// takes the old path.
     func askIQ(_ words: String) async -> ActionOutcome? {
         guard vyred.has("memory.ask") else { return nil }
-        // Only words that may be about the screen (they point at it, or text may be selected) wait
-        // for its chip; any other question goes to memory.ask at once.
-        let w = words.trimmingCharacters(in: .whitespacesAndNewlines)
-        let asking = attachers.filter { $0.mayBeAbout(w) }
-        if !asking.isEmpty {
-            // The chips already asked for these words, else ask now (⏎ can beat the search, and the
-            // follow-up box empties the words as this runs).
-            var got = attachedWords == w ? attachments : []
-            if got.isEmpty {
-                for a in asking {
-                    if let x = await a.attachment(for: w, to: .ask), !removedAttachments.contains(x.id) { got.append(x) }
-                }
-            }
-            // Words about the screen, or a selection: memory cannot see it. The fast model with the
-            // screen context answers instead (the lead, 2026-09-27: the Capsule always knows the screen).
-            if got.contains(where: \.aboutIt) { attachments = got; return nil }
-        }
+        // Words about the screen, or a selection: memory cannot see it. The fast model with the screen context answers instead.
+        if await settleScreenChips(words) { return nil }
         asked = words
         askedMemory = nil
         iqStage = nil; iqDraft = nil; iqAnswerId = nil; iqCorrecting = nil; iqFixed = nil; iqAbstained = false

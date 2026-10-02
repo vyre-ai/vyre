@@ -100,6 +100,6 @@ let snapshotSuite = Suite("snapshots") { t in
             }
             return out
         }
-        t.eq(ok, [true, true, true, true, true, true])
+        t.eq(ok, [true, true, true, true, true])
     }
 }

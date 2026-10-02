@@ -914,6 +914,8 @@ public final class CapsuleModel: ObservableObject {
     func ask(_ words: String, model: String? = nil, context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
         let model = model ?? models.quick
+        // A quick question about the screen waits for the screen chip, so the screen goes with it (it used to be settled in askIQ).
+        if !computerUse, context == nil, model == models.quick { _ = await settleScreenChips(words) }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
             return .failed("Could not make Lumen's folder: \(error.localizedDescription)")
