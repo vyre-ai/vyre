@@ -21,7 +21,7 @@ import { assistantCard } from "../js/assistant-setup.js";
 import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
 import { chatCounts, chatsWord } from "../js/chat-counts.js";
-import { threadAvatar, whoAvatar, whoIs } from "../js/avatars.js";
+import { threadAvatar, whoAvatar, unknownActorAvatar } from "../js/avatars.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
@@ -288,15 +288,15 @@ function needCard(n) {
     h("div", { style: { flexGrow: "1" } }),
     threadHref && n.kind === "ask" ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
 
-  // Who is acting: the agent's own face and name, or the assistant (the default actor) when the Gate did not say.
-  const actor = n.agent || whoIs().assistant.name || "Your assistant";
+  // Who is acting: the agent's own face and name from the record (its thread's agent when the item names none). Unknown is a neutral face and "An agent", never someone else.
+  const actor = n.agent || "An agent";
   const heading = n.kind === "ask"
     ? h("h3", null, `May ${n.agent || "this session"} run `, h("code", { class: "need-cmd" }, n.command || ""), "?")
     : n.kind === "question" ? h("h3", null, n.questions?.[0]?.question || n.title)
-    : h("h3", null, n.agent ? n.title : n.title.replace(/^An agent /, `${actor} `));
+    : h("h3", null, n.title);
   return h("div", { class: "need-row" },
     h("article", { class: "held need" + (n.kind === "draft" ? " is-draft" : "") },
-      h("div", { class: "need-top" }, h("div", { class: "need-who" }, whoAvatar(n.agent, { size: 28, label: actor }), heading),
+      h("div", { class: "need-top" }, h("div", { class: "need-who" }, n.agent ? whoAvatar(n.agent, { size: 28, label: actor }) : unknownActorAvatar({ size: 28, label: actor }), heading),
         h("span", { class: "caption muted nowrap" }, [where, clock(n.at)].filter(Boolean).join(" · "))),
       n.why ? h("p", { class: "need-why" }, n.why) : null,
       n.kind === "draft" ? heldBody(n, f) : null,

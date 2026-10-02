@@ -117,11 +117,11 @@ export function secondLine(n) {
   return { text: "", mono: false };
 }
 
-/** Line 3: "<agent> · <project>", and "on <mac>" for a Mac session's. `assistantName` names the actor when no agent is known (the assistant is the default actor). @param {Item} n @param {string} [assistantName] */
-export function thirdLine(n, assistantName = "") {
+/** Line 3: "<agent> · <project>", and "on <mac>" for a Mac session's. @param {Item} n */
+export function thirdLine(n) {
   if (n.kind === "pair") return [n.pair?.node, n.pair?.login].filter(Boolean).join(" · ") || "A Mac asking to pair";
   // Without an agent, the session's own name says who asks.
-  const who = n.agent || n.threadName || assistantName || (n.kind === "draft" ? "an agent" : "a session");
+  const who = n.agent || n.threadName || (n.kind === "draft" ? "an agent" : "a session");
   const where = n.projectName && n.projectName !== who ? n.projectName : n.agent && n.threadName ? n.threadName : null;
   return [who, where, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
 }

@@ -338,6 +338,24 @@ export function draftAvatar(/** @type {string} */ thread, /** @type {Opts} */ o 
   return avatar("project", String(thread || ""), { ...o, draft: true });
 }
 
+/**
+ * Whoever is asking when the record does not say: a neutral silhouette, not a seeded face, so no one is credited with it. The caller
+ * labels it "An agent".
+ * @param {Opts} [o]
+ */
+export function unknownActorAvatar(o = {}) {
+  const size = o.size || 24;
+  const el = document.createElement("span");
+  el.setAttribute("class", `vy-av vy-av-unknown${o.cls ? " " + o.cls : ""}`);
+  el.setAttribute("style", `--av:${size}px`);
+  el.setAttribute("data-family", "unknown");
+  if (o.label) { el.setAttribute("role", "img"); el.setAttribute("aria-label", o.label); } else el.setAttribute("aria-hidden", "true");
+  const src = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="${size}" height="${size}"><circle cx="60" cy="60" r="58" fill="currentColor" fill-opacity=".14"/><circle cx="60" cy="48" r="18" fill="currentColor" fill-opacity=".45"/><path d="M26 100c4-22 17-32 34-32s30 10 34 32a58 58 0 0 1-68 0z" fill="currentColor" fill-opacity=".45"/></svg>`;
+  const parsed = parse(src);
+  if (parsed) el.append(document.importNode(parsed, true));
+  return el;
+}
+
 /** Whether `agent` names the assistant: no agent, a Claude label, or the assistant's own name (chat/lib/names.js's rule). */
 const isAssistantName = (/** @type {string} */ a) => !a || /claude/i.test(a) || a === who.assistant.name;
 
