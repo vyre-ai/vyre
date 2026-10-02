@@ -18,6 +18,8 @@
       "onboard.history",
       "onboard.skip",
       "onboard.finish",
+      "onboard.assistant",
+      "onboard.setup",
       "onboard.passkey",
       "onboard.link"
     ]

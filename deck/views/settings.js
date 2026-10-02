@@ -37,6 +37,7 @@ const SECTIONS = [
   ["you", "You and your address"],
   ["assistant", "The assistant"],
   ["claude", "Claude Code"],
+  ["accounts", "AI accounts"],
   ["connections", "Connections"],
   ["network", "Network"],
   ["devices", "Your devices"],
@@ -139,6 +140,7 @@ export default async function settings(ctx) {
       if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
     }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
     drawNetwork(body.network, ctx), drawDevices(body.devices, ctx), drawServer(body.server, ctx), drawHistory(body.history, ctx),
+    import("./settings-accounts.js").then(m => m.drawAccounts(body.accounts, ctx)).catch(e => put(body.accounts, empty("AI accounts did not load.", e))),
     import("./settings-spend.js").then(m => m.drawSpend(body.spend, ctx)).catch(e => put(body.spend, empty("Spend did not load.", e))),
     import("./settings-permissions.js").then(m => m.drawPermissions(body.permissions, ctx)).catch(e => put(body.permissions, empty("Permissions did not load.", e))),
     drawLessons(body.lessons, ctx),

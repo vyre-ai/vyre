@@ -31,9 +31,11 @@
 // connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
 import crypto from "node:crypto";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { boxKey, signAnswer } from "./assert.js";
+import { companionSide } from "./companion.js";
 
 const TTL = 10 * 60_000;
 const MAX_PENDING = 5;
@@ -81,6 +83,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     // "mac" is the full link feature set (reads, Taildrop, ask-answering); "device" is a peer
     // paired only to import its own sessions (sync.upload.*), never forwarded a read or a write.
     `ALTER TABLE link_peers ADD COLUMN kind TEXT NOT NULL DEFAULT 'mac'`,
+    // A companion (core/link/companion.js): a local core vouched for by the desktop app device that is its parent.
+    `ALTER TABLE link_peers ADD COLUMN parent TEXT`,
+    `ALTER TABLE link_peers ADD COLUMN core_pub TEXT`,
   ]);
   const pepper = crypto.randomBytes(32);
   const mac = s => crypto.createHmac("sha256", pepper).update(String(s)).digest();
@@ -107,6 +112,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const id = crypto.randomUUID(), code = newCode(), secret = crypto.randomBytes(32).toString("base64url");
       const peer = peerOf(meta), created = now();
       const k = kind === "device" ? "device" : "mac";
+      name = friendlyDeviceName(name, { kind: k, owner: (ctx.config.onboard || {}).person });
       pending.set(id, { id, name: String(name).slice(0, 80), login, peer, kind: k, code: mac(code), secret: mac(secret), created, expires: created + TTL });
       ctx.events.emit("link.pair-requested", { id, name: String(name).slice(0, 80), login, kind: k, expires: created + TTL });
       return { id, code: showCode(code), secret, expires: created + TTL, box: { name: ctx.config.name || null } };
@@ -202,7 +208,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   /** The paired Mac this key belongs to, checked against the calling node when known. */
   const byKey = (key, meta) => {
-    const row = /** @type {any} */ (db.prepare("SELECT * FROM link_peers WHERE key_hash = ?").get(sha(String(key || ""))));
+    const row = /** @type {any} */ (db.prepare("SELECT * FROM link_peers WHERE key_hash = ? AND kind != 'companion'").get(sha(String(key || ""))));
     if (!row || !tailnetLogin(meta.caller)) return null;
     const peer = peerOf(meta);
     if (row.stable_id && peer && peer.stableId !== row.stable_id) return null;
@@ -272,6 +278,19 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         return { ...rest, reach: "direct", why: "Connected over your Tailscale network.", since: reachSince.at(asked, "direct") };
       }
       return h;
+    },
+  });
+
+  ctx.tool("link.rename", {
+    description: "Rename a paired Mac or device: the person's own label, kept on the box and shown wherever the device appears (the Deck, session rows, Drive, Now). A new name replaces what the device called itself.",
+    input: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"] },
+    run: async ({ id, name }) => {
+      const label = cleanLabel(name);
+      if (!label || label.length > 64) throw new Error("a name is 1 to 64 printable characters");
+      const r = db.prepare("UPDATE link_peers SET name = ? WHERE id = ?").run(label, String(id));
+      if (!r.changes) throw new Error("no such paired Mac");
+      ctx.events.emit("device.renamed", { kind: "mac", id: String(id), name: label });
+      return { id: String(id), name: label };
     },
   });
 
@@ -510,8 +529,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     },
   });
 
+  const companion = companionSide(ctx, { db, now, deviceInfo: async id => { const r = /** @type {any} */ (await ctx.call("relay.device.info", { id })); return r && r.data ? r.data : null; } });
+
   return {
     async stop() {
+      companion.stop();
       pending.clear(); forwarded.clear(); macAsks.clear();
       for (const id of [...waiting.keys()]) release(id, null);
       for (const a of [...asks.values()]) a.done({ ok: false, error: { code: "stopped", message: "the box is stopping" } });

@@ -137,9 +137,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "local/hands-chrome-mac/extension/caps/batch.js": {
-   "count": 2,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "count": 3,
+   "owner": "capsule-sight",
+   "note": "extension-side op dispatch, not a registry tool call. batch.run and batch.parallel call ops of the same extension through ctx.call, so the floor, stop and approval apply to each step. batch.parallel refuses any op outside the READING set (extension/shared/proto.js) before it runs anything, so it can never start a write; batch.run's two calls were listed before. Needs reviewer-2 on the READING guard (pending)"
   },
   "local/hands-chrome-mac/extension/lib/ctx.js": {
    "count": 1,

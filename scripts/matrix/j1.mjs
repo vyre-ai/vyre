@@ -37,7 +37,7 @@ try {
   r.step("1.1b-no-fixture-names", hits.length === 0, hits.length ? { why: hits.join(", ") } : {});
 
   // 1.2 start: the page makes its key and shows one install line
-  await click("Set up my server");
+  await click("A Linux server");
   const shown = await sees(/Run this on your server/);
   const line = String(await page.evaluate(`(document.querySelector("pre code")||{}).textContent||""`)).trim();
   const okLine = shown && /^curl -fsSL http:\/\/127\.0\.0\.1:\d+\/i \| VYRE_CODE=\S+ sh$/.test(line);

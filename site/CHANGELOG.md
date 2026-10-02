@@ -21,6 +21,13 @@ the site itself still has no build step. `scripts/gen-og.sh` draws the social ca
   in /og. Lighthouse on the home page: performance 99, SEO 100, best practices 100.
 - Replaced styles.css, app.js and start/start.css with v2.css and v2.js. The installers (/i, /w, /install.sh, /box) and
   the setup page are not touched. test/site-v2.test.js checks metadata, links, structured data, the sitemap and words.
+- The setup page is one flow of ten steps with a timeline (#11): a rail beside the step at 900 px and wider, a segmented bar with
+  "All steps" below that. The order is now install, check the words, choose your address, Tailscale, your AI, your phone, passkey,
+  then steps 8 to 10 at your own address. Tailscale comes before the AI sign-in. The AI sign-in has a clear "Skip for now" (#52):
+  skipped steps stay listed as skipped and the finish names them. The step number comes only from the page's own stage, never from
+  a progress line.
+- The setup page's log now shows a line for every step as it moves (words matched, connected, address claimed, Tailscale joined,
+  address live, AI signed in or skipped, phone paired, passkey link made), in the page's own fixed words, above the server's lines (#21).
 
 ### 0.2.0 (2 Oct 2026)
 

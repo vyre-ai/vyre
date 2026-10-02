@@ -33,6 +33,7 @@ import { offerEnroll } from "./enroll-grant.js";
 import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
+import { starButton } from "./star-button.js";
 import { installRows } from "./rows.js";
 import * as trace from "./trace.js";
 import { skeleton as kitSkeleton } from "./states.js";
@@ -181,7 +182,7 @@ put(deck,
   h("div", { class: "body" },
     railEl.el,
     h("div", { class: "stage" },
-      h("div", { class: "shell-note" }, fixtureNote),
+      h("div", { class: "shell-note" }, fixtureNote, starButton()),
       h("div", { class: "panes" }, side, view))),
   cap.el,
   tabBar);

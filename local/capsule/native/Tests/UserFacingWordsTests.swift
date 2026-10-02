@@ -54,6 +54,10 @@ let userFacingWordsSuite = Suite("user-facing words") { t in
         return out
     }
 
+    /// The word is "server" (team/RULES.md): the paired server is never "the box" or "your box" to a person. ("in the box" is the text
+    /// field, and stays.)
+    let boxWords = ["your box", "the box's", "The box ", "Send to box", "No box", "Box \\", "Box direct", "Box via"]
+
     t.test("no string a person can read says vyred or Capsule") {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
         var files = 0
@@ -62,14 +66,14 @@ let userFacingWordsSuite = Suite("user-facing words") { t in
             for case let url as URL in en where url.pathExtension == "swift" {
                 guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
                 files += 1
-                for l in literals(src) where l.text.contains("vyred") || l.text.contains("Capsule") {
+                for l in literals(src) where l.text.contains("vyred") || l.text.contains("Capsule") || boxWords.contains(where: { l.text.contains($0) }) {
                     if allowed.contains(where: { l.text.contains($0) }) { continue }
                     bad.append("\(url.lastPathComponent):\(l.line): \(l.text.prefix(80))")
                 }
             }
         }
         t.ok(files > 50, "found the sources (\(files) files)")
-        t.eq(bad, [], "user-facing strings with internal names")
+        t.eq(bad, [], "user-facing strings with internal names (vyred, Capsule) or the old word for the server")
     }
 
     t.test("the checker itself sees a word in a literal, not in a comment or an interpolation") {

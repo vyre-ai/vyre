@@ -81,7 +81,7 @@ import { toolDetail } from "./tool-detail.js";
  *   thread.status/canonical_status. "idle" default below is legacy, replaced by the first
  *   thread.state or thread.status event/snapshot.
  * @typedef {{ key: string, kind: "user", text: string, uuid?: string, at?: number, seq?: number, command?: true, surface?: string|null,
- *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean,
+ *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, accepted?: boolean, opened?: boolean,
  *   images?: number|import("./composer-state.js").Attachment[] }} UserItem
  * @typedef {{ key: string, kind: "steer", uuid: string|null, user: string|null, step: number|null, turn: string|null, pending: boolean,
  *   taken?: boolean, at?: number, seq?: number }} SteerItem
@@ -282,9 +282,11 @@ function adopt(s, user, uuid, out) {
 export function confirmSend(s, local, uuid) {
   /** @type {Set<string>} */
   const out = new Set();
-  if (!uuid || uuid === local) return [];
   const key = s.meta.uuids.get(local);
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
+  // The box answered the send (sent, whether or not it named the message again): the row stops saying "Sending".
+  if (user && !user.accepted) { const was = user.local && !user.confirmed && user.seq === undefined; user.accepted = true; if (was) out.add(user.key); }
+  if (!uuid || uuid === local) return [...out];
   if (user && user.uuid === local) adopt(s, user, uuid, out);
   // A row drawn on send: its uuid is the box's now (thread.queued may have named it already).
   const row = s.queued.find(q => q.uuid === local);

@@ -424,6 +424,7 @@ export class Directory {
     if (await this.store.get(`r/${p.route}`)) { this.note(rec, "recovery-void", { reason: "route already holds a name" }); await this.save(rec); return rec; }
     if (rec.route && await this.store.get(`r/${rec.route}`) === rec.name) await this.store.delete(`r/${rec.route}`);
     await this.store.put(`r/${p.route}`, rec.name);
+    await this.store.delete(`m/${p.route}`); // the route holds a name again: the old "moved" note no longer applies
     rec.route = p.route;
     rec.codeHash = p.next;
     rec.state = rec.everPointed ? "live" : "claimed";
@@ -495,6 +496,7 @@ export class Directory {
     const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, codeHash: await codeHash(v.name, code), pending: null, notices: [], log: [] };
     await this.save(rec);
     await this.store.put(`r/${a.route}`, v.name);
+    await this.store.delete(`m/${a.route}`); // the route holds a name again: the old "moved" note no longer applies
     return { name: v.name, mine: true, code };
   }
 
@@ -627,6 +629,7 @@ export class Directory {
     if (old && await this.store.get(`r/${old}`) === rec.name) await this.store.delete(`r/${old}`);
     if (old) await this.store.put(`m/${old}`, { name: rec.name, at: this.now() });
     await this.store.put(`r/${route}`, rec.name);
+    await this.store.delete(`m/${route}`); // the route holds a name again: the old "moved" note no longer applies
     Object.assign(rec, { route, state: rec.everPointed ? "live" : "claimed", claimedAt: this.now(), ips: {} });
     this.note(rec, "admin-rebind", { from: old ? old.slice(0, 8) : null, to: route.slice(0, 8) });
     await this.save(rec);

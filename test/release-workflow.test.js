@@ -15,7 +15,7 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   const pin = at("node scripts/pin-release-compose.mjs"), sign = at("node scripts/sign-manifest.mjs"), gate = at("node scripts/check-release-dist.mjs dist --pulled"), blob = at("cosign sign-blob --yes"), publish = at("gh release create");
   assert.ok(pin < sign && sign < gate && gate < blob && blob < publish, "order: pin, Ed25519 sign, gate, cosign blob, publish");
   assert.match(yml, /VYRE_SIGNING_KEY: \$\{\{ env\.PUBLISH == 'true' && secrets\.VYRE_RELEASE_SIGNING_KEY \|\| '' \}\}/, "the key is the release environment's secret, only on a publish");
-  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
+  assert.match(yml, /check-release-dist\.mjs dist --pulled --installer --setup --pubkey/, "a publish is gated with images required and the signature checked against the pinned key");
   assert.ok(!/\$\{VYRE_IMAGE:-\$BOX\}/.test(yml), "the old sed that kept a variable is gone");
   // The identity boxes demand is this workflow at a version tag: images are signed here with `cosign sign --yes` (keyless).
   assert.match(yml, /cosign sign --yes "\$ref"/);
@@ -23,11 +23,14 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   assert.ok(cosignRegex.includes("workflows/release\\.yml@refs/tags/v"), "the installer's identity names this workflow file at a version tag");
 });
 
-test("release.yml: a publishing run builds and signs only a commit that is on main or the 0.2 stage line, checked before the notes step", () => {
+test("release.yml: a publishing run builds and signs only a commit on main or the 0.2 stage line, or a proper patch checked by check-release-lineage, all before the notes step", () => {
   const guard = yml.indexOf("git merge-base --is-ancestor \"$GITHUB_SHA\" origin/main");
   assert.ok(guard > 0 && guard < yml.indexOf("- name: Version, channel, notes"));
   assert.match(yml, /origin\/work\/stage-0\.2/);
-  assert.match(yml, /if: github\.event_name == 'push' && vars\.VYRE_RELEASES == 'go'\n\s+run: \|\n\s+git fetch --no-tags origin main work\/stage-0\.2/);
+  assert.match(yml, /node scripts\/check-release-lineage\.mjs "\$GITHUB_SHA" "\$GITHUB_REF_NAME"/);
+  assert.match(yml, /\+refs\/heads\/hotfix\/\$GITHUB_REF_NAME:refs\/remotes\/origin\/hotfix\/\$GITHUB_REF_NAME/, "only this tag's own hotfix branch is fetched, not any hotfix/*");
+  assert.doesNotMatch(yml, /hotfix\/\*/, "no wildcard over hotfix branches");
+  assert.match(yml, /if: github\.event_name == 'push' && vars\.VYRE_RELEASES == 'go'\n\s+env:\n\s+GH_TOKEN: \$\{\{ github\.token \}\}\n\s+run: \|\n\s+git fetch --no-tags origin main work\/stage-0\.2/);
 });
 
 test("release.yml: the step that holds the signing key runs only checked-in scripts, with no inline code", () => {

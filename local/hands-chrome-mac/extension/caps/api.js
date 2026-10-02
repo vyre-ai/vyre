@@ -21,6 +21,13 @@ import { classifySend, held, writeGate } from "../shared/outbound.js";
 import { learn, mergeCatalog, buildCall } from "../shared/apilearn.js";
 import { records, target, refuse, pageFetch, present, start, frameList } from "./net.js";
 
+
+const STOP = new Set(["the", "and", "for", "with", "from", "all", "get", "list", "show", "read", "fetch", "find", "give", "that", "this", "get"]);
+/** @param {string} s @returns {string[]} */
+const words = s => String(s || "").toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !STOP.has(w)).map(w => w.replace(/(ies)$/, "y").replace(/s$/, ""));
+/** How many of the hint's words an entry's path and query names carry. @param {string[]} hint @param {any} e */
+const scoreEntry = (hint, e) => { const have = new Set([...words(e.pathTemplate.replace(/\{[^}]*\}/g, " ")), ...Object.keys(e.query || {}).flatMap(words)]); return hint.filter(w => have.has(w)).length; };
+const DEAD_AFTER = 2;
 const KEY = "api.catalog";
 const MAX_ORIGINS = 20;
 
@@ -85,6 +92,55 @@ const ops = {
     if (args?.origin) origins = origins.filter(o => o === args.origin);
     else if (tab != null) { const seen = await bufferOrigins(ctx, tab); if (seen.length) origins = origins.filter(o => seen.includes(o)); }
     return { origins, entries: origins.flatMap(o => all[o].entries) };
+  },
+
+  /**
+   * API-first routing. A read the person wants (hint: "contacts", "workflow status") is tried against the
+   * catalog first: the best-matching GET entry of the tab's origins is called from inside the page and the
+   * answer verified (a 2xx). When nothing matches, the match is ambiguous, a path parameter is missing, the
+   * call is held or refused, or the stored endpoint no longer answers, the reply is route "ui" with the
+   * reason, and the caller drives the page as before. A writing entry is never routed here; it is named in
+   * `writes` so the caller can choose api.call knowingly (a write asks the person as always). An entry that
+   * fails twice is dropped from the catalog, so a changed app stops being tried.
+   */
+  async "api.route"(args, ctx, trust = {}) {
+    const tab = await target(ctx, args, "api.catalog");
+    const hint = words(args?.hint);
+    if (!hint.length) throw refuse("bad_request", "api.route needs a hint: what the page's data is about, in a few words");
+    const st = store(ctx);
+    const all = await st.load();
+    const t = await ctx.tabs.get(tab).catch(() => null);
+    const origins = new Set(await bufferOrigins(ctx, tab));
+    try { origins.add(new URL(String(t?.url || "")).origin); } catch { /* no url */ }
+    const mine = [...origins].flatMap(o => (all[o]?.entries || []).map((/** @type {any} */ e) => ({ e, o })));
+    const scored = mine.map(({ e }) => ({ e, score: scoreEntry(hint, e) })).filter(x => x.score > 0 && (x.e.fails || 0) < DEAD_AFTER);
+    const reads = scored.filter(x => /^(GET|HEAD)$/.test(x.e.method)).sort((a, b) => b.score - a.score || b.e.count - a.e.count);
+    const writes = scored.filter(x => !/^(GET|HEAD)$/.test(x.e.method)).slice(0, 5).map(x => ({ entryId: x.e.id, method: x.e.method, pathTemplate: x.e.pathTemplate }));
+    /** @param {string} why @param {any} [more] */
+    const ui = (why, more) => ({ route: "ui", why, ...(writes.length ? { writes } : {}), ...(more || {}) });
+    if (!reads.length) return ui(mine.length ? "no learned read matches the hint" : "nothing is learned for this page yet (run api.learn after using it once)");
+    const [best, next] = reads;
+    if (next && next.score === best.score && next.e.pathTemplate !== best.e.pathTemplate) return ui("more than one learned read matches equally; pick one with api.call", { candidates: reads.slice(0, 5).map(x => ({ entryId: x.e.id, pathTemplate: x.e.pathTemplate })) });
+    const e = best.e;
+    try { buildCall(e, args?.params || {}); } catch (x) { return ui(/** @type {Error} */ (x).message, { entryId: e.id, pathTemplate: e.pathTemplate }); }
+    /** @param {boolean} ok */
+    const note = async ok => {
+      const cur = await st.load();
+      const hit = Object.values(cur).flatMap(o => o.entries).find(x => x.id === e.id);
+      if (!hit) return;
+      hit.fails = ok ? 0 : (hit.fails || 0) + 1;
+      if (ok) hit.verified = Date.now();
+      for (const o of Object.values(cur)) o.entries = o.entries.filter(x => (x.fails || 0) < DEAD_AFTER);
+      await st.save(cur);
+    };
+    let res;
+    try { res = await ops["api.call"]({ tab, entryId: e.id, params: args?.params, frame: args?.frame }, ctx, trust); }
+    catch (x) { return ui("the call was refused: " + String(/** @type {any} */ (x)?.message || x), { entryId: e.id }); }
+    if (res && res.held) return { route: "held", entryId: e.id, ...res };
+    const status = Number(res?.status);
+    if (status >= 200 && status < 300) { await note(true); return { route: "api", entryId: e.id, pathTemplate: e.pathTemplate, ...res }; }
+    await note(false);
+    return ui(`the stored endpoint answered ${status || "nothing"}, so it is not trusted`, { entryId: e.id, status });
   },
 
   async "api.call"(args, ctx, trust = {}) {

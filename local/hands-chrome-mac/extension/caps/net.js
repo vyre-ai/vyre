@@ -240,6 +240,24 @@ function probeNetwork(eg, method, p, session) {
   }
 }
 function handle(ctx, t, method, p, session) {
+  // Code a guarded script BUILDS from text (eval, new Function, a string timer) has no sourceURL of its own, but Chrome reports the stack that created it with the script it is parsed from.
+  // A script whose creation stack names the call's tag is the call's too: its id is remembered, and a request it starts is tagged like the call's own (see the initiator walk below).
+  if (method === "Debugger.scriptParsed") {
+    const tag = /** @type {any} */ (t).evalTag;
+    if (tag && (/** @type {any} */ (t).egress || /** @type {any} */ (t).sticky)) {
+      const tt = /** @type {any} */ (t);
+      let hit = String(p.url || "").includes(tag), st = p.stackTrace, hops = 0;
+      // Transitive: a frame whose script is already the call's makes this one the call's too, however deep the string timers nest (async depth is 12).
+      while (!hit && st && hops++ < 40) { for (const f of st.callFrames || []) if (String(f.url || "").includes(tag) || (tt.tagScripts && tt.tagScripts.has(`${session || ""}|${f.scriptId}`))) { hit = true; break; } st = st.parent; }
+      if (hit) {
+        const set = tt.tagScripts || (tt.tagScripts = new Set());
+        // A full set fails closed: from then on any initiator frame with no url (string-built code) counts as the call's, so a loop of eval("0") cannot buy an untagged script.
+        if (set.size < 4000) set.add(`${session || ""}|${p.scriptId}`); else tt.tagOverflow = true;
+      }
+    }
+    return;
+  }
+  if (method === "Debugger.paused") { void Promise.resolve(session ? ctx.cdp.send(t.tab, "Debugger.resume", {}, session) : ctx.cdp.send(t.tab, "Debugger.resume", {})).catch(() => {}); return; } // a debugger; statement in a page must never hold it
   { const egP = /** @type {any} */ (t).egress; if (egP && egP.nonce && /^Network\.(requestWillBeSent|responseReceived|loadingFailed)$/.test(method)) probeNetwork(egP, method, p, session); }
   if (method === "Target.attachedToTarget") {
     { const eg0 = /** @type {any} */ (t).egress; if (eg0 && eg0.live && p.sessionId) (eg0.kidSessions || (eg0.kidSessions = new Map())).set(p.sessionId, String(p.targetInfo?.type || ""));
@@ -303,7 +321,7 @@ function handle(ctx, t, method, p, session) {
     if ((/** @type {any} */ (t)).evalTag && p.initiator && p.initiator.stack) {
       // Does a script this tab's guarded calls compiled sit anywhere in the stack that started the request (including the async parents of a timer or a promise)?
       let st = p.initiator.stack, hops = 0, hit = false;
-      while (st && hops++ < 8 && !hit) { for (const f of st.callFrames || []) if (String(f.url || "").includes(/** @type {any} */ (t).evalTag)) { hit = true; break; } st = st.parent; }
+      while (st && hops++ < 40 && !hit) { for (const f of st.callFrames || []) if (String(f.url || "").includes(/** @type {any} */ (t).evalTag) || (/** @type {any} */ (t).tagScripts && /** @type {any} */ (t).tagScripts.has(`${session || ""}|${f.scriptId}`)) || (/** @type {any} */ (t).tagOverflow && !f.url)) { hit = true; break; } st = st.parent; }
       if (hit) /** @type {any} */ (r).tagged = true;
     }
     r.size = weigh(r);
@@ -504,7 +522,7 @@ async function probeGuard(ctx, t, eg, frame) {
     // no Fetch interception to probe and rests on the browser-level rules alone, narrowed to the first party and required to be TESTED (see egressGuard), so a false claim only makes it stricter.
     const swOf = (/** @type {number} */ n) => eg.probeSw.has(n) || eg.probeClaim.has(n);
     const covered = (/** @type {number} */ n) => expect(n).every(k => eg.probeSeen.has(k)) || swOf(n);
-    const end = Date.now() + (attempt ? 1000 : 400);
+    const end = Date.now() + (attempt ? 2500 : 400); // a slow runner or a busy event loop can take a second to deliver the pauses
     const done = () => targets.every((f, n) => !f || covered(n));
     while (Date.now() < end && !done()) await new Promise(r => setTimeout(r, 15));
     if (done()) {
@@ -546,6 +564,16 @@ const NO_WORKERS_SRC = `(() => { const no = function () { throw new Error("Vyre 
 const mark = (t, what) => { try { (t.trail || (t.trail = [])).push([Date.now() % 1000000, what]); if (t.trail.length > 40) t.trail.shift(); } catch { /* */ } };
 
 const bounded = (promise, ms = 500) => Promise.race([Promise.resolve(promise).catch(() => {}), new Promise(res => setTimeout(res, ms))]);
+
+/** @param {any} ctx @param {any} t @param {string|undefined} session */
+async function ensureDebugger(ctx, t, session) {
+  // Sent at every guard start, not remembered: a detach and re-attach (or a reload of the target) drops the domain, and Debugger.enable is idempotent.
+  const send = (/** @type {string} */ m, /** @type {any} */ x) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
+  await bounded(send("Debugger.enable", {}), 1500);
+  await bounded(send("Debugger.setSkipAllPauses", { skip: true }), 1000);
+  // Async stacks: the stack of a string timer's code, parsed when the timer fires, then reaches back to the setTimeout call in the script.
+  await bounded(send("Debugger.setAsyncCallStackDepth", { maxDepth: 12 }), 1000);
+}
 
 async function stickyJudge(t, p, session) {
   const st = t.sticky;
@@ -750,6 +778,8 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
   }
   // From here on the script runs: a frame or worker that attaches now was made by it (or by the page while it ran).
   eg.live = true; mark(t, "start:live");
+  // The Debugger domain, only to learn which scripts the call's own code creates (no breakpoints; pauses are skipped and any pause is resumed at once). On the session the script runs in.
+  if (!eg.noFetch) await ensureDebugger(ctx, t, frame && frame.how !== "top" && frame.session ? String(frame.session) : undefined);
   // A same-origin frame the script makes starts with a window of its own that the page shim never saw: its Worker would be an unguarded route out. Every new document made while the guard is up
   // gets the same refusal before any script of it runs (removed again at stop). Not used in the test-only DNR-alone mode.
   if (!eg.noFetch && eg.depth === 1) { try { const nd = await bounded(ctx.cdp.send(tab, "Page.addScriptToEvaluateOnNewDocument", { source: NO_WORKERS_SRC })); eg.newDoc = nd && nd.identifier; } catch { /* the shim and the closing of a worker at return remain */ } }
@@ -822,7 +852,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
 /** End the sticky guard: the page navigated away from the scripts it was watching. @param {any} ctx @param {any} t */
 async function clearSticky(ctx, t) {
   const st = t.sticky; if (!st) return;
-  t.sticky = null;
+  t.sticky = null; if (t.tagScripts) t.tagScripts.clear(); t.tagOverflow = false;
   if (!t.egress) { if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(t.tab, false), 2500); await syncFetch(ctx, t); }
 }
 /** A main-frame navigation ends it; a sub-frame's document load does not. @param {any} ctx @param {any} t @param {string} frameId */

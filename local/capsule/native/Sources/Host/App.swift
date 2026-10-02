@@ -95,6 +95,19 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         for n in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
             ws.addObserver(forName: n, object: nil, queue: .main) { [vyred] _ in vyred.dropPresenceSession() }
         }
+        // The Mac's time zone changed (travel, or a setting): tell vyred, so the Planner reads times in it.
+        NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.reportZone() }
+        }
+        // A Mac paired to a server tells it when it sleeps and wakes (link.sleep, link.wake), so the box knows at once. Not under the tests.
+        if ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" {
+            ws.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [vyred] _ in
+                Task { await vyred.box.willSleep(vyred) }
+            }
+            ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [vyred] _ in
+                Task { await vyred.box.didWake(vyred) }
+            }
+        }
         DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [vyred] _ in
             vyred.dropPresenceSession()
         }

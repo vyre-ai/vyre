@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // check-release-dist: what a release folder must be, for the updater that will read it. The release job runs this on dist/ before it signs
 // or publishes anything; the rehearsal runs it on a dry run's artifact.
-//   node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--installer] [--pubkey <spki-base64>]
+//   node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--installer] [--setup] [--pubkey <spki-base64>]
+//   --setup     setup.json (scripts/setup-hashes.mjs) must be in the release, listed in SHA256SUMS and { v: 1, files: [...] }: what scripts/check-served.mjs checks vyre.run against
 //   --installer the Windows installer (Vyre_<version>_x64-setup.exe and VyreSetup.exe) must be in the release
 //   --pulled   the release carries images: release.json names them by digest and compose.yml pins them (required for a release that boxes pull)
 //   --pubkey   SHA256SUMS.sig must be a valid Ed25519 signature by this key over "vyre-release-sums\n" + SHA256SUMS (the format every updater reads)
@@ -13,10 +14,10 @@ import { SEAMS } from "./strip-wrapper.mjs";
 
 const DIGEST_REF = /^ghcr\.io\/vyre-ai\/[a-z-]+@sha256:[0-9a-f]{64}$/;
 const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$/;
-const REQUIRED = ["install-box.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
+const REQUIRED = ["install-box.sh", "install-mac-server.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
 
 /** @param {string} dir @param {{ pulled?: boolean, pubkey?: string }} [o] @returns {string[]} the problems */
-export function check(dir, { pulled = false, pubkey = "", installer = false } = {}) {
+export function check(dir, { pulled = false, pubkey = "", installer = false, setup = false } = {}) {
   const problems = [];
   const read = f => { try { return fs.readFileSync(path.join(dir, f)); } catch { return null; } };
   for (const f of REQUIRED) if (read(f) === null) problems.push(`missing ${f}`);
@@ -41,6 +42,16 @@ export function check(dir, { pulled = false, pubkey = "", installer = false } = 
   if (installer) {
     const v = read("VERSION").toString("utf8").trim();
     for (const f of [`Vyre_${v}_x64-setup.exe`, "VyreSetup.exe"]) if (!listed.has(f)) problems.push(`the Windows installer ${f} is not in the release`);
+  }
+
+  // setup.json: the hashes of what vyre.run serves for the setup page and the install line, signed by being listed in SHA256SUMS.
+  if (setup) {
+    const raw = read("setup.json");
+    if (raw === null || !listed.has("setup.json")) problems.push("setup.json is not in the release");
+    else {
+      try { const j = JSON.parse(raw.toString("utf8")); if (!j || j.v !== 1 || !Array.isArray(j.files) || !j.files.length) problems.push("setup.json is not { v: 1, files: [...] } with files"); }
+      catch { problems.push("setup.json is not JSON"); }
+    }
   }
 
   // release.json and VERSION agree; the images are named by digest.
@@ -92,7 +103,7 @@ if (process.argv[1] && process.argv[1].endsWith("check-release-dist.mjs")) {
   const dir = args.find(a => !a.startsWith("--") && args[args.indexOf(a) - 1] !== "--pubkey");
   if (!dir) { console.error("usage: node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--pubkey <spki-base64>]"); process.exit(2); }
   const pubkey = args.includes("--pubkey") ? args[args.indexOf("--pubkey") + 1] : "";
-  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), pubkey });
+  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), setup: args.includes("--setup"), pubkey });
   for (const p of problems) console.error(`release-dist: ${p}`);
   if (problems.length) process.exit(1);
   console.log(`release-dist: ${dir} is what the updater needs`);

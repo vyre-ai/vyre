@@ -446,7 +446,7 @@ test("queued rows sit above the composer: Edit, Take back, Steer now by row id; 
   at("thread.queued", { queued: 7, uuid: "q1", text: "Then open a PR against main", surface: "deck" });
   const row = $(box3, ".cv-queued-row");
   assert.ok(row);
-  assert.match(text(row), /^Queued for after\s*Then open a PR against main/);
+  assert.match(text(row), /^Queued for after this turn\s*Then open a PR against main/);
   for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Steer now"]]) {
     const b = $(row, cls);
     assert.equal(text(b), label);
@@ -621,9 +621,19 @@ test("typing while a turn runs steers it ('steering', then 'you steered here · 
   at("thread.usage", { cost_usd: 0.01, total_cost_usd: 0.2, context: { used: 124000, max: 200000, share: 0.62 } });
   await wait();
   assert.equal(text($(box4, ".cv-context")), "62% of context");
+  const heads = () => $$(box4, ".cv-head .msg-prov").map(el => text(el));
+  at("thread.sent", { text: "Before the switch?", surface: "deck" });
+  at("thread.text", { message: "old1", text: "Answered before the switch.", done: true, provider: "claude", model: "claude-opus-4-5" });
+  await wait();
   at("model.switched", { model: "haiku", live: true });
   await wait();
   assert.match(text($(box4, ".composer-answer")), /haiku/);
+  // One truth (#41): the header, the picker and each reply name a model with the same word, and a switch relabels nothing already said.
+  assert.match(text($(box4, ".cv-chip")), /haiku/, "the header follows the switch");
+  at("thread.sent", { text: "And now?", surface: "deck" });
+  at("thread.text", { message: "new1", text: "Answered after the switch.", done: true, provider: "claude", model: "haiku" });
+  await wait();
+  assert.deepEqual(heads().slice(-2), ["Claude, opus", "Claude, haiku"], "each reply says the model that answered it, in the header's words");
   await $(box4, ".composer-answer").click();
   await wait();
   assert.ok(calls.some(c => c.tool === "sessions.models.get"), "the picker reads the per-purpose map");

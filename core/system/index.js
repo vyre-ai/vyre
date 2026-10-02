@@ -4,7 +4,8 @@
 
 import os from "node:os";
 import { build } from "../daemon/build.js";
-import { hostedOrigins } from "../config/index.js";
+import { hostedOrigins, save as saveConfig } from "../config/index.js";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 
 // Both fingerprints, or null for either if owner.id is missing or malformed (lib/identity
@@ -30,7 +31,7 @@ export default {
         // matching the relay's pairing ticket) from lib/identity.js, so this and tailnet's relay
         // can never drift apart.
         const fp = ownerFingerprints(ctx.config.owner && ctx.config.owner.id);
-        return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], platform: process.platform, node: process.version,
+        return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], serverName: ctx.config.serverName || null, platform: process.platform, node: process.version,
           owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null, fingerprint8: fp.person },
           // The name the user gave their assistant in onboarding, else the agent it was created as.
           assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null,
@@ -38,6 +39,19 @@ export default {
           network: { origins: hostedOrigins(ctx.config.network) } };
       },
     });
+    ctx.tool("system.rename", {
+      description: "Rename this server: its display name, a label the person chooses (not its vyre.run address). It is shown wherever this machine appears, and a phone sees it when pairing. An empty name goes back to the default.",
+      input: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+      run: async ({ name }) => {
+        const label = cleanLabel(name);
+        if (label.length > 64) throw new Error("a name is 1 to 64 printable characters");
+        const shown = label ? friendlyDeviceName(label) : null;
+        saveConfig({ serverName: shown }, ctx.paths.root, ctx.config);
+        ctx.events.emit("device.renamed", { kind: "server", id: "server", name: shown });
+        return { id: "server", name: shown };
+      },
+    });
+
     ctx.tool("system.echo", {
       description: "Returns what it was given. For checking that tools and the rules path work.",
       input: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },

@@ -37,6 +37,27 @@ RUN arch=$(dpkg --print-architecture) \
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
  && npm cache clean --force
 
+# Codex and Grok Build, for "Sign in to your AI" and the sessions that run on them (core/sessions drivers codex, grok): the account's sign-in command and the
+# session itself are spawned as the account's own uid, which the spawner only does for a program at a fixed absolute path (core/spawner/main.js lists these
+# three). Pinned. Codex and its ACP adapter come from npm, whose exact-version install is checked against the registry's own integrity hash; Grok Build is
+# one static binary, checked against the sum below before it is installed (per architecture: bump both with the version, and test/box-clis.test.js keeps
+# the pins, the spawner's list and the drivers' program names in step).
+ARG CODEX_VERSION=0.159.3
+ARG CODEX_ACP_VERSION=2.1.0
+RUN npm install -g "@openai/codex@${CODEX_VERSION}" "@agentclientprotocol/codex-acp@${CODEX_ACP_VERSION}" \
+ && npm cache clean --force \
+ && codex --version
+ARG GROK_VERSION=1.0.46
+ARG GROK_SHA256_AMD64=41626a53292324140b92556b9d42ff5542e3dcd04aff85eafb8689dd4adb44fc
+ARG GROK_SHA256_ARM64=45b0943e736f00a249b9cf02af2be9e0749d97c09a6f55cfcf3029a1a836f23e
+RUN arch=$(dpkg --print-architecture) \
+ && case "$arch" in amd64) sum=$GROK_SHA256_AMD64; garch=x86_64 ;; arm64) sum=$GROK_SHA256_ARM64; garch=aarch64 ;; *) echo "no pinned grok for $arch" >&2; exit 1 ;; esac \
+ && curl -fsSL --retry 3 -o /tmp/grok "https://x.ai/cli/grok-${GROK_VERSION}-linux-${garch}" \
+ && echo "$sum  /tmp/grok" | sha256sum -c - \
+ && install -m 0755 /tmp/grok /usr/local/bin/grok \
+ && rm /tmp/grok \
+ && grok --version
+
 # The Claude Agent SDK that Vyre-owned sessions run on (ADR 0030), with the Claude Code it bundles
 # (its platform optional package, about 230 MB, so no --omit=optional). The version is the one
 # pinned in core/sessions/sdk-pin.js (it imports nothing); bumping it there rebuilds this layer. Installed here rather than

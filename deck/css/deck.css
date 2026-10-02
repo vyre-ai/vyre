@@ -134,6 +134,10 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 /* Installed on an iPad or a phone turned sideways (both can be 720 wide or more), the shell keeps
    clear of the status bar and the notch. env() is 0 on a desktop browser: nothing moves there. */
 .shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+/* The star button (js/star-button.js). */
+.star { display: flex; align-items: center; gap: 8px; }
+.star[hidden] { display: none; }
+.star-btn { gap: 6px; }
 /* The mark and wordmark on the onboarding's pages (onboard.css); the shell has no brand row. */
 .brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
 /* From 720 up: the rail (72), then the stage: the header over the list column and the view. */

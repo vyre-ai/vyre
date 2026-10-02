@@ -11,8 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
+import { isPerson } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
+import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
 import { checkName } from "../names/service.js";
 import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 
@@ -125,6 +127,8 @@ export default {
     const ob = () => ctx.config.onboard || {};
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
+    /** The setup page (or an earlier step) already claimed a vyre.run address on this box: ctx.config.name is that address, not the person. */
+    const heldAddress = () => net().via === "vyre.run" && Boolean(ctx.config.name);
     // The person's public, non-secret id (team-lead, 28 Sep, for the phone's avatar): made once,
     // here, on every start -- a fresh install gets it right away (this runs before the wizard's
     // first onboard.status), and an install from before this field existed gets it backfilled on
@@ -172,6 +176,9 @@ export default {
     // one. Reviewer's condition, 28 Sep: refuse up front, through this one guard, on every wizard
     // tool but the two that are meant to work on Solo (onboard.status, which only reads, and
     // onboard.machine, which is how a Solo machine becomes a server in the first place).
+    /** The person on their own surface, or the setup page's own loopback caller: not a model on the box, a module or a guest. */
+    const personOrPage = caller => String(caller) === "onboard" || isPerson(String(caller));
+    const personOnly = caller => { if (!personOrPage(caller)) throw Object.assign(new Error("only the person, on their own surface or the setup page, changes this"), { code: "denied" }); };
     const boxOnly = () => { if (!config.isServer(ctx.config.machine)) throw Object.assign(new Error("this step is part of the box's onboarding wizard, not available on this machine"), { code: "not_a_server" }); };
 
     async function status(caller = "local") {
@@ -179,7 +186,7 @@ export default {
       const n = names.__error ? null : names;
       const t = n && n.tailscale;
 
-      const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: ctx.config.name || null, assistant: ob().assistant || null };
+      const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: heldAddress() ? (ob().person || null) : ctx.config.name || null, assistant: ob().assistant || null };
 
       const auth = ob().claude || null;
       const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
@@ -271,6 +278,8 @@ export default {
       lastStates = Object.fromEntries(STEPS.map(k => [k, detail[k].state]));
       const steps = Object.fromEntries(STEPS.map(k => [k, ["done", "skipped"].includes(detail[k].state) ? detail[k].state : "todo"]));
       const current = STEPS.find(k => steps[k] === "todo") || null;
+      // The signed-in AI account's own display name, to prefill the person's name (editable; null when it says none).
+      const accountName = await aiAccount().then(a => a.name).catch(() => null);
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
@@ -278,7 +287,7 @@ export default {
       const can = canRelayJoin(process.platform);
       return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
+        host: (t && t.node && t.node.name) || os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
         current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
@@ -383,13 +392,14 @@ export default {
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
         boxOnly();
+        personOnly(caller);
         const p = String(name ?? "").trim(), a = String(assistant ?? "").trim();
-        if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
+        if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p) || !/\p{L}/u.test(p)) throw new Error("your name is any letters, one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
-        const c = checkName(p);
-        // Continue is the person confirming this name, so it replaces any earlier candidate, unless
-        // an address already serves under the old one.
-        save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // The address is never derived from the person's name (#50): this saves the person and the assistant's name, nothing else.
+        save({ onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // The assistant is made as soon as it has a name and its person exists: no second click, whatever the Claude step does later.
+        if (a) await ensureAssistant();
         return stepOf("you", caller);
       },
     });
@@ -457,6 +467,8 @@ export default {
           return call("names.check", { name });
         }
         if (action === "reserve" && via(await call("names.status")) === "ts.net") action = "ts.net";
+        // An address this box already holds (the setup page claimed it): there is nothing to reserve, only its progress to read.
+        if ((action === "reserve" || action === "claim") && net().via === "vyre.run" && ctx.config.name) action = "status";
         if (action === "reserve" || action === "claim") {
           // A vyre.run name is public DNS. It is claimed only when the person typed it and pressed
           // Continue in step 1 (onboard.you saved it), or confirmed it here with confirm: true.
@@ -491,6 +503,7 @@ export default {
           }
           await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t, grants: CREDENTIAL_READERS });
           save({ onboard: { claude: kind } });
+          await ensureAssistant();
         }
         return { ...(await stepOf("claude", caller)), url: null, needsCode: signin.active() };
       },
@@ -583,40 +596,77 @@ export default {
       input: obj({ step: { type: "string", enum: STEPS } }, ["step"]),
       run: async ({ step }, { caller }) => {
         boxOnly();
+        personOnly(caller);
         save({ onboard: { skipped: [...new Set([...skipped(), step])] } });
         return status(caller);
       },
     });
 
-    /**
-     * The assistant (spec section 10): made once, on every project, signed in with what the Claude
-     * step put in the Vault, and greeting the person in its first thread. Without a Claude sign-in
-     * there is nothing to run it on yet, so it waits for Settings; a failure never blocks finishing.
-     */
-    async function meet() {
+    /** The credentials the assistant runs on: the Claude step's Vault items, or none (the machine's own Claude Code sign-in). */
+    const assistantAuth = () => {
       const auth = ob().claude;
-      if (!auth) return null;
-      if (ob().greeted) return { name: ob().greeted.agent, display: ob().assistant || null, thread: ob().greeted.thread };
+      return !auth ? {} : auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] };
+    };
+
+    /**
+     * The assistant's row (spec section 10), made once, on every project, the moment the person has named it (onboard.you) and for as long as it
+     * is missing: at that step, at the Claude step, at finish, on every start and on a retry. The row needs no credentials to exist, so a person
+     * whose Claude Code is signed in outside this wizard (nothing stored in the Vault) still has their assistant, and it takes the Vault items once the
+     * Claude step stores them. Idempotent. Never throws: why it could not be made is kept (onboard.assistantState) and shown with a retry.
+     * @param {{ fallbackName?: boolean }} [o] fallbackName: finishing names an unnamed assistant "Juno"
+     * @returns {Promise<{ name: string|null, display: string|null, made: boolean, why: string|null }>}
+     */
+    async function ensureAssistant(o = {}) {
+      const display = ob().assistant || (o.fallbackName ? "Juno" : null);
+      if (!display) return { name: null, display: null, made: false, why: null };
       try {
-        const display = ob().assistant || "Juno";
         const list = await call("agents.list");
-        let a = (Array.isArray(list) ? list : list.agents || []).find(x => x.kind === "assistant");
+        const rows = Array.isArray(list) ? list : list.agents || [];
+        let a = rows.find(x => x.kind === "assistant");
         if (!a) {
-          const name = slug(display);
           const person = ob().person ? ` You work for ${ob().person}.` : "";
-          a = await call("agents.create", { name, kind: "assistant", projects: "*",
-            // agents reads auth.vault as a subscription token and auth.fallback as an API key.
-            auth: auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] },
+          a = await call("agents.create", { name: slug(display), kind: "assistant", projects: "*", auth: assistantAuth(),
             instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
+        } else if (ob().claude && a.auth === "ambient") {
+          // Made before the Claude step stored its sign-in (agents.list says its credentials are "ambient"): it gets the Vault items now.
+          a = await call("agents.update", { name: a.name, auth: assistantAuth() });
         }
-        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
-        save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
-        return { name: a.name, display, thread: r.thread };
+        if (ob().assistantState) save({ onboard: { assistantState: null } });
+        return { name: a.name, display, made: true, why: null };
       } catch (e) {
-        ctx.log("onboard: the assistant was not made: " + /** @type {Error} */ (e).message);
-        return { name: null, display: ob().assistant || null, thread: null, why: /** @type {Error} */ (e).message };
+        const why = /** @type {Error} */ (e).message;
+        ctx.log("onboard: the assistant was not made: " + why);
+        save({ onboard: { assistantState: { state: "failed", why, at: new Date().toISOString() } } });
+        return { name: null, display, made: false, why };
       }
     }
+
+    /** The assistant, then its first greeting when there is a Claude sign-in to run it. A failure never blocks finishing. */
+    async function meet() {
+      if (ob().greeted) return { name: ob().greeted.agent, display: ob().assistant || null, thread: ob().greeted.thread };
+      const a = await ensureAssistant({ fallbackName: true });
+      if (!a.made) return { name: null, display: a.display, thread: null, why: a.why };
+      if (!ob().claude) return { name: a.name, display: a.display, thread: null };
+      try {
+        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
+        save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
+        return { name: a.name, display: a.display, thread: r.thread };
+      } catch (e) {
+        ctx.log("onboard: the assistant's greeting was not sent: " + /** @type {Error} */ (e).message);
+        return { name: a.name, display: a.display, thread: null };
+      }
+    }
+
+    ctx.tool("onboard.assistant", {
+      description: "Make the assistant now, if it is not made: the name given in the You step, on every project. The retry for \"your assistant was not made\". Says whether it exists and, when not, why.",
+      input: obj({ retry: { type: "boolean" } }),
+      run: async (_, { caller }) => {
+        boxOnly();
+        personOnly(caller);
+        const a = await ensureAssistant({ fallbackName: Boolean(ob().finished) });
+        return { ...a, state: a.made ? "made" : a.display ? "failed" : "unnamed" };
+      },
+    });
 
     /**
      * The first passkey is made at the box's own address (a passkey made on the loopback page
@@ -659,6 +709,55 @@ export default {
       },
     });
 
+    /** The AI accounts that are signed in (a real account that has signed in, or the Claude step's stored token) and the first one's display name, if it says one. */
+    async function aiAccount() {
+      const l = await tryCall("sessions.accounts.list", {});
+      const rows = Array.isArray(l) ? l : [];
+      const live = rows.filter(a => a && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
+      const who = live.map(a => a.identity && a.identity.name).find(x => typeof x === "string" && x.trim());
+      return { signedIn: live.length > 0 || Boolean(ob().claude), name: who ? String(who).trim().slice(0, 60) : null };
+    }
+
+    /**
+     * The list the page, the onboarding module and `sudo vyre setup` share (#11): the ten steps with what the box sees for each, and the person's own saved
+     * skips and passes. Cheap enough for the page to ask every couple of seconds.
+     */
+    async function setupSnapshot(caller = "local") {
+      const st = await status(caller);
+      const [setup, keys, devices, peers, ai] = await Promise.all([tryCall("relay.setup.status", {}), tryCall("presence.keys", {}), tryCall("relay.devices.list", {}), tryCall("link.peers", {}), aiAccount()]);
+      const keyList = Array.isArray(keys) ? keys : keys && Array.isArray(keys.keys) ? keys.keys : [];
+      const devList = devices && Array.isArray(devices.devices) ? devices.devices : [];
+      const people = Array.isArray(peers) ? peers : [];
+      const addressDone = st.detail.name.state === "done";
+      const tailscaleDone = st.detail.tailscale.state === "done";
+      const passkey = keyList.some(k => k && k.kind === "passkey");
+      const assistant = Boolean(ob().person);
+      // What the box cannot ask directly is told by what came after it: a step later in the list being done means the earlier ones were passed.
+      const later = addressDone || tailscaleDone || passkey || assistant || Boolean(net().ownerSeen);
+      const facts = { install: true, words: Boolean(setup && !setup.__error && setup.state === "paired") || later, address: addressDone, tailscale: tailscaleDone, ai: ai.signedIn,
+        phone: devList.some(d => d && d.kind !== "web"), passkey, assistant, computers: people.length > 0, history: false };
+      const list = setupList(facts, { skipped: ob().setupSkipped || [], passed: ob().setupPassed || [] });
+      return { ...list, name: st.name, accountName: st.accountName, address: st.address, assistant: { display: ob().assistant || null, state: ob().assistantState || null }, finished: list.finished || Boolean(ob().finished) && list.current === null };
+    }
+
+    ctx.tool("onboard.setup", {
+      description: "The setup step list the box holds: the ten steps in order, each done, current, skipped or todo, with the current step and whether setup is finished. skip puts one of ai, phone, computers or history aside to finish later (it stays listed as skipped), unskip takes it back, pass says the person has been through history. It never completes a step the box can see for itself.",
+      input: obj({ skip: { type: "string", enum: [...SKIPPABLE] }, unskip: { type: "string", enum: [...SKIPPABLE] }, pass: { type: "string", enum: [...PASSABLE] } }),
+      run: async (input, { caller }) => {
+        boxOnly();
+        const i = input || {};
+        if (i.skip || i.unskip || i.pass) personOnly(caller);
+        const set = k => new Set(ob()[k] || []);
+        if (i.skip || i.unskip) {
+          const sk = set("setupSkipped");
+          if (i.skip) sk.add(String(i.skip)); if (i.unskip) sk.delete(String(i.unskip));
+          save({ onboard: { setupSkipped: [...sk] } });
+        }
+        if (i.pass) { const ps = set("setupPassed"); ps.add(String(i.pass)); save({ onboard: { setupPassed: [...ps] } }); }
+        return setupSnapshot(String(caller));
+      },
+    });
+
     ctx.tool("onboard.link", {
       description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
       input: obj({ mint: { type: "boolean" } }),
@@ -683,6 +782,9 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    // An install whose assistant was named but never made (an earlier version, or a failure at finish) gets it now, once the agents module is up.
+    const retry = setTimeout(() => { if (ob().assistant) ensureAssistant({ fallbackName: false }).catch(() => {}); }, 3000);
+    if (typeof retry.unref === "function") retry.unref();
+    return { async stop() { clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

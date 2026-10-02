@@ -303,7 +303,7 @@ public enum Route {
     /// the default), `agentThreads` the threads of that agent when the switchboard can list them.
     /// `quick` says the switchboard can start a thread, so a question can go straight to a model.
     public static func destinations(_ target: VyreCandidate?, _ text: String, _ cat: VyreCatalog, agentThreads: [VyreThread] = [],
-                                    now: Double = vyNowMs(), quick: Bool = false,
+                                    now: Double = vyNowMs(), quick: Bool = false, memory: Bool = false,
                                     models: (quick: String, deeper: String) = (ModelFallback.quick, ModelFallback.deeper)) -> (options: [VyreDestination], why: String?) {
         func threadDest(_ t: VyreThread, _ agent: String? = nil) -> VyreDestination {
             let a = agent ?? t.agent
@@ -318,14 +318,15 @@ public enum Route {
             let mine = cat.assistant.map { VyreDestination(kind: .assistant, agent: $0.name, meta: "your assistant") }
             // A question goes to a model. One about the user's own work goes to the assistant first,
             // which has their memory; any other goes to a fast model, which has none and answers sooner.
+            // What the person types goes to the assistant by default (#46); memory answers only when asked ("Ask memory", or "memory: ...").
+            let ask = memory ? [VyreDestination(kind: .recall, meta: "memory only")] : []
             if quick && asksQuestion(text) {
                 let fast = VyreDestination(kind: .quick, model: models.quick, meta: "fast model · \(models.quick)")
                 let deep = VyreDestination(kind: .quick, model: models.deeper, deep: true, meta: "deeper · \(models.deeper)")
-                guard let mine else { return ([fast, deep], nil) }
-                if let own = ownThings(text, cat) { return ([mine, fast, deep], "\(own), so \(mine.agent ?? "") answers with your memory.") }
-                return ([fast, mine, deep], nil)
+                guard let mine else { return ([fast, deep] + ask, nil) }
+                return ([mine, fast, deep] + ask, nil)
             }
-            if let mine { return ([mine], nil) }
+            if let mine { return ([mine] + ask, nil) }
             // No switchboard yet, or no assistant made: memory still answers, on this Mac, with no model.
             return ([VyreDestination(kind: .recall, meta: "memory · no model")], nil)
         }
@@ -451,23 +452,6 @@ public enum Route {
         return VyRx.test("(^|[^a-z0-9])\(NSRegularExpression.escapedPattern(for: n))('s)?([^a-z0-9]|$)", text)
     }
 
-    /// Whether a question is about the user's own things, and what said so: it names one of their
-    /// projects, threads, agents or people, says my/our (or I/me) with a work noun, or asks about
-    /// what they did. Nil when it reads as a general question.
-    public static func ownThings(_ text: String, _ cat: VyreCatalog) -> String? {
-        for p in cat.projects {
-            if wordIn(text, p.name) || wordIn(text, p.slug) { return "it names \(p.name)" }
-            for person in p.people {
-                let first = person.name.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? person.name
-                if wordIn(text, person.name) || wordIn(text, first) { return "\(first) is in \(p.name)" }
-            }
-        }
-        for a in cat.agents ?? [] where wordIn(text, a.name) { return "it names \(a.name)" }
-        // A thread is named only by its whole label: one shared word ("planning") is not naming it.
-        for th in cat.threads where !th.label.isEmpty && !words(th.label).isEmpty && wordIn(text, th.label) { return "it names \(th.label)" }
-        if VyRx.test(mine, text) || (VyRx.test(me, text) && VyRx.test(noun, text)) || VyRx.test(theirs, text) { return "it asks about your own work" }
-        return nil
-    }
 
     fileprivate static let asks = "^(what|whats|what's|who|whos|who's|why|how|hows|how's|when|where|which|is|are|was|were|do|does|did|can|could|should|would|will|explain|tell me|define)\\b"
 

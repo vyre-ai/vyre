@@ -100,7 +100,7 @@ export function listener({ vault, config, log }) {
     // `ended` alone remembers it, so an end that beats the vault is honoured once it is ready.
     let onEnd = () => {};
 
-    const stop = () => fail(new VoiceError("stopped", "vyred is stopping"));
+    const stop = () => fail(new VoiceError("stopped", "Vyre is stopping"));
     open.add(stop);
     const finish = (/** @type {any} */ last) => {
       if (finished) return;

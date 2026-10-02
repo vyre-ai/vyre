@@ -29,6 +29,8 @@
       { "name": "artifacts.mention.resolve", "summary": "an artifact tagged with #, as a reference for the thread", "reach": "modules" },
       { "name": "artifacts.activity.log", "summary": "record that an interactive artifact navigated away", "reach": "person" },
       { "name": "artifacts.activity", "summary": "what an interactive artifact has done: navigated away", "reach": "anyone" },
+      { "name": "artifacts.media.gallery", "summary": "generated images, video and audio as a gallery, newest first", "reach": "anyone", "projectArg": "project" },
+      { "name": "artifacts.media.usage", "summary": "how much generated media is kept, and the limits", "reach": "anyone", "projectArg": "project" },
       { "name": "artifacts.media.register", "summary": "keep an image, video or sound a provider made, with its prompt and session", "reach": "modules" },
       { "name": "artifacts.media.read", "summary": "the bytes of a media artifact, in chunks, for Vyre's own surfaces", "reach": "anyone" },
       { "name": "artifacts.media.copy", "summary": "put a media artifact in your own folder so you can open the file", "reach": "anyone" },
