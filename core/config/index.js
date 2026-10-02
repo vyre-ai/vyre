@@ -248,6 +248,22 @@ function accountTranscripts() {
   try { return fs.statSync(home).isDirectory() ? [path.join(home, "*", ".claude", "projects")] : []; } catch { return []; }
 }
 
+/**
+ * Agents' computers as the box's stack sets them: the Docker proxy's address and the same network, image, label prefix and capabilities the proxy
+ * enforces (a create that differs from them is refused), all from the environment box/compose.yml gives vyred. Empty without
+ * VYRE_COMPUTERS_DOCKER. @param {NodeJS.ProcessEnv} env
+ */
+function computersFromEnv(env) {
+  if (!env.VYRE_COMPUTERS_DOCKER) return {};
+  return {
+    docker: env.VYRE_COMPUTERS_DOCKER,
+    ...(env.VYRE_COMPUTERS_NETWORK ? { network: env.VYRE_COMPUTERS_NETWORK } : {}),
+    ...(env.VYRE_COMPUTERS_IMAGE ? { image: env.VYRE_COMPUTERS_IMAGE } : {}),
+    ...(env.VYRE_COMPUTERS_LABEL_PREFIX ? { labelPrefix: env.VYRE_COMPUTERS_LABEL_PREFIX } : {}),
+    ...(env.VYRE_COMPUTERS_CAP_ADD ? { capAdd: env.VYRE_COMPUTERS_CAP_ADD.split(",").map((s) => s.trim()).filter(Boolean) } : {}),
+  };
+}
+
 function defaults(root, platform = process.platform) {
   const claude = claudeHome(root);
   return {
@@ -274,7 +290,9 @@ function defaults(root, platform = process.platform) {
     glass: { egress: { enabled: false, sites: [] } },
     // Off: no computer joins the tailnet as its own node until the owner turns it on
     // (core/computers/tailnet.js, ADR 0014 part 9).
-    computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
+    // docker: the restricted Docker proxy, from VYRE_COMPUTERS_DOCKER when the box's stack sets it (box/compose.yml sets it for the
+    // stack as installed), so a fresh install can start agents' computers with no config.json edit. A config.json value wins; with neither, there is no driver and the offer says so plainly.
+    computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" }, ...computersFromEnv(process.env) },
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
     // Off: /app/* keeps serving beside the Deck until mobile's client-side migration is ready and

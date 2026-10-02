@@ -92,3 +92,35 @@ test("box: every base image a Dockerfile builds from is pinned by digest (FROM a
     for (const r of refs) if (!/^build\d*$|^[a-z]+$/.test(r) || r.includes("/") || r.includes(":")) assert.match(r, /@sha256:[0-9a-f]{64}$/, `${f}: ${r} is not pinned by digest`);
   }
 });
+
+// #43: a fresh install starts an agent's computer with no config.json edit. The stack as installed runs the restricted Docker
+// proxy and points vyred at it; the driver is picked from that, and a person is told plainly when there is none.
+import os from "node:os";
+import { load } from "../core/config/index.js";
+const defaults = (/** @type {string} */ root) => load(root);
+import { pickDriver } from "../core/computers/index.js";
+import { NO_DRIVER } from "../core/computers/pool.js";
+
+test("#43: compose runs docker-api by default and gives vyred its address", () => {
+  const compose = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "box", "compose.yml"), "utf8");
+  const svc = compose.slice(compose.indexOf("\n  docker-api:"), compose.indexOf("\nvolumes:"));
+  assert.ok(svc.includes("dockerproxy/main.js") && !/profiles:/.test(svc), "docker-api is not behind a profile");
+  assert.match(compose, /VYRE_COMPUTERS_DOCKER=\$\{VYRE_COMPUTERS_DOCKER-http:\/\/docker-api:2375\}/);
+});
+
+test("#43: vyred's computers.docker comes from VYRE_COMPUTERS_DOCKER, config.json wins, and no driver says why without naming a file", () => {
+  const old = process.env.VYRE_COMPUTERS_DOCKER;
+  try {
+    process.env.VYRE_COMPUTERS_DOCKER = "http://docker-api:2375";
+    process.env.VYRE_COMPUTERS_NETWORK = "vyre-computers"; process.env.VYRE_COMPUTERS_LABEL_PREFIX = "run.vyre.computers";
+    const c = defaults("/nonexistent-home").computers;
+    assert.deepEqual([c.docker, c.network, c.labelPrefix], ["http://docker-api:2375", "vyre-computers", "run.vyre.computers"], "the same values the proxy enforces");
+    const bearer = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-43-")), "bearer");
+    const d = pickDriver({ ...defaults("/nonexistent-home").computers, dockerBearerFile: bearer }, "k");
+    assert.ok(d, "a driver is picked");
+    delete process.env.VYRE_COMPUTERS_DOCKER;
+    assert.equal(defaults("/nonexistent-home").computers.docker, undefined);
+    assert.equal(pickDriver(defaults("/nonexistent-home").computers, "k"), null);
+  } finally { delete process.env.VYRE_COMPUTERS_NETWORK; delete process.env.VYRE_COMPUTERS_LABEL_PREFIX; if (old === undefined) delete process.env.VYRE_COMPUTERS_DOCKER; else process.env.VYRE_COMPUTERS_DOCKER = old; }
+  assert.ok(!/config\.json|edit/i.test(NO_DRIVER), NO_DRIVER);
+});

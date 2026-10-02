@@ -97,7 +97,7 @@ test("computers: without a driver, list says none and a checkout says why", asyn
   const l = await s.cli("computers.list");
   assert.equal(l.data.driver, "none");
   assert.deepEqual(l.data.computers.map(c => [c.agent, c.state]), [["kit", "none"], ["pax", "none"]]);
-  assert.match((await s.cli("computers.checkout", { agent: "kit" })).error.message, /no computer driver is configured/);
+  assert.match((await s.cli("computers.checkout", { agent: "kit" })).error.message, /computers are not turned on for this server/);
   assert.ok(s.logs.some(l => /no computer driver configured/.test(l)));
 });
 

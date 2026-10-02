@@ -95,7 +95,7 @@ test("pool: only agents whose record says computer: true get one, and only with 
   const none = setup(t, { agents: null });
   await assert.rejects(none.pool.checkout("kit"), /agents module is not running/);
   const off = new Pool({ db: pool.db, driver: null, call: async () => ({}), emit: () => {} });
-  await assert.rejects(off.checkout("kit"), /no computer driver is configured/);
+  await assert.rejects(off.checkout("kit"), /computers are not turned on for this server/);
 });
 
 test("pool: idle checkouts are released, then frozen, and a checkout thaws them", async t => {

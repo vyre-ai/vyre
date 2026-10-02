@@ -220,6 +220,31 @@ jobs:
             echo "$svc: Init=$init entrypoint=$ep" | tee -a "$GITHUB_STEP_SUMMARY"
             [ "$init" != true ] && [ "$ep" = "/usr/bin/tini --" ]
           done
+      - name: An agent's computer starts on a fresh install, with no config.json edit (#43)
+        if: hashFiles('core/computers/image/Dockerfile') != ''
+        env:
+          VYRE_IMAGE: vyre-box:ci
+          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
+          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
+          COMPOSE_PROJECT_NAME: vyreci
+        run: |
+          export DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+          F="-f box/compose.yml -f box/compose.egress.yml"
+          # The computer image the proxy allows (compose.yml's default VYRE_COMPUTERS_IMAGE tag), built from the repo.
+          docker build -q -t vyre/computer:0.1 core/computers/image
+          # The stack as install-box.sh leaves it: the project's compose files only, nothing in .env, and NO config.json written.
+          docker compose $F down -v >/dev/null 2>&1 || true
+          docker compose $F up -d tailscale vyre docker-api
+          vid=$(docker compose $F ps -q vyre)
+          i=0; until docker exec "$vid" vyre status >/dev/null 2>&1; do i=$((i + 1)); [ $i -lt 40 ] || { docker compose $F logs vyre | tail -40; echo "vyred did not come up"; exit 1; }; sleep 3; done
+          if docker exec "$vid" sh -c 'grep -q computers /home/vyre/.vyre/config.json 2>/dev/null'; then echo "config.json already names computers: this is not a fresh install"; exit 1; fi
+          docker exec "$vid" vyre agents create kit >/dev/null
+          out=$(docker exec "$vid" vyre agents computer kit restart 2>&1) || { echo "$out"; docker compose $F logs docker-api | tail -30; docker compose $F logs vyre | tail -30; echo "an agent's computer did not start"; exit 1; }
+          echo "$out"
+          docker exec "$vid" vyre agents computer kit --json | tee /dev/stderr | grep -q '"state": *"running"'
+          n=$(docker ps --filter label=run.vyre.computers.computer=kit -q | wc -l); echo "computer containers for kit: $n"
+          [ "$n" -ge 1 ] || docker ps -a --format '{{.Names}} {{.Labels}}' | head
+          echo "An agent's computer started on a fresh install with no config.json edit." | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Compose down
         if: always() && hashFiles('core/daemon/loop.sh') != ''
         env:

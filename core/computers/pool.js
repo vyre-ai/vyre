@@ -76,7 +76,8 @@ export const LIMITS = Object.freeze({ cpus: { min: 1, max: 16 }, memoryGb: { min
 export const TICKET_MS = 30_000;
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 
-export const NO_DRIVER = "no computer driver is configured on this machine: set computers.docker in config.json to the restricted Docker proxy";
+// Said to a person, so it names no file and asks for no edit: what is wrong, in plain words.
+export const NO_DRIVER = "Agents' computers are not turned on for this server, so this agent cannot start one.";
 
 // VNC authentication (RFB's DES challenge) only ever uses the first eight bytes of a password,
 // so the VNC password is eight characters. It guards a port on an internal network that only
