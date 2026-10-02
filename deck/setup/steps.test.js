@@ -97,3 +97,13 @@ test("mount: the same ten steps are drawn as a rail and a bar, and nothing is wr
   assert.equal($$($(host, ".tl-list"), "li.tl-step").length, 10);
   m.stop();
 });
+
+test("mount: the name is prefilled from the signed-in AI account, and stays editable", async () => {
+  const dom = install();
+  const { mountSetup } = await import("./mount.js");
+  const host = dom.createElement("div");
+  const m = mountSetup(host, { call: async () => status({ accountName: "Alex Rivera" }), pollMs: 50 });
+  await until(() => $(host, "input[name=you]"));
+  assert.equal($(host, "input[name=you]").value, "Alex Rivera");
+  m.stop();
+});

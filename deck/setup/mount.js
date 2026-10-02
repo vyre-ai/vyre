@@ -74,7 +74,7 @@ export function mountSetup(host, o) {
   const err = () => (ui.error ? h("p", { class: "warn", role: "alert" }, ui.error) : null);
 
   function stepAssistant(view) {
-    const you = h("input", { type: "text", class: "name", name: "you", autocomplete: "name", maxlength: "60", "aria-label": "Your name", value: typed.name ?? (status.person || "") });
+    const you = h("input", { type: "text", class: "name", name: "you", autocomplete: "name", maxlength: "60", "aria-label": "Your name", value: typed.name ?? (status.person || (typeof status.accountName === "string" ? status.accountName.slice(0, 60) : "")) });
     const asst = h("input", { type: "text", class: "name", name: "assistant", autocomplete: "off", maxlength: "40", "aria-label": "Your assistant's name", placeholder: status.assistant || "Juno", value: typed.assistant ?? "" });
     you.addEventListener("input", () => { typed.name = you.value; });
     asst.addEventListener("input", () => { typed.assistant = asst.value; });
