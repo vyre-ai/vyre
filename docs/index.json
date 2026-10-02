@@ -697,6 +697,7 @@
     {"kind":"config","name":"modules.enable","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[{"page":"concepts/box-and-mac.md","line":37,"anchor":"one-process-per-machine"},{"page":"concepts/modules.md","line":35,"anchor":"how-vyred-loads-them"},{"page":"build/first-module.md","line":433,"anchor":"9-switch-it-off-and-on"},{"page":"adr/0033-hackable-vyre.md","line":361,"anchor":"5-third-party-modules"}]},
     {"kind":"config","name":"name","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[{"page":"MODULES.md","line":72,"anchor":"modulejson"},{"page":"build/AGENT-BRIEF.md","line":119,"anchor":"modulejson-cheat-sheet"},{"page":"adr/0047-module-contract-v1.md","line":104,"anchor":"2-modulejson-v1"}]},
     {"kind":"event","name":"name.claimed","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
+    {"kind":"event","name":"name.moved","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
     {"kind":"event","name":"name.recovered","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
     {"kind":"event","name":"name.recovery-cancelled","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
     {"kind":"event","name":"name.recovery-pending","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},

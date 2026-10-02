@@ -30,6 +30,10 @@ on:
         description: "The run id of the release run that uploaded the signed `app-out` artifact (for app)"
         required: false
         type: string
+      names_admin_secret:
+        description: "Also set the names Worker's ADMIN_SECRET (the support-only rebind) from the environment's NAMES_ADMIN_SECRET"
+        type: boolean
+        default: false
       names_secrets:
         description: "Also set the names Worker's runtime secrets CF_API_TOKEN and CF_ZONE_ID from the environment's NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID (first deploy only)"
         type: boolean
@@ -149,6 +153,16 @@ jobs:
           [ -n "$NAMES_CF_API_TOKEN" ] && [ -n "$NAMES_CF_ZONE_ID" ] || { echo "::error::NAMES_CF_API_TOKEN and NAMES_CF_ZONE_ID must be environment secrets"; exit 1; }
           printf %s "$NAMES_CF_API_TOKEN" | "$W" secret put CF_API_TOKEN
           printf %s "$NAMES_CF_ZONE_ID" | "$W" secret put CF_ZONE_ID
+      - name: names/worker admin secret (support-only rebind)
+        if: ${{ inputs.names && inputs.names_admin_secret }}
+        working-directory: names/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          NAMES_ADMIN_SECRET: ${{ secrets.NAMES_ADMIN_SECRET }}
+        run: |
+          [ "${#NAMES_ADMIN_SECRET}" -ge 32 ] || { echo "::error::NAMES_ADMIN_SECRET must be an environment secret of at least 32 characters"; exit 1; }
+          printf %s "$NAMES_ADMIN_SECRET" | "$W" secret put ADMIN_SECRET
       - name: relay/app, the signed build (checked again here)
         if: ${{ inputs.app }}
         env:

@@ -324,6 +324,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `domain.failed` | `domain`, `why` |
 | `domain.ready` | `address`, `domain` |
 | `name.claimed` | `name` |
+| `name.moved` | `at`, `name` |
 | `name.recovered` | `name` |
 | `name.recovery-cancelled` | `name` |
 | `name.recovery-pending` | `eta`, `name` |

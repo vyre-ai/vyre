@@ -744,6 +744,7 @@ generated: scripts/gen-docs-reference
 
 - `name` config key, [explained](config.md#configjson). 3 mentions: MODULES.md [72](../MODULES.md#modulejson); build/AGENT-BRIEF.md [119](../build/AGENT-BRIEF.md#modulejson-cheat-sheet); adr/0047-module-contract-v1.md [104](../adr/0047-module-contract-v1.md#2-modulejson-v1)
 - `name.claimed` event, [explained](events.md#names). No mentions.
+- `name.moved` event, [explained](events.md#names). No mentions.
 - `name.recovered` event, [explained](events.md#names). No mentions.
 - `name.recovery-cancelled` event, [explained](events.md#names). No mentions.
 - `name.recovery-pending` event, [explained](events.md#names). No mentions.
