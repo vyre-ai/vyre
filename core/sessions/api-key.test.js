@@ -87,3 +87,15 @@ test("api key: an Anthropic-compatible key is checked the way that service reads
   const row = (await w.tool("sessions.accounts.list", { provider: "claude" })).data.find(a => a.id === r.data.account);
   assert.deepEqual([row.kind, row.base_url], ["api-key", s.base]);
 });
+
+test("accounts: a provider's only account is its default, and the survivor becomes the default when another is removed", async t => {
+  const w = await boot(t, { driver: "cli", vault: { "seed-item": "seed-value" } });
+  const s = await service(t);
+  const a = (await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, label: "one" })).data.account;
+  const get = async id => (await w.tool("sessions.accounts.list", { provider: "openai-compatible" })).data.find(x => x.id === id);
+  assert.equal((await get(a)).is_default, true, "the only account is the default");
+  const b = (await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: `${s.base}/v1`, label: "two" })).data.account;
+  assert.equal((await get(b)).is_default, false);
+  assert.equal((await w.tool("sessions.accounts.remove", { id: a })).data.removed, true);
+  assert.equal((await get(b)).is_default, true, "the survivor is the default");
+});
