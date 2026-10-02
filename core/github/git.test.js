@@ -208,6 +208,41 @@ test("worktreeAdd: a hook another repo has that this repo does not (pre-commit, 
   assert.match(asSession(wA.path, ["log", "-1", "--format=%B"]), /^Vyre-Session: gap1$/m);
 });
 
+test("worktreeAdd: push-to-checkout and fsmonitor-watchman are not wrapped, and need not be: git reaches them without the session's hooks path, so a repo's own copies of both still run under a session's environment", async t => {
+  _setGitVersion(null);
+  const repoA = makeClonedRepo(t);
+  const wA = await worktreeAdd({ repoDir: repoA, session: "special1", defaultBranch: "main", identity: IDENT });
+  assert.equal(fs.existsSync(path.join(wA.env.GIT_CONFIG_VALUE_0, "push-to-checkout")), false, "no wrapper for a hook this repo does not have");
+  assert.equal(fs.existsSync(path.join(wA.env.GIT_CONFIG_VALUE_0, "fsmonitor-watchman")), false);
+  // Another repo B takes pushes into its checkout (updateInstead, so push-to-checkout decides how the
+  // worktree is updated) and watches its files with an fsmonitor hook named in core.fsmonitor.
+  const repoB = makeClonedRepo(t);
+  const hooksB = path.join(repoB, ".git", "hooks");
+  const marks = path.join(os.tmpdir(), `vyre-special-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(marks, { recursive: true });
+  t.after(() => fs.rmSync(marks, { recursive: true, force: true }));
+  fs.mkdirSync(hooksB, { recursive: true });
+  fs.writeFileSync(path.join(hooksB, "push-to-checkout"), `#!/bin/sh\ntouch '${path.join(marks, "ptc")}'\nexec git read-tree -u -m HEAD "$1"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(hooksB, "fsmonitor-watchman"), `#!/bin/sh\ntouch '${path.join(marks, "fsm")}'\nprintf '\\0'\n`, { mode: 0o755 });
+  plainGit(repoB, ["config", "receive.denyCurrentBranch", "updateInstead"]);
+  plainGit(repoB, ["config", "core.fsmonitor", ".git/hooks/fsmonitor-watchman"]);
+  // a session in A runs git in B, and pushes a new commit into B
+  try { asSession(repoB, ["status", "-s"], wA.env); } catch { /* the hook's reply is not the point, that it ran is */ }
+  assert.ok(fs.existsSync(path.join(marks, "fsm")), "B's own fsmonitor-watchman ran under the session's environment");
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-gh-pusher-"));
+  t.after(() => fs.rmSync(other, { recursive: true, force: true }));
+  const pusher = path.join(other, "p");
+  plainGit(other, ["clone", "-q", repoB, pusher]);
+  plainGit(pusher, ["config", "user.email", "a@example.com"]);
+  plainGit(pusher, ["config", "user.name", "a"]);
+  fs.writeFileSync(path.join(pusher, "pushed.md"), "x\n");
+  plainGit(pusher, ["add", "pushed.md"]);
+  plainGit(pusher, ["commit", "-q", "-m", "pushed"]);
+  asSession(pusher, ["push", "-q", "origin", "HEAD:main"], wA.env);
+  assert.ok(fs.existsSync(path.join(marks, "ptc")), "B's own push-to-checkout ran for a push made under the session's environment");
+  assert.ok(fs.existsSync(path.join(repoB, "pushed.md")), "and B's checkout was updated by it");
+});
+
 test("worktreeAdd: on a git older than 2.31 the same identity and hooks are per-worktree config instead, and no env is returned", async t => {
   _setGitVersion([2, 30]);
   t.after(() => _setGitVersion(null));
