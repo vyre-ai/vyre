@@ -1548,4 +1548,10 @@ test("surfaceFor: identity comes from the verified caller, never from the surfac
   assert.equal(surfaceFor({}, "tailnet:owner@example.evil", owner), "tailnet:owner@example.evil");
   // The link's words are always the box's.
   assert.equal(surfaceFor({ surface: "deck" }, "link:abc", owner), "box:via:link:abc");
+  assert.equal(surfaceFor({ surface: "box:deck" }, "link:box", owner), "box:deck", "the box's own surface, as core/link/mac.js marks it, stands");
+  assert.equal(surfaceFor({ surface: "cli:123" }, "link:box", owner), "box:via:link:box", "a terminal's name is never the link's");
+  // The computers module names the person's screen it already checked; no other module does.
+  assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:computers", owner), "glass:laptop");
+  assert.equal(surfaceFor({ surface: "cli:123" }, "module:computers", owner), "via:module:computers");
+  assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:planner", owner), "via:module:planner");
 });

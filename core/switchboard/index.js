@@ -2501,7 +2501,7 @@ function imagesOf(list) {
  *  - anything else (a model's mcp or harness call, a module, a hook, a guest, an agent's node, another login, an anonymous label) is its own label and
  *    can never name a surface of its own choosing (one of the person's, a terminal's cli:<pid>, the link's box:x, another agent's): a different name is
  *    replaced by "via:<label>", which contests like any other holder.
- * The link's words are always the box's surface, whatever the input says.
+ * The link's words are always the box's surface: a box:<name> it names stands, any other name becomes box:via:<label>.
  * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
  */
 export function surfaceFor(input, caller, owner) {
@@ -2513,6 +2513,11 @@ export function surfaceFor(input, caller, owner) {
   let s;
   if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
   else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
+  // The link's words are the box's person (core/link/mac.js marks its surface "box:<name>" and a write needs as:"person"): a box: name stands, any other is via:<label>.
+  else if (fromLink(c) && asked.startsWith("box:")) s = asked;
+  // The computers module takes and gives back the keyboard for a person's screen it has already checked is a person's (computers.takeover is a person-only tool,
+  // and refuses an agent's call), so the screen it names stands. Any other module still gets its own label.
+  else if (c === "module:computers" && ownSurface(asked)) s = asked;
   // Not the owner and not a person's own socket: its own label, or via:<label> when it names anything else. Never the asked name, which could be a live
   // terminal's (cli:<pid>), the link's (box:x) or another agent's, and re-taking "your own" lease is not a conflict.
   else s = asked && asked !== c ? `via:${c || "vyre"}` : (c || "vyre");
