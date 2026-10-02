@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 const CHROME = process.env.CHROME;
 if (!CHROME) { console.error("set CHROME to a Chrome binary"); process.exit(3); }
 const DECK = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const ROOT = path.join(DECK, "..");
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-claim-"));
 const TYPES = { ".js": "text/javascript", ".html": "text/html; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".json": "application/json" };
 let claimCalls = 0;
@@ -32,8 +33,10 @@ const server = http.createServer(async (rq, rs) => {
   if (url.pathname.startsWith("/v1/")) { rs.setHeader("content-type", "application/json"); rs.end(JSON.stringify({ data: {} })); return; }
   let p = url.pathname.endsWith("/") ? url.pathname + "index.html" : url.pathname;
   if (p === "/onboard/passkey") p = "/onboard/passkey/index.html";
-  const f = path.join(DECK, p);
-  if (f.startsWith(DECK) && fs.existsSync(f) && fs.statSync(f).isFile()) { rs.setHeader("content-type", TYPES[path.extname(f)] || "application/octet-stream"); rs.end(fs.readFileSync(f)); return; }
+  if (p === "/theme.css") { rs.setHeader("content-type", "text/css"); rs.end(""); return; }
+  // The daemon serves the shared resilience modules from core/ at /core/resilience/.
+  const f = p.startsWith("/core/resilience/") ? path.join(ROOT, p) : path.join(DECK, p);
+  if ((f.startsWith(DECK) || f.startsWith(path.join(ROOT, "core", "resilience"))) && fs.existsSync(f) && fs.statSync(f).isFile()) { rs.setHeader("content-type", TYPES[path.extname(f)] || "application/octet-stream"); rs.end(fs.readFileSync(f)); return; }
   missing.push(url.pathname); rs.statusCode = 404; rs.end("missing");
 });
 await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
