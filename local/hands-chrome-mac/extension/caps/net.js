@@ -245,9 +245,15 @@ function handle(ctx, t, method, p, session) {
   if (method === "Debugger.scriptParsed") {
     const tag = /** @type {any} */ (t).evalTag;
     if (tag && (/** @type {any} */ (t).egress || /** @type {any} */ (t).sticky)) {
+      const tt = /** @type {any} */ (t);
       let hit = String(p.url || "").includes(tag), st = p.stackTrace, hops = 0;
-      while (!hit && st && hops++ < 8) { for (const f of st.callFrames || []) if (String(f.url || "").includes(tag)) { hit = true; break; } st = st.parent; }
-      if (hit) { const set = /** @type {any} */ (t).tagScripts || (/** @type {any} */ (t).tagScripts = new Set()); if (set.size < 4000) set.add(`${session || ""}|${p.scriptId}`); }
+      // Transitive: a frame whose script is already the call's makes this one the call's too, however deep the string timers nest (async depth is 12).
+      while (!hit && st && hops++ < 40) { for (const f of st.callFrames || []) if (String(f.url || "").includes(tag) || (tt.tagScripts && tt.tagScripts.has(`${session || ""}|${f.scriptId}`))) { hit = true; break; } st = st.parent; }
+      if (hit) {
+        const set = tt.tagScripts || (tt.tagScripts = new Set());
+        // A full set fails closed: from then on any initiator frame with no url (string-built code) counts as the call's, so a loop of eval("0") cannot buy an untagged script.
+        if (set.size < 4000) set.add(`${session || ""}|${p.scriptId}`); else tt.tagOverflow = true;
+      }
     }
     return;
   }
@@ -315,7 +321,7 @@ function handle(ctx, t, method, p, session) {
     if ((/** @type {any} */ (t)).evalTag && p.initiator && p.initiator.stack) {
       // Does a script this tab's guarded calls compiled sit anywhere in the stack that started the request (including the async parents of a timer or a promise)?
       let st = p.initiator.stack, hops = 0, hit = false;
-      while (st && hops++ < 8 && !hit) { for (const f of st.callFrames || []) if (String(f.url || "").includes(/** @type {any} */ (t).evalTag) || (/** @type {any} */ (t).tagScripts && /** @type {any} */ (t).tagScripts.has(`${session || ""}|${f.scriptId}`))) { hit = true; break; } st = st.parent; }
+      while (st && hops++ < 40 && !hit) { for (const f of st.callFrames || []) if (String(f.url || "").includes(/** @type {any} */ (t).evalTag) || (/** @type {any} */ (t).tagScripts && /** @type {any} */ (t).tagScripts.has(`${session || ""}|${f.scriptId}`)) || (/** @type {any} */ (t).tagOverflow && !f.url)) { hit = true; break; } st = st.parent; }
       if (hit) /** @type {any} */ (r).tagged = true;
     }
     r.size = weigh(r);
@@ -561,10 +567,7 @@ const bounded = (promise, ms = 500) => Promise.race([Promise.resolve(promise).ca
 
 /** @param {any} ctx @param {any} t @param {string|undefined} session */
 async function ensureDebugger(ctx, t, session) {
-  const on = /** @type {Set<string>} */ (t.dbgOn || (t.dbgOn = new Set()));
-  const key = session || "";
-  if (on.has(key)) return;
-  on.add(key);
+  // Sent at every guard start, not remembered: a detach and re-attach (or a reload of the target) drops the domain, and Debugger.enable is idempotent.
   const send = (/** @type {string} */ m, /** @type {any} */ x) => (session ? ctx.cdp.send(t.tab, m, x, session) : ctx.cdp.send(t.tab, m, x));
   await bounded(send("Debugger.enable", {}), 1500);
   await bounded(send("Debugger.setSkipAllPauses", { skip: true }), 1000);
@@ -849,7 +852,7 @@ export async function egressGuard(ctx, tab, frame = null, opts = {}) {
 /** End the sticky guard: the page navigated away from the scripts it was watching. @param {any} ctx @param {any} t */
 async function clearSticky(ctx, t) {
   const st = t.sticky; if (!st) return;
-  t.sticky = null; if (t.tagScripts) t.tagScripts.clear();
+  t.sticky = null; if (t.tagScripts) t.tagScripts.clear(); t.tagOverflow = false;
   if (!t.egress) { if (ctx.cdp && typeof ctx.cdp.setPause === "function") await bounded(ctx.cdp.setPause(t.tab, false), 2500); await syncFetch(ctx, t); }
 }
 /** A main-frame navigation ends it; a sub-frame's document load does not. @param {any} ctx @param {any} t @param {string} frameId */
