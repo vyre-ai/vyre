@@ -118,6 +118,8 @@ export default async function now(ctx) {
   // Working
   let macs = /** @type {any[]} */ ([]);
   const drawWorking = async () => {
+    // The latest sessions are asked for at the same time, in case nothing is running: one round trip instead of two.
+    const latest = attempt("projects.catalog", { limit: 5 });
     const [r, m] = await Promise.all([attempt("threads.list", {}), readMacs(attempt, macs)]);
     if (!ctx.alive()) return;
     macs = m;
@@ -142,7 +144,7 @@ export default async function now(ctx) {
     /** @type {HTMLElement} */ (headRow.firstChild).id = "working-h";
     if (run.length) { put(working, headRow, h("div", { class: "rows" }, run.map(workRow))); return; }
     // Nothing running (or no switchboard): the latest sessions, so there is always a way back in.
-    const c = await attempt("projects.catalog", { limit: 5 });
+    const c = await latest;
     if (!ctx.alive()) return;
     put(working, headRow,
       r.error ? empty("Nothing is running.", r.error) : h("div", { class: "empty" }, "Nothing is running."),
@@ -155,10 +157,11 @@ export default async function now(ctx) {
   // Learned today
   const drawLearned = async () => {
     // The box's own catalogue: it only maps Memory's sessions to projects, so the Mac is not asked for 500 rows.
-    const [f, cat] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500, machines: "local" })]);
+    // projects.list is asked with the others (the Recent projects block asks it too, and the two share one request).
+    const [f, cat, pl] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500, machines: "local" }), attempt("projects.list")]);
     if (!ctx.alive()) return;
     const projectOf = new Map((cat.data?.sessions || []).map(s => [s.id, s.projects?.[0] || null]));
-    const names = new Map((await attempt("projects.list")).data?.projects?.map(p => [p.slug, p.name]) || []);
+    const names = new Map(pl.data?.projects?.map(p => [p.slug, p.name]) || []);
     const t0 = startOfToday();
     const facts = (f.data?.facts || []).filter(x => (x.seen || x.since || 0) >= t0);
     const right = link("/memory", { class: "lbl", style: { textDecoration: "none", color: "var(--text-2)" } }, "Open Memory →");

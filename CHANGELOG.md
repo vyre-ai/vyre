@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: faster navigation (#35)
+
+- **Measure first.** `?trace=1` (or localStorage `vyre.trace` = 1) records, for each route, the time from the tap to the route starting, the frame, the view's stylesheet, its code and its first data, with every tool call and how long it took, in `window.__deckTrace` and a console table (`deck/js/trace.js`). `&lag=250` adds that delay to every tool call, to feel and measure a far-away server. Off, it costs one boolean check.
+- **Frame at once.** A page now shows a quiet placeholder in the same frame as the tap, and removes it when the view has drawn, so nothing is blank between routes.
+- **One round trip, not two.** A view's stylesheet and code are asked for together; the Now screen asks for its latest sessions, its memory facts and the project list with its other reads instead of after them, and the Vault asks for its host, tools and items at once (three sequential rounds became one).
+- **Prefetch.** Pointing at, touching or focusing an internal link fetches that screen's stylesheet and code first, once per screen.
+- **Shared reads.** The same read asked for twice at once (the rail, a view and the avatars all want `projects.list`) is one request, for read-only tools only; writes are never shared.
+- **Budgets in CI.** `deck/test/nav-budget.test.js` opens Now, Chat, Projects, the Vault, Files and the Planner against a 80 ms fake server and fails if any needs more than two sequential rounds of calls, and checks that a shared read is one request. Not done yet: drawing a first visit from last time's data (kept pages already do this for a revisit in the same session).
+
 #### deck: a thread on a project board is the real chat, and no empty rows
 
 - The thread in the middle of a project board and at /threads/<id> was a simpler copy of the chat that read each event by the wrong field names: a message from another surface drew as "Another surface" with no text, replies drew as empty rows, and its composer stayed disabled while another surface held the keyboard. It now mounts the chat's own session view (`deck/chat/session.js`), the same one /chat opens; the files the thread touched stay beside it. About 330 lines of the old copy are gone.
