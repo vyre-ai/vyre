@@ -85,6 +85,8 @@ jobs:
           (cd ../../dist-native && sha256sum vyre-release-unsigned.apk vyre-release-unsigned.aab | tee SHA256SUMS-build)
           bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$bt/aapt2" dump badging ../../dist-native/vyre-release-unsigned.apk | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/package \1 versionCode \2 versionName \3/p" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: What the built app asks the phone for (the merged manifest), against docs/native/permissions.json
+        run: node ../../scripts/native/check-permissions.mjs android --apk ../../dist-native/vyre-release-unsigned.apk | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: android-unsigned-${{ github.sha }}

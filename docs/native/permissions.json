@@ -1,0 +1,13 @@
+{
+  "android": {
+    "allowed": [
+      "android.permission.INTERNET",
+      "android.permission.USE_BIOMETRIC",
+      "android.permission.VIBRATE",
+      "{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+    ]
+  },
+  "ios": {
+    "allowedKeys": []
+  }
+}
