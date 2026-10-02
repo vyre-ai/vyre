@@ -116,6 +116,8 @@ the folder rule and `mac-sync`, and a person-chosen delete removes everything th
 everything derived from it; unpairing alone deletes nothing. Discovery reads metadata only and sends nothing. e2e reviews the scan,
 the confirm screen's wording and the ingest.
 
+What a paired box can see before any import (#26, `import.offer`): a paired box may ask a device which agent histories it holds, so setup's "Your history" step can list them. The answer is counts, sizes and dates by agent and project folder, and it does reach the box with the project folder paths and names: it never carries what was said, takes no input (the box cannot name a folder to look in), covers only the device's own agent folders, applies the exclusions before listing, and is kept on the device for a minute so repeated asks do not make it rescan. Choosing what comes in, and sending it, are the person's own act on the device.
+
 ## Graph opportunities
 
 What the imported history makes possible, largest value for the size first.

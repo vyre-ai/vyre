@@ -32,6 +32,9 @@ export default {
     /** @type {Map<string, { at: number, files: string[], sessions: number, bytes: number, folders: string[] }>} */
     const plans = new Map();
     let last = null;
+    /** @type {{ at: number, value: any } | null} */
+    let offered = null;
+    const OFFER_TTL_MS = 60_000;
 
     const roots = extra => {
       // <home>/synced holds other devices' sessions: never offered as this device's own.
@@ -82,7 +85,13 @@ export default {
       description: "What this device holds of Claude Code, Codex, Gemini CLI and Grok history, by source and project folder: counts, sizes and dates, never what was said. For the paired box (through the link), which cannot name a folder to look in.",
       input: { type: "object", properties: {} },
       callers: ["module"],
-      run: async () => scanDevice(undefined, false),
+      // Kept for a minute (reviewer-2): a box that asks again and again does not make this device rescan a large history each time.
+      run: async () => {
+        if (offered && Date.now() - offered.at < OFFER_TTL_MS) return offered.value;
+        const value = await scanDevice(undefined, false);
+        offered = { at: Date.now(), value };
+        return value;
+      },
     });
 
     ctx.tool("import.plan", {
