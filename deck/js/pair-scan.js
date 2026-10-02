@@ -71,6 +71,7 @@ export function pairScanSheet(opts) {
   /** Where to go after pairing when the box handed over an enrolment grant. @type {string | null} */ let enrollTo = null;
   /** @type {string | null} */ let pendingIdentity = null; // resolveTicket's identity, base64url - the owner's own fingerprint, for the avatar (ADR 0043 2d); null until tailnet's config side lands owner.id
   /** @type {string | null} */ let cameraAvatarUrl = null; // scan.js's crop, kept as a fallback only
+  /** This phone's own key fingerprint, handed over before the handshake waits for the screen's Confirm. @type {string} */ let phoneCode = "";
   let slow = false; // scan.js's onSlow fired: show the "hold straight on" hint under the status
   const video = /** @type {HTMLVideoElement} */ (h("video", { class: "scan-video", playsinline: true, muted: true, "aria-hidden": "true" }));
   const status = h("div", { class: "scan-status", role: "status" });
@@ -105,7 +106,7 @@ export function pairScanSheet(opts) {
     dispatch({ type: "confirm" });
     try {
       const name = await (opts.deviceName ? opts.deviceName() : deviceModel());
-      const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto, enroll: true });
+      const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto, enroll: true, onFingerprint: fp => { phoneCode = String(fp).replace(/[^A-Za-z0-9 ]/g, "").slice(0, 20); render(); } });
       enrollTo = enrollUrl(result.enroll || /** @type {any} */ (null));
       pendingOffer = null;
       dispatch({ type: "paired", box: result.name, deviceName: name });
@@ -200,7 +201,7 @@ export function pairScanSheet(opts) {
         h("button", { type: "button", class: "btn btn-primary", onclick: onConfirm }, "Pair"),
         h("button", { type: "button", class: "btn btn-ghost", onclick: onNotThisOne }, "Not this one"));
     } else if (state.kind === "pairing") {
-      put(status, "Pairing…");
+      put(status, "Pairing…", phoneCode ? h("div", { class: "small muted mono" }, "This phone: ", phoneCode) : null);
       put(actions);
     } else if (state.kind === "done") {
       const avatar = cameraAvatarUrl
@@ -217,7 +218,7 @@ export function pairScanSheet(opts) {
 
   return {
     el,
-    open() { state = initial(); pendingOffer = null; pendingIdentity = null; cameraAvatarUrl = null; render(); startCamera(); },
+    open() { state = initial(); phoneCode = ""; pendingOffer = null; pendingIdentity = null; cameraAvatarUrl = null; render(); startCamera(); },
     close() { scan?.stop(); scan = null; pendingOffer = null; pendingIdentity = null; },
   };
 }
