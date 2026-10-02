@@ -459,6 +459,8 @@ async fn finish_pair(app: AppHandle, live: State<'_, Live>, link: serde_json::Va
     std::fs::write(&path, serde_json::json!({ "address": p.address, "link": link }).to_string()).map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
     ensure_link_window(&app);
+    // The helper may ask the app to vouch for it for the next fifteen minutes, once.
+    app.state::<core_host::CoreHost>().note_paired();
     show_panel(&app, "/quick");
     Ok(())
 }
@@ -538,6 +540,27 @@ fn device_secret(app: &AppHandle) -> Result<[u8; 32], String> {
 
 fn b64u(b: &[u8]) -> String { use base64::Engine; base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b) }
 
+/// The public half of the app's presence key (SPKI, base64url), offered to the server when this PC pairs so the server can check what the key signs later.
+#[tauri::command]
+fn presence_key_pub(app: AppHandle) -> Result<String, String> { Ok(countersign::proof_key(&app)?.public_spki_b64u()) }
+
+/// The presence proof for starting a person session on this device with the session key the link page made. Signs one tool, for a key that
+/// is exactly a public P-256 JWK (vyre_capsule_win::presence_proof), and nothing else.
+#[tauri::command]
+fn person_start_proof(app: AppHandle, key: serde_json::Value) -> Result<String, String> {
+    use base64::Engine;
+    use rand::RngCore;
+    let input = vyre_capsule_win::presence_proof::person_start_input(&key)?;
+    let mut n = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut n);
+    let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+    countersign::proof_key(&app)?.person_start_proof(&input, ts, &base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(n))
+}
+
+/// The link page's answer to the server call the app asked it to make for the local helper (core_host::Bridge).
+#[tauri::command]
+fn companion_result(core: State<core_host::CoreHost>, id: u64, answer: serde_json::Value) { core.bridge.answer(id, answer); }
+
 #[tauri::command]
 fn device_key_pub(app: AppHandle) -> Result<String, String> { Ok(b64u(&devicekey::public_key(&device_secret(&app)?))) }
 
@@ -602,7 +625,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, scan_history, core_status, core_ensure, core_call, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, scan_history, core_status, core_ensure, core_call, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, device_key_pub, device_key_dh, get_link, presence_key_pub, person_start_proof, companion_result])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(core_host::CoreHost::new());
@@ -611,8 +634,9 @@ fn main() {
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
             let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;
             let history = MenuItem::with_id(app, "history", "Import history", true, None::<&str>)?;
+            let allow = MenuItem::with_id(app, "allow", "Allow local helper", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &drive, &history, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &drive, &history, &allow, &quit])?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
@@ -620,6 +644,7 @@ fn main() {
                     "open" => show_panel(app, "/quick"),
                     "drive" => { use tauri::Emitter; let _ = app.emit_to("link", "vyre-drive", ()); }
                     "history" => show_history(app),
+                    "allow" => app.state::<core_host::CoreHost>().tap(),
                     "quit" => app.exit(0),
                     _ => {}
                 })

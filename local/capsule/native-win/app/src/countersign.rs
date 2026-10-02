@@ -44,16 +44,36 @@ pub fn proof_key(app: &AppHandle) -> Result<ProofKey, String> {
     ProofKey::from_scalar(&scalar)
 }
 
-/// One request line from the core, or why it is refused. Only the fields the app will use.
-pub struct Request { pub core: String, pub nonce: String, pub name: String }
+/// One request line from the core, vetted. The app's whole vocabulary on this pipe is three things.
+pub enum Request {
+    /// "Vouch for me": the core's public key (base64url SPKI), a nonce for the call, and a label.
+    Companion { core: String, nonce: String, name: String },
+    /// "Seal this with Windows": a key the core made, as bytes.
+    Seal { data: Vec<u8> },
+    /// "Give me back what you sealed".
+    Unseal { blob: Vec<u8> },
+}
+
+const MAX_SEALED: usize = 2048;
 
 pub fn parse_request(line: &str) -> Result<Request, String> {
+    use base64::Engine;
     let v: serde_json::Value = serde_json::from_str(line.trim()).map_err(|_| "not a request".to_string())?;
     let o = v.as_object().ok_or("not a request")?;
-    if o.keys().any(|k| !["v", "op", "core", "nonce", "name"].contains(&k.as_str())) { return Err("not a request".into()); }
-    if v["v"] != 1 || v["op"] != "companion" { return Err("not a request".into()); }
+    if o.keys().any(|k| !["v", "op", "core", "nonce", "name", "data", "blob"].contains(&k.as_str())) { return Err("not a request".into()); }
+    if v["v"] != 1 { return Err("not a request".into()); }
     let s = |k: &str| v[k].as_str().map(String::from);
-    Ok(Request { core: s("core").ok_or("not a request")?, nonce: s("nonce").ok_or("not a request")?, name: s("name").unwrap_or_default() })
+    let bytes = |k: &str| -> Result<Vec<u8>, String> {
+        let b = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s(k).ok_or("not a request")?).map_err(|_| "not a request".to_string())?;
+        if b.is_empty() || b.len() > MAX_SEALED { return Err("not a request".into()); }
+        Ok(b)
+    };
+    match v["op"].as_str() {
+        Some("companion") if !o.contains_key("data") && !o.contains_key("blob") => Ok(Request::Companion { core: s("core").ok_or("not a request")?, nonce: s("nonce").ok_or("not a request")?, name: s("name").unwrap_or_default() }),
+        Some("seal") if o.len() == 3 => Ok(Request::Seal { data: bytes("data")? }),
+        Some("unseal") if o.len() == 3 => Ok(Request::Unseal { blob: bytes("blob")? }),
+        _ => Err("not a request".into()),
+    }
 }
 
 /// What the serve loop does with a vetted request; the answer is one JSON line.
@@ -238,11 +258,18 @@ mod tests {
 
     #[test]
     fn a_request_has_exactly_the_known_fields() {
-        let r = parse_request(r#"{"v":1,"op":"companion","core":"K","nonce":"N","name":"PC"}"#).unwrap();
-        assert_eq!((r.core.as_str(), r.nonce.as_str(), r.name.as_str()), ("K", "N", "PC"));
+        match parse_request(r#"{"v":1,"op":"companion","core":"K","nonce":"N","name":"PC"}"#).unwrap() {
+            Request::Companion { core, nonce, name } => assert_eq!((core.as_str(), nonce.as_str(), name.as_str()), ("K", "N", "PC")),
+            _ => panic!("not a companion request"),
+        }
+        assert!(matches!(parse_request(r#"{"v":1,"op":"seal","data":"AAAA"}"#), Ok(Request::Seal { .. })));
+        assert!(matches!(parse_request(r#"{"v":1,"op":"unseal","blob":"AAAA"}"#), Ok(Request::Unseal { .. })));
+        let big = "A".repeat(4000);
         for bad in [r#"{"v":2,"op":"companion","core":"K","nonce":"N"}"#, r#"{"v":1,"op":"sign","core":"K","nonce":"N"}"#, r#"{"v":1,"op":"companion","core":"K"}"#,
-            r#"{"v":1,"op":"companion","core":"K","nonce":"N","extra":1}"#, "nope", "[]"] {
+            r#"{"v":1,"op":"companion","core":"K","nonce":"N","extra":1}"#, r#"{"v":1,"op":"companion","core":"K","nonce":"N","data":"AAAA"}"#, r#"{"v":1,"op":"seal","data":"AAAA","blob":"AAAA"}"#,
+            r#"{"v":1,"op":"seal","data":"!!"}"#, r#"{"v":1,"op":"seal","data":""}"#, "nope", "[]"] {
             assert!(parse_request(bad).is_err(), "{bad}");
         }
+        assert!(parse_request(&format!(r#"{{"v":1,"op":"seal","data":"{big}"}}"#)).is_err(), "larger than a key");
     }
 }

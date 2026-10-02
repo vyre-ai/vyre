@@ -42,7 +42,10 @@ export async function startPairing({ onSeed, onWaiting, onError, onDone, onEnd }
       if (st === "cancelled") throw new Error("Pairing was cancelled.");
       await sleep(1000);
     }
-    const link = await pairOffer(found.offer, { name: "this computer", about: { kind: "app" }, ...shellDeviceKey(invoke) });
+    // The app's presence key goes in the pairing, the only time the server takes one: it is what lets the server check the app's own word later
+    // (that this PC's local helper may join it). The reply says whether the server took it.
+    const presenceKey = { public_key: await invoke("presence_key_pub"), alg: -7 };
+    const link = await pairOffer(found.offer, { name: "this computer", about: { kind: "app" }, presenceKey, ...shellDeviceKey(invoke) });
     await invoke("finish_pair", { link });
     onEnd();
     onDone();

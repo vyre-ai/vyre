@@ -47,6 +47,19 @@ pub fn companion_input(core: &str, name: &str, nonce: &str, ts_ms: u64) -> Resul
     Ok(json!({ "core": core, "name": if name.trim().is_empty() { "this PC's core".to_string() } else { name }, "nonce": nonce, "ts": ts_ms }))
 }
 
+/// The second tool the key signs for: starting a person session on the app's device, with the session key the page made
+/// (a public JWK and nothing else), as the phone app does.
+pub const PERSON_START: &str = "presence.person.start";
+
+/// `{ key: {kty, crv, x, y} }` from a page's JWK, only if it is exactly a public P-256 key (no private member, no extra field).
+pub fn person_start_input(jwk: &Value) -> Result<Value, String> {
+    let o = jwk.as_object().ok_or("that is not a public key")?;
+    if o.len() != 4 || o.get("kty") != Some(&json!("EC")) || o.get("crv") != Some(&json!("P-256")) { return Err("that is not a public P-256 key".into()); }
+    let coord = |k: &str| o.get(k).and_then(|v| v.as_str()).filter(|v| v.len() == 43 && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'));
+    let (x, y) = (coord("x").ok_or("that is not a public P-256 key")?, coord("y").ok_or("that is not a public P-256 key")?);
+    Ok(json!({ "key": { "kty": "EC", "crv": "P-256", "x": x, "y": y } }))
+}
+
 pub struct ProofKey(SigningKey);
 
 impl ProofKey {
@@ -72,6 +85,12 @@ impl ProofKey {
         let msg = format!("vyre-presence-v1\n{tool}\n{}\n{ts_ms}\n{nonce}", input_hash(input));
         let sig: Signature = self.0.sign(msg.as_bytes());
         format!("device key={} ts={ts_ms} nonce={nonce} sig={}", self.key_id(), B64U.encode(sig.to_der().as_bytes()))
+    }
+
+    /// The `x-vyre-presence` header for `presence.person.start` with exactly the input `person_start_input` made.
+    pub fn person_start_proof(&self, input: &Value, ts_ms: u64, proof_nonce: &str) -> Result<String, String> {
+        if !token(proof_nonce, 8, 128) { return Err("the proof nonce is not in a shape the app will sign".into()); }
+        Ok(self.header(PERSON_START, input, ts_ms, proof_nonce))
     }
 
     /// The `x-vyre-presence` header for `link.companion.pair` with exactly `input` (from `companion_input`).
@@ -125,6 +144,20 @@ mod tests {
         let other = format!("vyre-presence-v1\nvault.reveal\n{}\n1700000000123\nproofnonce0001", input_hash(&input));
         assert!(vk.verify(other.as_bytes(), &Signature::from_der(&sig).unwrap()).is_err(), "bound to its tool");
         assert!(k.companion_proof(&input, 1, "short").is_err());
+    }
+
+    #[test]
+    fn a_person_session_key_is_exactly_a_public_p256_jwk() {
+        let x = "A".repeat(43);
+        let good = json!({ "kty": "EC", "crv": "P-256", "x": x, "y": x });
+        assert_eq!(person_start_input(&good).unwrap()["key"]["kty"], "EC");
+        for bad in [json!({ "kty": "EC", "crv": "P-256", "x": x, "y": x, "d": x }), json!({ "kty": "EC", "crv": "P-384", "x": x, "y": x }), json!({ "kty": "RSA", "crv": "P-256", "x": x, "y": x }),
+            json!({ "kty": "EC", "crv": "P-256", "x": "short", "y": x }), json!("jwk"), json!({ "kty": "EC", "crv": "P-256", "x": x })] {
+            assert!(person_start_input(&bad).is_err(), "{bad}");
+        }
+        let k = key();
+        let h = k.person_start_proof(&person_start_input(&good).unwrap(), 5, "proofnonce0001").unwrap();
+        assert!(h.starts_with(&format!("device key={} ts=5 nonce=proofnonce0001 sig=", k.key_id())));
     }
 
     #[test]

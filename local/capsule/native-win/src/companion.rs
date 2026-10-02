@@ -46,6 +46,13 @@ impl Gate {
     pub fn new() -> Gate { Gate::default() }
     /// The app has just paired this PC (a confirmed device).
     pub fn paired(&mut self, now_ms: u64) { self.paired_at = Some(now_ms); }
+    /// The pairing window as it stands, so a call that failed before it reached the server can give it back.
+    pub fn snapshot(&self) -> Option<u64> { self.paired_at }
+    /// Give back a signature whose call never reached the server (no answer came): the window as it was, the nonce unspent. A call the server answered, even with a refusal, is not given back.
+    pub fn refund(&mut self, paired_at: Option<u64>, nonce: &str) {
+        if self.paired_at.is_none() { self.paired_at = paired_at; }
+        self.seen.remove(nonce);
+    }
     /// The person pressed Allow on the app's own card.
     pub fn tap(&mut self) { self.tapped = true; }
 
@@ -112,6 +119,17 @@ mod tests {
         g.tap();
         assert_eq!(g.decide(WINDOW_MS + 2, "a"), Decision::Sign);
         assert_eq!(g.decide(WINDOW_MS + 3, "b"), Decision::Refuse("the person has not allowed this"), "a tap allows one");
+    }
+
+    #[test]
+    fn a_signature_whose_call_never_reached_the_server_is_given_back() {
+        let mut g = Gate::new();
+        g.paired(1_000);
+        let before = g.snapshot();
+        assert_eq!(g.decide(2_000, "a"), Decision::Sign);
+        assert_eq!(g.decide(3_000, "b"), Decision::Refuse("the person has not allowed this"));
+        g.refund(before, "a");
+        assert_eq!(g.decide(4_000, "a"), Decision::Sign, "the same request may be tried again");
     }
 
     #[test]

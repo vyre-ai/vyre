@@ -14,6 +14,7 @@
     "allow-set-autostart",
     "allow-device-key-pub",
     "allow-device-key-dh",
+    "allow-presence-key-pub",
     "allow-pair-status",
     "allow-finish-pair",
     "allow-cancel-pair"

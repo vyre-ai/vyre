@@ -12,8 +12,11 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::countersign;
-use tauri::{AppHandle, Manager};
+use crate::countersign::{self, Handler, Request};
+use serde_json::json;
+use tauri::{AppHandle, Emitter, Manager};
+use vyre_capsule_win::companion::{Decision, Gate};
+use vyre_capsule_win::presence_proof;
 use vyre_capsule_win::{core_calls, core_install, core_launch, core_pkg, history, update};
 
 /// What the person can be told about the core.
@@ -26,7 +29,29 @@ const CALL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 /// Health checks answer at once or not at all.
 const HEALTH_DEADLINE: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// Questions the app puts to its hidden link window (which holds the box channel) and waits for the answer of.
+pub struct Bridge { next: std::sync::atomic::AtomicU64, waiting: Mutex<std::collections::HashMap<u64, std::sync::mpsc::Sender<serde_json::Value>>> }
+
+impl Bridge {
+    fn new() -> Bridge { Bridge { next: std::sync::atomic::AtomicU64::new(1), waiting: Mutex::new(Default::default()) } }
+    /// Send `payload` to the link window as `vyre-companion` and wait for `answer`; Err when nothing came back.
+    fn ask(&self, app: &AppHandle, mut payload: serde_json::Value) -> Result<serde_json::Value, String> {
+        let id = self.next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.waiting.lock().unwrap().insert(id, tx);
+        payload["id"] = json!(id);
+        if app.emit_to("link", "vyre-companion", payload).is_err() { self.waiting.lock().unwrap().remove(&id); return Err("Vyre's server channel is not open on this PC.".into()); }
+        let r = rx.recv_timeout(std::time::Duration::from_secs(60));
+        self.waiting.lock().unwrap().remove(&id);
+        r.map_err(|_| "Your Vyre server did not answer in time.".to_string())
+    }
+    /// The link window's answer to question `id`.
+    pub fn answer(&self, id: u64, answer: serde_json::Value) { if let Some(tx) = self.waiting.lock().unwrap().remove(&id) { let _ = tx.send(answer); } }
+}
+
 struct Running {
+    #[allow(dead_code)]
+    served: Option<countersign::Served>,
     child: Mutex<std::process::Child>,
     pipe: String,
     #[allow(dead_code)]
@@ -41,6 +66,9 @@ impl Running {
 }
 
 pub struct CoreHost {
+    gate: std::sync::Arc<Mutex<Gate>>,
+    t0: std::time::Instant,
+    pub bridge: std::sync::Arc<Bridge>,
     /// "Keep them in sync" is on: the core stays up until the person stops it. Remembered across app starts in `sync-core`.
     keep: std::sync::atomic::AtomicBool,
     state: Mutex<CoreState>,
@@ -50,7 +78,7 @@ pub struct CoreHost {
 }
 
 impl CoreHost {
-    pub fn new() -> CoreHost { CoreHost { keep: std::sync::atomic::AtomicBool::new(false), state: Mutex::new(CoreState::Off), running: Mutex::new(None), busy: Mutex::new(()) } }
+    pub fn new() -> CoreHost { CoreHost { gate: std::sync::Arc::new(Mutex::new(Gate::new())), t0: std::time::Instant::now(), bridge: std::sync::Arc::new(Bridge::new()), keep: std::sync::atomic::AtomicBool::new(false), state: Mutex::new(CoreState::Off), running: Mutex::new(None), busy: Mutex::new(()) } }
     pub fn state(&self) -> CoreState { self.state.lock().unwrap().clone() }
     fn set(&self, s: CoreState) { *self.state.lock().unwrap() = s; }
 
@@ -72,7 +100,7 @@ impl CoreHost {
             self.set(CoreState::Installing("Getting Vyre's local helper".into()));
             let dir = ensure_installed(&paths)?;
             self.set(CoreState::Starting);
-            let running = start(&paths, &dir)?;
+            let running = start(&paths, &dir, self.handler(app))?;
             *self.running.lock().unwrap() = Some(std::sync::Arc::new(running));
             Ok(())
         };
@@ -88,6 +116,53 @@ impl CoreHost {
         // The lock is held only to take a share of the running core; the exchange itself (which can take a while) holds nothing.
         let r = self.running.lock().unwrap().clone().ok_or("Vyre's local helper is not running.")?;
         core_calls::parse_response(&imp::exchange(r.raw(), &r.pipe, &req, CALL_DEADLINE)?)
+    }
+
+    /// The app has just paired this PC: the helper may ask the app to vouch for it, once, for fifteen minutes.
+    pub fn note_paired(&self) { self.gate.lock().unwrap().paired(self.t0.elapsed().as_millis() as u64); }
+    /// The person chose "Allow Vyre's local helper" in the tray: the next request is vouched for, once.
+    pub fn tap(&self) { self.gate.lock().unwrap().tap(); }
+
+    /// What the app does for the core on its pipe: seal and unseal its key with Windows, and vouch for it to the server.
+    fn handler(&self, app: &AppHandle) -> Handler {
+        use base64::Engine;
+        let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let (app, gate, bridge, t0) = (app.clone(), self.gate.clone(), self.bridge.clone(), self.t0);
+        Box::new(move |req| match req {
+            Request::Seal { data } => match crate::protect(&data, true) { Ok(b) => json!({ "ok": true, "blob": b64.encode(b) }), Err(e) => json!({ "ok": false, "error": e }) },
+            Request::Unseal { blob } => match crate::protect(&blob, false) { Ok(b) => json!({ "ok": true, "data": b64.encode(b) }), Err(e) => json!({ "ok": false, "error": e }) },
+            Request::Companion { core, nonce, name } => {
+                let now = t0.elapsed().as_millis() as u64;
+                let (before, decision) = { let mut g = gate.lock().unwrap(); (g.snapshot(), g.decide(now, &nonce)) };
+                if let Decision::Refuse(_) = decision {
+                    use tauri_plugin_notification::NotificationExt;
+                    let _ = app.notification().builder().title(crate::APP_NAME).body("Vyre's local helper wants to join your server. Choose Allow local helper in Vyre's tray menu, then send again.").show();
+                    return json!({ "ok": false, "error": "Allow Vyre's local helper from Vyre's tray menu (Allow local helper), then send again." });
+                }
+                let refund = |why: String| { gate.lock().unwrap().refund(before, &nonce); json!({ "ok": false, "error": why }) };
+                let ts = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0);
+                let built = (|| -> Result<(serde_json::Value, String, String), String> {
+                    let input = presence_proof::companion_input(&core, &name, &nonce, ts)?;
+                    let key = countersign::proof_key(&app)?;
+                    use rand::RngCore;
+                    let mut n = [0u8; 16];
+                    rand::rngs::OsRng.fill_bytes(&mut n);
+                    let proof = key.companion_proof(&input, ts, &b64.encode(n))?;
+                    let address = crate::pinned(&app).map(|p| p.origin().to_string()).ok_or("This PC is not paired.")?;
+                    Ok((input, proof, address))
+                })();
+                let (input, proof, address) = match built { Ok(x) => x, Err(e) => return refund(e) };
+                match bridge.ask(&app, json!({ "input": input, "proof": proof })) {
+                    Err(e) => refund(e),
+                    Ok(answer) => match (answer.get("data"), answer.get("error")) {
+                        (Some(d), _) if d.get("pending").is_some() => json!({ "ok": true, "pending": true }),
+                        (Some(d), _) => json!({ "ok": true, "id": d["id"], "approved": d["approved"], "box": d["box"], "address": address }),
+                        (_, Some(e)) => json!({ "ok": false, "error": e["message"].as_str().unwrap_or("your server would not take this PC's helper") }),
+                        _ => json!({ "ok": false, "error": "your server's answer was not understood" }),
+                    },
+                }
+            }
+        })
     }
 
     /// Note a sync import started or stopped, so the core is kept up (or let go) accordingly.
@@ -141,7 +216,7 @@ fn pipe_selftest(node: &Path, work: &Path) -> Result<String, String> {
     let _ = std::fs::remove_file(&out);
     let mut child = std::process::Command::new(node).args(["-e", client]).env("OUT", &out).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().map_err(|e| e.to_string())?;
     let pipe = countersign::new_pipe_name();
-    let served = countersign::serve(pipe.clone(), &child, Box::new(|r| serde_json::json!({ "ok": true, "echo": r.core.len() })))?;
+    let served = countersign::serve(pipe.clone(), &child, Box::new(|r| match r { Request::Companion { core, .. } => serde_json::json!({ "ok": true, "echo": core.len() }), _ => serde_json::json!({ "ok": false }) }))?;
     let taken = !countersign::name_is_free(&pipe);
     let out2 = work.join("rogue-out.txt");
     let _ = std::fs::remove_file(&out2);
@@ -191,7 +266,7 @@ pub fn selftest(work: &Path, pkg: &Path, node_zip: &Path) -> SelfTest {
         // The core treats only the account's own ~/.vyre as the person's, and a throwaway folder is not, so it is told where Claude Code's folder is.
         "VYRE_CLAUDE_HOME" => Some(user.join(".claude").to_string_lossy().to_string()),
         _ => std::env::var(k).ok(),
-    });
+    }, Box::new(|_| serde_json::json!({ "ok": false, "error": "selftest" })));
     note("start", started.as_ref().map(|_| "up".into()).map_err(|e| e.clone()));
     if let Ok(r) = started {
         *host.running.lock().unwrap() = Some(std::sync::Arc::new(r));
@@ -258,9 +333,9 @@ fn ensure_installed(paths: &Paths) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-fn start(paths: &Paths, dir: &Path) -> Result<Running, String> { start_with(paths, dir, &|k| std::env::var(k).ok()) }
+fn start(paths: &Paths, dir: &Path, handler: Handler) -> Result<Running, String> { start_with(paths, dir, &|k| std::env::var(k).ok(), handler) }
 
-fn start_with(paths: &Paths, dir: &Path, get: &dyn Fn(&str) -> Option<String>) -> Result<Running, String> {
+fn start_with(paths: &Paths, dir: &Path, get: &dyn Fn(&str) -> Option<String>, handler: Handler) -> Result<Running, String> {
     core_pkg::check_start(dir)?;
     std::fs::create_dir_all(&paths.home).map_err(|e| format!("cannot make {}: {e}", paths.home.display()))?;
     let real_home = std::fs::canonicalize(&paths.home).map_err(|e| e.to_string())?;
@@ -276,8 +351,16 @@ fn start_with(paths: &Paths, dir: &Path, get: &dyn Fn(&str) -> Option<String>) -
     let args = core_launch::node_args(dir, &real_home_plain, &roots, &pipe)?;
     let env = core_launch::env(get, &real_home_plain);
     let log = std::fs::OpenOptions::new().create(true).append(true).open(real_home_plain.join("core.log")).map_err(|e| e.to_string())?;
-    let (child, job) = imp::spawn(&dir.join("node").join("node.exe"), &args, &env, log)?;
-    let running = Running { child: Mutex::new(child), pipe, job };
+    let (mut child, job) = imp::spawn(&dir.join("node").join("node.exe"), &args, &env, log)?;
+    // The app's own pipe, made before the core is told its name; the name goes to the core on its standard input, never on a command line.
+    let app_pipe = countersign::new_pipe_name();
+    let served = countersign::serve(app_pipe.clone(), &child, handler)?;
+    {
+        use std::io::Write as _;
+        let mut stdin = child.stdin.take().ok_or("the local helper has no input")?;
+        stdin.write_all(format!("{{\"v\":1,\"countersign\":{}}}\n", serde_json::to_string(&app_pipe).unwrap()).as_bytes()).map_err(|e| e.to_string())?;
+    }
+    let running = Running { served: Some(served), child: Mutex::new(child), pipe, job };
     wait_ready(&running, &real_home_plain)?;
     Ok(running)
 }

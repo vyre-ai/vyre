@@ -12,6 +12,8 @@
     "allow-device-key-dh",
     "allow-mount-drive",
     "allow-unmount-drive",
-    "allow-notify"
+    "allow-notify",
+    "allow-person-start-proof",
+    "allow-companion-result"
   ]
 }
