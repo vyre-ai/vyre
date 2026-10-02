@@ -648,7 +648,7 @@ test("worker: the setup mailbox holds 64 KB, limits per address and globally, an
   assert.equal(badLoc.status, 400);
 });
 
-test("worker: /v1/pair's global limit is charged to misses only, so a flood of guesses cannot stop a real ticket from resolving", async t => {
+test("worker: /v1/pair has no global limit, so nothing an outsider sends can stop a real ticket from resolving; one address's own limit still applies", async t => {
   const rt = world(t);
   const b = await box(rt);
   await b.s.json();
@@ -656,19 +656,15 @@ test("worker: /v1/pair's global limit is charged to misses only, so a flood of g
   const sealed = wire.ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", relay: BASE, route: b.route, box: "x".repeat(43), exp }));
   b.s.ws.send(JSON.stringify({ t: "ticket", loc: "f".repeat(43), record: sealed, mac: "b".repeat(43), exp }));
   await rt.settle();
-  const charged = [];
-  rt.env.PAIR_LIMITER_GLOBAL = { limit: async () => { charged.push("miss"); return { success: false }; } };
-  const resolve = loc => worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.5" }, body: JSON.stringify({ loc }) }), rt.env);
-  // the global budget is spent, and a guess is refused (a miss costs the budget)...
-  assert.equal((await resolve("g".repeat(43))).status, 429);
-  assert.deepEqual(charged, ["miss"]);
-  // ...but a real ticket still resolves, and costs the global budget nothing
-  const hit = await resolve("f".repeat(43));
-  assert.equal(hit.status, 200, "a hit is always served");
-  assert.deepEqual(charged, ["miss"], "a hit is not charged to the global limit");
-  // the per-address limit still applies to every request from one address
-  rt.env.PAIR_LIMITER = { limit: async () => ({ success: false }) };
-  assert.equal((await resolve("f".repeat(43))).status, 429, "one address over its own limit is refused, hit or not");
-  rt.env.PAIR_LIMITER = { limit: async () => ({ success: true }) };
-  assert.equal((await resolve("h".repeat(43))).status, 429, "and a miss with the global budget spent is still refused");
+  let global = 0;
+  rt.env.PAIR_LIMITER_GLOBAL = { limit: async () => { global++; return { success: false }; } };
+  const resolve = (loc, ip = "203.0.113.5") => worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ loc }) }), rt.env);
+  const miss = await resolve("g".repeat(43));
+  assert.equal(miss.status, 404, "a miss answers as a miss, whatever the traffic");
+  assert.equal(global, 0, "a global limiter, if one is still bound, is never consulted");
+  assert.equal((await resolve("f".repeat(43))).status, 200, "a hit is always served");
+  // one address over its own limit is refused, and only that address
+  rt.env.PAIR_LIMITER = { limit: async ({ key }) => ({ success: key !== "203.0.113.7" }) };
+  assert.equal((await resolve("h".repeat(43), "203.0.113.7")).status, 429);
+  assert.equal((await resolve("h".repeat(43), "203.0.113.8")).status, 404, "another address is unaffected");
 });

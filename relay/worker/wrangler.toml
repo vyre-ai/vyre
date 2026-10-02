@@ -40,16 +40,13 @@ name = "DEVICE_LIMITER"
 namespace_id = "26001"
 simple = { limit = 30, period = 60 }
 
-# Per-address and global limiting for /v1/pair (ADR 0045's Wink resolve). Same reasoning: the
-# 256-bit locator and the MAC make guessing infeasible, but flooding and cost are still real.
+# Per-address limiting for /v1/pair (ADR 0045's Wink resolve). The locator derives from a seed of at least 64 bits, so
+# guessing is infeasible within a ticket's five minutes; a flood from one address is still real.
 [[ratelimits]]
 name = "PAIR_LIMITER"
 namespace_id = "26002"
 simple = { limit = 30, period = 60 }
-[[ratelimits]]
-name = "PAIR_LIMITER_GLOBAL"
-namespace_id = "26003"
-simple = { limit = 600, period = 60 }
+# No global limit on /v1/pair: it let any outsider block pairing for every user (GHSA-25xh-w9j7-7v28).
 
 # The setup mailbox (tailnet plan 3.6b). Appends are the install script's, a handful per install,
 # so the per-address limit is small; reads are the page's long polls (one every 20 seconds), and

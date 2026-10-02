@@ -193,13 +193,12 @@ export default {
 /**
  * Resolve a Wink pairing ticket's locator (ADR 0045): a POST body, never a URL, so it never lands
  * in an access log. Single-use either way -- found or not, the PairTicket object it named is gone
- * after this call. Rate-limited per address (env.PAIR_LIMITER, every request: one address's own
- * guessing is bounded and never costs another address anything). The global limit
- * (env.PAIR_LIMITER_GLOBAL, if bound) is charged to MISSES only and never gates a hit: a real ticket
- * always resolves, so a flood of guesses from anywhere can burn the miss budget but cannot stop a
- * single person from pairing (it was a worldwide outsider DoS when it gated every request). Guessing
- * stays bounded: each guess is a miss, a 64-bit seed makes a hit infeasible within a ticket's five
- * minutes, and the per-address limit and a zone rate limiting rule cap each source.
+ * after this call. Rate-limited per address (env.PAIR_LIMITER, every request, so one address's own
+ * volume never costs another address anything) and never globally: a global cap on requests let any
+ * outsider block pairing for every user, so the lookup always happens and a hit is always served, with
+ * the same answer and timing whatever the traffic. Guessing is bounded by the keyspace, not a limiter:
+ * a 64-bit seed against a ticket's five minutes. Edge cost control is a per-address rule on the route,
+ * never a global one.
  * @param {Request} request @param {any} env
  */
 async function onPairResolve(request, env) {
@@ -212,8 +211,6 @@ async function onPairResolve(request, env) {
   if (!LOC_RE.test(loc)) return json(400, { error: "bad request" });
   const res = await env.TICKETS.get(env.TICKETS.idFromName(loc)).fetch("https://ticket/resolve", { method: "POST" });
   if (res.status === 200) return json(200, await res.json());
-  // A miss (or contested): charged to the global miss budget, and refused outright when that is spent.
-  if (env.PAIR_LIMITER_GLOBAL) { const { success } = await env.PAIR_LIMITER_GLOBAL.limit({ key: "*" }); if (!success) return json(429, { error: "too many pairing attempts; wait a minute" }); }
   if (res.status === 409) return json(409, { error: "contested" });
   return json(404, { error: "this pairing code has expired or was already used" });
 }
