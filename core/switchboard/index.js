@@ -1661,10 +1661,12 @@ export class Switchboard {
    * Carry a paired Mac's session on in a new box thread (threads.continue-here, #32): its conversation comes over the link while the Mac is awake, or from the last
    * synced copy on the box when it is not, and a box session on the same provider starts with that history in front of the person's first words. The Mac's own
    * session is untouched, and none of the Mac's files come over (the notice says so). Person-only; logged as thread.continued.
-   * @param {{ thread: string, machine?: string|null, surface?: string }} o
+   * @param {{ thread: string, machine?: string|null, surface?: string, claudeReady?: boolean }} o claudeReady: this box has Claude credentials (a signed-in account, a stored token or key, or its own login chosen)
    */
-  async continueHere({ thread, machine = null, surface = "deck" }) {
+  async continueHere({ thread, machine = null, surface = "deck", claudeReady = true }) {
     const fail = (msg, code) => Object.assign(new Error(msg), { code });
+    // Words from another machine go into a block Vyre writes and a notice it says: no control characters or brackets, at most 80.
+    const tidy = v => String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f\u2028\u2029\[\]]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
     const src = String(thread || "");
     if (!src || src.length > 80) throw fail("name the Mac session to continue (thread)", "bad_input");
     if (this.record(src)) throw fail("that session is already on this box: open it here", "bad_input");
@@ -1700,26 +1702,35 @@ export class Switchboard {
     }
     const spoken = turns.filter(t => t && (t.role === "user" || t.role === "assistant") && String(t.text || "").trim()).map(t => ({ who: t.role === "user" ? "person" : "assistant", text: String(t.text).trim() }));
     if (!spoken.length) throw fail("that session has nothing said in it yet", "no_history");
-    from = from || "a paired Mac";
+    from = tidy(from) || "a paired Mac";
     // What the Mac said about the thread (its provider, project and name) when it is awake; the session row when it is not.
     let row = null;
     try {
       const l = await this.deps.call("link.macs.call", { tool: "threads.list", input: { all: true }, ...(machine ? { mac: String(machine) } : {}) });
       for (const a of l && !l.error && Array.isArray(l.data) ? l.data : []) { const f = a.ok && Array.isArray(a.data) ? a.data.find(x => x && x.id === src) : null; if (f) { row = f; break; } }
     } catch { /* an asleep Mac has no row: the synced session's own fields stand in */ }
-    const provider = String((row && row.provider) || "claude");
-    const name = String((row && row.name) || (session && (session.name || session.title)) || src.slice(0, 8)).slice(0, 80);
+    // Only a provider this box has; anything else (a Mac's own word for it) is Claude.
+    const wanted = tidy(row && row.provider).toLowerCase();
+    const provider = wanted && wanted !== "claude" && this.deps.providers && this.deps.providers.get(wanted) ? wanted : "claude";
+    const name = tidy((row && row.name) || (session && (session.name || session.title)) || src.slice(0, 8)) || src.slice(0, 8);
     const launchOpts = { provider, name: `${name} (continued)`, surface, purpose: "chat", continuedFrom: { machine: from, thread: src } };
     const needsAccount = e => { const err = /** @type {any} */ (e); return err && err.code === "account_required" ? Object.assign(new Error(`There is no ${providerName(provider)} account on this server yet. Add one in Settings > Your AI, then carry this session on again.`), { code: "account_required" }) : e; };
-    // A provider other than Claude runs only on an account of this server's own (a Mac's accounts are not here).
-    if (provider !== "claude") {
+    // The provider runs only on this server's own credentials (a Mac's accounts are not here).
+    {
       let acct = null;
       try { acct = await this.accountFor({ provider }); } catch (e) { throw needsAccount(e); }
-      if (!acct) throw needsAccount({ code: "account_required" });
+      // Claude may also run on a stored token or key, or the box's own login when that is how it is set up.
+      if (!acct && !(provider === "claude" && claudeReady)) throw needsAccount({ code: "account_required" });
     }
     // The box's own project of that name, else a plain folder of its own: the Mac's folders are not here.
     let made;
-    try { if (row && row.project) made = await this.launch({ ...launchOpts, project: String(row.project) }); } catch (e) { if (/^no project /.test(/** @type {Error} */ (e).message)) made = null; else throw needsAccount(e); }
+    // The project, only when it is a project this box has (its slug): the Mac's word for it is not a choice of folder.
+    let slug = null;
+    try {
+      const want = tidy(row && row.project);
+      if (want) { const pl = await this.deps.call("projects.list", {}); slug = ((pl.data && pl.data.projects) || []).some(x => x && x.slug === want) ? want : null; }
+    } catch { slug = null; }
+    try { if (slug) made = await this.launch({ ...launchOpts, project: slug }); } catch (e) { if (/^no project /.test(/** @type {Error} */ (e).message)) made = null; else throw needsAccount(e); }
     if (!made) {
       const base = process.env.VYRE_WORK || "/work";
       let dir = base;
@@ -2967,7 +2978,7 @@ export default {
       async (i, { caller }) => {
         if (!personTurn(caller) || fromLink(caller)) throw Object.assign(new Error("only a person's own surface carries a Mac's session on here"), { code: "denied" });
         if (!ctx.config || ctx.config.role !== "box") throw Object.assign(new Error("continue-here runs on a box: this machine is not one"), { code: "bad_input" });
-        return sb.continueHere({ thread: i.thread, machine: i.machine || null, surface: surfaceOf(i, caller) });
+        return sb.continueHere({ thread: i.thread, machine: i.machine ? String(i.machine) : null, surface: surfaceOf(i, caller), claudeReady: chosen || cfg.auth === "login" });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
