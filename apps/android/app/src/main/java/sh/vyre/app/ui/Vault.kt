@@ -109,7 +109,7 @@ fun VaultScreen(back: String, onBack: () -> Unit) {
             }
             note?.let { Quiet(it) }
         }
-        if (v.bool("locked") == true) item { Quiet("The vault on the box is locked. Unlock it from the Mac or the Deck, then pull to refresh.", "locked") }
+        if (v.bool("locked") == true) item { Quiet("The vault on your server is locked. Unlock it from your Mac or the Deck, then pull to refresh.", "locked") }
         item { SectionHead("Items · ${rows.size}", v.str("personal")?.takeIf { it != "none" }?.let { "personal $it" }) }
         loadState(load.v, rows.isEmpty(), if (filter.isBlank()) "Nothing in the vault yet." else "Nothing matches \"$filter\".")
         items(rows, key = { "v" + it.str("vault") + it.str("name") }) { it2 ->

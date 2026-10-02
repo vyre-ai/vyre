@@ -134,7 +134,7 @@ function describe(s: Autofill.AutofillStatus | null, enabled: boolean): string {
   if (!s.paired) return "Not paired. Run vyre vault pair --phone on the box, then enter its address and code.";
   const parts = [`Paired as ${s.name ?? "this phone"}`];
   if (s.revoked) parts.push("the box unpaired this phone, so pair again");
-  else if (!s.reachable) parts.push("the box is not answering");
+  else if (!s.reachable) parts.push("your server is not answering");
   parts.push(enabled ? "Vyre fills on this phone" : "not yet the phone's autofill service");
   parts.push(s.unlocked ? "unlocked" : "locked");
   return parts.join(", ") + ".";

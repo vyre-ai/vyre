@@ -536,7 +536,7 @@ export function personSession(o: {
         if (o.signTrade) headers["x-vyre-proof"] = await proofWith(k.sign, { method: "POST", url: "/v1/person/token", body, now: now(), nonce: o.nonce?.() });
         res = await doFetch(`${box}/v1/person/token`, { method: "POST", headers, body, cache: "no-store" });
       } catch (e) {
-        return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "the box is out of reach" };
+        return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "your server is out of reach" };
       }
       const b = (await res.json().catch(() => null)) as { data?: { token?: string } & Record<string, unknown>; error?: { code: string; message: string } } | null;
       const t = b?.data?.token;
@@ -803,7 +803,7 @@ export async function devicePersonStart(o: {
       body,
     });
   } catch (e) {
-    return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "the box is out of reach" };
+    return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "your server is out of reach" };
   }
   const b = (await res.json().catch(() => null)) as { data?: Record<string, unknown>; error?: { code: string; message: string } } | null;
   const d = (b && typeof b === "object" && b.data && typeof b.data === "object" ? b.data : b) as Record<string, unknown> | null;

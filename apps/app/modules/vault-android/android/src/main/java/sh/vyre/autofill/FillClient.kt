@@ -27,7 +27,7 @@ class FillClient(private val server: String, private val token: String?) {
   private fun call(method: String, route: String, body: JSONObject?, session: String?, timeoutMs: Int): JSONObject {
     val url = URL(AutofillCore.routeUrl(server, route))
     val c = try { url.openConnection() as HttpURLConnection } catch (e: IOException) {
-      throw FillError("network", "could not reach vyred")
+      throw FillError("network", "could not reach Vyre")
     }
     try {
       c.requestMethod = method
@@ -49,17 +49,17 @@ class FillClient(private val server: String, private val token: String?) {
       val stream = if (status in 200..299) c.inputStream else c.errorStream
       val text = stream?.use { s -> s.readBytes().toString(Charsets.UTF_8) } ?: ""
       val json = try { JSONObject(text) } catch (e: Exception) {
-        throw FillError("bad_reply", "vyred answered $status without JSON", status)
+        throw FillError("bad_reply", "Vyre answered $status without a readable reply", status)
       }
       json.optJSONObject("error")?.let { e ->
         throw FillError(e.optString("code", "error"), e.optString("message", "refused"), status)
       }
-      if (status !in 200..299) throw FillError("http_$status", "vyred answered $status", status)
+      if (status !in 200..299) throw FillError("http_$status", "Vyre answered $status", status)
       return json.optJSONObject("data") ?: JSONObject()
     } catch (e: FillError) {
       throw e
     } catch (e: IOException) {
-      throw FillError("network", "could not reach vyred")
+      throw FillError("network", "could not reach Vyre")
     } finally {
       c.disconnect()
     }

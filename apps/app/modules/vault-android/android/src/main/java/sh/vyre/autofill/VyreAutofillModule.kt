@@ -49,7 +49,7 @@ class VyreAutofillModule : Module() {
       try {
         val r = FillClient(s, null).post("pair", JSONObject().put("code", code).put("name", name).put("key", key))
         val token = r.optString("token", "")
-        if (token.isEmpty()) throw FillError("bad_reply", "vyred paired without a token")
+        if (token.isEmpty()) throw FillError("bad_reply", "Pairing finished without a token")
         VaultStore.savePairing(context, s, token, r.optString("device", ""), r.optString("name", name))
         Session.clear()
         mapOf("device" to r.optString("device", ""), "name" to r.optString("name", name), "level" to DeviceKey.level())

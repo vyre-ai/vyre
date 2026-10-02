@@ -64,7 +64,7 @@ abstract class UnlockingActivity : FragmentActivity() {
     if (live != null && (!fresh || System.currentTimeMillis() - Session.openedAt() < FRESH_MS)) { then(live); return }
     background({ client.post("challenge", JSONObject()) }) { c ->
       val message = AutofillCore.messageToSign(c.optString("challenge", ""), c.optString("message", ""))
-        ?: return@background fail("vyred sent a challenge Vyre will not sign")
+        ?: return@background fail("Your server sent a request this phone will not sign")
       val sig = try { DeviceKey.signature() } catch (e: VyreException) { return@background fail(e.message ?: "no device key") }
       onSigned = { unlocked ->
         val signature = try {
@@ -74,7 +74,7 @@ abstract class UnlockingActivity : FragmentActivity() {
         if (signature == null) fail("the device key did not sign")
         else background({ client.post("unlock", JSONObject().put("signature", signature)) }) { u ->
           val token = u.optString("session", "")
-          if (token.isEmpty()) fail("vyred opened no session")
+          if (token.isEmpty()) fail("Your server did not open a session")
           else { Session.set(token, u.optLong("expires", System.currentTimeMillis() + 60_000)); then(token) }
         }
       }

@@ -25,7 +25,7 @@ let inflight: Promise<void> | null = null;
 
 /** A call that never throws: a box not reached yet is an offline answer. */
 const call = <T,>(tool: string, input: Record<string, unknown> = {}): Promise<Result<T>> =>
-  boxCall<T>(tool, input).catch((e: Error) => ({ error: { code: "offline", message: e.message || "the box did not answer" } }));
+  boxCall<T>(tool, input).catch((e: Error) => ({ error: { code: "offline", message: e.message || "your server did not answer" } }));
 
 export function refreshVault(): Promise<void> {
   return (inflight ??= (async () => {

@@ -30,7 +30,7 @@ export default async function files(ctx) {
 async function shares(ctx, body) {
   const r = await attempt("files.drive.status");
   if (!ctx.alive()) return;
-  if (r.error) return put(body, head("Drive"), empty("Your box's folders are not reachable.", r.error));
+  if (r.error) return put(body, head("Drive"), empty("Your server's folders are not reachable.", r.error));
   const list = (r.data?.shares || []).filter((/** @type {any} */ s) => s && s.shared);
   put(body, head("Drive"),
     list.length
