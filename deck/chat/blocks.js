@@ -23,6 +23,7 @@ import { highlight } from "./lib/highlight.js";
 import { clip, commandText, duration, elapsed, langOf, rawLines, shortPath, toolState, toolTitle, toolVerb, turnParts } from "./lib/blocks.js";
 import { dataUrl, humanSize, inlineable, tooLarge, THUMB } from "./core/images.js";
 import { openLightbox } from "./lightbox.js";
+import { shortModel } from "./core/composer-state.js";
 import { toolDisplay } from "./cards/index.js";
 
 const OUTPUT_LINES = 12;
@@ -124,7 +125,8 @@ export function headRow(who, ts, assistant = who === "Vyre", av = null, prov = n
     if (!p || !p.provider) return;
     const badge = providerMark(p.provider, badgeSize(24), { model: p.model });
     if (badge) { badge.classList.add("pmark-on-av"); wrap.append(badge); }
-    meta.append([providerName(p.provider), p.model].filter(Boolean).join(", "));
+    // The same words as the header chip and the picker (shortModel): one name for one model (#41).
+    meta.append([providerName(p.provider), shortModel(p.model)].filter(Boolean).join(", "));
   };
   row.setProv(prov);
   return row;

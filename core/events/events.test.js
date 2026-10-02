@@ -72,3 +72,14 @@ test("events: a cursor past the newest id is not resumable, and says where to fo
   assert.deepEqual(ev.resumable(e.id), { ok: true });
   assert.deepEqual(ev.resumable(e.id + 10), { ok: false, from: e.id });
 });
+
+test("events: an event emitted by a listener is heard after the one being delivered, so every listener hears ids in order (#41)", t => {
+  const ev = fresh(t);
+  const early = [], late = [];
+  ev.on("model.switched", () => { early.push("model.switched"); ev.emit("x", "settings.changed", {}); });
+  ev.on("*", e => early.push(e.id));
+  ev.on("*", e => late.push(e.id));
+  const first = ev.emit("x", "model.switched", { model: "haiku" });
+  assert.deepEqual(late, [first.id, first.id + 1], "a later listener hears the outer event first");
+  assert.deepEqual(early.filter(x => typeof x === "number"), [first.id, first.id + 1]);
+});

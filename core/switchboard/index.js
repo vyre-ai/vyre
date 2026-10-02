@@ -1009,7 +1009,13 @@ export class Switchboard {
     const project = rec ? rec.project : null;
     if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
     if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
-    if (t.model) { st.model = t.model; this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" }); }
+    if (t.model) {
+      // What the provider says it runs is the truth (the record held what was asked for, an alias or an account default): the row follows it and a changed
+      // answer is said once, so the header and the picker move to it as a switch would (#41).
+      const was = rec ? rec.model : null;
+      st.model = t.model; this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
+      if (rec && t.model !== was && modelName(t.model) !== modelName(was)) this.emit("model.switched", { model: modelName(t.model), live: true, reported: true }, id, project);
+    }
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
     if (t.commands) st.commands = t.commands;
@@ -2147,6 +2153,8 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (st && st.proc.control) await st.proc.control("set_model", { model });
+    // The next reply is labelled by the live model first (speaker), so it follows the switch, not the model the thread started with.
+    if (st) st.model = String(model);
     this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(String(model), id);
     this.emit("model.switched", { model: String(model), live: Boolean(st) }, id, rec.project);
     return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
