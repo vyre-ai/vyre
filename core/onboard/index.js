@@ -125,6 +125,8 @@ export default {
     const ob = () => ctx.config.onboard || {};
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
+    /** The setup page (or an earlier step) already claimed a vyre.run address on this box: ctx.config.name is that address, not the person. */
+    const heldAddress = () => net().via === "vyre.run" && Boolean(ctx.config.name);
     // The person's public, non-secret id (team-lead, 28 Sep, for the phone's avatar): made once,
     // here, on every start -- a fresh install gets it right away (this runs before the wizard's
     // first onboard.status), and an install from before this field existed gets it backfilled on
@@ -179,7 +181,7 @@ export default {
       const n = names.__error ? null : names;
       const t = n && n.tailscale;
 
-      const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: ctx.config.name || null, assistant: ob().assistant || null };
+      const you = { state: ob().person ? "done" : "todo", why: null, person: ob().person || null, name: heldAddress() ? (ob().person || null) : ctx.config.name || null, assistant: ob().assistant || null };
 
       const auth = ob().claude || null;
       const claude = { state: "todo", why: null, installed: Boolean(version), version, install: version ? null : CLAUDE_INSTALL, auth,
@@ -278,7 +280,7 @@ export default {
       const can = canRelayJoin(process.platform);
       return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
+        host: (t && t.node && t.node.name) || os.hostname(), name: heldAddress() ? (ob().person || null) : ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
         current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
@@ -389,7 +391,8 @@ export default {
         const c = checkName(p);
         // Continue is the person confirming this name, so it replaces any earlier candidate, unless
         // an address already serves under the old one.
-        save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // An address the setup page already claimed on this box (via vyre.run) is never replaced by the person's name.
+        save({ ...(c.valid && !net().address && net().via !== "vyre.run" ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         return stepOf("you", caller);
       },
     });
@@ -457,6 +460,8 @@ export default {
           return call("names.check", { name });
         }
         if (action === "reserve" && via(await call("names.status")) === "ts.net") action = "ts.net";
+        // An address this box already holds (the setup page claimed it): there is nothing to reserve, only its progress to read.
+        if ((action === "reserve" || action === "claim") && net().via === "vyre.run" && ctx.config.name) action = "status";
         if (action === "reserve" || action === "claim") {
           // A vyre.run name is public DNS. It is claimed only when the person typed it and pressed
           // Continue in step 1 (onboard.you saved it), or confirmed it here with confirm: true.
