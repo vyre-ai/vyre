@@ -85,9 +85,10 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
     presence: { summary: input => `Keep your ${input && input.kind} API key in the vault${input && input.base_url ? ` for ${(() => { try { return new URL(input.base_url).hostname; } catch { return "that server"; } })()}` : ""}` },
     run: async (input, { caller }) => {
       if (!callerAllowed(PEOPLE, caller)) throw new Error("vault.apikey.save is for people");
+      const b = baseOf(input.kind, input.base_url);
+      if (/^[0-9.]+$/.test(b.host) || b.host.startsWith("[")) throw new Error("to keep a key for this server, give its hostname (an IP address cannot be a credential's host); localhost works for a server on this machine");
       const checked = await checkKey(input, fetch);
       if (!checked.ok) throw Object.assign(new Error(checked.why || "the key did not pass the check"), { code: "key_refused", detail: { status: checked.status } });
-      const b = baseOf(input.kind, input.base_url);
       const p = PROVIDERS[/** @type {keyof typeof PROVIDERS} */ (input.kind)];
       const name = typeof input.name === "string" && input.name ? input.name : `ai-${input.kind}${input.base_url && b.href !== p.base ? `-${b.host.replace(/[^A-Za-z0-9.-]/g, "-")}` : ""}`;
       const config = normalize({ auth: p.auth, hosts: [b.host], endpoints: [{ method: "GET", path: "/*", kind: "read" }] });

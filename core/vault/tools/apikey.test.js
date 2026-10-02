@@ -24,9 +24,9 @@ async function provider(t, good) {
     res.writeHead(ok ? 200 : 401, { "content-type": "application/json" });
     res.end(JSON.stringify(ok ? { data: [{ id: "m1" }, { id: "m2" }, { id: "m3" }] } : { error: "bad key" }));
   });
-  await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
+  await new Promise(r => server.listen(0, () => r(undefined)));
   t.after(() => new Promise(r => server.close(() => r(undefined))));
-  return { seen, base: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}` };
+  return { seen, base: `http://localhost:${/** @type {any} */ (server.address()).port}` };
 }
 
 async function daemon(t, presence = present) {
@@ -53,7 +53,7 @@ test("check: one authenticated GET per kind, the key is never in the answer, and
 
   const bad = await checkKey({ kind: "openai", key: fake("bad"), base_url: p.base + "/v1" });
   assert.deepEqual([bad.ok, bad.status], [false, 401]); assert.match(bad.why, /did not accept/);
-  assert.equal((await checkKey({ kind: "openai", key, base_url: "http://127.0.0.1:1/v1" })).ok, false, "nothing listening");
+  assert.equal((await checkKey({ kind: "openai", key, base_url: "http://localhost:1/v1" })).ok, false, "nothing listening");
   const redirected = await checkKey({ kind: "openai", key, base_url: p.base + "/redirect" });
   assert.equal(redirected.ok, false, "a redirect is never followed with the key");
   // The base URL: https, or http for this machine only; no login, no query.
@@ -71,13 +71,16 @@ test("save: a good key is kept as an api-credential for the provider's host only
 
   const saved = await reg("vault.apikey.save", { kind: "openai", key, base_url: p.base + "/v1" });
   assert.equal(saved.error, undefined, JSON.stringify(saved));
-  assert.equal(saved.data.name, "ai-openai-127.0.0.1");
+  assert.equal(saved.data.name, "ai-openai-localhost");
   assert.ok(!JSON.stringify(saved).includes(key), "the answer never carries the key");
-  const item = (await reg("vault.list")).data.items.find(i => i.name === "ai-openai-127.0.0.1");
+  const item = (await reg("vault.list")).data.items.find(i => i.name === "ai-openai-localhost");
   assert.equal(item.kind, "api-credential");
   assert.ok(!JSON.stringify(item).includes(key), "the listing never carries the key");
+  // A server named by an IP address cannot be a credential's host (the host list takes names only): a plain refusal, nothing stored.
+  const byIp = await reg("vault.apikey.save", { kind: "openai", key, base_url: p.base.replace("localhost", "127.0.0.1") + "/v1" });
+  assert.match(byIp.error.message, /hostname/);
   // Never handed out: reveal, copy and release refuse an api-credential.
-  for (const tool of ["vault.reveal", "vault.copy"]) assert.ok((await reg(tool, { name: "ai-openai-127.0.0.1" })).error, `${tool} refuses it`);
+  for (const tool of ["vault.reveal", "vault.copy"]) assert.ok((await reg(tool, { name: "ai-openai-localhost" })).error, `${tool} refuses it`);
   // The default name for the provider's own address carries no host.
   const own = await reg("vault.apikey.save", { kind: "anthropic", key, base_url: p.base, name: "ai-anthropic" });
   assert.equal(own.data.name, "ai-anthropic");
@@ -103,5 +106,5 @@ test("check and save are the person's own: a model, an agent, a module and a hoo
   const strict = await daemon(t, presence);
   assert.equal((await strict.reg("vault.apikey.check", input, "local")).data.ok, true);
   assert.equal((await strict.reg("vault.apikey.save", input, "local")).error.code, "presence_required");
-  assert.match(asked[0], /Keep your openai API key in the vault for 127\.0\.0\.1/);
+  assert.match(asked[0], /Keep your openai API key in the vault for localhost/);
 });
