@@ -66,3 +66,13 @@ test("a network command is flagged by the whole command, however far along the s
   assert.deepEqual(taintOf("Bash", started.payload.net === true), T(true, false));
   assert.deepEqual(taintOf("Bash", false), T(false, false));
 });
+
+test("a network command past the 4000-character display clip is still flagged", async () => {
+  const { describe } = await import("./translate.js");
+  const far = `echo ${"x".repeat(6000)} && curl https://example.org`;
+  assert.equal(describe("Bash", { command: far }).net, true);
+  assert.equal(describe("execute", { command: far }).net, true);
+  const t = performance.now();
+  describe("Bash", { command: " ".repeat(900_000) + "&&".repeat(50_000) });
+  assert.ok(performance.now() - t < 200, "linear on a huge command");
+});

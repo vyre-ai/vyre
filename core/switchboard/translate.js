@@ -95,6 +95,9 @@ export const reachesNetwork = command => {
     || /\bgit\s+(?:clone|fetch|pull|ls-remote)\b|\bgh\s+api\b|\b(?:npm|pnpm|yarn|pip3?)\s+(?:install|i|add)\b/.test(c);
 };
 
+/** How much of a shell command is read for network use: the raw command, not the display clip (the patterns are linear), capped so a huge input costs nothing. */
+const NET_SCAN = 1_000_000;
+
 /** Tools that run a shell command line, by the names the providers use. */
 const SHELL_TOOL = /^(bash|shell|sh|zsh|exec|execute|exec_command|run_terminal_command|run_command|terminal|local_shell)$/i;
 
@@ -102,18 +105,18 @@ const SHELL_TOOL = /^(bash|shell|sh|zsh|exec|execute|exec_command|run_terminal_c
  * A tool call as one line a person can judge, and where it goes. Never the whole input: a Write's
  * content or an Edit's replacement can be the size of a file, and may hold anything.
  * @param {string} tool @param {Record<string, any>} input
- * @returns {{ summary: string, destination: string|null, net?: true }} net: a shell command that reaches the network, decided on the whole command (up to the 4000-character clip), before the summary is cut; the command itself never rides in it
+ * @returns {{ summary: string, destination: string|null, net?: true }} net: a shell command that reaches the network, decided on the raw command (up to 1 MB), before the display clip and cut; the command itself never rides in it
  */
 export function describe(tool, input = {}) {
   const i = input || {};
   // A command can carry a token (curl -H "Authorization: ..."), and the summary is shown on every device.
-  if (tool === "Bash") { const c = clip(String(i.command ?? ""), 4000); return { summary: cut(c), destination: null, ...(reachesNetwork(c) ? { net: true } : {}) }; }
+  if (tool === "Bash") { const raw = String(i.command ?? ""); return { summary: cut(clip(raw, 4000)), destination: null, ...(reachesNetwork(raw.slice(0, NET_SCAN)) ? { net: true } : {}) }; }
   if (["Write", "Edit", "MultiEdit", "Read", "NotebookEdit"].includes(tool)) {
     const file = i.file_path || i.notebook_path || "";
     return { summary: `${tool} ${cut(file)}`, destination: file ? String(file) : null };
   }
   // The other spellings of a shell tool: the same network judgement on the whole command, the summary as any tool's.
-  if (SHELL_TOOL.test(tool) && (typeof i.command === "string" || typeof i.cmd === "string")) { const c = clip(String(i.command ?? i.cmd), 4000); return { summary: cut(`${tool} ${c}`), destination: null, ...(reachesNetwork(c) ? { net: true } : {}) }; }
+  if (SHELL_TOOL.test(tool) && (typeof i.command === "string" || typeof i.cmd === "string")) { const raw = String(i.command ?? i.cmd); return { summary: cut(`${tool} ${clip(raw, 4000)}`), destination: null, ...(reachesNetwork(raw.slice(0, NET_SCAN)) ? { net: true } : {}) }; }
   if (tool === "WebFetch") return { summary: `fetch ${cut(i.url)}`, destination: i.url ? cut(i.url) : null };
   if (tool === "WebSearch") return { summary: `search ${cut(i.query)}`, destination: null };
   if (tool === "Glob" || tool === "Grep") return { summary: `${tool} ${cut(i.pattern)}${i.path ? " in " + cut(i.path, 80) : ""}`, destination: null };
