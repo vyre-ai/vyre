@@ -44,7 +44,12 @@ export async function upsert({ token, zone, dryRun = false, fetch: f = globalThi
   const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
   const read = await f(url, { headers });
   let existing = [];
-  if (read.status === 200) existing = ((await read.json()).result || {}).rules || [];
+  if (read.status === 200) {
+    const rules = ((await read.json()).result || {}).rules;
+    // A 200 with no rules array is a malformed answer, never "no rules": writing from it could replace the zone's other rules.
+    if (!Array.isArray(rules)) throw new Error("Cloudflare's answer for the rate-limit rules had no rules list; refusing to write");
+    existing = rules;
+  }
   else if (read.status !== 404) throw new Error(describe(read.status, "reading the rate-limit rules"));
   const rules = mergeRules(existing);
   const refs = rules.map(r => String(r.ref || r.description || "(unnamed)"));

@@ -195,7 +195,8 @@ export default {
  * in an access log. Single-use either way -- found or not, the PairTicket object it named is gone
  * after this call. The lookup always happens and a hit (200) or a contested ticket (409) is always
  * served, with no charge: nothing an outsider sends can stop a real ticket from resolving, and a
- * shared address (carrier-grade NAT, a cafe's Wi-Fi) cannot be used to block a real pairing there.
+ * shared address (carrier-grade NAT, a cafe's Wi-Fi) cannot be used to block a real pairing there by this code, only by the edge's
+ * per-address cap (a neighbour who sends about 300 a minute).
  * Only a MISS is charged, to a per-address limit (env.PAIR_LIMITER), and no global limit exists (a
  * global cap on requests let any outsider block pairing for every user). Guessing is bounded by the
  * keyspace, not a limiter: a seed of at least 64 bits against a ticket's five minutes. Cost is the

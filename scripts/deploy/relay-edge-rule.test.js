@@ -32,5 +32,7 @@ test("edge rule: it reads, then PUTs, and says which scope is missing when Cloud
   await assert.rejects(upsert({ token: "t", zone: ZONE, fetch: /** @type {any} */ (refused) }), /Zone WAF > Edit/);
   const full = async (url, init = {}) => (init.method === "PUT" ? { ok: false, status: 400, json: async () => ({}) } : { status: 200, ok: true, json: async () => ({ result: { rules: [{ ref: "other", expression: "true", action: "block" }] } }) });
   await assert.rejects(upsert({ token: "t", zone: ZONE, fetch: /** @type {any} */ (full) }), /only one rate-limiting rule/);
+  const odd = async () => ({ status: 200, ok: true, json: async () => ({ result: {} }) });
+  await assert.rejects(upsert({ token: "t", zone: ZONE, fetch: /** @type {any} */ (odd) }), /no rules list/);
   await assert.rejects(upsert({ token: "", zone: ZONE }), /zone id/);
 });
