@@ -38,3 +38,9 @@ test("windows pairing page: every relay-client name it imports exists there", as
     }
   }
 });
+
+import { compare } from "../lib/releases.js";
+test("windows updater: the semver order is lib/releases.js's, case for case", () => {
+  const cases = JSON.parse(fs.readFileSync(new URL("../local/capsule/native-win/tests/semver-cases.json", import.meta.url), "utf8"));
+  for (const [a, b, want] of cases) assert.equal(compare(a, b), want, `${a} vs ${b}`);
+});
