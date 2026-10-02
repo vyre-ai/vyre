@@ -7,14 +7,17 @@
 //!   signs bytes the core hands it (the device key also signs relay logins; without the prefix a
 //!   countersign could be replayed as one);
 //! - it signs only just after pairing, inside the window, or after the person's tap on the card;
-//! - once per request nonce, remembered; one request per connection.
+//! - once per request nonce, remembered; one request per connection;
+//! - one signature per pairing: the window closes on the first signature, so a compromised core
+//!   cannot ask for one countersign per key it likes;
+//! - `now_ms` is a monotonic clock (an `Instant` since the app started), never wall time.
 
 use std::collections::HashSet;
 
 /// The domain separator at the front of every countersigned message.
 pub const PREFIX: &str = "vyre-companion-v1";
 /// How long after the app pairs a core's request may be signed without a tap.
-pub const WINDOW_MS: u64 = 5 * 60 * 1000;
+pub const WINDOW_MS: u64 = 15 * 60 * 1000;
 
 /// The message the app signs. Every field is the app's own value except the core's public key and the
 /// nonce, which are checked for shape and bound into the signature, never interpreted.
@@ -54,7 +57,8 @@ impl Gate {
         let in_window = self.paired_at.map(|t| now_ms >= t && now_ms - t <= WINDOW_MS).unwrap_or(false);
         if !in_window && !self.tapped { return Decision::Refuse("the person has not allowed this"); }
         self.seen.insert(nonce.to_string());
-        self.tapped = false;
+        // One signature per pairing, and one per tap.
+        if in_window { self.paired_at = None; } else { self.tapped = false; }
         Decision::Sign
     }
 }
@@ -87,12 +91,17 @@ mod tests {
     }
 
     #[test]
-    fn inside_the_window_after_pairing_it_signs_and_once_per_nonce() {
+    fn inside_the_window_after_pairing_it_signs_once_per_pairing_and_once_per_nonce() {
         let mut g = Gate::new();
         g.paired(10_000);
         assert_eq!(g.decide(10_000 + 1000, "a"), Decision::Sign);
         assert_eq!(g.decide(10_000 + 2000, "a"), Decision::Refuse("this request was already answered"));
-        assert_eq!(g.decide(10_000 + 3000, "b"), Decision::Sign, "another nonce in the window is its own request");
+        g.paired(15_000);
+        assert_eq!(g.decide(15_000 + 500, "a"), Decision::Refuse("this request was already answered"));
+        assert_eq!(g.decide(15_000 + 600, "z"), Decision::Sign);
+        assert_eq!(g.decide(15_000 + 700, "y"), Decision::Refuse("the person has not allowed this"), "the window closed on the first signature");
+        g.paired(20_000);
+        assert_eq!(g.decide(20_000 + 3000, "b"), Decision::Sign, "a new pairing opens a new window");
     }
 
     #[test]

@@ -21,3 +21,5 @@ pub mod drive;
 pub mod devicekey;
 pub mod core_pkg;
 pub mod companion;
+pub mod core_install;
+pub mod core_calls;
