@@ -3,7 +3,7 @@ name: matrix-j1
 on:
   workflow_dispatch:
   push:
-    branches: ["work/e2e2-j1"]
+    branches: ["work/e2e2-j1", "work/e2e2-rc"]
 permissions:
   contents: read
 concurrency:

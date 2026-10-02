@@ -44,6 +44,39 @@ services:
       - $T/fake/claude:/usr/local/bin/claude:ro
       - $T/fake/claude-login.cjs:/opt/matrix/claude-login.cjs:ro
 YML
+# The setup page pins the relay's host (it refuses an offer from any host but the one it was built with, ws://127.0.0.1:PORT here),
+# so the box must advertise that same host. vyred shares the tailscale container's network namespace, so a forwarder inside that
+# namespace makes 127.0.0.1:PORT there reach the runner's relay. It starts as soon as that container exists and the box's config
+# names the loopback address. (Test harness only: the product's pin is unchanged.)
+RPORT=${RELAY##*:}
+RELAY_BOX_WS="ws://127.0.0.1:$RPORT"
+cat >"$T/fwd.py" <<'PY'
+import socket, sys, threading
+lh, lp, th, tp = sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+def pipe(a, b):
+    try:
+        while True:
+            d = a.recv(65536)
+            if not d: break
+            b.sendall(d)
+    except Exception: pass
+    finally:
+        for x in (a, b):
+            try: x.close()
+            except Exception: pass
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind((lh, lp)); s.listen(64)
+while True:
+    c, _ = s.accept()
+    try: u = socket.create_connection((th, tp), timeout=10)
+    except Exception: c.close(); continue
+    threading.Thread(target=pipe, args=(c, u), daemon=True).start()
+    threading.Thread(target=pipe, args=(u, c), daemon=True).start()
+PY
+( i=0; while [ $i -lt 1200 ]; do
+    PID=$(docker inspect -f '{{.State.Pid}}' vyre-tailscale-1 2>/dev/null || true)
+    if [ -n "$PID" ] && [ "$PID" != 0 ]; then sudo nsenter -t "$PID" -n python3 "$T/fwd.py" 127.0.0.1 "$RPORT" "$IP" "$RPORT" >"$OUT/fwd.log" 2>&1; break; fi
+    i=$((i + 1)); sleep 0.5
+  done ) &
 docker volume create --label com.docker.compose.project=vyre --label com.docker.compose.volume=vyre-home vyre_vyre-home >/dev/null
 docker run --rm -v vyre_vyre-home:/home/vyre -e R="$RELAY_BOX_WS" -e N="$NAMES_BOX" busybox sh -c \
   'mkdir -p /home/vyre/.vyre && printf "{\"relay\":{\"enabled\":true,\"url\":\"%s\"},\"network\":{\"directory\":\"%s\"}}\n" "$R" "$N" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'
@@ -97,7 +130,7 @@ ${J1_CHROME:-google-chrome} --headless=new --remote-debugging-port=9222 --user-d
 for i in $(seq 1 150); do curl -fs http://127.0.0.1:9222/json/version >/dev/null && break; sleep 0.2; done
 curl -fs http://127.0.0.1:9222/json/version >/dev/null || { echo "j1.sh: Chrome DevTools never came up" >&2; tail -20 "$OUT/chrome.log" >&2; exit 1; }
 rc=0
-node scripts/matrix/j1.mjs --site "$SITE" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
+node scripts/matrix/j1.mjs --site "$SITE" --relay "$RELAY" --env-file "$OUT/env.json" --out "$OUT/j1" || rc=$?
 docker logs --tail 80 vyre-vyre-1 >"$OUT/vyred.log" 2>&1 || true
 { echo "== relay, setup and channel lines, whole log"; docker logs vyre-vyre-1 2>&1 | grep -i -E "relay|setup|channel|claim|onboard|error|warn" | tail -80; } >>"$OUT/vyred.log" 2>&1 || true
 docker exec -u vyre vyre-vyre-1 vyre call onboard.status '{}' >>"$OUT/vyred.log" 2>&1 || true
