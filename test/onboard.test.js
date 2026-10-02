@@ -556,8 +556,13 @@ test("onboard: finishing makes the assistant once, on every project, signed in w
   const base = `http://127.0.0.1:${port}`;
   const { session } = await redeem(url);
   await tool(base, session, "onboard.you", { name: "Alex", assistant: "Mira Two" });
+  // The assistant exists from the moment it was named, with no Claude sign-in yet: no greeting, but it is there for the Agents page and Lumen.
+  const early = (await call("agents.list", {}, { root, caller: "cli" })).data.find(x => x.kind === "assistant");
+  assert.equal(early.name, "mira-two", "made at the You step, with no second click");
+  assert.equal(early.auth, "ambient", "no credentials yet: the machine's own Claude Code login");
   const before = await (await tool(base, session, "onboard.finish")).json();
-  assert.equal(before.data.assistant, null, "no Claude sign-in yet, so no assistant to run");
+  assert.equal(before.data.assistant.name, "mira-two");
+  assert.equal(before.data.assistant.thread, null, "no Claude sign-in yet, so nothing greets");
   await tool(base, session, "onboard.claude", { mode: "api-key", key: "sk-ant-api" + "0".repeat(40) });
   const done = await (await tool(base, session, "onboard.finish")).json();
   assert.equal(done.data.ready, "Vyre is ready.");
@@ -743,4 +748,31 @@ test("onboard: join status and verify never need presence; tailscale connect and
   assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "policy" }), false, "the paste-only policy snippet needs no proof either");
   assert.equal(p.required("onboard.join", def, { action: "tailscale", step: "connect" }), true, "starting tailscale up does");
   assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
+});
+
+test("onboard: the named assistant is made at the You step, takes the Claude step's credentials later, and a failure is kept with a retry", async t => {
+  const { root } = await box(t, { vault: { keystore: "file" } });
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  const agents = async () => (await call("agents.list", {}, { root, caller: "cli" })).data;
+  // Somebody already holds the name: the step still succeeds, says why, and a retry makes it once the name is free.
+  assert.equal((await call("agents.create", { name: "kit", projects: [] }, { root, caller: "cli" })).error, undefined);
+  const you = await (await tool(base, session, "onboard.you", { name: "Alex", assistant: "Kit" })).json();
+  assert.equal(you.error, undefined, JSON.stringify(you));
+  assert.equal((await agents()).some(x => x.kind === "assistant"), false);
+  const status = (await (await tool(base, session, "onboard.status")).json()).data;
+  assert.equal(status.assistantState && status.assistantState.state, "failed", JSON.stringify({ you, status: Object.keys(status) }));
+  assert.match(status.assistantState.why, /already an agent kit/);
+  assert.equal((await call("agents.delete", { agent: "kit" }, { root, caller: "cli" })).error, undefined);
+  const retry = await (await tool(base, session, "onboard.assistant")).json();
+  assert.deepEqual([retry.data.state, retry.data.name, retry.data.why], ["made", "kit", null], JSON.stringify(retry));
+  assert.equal((await (await tool(base, session, "onboard.status")).json()).data.assistantState, null, "the failure is cleared");
+  // Once made, the Claude step hands it the Vault items; asking again makes nothing twice.
+  await tool(base, session, "onboard.claude", { mode: "api-key", key: "sk-ant-api" + "0".repeat(40) });
+  const made = (await agents()).filter(x => x.kind === "assistant");
+  assert.equal(made.length, 1);
+  assert.equal(made[0].auth, "api-key", "it took the Claude step's Vault item");
+  assert.equal((await (await tool(base, session, "onboard.assistant")).json()).data.state, "made");
+  assert.equal((await agents()).filter(x => x.kind === "assistant").length, 1);
 });

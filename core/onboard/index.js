@@ -278,7 +278,7 @@ export default {
       const can = canRelayJoin(process.platform);
       return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
+        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
         current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
@@ -390,6 +390,8 @@ export default {
         // Continue is the person confirming this name, so it replaces any earlier candidate, unless
         // an address already serves under the old one.
         save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // The assistant is made as soon as it has a name and its person exists: no second click, whatever the Claude step does later.
+        if (a) await ensureAssistant();
         return stepOf("you", caller);
       },
     });
@@ -491,6 +493,7 @@ export default {
           }
           await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t, grants: CREDENTIAL_READERS });
           save({ onboard: { claude: kind } });
+          await ensureAssistant();
         }
         return { ...(await stepOf("claude", caller)), url: null, needsCode: signin.active() };
       },
@@ -588,35 +591,70 @@ export default {
       },
     });
 
-    /**
-     * The assistant (spec section 10): made once, on every project, signed in with what the Claude
-     * step put in the Vault, and greeting the person in its first thread. Without a Claude sign-in
-     * there is nothing to run it on yet, so it waits for Settings; a failure never blocks finishing.
-     */
-    async function meet() {
+    /** The credentials the assistant runs on: the Claude step's Vault items, or none (the machine's own Claude Code sign-in). */
+    const assistantAuth = () => {
       const auth = ob().claude;
-      if (!auth) return null;
-      if (ob().greeted) return { name: ob().greeted.agent, display: ob().assistant || null, thread: ob().greeted.thread };
+      return !auth ? {} : auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] };
+    };
+
+    /**
+     * The assistant's row (spec section 10), made once, on every project, the moment the person has named it (onboard.you) and for as long as it
+     * is missing: at that step, at the Claude step, at finish, on every start and on a retry. The row needs no credentials to exist, so a person
+     * whose Claude Code is signed in outside this wizard (nothing stored in the Vault) still has their assistant, and it takes the Vault items once the
+     * Claude step stores them. Idempotent. Never throws: why it could not be made is kept (onboard.assistantState) and shown with a retry.
+     * @param {{ fallbackName?: boolean }} [o] fallbackName: finishing names an unnamed assistant "Juno"
+     * @returns {Promise<{ name: string|null, display: string|null, made: boolean, why: string|null }>}
+     */
+    async function ensureAssistant(o = {}) {
+      const display = ob().assistant || (o.fallbackName ? "Juno" : null);
+      if (!display) return { name: null, display: null, made: false, why: null };
       try {
-        const display = ob().assistant || "Juno";
         const list = await call("agents.list");
-        let a = (Array.isArray(list) ? list : list.agents || []).find(x => x.kind === "assistant");
+        const rows = Array.isArray(list) ? list : list.agents || [];
+        let a = rows.find(x => x.kind === "assistant");
         if (!a) {
-          const name = slug(display);
           const person = ob().person ? ` You work for ${ob().person}.` : "";
-          a = await call("agents.create", { name, kind: "assistant", projects: "*",
-            // agents reads auth.vault as a subscription token and auth.fallback as an API key.
-            auth: auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] },
+          a = await call("agents.create", { name: slug(display), kind: "assistant", projects: "*", auth: assistantAuth(),
             instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
+        } else if (ob().claude && a.auth === "ambient") {
+          // Made before the Claude step stored its sign-in (agents.list says its credentials are "ambient"): it gets the Vault items now.
+          a = await call("agents.update", { name: a.name, auth: assistantAuth() });
         }
-        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
-        save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
-        return { name: a.name, display, thread: r.thread };
+        if (ob().assistantState) save({ onboard: { assistantState: null } });
+        return { name: a.name, display, made: true, why: null };
       } catch (e) {
-        ctx.log("onboard: the assistant was not made: " + /** @type {Error} */ (e).message);
-        return { name: null, display: ob().assistant || null, thread: null, why: /** @type {Error} */ (e).message };
+        const why = /** @type {Error} */ (e).message;
+        ctx.log("onboard: the assistant was not made: " + why);
+        save({ onboard: { assistantState: { state: "failed", why, at: new Date().toISOString() } } });
+        return { name: null, display, made: false, why };
       }
     }
+
+    /** The assistant, then its first greeting when there is a Claude sign-in to run it. A failure never blocks finishing. */
+    async function meet() {
+      if (ob().greeted) return { name: ob().greeted.agent, display: ob().assistant || null, thread: ob().greeted.thread };
+      const a = await ensureAssistant({ fallbackName: true });
+      if (!a.made) return { name: null, display: a.display, thread: null, why: a.why };
+      if (!ob().claude) return { name: a.name, display: a.display, thread: null };
+      try {
+        const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
+        save({ onboard: { greeted: { agent: a.name, thread: r.thread } } });
+        return { name: a.name, display: a.display, thread: r.thread };
+      } catch (e) {
+        ctx.log("onboard: the assistant's greeting was not sent: " + /** @type {Error} */ (e).message);
+        return { name: a.name, display: a.display, thread: null };
+      }
+    }
+
+    ctx.tool("onboard.assistant", {
+      description: "Make the assistant now, if it is not made: the name given in the You step, on every project. The retry for \"your assistant was not made\". Says whether it exists and, when not, why.",
+      input: obj(),
+      run: async (_, { caller }) => {
+        boxOnly();
+        const a = await ensureAssistant({ fallbackName: Boolean(ob().finished) });
+        return { ...a, state: a.made ? "made" : a.display ? "failed" : "unnamed" };
+      },
+    });
 
     /**
      * The first passkey is made at the box's own address (a passkey made on the loopback page
@@ -683,6 +721,9 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    // An install whose assistant was named but never made (an earlier version, or a failure at finish) gets it now, once the agents module is up.
+    const retry = setTimeout(() => { if (ob().assistant) ensureAssistant({ fallbackName: false }).catch(() => {}); }, 3000);
+    if (typeof retry.unref === "function") retry.unref();
+    return { async stop() { clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

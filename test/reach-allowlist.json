@@ -429,6 +429,10 @@
    "module": "memory",
    "default": "callers admit a model"
   },
+  "onboard.assistant": {
+   "module": "onboard",
+   "default": "open to any caller"
+  },
   "onboard.claude": {
    "module": "onboard",
    "default": "open to any caller"
