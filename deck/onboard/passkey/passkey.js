@@ -105,12 +105,12 @@ function claimFailed(why) {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "This link did not work."),
-    h("p", { class: "lead" }, `${why} Try it once more, or get a new link: each link works for two minutes.`),
+    h("p", { class: "lead" }, `${why} Try again, or get a new link. Each link works for two minutes.`),
     h("div", { class: "ob-foot" },
       h("a", { class: "btn", href: "https://vyre.run/setup", target: "_blank", rel: "noopener" }, "Get a new link"),
       h("div", { class: "grow" }),
       h("button", { type: "button", class: "btn btn-primary", onclick: () => runClaim() }, "Try again")),
-    h("p", { class: "note" }, "A new link is made on the setup page. If that tab is still open, switch to it and press \"Get a new link\"; if not, open the setup page from the button and sign in again, or run \"sudo vyre up\" on your server for a fresh link."));
+    h("p", { class: "note" }, "A new link comes from the setup page. If that tab is still open, switch to it and press \"Get a new link\". If you closed it, open the setup page with the button above. On your server you can also run sudo vyre up for a fresh link."));
 }
 
 function runClaim() {
