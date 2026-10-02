@@ -50,6 +50,10 @@ export function verify(report, top, server) {
     lines.push(`FINDING self-navigation ${k}: ${reached[k] || 0} request(s) reached the server${u ? `; address length ${u.len}, data carried ${u.data} bytes, destination host ${u.host}, Sec-Fetch ${u.sf || "not recorded"}` : ""}; cookies carried: ${cookiesOf(k).map(c => c || "none").join(" | ") || "n/a"}; taken as the person's: ${acc.length ? acc.map(a => (a ? "YES" : "no")).join(",") : "n/a"}`);
     if (acc.some(Boolean)) failures.push(`self-navigation ${k} would be taken as the person's session by the server${RULE ? " even with the rule" : " (the rule is absent on this tree)"}`);
   }
+  // The Deck's own image request (how a media artifact is shown) must still be the person's, rule or no rule.
+  { const l = (server.loads || []).find(x => x.path === "/v1/pic");
+    if (l) { lines.push(`${l.accepted ? "ok  " : "FAIL"} the Deck's own image request for the person's media is still taken as theirs (Sec-Fetch ${l.sf})`); if (!l.accepted) failures.push(`the person's own image request was refused (Sec-Fetch ${l.sf})`); }
+    else failures.push("the Deck's own image request never reached the server"); }
   // The rule must not break the Deck: its own frame load of the artifact, and the artifact opened directly, stay the person's.
   if (RULE) for (const want of ["/a/hostile?mode=framed", "/a/hostile?mode=top"]) {
     const l = (server.loads || []).find(x => x.path === want);
