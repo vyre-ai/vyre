@@ -124,6 +124,6 @@ export function buildAddPcCard({ attempt, cleanup, alive = () => true }) {
   return h("div", { class: "add-pc" },
     h("p", { class: "h3" }, "Add a Windows PC"),
     h("p", { class: "small muted" }, "Open Vyre on the PC. It shows 13 words and a QR code. Type the words here, or scan the code."),
-    h("p", { class: "small" }, "Only type words you are reading off your own PC's screen right now. Anyone who has them can join this box."),
+    h("p", { class: "small" }, "Only type words you are reading off your own PC's screen right now. Anyone who has them can join your server."),
     h("div", { class: "field" }, words), video, h("div", { class: "phone-code-actions" }, add, scan), status);
 }

@@ -180,7 +180,7 @@ async function post(name, input, extra, keepalive) {
   } catch {
     done(false);
     reach(false);
-    return fallback(name, input, new ApiError("offline", "The box did not answer", name));
+    return fallback(name, input, new ApiError("offline", "Your server did not answer", name));
   }
   done(!!body && "data" in body && !body.error);
   // The service worker answers a read it kept with offline: true; the box itself was not reached.
@@ -300,7 +300,7 @@ export async function callWithCode(name, input, code, method = "code") {
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer", name); }
+  } catch { throw new ApiError("offline", "Your server did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
@@ -319,7 +319,7 @@ export async function callWithGrant(name, input, grant) {
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer", name); }
+  } catch { throw new ApiError("offline", "Your server did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
@@ -366,8 +366,8 @@ async function presenceProof(tool, input) {
     const res = await fetch("/v1/presence/challenge", { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...headers },
       body: JSON.stringify({ tool, input, method: "passkey" }) });
     ch = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer.", tool); }
-  if (!ch || ch.error || !ch.data?.webauthn) throw new ApiError(ch?.error?.code || "denied", ch?.error?.message || "The box did not offer a passkey challenge.", tool, ch?.error);
+  } catch { throw new ApiError("offline", "Your server did not answer.", tool); }
+  if (!ch || ch.error || !ch.data?.webauthn) throw new ApiError(ch?.error?.code || "denied", ch?.error?.message || "Your server did not offer a passkey challenge.", tool, ch?.error);
   const w = ch.data.webauthn;
   /** @type {any} */ let cred;
   try {
@@ -437,7 +437,7 @@ function getOutbox() {
  */
 export async function queue(name, input = {}, { presence, onWait } = {}) {
   if (presence === true) {
-    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "The box did not answer", name);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "Your server did not answer", name);
     return call(name, input, { presence: true, write: true });
   }
   const box = await getOutbox();
@@ -474,7 +474,7 @@ export async function attempt(name, input = {}, opts = {}) {
 export function upload(path, body, progress) {
   const x = new XMLHttpRequest();
   const done = new Promise((resolve, reject) => {
-    if (!path.startsWith("/")) { reject(Object.assign(new Error("the upload path is not on this box"), { code: "bad_path" })); return; }
+    if (!path.startsWith("/")) { reject(Object.assign(new Error("the upload path is not on your server"), { code: "bad_path" })); return; }
     x.open("PUT", path);
     x.setRequestHeader("content-type", "application/octet-stream");
     x.setRequestHeader("x-vyre-caller", "deck");
@@ -483,9 +483,9 @@ export function upload(path, body, progress) {
       let b = null;
       try { b = JSON.parse(x.responseText); } catch {}
       if (x.status >= 200 && x.status < 300 && !b?.error) resolve(b?.data ?? b);
-      else reject(Object.assign(new Error(b?.error?.message || x.statusText || `the box answered ${x.status}`), { code: b?.error?.code || `http_${x.status}` }));
+      else reject(Object.assign(new Error(b?.error?.message || x.statusText || `your server answered ${x.status}`), { code: b?.error?.code || `http_${x.status}` }));
     };
-    x.onerror = () => reject(Object.assign(new Error("the upload did not reach the box"), { code: "offline" }));
+    x.onerror = () => reject(Object.assign(new Error("the upload did not reach your server"), { code: "offline" }));
     x.onabort = () => reject(Object.assign(new Error("upload cancelled"), { code: "aborted" }));
     x.send(body);
   });

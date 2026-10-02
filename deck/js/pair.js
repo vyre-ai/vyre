@@ -119,6 +119,6 @@ function why(/** @type {any} */ e) {
   if (/no pairing request has that code/.test(m)) return "That code does not match. Check the code on the Mac and try again.";
   if (/too many wrong codes/.test(m)) return "Too many wrong codes, so every request was cancelled. Start again on the Mac.";
   if (e.code === "no_passkey" || e.code === "cancelled" || e.code === "presence_required") return `${m} Approving needs a passkey on this device: Settings, Security.`;
-  if (e.missing) return "Pairing is answered on the box, and this machine is not one.";
+  if (e.missing) return "Pairing is answered on your server, and this machine is not one.";
   return m;
 }

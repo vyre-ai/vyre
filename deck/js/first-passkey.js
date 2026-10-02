@@ -19,10 +19,10 @@ export function firstPasskeyCard() {
     el.replaceChildren(
       h("div", { class: "lbl beacon" }, h("span", { class: "dot beacon" }), " No passkey yet"),
       h("h2", { class: "h3", id: "fp-h" }, "Make your first passkey"),
-      h("p", { class: "small muted" }, "Your passkey confirms messages you send out, payments, deletions, vault secrets and new devices. One tap covers 30 minutes. The link to make it comes from the box itself, once, for 10 minutes:"),
+      h("p", { class: "small muted" }, "Your passkey confirms messages you send out, payments, deletions, vault secrets and new devices. One tap covers 30 minutes. The link to make it comes from your server itself, once, for 10 minutes:"),
       h("div", { class: "fp-cmds" },
         h("div", null, h("span", { class: "small faint" }, "On your Mac"), h("code", null, "vyre box add")),
-        h("div", null, h("span", { class: "small faint" }, "Or on the box"), h("code", null, "vyre up"))),
+        h("div", null, h("span", { class: "small faint" }, "Or on your server"), h("code", null, "vyre up"))),
       h("p", { class: "small faint" }, icon("lock", 12), " Open the link it prints on the device you want the passkey on."));
   }
   check();

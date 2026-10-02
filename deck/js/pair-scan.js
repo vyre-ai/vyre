@@ -189,7 +189,7 @@ export function pairScanSheet(opts) {
 
   function render() {
     if (state.kind === "scanning") {
-      put(status, "Point your camera at the code on your Mac or your box.",
+      put(status, "Point your camera at the code on your Mac or your server.",
         slow ? h("div", { class: "small faint" }, "Hold your phone straight on to the screen.") : null);
       put(actions);
     } else if (state.kind === "resolving") {
