@@ -167,7 +167,7 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { loads: /** @type {{ path: string, accepted: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
+  const state = { rule: RULE_PRESENT, loads: /** @type {{ path: string, accepted: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
