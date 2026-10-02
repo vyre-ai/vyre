@@ -23,12 +23,14 @@ test("release.yml: images are pinned by script, SHA256SUMS is signed with the Ed
   assert.ok(cosignRegex.includes("workflows/release\\.yml@refs/tags/v"), "the installer's identity names this workflow file at a version tag");
 });
 
-test("release.yml: a publishing run builds and signs only a commit that is on main, the 0.2 stage line or a hotfix branch, checked before the notes step", () => {
-  const guard = yml.indexOf("git merge-base --is-ancestor \"$GITHUB_SHA\" \"$r\"");
+test("release.yml: a publishing run builds and signs only a commit on main or the 0.2 stage line, or a proper patch checked by check-release-lineage, all before the notes step", () => {
+  const guard = yml.indexOf("git merge-base --is-ancestor \"$GITHUB_SHA\" origin/main");
   assert.ok(guard > 0 && guard < yml.indexOf("- name: Version, channel, notes"));
-  assert.match(yml, /origin\/main origin\/work\/stage-0\.2 \$\(git for-each-ref/);
-  assert.match(yml, /refs\/remotes\/origin\/hotfix\//);
-  assert.match(yml, /if: github\.event_name == 'push' && vars\.VYRE_RELEASES == 'go'\n\s+run: \|\n\s+git fetch --no-tags origin main work\/stage-0\.2 '\+refs\/heads\/hotfix/);
+  assert.match(yml, /origin\/work\/stage-0\.2/);
+  assert.match(yml, /node scripts\/check-release-lineage\.mjs "\$GITHUB_SHA" "\$GITHUB_REF_NAME"/);
+  assert.match(yml, /\+refs\/heads\/hotfix\/\$GITHUB_REF_NAME:refs\/remotes\/origin\/hotfix\/\$GITHUB_REF_NAME/, "only this tag's own hotfix branch is fetched, not any hotfix/*");
+  assert.doesNotMatch(yml, /hotfix\/\*/, "no wildcard over hotfix branches");
+  assert.match(yml, /if: github\.event_name == 'push' && vars\.VYRE_RELEASES == 'go'\n\s+env:\n\s+GH_TOKEN: \$\{\{ github\.token \}\}\n\s+run: \|\n\s+git fetch --no-tags origin main work\/stage-0\.2/);
 });
 
 test("release.yml: the step that holds the signing key runs only checked-in scripts, with no inline code", () => {

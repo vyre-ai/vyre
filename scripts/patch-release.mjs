@@ -8,7 +8,7 @@
 // moves every version place to x.y.(z+1) with scripts/bump-version.mjs, writes release/notes/x.y.(z+1).md from the commits' subjects and
 // commits that as "release: x.y.z (version and notes)" on the branch hotfix/vX.Y.Z. Read and edit the notes (the first line is the summary),
 // push the branch (--push does it), wait for its hosted runs, and tag the commit: release.yml accepts a commit on main, the 0.2 stage line or a
-// hotfix/* branch, builds, signs after the `release` approval and publishes. After the release run completes, release-verify.yml runs the
+// proper patch of the newest published stable release (check-release-lineage.mjs), builds, signs after the `release` approval and publishes. After the release run completes, release-verify.yml runs the
 // release checks and site-deploy.yml puts vyre.run on the new tag, each behind its own approval where it deploys.
 // A conflict stops it and leaves the worktree to fix by hand (the path is printed); nothing is pushed or tagged by this script.
 import { execFileSync } from "node:child_process";

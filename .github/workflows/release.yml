@@ -58,15 +58,20 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: The tag's commit is on main, the 0.2 stage line or a hotfix branch (a publishing run signs; a commit off all of them never does)
+      - name: The tag's commit is on main or the 0.2 stage line, or is a proper patch of the newest published stable release (a publishing run signs; any other commit never does)
         if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git fetch --no-tags origin main work/stage-0.2 '+refs/heads/hotfix/*:refs/remotes/origin/hotfix/*'
-          ok=no
-          for r in origin/main origin/work/stage-0.2 $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/hotfix/); do
-            if git merge-base --is-ancestor "$GITHUB_SHA" "$r"; then ok=yes; echo "the tag's commit is on $r"; fi
-          done
-          [ "$ok" = yes ] || { echo "the tag's commit is on none of main, work/stage-0.2 and hotfix/*; refusing to build and sign a release from it"; exit 1; }
+          git fetch --no-tags origin main work/stage-0.2
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main || git merge-base --is-ancestor "$GITHUB_SHA" origin/work/stage-0.2; then
+            echo "the tag's commit is on main or work/stage-0.2"
+          else
+            # a patch release: the newest published stable release is its ancestor, the tag is that release's next patch, and the commit is on hotfix/<tag>
+            git fetch --no-tags origin "+refs/heads/hotfix/$GITHUB_REF_NAME:refs/remotes/origin/hotfix/$GITHUB_REF_NAME" || true
+            node scripts/check-release-lineage.mjs "$GITHUB_SHA" "$GITHUB_REF_NAME" \
+              || { echo "the tag's commit is not on main or work/stage-0.2 and is not a proper patch release; refusing to build and sign a release from it"; exit 1; }
+          fi
       - name: Version, channel, notes
         id: v
         env:
@@ -105,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi

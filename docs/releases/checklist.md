@@ -43,6 +43,6 @@ Code that runs on a server still ships only as a signed release. A patch needs n
 
 1. `node scripts/patch-release.mjs <fix commit>...` makes `hotfix/vX.Y.Z+1` off the newest stable tag, cherry-picks the fixes, moves every version place, writes `release/notes/X.Y.Z+1.md` from the commit subjects and commits it. Edit the first line of the notes (the summary) and push the branch (`--push` does it).
 2. The branch's hosted runs are the gates. List any red with its reason.
-3. With the user's go: set `VYRE_RELEASES=go` and tag the commit `vX.Y.Z+1`. `release.yml` accepts a commit on main, the 0.2 stage line or a `hotfix/*` branch, builds, and waits for the user's `release` approval, which is the one approval the release needs.
+3. With the user's go: set `VYRE_RELEASES=go` and tag the commit `vX.Y.Z+1`. `X, builds, and waits for the user's `release` approval, which is the one approval the release needs.
 4. After the release run completes, `release-verify.yml` runs the release checks by itself (the folder against the previous release's pinned key, both signatures, both image digests with and without a login, and a real box on the previous release updating itself), and `site-deploy.yml` puts vyre.run on the new tag, waiting for the `deploy` approval. Both workflows run from main, so they are only live once they are on main.
 5. The app deploy (`relay-deploy.yml` with `app=true` and the release run id) waits for the same `deploy` approval.
