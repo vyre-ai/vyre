@@ -82,15 +82,15 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
  *   the box's presence verifier.
  */
 export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
-  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {} } = {}) {
+  boxName = "testbox", macHost = "test-mac", boxSynced = false, heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {} } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
   t.after(() => { fs.rmSync(boxWork, { recursive: true, force: true }); fs.rmSync(macWork, { recursive: true, force: true }); });
   let boxSessions = [];
   if (boxTranscripts) { boxSessions = [path.join(boxRoot, "transcripts")]; writeTranscripts(boxSessions[0], boxTranscripts); }
-  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: boxName, transcripts: boxSessions, files: { roots: [boxWork] },
-    ...(boxTranscripts ? { recall: { every: 0, vectors: false } } : {}), ...boxConfig }));
+  fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", name: boxName, transcripts: [...boxSessions, ...(boxSynced ? [path.join(boxRoot, "synced")] : [])], files: { roots: [boxWork] },
+    ...(boxTranscripts || boxSynced ? { recall: { every: 0, vectors: false } } : {}), ...boxConfig }));
   let macSessions = [];
   if (macTranscripts) { macSessions = [path.join(macRoot, "transcripts")]; writeTranscripts(macSessions[0], Array.isArray(macTranscripts) ? macTranscripts : undefined); }
   fs.writeFileSync(path.join(macRoot, "config.json"), JSON.stringify({ role: "local", transcripts: macSessions, files: { roots: [macWork] },
