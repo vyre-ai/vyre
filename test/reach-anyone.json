@@ -1,25 +1,5 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
- "relay.pair.window.close": {
-  "module": "relay",
-  "reason": "callers limited in code to deck, tailnet"
- },
- "relay.pair.window.confirm": {
-  "module": "relay",
-  "reason": "callers limited in code to deck, tailnet"
- },
- "relay.pair.window.open": {
-  "module": "relay",
-  "reason": "callers limited in code to deck, tailnet"
- },
- "relay.pair.window.ping": {
-  "module": "relay",
-  "reason": "callers limited in code to deck, tailnet"
- },
- "relay.pair.window.renew": {
-  "module": "relay",
-  "reason": "callers limited in code to deck, tailnet"
- },
  "tools": {
   "agents.ask": {
    "module": "agents",
@@ -964,6 +944,26 @@
   "relay.pair.start": {
    "module": "relay",
    "reason": "the callers list (surfaces, the owner's devices, a module) plus owner() in the tool, which refuses a model, an agent, a hook, a guest and anonymous, and the presence proof the tool requires"
+  },
+  "relay.pair.window.close": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.confirm": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.open": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.ping": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
+  },
+  "relay.pair.window.renew": {
+   "module": "relay",
+   "reason": "callers limited in code to deck, tailnet"
   },
   "relay.setup.status": {
    "module": "relay",
