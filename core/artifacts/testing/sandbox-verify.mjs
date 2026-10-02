@@ -4,7 +4,7 @@
 /**
  * @param {{ framed?: any[], outer?: any[], ua?: string } | null} report the Deck stand-in's report (framed run)
  * @param {{ results?: any[], ua?: string } | null} top the hostile page's own results when opened at the top level, or null when not run
- * @param {{ rule?: boolean, loads?: { path: string, accepted: boolean, sf: string }[], accepted?: Record<string, boolean[]>, hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string, sf?: string }[]>, api: { via: string, cookie: boolean }[] }} server
+ * @param {{ rule?: boolean, loads?: { path: string, accepted: boolean, ruleOk?: boolean, sf: string }[], accepted?: Record<string, boolean[]>, hits: Record<string, number>, cookies?: Record<string, string[]>, urls?: Record<string, { len: number, data: number, host: string, sf?: string }[]>, api: { via: string, cookie: boolean }[] }} server
  * @returns {{ failures: string[], lines: string[] }}
  */
 export function verify(report, top, server) {
@@ -58,8 +58,11 @@ export function verify(report, top, server) {
   if (RULE) for (const want of ["/a/hostile?mode=framed", "/a/hostile?mode=top"]) {
     const l = (server.loads || []).find(x => x.path === want);
     if (!l) continue;
-    lines.push(`${l.accepted ? "ok  " : "FAIL"} the person's own load of ${want} is still taken as theirs (Sec-Fetch ${l.sf})`);
-    if (!l.accepted) failures.push(`the rule refuses the person's own load of ${want} (Sec-Fetch ${l.sf})`);
+    // The rule alone decides here. The top-level load runs in a second browser launch that holds no session cookie (a session
+    // cookie dies with the first launch), so `accepted` (cookie and rule) would fail on the missing cookie, not on the rule.
+    const taken = typeof l.ruleOk === "boolean" ? l.ruleOk : l.accepted;
+    lines.push(`${taken ? "ok  " : "FAIL"} the person's own load of ${want} is still taken as theirs by the rule (Sec-Fetch ${l.sf})`);
+    if (!taken) failures.push(`the rule refuses the person's own load of ${want} (Sec-Fetch ${l.sf})`);
   }
   // The server's own count: nothing else the hostile page tried may have reached it, and nothing carried the cookie.
   const blocked = Object.entries(reached).filter(([via, n]) => n > 0 && !SELF_NAV.has(via) && !via.startsWith("ctl")).map(([via, n]) => `${via}=${n}`);

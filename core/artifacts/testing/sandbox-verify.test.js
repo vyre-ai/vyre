@@ -27,6 +27,9 @@ test("verify: a held sandbox passes, and every kind of leak is named", () => {
   assert.match(f, /navmeta would be taken as the person's session/);
   // A zero count only means "blocked" if the unsandboxed control got through.
   assert.match(verify(HELD, null, { ...SERVER_OK, loads: [{ path: "/a/hostile?mode=framed", accepted: false, sf: "site=same-origin mode=navigate dest=iframe" }] }).failures.join(), /the rule refuses the person's own load/, "the rule must not break the Deck");
+  // The top-level load runs in a fresh browser with no cookie: the rule alone decides, so a cookie-less load the rule takes passes and one it refuses fails.
+  assert.deepEqual(verify(HELD, null, { ...SERVER_OK, loads: [...SERVER_OK.loads.filter(l => l.path === "/v1/pic"), { path: "/a/hostile?mode=top", accepted: false, ruleOk: true, sf: "site=none mode=navigate dest=document" }] }).failures, [], "no cookie in a fresh browser is not the rule's refusal");
+  assert.match(verify(HELD, null, { ...SERVER_OK, loads: [...SERVER_OK.loads.filter(l => l.path === "/v1/pic"), { path: "/a/hostile?mode=top", accepted: true, ruleOk: false, sf: "site=same-site mode=navigate dest=document" }] }).failures.join(), /the rule refuses the person's own load/);
   assert.match(verify(HELD, null, { ...SERVER_OK, loads: [{ path: "/v1/pic", accepted: false, sf: "site=cross-site mode=no-cors dest=image" }] }).failures.join(), /the person's own image request was refused/, "the rule must not break media in the Deck");
   assert.match(verify(HELD, null, { ...SERVER_OK, loads: [] }).failures.join(), /image request never reached the server/);
   assert.match(verify(HELD, null, { ...SERVER_OK, rule: false, accepted: { navloc: [true] } }).failures.join(), /the rule is absent on this tree/);

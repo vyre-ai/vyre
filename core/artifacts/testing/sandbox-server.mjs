@@ -172,7 +172,7 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { rule: RULE_PRESENT, loads: /** @type {{ path: string, accepted: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
+  const state = { rule: RULE_PRESENT, loads: /** @type {{ path: string, accepted: boolean, ruleOk?: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
@@ -180,7 +180,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
     const hasSession = /vyre_session=/.test(String(req.headers.cookie || ""));
     const accepted = hasSession && !(foreignFetch && foreignFetch(req.headers));
     const sf = ["sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"].map(h => `${h.slice(10)}=${req.headers[h] || "none"}`).join(" ");
-    if (u.pathname === "/" || u.pathname === "/a/hostile" || u.pathname === "/a/control") state.loads.push({ path: u.pathname + (u.searchParams.get("mode") ? "?mode=" + u.searchParams.get("mode") : ""), accepted, sf });
+    if (u.pathname === "/" || u.pathname === "/a/hostile" || u.pathname === "/a/control") state.loads.push({ path: u.pathname + (u.searchParams.get("mode") ? "?mode=" + u.searchParams.get("mode") : ""), accepted, ruleOk: !(foreignFetch && foreignFetch(req.headers)), sf });
     state.served.push(req.method + " " + u.pathname + (via ? "?via=" + via : ""));
     if (u.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": [SECRET_COOKIE + "; Path=/; SameSite=Strict", LAX_COOKIE + "; Path=/; SameSite=Lax"], "cache-control": "no-store" });
