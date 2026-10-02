@@ -78,7 +78,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">Your AI command center, on your own machines. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/setup/">Setup</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/setup/">Setup</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -751,6 +751,89 @@ page({
   body: START, ld: [crumbs([['Vyre', `${SITE}/`], ['Get started', `${SITE}/start/`]])],
 });
 
+// ---------- privacy ----------
+// Every claim here is checked against the code before it ships (platform reads it, then the stores see it). Where a claim depends on a
+// build (store push, a cache that moves to disk) the sentence says so. With CONTACT_EMAIL null the page points at GitHub only.
+const CONTACT_EMAIL = 'privacy@vyre.run'; // PLACEHOLDER: the lead does not know the real address. The user must confirm a monitored mailbox exists, or set this to null, before the stores see the page.
+const ul = (items) => `<ul class="plain" style="margin:0 0 4px;padding-left:1.1em">${items.map((x) => `<li style="margin:.45em 0">${x}</li>`).join('')}</ul>`;
+const PRIV = `
+<section class="phead">
+  <div class="wrap">
+    <p class="crumbs"><a href="/">Vyre</a> / Privacy</p>
+    ${eyebrow('Privacy.')}
+    <h1 class="display">What Vyre knows <b>about you.</b></h1>
+    <p class="lead">Almost nothing. Vyre runs on your own server, and the project behind it keeps no account of you, no copy of your work and no analytics. This page says what the few Vyre services do see, and what each app keeps on your device. Last updated 2 October 2026, for Vyre ${VERSION}.</p>
+  </div>
+</section>
+<section class="sec" style="padding-top:24px"><div class="wrap">
+${part('01', 'short', 'The short version', ul([
+  '<b>Your work stays on your server.</b> Sessions, memory, files, the vault and your conversations live on the server you run and on your own devices. Vyre does not receive them.',
+  '<b>No account, no analytics, no ads, no trackers.</b> There is no Vyre sign-up. The apps, the server and this site contain no analytics or crash-reporting code, and none of them sends usage data anywhere.',
+  '<b>Three small services run by the project:</b> a relay that carries encrypted traffic, a name directory for <code>yourname.vyre.run</code>, and this website. Below is what each one sees. Releases come from GitHub.',
+  '<b>Your AI providers see your prompts</b>, because that is how an AI works. You sign in to them yourself, with your own accounts and keys.',
+]))}
+${part('02', 'server', 'Your data stays on your server', `<p>Vyre keeps its data on the machine you installed it on: sessions, memory, project files you chose, the vault, logs and settings. On a Linux server that is a set of Docker volumes; on a Mac that runs Vyre directly it is the <code>~/.vyre</code> folder. The vault is sealed on that machine. Nothing in it is sent to Vyre.</p>
+<p>When an agent works, your server sends the prompt to the AI provider you picked (Claude, Codex, Grok or OpenRouter), under your own account, and that provider's terms and privacy policy apply to it. The sign-in for each AI account stays on your server. Anything else you connect, such as GitHub, Google or Tailscale, is likewise your own account under that service's terms. Vyre requires Tailscale today, so Tailscale's policy covers the private network between your devices and your server.</p>
+<p>Voice is the same: when you talk to your assistant, your server sends the audio to the speech service you chose (Deepgram, OpenAI or ElevenLabs) with your own key. When a reply is spoken, your server sends the text of that reply, at most 2,000 characters, to the speech service you chose.</p>`)}
+${part('03', 'relay', 'What the relay sees', `<p>The relay at <code>relay.vyre.run</code> lets a phone, a browser, a Windows PC or the setup page reach your server without a direct path. Your server connects to it when the relay is on, which pairing a device turns on. It carries traffic and nothing else.</p>
+${ul([
+  '<b>Traffic is encrypted from your device to your server.</b> Each side holds its own key and the relay holds none, so it cannot read a message and any change to one is rejected by the receiver. It can drop or delay a message.',
+  '<b>Pairing records are sealed and short-lived.</b> A Wink pairing record is stored as ciphertext for at most 5 minutes, handed out once, and deleted when it is used or when it expires.',
+  '<b>Setup progress is sealed too.</b> While you install, your server posts progress lines to the relay, encrypted and authenticated with keys that come from your setup code. The relay keeps them for at most an hour.',
+  '<b>Frames waiting for your server</b> are held, still encrypted, only between a device first speaking and your server picking the connection up, normally one round trip. They are deleted on delivery or when the device leaves.',
+  '<b>What it can see:</b> the address a connection comes from, when it connects, how large each message is, the route id (a hash of your server\'s public route key) and that public key. It never sees message contents.',
+  '<b>Rate limits</b> count requests per address in a 60 second window, so one client cannot flood it: 30 a minute for device connections and for pairing lookups, and 20 a minute for setup posts. The relay\'s code does not write those addresses to its storage or to a log.',
+  '<b>Cloudflare hosts the relay</b> and keeps its own request logs for Workers, which the relay\'s configuration leaves turned on, under Cloudflare\'s retention and policy. The project does not add anything to them.',
+])}
+<p>The relay is open source (<code>relay/worker</code> and <code>relay/node</code> in the repository). You can run your own and point your server at it with the relay address setting.</p>`)}
+${part('04', 'names', 'Your address on vyre.run', `<p>When you choose a name, the name directory at <code>names.vyre.run</code> creates <code>yourname.vyre.run</code> and points it at your server's tailnet address, which only works from devices on your tailnet. DNS is public, so anyone can look up that name and the address it points to. The certificate for the name is also recorded in public certificate logs, which is how the web works. Choose a name you are happy to have public.</p>
+${ul([
+  '<b>It stores:</b> the name, the route id of your server (a hash of its public key), when the name was claimed and pointed, the tailnet address in the DNS record, a hash of your recovery code (it cannot read the code), and the last 50 recovery attempts with their time, whether the code was right and the first 8 characters of the route id.',
+  '<b>It asks for no email and no personal details.</b> Every request is signed by your server\'s own key.',
+  '<b>Per-address counters</b> limit claims (5 a day) and recovery attempts (20 a day). An hourly sweep drops them once they are about two days old.',
+  '<b>Giving a name up</b> deletes it if it was never pointed. A name that was ever live stays reserved as a name and a recovery-code hash with no route and no address, so nobody else can take it over; only the recovery code can move it.',
+  '<b>Cloudflare hosts the directory</b> and keeps its own Worker request logs, as for the relay.',
+])}`)}
+${part('05', 'site', 'This website, updates and downloads', `${ul([
+  'vyre.run has <b>no analytics and no cookies</b>.',
+  'The marketing pages load their fonts from Google Fonts, so Google sees a font request with your IP address when you open them. The setup page (<code>vyre.run/setup</code>) loads nothing from another site and talks only to the relay. The hosted phone web app at <code>app.vyre.run</code> sets no cookies and keeps no state about you or your server.',
+  'The pages are served by Cloudflare, which keeps ordinary server logs under its own policy.',
+  '<b>Updates:</b> your server checks GitHub\'s releases API for new versions and pulls signed images from <code>ghcr.io</code>; the Windows app checks GitHub\'s releases feed once a day and downloads its installer from GitHub; the install line fetches from <code>vyre.run</code>. Those services see the address your server or PC connects from, under their own policies. Vyre itself receives no report of which version you run.',
+])}`)}
+${part('06', 'apps', 'What each app keeps on your device', `${ul([
+  '<b>The phone web app (the Deck on a phone or in a browser)</b> keeps in the browser\'s own storage: a device key the browser cannot export, your settings and pins, the id of your passkey, your push subscription, a short unlock session that expires within 30 minutes, a cache of recent session titles, needs rows and chat snippets, and an outbox of writes not yet delivered to your server. Removing the phone in Settings, Devices wipes all of it.',
+  '<b>The iPhone app</b> keeps its device key in the Secure Enclave, behind Face ID or Touch ID, and the address of your server and its push key in the Keychain, for this device only. It keeps the page and theme you chose in its settings. A file you open is placed in a temporary folder and removed when you close it.',
+  '<b>The Android app</b> keeps its device key in the Android Keystore, behind your face or fingerprint, and keeps the server address, a cache of your server\'s recent answers and a few settings in its own private storage, which is excluded from backups. A file you open is downloaded to the cache folder and removed the next time the app starts. Signing out deletes the key, the cache, the push key, the address and the settings.',
+  '<b>The cross-platform app (the Expo build)</b> keeps its keys and pairing in the system Keychain or Keystore, for this device only. Its view cache is held in memory on a phone and is gone when the app closes.',
+  '<b>Vyre Lumen on a Mac</b> keeps its approval key in the Secure Enclave, with only an opaque handle in the login keychain. It talks to your server.',
+  '<b>Vyre Lumen on Windows</b> keeps your server\'s address in a pairing file and its device key in its app data folder, with the key protected by Windows DPAPI. The installer for a newer version is saved there before it runs. Starting at sign-in uses a Windows scheduled task named Vyre, which the app creates and deletes when you change that setting.',
+  '<b>Password AutoFill</b> (iPhone, Mac and Android) asks your server for one login at a time, after you confirm with your face or fingerprint. It keeps the server address and a device token in the Keychain, and the unlocked session in memory only. On iPhone and Mac it also gives the system the sites and usernames from your vault, not the passwords, so they appear in the AutoFill list.',
+  '<b>The vault browser extension</b> keeps the address of your server, this browser\'s device id and token, and its two on and off choices in the extension\'s storage, and the unlocked session in session storage. It talks only to the server address you set and sends no page content. With the API-key offer on, it reads the page text on your device looking for one key-shaped value, and a matched value leaves the page only after you tap Save.',
+])}`)}
+${part('07', 'camera', 'Camera and microphone', `<p>The camera is used for one thing: scanning a Wink, the code that pairs or introduces a device, or the QR code on your own setup page or Deck. The Deck asks for video only, never audio. The picture is read on your device. It is not saved and not sent anywhere.</p>
+<p>The microphone is used by Vyre Lumen's push-to-talk on a Mac, only while you hold the key. The audio goes to your server and from there to the speech service you chose; your server does not log or keep it.</p>`)}
+${part('08', 'passkeys', 'Passkeys and keys', `<p>You make your passkey for your own server's address, with your device's own passkey system. The private key stays in your device's secure hardware or your password manager. Your server keeps only the public half, and Vyre never receives either. The approval key in the iPhone and Android apps is made in secure hardware (the Secure Enclave or the Keystore), cannot be exported, and needs your face or fingerprint to use. The recovery code for your name is shown to you once; keep it somewhere safe.</p>`)}
+${part('09', 'push', 'Notifications', `<p>A notification carries a kind, a fixed title and the path to open, and never the content of a draft, a tool's input or a value. Your server fetches the details after you tap, over your own connection. One setting, off by default, puts the words of a planner item on the lock screen.</p>
+<p>Web Push encrypts the payload and delivers it through your browser's push service (Google, Mozilla, Apple or Microsoft). Where a phone build uses Apple's or Google's push service, the same small message goes through it. The Android build in the repository has Google's push off unless the person building it adds their own key.</p>`)}
+${part('10', 'crash', 'Crash logs and diagnostics', `<p>Vyre sends no crash reports and no diagnostics anywhere. Your server writes a log file for each day on your own machine, and <code>vyre doctor</code> prints its checks to your own screen. If something breaks, you decide whether to share a log, for example in a GitHub issue. Your phone's operating system may send its own crash reports to Apple or Google if you turned that on in system settings; that is theirs, not Vyre's.</p>`)}
+${part('11', 'delete', 'Delete everything', `${ul([
+  '<b>On your server:</b> if you claimed a name, run <code>vyre name release</code> first. Then run <code>vyre uninstall --delete-data</code>, which stops Vyre, removes its images and deletes its data volumes for good. Run <code>vyre backup</code> before that if you want a copy. Finally remove the install folder with <code>sudo rm -rf /srv/vyre</code>, and remove the server from your Tailscale machines list.',
+  '<b>On a Mac that runs Vyre directly,</b> delete the <code>~/.vyre</code> folder.',
+  '<b>On a phone:</b> remove it in Settings, Devices on your server, or sign out in the Android app. Each wipes the key and cached data on the phone. Then delete the app.',
+  '<b>On a PC or Mac:</b> uninstall Vyre Lumen. On Windows, also delete its app data folder if you want the pairing file and key gone.',
+  '<b>What stays with the project:</b> nothing of your work, because it never arrived. Relay records expire within an hour and address counters within about two days. A name that was ever live stays reserved, as described above. To have even that looked at, write to the contact below.',
+])}`)}
+${part('12', 'contact', 'Contact', `<p>Questions about this page, or a request about a name: ${CONTACT_EMAIL ? `email <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a>, or ` : ''}open an issue at <a href="https://github.com/vyre-ai/vyre/issues">github.com/vyre-ai/vyre/issues</a>. A security problem goes to a private advisory at <a href="https://github.com/vyre-ai/vyre/security/advisories/new">github.com/vyre-ai/vyre/security</a>, not a public issue.</p>
+<p>Vyre is open source (Apache 2.0). Every claim on this page can be checked in the code, and changes to this page are in its history on GitHub.</p>`)}
+</div></section>`;
+page({
+  slug: 'privacy', path: '/privacy/',
+  title: 'Privacy: what Vyre knows about you',
+  desc: 'Your data stays on your own server. What the relay and the name directory see, what each Vyre app keeps on your device, camera and microphone use, passkeys, notifications, and crash logs.',
+  ogTitle: 'What Vyre knows about you.', ogSub: 'Almost nothing. Your data stays on your server, and no one is counting.',
+  body: PRIV, ld: [crumbs([['Vyre', `${SITE}/`], ['Privacy', `${SITE}/privacy/`]])],
+});
+
 // ---------- 404 ----------
 {
   const html404 = `<!doctype html>
@@ -776,6 +859,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Set up Vyre](${SITE}/setup/): the setup page, which gives one install line with a one-time code
 - [Get started](${SITE}/start/): the steps in order
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
+- [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
 - [Mac: Vyre Lumen](${SITE}/mac/): Option-Space ask window, built on your Mac
@@ -910,7 +994,7 @@ Allow: /
 
 Sitemap: ${SITE}/sitemap.xml
 `);
-const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7']];
+const SM = [['/', '1.0'], ['/mac/', '0.8'], ['/windows/', '0.8'], ['/linux/', '0.8'], ['/phone/', '0.8'], ['/direction/', '0.7'], ['/start/', '0.7'], ['/privacy/', '0.5']];
 write('sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIFIED}</lastmod>\n    <priority>${pr}</priority>\n  </url>`).join('\n')}

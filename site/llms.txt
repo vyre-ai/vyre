@@ -9,6 +9,7 @@ Current release: 0.2.1. Site: https://vyre.run. Source: https://github.com/vyre-
 - [Set up Vyre](https://vyre.run/setup/): the setup page, which gives one install line with a one-time code
 - [Get started](https://vyre.run/start/): the steps in order
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
+- [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing
 
 ## Devices
 - [Mac: Vyre Lumen](https://vyre.run/mac/): Option-Space ask window, built on your Mac

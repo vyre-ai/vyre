@@ -10,7 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SITE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "site");
-const PAGES = ["", "mac", "windows", "linux", "phone", "direction", "start"];
+const PAGES = ["", "mac", "windows", "linux", "phone", "direction", "start", "privacy"];
 const read = (p) => fs.readFileSync(path.join(SITE, p), "utf8");
 const pageFile = (slug) => (slug ? `${slug}/index.html` : "index.html");
 const BANNED = /[—§]/;
