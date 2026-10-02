@@ -1,8 +1,10 @@
 # #13: test/relay.test.js failed once as a whole file with no assertion on a hosted node run, and passed on rerun. This
 # runs the file in a loop on a hosted runner and keeps every failing iteration's full output, so the cause can be read.
-# Dispatch-only. Throwaway GitHub runner, never a Mac.
+# Runs when this file changes and on dispatch (GitHub only lets a workflow be dispatched once it has run). Throwaway GitHub runner, never a Mac.
 name: relay-test-loop
 on:
+  push:
+    paths: [".github/workflows/relay-test-loop.yml"]
   workflow_dispatch:
     inputs:
       runs:
@@ -23,7 +25,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Run test/relay.test.js in a loop
         env:
-          RUNS: ${{ inputs.runs }}
+          RUNS: ${{ inputs.runs || '25' }}
         run: |
           mkdir -p loop-logs
           fails=0
