@@ -392,6 +392,7 @@ Keep an image, a video or a sound a provider made, which is a file in the thread
   - `mime` string
   - `model` string
   - `name` string
+  - `privacy` "zdr" or "off"
   - `prompt` string
   - `provider` string
   - `source` one of "file", "content-block", "url", "tool-result"

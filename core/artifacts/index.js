@@ -665,11 +665,11 @@ export default {
       const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
       const t = await threadOf(i.thread);
       const clip = (/** @type {unknown} */ v, /** @type {number} */ n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
-      const prov = { provider: String(i.provider || (t && t.provider) || "").slice(0, 60) || null, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "content-block" };
+      const prov = { provider: String(i.provider || (t && t.provider) || "").slice(0, 60) || null, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "content-block", privacy: i.privacy === "zdr" || i.privacy === "off" ? i.privacy : null };
       const dup = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_items WHERE thread = ? AND deleted_at IS NULL AND media IS NOT NULL AND json_extract(media, '$.sha256') = ? LIMIT 1").get(i.thread, sha256));
       if (dup) {
         const old = JSON.parse(dup.media), next = { ...old };
-        for (const k of ["provider", "model", "prompt"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
+        for (const k of ["provider", "model", "prompt", "privacy"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
         db.prepare("UPDATE artifacts_items SET media = ?, text = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), [dup.title, next.provider, next.model, next.prompt].filter(Boolean).join("\n"), now(), dup.id);
         return shape(row(dup.id));
       }
@@ -714,7 +714,7 @@ export default {
       const t = await threadOf(i.thread);
       const provider = String(i.provider || (t && t.provider) || "").slice(0, 60) || null;
       const clip = (/** @type {unknown} */ v, /** @type {number} */ n) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : null);
-      const prov = { provider, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "file" };
+      const prov = { provider, model: clip(i.model, 80), prompt: clip(i.prompt, 4000), session: i.thread, source: clip(i.source, 40) || "file", privacy: i.privacy === "zdr" || i.privacy === "off" ? i.privacy : null };
       const known = /** @type {any} */ (db.prepare("SELECT artifact FROM artifacts_capture_files WHERE thread = ? AND name = ?").get(i.thread, name));
       const cur = known && row(known.artifact);
       const meta = { caller: "module:artifacts", firstParty: true, thread: i.thread };
@@ -725,7 +725,7 @@ export default {
         const old = JSON.parse(cur.media);
         if (old.sha256 === m.sha256) {
           const next = { ...old };
-          for (const k of ["provider", "model", "prompt"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
+          for (const k of ["provider", "model", "prompt", "privacy"]) if (/** @type {any} */ (prov)[k] && !old[k]) next[k] = /** @type {any} */ (prov)[k];
           if (prov.source !== "file" && (!old.source || old.source === "file")) next.source = prov.source;
           db.prepare("UPDATE artifacts_items SET media = ?, text = ?, updated_at = ? WHERE id = ?").run(JSON.stringify(next), [cur.title, next.provider, next.model, next.prompt].filter(Boolean).join("\n"), now(), cur.id);
           mediaSig.set(`${i.thread}/${name}`, await sigOf(i.thread, name));
@@ -1209,7 +1209,7 @@ export default {
           const m = JSON.parse(r.media);
           if (i.provider && String(m.provider || "").toLowerCase() !== String(i.provider).toLowerCase()) continue;
           out.push({ id: r.id, title: r.title, kind: r.kind, format: r.format, project: r.project === PERSONAL ? null : r.project, mime: m.mime, bytes: m.bytes,
-            width: m.width ?? null, height: m.height ?? null, duration_s: m.duration_s ?? null, provider: m.provider || null, model: m.model || null,
+            width: m.width ?? null, height: m.height ?? null, duration_s: m.duration_s ?? null, provider: m.provider || null, model: m.model || null, privacy: m.privacy || null,
             prompt: m.prompt ? String(m.prompt).slice(0, 140) : null, created_at: r.created_at });
           if (out.length >= limit) break;
         }
@@ -1235,7 +1235,7 @@ export default {
 
     ctx.tool("artifacts.media.register", {
       description: "Keep an image, a video or a sound a provider made, which is a file in the thread's artifacts folder, as an artifact with its provider, model, prompt and session. Called by Vyre's session module when a provider hands over media (a content block, a file, a URL or a tool result is first saved as a file in the folder). A file already kept is not kept twice: its provenance is filled in. Two ways to hand it over: `name`, a file already in the thread's artifacts folder (any size up to 100 MB), or `data_b64` with `name` or `mime`, the bytes themselves (up to 20 MB, as a provider's content block arrives; nothing is written in any agent's folder).",
-      input: { type: "object", required: ["thread"], properties: { thread: str, name: str, mime: str, data_b64: str, title: str, provider: str, model: str, prompt: str, source: { type: "string", enum: ["file", "content-block", "url", "tool-result"] } } },
+      input: { type: "object", required: ["thread"], properties: { thread: str, name: str, mime: str, data_b64: str, title: str, provider: str, model: str, prompt: str, privacy: { type: "string", enum: ["zdr", "off"] }, source: { type: "string", enum: ["file", "content-block", "url", "tool-result"] } } },
       examples: [{ thread: "t1", name: "sunset.png", provider: "grok", model: "grok-imagine", prompt: "a sunset over a harbour", source: "content-block" }],
       run: async (i, meta) => {
         if (!trustedCaller(meta) || !MEDIA_REGISTRARS.has(String((meta && meta.caller) || ""))) throw refuse("only Vyre's own session modules register media", "denied");
