@@ -927,3 +927,38 @@ test("github.mcp.sync / github.remove: each connected account gets GitHub's host
   await person("github.remove", { name: "home" });
   assert.deepEqual(w.mcpRows.map(r => r.name), ["github-work", "github-clash"], "only the removed account's row goes");
 });
+
+test("github.star.status and github.star: the person's own account stars vyre-ai/vyre; not connected, no scope and a dead token are said in plain words; a model and a module are refused", async t => {
+  const w = await world(t);
+  const seen = [];
+  let state = 404;
+  withFetch(t, async (url, opts = {}) => {
+    const u = new URL(String(url));
+    seen.push(`${opts.method || "GET"} ${u.pathname}`);
+    if (u.pathname !== "/user/starred/vyre-ai/vyre") throw new Error(`fake github: unexpected url ${url}`);
+    if (opts.method === "PUT") { if (state === 204 || state === 404) { state = 204; return { ok: true, status: 204 }; } return { ok: false, status: state, json: async () => ({}) }; }
+    return { ok: state === 204, status: state, json: async () => ({}) };
+  });
+  const none = await w.as("deck")("github.star.status", {});
+  assert.deepEqual(none.data, { connected: false, starred: null }, "no account: the Deck opens the repo page instead");
+  assert.equal((await w.as("deck")("github.star", {})).error.code, "no_account");
+  assert.deepEqual(seen, [], "nothing is asked of GitHub with no account");
+
+  seedAccount(w.db);
+  assert.deepEqual((await w.as("deck")("github.star.status", {})).data, { connected: true, starred: false });
+  assert.deepEqual((await w.as("deck")("github.star", {})).data, { starred: true });
+  assert.deepEqual((await w.as("cli")("github.star.status", {})).data, { connected: true, starred: true });
+  assert.deepEqual(seen.slice(-2), ["PUT /user/starred/vyre-ai/vyre", "GET /user/starred/vyre-ai/vyre"]);
+
+  for (const caller of ["mcp", "mcp:agent:helper", "module:sessions", "module:someone-else"]) {
+    assert.equal((await w.as(caller)("github.star", {})).error.code, "denied", `${caller} may not star`);
+  }
+
+  state = 403;
+  const noScope = await w.as("deck")("github.star", {});
+  assert.equal(noScope.error.code, "scope");
+  assert.match(noScope.error.message, /public_repo/);
+  state = 401;
+  assert.equal((await w.as("deck")("github.star", {})).error.code, "token_invalid");
+  assert.equal((await w.as("deck")("github.star.status", {})).error.code, "token_invalid");
+});

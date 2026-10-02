@@ -194,6 +194,50 @@ export default {
       run: async () => accounts.all().map(a => ({ name: a.name, login: a.login, avatar_url: a.avatar_url })),
     });
 
+    // The Deck's star button (0.2.2). One repo, fixed here: the Deck never names one. The tap is the
+    // person's own, so reach is person (a model and a module are refused by the registry). The first
+    // connected account is the default; a person with none is told so and the Deck opens the repo page.
+    const STAR_REPO = "vyre-ai/vyre";
+    const starFetch = async (method) => {
+      const acct = accounts.all()[0];
+      const token = await ctx.vault.fetch(acct.item, { field: "token" });
+      return fetch(`https://api.github.com/user/starred/${STAR_REPO}`, {
+        method, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", ...(method === "PUT" ? { "content-length": "0" } : {}) },
+        signal: AbortSignal.timeout(10_000),
+      });
+    };
+    const starFail = (status) => status === 401
+      ? fail("GitHub sign-in isn't working anymore; reconnect the account", "token_invalid")
+      : (status === 403 || status === 404)
+        ? fail(`GitHub would not let this account star ${STAR_REPO}. The sign-in needs the public_repo permission (a fine-grained token needs Starring: read and write). Reconnect with GitHub's sign-in, or star it on github.com.`, "scope")
+        : fail(`GitHub said ${status}; try again in a minute`, "failed");
+
+    ctx.tool("github.star.status", {
+      description: `Whether the person has starred ${STAR_REPO} with their connected GitHub account: { connected, starred }. connected false means no account is connected (starred is null). Never a token.`,
+      input: obj({}),
+      callers: PEOPLE,
+      run: async () => {
+        if (!accounts.all().length) return { connected: false, starred: null };
+        const res = await starFetch("GET");
+        if (res.status === 204) return { connected: true, starred: true };
+        if (res.status === 404) return { connected: true, starred: false };
+        if (res.status === 401) throw starFail(401);
+        return { connected: true, starred: null };
+      },
+    });
+
+    ctx.tool("github.star", {
+      description: `Star ${STAR_REPO} as the person, with their connected GitHub account: { starred: true }. The person's own tap only; never a model or a module.`,
+      input: obj({}),
+      callers: PEOPLE,
+      run: async () => {
+        if (!accounts.all().length) throw fail("no GitHub account is connected · connect one with github.connect", "no_account");
+        const res = await starFetch("PUT");
+        if (res.status !== 204) throw starFail(res.status);
+        return { starred: true };
+      },
+    });
+
     ctx.tool("github.remove", {
       description: "Disconnect a GitHub account: deletes its token from the vault, drops its hosted MCP row and removes the account. If the token cannot be deleted it says so and keeps the account. Never revokes the token at GitHub (0.2, lead ruling 30 Sep): the token belongs to GitHub CLI's own app grant, shared with every real `gh` install, so revoking it would sign the person's own gh out on every other machine and CI runner too. The token itself, and whether it still works elsewhere, stays the person's own business, at github.com/settings/applications if they ever want it gone entirely.",
       input: obj({ name: str }, ["name"]),

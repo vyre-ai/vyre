@@ -10,6 +10,8 @@
       {"name": "github.mcp.sync", "reach": "person"},
       {"name": "github.accounts", "reach": "anyone"},
       {"name": "github.remove", "reach": "person"},
+      {"name": "github.star.status", "reach": "person"},
+      {"name": "github.star", "reach": "person"},
       {"name": "github.repos", "reach": "anyone"},
       {"name": "github.project", "reach": "person"},
       {"name": "github.project.add-repo", "reach": "person"},
