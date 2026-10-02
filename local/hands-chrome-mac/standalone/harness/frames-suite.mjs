@@ -523,6 +523,11 @@ async function main() {
         need(!call.authNote, "api.call.frames", `the bearer token of the iframe's traffic was not found for the call: ${call.authNote}`);
         need((call.frame ?? 0) > 0 || /b\.localhost/.test(String(call.frameOrigin || "")), "api.call.frames", `the call did not run inside the iframe (result carries frame ${short(call.frame)} ${short(call.frameOrigin)}): ${short(call, 300)}`);
         need(!known.length || short(call, 4000).includes(known[0].name), "api.call.frames", `the call's body does not list the workflow "${known[0] && known[0].name}" the fixture holds: ${short(call, 300)}`);
+        const routed = await step("chrome_api route a read by hint", () => mcp.call("chrome_api", { action: "route", tab, hint: "workflows" }));
+        need(routed.route === "api" && routed.status === 200 && ((routed.frame ?? 0) > 0 || /b\.localhost/.test(String(routed.frameOrigin || ""))), "api.route.frames", `route did not take the learned read inside the iframe: ${short(routed, 300)}`);
+        need(!known.length || short(routed, 4000).includes(known[0].name), "api.route.frames", `the routed read does not list the fixture's workflow: ${short(routed, 300)}`);
+        const noRoute = await step("chrome_api route with no match", () => mcp.call("chrome_api", { action: "route", tab, hint: "invoices payments" }));
+        need(noRoute.route === "ui", "api.route.frames", `an unmatched hint did not fall back to the page: ${short(noRoute, 300)}`);
         return { requests: rows.length, frameTag: Object.fromEntries(tagKeys.map(k => [k, row[k]])), learned: learn.learned, workflowEndpoints: wfEntries.length, call: { status: call.status, frame: call.frame, frameOrigin: call.frameOrigin } };
       });
 
