@@ -106,3 +106,12 @@ lead's 0.2 BUILD GO.
   entry in test/boundaries.test.js's ALLOW list was needed for up.js's import of it.
 
 - integrator: `vyre uninstall` finds volumes by label run.vyre=1; the new vyre-accounts volume must carry it in compose.yml.
+
+## v0.2.3 landings on work/rc-0.2.2 (launch, 2 Oct 2026)
+
+Order of value; a branch lands only when its own head is green on hosted node and box-image. Never force-push the rc.
+
+- Landed: glass-files 8ada13b9a, eval-guard 147ccdefe (also capsule-mac green), git-hooks 7a3a173f2. rc head b6e93a371. Docs, reach and boundaries tests green on testbox for the merge.
+- Waiting on hosted runs: paired-ask a7b1f5f9 (capsule-mac dispatched, run 36966388152), 011-setup 1c34efdd3 + 011-setup-steps 22da7e2fb, 032-continue-here 2a310a945 (node 24 failed on perf-check CPU only, failed job re-run), app-feel 65338e16f, lumen-import 5aeb18d52, 023-pair-limit a9c9d8dd9.
+- Red, owners notified in team/0.2/CHAT.md: parallel-tabs a4081aae2 (reach-computed-calls reviewed list), strings b639c64d9 (box error-text internal-word count). chrome-standalone dispatched on parallel-tabs, run 36966395049.
+- Not started: pwa-copy2, iq eval-world, e2e2 J1, 023-shell.
