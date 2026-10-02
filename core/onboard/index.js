@@ -245,13 +245,19 @@ export default {
         if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
         else if (history.sessions === 0) {
+          // Nothing found is never Done (#26): the step stays todo and says where the history is, so the person pairs the Mac, or skips on purpose.
           const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
-          Object.assign(history, { state: "done",
+          Object.assign(history, { state: "todo", found: false,
             why: !box ? "no Claude Code sessions on this machine yet"
               : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
-              : "Your Mac's sessions appear here when you connect your Mac" });
+              : "Nothing found on this server yet. Pair your Mac in the next step and import from there." });
         }
-        else if (ob().history && history.indexed >= own) history.state = "done";
+        else {
+          history.found = true;
+          const sentence = [own > 0 ? `${own} on this server` : null, ...macs.map(m => `${count(m)} on ${m.machine || "your Mac"}`).filter(x => !x.startsWith("0 "))].filter(Boolean);
+          history.summary = `Found ${history.sessions} ${history.sessions === 1 ? "session" : "sessions"}${sentence.length ? `: ${sentence.join(", ")}` : ""}`;
+          if (ob().history && history.indexed >= own) history.state = "done";
+        }
       }
 
       // The Mac counts once link has paired one; the first paired is the one shown.

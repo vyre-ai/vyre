@@ -76,8 +76,9 @@ test("onboard: the link works once, becomes a session, and the session reaches o
   const s = await (await tool(base, first.session, "onboard.status")).json();
   assert.equal(s.data.mode, "loopback");
   assert.equal(s.data.current, "you");
-  assert.deepEqual(s.data.steps, { you: "todo", claude: "todo", tailscale: "todo", name: "todo", history: "done", devices: "todo" }, "no sessions here, so history has nothing to do");
-  assert.equal(s.data.detail.history.why, "Your Mac's sessions appear here when you connect your Mac");
+  assert.deepEqual(s.data.steps, { you: "todo", claude: "todo", tailscale: "todo", name: "todo", history: "todo", devices: "todo" }, "no sessions here: history is not Done with nothing found (#26)");
+  assert.equal(s.data.detail.history.why, "Nothing found on this server yet. Pair your Mac in the next step and import from there.");
+  assert.equal(s.data.detail.history.found, false);
   assert.equal(s.data.detail.name.via, "ts.net", "no zone token and no domain: the ts.net name");
   assert.ok(s.data.host);
   assert.equal(s.data.detail.claude.installed, true);

@@ -818,7 +818,7 @@ const SCREENS = {
   history(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Your history."),
-      h("p", { class: "lead" }, "Vyre finds the Claude Code sessions already on this machine, so you can search and ask about your own work as soon as it reads them."));
+      h("p", { class: "lead" }, "Vyre finds the Claude Code sessions already on this server, and the history on your own computer once you pair it, so you can search and ask about your own work."));
     const body = h("div", { class: "ob-panel" });
     col.append(body);
     attempt("onboard.history", { action: "start" });
@@ -851,7 +851,7 @@ const SCREENS = {
       put(body,
         h("p", { class: "lbl" }, "What Vyre found"),
         sources.length === 0 || sources.every(src => !src.folders.length)
-          ? empty("No Claude Code sessions found on this machine yet. Start one with claude and come back.")
+          ? empty("Nothing found on this server yet. Pair your Mac in the next step and import from there, or start a session with claude here and come back.")
           : sources.filter(src => src.folders.length).map(src => h("div", { style: { marginBottom: "16px" } },
             h("p", { class: "small muted", style: { padding: "8px 0 0" } }, src.path),
             h("div", { class: "rows" }, src.folders.map(f => {

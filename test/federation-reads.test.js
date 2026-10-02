@@ -260,7 +260,7 @@ test("federation reads: onboarding on the box counts the Mac's sessions and says
   await offline(s);
   const off = await history();
   assert.equal(off.sessions, 0);
-  assert.equal(off.state, "done");
+  assert.equal(off.state, "todo", "nothing found is not Done");
   assert.equal(off.why, "Your Mac (test-mac) is offline, so its sessions do not show here yet");
   assert.deepEqual(off.machines.map(m => [m.source, m.ok]), [["box", true], ["mac", false]]);
 });
