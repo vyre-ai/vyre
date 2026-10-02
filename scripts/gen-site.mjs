@@ -783,7 +783,7 @@ ${ul([
   '<b>Frames waiting for your server</b> are held, still encrypted, only between a device first speaking and your server picking the connection up, normally one round trip. They are deleted on delivery or when the device leaves.',
   '<b>What it can see:</b> the address a connection comes from, when it connects, how large each message is, the route id (a hash of your server\'s public route key) and that public key. It never sees message contents.',
   '<b>Rate limits</b> count requests per address in a 60 second window, so one client cannot flood it: 30 a minute for device connections and for pairing lookups, and 20 a minute for setup posts. The relay\'s code does not write those addresses to its storage or to a log.',
-  '<b>Cloudflare hosts the relay</b> and keeps its own request logs for Workers, which the relay\'s configuration leaves turned on, under Cloudflare\'s retention and policy. The project does not add anything to them.',
+  '<b>No request logs.</b> Cloudflare hosts the relay, and the relay\'s configuration has Cloudflare\'s Worker request logs turned off. The relay\'s code writes no log of who connected.',
 ])}
 <p>The relay is open source (<code>relay/worker</code> and <code>relay/node</code> in the repository). You can run your own and point your server at it with the relay address setting.</p>`)}
 ${part('04', 'names', 'Your address on vyre.run', `<p>When you choose a name, the name directory at <code>names.vyre.run</code> creates <code>yourname.vyre.run</code> and points it at your server's tailnet address, which only works from devices on your tailnet. DNS is public, so anyone can look up that name and the address it points to. The certificate for the name is also recorded in public certificate logs, which is how the web works. Choose a name you are happy to have public.</p>
@@ -792,7 +792,7 @@ ${ul([
   '<b>It asks for no email and no personal details.</b> Every request is signed by your server\'s own key.',
   '<b>Per-address counters</b> limit claims (5 a day) and recovery attempts (20 a day). An hourly sweep drops them once they are about two days old.',
   '<b>Giving a name up</b> deletes it if it was never pointed. A name that was ever live stays reserved as a name and a recovery-code hash with no route and no address, so nobody else can take it over; only the recovery code can move it.',
-  '<b>Cloudflare hosts the directory</b> and keeps its own Worker request logs, as for the relay.',
+  '<b>No request logs.</b> Cloudflare hosts the directory, with Worker request logs turned off, as for the relay.',
 ])}`)}
 ${part('05', 'site', 'This website, updates and downloads', `${ul([
   'vyre.run has <b>no analytics and no cookies</b>.',
@@ -811,7 +811,7 @@ ${part('06', 'apps', 'What each app keeps on your device', `${ul([
   '<b>The vault browser extension</b> keeps the address of your server, this browser\'s device id and token, and its two on and off choices in the extension\'s storage, and the unlocked session in session storage. It talks only to the server address you set and sends no page content. With the API-key offer on, it reads the page text on your device looking for one key-shaped value, and a matched value leaves the page only after you tap Save.',
 ])}`)}
 ${part('07', 'camera', 'Camera and microphone', `<p>The camera is used for one thing: scanning a Wink, the code that pairs or introduces a device, or the QR code on your own setup page or Deck. The Deck asks for video only, never audio. The picture is read on your device. It is not saved and not sent anywhere.</p>
-<p>The microphone is used by Vyre Lumen's push-to-talk on a Mac, only while you hold the key. The audio goes to your server and from there to the speech service you chose; your server does not log or keep it.</p>`)}
+<p>The microphone is used by Vyre Lumen's push-to-talk on a Mac, only while you hold the key. The audio goes to your server and from there to the speech service you chose; your server does not log or keep it. The Android app asks for no microphone permission.</p>`)}
 ${part('08', 'passkeys', 'Passkeys and keys', `<p>You make your passkey for your own server's address, with your device's own passkey system. The private key stays in your device's secure hardware or your password manager. Your server keeps only the public half, and Vyre never receives either. The approval key in the iPhone and Android apps is made in secure hardware (the Secure Enclave or the Keystore), cannot be exported, and needs your face or fingerprint to use. The recovery code for your name is shown to you once; keep it somewhere safe.</p>`)}
 ${part('09', 'push', 'Notifications', `<p>A notification carries a kind, a fixed title and the path to open, and never the content of a draft, a tool's input or a value. Your server fetches the details after you tap, over your own connection. One setting, off by default, puts the words of a planner item on the lock screen.</p>
 <p>Web Push encrypts the payload and delivers it through your browser's push service (Google, Mozilla, Apple or Microsoft). Where a phone build uses Apple's or Google's push service, the same small message goes through it. The Android build in the repository has Google's push off unless the person building it adds their own key.</p>`)}
