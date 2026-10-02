@@ -5454,7 +5454,7 @@ Grant an account to one more project or agent (added to its scope, others it alr
 
 ### `sessions.accounts.key`
 
-Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault and never returned or shown again; the account is bound to its address. Only the person (or their own words) adds one.
+Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault (bound to that address) and never returned or shown again; the key is sent only to that host, which is looked up again on every turn and refused if it points at a private, tailnet or metadata address. Removing the account removes the key. Only the person (or their own words) adds one.
 
 - Input:
   - `key` string, required

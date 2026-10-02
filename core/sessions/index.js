@@ -21,6 +21,7 @@ import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
 import crypto from "node:crypto";
+import { hostSafe } from "./endpoint.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -400,7 +401,10 @@ export default {
       const headers = kind === "anthropic-compatible" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { authorization: `Bearer ${key}` };
       const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 15_000);
       try {
+        if (!(await hostSafe(url))) throw Object.assign(new Error("that address is not a place a key may be sent"), { code: "bad_input" });
         const r = await doFetch(url, { headers, redirect: "error", signal: ac.signal });
+        // The answer is read for nothing; a server that streams without end is cut off after about 1 MB.
+        if (r.body) { let n = 0; for await (const c of /** @type {any} */ (r.body)) { n += c.length; if (n > 1_000_000) { ac.abort(); break; } } }
         if (r.status === 401 || r.status === 403) throw Object.assign(new Error("the service refused that key"), { code: "bad_input" });
         if (!r.ok) throw Object.assign(new Error(`the service answered ${r.status} when the key was checked`), { code: "bad_input" });
       } catch (e) {
@@ -408,7 +412,7 @@ export default {
         throw Object.assign(new Error(/** @type {any} */ (e).name === "AbortError" ? "the service did not answer in time" : "could not reach the service to check the key"), { code: "bad_input" });
       } finally { clearTimeout(timer); }
     };
-    tool("sessions.accounts.key", "Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault and never returned or shown again; the account is bound to its address. Only the person (or their own words) adds one.",
+    tool("sessions.accounts.key", "Add an AI account from an API key: kind openai-compatible (key and base_url), anthropic-compatible (key and base_url) or openrouter (key). The key is checked with one cheap call, stored in the Vault (bound to that address) and never returned or shown again; the key is sent only to that host, which is looked up again on every turn and refused if it points at a private, tailnet or metadata address. Removing the account removes the key. Only the person (or their own words) adds one.",
       { type: "object", required: ["kind", "key"], properties: { kind: { type: "string", enum: Object.keys(KEY_KINDS) }, key: str, base_url: str, model: str, label: str } },
       async (i, meta) => {
         askedOnly(meta, "Adding an API key");
@@ -421,7 +425,7 @@ export default {
         await checkKey(String(i.kind), base, key);
         const id = crypto.randomBytes(6).toString("hex");
         const item = `ai-key-${k.provider}-${id}`;
-        const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, grants: ["threads", "agents"] });
+        const put = await ctx.call("vault.put", { name: item, kind: "api-key", description: `${k.label} API key for ${new URL(base).host}`, value: key, hosts: [new URL(base).origin], grants: ["threads", "agents"] });
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
         const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
@@ -454,7 +458,14 @@ export default {
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
-      async (i, meta) => { if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" }); return accounts.remove(i.id); });
+      async (i, meta) => {
+        if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" });
+        const row = accounts.row(String(i.id));
+        const out = accounts.remove(i.id);
+        // A key this module vaulted goes with its account (the Vault refuses to delete anything else of ours).
+        if (row && row.kind === "api-key" && /^ai-key-/.test(String(row.vault_item || ""))) await ctx.call("vault.delete", { name: row.vault_item }).catch(() => {});
+        return out;
+      });
 
     tool("sessions.accounts.bind", "Grant an account to one more project or agent (added to its scope, others it already has kept), or make it its provider's default.",
       { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },

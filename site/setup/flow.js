@@ -459,7 +459,7 @@ export function createFlow(o) {
       const input = { kind: f.kind, key, ...(f.base_url && String(f.base_url).trim() ? { base_url: String(f.base_url).trim().slice(0, 300) } : {}), ...(f.model && String(f.model).trim() ? { model: String(f.model).trim().slice(0, 100) } : {}) };
       await chan.call("sessions.accounts.key", input);
       upd({ step: "done", error: null }, { keyBusy: false, keyKind: null });
-    } catch (e) { upd({ step: "failed", error: String(/** @type {Error} */ (e).message).replace(key, "[key]").slice(0, 200) }, { keyBusy: false }); }
+    } catch (e) { upd({ step: "failed", error: String(/** @type {Error} */ (e).message).split(key).join("[key]").slice(0, 200) }, { keyBusy: false }); }
   }
 
   /** A code the person pasted back from the provider's page. @param {string} id @param {string} code */

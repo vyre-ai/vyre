@@ -12,6 +12,8 @@
 // module) so a resume after a restart carries on where it was; without one it lives in memory.
 // The key comes from o.env.OPENROUTER_API_KEY (an account of kind api-key), read here and nowhere else.
 
+import { hostSafe } from "../endpoint.js";
+
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
 const MAX_STREAM = 1_000_000;         // bytes of one answer, then it is cut
@@ -64,6 +66,8 @@ function runChat(entry, store, o) {
     let text = "", cost = 0, usage = null, failed = null, cancelled = false;
     try {
       if (!okBase(base)) throw new Error("the OpenRouter address must be https");
+      // Resolved again on every turn: a name that now points at a private, tailnet or metadata address gets no key and no prompt.
+      if (!(entry.fetch && !entry.lookup) && !(await hostSafe(base, entry.lookup))) throw new Error("that address is not a place a key may be sent");
       if (!key) throw new Error("no OpenRouter key on this account");
       if (!model) throw new Error("choose a model for OpenRouter (in the routing list, or when the session starts)");
       const res = await doFetch(`${base}/chat/completions`, { method: "POST", signal: ac.signal,
@@ -98,6 +102,8 @@ function runChat(entry, store, o) {
       }
     } catch (e) {
       if (asked && ac.signal.aborted) cancelled = true; else failed = /** @type {Error} */ (e);
+      // Whatever an error carries, the key is never in it.
+      if (failed && key) failed = new Error(String(failed.message).split(key).join("[key]"));
     }
     ac = null;
     if (text) { history.push({ role: "assistant", content: text }); say({ type: "assistant", message: { id: `or-turn-${++turn}`, content: [{ type: "text", text }] } }); }

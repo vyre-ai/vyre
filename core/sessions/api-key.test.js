@@ -51,6 +51,13 @@ test("api key: an OpenAI-compatible key is checked, vaulted, bound to its addres
   const text = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.done).map(e => e.payload.text).join(" ");
   assert.match(text, /echo m1: hello/, "the thread answered through the account's address and model");
   assert.ok(s.seen.some(x => x.method === "POST" && x.auth), "the key reached the chat call");
+  // The item is bound to its address (origin, port included), and removing the account removes the key from the Vault too.
+  const listed = () => w.tool("vault.list", {}).then(r => (r.data.items || r.data).filter(x => x.name === rows[0].vault_item));
+  const [item] = await listed();
+  assert.ok(item, "the key is in the Vault");
+  assert.deepEqual(item.hosts, [s.base]);
+  assert.equal((await w.tool("sessions.accounts.remove", { id: rows[0].id })).data.removed, true);
+  assert.equal((await listed()).length, 0, "the key left the Vault with its account");
 });
 
 test("api key: a wrong key, an unsafe address, a bad shape, an agent and OpenRouter with an address are all refused, and nothing is stored", async t => {
@@ -59,7 +66,7 @@ test("api key: a wrong key, an unsafe address, a bad shape, an agent and OpenRou
   const add = (input, caller = "cli") => w.d.registry.call("sessions.accounts.key", input, caller, {});
   const none = async () => (await w.tool("sessions.accounts.list", {})).data.filter(a => a.kind === "api-key").length;
   assert.match((await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: "sk-wrong-key-1234567890", base_url: `${s.base}/v1` })).error.message, /refused that key/);
-  for (const bad of ["http://example.com/v1", "https://user:pw@example.com/v1", "https://example.com/v1?x=1", "https://169.254.169.254/latest", "ftp://example.com", "not a url"]) {
+  for (const bad of ["http://example.com/v1", "https://user:pw@example.com/v1", "https://example.com/v1?x=1", "https://169.254.169.254/latest", "https://100.100.100.200/v1", "https://192.0.0.192/v1", "https://10.0.0.5/v1", "https://192.168.1.9/v1", "https://100.64.1.1/v1", "https://[fd00:ec2::254]/v1", "ftp://example.com", "not a url"]) {
     assert.equal((await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: bad })).error.code, "bad_input", bad);
   }
   for (const key of ["short", `${GOOD} extra`, `${GOOD}\nmore`, "x".repeat(401)]) assert.equal((await w.tool("sessions.accounts.key", { kind: "openai-compatible", key, base_url: `${s.base}/v1` })).error.code, "bad_input", JSON.stringify(key).slice(0, 20));

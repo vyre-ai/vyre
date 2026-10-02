@@ -14,6 +14,7 @@
 // unchanged until a person adds a second account.
 
 import crypto from "node:crypto";
+import { addressRefused, metadataName } from "./endpoint.js";
 
 // kind: what the credential is. "api-key" and "setup-token" name a vault item; "login" names none:
 // the provider's own sign-in (codex login, grok login) wrote its token into this account's own
@@ -50,7 +51,7 @@ export function endpointOk(u) {
   if (!(x.protocol === "https:" || (x.protocol === "http:" && loop))) throw bad("the address must be https (plain http only to this machine)");
   if (x.username || x.password) throw bad("the address must not carry a login");
   if (x.search || x.hash) throw bad("the address must not have a query or a fragment");
-  if (/^169\.254\./.test(x.hostname) || x.hostname === "metadata.google.internal" || x.hostname === "[fd00:ec2::254]") throw bad("that address is not a place a key may be sent");
+  if (addressRefused(x.hostname) || metadataName(x.hostname)) throw bad("that address is not a place a key may be sent");
   if (text.length > 300) throw bad("the address is too long");
   return `${x.protocol}//${x.host}${x.pathname}`.replace(/\/+$/, "");
 }
