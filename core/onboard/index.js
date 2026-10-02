@@ -14,7 +14,7 @@ import * as config from "../config/index.js";
 import { isPerson } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
-import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "./steps.js";
+import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
 import { checkName } from "../names/service.js";
 import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 

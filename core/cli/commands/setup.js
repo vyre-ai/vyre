@@ -18,7 +18,7 @@ import readline from "node:readline/promises";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal } from "../style.js";
 import { json, emit, fail, failTool, usage } from "../kit.js";
-import { setupLines } from "../../onboard/steps.js";
+import { setupLines } from "../../../lib/setup-steps.js";
 
 const WAIT_MS = 90_000;
 const STEP_MS = 2000;
