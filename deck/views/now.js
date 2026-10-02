@@ -20,6 +20,8 @@ import { setupCard } from "../js/phone-setup.js";
 import { assistantCard } from "../js/assistant-setup.js";
 import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
+import { chatCounts, chatsWord } from "../js/chat-counts.js";
+import { threadAvatar } from "../js/avatars.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
@@ -132,14 +134,14 @@ export default async function now(ctx) {
       return;
     }
     const all = r.data || [];
-    // threads.list's real field is `status` (starting|working|waiting|idle|stopped), not `state`,
-    // and "running" isn't a value it uses at all — any non-stopped status counts as running.
-    const run = all.filter(t => t.status !== "stopped");
-    const done = all.filter(t => t.status === "stopped" && (t.last || 0) >= startOfToday());
+    // Running means a turn is in progress (#44): starting, working, or asking the person something. An idle thread, one waiting for the next
+    // message, is not running, however recently it spoke.
+    const run = all.filter(isRunning);
+    const done = all.filter(t => !isRunning(t) && (t.last || 0) >= startOfToday());
     running = run.length;
     say();
     const right = h("span", { style: { display: "inline-flex", gap: "10px", alignItems: "center" } }, offlineChip(macs),
-      h("span", { class: "lbl now-count" }, r.error ? "" : `${run.length} running · ${done.length} finished today`));
+      h("span", { class: "lbl now-count" }, r.error ? "" : `${run.length} running · ${done.length} ${done.length === 1 ? "was" : "were"} active today`));
     const headRow = head("Working", right);
     /** @type {HTMLElement} */ (headRow.firstChild).id = "working-h";
     if (run.length) { put(working, headRow, h("div", { class: "rows" }, run.map(workRow))); return; }
@@ -181,7 +183,7 @@ export default async function now(ctx) {
 
   // Recent projects: a way back in without the rail, for a phone or a narrow window.
   const drawRecent = async () => {
-    const r = await attempt("projects.list", {}, { share: true });
+    const [r, counts] = await Promise.all([attempt("projects.list", {}, { share: true }), chatCounts(attempt)]);
     if (!ctx.alive()) return;
     // Each opens its board on this machine, so a Mac's projects (listed under Projects) are left out.
     const list = [...(r.data?.projects || [])].filter(p => !isMac(p)).sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
@@ -196,7 +198,7 @@ export default async function now(ctx) {
         h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),
         h("div", { class: "work-main" },
           h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet ellipsis" }, p.name)),
-          h("div", { class: "code ellipsis" }, plural(p.threads, "thread"))),
+          h("div", { class: "code ellipsis" }, chatsWord(p, counts))),
         h("div", { class: "code faint work-since" }, p.last ? since(p.last) : "")))));
   };
   drawRecent();
@@ -292,15 +294,30 @@ function compactTitle(n) {
   return g.kind === "spend" ? `Spend through ${g.via}` : `Delete through ${g.via}`;
 }
 
+/** Whether a thread has a turn in progress: starting, working, or asking the person (its canonical status), or the older words for the same. @param {any} t */
+export function isRunning(t) {
+  const c = t?.canonical_status;
+  if (typeof c === "string" && c) return c === "starting" || c === "working" || c === "asking";
+  // The raw words: "waiting" there means an ask is open, "idle" means ready for the next message.
+  return t?.status === "starting" || t?.status === "working" || t?.status === "waiting";
+}
+
+/** A thread's title for a list: its name, else its first words, else a plain "New chat", never its id. @param {any} t */
+export function titleOf(t) {
+  const pick = [t?.name, t?.label, t?.title, t?.first, t?.activity].find(x => typeof x === "string" && x.trim() && !/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(x.trim()) && x.trim() !== t?.id);
+  return pick ? String(pick).trim().slice(0, 80) : "New chat";
+}
+
 function workRow(t) {
   // A Mac thread's project and agent are the Mac's: it opens read-only by id, and has no Watch here.
   const mac = isMac(t);
   const href = t.project && !mac ? `/projects/${encodeURIComponent(t.project)}/${encodeURIComponent(t.id)}` : `/threads/${encodeURIComponent(t.id)}`;
   return h("div", { class: "work-row" },
-    h("span", { class: "initial", "aria-hidden": "true" }, initial(t.agent || t.name)),
+    // Every thread has a mark and a title (#44): the same avatar a chat wears everywhere, and its name, else its first words, else "New chat" (never its id).
+    threadAvatar({ agent: t.agent, project: t.project, thread: t.id }, { size: 24, cls: "av-agent", title: t.agent || "You" }),
     h("div", { class: "work-agent" }, t.agent || "you"),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, t.name || t.id), machineChip(t), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, titleOf(t)), machineChip(t), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
       h("div", { class: "code ellipsis" }, t.activity || "")),
     h("div", { class: "code faint work-since" }, since(t.started)),
     mac ? null : link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),
@@ -311,9 +328,9 @@ function recentRow(s) {
   // A Mac session's projects are the Mac's own slugs, not boards here: it opens by id.
   const href = s.projects?.[0] && !isMac(s) ? `/projects/${encodeURIComponent(s.projects[0])}/${encodeURIComponent(s.id)}` : `/threads/${encodeURIComponent(s.id)}`;
   return h("div", { class: "work-row" },
-    h("span", { class: "initial", "aria-hidden": "true" }, icon("chat", 12)),
+    threadAvatar({ agent: s.agent || null, project: s.projects?.[0] || null, thread: s.id }, { size: 24, cls: "av-agent" }),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, s.label || s.title || s.id), machineChip(s)),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, titleOf(s)), machineChip(s)),
       h("div", { class: "code ellipsis" }, base(s.cwd), s.turns ? `  ·  ${plural(s.turns, "turn")}` : "")),
     h("div", { class: "code faint work-since" }, when(s.last)));
 }

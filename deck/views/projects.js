@@ -26,6 +26,7 @@ import { createProject, createProjectInline, startThread, indexHistoryInline, of
 import { renameProject, archiveProject } from "../js/project-actions.js";
 import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
+import { chatCounts, chatsWord } from "../js/chat-counts.js";
 
 const enc = encodeURIComponent;
 const TABS = [["threads", "Chats"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
@@ -118,16 +119,18 @@ async function list(ctx) {
     put(form, el);
   };
 
+  /** @type {Map<string, number>} */ let chats = new Map();
   const draw = async () => {
-    const r = await attempt("projects.list", showArchived ? { archived: true } : {});
+    const [r, counts] = await Promise.all([attempt("projects.list", showArchived ? { archived: true } : {}), chatCounts(attempt)]);
     if (!ctx.alive()) return;
+    chats = counts;
     if (r.error) { put(count_, ""); put(rows, empty("Projects are not available.", r.error)); return; }
     const all = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0));
     setProjects(all); // each project's tile seed (js/avatars.js)
     const pinned = new Set(pins());
     put(count_, all.length ? `${plural(all.length, "project")}, most recent first.` : "No projects yet.");
     put(rows,
-      all.length ? all.map(p => projectRow(p, pinned.has(p.slug), draw))
+      all.length ? all.map(p => projectRow(p, pinned.has(p.slug), draw, chats))
         : h("div", { class: "empty" }, "Name one and Vyre makes its folder. Or run vyre new in a folder you already have.", createProjectInline()),
       (r.data?.problems || []).map(pr => h("div", { class: "pl-problem small muted" }, typeof pr === "string" ? pr : (pr.message || pr.path || JSON.stringify(pr)))));
   };
@@ -144,7 +147,7 @@ function parsePeople(s) {
   });
 }
 
-function projectRow(p, pinned, redraw) {
+function projectRow(p, pinned, redraw, counts = new Map()) {
   if (isMac(p)) return macProjectRow(p);
   const pin = h("button", { type: "button", class: "ibtn pl-pin", "aria-pressed": String(pinned), "aria-label": `${pinned ? "Unpin" : "Pin"} ${p.name}`,
     title: pinned ? "Pinned to the rail" : "Pin to the rail", onclick: () => { setPin(p.slug, !pinned); redraw(); } }, icon("pin"));
@@ -155,7 +158,7 @@ function projectRow(p, pinned, redraw) {
     h("div", { class: "pl-main" },
       h("div", { class: "pl-name" }, link(`/projects/${enc(p.slug)}`, { class: "link quiet pl-open" }, p.name), p.archived_at ? h("span", { class: "tag" }, "Archived") : null, p.org ? h("span", { class: "tag" }, p.org) : null),
       h("div", { class: "small muted ellipsis" }, ppl.length ? ppl.join(", ") : h("span", { class: "faint" }, "No people yet"))),
-    h("div", { class: "code pl-count" }, plural(p.threads || 0, "thread")),
+    h("div", { class: "code pl-count" }, chatsWord(p, counts)),
     h("div", { class: "code faint pl-last" }, p.last ? when(p.last) : "never"),
     p.archived_at ? h("button", { type: "button", class: "btn btn-sm", "data-act": "restore", "aria-label": `Restore ${p.name}`,
       onclick: async () => { if (await archiveProject(p, false)) redraw(); } }, "Restore") : null,

@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: the Now page tells the truth (#44)
+
+- "Running" means a turn is in progress: starting, working, or asking you something. An idle thread (ready for your next message) no longer counts as running, so "Two threads are running" no longer appears for threads that are only idle. The count line says "N running · M were active today".
+- Every thread in the lists on Now has the avatar a chat wears everywhere and a real title: its name, else its first words, else "New chat" (never its id, never a "?" mark).
+- A project's chat count counts its chats (its indexed sessions plus the ones running now, each once), on Now and on the Projects page, instead of the number of threads picked in by hand: a project with a chat in it no longer reads "0 threads". It reads "N chats".
+
 #### deck: Projects is a shell (#47), and starting never hangs (#42)
 
 - A project's page shows what the project is (its chats, team, brief, files and memory) and never draws a conversation or a start box: the board's own thread view is deleted (about 400 lines), and every chat opens in Chat, scoped to the project (`/chat/<project>/<thread>`). "New chat" opens Chat's New session in that project. The old addresses `/projects/<slug>/<thread>` and `/threads/<id>` still work and go to Chat. (The board's copy read events by the wrong fields: that was behind the empty replies, the repeated sends and the "Starting…" with nothing after it on a new project.)
