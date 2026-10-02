@@ -63,7 +63,7 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean, share?: boolean }} [opts] share: true lets identical calls in flight at once share one request (the rail, the view and the avatars all read projects.list). presence: true proves a
+ * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean, share?: boolean, ifPresent?: boolean }} [opts] ifPresent: skip the call when the box lists no such tool. share: true lets identical calls in flight at once share one request (the rail, the view and the avatars all read projects.list). presence: true proves a
  *   person is here with a passkey first (ADR 0004), for what goes outside as the person (sending a
  *   held draft) and the vault. The proof is bound to this exact tool and input. "asked" is the
  *   owner's own action (answers, approvals, agents): it goes without a proof, and asks for the
@@ -76,6 +76,9 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  *   the box keeps every keyed answer for a day, and a read has nothing to repeat.
  */
 export async function call(name, input = {}, opts = {}) {
+  // `ifPresent`: a tool this box may not have is asked about once (GET /v1/tools) and never called when it is absent, so a missing module is a quiet
+  // answer, not a failed request in the console on every page (#56).
+  if (opts.ifPresent && !(await hasTool(name))) throw new ApiError("no_such_tool", `this box has no ${name}`, name);
   if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
   // The same read asked for twice at once (the rail, the view and the avatars all want projects.list) is one request: they share its answer.
   // Only a caller that says `share: true` joins one (a read whose answer may be a moment old for the other), and a write clears them all, so a
@@ -92,6 +95,22 @@ export async function call(name, input = {}, opts = {}) {
 
 /** @type {Map<string, Promise<any>>} */
 const inflight = new Map();
+
+/** @type {Promise<Set<string>|null>|null} */
+let toolsAsked = null;
+/** Whether this box lists the tool. One GET /v1/tools for the page's life; an answer that cannot be read counts as "yes", so a call is still tried. @param {string} name */
+export async function hasTool(name) {
+  toolsAsked ||= (async () => {
+    try {
+      const res = await fetch("/v1/tools", { headers: { "x-vyre-caller": "deck", ...headers } });
+      const body = await res.json().catch(() => null);
+      const list = Array.isArray(body?.data) ? body.data : null;
+      return list ? new Set(list.map((/** @type {any} */ t) => String(t?.name ?? t))) : null;
+    } catch { return null; }
+  })();
+  const set = await toolsAsked;
+  return !set || set.has(name);
+}
 
 /** @param {string} name @param {Record<string, any>} input @param {any} opts */
 async function callOnce(name, input, opts) {

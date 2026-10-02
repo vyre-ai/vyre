@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: QA fixes (#51, #53, #54, #55, #56)
+
+- #51: `/drive` is Drive's address (it opens the files view) and `/devices` goes to Settings, Devices, so both survive a reload and a bookmark. An address nothing serves shows "There is nothing at this address." and no longer asks for a view file that does not exist.
+- #53: in New session, the plain option is "A Claude session" (not the assistant's name) and the assistant appears once, with its own capitals. In a plain session the replies are named for the provider ("Claude"), not the assistant, and a session with no name is titled from its first words (or "New chat"), never from its id.
+- #54: a session that stopped with a failure says so under its message: "This session's process stopped before it answered." (or not signed in, or out of usage) with the box's own words beside it and, for sign-in, a Sign in button.
+- #55: the project page lists the chats started in it (live and recorded) and every chat opens in Chat, where a held action shows the tool's real name and the person is "You" (see Projects is a shell).
+- #56: a tool the box does not list is asked about once and never called (`ifPresent`), so a missing module no longer puts a failed request in the console on every page: `link.pending` and `github.accounts`. Skipping an onboarding step only tells the server about the steps it knows, which ended the `onboard.skip` 400s. The `recall.thread` 500 was not reproduced here; it needs the console log from the QA run.
+
 #### chat: a Mac session when the Mac sleeps (#32, Deck side)
 
 - A session that lives on a paired Mac already takes your messages (they go to the Mac over the link). When the Mac goes to sleep (`link.mac-offline`, from the link's own goodbye) the session's line says "<Mac> is asleep or offline. Your message waits for it, or you can carry on here." with a "Continue on the server" button; it asks the box to carry the same conversation on from what the Mac had (`threads.continue-here`) and opens that copy. The Mac's own session is left alone. When the Mac wakes (`link.mac-online`) the line goes back to "On <Mac>". The button needs the box to have `threads.continue-here` (asked of sessions, not shipped yet); without it the button says it needs the sessions update.

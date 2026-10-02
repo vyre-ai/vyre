@@ -172,8 +172,9 @@ export function mountNewSession(container, opts) {
     if (!alive) return;
     const w = state.where;
     put(whoBox, h("div", { class: "ns-choices", role: "radiogroup", "aria-label": "Who" },
-      choice(state.assistant, "a session in the folder you pick", state.agent === null, () => { state.agent = null; }),
-      state.agents.map(a => choice(a.name, a.kind === "assistant" ? "your assistant, in its own thread" : "an agent, in its own thread",
+      // A plain session is named for what it is, not for the assistant (#53); the assistant appears once, with its own name's capitals.
+      choice("A Claude session", "in the folder you pick", state.agent === null, () => { state.agent = null; }),
+      state.agents.map(a => choice(a.kind === "assistant" && state.assistant && state.assistant.toLowerCase() === String(a.name).toLowerCase() ? state.assistant : a.name, a.kind === "assistant" ? "your assistant, in its own thread" : "an agent, in its own thread",
         state.agent === a.name, () => { state.agent = a.name; }))));
 
     const off = state.agent !== null;

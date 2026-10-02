@@ -34,7 +34,7 @@ export function pairRequests(opts = {}) {
   let seq = 0;
   async function load() {
     const n = ++seq;
-    const r = await attempt("link.pending");
+    const r = await attempt("link.pending", {}, { ifPresent: true });
     if (n !== seq || r.error || !Array.isArray(r.data)) return;
     const ids = new Set(r.data.map((/** @type {any} */ p) => p.id));
     for (const [id, c] of cards) if (!ids.has(id) && !done.has(id)) { c.remove(); cards.delete(id); }
