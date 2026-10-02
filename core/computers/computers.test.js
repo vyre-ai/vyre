@@ -84,7 +84,7 @@ test("computers: the manifest loads on the box with its tools and the glass stre
     "computers.handback.set", "computers.handback.status",
     "computers.limits", "computers.list",
     "computers.member.add", "computers.member.dispose", "computers.member.remove", "computers.member.rotate",
-    "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
+    "computers.pause", "computers.release", "computers.rename", "computers.restart", "computers.resume", "computers.stop",
     "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
@@ -631,4 +631,17 @@ test("computers: computers.member.add reaches pool.js and the vault (there is no
   // over -- a retry after fixing the vault starts from nothing, same as the very first try.
   assert.equal(s.h.pool.row("browser-abc123"), null, "a failed add left a row behind");
   assert.equal(s.h.pool.members("browser-abc123").length, 0, "a failed add left a member behind");
+});
+
+test("computers: the person renames an agent's computer, it shows in the list and tells the surfaces, and an agent cannot", async t => {
+  const s = await boot(t, { computers: {} });
+  const seen = [];
+  s.d.events.on("device.renamed", e => seen.push(e.payload));
+  const r = await s.cli("computers.rename", { computer: "kit", name: "  Kit's   desk " });
+  assert.deepEqual(r.data, { id: "kit", name: "Kit's desk" }, JSON.stringify(r.error));
+  const l = await s.cli("computers.list");
+  assert.deepEqual(l.data.computers.map(c => [c.agent, c.label]), [["kit", "Kit's desk"], ["pax", null]]);
+  assert.deepEqual(seen, [{ kind: "computer", id: "kit", name: "Kit's desk" }]);
+  assert.equal((await s.cli("computers.rename", { computer: "kit", name: "" })).data.name, null, "an empty name goes back to the default");
+  assert.ok((await s.cli("computers.rename", { computer: "Bad Name", name: "x" })).error, "not an agent name");
 });

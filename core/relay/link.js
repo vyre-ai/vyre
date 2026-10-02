@@ -56,6 +56,15 @@ export function relayLink(o) {
   /** The relay's answers to registrations, by locator: 200, or 409 when another server got there first. */
   /** @type {Map<string, Array<(status: number|null) => void>>} */
   const answers = new Map();
+  /** The relay's answers to withdrawals, by locator: 200, or 404 when it holds no ticket of this box's under that locator. @type {Map<string, Array<(status: number|null) => void>>} */
+  const revokeAnswers = new Map();
+  const expectRevoke = (loc, ms = 5000) => new Promise(resolve => {
+    const list = revokeAnswers.get(loc) || [];
+    revokeAnswers.set(loc, list);
+    const t = setTimeout(() => { const i = list.indexOf(fn); if (i >= 0) list.splice(i, 1); resolve(null); }, ms);
+    const fn = status => { clearTimeout(t); resolve(status); };
+    list.push(fn);
+  });
   const expect = (loc, ms = 5000) => new Promise(resolve => {
     const list = answers.get(loc) || [];
     answers.set(loc, list);
@@ -115,7 +124,8 @@ export function relayLink(o) {
         }, pingMs);
         pinger.unref?.();
         for (const c of Array.isArray(m.waiting) ? m.waiting : []) openData(String(c));
-      } else if (m.t === "registered") { for (const f of answers.get(String(m.loc)) || []) f(Number(m.status)); answers.delete(String(m.loc)); }
+      } else if (m.t === "revoked") { for (const f of revokeAnswers.get(String(m.loc)) || []) f(Number(m.status)); revokeAnswers.delete(String(m.loc)); }
+      else if (m.t === "registered") { for (const f of answers.get(String(m.loc)) || []) f(Number(m.status)); answers.delete(String(m.loc)); }
       else if (m.t === "open") openData(String(m.c));
       else if (m.t === "close") { data.get(String(m.c))?.close(1000); data.delete(String(m.c)); }
     };
@@ -181,6 +191,16 @@ export function relayLink(o) {
      * when it did not answer in 5 seconds.
      * @param {{ loc: string, record: string, mac: string, exp: number }} reg @returns {Promise<number|null>} */
     registerTicket(reg) { const a = expect(reg.loc); pendingRegs.push(reg); flushRegs(); return a; },
+    /** Whether the relay this link is on can withdraw a ticket (a renewal replaces the previous one). */
+    revokes() { return relayFeatures.includes("revoke"); },
+    /** Withdraw a ticket this box registered. Resolves with the relay's answer (200, or 404 when it held none), or null on no answer.
+     * @param {string} loc @returns {Promise<number|null>} */
+    revokeTicket(loc) {
+      if (!control) return Promise.resolve(null);
+      const a = expectRevoke(loc);
+      try { control.send(JSON.stringify({ t: "revoke", loc })); } catch {}
+      return a;
+    },
     /** Register a setup offer's locator (tailnet plan 3.6): same fields, kept until dropSetup and
      * sent again after every reconnect. Resolves as registerTicket does; 409 means another server
      * used this code first, and the offer is dropped here so it is never re-sent.
