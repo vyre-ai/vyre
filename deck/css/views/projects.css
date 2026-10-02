@@ -1,3 +1,5 @@
+/* A thread on the board is the chat's own session view, so it needs the chat's stylesheet. */
+@import url("/chat/chat.css");
 /* Projects. Boards: DeckProject (the board), Chat (how a thread reads). /projects has no board of
    its own; it uses the row language of Now. */
 

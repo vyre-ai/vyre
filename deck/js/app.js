@@ -422,6 +422,8 @@ function leave(/** @type {string} */ key, /** @type {{ page: HTMLElement, name: 
   } else hide();
 }
 
+/** The last place the person was on that the rail shows (Now or Chat), for a thread that belongs to no project. */
+let cameFrom = "";
 async function route() {
   // "/" is the assistant's current thread (js/home.js), else Now; the header's "+" asks Agents for its form by event.
   if (location.pathname === "/") history.replaceState(history.state, "", (await homePath(attempt)) + location.search + location.hash);
@@ -435,7 +437,10 @@ async function route() {
   document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
   put(address.lastChild, location.host, h("b", null, location.pathname));
-  railEl.setCurrent(name, location.hash);
+  // A session in no project (/threads/<id>) is not a place in Projects: the rail keeps where the person came from (Now or Chat), else nothing.
+  const looseThread = name === "projects" && !!params.thread && !params.slug;
+  if (!looseThread) cameFrom = name === "now" || name === "chat" ? name : "";
+  railEl.setCurrent(looseThread ? cameFrom : name, location.hash);
   // A detail (a session, a project's board or thread): under 900 it takes the list column's place.
   deck.toggleAttribute("data-detail", (name === "chat" && !!params.thread) || (name === "projects" && !!(params.slug || params.thread)));
   pwa.remember(key);

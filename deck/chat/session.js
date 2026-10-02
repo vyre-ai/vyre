@@ -822,7 +822,8 @@ export function mountSession(container, opts) {
       case "ask": return askEl(it);
       case "steer": return steerEl(it);
       case "shell": return shellEl(it);
-      default: return h("div", { class: "cv-row" });
+      // A kind this Deck has no drawing for: a labelled line, never an empty row.
+      default: return noticeMsg(`This update (${String(it.kind || "unknown").slice(0, 40)}) can't be shown here yet.`, it.at);
     }
   }
   /** Bring a row up to its item. Returns the row (a new one when it had to be rebuilt). */
@@ -1026,6 +1027,8 @@ export function mountSession(container, opts) {
     for (const r of rows) {
       const firstItem = S.byKey.get(r.type === "run" ? r.keys[0] : r.key);
       if (!firstItem) continue;
+      // A reply or a thought with no words and nothing coming is nothing to draw: no empty row (and no header for it).
+      if (r.type !== "run" && (firstItem.kind === "text" || firstItem.kind === "reasoning") && !firstItem.streaming && !String(firstItem.text || "").trim()) continue;
       const at = firstItem.at;
       while (gi < byTime.length && at !== undefined && byTime[gi].at < at) want.push(gateRow(byTime[gi++]));
       const side = r.type === "run" ? "assistant" : sideOfItem(firstItem);
