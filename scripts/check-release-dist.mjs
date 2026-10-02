@@ -14,7 +14,7 @@ import { SEAMS } from "./strip-wrapper.mjs";
 
 const DIGEST_REF = /^ghcr\.io\/vyre-ai\/[a-z-]+@sha256:[0-9a-f]{64}$/;
 const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}$/;
-const REQUIRED = ["install-box.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
+const REQUIRED = ["install-box.sh", "install-mac-server.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
 
 /** @param {string} dir @param {{ pulled?: boolean, pubkey?: string }} [o] @returns {string[]} the problems */
 export function check(dir, { pulled = false, pubkey = "", installer = false, setup = false } = {}) {

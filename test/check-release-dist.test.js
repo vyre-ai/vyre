@@ -28,7 +28,7 @@ function dist(t, { literal = true, sign = true, unstripped = false, images = tru
     else compose = compose.replace("${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}", `\${VYRE_IMAGE:-${BOX}}`).replace(/\$\{VYRE_IMAGE:-ghcr\.io\/vyre-ai\/vyre:latest\}/g, `\${VYRE_IMAGE:-${BOX}}`);
     if (!literal) compose = compose.replace("${VYRE_COMPUTERS_IMAGE:-vyre/computer:0.1}", `\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}`);
   }
-  const files = { "install-box.sh": "#!/bin/sh\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", "vyre": unstripped ? src : strip(src),
+  const files = { "install-box.sh": "#!/bin/sh\n", "install-mac-server.sh": "#!/bin/sh\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", "vyre": unstripped ? src : strip(src),
     "Dockerfile": "FROM x\n", "dockerignore": "test\n", "vyre.tgz": "tgz", "VERSION": "0.2.0\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", commit: "abc", date: "2026-10-01T00:00:00Z", min_from: "0.1.0", notes: "n", ...(images ? { images: { box: { ref: BOX, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2) + "\n" };
   for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), text);
@@ -108,4 +108,11 @@ test("release dist: with --setup, setup.json must be in the release, listed in S
   assert.ok(check(bad, { setup: true }).some(p => /setup\.json is not \{ v: 1/.test(p)));
   const junk = dist(t); withSetup(junk, "not json");
   assert.ok(check(junk, { setup: true }).some(p => /setup\.json is not JSON/.test(p)));
+});
+
+test("release dist: install-mac-server.sh is a required release file, so it is signed with the rest (#9)", t => {
+  const d = dist(t);
+  fs.rmSync(path.join(d, "install-mac-server.sh"));
+  const problems = check(d, {});
+  assert.ok(problems.some(p => /missing install-mac-server\.sh/.test(p)), problems.join("\n"));
 });
