@@ -157,7 +157,9 @@ jobs:
       # and says what it got. Run last among the boot checks: it replaces claude in this throwaway container.
       - name: A session as an account uid gets Vyre's tools (#40)
         run: |
-          docker exec -u root "$C" sh -c 'T=$(readlink -f /usr/local/bin/claude); printf "#!/bin/sh\nFAKE_CLAUDE_LOG=/dev/null exec node /opt/vyre/core/switchboard/testing/fake-claude.js \"\$@\"\n" > "$T"; chmod 755 "$T"'
+          docker cp test/fixtures/fake-claude-box.sh "$C":/tmp/fake-claude-box.sh
+          docker exec -u root "$C" sh -c 'T=$(readlink -f /usr/local/bin/claude); cp /tmp/fake-claude-box.sh "$T"; chmod 755 "$T"; head -2 "$T"'
+          docker exec -u vyre "$C" /usr/local/bin/claude --version || true
           docker exec -u vyre "$C" node --input-type=module -e '
             import { call } from "/opt/vyre/core/daemon/client.js";
             const t = async (n, i) => { const r = await call(n, i, { caller: "cli", timeout: 30000 }); if (r.error) throw new Error(n + ": " + JSON.stringify(r.error)); return r.data; };
