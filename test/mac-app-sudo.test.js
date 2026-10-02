@@ -26,7 +26,7 @@ function withLiterals(body, env = {}) {
   };
   const pins = src.filter(l => /^(NODE_SHA256_ARM64|NODE_SHA256_X64|RELEASE_KEY)=/.test(l)).join("\n");
   const script = `${pins}\n${take("VERIFY_JS")}\n${take("ROOT_SH")}\n${body}`;
-  return spawnSync("/bin/sh", ["-c", script], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", ...env } });
+  return spawnSync("/bin/sh", ["-c", script], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: HOME_DIR, ...env } });
 }
 
 function pinned(arch) {
@@ -36,8 +36,10 @@ function pinned(arch) {
   return out;
 }
 
-const ARGS = (node = '"$NODE_SHA256_ARM64"', verb = "install", key = '"$RELEASE_KEY"', root = '"$ROOT_SH"') =>
-  `/bin/sh -c ${root} vyre-root ${node} /tmp/r /tmp/n.tgz ${key} "$VERIFY_JS" ${verb} --owner-uid 501 --owner-name a --owner-home /Users/a --vyred-wrapper /x`;
+const HOME_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-home-"));
+const OWNER = '--owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$HOME/.vyre-server/bin/vyre-serve"';
+const ARGS = (node = '"$NODE_SHA256_ARM64"', verb = "install", key = '"$RELEASE_KEY"', root = '"$ROOT_SH"', owner = OWNER) =>
+  `/bin/sh -c ${root} vyre-root ${node} /tmp/r /tmp/n.tgz ${key} "$VERIFY_JS" ${verb} ${owner}`;
 
 test("the check passes the installer's real root step, for each architecture", { skip: !SHASUM }, () => {
   for (const [arch, pin] of [["aarch64", "NODE_SHA256_ARM64"], ["x86_64", "NODE_SHA256_X64"]]) {
@@ -45,6 +47,12 @@ test("the check passes the installer's real root step, for each architecture", {
     const r = withLiterals(`${check} ${ARGS(`"$${pin}"`)}`);
     assert.equal(r.status, 0, `${arch}: ${r.stderr}`);
   }
+});
+
+test("the check accepts the optional flags the installer adds", { skip: !SHASUM }, () => {
+  const check = pinned("aarch64");
+  const r = withLiterals(`${check} ${ARGS(undefined, undefined, undefined, undefined, OWNER + ' --gh-bin /opt/homebrew/bin/gh --colima-program a --colima-program b')}`);
+  assert.equal(r.status, 0, r.stderr);
 });
 
 test("the check refuses another script, another checksum, another key, another verb, and any other command", { skip: !SHASUM }, () => {
@@ -55,6 +63,13 @@ test("the check refuses another script, another checksum, another key, another v
     ["another Node checksum", ARGS("0000")],
     ["another release key", ARGS(undefined, undefined, "AAAA")],
     ["another verb", ARGS(undefined, "uninstall")],
+    ["another owner uid", ARGS(undefined, undefined, undefined, undefined, '--owner-uid 0 --owner-name root --owner-home "$HOME" --vyred-wrapper "$HOME/w"')],
+    ["another owner name", ARGS(undefined, undefined, undefined, undefined, '--owner-uid "$(id -u)" --owner-name root --owner-home "$HOME" --vyred-wrapper "$HOME/w"')],
+    ["another owner home", ARGS(undefined, undefined, undefined, undefined, '--owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home /var/root --vyred-wrapper /var/root/w')],
+    ["a wrapper outside the home", ARGS(undefined, undefined, undefined, undefined, '--owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper /tmp/evil')],
+    ["a wrapper that climbs out of the home", ARGS(undefined, undefined, undefined, undefined, '--owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$HOME/../../tmp/evil"')],
+    ["an unknown flag", ARGS(undefined, undefined, undefined, undefined, OWNER + " --evil x")],
+    ["a flag with no value", ARGS(undefined, undefined, undefined, undefined, OWNER + " --gh-bin")],
     ["a plain command", "/bin/rm -rf /tmp/x"],
     ["sh with a script file", `/bin/sh /tmp/evil.sh a b c d e f g h i j`],
   ];

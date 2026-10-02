@@ -56,6 +56,23 @@ refuse() { echo "vyre-sudo: refused: it runs only the installer's root step ($1)
 [ "$8" = "$want_key" ] || refuse "wrong release key"
 [ "$(sha "$9")" = "$want_verify" ] || refuse "wrong verify script"
 [ "${10}" = install ] || refuse "wrong verb"
+shift 10
+# The flags the installer passes after the verb, and nothing else. The owner is the person running this: their uid and name, their
+# home, and a wrapper under that home.
+me="$(/usr/bin/id -u)"; name="$(/usr/bin/id -un)"
+while [ "$#" -gt 0 ]; do
+  [ "$#" -ge 2 ] || refuse "a flag with no value"
+  case "$1" in
+    --owner-uid) [ "$2" = "$me" ] || refuse "owner uid is not this user's" ;;
+    --owner-name) [ "$2" = "$name" ] || refuse "owner name is not this user's" ;;
+    --owner-home) [ -n "${HOME:-}" ] && [ "$2" = "$HOME" ] || refuse "owner home is not this user's" ;;
+    --vyred-wrapper) case "$2" in "$HOME"/*) ;; *) refuse "wrapper outside the home" ;; esac
+      case "$2" in *..*) refuse "wrapper path" ;; esac ;;
+    --gh-bin|--colima-program) ;;
+    *) refuse "unknown flag $1" ;;
+  esac
+  shift 2
+done
 exit 0
 CHECK
 } > "$out"
