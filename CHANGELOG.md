@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
 

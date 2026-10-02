@@ -31,7 +31,7 @@ jobs:
         env:
           VYRE_TEST_UNSTRIPPED_WRAPPER: ${{ matrix.mode == 'source' && '1' || '' }}
         run: |
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="8.0.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
           sh scripts/build-site.sh
           if [ "${{ matrix.mode }}" = stripped ]; then ! grep -q VYRE_RELEASE_KEY site/box/vyre; else grep -q VYRE_RELEASE_KEY site/box/vyre; fi
       - name: J2b, the update refusals (${{ matrix.mode }})
