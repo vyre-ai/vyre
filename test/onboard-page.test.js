@@ -150,8 +150,9 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     await page.run(`document.querySelector("#primary").click()`);
     await page.until(`location.hash === "#tailscale"`, "still needs to join Tailscale, even as a device");
     const saved = config.load(root);
-    assert.equal(saved.name, "alex");
+    // The name typed in step 1 is the person's, never the address (#50): it saves the person only.
     assert.equal(saved.onboard.person, "alex");
+    assert.notEqual(saved.name, "alex");
   });
 
 test("onboard page: Device, already on the same Tailscale network, verifies the server's name before proceeding (reviewer-2's caught bug)",
