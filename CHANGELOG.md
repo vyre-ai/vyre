@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Pairing: the arriving phone shows its own key fingerprint
+
+While the phone waits for the screen's Confirm it shows "This phone: <fingerprint>", the same format as the box's pairing.requested card, so the person compares two. Both the hosted app's card (relay/app/loader) and the Deck's scan sheet use tailnet's `onFingerprint` on `pairOffer`. Text only, capped.
+
 #### Wink card: a fresh code for whoever is looking, so the second scan always works
 
 - The shared ring card (`js/wink-card.js`, used by onboarding's devices step and Settings > Devices) renews its code by itself after the person's one tap: in the last 30 seconds, or at once when they come back to a code that has run out. The renewal asks for no proof; a server that wants one gets the plain Refresh, as before. Only while the card is in view and focused (nobody looking, nothing minted), at most six renewals in a row, and none after the phone has paired or the device was removed. The line under the ring now points at wink.vyre.run. Tests in `deck/test/wink-card.test.js`.
