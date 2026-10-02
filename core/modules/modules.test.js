@@ -396,7 +396,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
 test("modules: ctx.remote says no_link without a link, and a listener's peer reaches run but not input", async t => {
   const src = `export default { async start(ctx) {
     ctx.tool("notes.add", { input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
-    ctx.route("feed", (req, res) => res.end("ok"));
+    ctx.route("feed", (req, res) => res.end("ok"), { readOnly: true });
     return { async stop() {} };
   } };`;
   const reg = await registry(t, [["notes", good, src]]);
