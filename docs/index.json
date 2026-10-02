@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":857,"event":339,"config":239,"env":192,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":858,"event":340,"config":239,"env":192,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -268,6 +268,7 @@
     {"kind":"event","name":"device.moved","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"device.paired","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[{"page":"adr/0026-relay.md","line":255,"anchor":"6-pairing"},{"page":"adr/0026-relay.md","line":270,"anchor":"7-the-box-side"}]},
     {"kind":"event","name":"device.removed","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[{"page":"adr/0026-relay.md","line":271,"anchor":"7-the-box-side"}]},
+    {"kind":"event","name":"device.renamed","definedIn":"core/link/box.js","page":"reference/events.md#link","module":"link","mentions":[]},
     {"kind":"event","name":"device.trust-asked","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"distill.finished","definedIn":"core/learn/jobs.js","page":"reference/events.md#learn","module":"learn","mentions":[{"page":"adr/0007-intelligence.md","line":262,"anchor":"12-the-contract"}]},
     {"kind":"event","name":"domain.failed","definedIn":"core/names/service.js","page":"reference/events.md#names","module":"names","mentions":[]},
@@ -557,6 +558,7 @@
     {"kind":"tool","name":"link.peers","definedIn":"core/link/box.js","page":"reference/tools.md#linkpeers","module":"link","mentions":[]},
     {"kind":"tool","name":"link.pending","definedIn":"core/link/box.js","page":"reference/tools.md#linkpending","module":"link","mentions":[{"page":"adr/0036-one-system.md","line":91,"anchor":"4-waiting-one-waiting-on-you"},{"page":"design/projects-map.md","line":49,"anchor":"watchers-owner-cohesion-for-the-glue-various-for-the-underlying-signal"}]},
     {"kind":"tool","name":"link.remote","definedIn":"core/link/mac.js","page":"reference/tools.md#linkremote","module":"link","mentions":[{"page":"adr/0018-mobile.md","line":59,"anchor":"2--what-the-app-talks-to"},{"page":"adr/0040-vyre-core.md","line":70,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"},{"page":"adr/0040-vyre-core.md","line":79,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"}]},
+    {"kind":"tool","name":"link.rename","definedIn":"core/link/box.js","page":"reference/tools.md#linkrename","module":"link","mentions":[]},
     {"kind":"tool","name":"link.reply","definedIn":"core/link/box.js","page":"reference/tools.md#linkreply","module":"link","mentions":[{"page":"concepts/box-and-mac.md","line":181,"anchor":"the-box-reads-the-macs-sessions"},{"page":"adr/0021-box-reads-the-mac.md","line":25,"anchor":"decision"},{"page":"adr/0040-vyre-core.md","line":79,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"}]},
     {"kind":"tool","name":"link.serve","definedIn":"core/link/box.js","page":"reference/tools.md#linkserve","module":"link","mentions":[{"page":"concepts/box-and-mac.md","line":181,"anchor":"the-box-reads-the-macs-sessions"},{"page":"adr/0021-box-reads-the-mac.md","line":24,"anchor":"decision"},{"page":"adr/0040-vyre-core.md","line":79,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"}]},
     {"kind":"event","name":"link.signed-in","definedIn":"core/link/mac.js","page":"reference/events.md#link","module":"link","mentions":[]},

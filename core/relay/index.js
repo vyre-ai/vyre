@@ -16,6 +16,7 @@
 
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
+import { friendlyDeviceName } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
@@ -297,7 +298,7 @@ export default {
         const match = takeLiveSecret(hello.pair);
         if (!match) throw new Error("this pairing code has expired or was already used; make a new one on the box");
         if (match.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
-        const name = promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64);
+        const name = friendlyDeviceName(promptSafe(typeof hello.name === "string" ? hello.name.trim() : "", "a device", 64), { kind: hello.kind === "web" ? "web" : "device", owner: (ctx.config.onboard || {}).person });
         const kind = hello.kind === "web" ? "web" : "app";
         // A desktop asks to join the tailnet in its pairing hello (ADR 0046 section 3). The grant
         // is what makes a later key possible at all, so it only ever comes from a pairing, which a
@@ -718,6 +719,7 @@ export default {
         if (!NAME.test(name)) throw fail("bad_input", "a name is 1 to 64 printable characters");
         const r = db.prepare("UPDATE relay_devices SET name = ? WHERE id = ? AND removed_at IS NULL").run(name, String(input.id));
         if (!r.changes) throw fail("not_found", `no paired device ${input.id}`);
+        ctx.events.emit("device.renamed", { kind: "relay", id: String(input.id), name });
         return { id: String(input.id), name };
       },
     });
