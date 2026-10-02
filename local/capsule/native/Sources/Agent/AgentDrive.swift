@@ -96,10 +96,15 @@ enum Drive {
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
         if VJ.truthy(c["linkcatalog"]) {
             // What a paired Mac knows of its server (BoxLink.swift): the check for #36 reads it.
+            // Read the link afresh first, as showing the panel does (CapsuleModel.willShow), so a server that went away is seen.
             let box = a.vyred.box
-            say(["linked": box.linked, "box": box.boxName ?? NSNull(), "reachable": box.reachable ?? NSNull(),
-                 "agents": m.catalog.agents.map { $0.map(\.name) } ?? NSNull(), "assistant": m.catalog.assistant?.name ?? NSNull(),
-                 "hasAsk": a.vyred.has("agents.ask")]); return
+            Task { @MainActor in
+                if VJ.truthy(c["refresh"]) { await box.refresh(a.vyred) }
+                say(["linked": box.linked, "box": box.boxName ?? NSNull(), "reachable": box.reachable ?? NSNull(),
+                     "agents": m.catalog.agents.map { $0.map(\.name) } ?? NSNull(), "assistant": m.catalog.assistant?.name ?? NSNull(),
+                     "hasAsk": a.vyred.has("agents.ask")])
+            }
+            return
         }
         if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {

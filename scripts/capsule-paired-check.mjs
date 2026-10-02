@@ -95,6 +95,11 @@ try {
   check(settled, "a quick question is not left on 'starting' (it answered or said it could not)");
   await still("paired-answered.png");
 
+  // The question reached the assistant on the box: a thread event happened there (the Mac's own vyred has no assistant).
+  const boxThreadEvents = world.box.events.since(0, { limit: 500 }).filter(e => String(e.type).startsWith("thread."));
+  console.log(`box thread events: ${boxThreadEvents.map(e => e.type).slice(0, 6).join(", ") || "none"}`);
+  check(boxThreadEvents.length > 0, "the question reached the box: the assistant's thread ran there");
+
   // The Mac's own things stay here.
   await send({ text: "" });
   await send({ text: "safari" }); await pause(900);
@@ -102,12 +107,12 @@ try {
   check(p.rows.length > 0, "an app search still answers on this Mac");
 
   // The server goes away: the words say so.
-  await send({ text: "" }); await send({ hide: true });
+  await send({ text: "" }); await send({ key: "escape" }); await send({ key: "escape" }); await send({ hide: true });
   await world.stopTailnet();
   let away = false;
   for (let i = 0; i < 30 && !away; i++) {
     await pause(1000);
-    await send({ show: true }); await pause(800);
+    await send({ show: true }); await send({ linkcatalog: true, refresh: true }); await pause(500);
     await send({ text: "what is on my plate today" }); await pause(800);
     p = await send({ probe: true });
     away = /Your server is not reachable/.test(JSON.stringify(p.rows) + JSON.stringify(p.line || ""));
