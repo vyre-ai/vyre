@@ -74,6 +74,9 @@ const ROUTES = [
   // The box's shared folders, browsed from a phone (views/files.js).
   ["/files", "files"],
   ["/files/:share", "files"],
+  // Drive is where a person looks for it (#51): /drive works as a bookmark and after a reload, like the rail link.
+  ["/drive", "files"],
+  ["/drive/:share", "files"],
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
@@ -436,8 +439,9 @@ async function route() {
   // Projects never draws a conversation: a chat opens in Chat, scoped to its project (#47). The old addresses still work and go there.
   {
     const m = /^\/projects\/([^/]+)\/([^/]+)\/?$/.exec(location.pathname), t = /^\/threads\/([^/]+)\/?$/.exec(location.pathname);
-    const to = m ? `/chat/${m[1]}/${m[2]}` : t ? `/chat/thread/${t[1]}` : null;
-    if (to) history.replaceState(history.state, "", to + location.search + location.hash);
+    // Devices is a part of Settings: /devices is its address (#51).
+    const to = m ? `/chat/${m[1]}/${m[2]}` : t ? `/chat/thread/${t[1]}` : /^\/devices\/?$/.test(location.pathname) ? "/settings#devices" : null;
+    if (to) history.replaceState(history.state, "", to.includes("#") ? to : to + location.search + location.hash);
   }
   const { view: name, params } = match(location.pathname);
   trace.routeStart(location.pathname + location.search, name);
@@ -533,6 +537,14 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
     /** Fill the list column right of the rail (Chat's sessions). */
     rail: (/** @type {any} */ el) => { entry.rail = el; if (current === key) { put(railLower, el); sideSync(); } },
   };
+  // An address nothing serves (#51): the plain "not found" page, with no request for a view file that does not exist.
+  if (name === "missing") {
+    put(page, h("div", { style: { padding: "48px 72px" } },
+      h("div", { class: "lbl" }, "Not found"),
+      h("h1", { class: "h2", style: { marginTop: "10px" } }, "There is nothing at this address."),
+      h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
+    return;
+  }
   try {
     // The stylesheet and the view's code are asked for together, not one after the other: two round trips become one.
     const [, mod] = await Promise.all([style(name).then(() => trace.mark("css")), import(`../views/${name}.js`).then(m => { trace.mark("code"); return m; })]);

@@ -55,7 +55,7 @@
 //
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
-import { h, put, empty, go } from "../js/dom.js";
+import { h, put, empty, go, link } from "../js/dom.js";
 import { openHref } from "./newsession.js";
 import { attempt, on, onResume } from "../js/api.js";
 import { icon } from "../js/icons.js";
@@ -78,6 +78,8 @@ import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { threadAvatar, readTeammates, readProjects, isTeammate } from "../js/avatars.js";
 import { threadHref } from "./lib/routes.js";
+import { providerName } from "../js/provider-mark.js";
+import { stopWords } from "./core/stop-words.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, handoffCard, turnRow, rawView, outputEl, pictureThumb } from "./blocks.js";
 import { frameToPicture } from "./core/images.js";
@@ -274,7 +276,8 @@ export function mountSession(container, opts) {
   /** The assistant's first message (cards/land.js), only in its own thread and only while nothing was said. */
   let welcomeEl = /** @type {any} */ (null);
   const early = /** @type {any[]} */ ([]);
-  const agentName = () => labelFor({ role: "assistant", agent: record.current?.agent }, names);
+  // A plain session (no agent runs it) is answered by its provider, and says so (#53): not by the assistant's name.
+  const agentName = () => record.current?.agent || !S.provider ? labelFor({ role: "assistant", agent: record.current?.agent }, names) : providerName(S.provider);
   /** Who the replies are from, as an avatar (js/avatars.js threadAvatar): the project's tile, a chat's draft tile, an agent, a teammate or the assistant. */
   const whoAv = (size = 24, cls = "av-agent msg-av cv-av") => threadAvatar({ agent: record.current?.agent, project: record.current?.project || opts.project || null, thread },
     { size, cls, title: agentName() });
@@ -441,7 +444,7 @@ export function mountSession(container, opts) {
       whoAv(32, "cv-head-av"),
       h("div", { class: "cv-head-text" },
         // The title and a short id: sessions in one project share its tile, so these tell them apart.
-        h("div", { class: "cv-head-line" }, h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || thread.slice(0, 12)),
+        h("div", { class: "cv-head-line" }, h("div", { class: "title ellipsis" }, rec?.name || ses?.name || ses?.title || firstWords() || "New chat"),
           h("span", { class: "cv-num code faint", title: `Session ${thread}` }, "#" + thread.slice(0, 6))),
         h("div", { class: "sub ellipsis", title: rec?.cwd || ses?.cwd || null }, [rec?.agent, shortDir(rec?.cwd || ses?.cwd)].filter(Boolean).join(" · ") || "Terminal session"),
       ),
@@ -474,7 +477,9 @@ export function mountSession(container, opts) {
     // Nobody holds the keyboard, nothing to resume, no error: on a solo session (the common case)
     // this is every draw, forever - "No one is typing" then reads as a chat-presence indicator with
     // nothing to report, not a keyboard-lease one. Hide the row rather than say that (app-design).
-    const nothing = !rec?.holder && !recorded.on && !idleClosed && !stop.error;
+    // A session that stopped with a failure says why and what to do, under its message (#54): never only the word "failed".
+    const dead = sb && S.state === "failed" ? stopWords(S.stopped) : null;
+    const nothing = !rec?.holder && !recorded.on && !idleClosed && !stop.error && !dead;
     leaseBar.hidden = nothing;
     if (nothing) return;
     put(leaseBar,
@@ -486,6 +491,8 @@ export function mountSession(container, opts) {
         : null, // only stop.error is true here (the `nothing` check above returned otherwise)
       rec?.holder && !OURS.has(rec.holder) ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
       stop.error ? h("span", { class: "err cv-stop-err" }, stop.error) : null,
+      dead ? h("span", { class: "cv-stopped", role: "status" }, dead.line, " ", h("span", { class: "faint", title: dead.detail }, dead.detail),
+        dead.action === "sign-in" ? [" ", link("/settings#accounts", { class: "btn btn-sm" }, "Sign in")] : null) : null,
     );
   }
   let continuing = false, continueError = /** @type {string|null} */ (null);
@@ -502,6 +509,8 @@ export function mountSession(container, opts) {
     if (!id) { continueError = "It started, but the server did not say which conversation it is."; drawHead(); return; }
     go(threadHref({ id }, record.current?.project || opts.project || null));
   }
+  /** A session with no name is titled from what was said first, never from its id (#53). */
+  const firstWords = () => { const u = /** @type {any} */ (S.items.find(it => it.kind === "user" && /** @type {any} */ (it).text)); return u ? String(u.text).replace(/\s+/g, " ").trim().split(" ").slice(0, 8).join(" ").slice(0, 60) : ""; };
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
 
   /**
