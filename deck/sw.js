@@ -139,7 +139,7 @@ function semverLess(a, b) {
   return false;
 }
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
-  "/css/tokens.css", "/css/deck.css", "/css/buttons.css", "/css/marks.css", "/js/status-mark.js", "/js/rail.js", "/css/toast.css", "/js/toast.js", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
+  "/css/tokens.css", "/css/deck.css", "/css/buttons.css", "/css/rows.css", "/js/rows.js", "/css/marks.css", "/js/status-mark.js", "/js/rail.js", "/css/toast.css", "/js/toast.js", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
   "/js/pwa.js", "/js/reconnect.js", "/js/theme-live.js", "/js/context-report.js", "/js/glass-mini.js", "/js/keyboard.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js", "/js/home.js", "/js/trust-ask.js", "/js/project-actions.js",
   "/js/now-phone.js", "/js/sheet.js", "/css/sheet.css", "/js/person.js", "/js/need-sheet.js", "/js/need-rows.js", "/js/capsule.js", "/js/places.js",
   "/js/avatars.js", "/js/build-check.js", "/js/platform.js", "/chat/lib/opened-here.js", "/js/github-repo-picker.js", "/vendor/vyrecode/identity.js", "/vendor/vyrecode/creature.js", "/vendor/vyrecode/characters.js", "/vendor/vyrecode/project.js", "/vendor/vyrecode/vyrecode2.js",

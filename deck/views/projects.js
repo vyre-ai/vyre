@@ -471,7 +471,7 @@ async function loose(ctx) {
     // Still offered with zero existing projects: form() falls back to "New project from a
     // GitHub repo…" alone when there's nothing to pick from the select.
     const btn = h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, "Add to a project");
-    put(add, draftAvatar(id, { size: 24, title: "Not in a project yet" }), h("span", { class: "small faint lt-none" }, "Not in a project."), make, btn);
+    put(add, h("span", { class: "lt-none-ico faint", "aria-hidden": "true" }, icon("projects", 16)), h("span", { class: "small faint lt-none" }, "Not in a project."), make, btn);
   };
   const newProject = () => {
     const name = /** @type {HTMLInputElement} */ (h("input", { class: "input lt-sel", "aria-label": "Project name", placeholder: "Project name" }));
