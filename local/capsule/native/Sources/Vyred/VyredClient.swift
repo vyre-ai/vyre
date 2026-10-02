@@ -388,7 +388,14 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     public init(socket: String = vyredSocketPath()) { self.socket = socket }
 
     public var isUp: Bool { lock.lock(); defer { lock.unlock() }; return up }
-    public func has(_ tool: String) -> Bool { lock.lock(); defer { lock.unlock() }; return tools.contains(tool) }
+    /// The server this Mac is paired to, when it is (BoxLink.swift): its asks and its events come through here.
+    public let box = BoxLink()
+    public func has(_ tool: String) -> Bool {
+        lock.lock()
+        let local = tools.contains(tool), linkCall = tools.contains("link.call")
+        lock.unlock()
+        return local || (linkCall && box.offers(tool))
+    }
     public var toolNames: Set<String> { lock.lock(); defer { lock.unlock() }; return tools }
 
     func setUp(_ v: Bool) { lock.lock(); up = v; if !v { tools = [] }; lock.unlock() }
@@ -531,6 +538,12 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     }
 
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
+        if box.routes(tool, input) { return await box.call(self, tool, input, timeout: timeout) }
+        return await callLocal(tool, input, timeout: timeout)
+    }
+
+    /// The same call to this Mac's own vyred, never to the server.
+    func callLocal(_ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
         guard let body = VJ.encode(input) else { return .failure(code: "bad_input", message: "The input to \(tool) is not JSON.") }
         return await send("POST", "/v1/tools/" + Glass.encode(tool), body, timeout: timeout)
     }
@@ -681,7 +694,7 @@ public final class VyredFollower {
             onOpen: { [weak self] in
                 onMain {
                     guard let self, gen == self.generation else { return }
-                    Task { await self.client?.refreshTools(); if gen == self.generation { self.onState?(.open) } }
+                    Task { await self.client?.refreshTools(); if let c = self.client { await c.box.refresh(c) }; if gen == self.generation { self.onState?(.open) } }
                 }
             },
             onEvent: { [weak self] json in

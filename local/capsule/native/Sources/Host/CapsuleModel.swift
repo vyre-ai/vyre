@@ -309,6 +309,8 @@ public final class CapsuleModel: ObservableObject {
         Task { @MainActor [vyred] in
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
+            // A Mac paired to a server asks it for the assistant, memory and agents (BoxLink.swift), so know that before the catalog loads.
+            await vyred.box.refresh(vyred)
             self.loadNextMeeting()
             await self.loadModels()
             await self.loadIdentities()

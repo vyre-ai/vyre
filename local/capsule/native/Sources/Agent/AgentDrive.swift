@@ -94,6 +94,13 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if VJ.truthy(c["linkcatalog"]) {
+            // What a paired Mac knows of its server (BoxLink.swift): the check for #36 reads it.
+            let box = a.vyred.box
+            say(["linked": box.linked, "box": box.boxName ?? NSNull(), "reachable": box.reachable ?? NSNull(),
+                 "agents": m.catalog.agents.map { $0.map(\.name) } ?? NSNull(), "assistant": m.catalog.assistant?.name ?? NSNull(),
+                 "hasAsk": a.vyred.has("agents.ask")]); return
+        }
         if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {
             // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
