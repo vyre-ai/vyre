@@ -281,13 +281,13 @@ public enum AutofillCore {
     case "no_biometrics": return "Face ID or Touch ID is not set up."
     case "keygen": return "Could not make a device key on this device."
     case "keychain": return "Could not use the keychain."
-    case "network": return "Could not reach vyred."
+    case "network": return "Could not reach your server."
     case "bad_server": return "Use an https address, or http://127.0.0.1."
     case "not_found", "wrong_origin": return "No matching login in the vault."
     case "no_totp": return "That login has no one-time code."
     case "not_enabled": return "Turn on Vyre in AutoFill settings."
     case "store": return "Could not update the AutoFill list."
-    case "bad_challenge": return "vyred sent a challenge this device will not sign."
+    case "bad_challenge": return "Your server sent a request this phone will not sign."
     default: return "Something went wrong (\(code))."
     }
   }
