@@ -11,6 +11,12 @@
 import http from "node:http";
 import { page, pageHeaders } from "../render.js";
 
+// The daemon's own rule for when a request is the person's (core/presence/person.js foreignFetch): a request another site or a
+// frame started does not carry the person's session. Absent on a tree without the rule, and then every cookie counts.
+let foreignFetch = null;
+try { const p = await import("../../presence/person.js"); if (typeof p.foreignFetch === "function") foreignFetch = p.foreignFetch; } catch { /* no rule on this tree */ }
+export const RULE_PRESENT = Boolean(foreignFetch);
+
 export const SECRET_COOKIE = "vyre_session=S3CRET-COOKIE";
 export const LAX_COOKIE = "vyre_lax=S3CRET-LAX";
 export const SECRET_STORAGE = "S3CRET-STORAGE";
@@ -46,6 +52,8 @@ const HOSTILE = String.raw`
     await attack("navigate the top window", () => { top.location.href = "/hijack?via=top"; return "navigated"; }).then(() => {});
     await attack("navigate the parent", () => { parent.location = "/hijack?via=parent"; return "navigated"; }).then(() => {});
   }
+  await attack("an image given as data in the page still loads", () => new Promise((res, rej) => { const i = new Image(); i.onload = () => res("loaded"); i.onerror = () => rej(new Error("did not load")); i.src = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="; setTimeout(() => rej(new Error("did not load")), 2000); }));
+  { const l = out[out.length - 1]; if (l.name.startsWith("an image given as data") && l.ok && !/loaded/.test(l.detail)) { l.ok = false; l.detail = "DID NOT LOAD: a page's own data image must still work"; } if (/blocked/.test(l.detail)) { l.ok = false; l.detail = "DID NOT LOAD: a page's own data image must still work"; } }
   const sink = u => u + "?via=";
   await attack("fetch the Vyre API with cookies", () => fetch(sink("/v1/api/secret") + "fetch", { credentials: "include" }).then(r => r.text()));
   await attack("fetch another origin", () => fetch("http://localhost:" + PORT + sink("/v1/beacon") + "crossorigin", { mode: "no-cors" }).then(r => "status " + r.status));
@@ -61,6 +69,10 @@ const HOSTILE = String.raw`
   await tag("iframe src", () => { const f = document.createElement("iframe"); f.src = sink("/v1/beacon") + "iframe"; return f; });
   await attack("popup by an anchor with target=_blank", () => new Promise(res => { const a = document.createElement("a"); a.href = sink("/v1/beacon") + "blank"; a.target = "_blank"; document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
   await attack("popup by form target=_blank", () => new Promise(res => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "formblank"; f.method = "post"; f.target = "_blank"; document.body.appendChild(f); try { f.submit(); } catch {} setTimeout(() => res("tried"), 800); }));
+  await attack("ping on a link", () => new Promise(res => { const a = document.createElement("a"); a.href = "#x"; a.setAttribute("ping", sink("/v1/beacon") + "ping"); document.body.appendChild(a); a.click(); setTimeout(() => res("clicked"), 800); }));
+  await tag("link rel=prefetch", () => { const l = document.createElement("link"); l.rel = "prefetch"; l.href = sink("/v1/beacon") + "prefetch"; return l; });
+  await tag("link rel=preload as fetch", () => { const l = document.createElement("link"); l.rel = "preload"; l.as = "fetch"; l.crossOrigin = "anonymous"; l.href = sink("/v1/beacon") + "preload"; return l; });
+  await tag("link rel=prerender", () => { const l = document.createElement("link"); l.rel = "prerender"; l.href = sink("/v1/beacon") + "prerender"; return l; });
   await tag("form submit", () => { const f = document.createElement("form"); f.action = sink("/v1/api/secret") + "form"; f.method = "post"; setTimeout(() => { try { f.submit(); } catch {} }, 50); return f; });
   await tag("object data", () => { const o = document.createElement("object"); o.data = sink("/v1/beacon") + "object"; return o; });
   await tag("css url()", () => { const d = document.createElement("div"); d.style.cssText = "width:9px;height:9px;background:url('" + sink("/v1/beacon") + "cssurl')"; return d; });
@@ -127,6 +139,7 @@ function deckPage() {
 </script>
 <iframe id="f" sandbox="allow-scripts" src="/a/hostile?mode=framed" style="width:340px;height:300px"></iframe>
 <iframe id="c" sandbox="allow-scripts allow-same-origin" src="/a/control" style="width:200px;height:80px"></iframe>
+<img id="pic" src="/v1/pic" alt="the person's own picture" width="20" height="20">
 <script>
   const f = document.getElementById("f"), c = document.getElementById("c"), framed = []; let control = null;
   let sent = false;
@@ -137,6 +150,8 @@ function deckPage() {
     outer.push({ name: "the frame cannot plant a cookie", ok: !document.cookie.includes("planted"), detail: "outer cookie: " + document.cookie.replace(/S3CRET[^;]*/, "<secret>") });
     outer.push({ name: "the frame cannot plant localStorage", ok: localStorage.getItem("planted") === null, detail: String(localStorage.getItem("planted")) });
     outer.push({ name: "the deck is still here after the hostile page ran", ok: location.pathname === "/", detail: location.pathname });
+    const pic = document.getElementById("pic");
+    outer.push({ name: "the Deck's own image of the person's media loads", ok: pic.complete && pic.naturalWidth > 0, detail: pic.complete && pic.naturalWidth > 0 ? "loaded" : "NOT LOADED (the rule refused the person's own image request, or it failed)" });
     await fetch("/report", { method: "POST", body: JSON.stringify({ ua: navigator.userAgent, note, framed, outer, control }) });
     document.title = "reported";
   }
@@ -157,14 +172,26 @@ function deckPage() {
  * @returns {Promise<{ url: string, port: number, state: any, close: () => Promise<void> }>}
  */
 export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
-  const state = { hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
+  const state = { rule: RULE_PRESENT, loads: /** @type {{ path: string, accepted: boolean, sf: string }[]} */ ([]), accepted: /** @type {Record<string, boolean[]>} */ ({}), hits: /** @type {Record<string, number>} */ ({}), cookies: /** @type {Record<string, string[]>} */ ({}), urls: /** @type {Record<string, { len: number, data: number, host: string, sf: string }[]>} */ ({}), api: /** @type {{ via: string, cookie: boolean }[]} */ ([]), report: /** @type {any} */ (null), top: /** @type {any} */ (null), served: [] };
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || "/", "http://x");
     const via = u.searchParams.get("via");
+    // Would the server take this request as the person's? It carries the session cookie and is not foreign to this origin.
+    const hasSession = /vyre_session=/.test(String(req.headers.cookie || ""));
+    const accepted = hasSession && !(foreignFetch && foreignFetch(req.headers));
+    const sf = ["sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"].map(h => `${h.slice(10)}=${req.headers[h] || "none"}`).join(" ");
+    if (u.pathname === "/" || u.pathname === "/a/hostile" || u.pathname === "/a/control") state.loads.push({ path: u.pathname + (u.searchParams.get("mode") ? "?mode=" + u.searchParams.get("mode") : ""), accepted, sf });
     state.served.push(req.method + " " + u.pathname + (via ? "?via=" + via : ""));
     if (u.pathname === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": [SECRET_COOKIE + "; Path=/; SameSite=Strict", LAX_COOKIE + "; Path=/; SameSite=Lax"], "cache-control": "no-store" });
       return void res.end(deckPage());
+    }
+    if (u.pathname === "/v1/pic") {
+      // The person's own picture (like a media artifact): served only to a request taken as the person's. The Deck page loads it as an image.
+      state.loads.push({ path: "/v1/pic", accepted, sf });
+      if (!accepted) { res.writeHead(401, { "content-type": "text/plain" }); return void res.end("sign in"); }
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
+      return void res.end(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64"));
     }
     if (u.pathname === "/a/control") { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); return void res.end(controlPage()); }
     if (u.pathname === "/a/hostile") {
@@ -176,7 +203,8 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
     if (u.pathname === "/v1/api/secret" || u.pathname === "/v1/beacon" || u.pathname === "/hijack") {
       const key = u.pathname === "/hijack" ? "hijack" : via || "unknown";
       state.hits[key] = (state.hits[key] || 0) + 1;
-      (state.urls[key] ||= []).push({ len: (req.url || "").length, data: (u.searchParams.get("d") || "").length, host: String(req.headers.host || "") });
+      (state.urls[key] ||= []).push({ len: (req.url || "").length, data: (u.searchParams.get("d") || "").length, host: String(req.headers.host || ""), sf: ["sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest"].map(h => `${h.slice(10)}=${req.headers[h] || "none"}`).join(" ") });
+      (state.accepted[key] ||= []).push(accepted);
       (state.cookies[key] ||= []).push(String(req.headers.cookie || "").split(";").map(x => x.trim().split("=")[0]).filter(Boolean).join(","));
       if (u.pathname === "/v1/api/secret") state.api.push({ via: key, cookie: /vyre_session/.test(req.headers.cookie || "") });
       res.writeHead(200, { "content-type": "application/json", "access-control-allow-origin": "*" });
@@ -193,7 +221,7 @@ export function startServer({ port = 0, host = "127.0.0.1" } = {}) {
       res.writeHead(200, { "content-type": "text/plain" });
       return void res.end("ok");
     }
-    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ hits: state.hits, cookies: state.cookies, urls: state.urls, api: state.api, report: state.report, top: state.top })); }
+    if (u.pathname === "/state") { res.writeHead(200, { "content-type": "application/json" }); return void res.end(JSON.stringify({ loads: state.loads, accepted: state.accepted, rule: RULE_PRESENT, hits: state.hits, cookies: state.cookies, urls: state.urls, api: state.api, report: state.report, top: state.top })); }
     res.writeHead(404); res.end("not found");
   });
   server.on("upgrade", (req, socket) => { const u = new URL(req.url || "/", "http://x"); const via = u.searchParams.get("via") || "ws"; state.hits[via] = (state.hits[via] || 0) + 1; socket.destroy(); });

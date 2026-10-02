@@ -188,7 +188,7 @@ export default {
         ctx.log(`apps: ${err.message}`);
         return fail(res, err.code === "release_mismatch" ? 409 : 500, err.code === "release_mismatch" ? "release_mismatch" : "release_failed", err.message);
       }
-    });
+    }, { readOnly: true });
 
     return { async stop() {} };
   },
