@@ -94,7 +94,9 @@ async function main() {
       const t = await (await fetch(`${base}/json/new?${encodeURIComponent(url)}`, { method: "PUT" })).json();
       const page = await attach(t.webSocketDebuggerUrl);
       cleanup.push(() => { page.close(); return fetch(`${base}/json/close/${t.id}`).catch(() => {}); });
-      await page.run(`await new Promise(r => { if (document.readyState === "complete") r(); else addEventListener("load", r); });`);
+      // A new target starts on about:blank, whose readyState is already "complete": waiting on that alone let the script run before the test page
+      // had loaded (#14, document.getElementById("m") was null). Wait for the test page's own element.
+      await page.run(`await new Promise((r, j) => { const end = Date.now() + 15000; const tick = () => { if (document.readyState === "complete" && document.getElementById("m")) r(); else if (Date.now() > end) j(new Error("the test page never loaded")); else setTimeout(tick, 20); }; tick(); });`);
       await page.run(`
         window.__sent = [];
         window.chrome = { runtime: { id: "chip-check", lastError: undefined, sendMessage: (m, cb) => { window.__sent.push(JSON.parse(JSON.stringify(m)));
@@ -105,7 +107,7 @@ async function main() {
       await page.run(keychip);
       return page;
     }
-    const show = (value, id = "k") => `const c = document.createElement("code"); c.id = "${id}"; c.textContent = "${value}"; document.getElementById("m").append(c);`;
+    const show = (value, id = "k") => `const c = document.createElement("code"); c.id = "${id}"; c.textContent = "${value}"; (document.getElementById("m") || document.body).append(c);`;
     const sent = page => page.run("return window.__sent.map(m => m.type)");
     const chipUp = page => page.run(`return !!document.querySelector("vyre-vault-key")`);
     const waitChip = async page => { for (let i = 0; i < 200; i++) { if (await chipUp(page)) return; await sleep(10); } throw new Error("the chip never appeared"); };
