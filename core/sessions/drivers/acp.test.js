@@ -353,6 +353,8 @@ test("acp: askFor maps ACP tool kinds onto the floor's tool names and inputs", (
   // An edit with its diff is asked as that edit: Grok's content [{ type: "diff" }].
   assert.deepEqual(askFor({ kind: "edit", title: "Edit a.js", locations: [{ path: "/w/a.js" }], content: [{ type: "diff", path: "/w/a.js", oldText: "a\nb\n", newText: "a\nc\n" }] }),
     { name: "Edit", input: { file_path: "/w/a.js", old_string: "a\nb\n", new_string: "a\nc\n" } });
+  // The path is the tool's own location, never the one the diff block names.
+  assert.equal(askFor({ kind: "edit", title: "Edit", locations: [{ path: "/w/real.js" }], content: [{ type: "diff", path: "/etc/passwd", oldText: "a", newText: "b" }] }).input.file_path, "/w/real.js");
   assert.deepEqual(askFor({ kind: "edit", title: "New", content: [{ type: "diff", path: "/w/n.js", oldText: null, newText: "x\n" }] }), { name: "Write", input: { file_path: "/w/n.js", content: "x\n" } });
   assert.equal(askFor({ kind: "think", title: "Thinking" }).name, "Thinking");
 });

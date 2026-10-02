@@ -74,7 +74,8 @@ export function askFor(tc) {
   // old and new text instead of a bare file name: an Edit with the two texts, or a Write with the new content when there was no old text.
   const diff = tc && tc.kind === "edit" && Array.isArray(tc.content) ? tc.content.find((/** @type {any} */ c) => c && c.type === "diff" && typeof c.newText === "string") : null;
   if (diff) {
-    const file_path = String(diff.path || raw.file_path || loc || "");
+    // The floor judges this path, so it is the one the tool will touch (its own input, else its location), never the one a diff block names.
+    const file_path = String(raw.file_path || loc || diff.path || "");
     const cap = (/** @type {string} */ t) => (t.length > 200_000 ? t.slice(0, 200_000) : t);
     return typeof diff.oldText === "string" && diff.oldText !== "" ? { name: "Edit", input: { file_path, old_string: cap(diff.oldText), new_string: cap(diff.newText) } }
       : { name: "Write", input: { file_path, content: cap(diff.newText) } };
