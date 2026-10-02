@@ -16,6 +16,7 @@ const DECK = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..")
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-claim-"));
 const TYPES = { ".js": "text/javascript", ".html": "text/html; charset=utf-8", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2", ".json": "application/json" };
 let claimCalls = 0;
+/** @type {string[]} */ const missing = [];
 /** @type {any[]} */ const reports = [];
 
 const server = http.createServer(async (rq, rs) => {
@@ -33,7 +34,7 @@ const server = http.createServer(async (rq, rs) => {
   if (p === "/onboard/passkey") p = "/onboard/passkey/index.html";
   const f = path.join(DECK, p);
   if (f.startsWith(DECK) && fs.existsSync(f) && fs.statSync(f).isFile()) { rs.setHeader("content-type", TYPES[path.extname(f)] || "application/octet-stream"); rs.end(fs.readFileSync(f)); return; }
-  rs.statusCode = 404; rs.end("missing");
+  missing.push(url.pathname); rs.statusCode = 404; rs.end("missing");
 });
 await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
 const port = /** @type {any} */ (server.address()).port;
@@ -48,6 +49,8 @@ if (!ws) { console.log("Chrome did not start"); process.exit(1); }
 await new Promise(r => ws.addEventListener("open", r));
 let id = 0; const waits = new Map();
 ws.addEventListener("message", e => { const m = JSON.parse(String(e.data)); if (m.id && waits.has(m.id)) { waits.get(m.id)(m); waits.delete(m.id); } });
+const seen = [];
+ws.addEventListener("message", e => { const m = JSON.parse(String(e.data)); if (m.method === "Runtime.exceptionThrown") seen.push("exception: " + (m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text)); if (m.method === "Runtime.consoleAPICalled") seen.push("console: " + m.params.args.map(a => a.value ?? a.description).join(" ")); if (m.method === "Log.entryAdded") seen.push("log: " + m.params.entry.text + " " + (m.params.entry.url || "")); });
 const send = (method, params = {}) => new Promise(r => { const i = ++id; waits.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const text = async () => (await send("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true })).result.result.value || "";
 const waitFor = async (re, ms = 15000) => { const end = Date.now() + ms; let t = ""; while (Date.now() < end) { t = await text(); if (re.test(t)) return t; await sleep(300); } return t; };
@@ -56,7 +59,7 @@ const click = label => send("Runtime.evaluate", { expression: `[...document.quer
 const failures = [];
 const base = `http://localhost:${port}/onboard/passkey`;
 const link = `${base}#claim=${"A".repeat(128)}&spki=${"B".repeat(91)}`;
-await send("Page.enable");
+await send("Page.enable"); await send("Runtime.enable"); await send("Log.enable");
 await send("Page.navigate", { url: link });
 let t = await waitFor(/This link did not work/);
 if (!/This link did not work/.test(t)) failures.push("the first refusal did not show the failure page: " + t.slice(0, 120));
@@ -73,7 +76,7 @@ await click("Try again");
 t = await waitFor(/Add a passkey/);
 if (!/Add a passkey/.test(t)) failures.push("Try again did not recover: " + t.slice(0, 120));
 c.kill(); server.close();
-console.log(JSON.stringify({ claimCalls, failures }, null, 2));
+console.log(JSON.stringify({ claimCalls, failures, missing, seen: seen.slice(0, 12) }, null, 2));
 if (failures.length) { console.log("THE CLAIM RETRY DID NOT HOLD:\n- " + failures.join("\n- ")); process.exit(1); }
 console.log("A refused claim shows Try again and Get a new link, a reload keeps the link, and Try again reaches the passkey step.");
 await fs.promises.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }).catch(() => {});
