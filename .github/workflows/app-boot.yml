@@ -27,5 +27,7 @@ jobs:
       - run: node --test relay/app/app.test.js
       - name: First load in a fresh profile
         run: node relay/app/testing/boot-chrome.mjs
-      - name: The camera page's #pair= hand-off
+      - name: wrangler, from the lockfile (the real relay Worker runs locally)
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix tools/wrangler
+      - name: The #pair= hand-off against the real relay Worker
         run: node relay/app/testing/pair-fragment-chrome.mjs
