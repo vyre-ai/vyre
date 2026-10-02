@@ -133,7 +133,7 @@ enum Drive {
         switch m.desk.mode { case .none: desk = "none"; case .list(let i): desk = "list:\(i)"; case .card(let k): desk = "card:\(k)" }
         return ["shown": a.panel.isShown, "text": m.text, "rows": m.flat.map { ["kind": $0.kind, "title": $0.title, "sub": $0.subtitle] },
                 "selected": m.selected, "line": m.line ?? NSNull(), "asked": m.asked ?? NSNull(), "reply": m.replyText,
-                "finished": m.reply?.finished ?? NSNull(), "waiting": m.desk.waiting.map(\.title), "desk": desk,
+                "finished": m.reply?.finished ?? NSNull(), "pending": m.pending, "waiting": m.desk.waiting.map(\.title), "desk": desk,
                 "direct": m.direct.dm.map { d in d.messages.map { "\($0.role.rawValue): \($0.text)" } } ?? NSNull(),
                 "offline": m.offline, "target": m.target?.label ?? NSNull()]
     }

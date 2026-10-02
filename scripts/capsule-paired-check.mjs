@@ -87,6 +87,14 @@ try {
   check(p.rows.some(r => r.kind === "ask" && /kit/i.test(r.title)), `a question offers Ask kit (${p.rows.map(r => r.title).join(" | ")})`);
   await still("paired-ask.png");
 
+  // A quick question must not sit on "starting": it answers, or says it did not, within 15 s.
+  await send({ key: "return" });
+  let settled = false;
+  for (let i = 0; i < 30 && !settled; i++) { await pause(500); p = await send({ probe: true }); settled = p.pending === false; }
+  console.log(`quick question: pending ${p.pending}, line ${JSON.stringify(p.line)}, reply ${JSON.stringify(String(p.reply || "").slice(0, 80))}`);
+  check(settled, "a quick question is not left on 'starting' (it answered or said it could not)");
+  await still("paired-answered.png");
+
   // The Mac's own things stay here.
   await send({ text: "" });
   await send({ text: "safari" }); await pause(900);

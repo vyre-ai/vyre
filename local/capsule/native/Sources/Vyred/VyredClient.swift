@@ -509,6 +509,13 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     /// A tool with no draft answers plain JSON, which reads as any other call.
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval,
                      onDraft: @escaping @Sendable (_ id: String, _ text: String) -> Void) async -> VyredResult {
+        // A paired Mac's memory is the server's: link.call carries no live draft, so it asks plain (the server's memory.thinking events
+        // still draw the stage line, on the same id).
+        if box.routes(tool, input) {
+            var plain = input
+            plain["stream"] = nil
+            return await box.call(self, tool, plain, timeout: timeout)
+        }
         guard let body = VJ.encode(input) else { return .failure(code: "bad_input", message: "The input to \(tool) is not JSON.") }
         let socket = self.socket
         return await withCheckedContinuation { (k: CheckedContinuation<VyredResult, Never>) in

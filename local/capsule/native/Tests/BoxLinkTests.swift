@@ -154,6 +154,56 @@ let boxLinkSuite = Suite("box link") { t in
         let _: Bool? = t.wait { _ = await c2.refreshTools(); await c2.box.willSleep(c2); await c2.box.didWake(c2); return true }
         t.eq(old.callNames.filter { $0.hasPrefix("link.s") || $0 == "link.wake" }.count, 0, "an older vyred is not called")
     }
+
+    t.test("a reply with no words for a while says so, instead of sitting on \"starting\"") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("agents.ask") { _ in ["ok": true, "thread": "t-quiet"] as [String: Any] }
+        let m = MainActor.assumeIsolated { () -> CapsuleModel in
+            let m = CapsuleModel(home: vyScratch("quiet-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: [])
+            m.replyPatience = 0.2; m.replyTick = 0.05
+            return m
+        }
+        let _: Bool? = t.wait {
+            _ = await m.vyred.refreshTools()
+            _ = await m.send("are you configured now", to: VyreCandidate(kind: .agent, id: "kit", label: "kit"))
+            return await until { m.line?.contains("Nothing has come back yet") == true }
+        }
+        t.ok(MainActor.assumeIsolated { m.line?.contains("Nothing has come back yet") == true }, "the plain line appeared")
+    }
+
+    t.test("memory that does not answer in time says so and points at the assistant; a paired Mac's memory.ask goes to the server, plain") {
+        let v = pairedMac(); defer { v.stop() }
+        v.tool("memory.ask") { _ in Thread.sleep(forTimeInterval: 1.5); return ["answer": "slow, on the Mac"] as [String: Any] }
+        let c = VyredClient(socket: v.socket)
+        let m = MainActor.assumeIsolated { () -> CapsuleModel in
+            let m = CapsuleModel(home: vyScratch("iqslow-\(UUID().uuidString.prefix(6))"), vyred: c, providers: [])
+            m.iqTimeout = 0.4
+            return m
+        }
+        // Paired: the draft-streaming overload is routed to the server, so the Mac's slow memory is never asked.
+        let routed: VyredResult? = t.wait {
+            _ = await c.refreshTools(); await c.box.refresh(c)
+            return await c.call("memory.ask", ["question": "q", "stream": true, "id": "x"], timeout: 5) { _, _ in }
+        }
+        if case .success(let d)? = routed { t.eq((d as? [String: Any])?["answer"] as? String, "From the server.") } else { t.ok(false, "routed") }
+        t.eq(v.callNames.filter { $0 == "memory.ask" }.count, 0, "the Mac's own memory was not asked")
+        t.ok(!(v.callsOf("link.call").first { ($0["tool"] as? String) == "memory.ask" }?["input"] as? [String: Any] ?? [:]).keys.contains("stream"), "plain: no stream flag")
+        // Not paired, memory slow: the plain words.
+        let slow = FakeVyred(); slow.start(); defer { slow.stop() }
+        slow.tool("memory.ask") { _ in Thread.sleep(forTimeInterval: 1.5); return ["answer": "late"] as [String: Any] }
+        let m2 = MainActor.assumeIsolated { () -> CapsuleModel in
+            let m = CapsuleModel(home: vyScratch("iqslow2-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: slow.socket), providers: [])
+            m.iqTimeout = 0.4
+            return m
+        }
+        let out: ActionOutcome?? = t.wait {
+            _ = await m2.vyred.refreshTools()
+            return await m2.askIQ("are you configured now")
+        }
+        if case .failed(let why)? = out ?? nil { t.ok(why.contains("Memory did not answer in time"), why) } else { t.ok(false, "a plain failure was expected: \(String(describing: out))") }
+        t.eq(MainActor.assumeIsolated { m2.pending }, false, "no longer starting")
+        _ = m
+    }
 }
 
 final class HeardBox: @unchecked Sendable {

@@ -214,6 +214,10 @@ public final class CapsuleModel: ObservableObject {
     /// The front app's document or folder, for the project rule (a fake in tests).
     var frontPath: (FrontApp?) -> String? = { ProjectContext.frontPath($0) }
     /// The CLI to run instead of vyred's own (tests: a fake vyre).
+    var heardAt = Date()
+    var replyWatch: Task<Void, Never>?
+    /// How long a quick question waits for memory.ask before it says so and points at the assistant (tests shorten it).
+    var iqTimeout: TimeInterval = 12
     var cliOverride: [String]?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
@@ -995,15 +999,37 @@ public final class CapsuleModel: ObservableObject {
     /// Follow a thread's events into `reply`, from before the words go (the answer can beat the call).
     private func follow(_ thread: @escaping () -> String?) {
         replySub?.cancel()
+        heardAt = Date()
+        watchReply()
         replySub = vyred.on("thread.*") { [weak self] e in
             guard let self else { return }
             self.keeper.heard(e)
             guard let r = self.reply else { return }
             let t = thread() ?? (r.thread.isEmpty ? nil : r.thread)
             if r.thread.isEmpty, e.type == "thread.sent", VJ.str(e.payload["surface"]) == "capsule", let et = e.thread {
+                self.heardAt = Date()
                 var x = r; x.thread = et; self.reply = VyState.applyReply(x, e); return
             }
-            if let t, e.thread == t { self.reply = VyState.applyReply(r, e) }
+            if let t, e.thread == t { self.heardAt = Date(); self.reply = VyState.applyReply(r, e) }
+        }
+    }
+
+    /// A reply that has said nothing at all for this long gets a plain line instead of "starting" forever. Tests shorten both.
+    var replyPatience: TimeInterval = 45
+    var replyTick: TimeInterval = 5
+
+    /// Wake now and then while a reply has no words yet; past the patience, say so once and stop watching.
+    private func watchReply() {
+        replyWatch?.cancel()
+        replyWatch = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64((self?.replyTick ?? 5) * 1_000_000_000))
+                guard let self, !Task.isCancelled, let r = self.reply, !r.finished, self.replyText.isEmpty else { return }
+                if Date().timeIntervalSince(self.heardAt) >= self.replyPatience {
+                    self.line = "Nothing has come back yet. Esc stops it, or wait a little longer."
+                    return
+                }
+            }
         }
     }
 

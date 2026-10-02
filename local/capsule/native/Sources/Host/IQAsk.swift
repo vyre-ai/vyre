@@ -158,7 +158,7 @@ extension CapsuleModel {
         if let c = askContext { input["context"] = c }
         // The draft comes on this call's own ndjson response, never the events bus: {"draft":{id,text}}
         // lines (the whole text so far; empty text means the check failed, so drop it), then the result.
-        var r = await vyred.call("memory.ask", input, timeout: 30) { [weak self] did, text in
+        var r = await vyred.call("memory.ask", input, timeout: iqTimeout) { [weak self] did, text in
             Task { @MainActor [weak self] in
                 guard let self, did == id, self.pending, self.asked == words else { return }
                 self.iqDraft = VJ.nonEmpty(String(text.prefix(IQAnswer.draftLimit)))
@@ -177,6 +177,12 @@ extension CapsuleModel {
         if r.errorCode == "no_such_tool" { return nil }
         // The words changed while it answered: this answer is not theirs.
         guard asked == words else { return .said("") }
+        // Memory has not answered in time (the user's Mac sat on "starting" with nothing): say so, and point at who can still answer.
+        if r.errorCode == "timeout" {
+            asked = nil
+            let who = catalog.assistant?.name
+            return .failed(who.map { "Memory did not answer in time. Ask \($0) instead, or try again." } ?? "Memory did not answer in time. Try again in a moment.")
+        }
         if let why = Bridge.explain(r) { asked = nil; return .failed(why) }
         let iq = IQAnswer.from(words, r.data)
         askedMemory = iq.memory

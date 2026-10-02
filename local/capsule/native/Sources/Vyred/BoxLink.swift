@@ -77,16 +77,18 @@ public final class BoxLink: @unchecked Sendable {
 
     /// Run a routed call on the server. Never falls back to this Mac.
     func call(_ client: VyredClient, _ tool: String, _ input: [String: Any], timeout: TimeInterval) async -> VyredResult {
-        let r = await client.callLocal("link.call", ["tool": tool, "input": input], timeout: max(timeout, 30))
+        let r = await client.callLocal("link.call", ["tool": tool, "input": input], timeout: max(timeout, 5))
         switch r {
         case .success(let d):
             learn(from: d)
+            lock.lock(); if isLinked { isReachable = true }; lock.unlock()
             return r
         case .failure(let code, let message):
-            if code == "box_unreachable" || code == "no_link" || code == "unpaired" || code == "timeout" {
+            if code == "box_unreachable" || code == "no_link" || code == "unpaired" {
                 lock.lock(); isReachable = false; lock.unlock()
-                return .failure(code: "box_unreachable", message: Self.away(code == "timeout" ? "" : message))
+                return .failure(code: "box_unreachable", message: Self.away(message))
             }
+            // Slow is not away: the server is there and has not answered yet. The caller says so in its own words.
             return r
         }
     }
