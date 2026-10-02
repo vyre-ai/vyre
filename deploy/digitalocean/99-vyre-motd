@@ -1,7 +1,0 @@
-#!/bin/sh
-# What a person sees when they ssh in to a Vyre droplet.
-if [ -e /var/lib/vyre-firstboot.done ]; then
-  printf '\nVyre is installed on this server. Open https://vyre.run/setup to finish setting it up, or run: sudo vyre status\n\n'
-else
-  printf '\nVyre is still installing on this server (a few minutes). Watch it with: tail -f /var/log/vyre-firstboot.log\n\n'
-fi
