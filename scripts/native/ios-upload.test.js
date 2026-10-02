@@ -23,7 +23,7 @@ function setup(t) {
   fs.writeFileSync(fake, `#!/bin/bash\necho "$@" > "${dir}/args"\nk=""; while [ $# -gt 0 ]; do [ "$1" = -authenticationKeyPath ] && k=$2; shift; done\ncp "$k" "${dir}/keycopy"; stat -f %Lp "$k" > "${dir}/mode" 2>/dev/null || stat -c %a "$k" > "${dir}/mode"\necho "$k" > "${dir}/keypath"\n`, { mode: 0o755 });
   const sha = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, "a.tgz"))).digest("hex");
   const env = { PATH: process.env.PATH, ARCHIVE_TGZ: path.join(dir, "a.tgz"), ARCHIVE_SHA256: sha, WORK: path.join(dir, "work"), XCODEBUILD: fake,
-    EXPECT_BUNDLE_ID: "sh.vyre.app", EXPECT_VERSION: "0.2.2", EXPECT_BUILD: "57", ASC_KEY_ID: "ABC123DEFG", ASC_ISSUER_ID: "11111111-2222-3333-4444-555555555555", ASC_KEY_P8: SECRET, APPLE_TEAM_ID: "TEAM123456" };
+    EXPECT_BUNDLE_ID: "sh.vyre.app", EXPECT_TAG: "v0.2.2-rc.1", EXPECT_BUILD: "57", ASC_KEY_ID: "ABC123DEFG", ASC_ISSUER_ID: "11111111-2222-3333-4444-555555555555", ASC_KEY_P8: SECRET, APPLE_TEAM_ID: "TEAM123456" };
   return { dir, env };
 }
 const REPO = path.resolve(path.dirname(SCRIPT), "../..");
@@ -65,11 +65,21 @@ test("ios-upload: an archive that is not the build job's is refused before the k
 });
 
 test("ios-upload: an archive whose app is not the asked-for bundle, version or build is refused before the key is written", t => {
-  for (const [k, v] of [["EXPECT_BUNDLE_ID", "sh.vyre.app.box"], ["EXPECT_VERSION", "0.2.3"], ["EXPECT_BUILD", "58"]]) {
+  for (const [k, v] of [["EXPECT_BUNDLE_ID", "sh.vyre.app.box"], ["EXPECT_TAG", "v0.2.3"], ["EXPECT_BUILD", "58"]]) {
     const { dir, env } = setup(t); env[k] = v;
     const r = run(env);
     assert.notEqual(r.status, 0, k);
     assert.match(r.stdout + r.stderr, /expected/);
     assert.ok(!fs.existsSync(path.join(dir, "work/AuthKey.p8")) && !fs.existsSync(path.join(dir, "args")), k);
   }
+});
+
+test("ios-upload: an archive with two apps is refused", t => {
+  const { dir, env } = setup(t);
+  fs.cpSync(path.join(dir, "src/Vyre.xcarchive/Products/Applications/Vyre.app"), path.join(dir, "src/Vyre.xcarchive/Products/Applications/Other.app"), { recursive: true });
+  spawnSync("tar", ["-czf", path.join(dir, "a.tgz"), "-C", path.join(dir, "src"), "Vyre.xcarchive"]);
+  env.ARCHIVE_SHA256 = crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, "a.tgz"))).digest("hex");
+  const r = run(env);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stdout + r.stderr, /exactly one app/);
 });

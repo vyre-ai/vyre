@@ -126,6 +126,6 @@ test("release.yml and native-ios.yml: iOS is archived unsigned with no secret, e
   assert.match(job, /startsWith\(github\.ref, 'refs\/tags\/v'\)/);
   assert.equal([...job.matchAll(/^\s+run: /gm)].length, 1, "one run step in the job that sees the key");
   assert.match(job, /run: bash scripts\/native\/ios-upload\.sh/);
-  assert.match(job, /EXPECT_VERSION: \$\{\{ needs\.build\.outputs\.version \}\}/, "the upload job checks the archive against values the workflow supplied");
+  assert.match(job, /EXPECT_TAG: \$\{\{ github\.ref_name \}\}/, "the upload job checks the archive against values the workflow supplied");
   assert.deepEqual([...new Set([...ios.matchAll(/secrets\.([A-Z0-9_]+)/g)].map(m => m[1]))].sort(), ["APPLE_TEAM_ID", "ASC_ISSUER_ID", "ASC_KEY_ID", "ASC_KEY_P8"]);
 });
