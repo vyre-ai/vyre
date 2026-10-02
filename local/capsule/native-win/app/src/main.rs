@@ -338,7 +338,7 @@ fn check_update(app: &AppHandle) -> Result<Option<String>, String> {
     let path = dir.join(&name);
     std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
     update::check_file(&listed, &name, &std::fs::read(&path).map_err(|e| e.to_string())?)?;
-    std::process::Command::new(&path).arg("/S").spawn().map_err(|e| e.to_string())?;
+    std::process::Command::new(&path).args(["/S", "/UPDATE"]).spawn().map_err(|e| e.to_string())?;
     let _ = app.notification().builder().title(APP_NAME).body(format!("Updating to {version}.")).show();
     app.exit(0);
     Ok(Some(version))

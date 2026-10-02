@@ -176,8 +176,10 @@ if (-not $releaseBase) {
 }
 
 $exe = Get-VerifiedInstaller -ReleaseBase $releaseBase -Dest $InstallDir
-# Run the installer quietly (per-user, no elevation), then start the installed app.
-Start-Process -FilePath $exe -ArgumentList "/S" -Wait
+# Run the installer quietly (per-user, no elevation), then start the installed app. Over an existing install it is an update, so the old
+# uninstaller keeps the pairing, the keys and the local helper.
+$installed = Test-Path (Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe")
+Start-Process -FilePath $exe -ArgumentList $(if ($installed) { @("/S", "/UPDATE") } else { @("/S") }) -Wait
 $app = Join-Path $env:LOCALAPPDATA "Vyre\Vyre.exe"
 if (-not (Test-Path $app)) { throw "The installer finished but $app is not there." }
 Register-VyreAutostart -ExePath $app

@@ -10,6 +10,8 @@
 
 import { boxSide } from "./box.js";
 import { macSide } from "./mac.js";
+import { companionCoreSide } from "./companion-core.js";
+import { appMode } from "../daemon/index.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a vyred runs with. Tests run a Mac and a box in one process
@@ -24,6 +26,9 @@ export const seams = new Map();
 export default {
   async start(ctx) {
     const seam = seams.get(ctx.paths.root) || {};
-    return ctx.config.role === "box" ? boxSide(ctx, seam) : macSide(ctx, seam);
+    if (ctx.config.role === "box") return boxSide(ctx, seam);
+    // A core the Windows app started is its companion: it joins through the app and signs its own calls (core/link/companion-core.js).
+    if (appMode() || seam.companionCore) return companionCoreSide(ctx, seam);
+    return macSide(ctx, seam);
   },
 };

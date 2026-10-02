@@ -24,6 +24,8 @@ process.on("SIGTERM", quit);
 process.on("SIGINT", quit);
 
 const { start } = await import("./index.js");
+// Started by the Windows app: it hands over the name of its pipe on stdin, once (core/daemon/app-handoff.js).
+if (process.env.VYRE_SUPERVISOR === "app") await (await import("./app-handoff.js")).takeHandoff();
 // On a Mac with vyre-core installed, the relay's keys (box, route and device) live in core, not in a
 // file at this login. Decided here, never inside start(), so an in-process test can't reach the
 // real core. createCoreKeys checks the socket is core's before every call.
