@@ -15,6 +15,7 @@
 // computers.endpoint, which is internal (modules only): the hands need the token to reach
 // computerd, and they hold it in memory, never in a result they pass on.
 
+import { cleanLabel } from "../../lib/devicename.js";
 import { Pool, MIGRATIONS, NO_DRIVER, LIMITS, STOPPED, UNKNOWN } from "./pool.js";
 import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./keyboard.js";
 import { FakeDriver } from "./driver/fake.js";
@@ -195,7 +196,7 @@ export default {
         if (agentClaim(caller)) throw new Error("renaming a computer is the person's, never an agent's");
         const agent = String(i.computer || "");
         if (!AGENT.test(agent)) throw new Error(`"${agent}" is not an agent name`);
-        const label = String(i.name ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+        const label = cleanLabel(i.name);
         if (label.length > 64) throw new Error("a name is 1 to 64 printable characters");
         config.save({ computerLabels: { [agent]: label || null } }, ctx.paths.root, ctx.config);
         ctx.events.emit("device.renamed", { kind: "computer", id: agent, name: label || null });

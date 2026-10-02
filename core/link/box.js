@@ -31,7 +31,7 @@
 // connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
 import crypto from "node:crypto";
-import { friendlyDeviceName } from "../../lib/devicename.js";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { boxKey, signAnswer } from "./assert.js";
@@ -281,7 +281,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     description: "Rename a paired Mac or device: the person's own label, kept on the box and shown wherever the device appears (the Deck, session rows, Drive, Now). A new name replaces what the device called itself.",
     input: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"] },
     run: async ({ id, name }) => {
-      const label = String(name ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+      const label = cleanLabel(name);
       if (!label || label.length > 64) throw new Error("a name is 1 to 64 printable characters");
       const r = db.prepare("UPDATE link_peers SET name = ? WHERE id = ?").run(label, String(id));
       if (!r.changes) throw new Error("no such paired Mac");

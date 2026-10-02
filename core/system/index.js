@@ -5,7 +5,7 @@
 import os from "node:os";
 import { build } from "../daemon/build.js";
 import { hostedOrigins, save as saveConfig } from "../config/index.js";
-import { friendlyDeviceName } from "../../lib/devicename.js";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 
 // Both fingerprints, or null for either if owner.id is missing or malformed (lib/identity
@@ -43,7 +43,7 @@ export default {
       description: "Rename this server: its display name, a label the person chooses (not its vyre.run address). It is shown wherever this machine appears, and a phone sees it when pairing. An empty name goes back to the default.",
       input: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
       run: async ({ name }) => {
-        const label = String(name ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+        const label = cleanLabel(name);
         if (label.length > 64) throw new Error("a name is 1 to 64 printable characters");
         const shown = label ? friendlyDeviceName(label) : null;
         saveConfig({ serverName: shown }, ctx.paths.root, ctx.config);

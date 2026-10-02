@@ -16,7 +16,7 @@
 
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
-import { friendlyDeviceName } from "../../lib/devicename.js";
+import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
@@ -715,7 +715,7 @@ export default {
       input: obj({ id: str, name: str }, ["id", "name"]),
       run: async (input, meta = {}) => {
         owner(meta.caller, meta, "renaming a device");
-        const name = String(input.name).trim();
+        const name = cleanLabel(input.name);
         if (!NAME.test(name)) throw fail("bad_input", "a name is 1 to 64 printable characters");
         const r = db.prepare("UPDATE relay_devices SET name = ? WHERE id = ? AND removed_at IS NULL").run(name, String(input.id));
         if (!r.changes) throw fail("not_found", `no paired device ${input.id}`);
