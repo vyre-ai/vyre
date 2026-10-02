@@ -26,6 +26,7 @@ import { attempt, on } from "./api.js";
 import { mountGlassMini } from "./glass-mini.js";
 import * as needs from "./needs.js";
 import { initial, base, since } from "./fmt.js";
+import { whoAvatar, whoIs } from "./avatars.js";
 import { haptic } from "./haptics.js";
 import { pushState, setupCard } from "./phone-setup.js";
 import { standalone } from "./pwa.js";
@@ -287,13 +288,14 @@ export function phoneNow(ctx) {
     let cur = n;
     const update = (/** @type {any} */ x) => {
       cur = x;
-      put(tile, x.kind === "pair" ? "m" : x.agent ? initial(x.agent) : glyph("terminal", 18));
+      // The acting agent's own face; the assistant's when the Gate did not name one. A Mac asking to pair is a Mac.
+      put(tile, x.kind === "pair" ? "m" : whoAvatar(x.agent, { size: 32 }));
       put(t1, titleOf(x));
       put(time, ago(x.at));
       const l2 = secondLine(x);
       put(t2, l2.text);
       t2.classList.toggle("np-mono", l2.mono);
-      put(t3, thirdLine(x));
+      put(t3, thirdLine(x, whoIs().assistant.name || "Your assistant"));
       const why = failed.get(x.id);
       put(err, why ? [h("span", { class: "np-failed" }, "failed"), " ", why] : null);
       main.setAttribute("aria-label", ariaLabel(x) + (why ? ` Failed: ${why}` : ""));

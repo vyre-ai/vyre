@@ -15,7 +15,12 @@
   font: 500 var(--fs-caption)/var(--lh-caption) var(--sans); color: var(--text); white-space: nowrap; pointer-events: none; opacity: 0; z-index: 40; transition: opacity var(--dur-2) var(--ease); }
 .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { opacity: 1; transition-delay: 300ms; }
 .rail-place .sm-badge { top: 2px; right: 2px; }
-.rail-avatar { margin-top: var(--s-2); }
+.rail-avatar { margin-top: var(--s-2); background: none; }
+.rail-avatar:hover { background: var(--hover); }
+/* Search is a button, the others are links: take the browser's button box away so it reads as one more rail item. */
+button.rail-place { border: 0; background: none; padding: 0; font: inherit; font-size: var(--fs-caption); line-height: var(--lh-caption); cursor: pointer; appearance: none; -webkit-appearance: none; }
+button.rail-place:hover { background: var(--hover); }
+button.rail-place:active { background: var(--press); }
 /* The labelled rail (js/rail-mode.js): 216 wide with the name beside each icon, the wordmark by the logo, the person's name by their avatar, and no tooltips. Auto is labels from 1200 px; Icons and Labels override it from 720 px. */
 .rail-word, .rail-name { display: none; }
 @media (min-width: 1200px) { :root:not([data-rail="icons"]) { --rail-w: 216px; } }
@@ -30,7 +35,8 @@
   :root:not([data-rail="icons"]) .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { transition-delay: 0s; }
   :root:not([data-rail="icons"]) .rail-place[aria-current="page"]::before { left: -12px; }
   :root:not([data-rail="icons"]) .rail-place .sm-badge { top: 50%; right: var(--s-3); transform: translateY(-50%); }
-  :root:not([data-rail="icons"]) .rail-avatar { width: auto; display: flex; align-items: center; gap: var(--s-2); }
+  :root:not([data-rail="icons"]) .rail-avatar { width: auto; height: 44px; display: flex; align-items: center; justify-content: flex-start; gap: var(--s-3); padding: 0 var(--s-3); border-radius: var(--r-button); }
+  :root:not([data-rail="icons"]) button.rail-place { padding: 0 var(--s-3); }
   :root:not([data-rail="icons"]) .rail-name { display: inline; font: 400 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
@@ -43,7 +49,8 @@
   :root[data-rail="labels"] .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { transition-delay: 0s; }
   :root[data-rail="labels"] .rail-place[aria-current="page"]::before { left: -12px; }
   :root[data-rail="labels"] .rail-place .sm-badge { top: 50%; right: var(--s-3); transform: translateY(-50%); }
-  :root[data-rail="labels"] .rail-avatar { width: auto; display: flex; align-items: center; gap: var(--s-2); }
+  :root[data-rail="labels"] .rail-avatar { width: auto; height: 44px; display: flex; align-items: center; justify-content: flex-start; gap: var(--s-3); padding: 0 var(--s-3); border-radius: var(--r-button); }
+  :root[data-rail="labels"] button.rail-place { padding: 0 var(--s-3); }
   :root[data-rail="labels"] .rail-name { display: inline; font: 400 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .rail-place, .rail-label { transition: none; } }

@@ -21,12 +21,12 @@ import { assistantCard } from "../js/assistant-setup.js";
 import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
 import { chatCounts, chatsWord } from "../js/chat-counts.js";
-import { threadAvatar } from "../js/avatars.js";
+import { threadAvatar, whoAvatar, whoIs } from "../js/avatars.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref, elsewhere, fromMac } from "../js/need-rows.js";
+import { sessionHref, elsewhere, fromMac, plainSummary } from "../js/need-rows.js";
 import { threadHref } from "../chat/lib/routes.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
@@ -52,16 +52,18 @@ export default async function now(ctx) {
   // A Mac asking to pair waits on the person, so it sits above everything else.
   const pairing = pairRequests();
   ctx.cleanup(pairing.stop);
-  // No passkey on the box at all: nothing above can be approved until there is one.
-  const firstKey = firstPasskeyCard();
+  // Finish setup (right column): a passkey when the box has none, and the assistant when there is none. One quiet card, shown while either is open.
+  const finish = h("section", { class: "now-finish", hidden: true, "aria-labelledby": "fs-h" }, h("h2", { id: "fs-h", class: "lbl" }, "Finish setup"));
+  const asstRow = h("div", { class: "fs-row", hidden: true });
+  const syncFinish = () => { finish.hidden = firstKey.el.hidden && asstRow.hidden; };
+  const firstKey = firstPasskeyCard({ onChange: () => syncFinish() });
   ctx.cleanup(firstKey.stop);
+  finish.append(firstKey.el, asstRow);
 
   put(ctx.root, h("div", { class: "now now-cols" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
-      // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
-      firstKey.el,
       pairing.el,
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, glassMini, working, learned, recentProjects),
@@ -69,7 +71,7 @@ export default async function now(ctx) {
   // Finish setup (while it is open: install, notifications, a passkey), then Next up, then Recent: the right column's order.
   const setup = setupCard();
   const nextUp = h("section", { class: "now-next", "aria-labelledby": "next-h" });
-  put(side, setup, nextUp);
+  put(side, finish, setup, nextUp);
   const eventsBox = h("div", { class: "now-ev" });
   side.append(eventsBox);
 
@@ -78,9 +80,15 @@ export default async function now(ctx) {
   // No assistant yet (onboarding's first step was skipped): the card to make one stands in its
   // place, and the line is drawn from what agents.create hands back.
   const drawAssistant = (/** @type {any} */ a) => {
-    assistant.classList.toggle("has-card", !a);
-    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle")
-      : assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle") : null);
+    asstRow.hidden = !!a;
+    if (!a) {
+      const open = () => put(asstRow, assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+      put(asstRow,
+        h("div", { class: "fs-main" }, h("div", { class: "fs-title" }, "Create your assistant"), h("p", { class: "small muted" }, "It sees every project and asks before anything goes out.")),
+        h("div", { class: "fs-act" }, h("button", { type: "button", class: "btn btn-sm", onclick: open }, "Name it")));
+    }
+    syncFinish();
   };
   (async () => {
     const r = await attempt("agents.list");
@@ -280,14 +288,16 @@ function needCard(n) {
     h("div", { style: { flexGrow: "1" } }),
     threadHref && n.kind === "ask" ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
 
+  // Who is acting: the agent's own face and name, or the assistant (the default actor) when the Gate did not say.
+  const actor = n.agent || whoIs().assistant.name || "Your assistant";
   const heading = n.kind === "ask"
     ? h("h3", null, `May ${n.agent || "this session"} run `, h("code", { class: "need-cmd" }, n.command || ""), "?")
     : n.kind === "question" ? h("h3", null, n.questions?.[0]?.question || n.title)
-    : h("h3", null, n.title);
+    : h("h3", null, n.agent ? n.title : n.title.replace(/^An agent /, `${actor} `));
   return h("div", { class: "need-row" },
-    h("div", { class: "need-time mono" }, clock(n.at)),
     h("article", { class: "held need" + (n.kind === "draft" ? " is-draft" : "") },
-      h("div", { class: "need-top" }, heading, h("span", { class: "small muted nowrap" }, where)),
+      h("div", { class: "need-top" }, h("div", { class: "need-who" }, whoAvatar(n.agent, { size: 28, label: actor }), heading),
+        h("span", { class: "caption muted nowrap" }, [where, clock(n.at)].filter(Boolean).join(" · "))),
       n.why ? h("p", { class: "need-why" }, n.why) : null,
       n.kind === "draft" ? heldBody(n, f) : null,
       buttons, status),
@@ -308,7 +318,7 @@ function heldBody(n, f) {
   const recalled = g?.recalled || g?.sources?.[0]?.text || "";
   if (!f) {
     return h("div", { class: "need-body" },
-      g?.summary ? h("p", { class: "need-text" }, g.summary) : null,
+      g?.summary ? h("p", { class: "need-text" }, plainSummary(g)) : null,
       h("p", { class: "small muted" }, g?.error ? `The full draft cannot be shown here: ${problem(g.error)}` : "The full draft cannot be shown here."));
   }
   // A previous Send was approved but the sender failed: it came back held, with the edit kept.

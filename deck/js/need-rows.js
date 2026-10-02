@@ -71,6 +71,29 @@ export function draftTitle(g) {
   return name ? `Send ${what} to ${name}` : `Send ${what}`;
 }
 
+/**
+ * What a held request does, in words. A payment or a deletion, or a summary that is a raw HTTP request, becomes a sentence
+ * ("Spend 150 USD on northwind-ads through billing"); the raw request stays in the details. Anything else is the Gate's own summary.
+ * @param {{ kind?: string, via?: string, summary?: string, draft?: Record<string, any>|null } | null | undefined} g
+ */
+export function plainSummary(g) {
+  if (!g) return "";
+  const raw = String(g.summary || "");
+  const rawish = /^(GET|POST|PUT|PATCH|DELETE)\s+https?:\/\//i.test(raw);
+  if (g.kind !== "spend" && g.kind !== "delete" && !rawish) return raw;
+  /** @type {any} */ let body = g.draft?.body;
+  if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = null; } }
+  const o = body && typeof body === "object" ? body : {};
+  const key = Object.keys(o).find(k => /^(amount|total|price|sum)(_(usd|eur|gbp|aud|cad))?$/i.test(k) && Number.isFinite(Number(o[k])));
+  const cur = String(key && /_([a-z]{3})$/i.exec(key)?.[1] || o.currency || "").toUpperCase();
+  const amount = key ? `${Number(o[key]).toLocaleString("en-US")}${cur ? " " + cur : ""}` : "";
+  const target = ["account", "payee", "customer", "recipient", "name"].map(k => o[k]).find(v => typeof v === "string" && v) || "";
+  const via = g.via || "a connector";
+  if (g.kind === "delete") return `Delete ${target || "something"} through ${via}`;
+  if (g.kind === "spend") return amount ? `Spend ${amount}${target ? ` on ${target}` : ""} through ${via}` : `Spend money through ${via}`;
+  return `Send a request through ${via}`;
+}
+
 /** @param {Item} n */
 export function titleOf(n) {
   if (n.kind === "draft") return draftTitle(n.gate);
@@ -87,18 +110,18 @@ export function secondLine(n) {
   if (n.kind === "ask") return { text: String(n.detail?.command || n.detail?.file || n.detail?.url || n.command || ""), mono: true };
   if (n.kind === "draft") {
     const s = n.gate?.draft?.subject;
-    return { text: typeof s === "string" && s ? s : String(n.gate?.summary || ""), mono: false };
+    return { text: typeof s === "string" && s ? s : plainSummary(n.gate), mono: false };
   }
   if (n.kind === "question") return { text: String(n.questions?.[0]?.question || n.why || ""), mono: false };
   if (n.kind === "pair") return { text: "Type the code shown on it", mono: false };
   return { text: "", mono: false };
 }
 
-/** Line 3: "<agent> · <project>", and "on <mac>" for a Mac session's. @param {Item} n */
-export function thirdLine(n) {
+/** Line 3: "<agent> · <project>", and "on <mac>" for a Mac session's. `assistantName` names the actor when no agent is known (the assistant is the default actor). @param {Item} n @param {string} [assistantName] */
+export function thirdLine(n, assistantName = "") {
   if (n.kind === "pair") return [n.pair?.node, n.pair?.login].filter(Boolean).join(" · ") || "A Mac asking to pair";
   // Without an agent, the session's own name says who asks.
-  const who = n.agent || n.threadName || (n.kind === "draft" ? "an agent" : "a session");
+  const who = n.agent || n.threadName || assistantName || (n.kind === "draft" ? "an agent" : "a session");
   const where = n.projectName && n.projectName !== who ? n.projectName : n.agent && n.threadName ? n.threadName : null;
   return [who, where, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
 }

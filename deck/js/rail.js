@@ -103,7 +103,7 @@ export function rail({ onSearch = () => {} } = {}) {
   function setOwner(/** @type {string | null | undefined} */ name, /** @type {string} */ letter, /** @type {Element | null} */ face = null) {
     initial.replaceChildren(face || letter || "V");
     avatar.setAttribute("title", name || "Account");
-    put(ownerName, name || "");
+    put(ownerName, name || "Account");
   }
   return { el, links, search, avatar, home, count, setNeeds, setCurrent, setOwner };
 }

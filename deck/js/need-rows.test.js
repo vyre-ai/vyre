@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
+import { plainSummary, askTitle, draftTitle, titleOf, secondLine, thirdLine, ago, agoLong, ariaLabel, presenceWord, sessionHref,
   release, questionAnswers, changesLine, pushTarget, swipeActions, swipeCommit, sheetPrimary, toastFor, heldFor, sheetWho, factRows,
   deferred, snoozes, LATER_MS, SWIPE_HINT } from "./need-rows.js";
 
@@ -255,4 +255,16 @@ test("need-rows: on a server that cannot forward answers (pre-v2), a Mac's ask o
     assert.doesNotMatch(ariaLabel(mac, NOW), /Approve/);
   } finally { resetMacAnswers(); }
   assert.equal(elsewhere(mac), null);
+});
+
+test("need-rows: a held request is said in words, never as a raw HTTP request", () => {
+  const spend = { kind: "spend", via: "billing", summary: "POST https://api.example.com/v1/topups", draft: { method: "POST", url: "https://api.example.com/v1/topups", body: JSON.stringify({ account: "northwind-ads", amount_usd: 150 }) } };
+  assert.equal(plainSummary(spend), "Spend 150 USD on northwind-ads through billing");
+  assert.equal(secondLine({ kind: "draft", gate: spend }).text, "Spend 150 USD on northwind-ads through billing");
+  assert.equal(plainSummary({ kind: "spend", via: "billing", summary: "POST https://x.test/y", draft: null }), "Spend money through billing");
+  assert.equal(plainSummary({ kind: "delete", via: "drive", summary: "DELETE https://x.test/f/1", draft: null }), "Delete something through drive");
+  assert.equal(plainSummary({ kind: "send", via: "mail", summary: "POST https://x.test/send", draft: null }), "Send a request through mail");
+  assert.equal(plainSummary({ kind: "send", via: "mail", summary: "Email dana@harlowlegal.com", draft: null }), "Email dana@harlowlegal.com", "a plain summary is kept");
+  assert.equal(thirdLine({ kind: "draft", agent: null, project: null, projectName: "Harlow Legal" }, "juno"), "juno · Harlow Legal", "no agent: the assistant is the actor");
+  assert.equal(thirdLine({ kind: "draft", agent: "kit", project: null, projectName: null }, "juno"), "kit", "a known agent wins");
 });
