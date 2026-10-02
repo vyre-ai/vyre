@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":862,"event":340,"config":239,"env":192,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":863,"event":341,"config":239,"env":192,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1164,6 +1164,7 @@
     {"kind":"event","name":"thread.archived","definedIn":"core/switchboard/index.js","page":"reference/events.md#threads","module":"threads","mentions":[]},
     {"kind":"event","name":"thread.artifact","definedIn":"core/artifacts/index.js","page":"reference/events.md#artifacts","module":"artifacts","mentions":[{"page":"design/system/components/artifact-card.md","line":112,"anchor":"emission-agreed-with-artifacts-sessions-native-core---ar1ar2"}]},
     {"kind":"event","name":"thread.contended","definedIn":"core/link/allow.js","page":"reference/events.md#link","module":"link","mentions":[{"page":"adr/0021-box-reads-the-mac.md","line":80,"anchor":"sending-to-a-mac-session"}]},
+    {"kind":"event","name":"thread.continued","definedIn":"core/switchboard/index.js","page":"reference/events.md#threads","module":"threads","mentions":[]},
     {"kind":"event","name":"thread.deleted","definedIn":"core/switchboard/index.js","page":"reference/events.md#artifacts","module":"threads","mentions":[]},
     {"kind":"event","name":"thread.finished","definedIn":"core/link/allow.js","page":"reference/events.md#link","module":"link","mentions":[{"page":"adr/0021-box-reads-the-mac.md","line":79,"anchor":"sending-to-a-mac-session"},{"page":"adr/0021-box-reads-the-mac.md","line":93,"anchor":"sending-to-a-mac-session"},{"page":"adr/0021-box-reads-the-mac.md","line":96,"anchor":"sending-to-a-mac-session"},{"page":"adr/0027-one-app.md","line":71,"anchor":"2-what-is-shared-and-with-whom"},{"page":"adr/0030-sessions.md","line":33,"anchor":"context"},{"page":"adr/0030-sessions.md","line":141,"anchor":"1-the-session-and-event-model"},{"page":"adr/0030-sessions.md","line":398,"anchor":"11-parity-with-claude-code-in-the-terminal"},{"page":"adr/0041-github-everywhere.md","line":310,"anchor":"5-a-worktree-and-branch-per-session"},{"page":"design/native-bar.md","line":131,"anchor":"results"}]},
     {"kind":"event","name":"thread.limit","definedIn":"core/link/allow.js","page":"reference/events.md#link","module":"link","mentions":[{"page":"adr/0021-box-reads-the-mac.md","line":80,"anchor":"sending-to-a-mac-session"},{"page":"adr/0030-sessions.md","line":33,"anchor":"context"},{"page":"adr/0030-sessions.md","line":140,"anchor":"1-the-session-and-event-model"},{"page":"adr/0031-teammates.md","line":485,"anchor":"14-concurrency-and-usage-limits"},{"page":"adr/0031-teammates.md","line":521,"anchor":"15-modules-and-contracts"}]},
@@ -1199,6 +1200,7 @@
     {"kind":"tool","name":"threads.claimed","definedIn":"core/switchboard/claim.js","page":"reference/tools.md#threadsclaimed","module":"threads","mentions":[]},
     {"kind":"tool","name":"threads.commands","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadscommands","module":"threads","mentions":[]},
     {"kind":"tool","name":"threads.contend","definedIn":"core/switchboard/claim.js","page":"reference/tools.md#threadscontend","module":"threads","mentions":[]},
+    {"kind":"tool","name":"threads.continue-here","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadscontinue-here","module":"threads","mentions":[]},
     {"kind":"tool","name":"threads.delete","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsdelete","module":"threads","mentions":[]},
     {"kind":"tool","name":"threads.edit","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsedit","module":"threads","mentions":[{"page":"adr/0030-sessions.md","line":202,"anchor":"3-the-claude-driver-on-the-agent-sdk"},{"page":"adr/0030-sessions.md","line":413,"anchor":"11-parity-with-claude-code-in-the-terminal"}]},
     {"kind":"tool","name":"threads.effort","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadseffort","module":"threads","mentions":[{"page":"using/sessions.md","line":138,"anchor":"which-model"}]},
