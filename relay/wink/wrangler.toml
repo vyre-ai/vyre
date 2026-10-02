@@ -12,3 +12,5 @@ directory = "../../wink-out"
 binding = "ASSETS"
 run_worker_first = true
 not_found_handling = "none"
+# No index.html or trailing-slash handling in the assets binding: the Worker maps the one route itself and answers 404 for the rest.
+html_handling = "none"

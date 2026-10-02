@@ -18,13 +18,33 @@ function dress(r, cache = REVALIDATE) {
   return out;
 }
 
+const NOT_FOUND = () => dress(new Response("not found", { status: 404 }));
+/** A redirect is never an answer here: the assets binding would only send one for a path it rewrote. A 304 is a cache hit, not a redirect. */
+const REDIRECT = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * The path exactly as it was sent: after the host, before the query. Refused when it is anything but a plain path of plain
+ * segments: an empty segment ("//"), a backslash, an encoded slash, backslash or dot, or a dot segment.
+ * @param {string} rawUrl
+ */
+export function plainPath(rawUrl) {
+  const p = rawUrl.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, "").split(/[?#]/)[0] || "/";
+  if (!p.startsWith("/") || p.includes("//") || p.includes("\\") || /%(2f|5c|2e|00)/i.test(p)) return null;
+  if (p.split("/").some(s => s === "." || s === "..")) return null;
+  return p;
+}
+
 export default {
   /** @param {Request} req @param {{ ASSETS: { fetch: (r: Request) => Promise<Response> } }} env */
   async fetch(req, env) {
-    const url = new URL(req.url);
     if (req.method !== "GET" && req.method !== "HEAD") return dress(new Response("method not allowed", { status: 405 }));
+    const p = plainPath(req.url);
+    if (p === null) return NOT_FOUND();
     // The app's own sealed folders live under /release/ on app.vyre.run's twin of this page; nothing here is served from there.
-    if (url.pathname.startsWith("/release/")) return dress(new Response("not found", { status: 404 }));
-    return dress(await env.ASSETS.fetch(req));
+    if (p.startsWith("/release/")) return NOT_FOUND();
+    // The assets binding does no HTML handling (wrangler.toml html_handling = "none"), so the page's one route is mapped here.
+    const asset = p === "/" ? new Request(new URL("/index.html", req.url), req) : req;
+    const r = await env.ASSETS.fetch(asset);
+    return REDIRECT.has(r.status) ? NOT_FOUND() : dress(r);
   },
 };

@@ -110,7 +110,7 @@ jobs:
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
           else prev=""; base=$(git hash-object -t tree /dev/null); fi
-          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/build-wink-out.mjs relay/wink scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
+          paths=".github/workflows scripts/sign-manifest.mjs scripts/write-release-json.mjs scripts/pin-release-compose.mjs scripts/check-release-dist.mjs scripts/check-release-lineage.mjs scripts/check-release-key.mjs scripts/build-app-out.mjs scripts/build-wink-out.mjs relay/wink relay/app/release.js relay/app/manifest.js relay/app/sw.js scripts/lock-changes.mjs scripts/strip-wrapper.mjs scripts/build-site.sh core/vyre-core/release.js lib/release-sig.js box/vyre apps/app/package.json apps/app/package-lock.json"
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
