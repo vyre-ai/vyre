@@ -79,6 +79,14 @@ try {
     } catch (e) { console.log(`# picker still failed: ${String(e && e.message || e).split("\n")[0]}`); }
   }
 
+  // "@" typed as a keyboard types it, against a real vyred with no agents to name: the character stays in the box (#30).
+  await send({ text: "" }); await pause(300);
+  await send({ strokes: [{ chars: "@", ignoring: "2", code: 19, shift: true }] }); await pause(1200);
+  const at = await send({ probe: true });
+  console.log(`"@" with a real vyred and nothing to name: box ${JSON.stringify(at.text)}, rows ${at.rows.length}, line ${JSON.stringify(at.line)}`);
+  check(at.text === "@", `typing @ leaves "@" in the box (got ${JSON.stringify(at.text)})`);
+  await send({ text: "" });
+
   // A module command is matched by name.
   if (v.commands.length) {
     const first = v.commands[0].split("/")[1].replace(/[-_.]/g, " ");
