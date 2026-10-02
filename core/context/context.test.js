@@ -34,14 +34,14 @@ const SIGHT = `export default { async start(ctx) {
   return {};
 } };`;
 
-async function world(t, { projects = true, sight = false } = {}) {
+async function world(t, { projects = true, sight = false, now = /** @type {(() => number)|undefined} */ (undefined) } = {}) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
   if (projects) writeModule(root, "projects", { roles: ["box", "local"], does: { tools: ["projects.of", "projects.poke"] }, watches: { emits: ["project.changed"] } }, PROJECTS);
   if (sight) writeModule(root, "sight", { roles: ["box", "local"], does: { tools: ["sight.now"] }, watches: { emits: [] } }, SIGHT);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local", context: { intervalMs: INTERVAL } }, paths: { root: home }, log: () => {} });
+  const reg = new Registry({ db, events, config: { role: "local", context: { intervalMs: INTERVAL, ...(now ? { now } : {}) } }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "context");
   await reg.start([...core, ...discover([root])], { role: "local" });
   /** @type {any[]} */
@@ -51,7 +51,7 @@ async function world(t, { projects = true, sight = false } = {}) {
   const stop = async () => { if (!stopped) { stopped = true; await reg.stop?.(); } };
   t.after(async () => { await stop(); db.close(); });
   const call = async (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => reg.call(tool, input, caller, meta);
-  return { reg, call, seen, stop };
+  return { reg, events, call, seen, stop };
 }
 
 test("stripUrl: no query, fragment or credentials; a non-URL is cut at ? or #", () => {
@@ -180,35 +180,49 @@ test("project: without a projects module the folder is kept and the project stay
 });
 
 test("context.changed: first change at once, later ones in the window folded into one, never app, window or url", async t => {
-  const { call, seen } = await world(t);
+  // The window is measured on a clock the test owns and the module's timers are mocked, so no assertion depends on how fast the machine is.
+  let clock = 1_000_000;
+  const { call, seen, events } = await world(t, { now: () => clock });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  /** @type {number[]} */ const emitClock = [];
+  events.on("context.changed", () => emitClock.push(clock));
+  const turn = () => new Promise(r => setImmediate(r));
+  const flush = async () => { for (let i = 0; i < 20; i++) await turn(); };
+  const advance = async (/** @type {number} */ ms) => { clock += ms; t.mock.timers.tick(ms); await flush(); };
+  const emitted = async (/** @type {number} */ n) => {
+    const end = Date.now() + 15_000;
+    while (seen.length < n && Date.now() < end) await turn();
+    assert.equal(seen.length, n);
+  };
+
   await call("context.report", { surface: "capsule", device: "alex-mac", app: "Safari", url: "https://harlow.example/?q=1" }, "capsule");
-  await wait(15);
-  assert.equal(seen.length, 1);
+  await advance(1);
+  await emitted(1);
   assert.deepEqual(seen[0].payload, { changed: ["app", "url"], surface: "capsule", device: "alex-mac" });
 
   // Three reports inside the window become one trailing event.
   await call("context.report", { surface: "capsule", device: "alex-mac", app: "Terminal" }, "capsule");
   await call("context.report", { surface: "capsule", device: "alex-mac", window: "kit: build" }, "capsule");
   await call("context.report", { surface: "capsule", device: "alex-mac", cwd: "/work/northwind/app", thread: "t-kit-7" }, "capsule");
-  await wait(10);
+  await advance(INTERVAL - 1);
   assert.equal(seen.length, 1, "nothing more inside the window");
-  await wait(INTERVAL + 30);
-  assert.equal(seen.length, 2);
+  await advance(1);
+  await emitted(2);
   assert.deepEqual(seen[1].payload, { changed: ["app", "cwd", "project", "thread", "window"], surface: "capsule", device: "alex-mac", project: "northwind-bakery", thread: "t-kit-7" });
   assert.equal(seen[1].project, "northwind-bakery");
   assert.equal(seen[1].thread, "t-kit-7");
-  assert.ok(seen[1].at - seen[0].at >= INTERVAL - 5, "at most one per window");
+  assert.ok(emitClock[1] - emitClock[0] >= INTERVAL, "at most one per window");
 
   // A report that changes nothing emits nothing.
-  await wait(INTERVAL + 10);
+  await advance(INTERVAL + 10);
   await call("context.report", { surface: "capsule", device: "alex-mac", app: "Terminal" }, "capsule");
-  await wait(INTERVAL + 30);
+  await advance(INTERVAL + 30);
   assert.equal(seen.length, 2);
 
   // Another surface has its own window.
   await call("context.report", { surface: "phone", device: "alex-phone", thread: "t-juno-2" }, "tailnet:alex");
-  await wait(15);
-  assert.equal(seen.length, 3);
+  await advance(1);
+  await emitted(3);
   assert.deepEqual(seen[2].payload, { changed: ["thread"], surface: "phone", device: "alex-phone", thread: "t-juno-2" });
 
   for (const e of seen) {
