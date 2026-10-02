@@ -142,7 +142,7 @@ test("flow: the lines kept are capped, and each is cut to a sane length", async 
 });
 
 /** A fake box channel: names.check answers by a rule, names.claim by another; every call is recorded. */
-function fakeBox({ check, claim, domain } = {}) {
+function fakeBox({ check, claim, domain, recover } = {}) {
   const calls = [];
   const ch = {
     calls, closed: false,
@@ -150,6 +150,7 @@ function fakeBox({ check, claim, domain } = {}) {
       calls.push([tool, input]);
       if (tool === "names.check") return (check || (n => ({ name: n, valid: true, available: true, why: null, address: `${n}.vyre.run` })))(input.name);
       if (tool === "names.claim") return (claim || (n => ({ phase: "dns", address: `https://${n}.vyre.run`, recoveryCode: "abcd-efgh-jklm-npqr-stuv-wxyz-23" })))(input.name);
+      if (tool === "names.recover") return (recover || (r => ({ name: r.name, pendingUntil: 1_000_000, recoveryCode: "wxyz-abcd-efgh-ijkl-mnop-qr" })))(input);
       if (tool === "names.domain.check") return domain(input.domain);
       throw new Error("no such tool");
     },
@@ -999,4 +1000,28 @@ test("the setup page's own code makes no request to a private address: its only 
     assert.ok(!/XMLHttpRequest|sendBeacon|new EventSource/.test(text), `${f} opens a request of another kind`);
     assert.ok(!/["'`](?:https?|wss?):\/\/(?:localhost|127\.|10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?::1)/.test(text.replace(/\/\/.*$/gm, "")), `${f} names a private address`);
   }
+});
+
+test("naming: a taken address can be taken back with the recovery code, the page says when it lands and shows the new code once", async t => {
+  const box = fakeBox({ check: n => ({ name: n, valid: true, available: false, why: "someone else has that name", address: `${n}.vyre.run` }),
+    recover: r => { if (r.code !== "abcd-efgh-ijkl-mnop-qrst-uv") throw new Error("that name and code do not match"); return { name: r.name, pendingUntil: 9_000_000, recoveryCode: "wxyz-abcd-efgh-ijkl-mnop-qr" }; } });
+  const flow = await foundFlow(t, box);
+  await until(() => flow.state.naming.check);
+  assert.equal(flow.state.naming.check.available, false);
+  flow.openRecover(true);
+  assert.equal(flow.state.naming.recover.open, true);
+  await flow.recoverName();
+  assert.ok(!box.calls.some(c => c[0] === "names.recover"), "no code typed, no call");
+  flow.setRecoverCode("nope");
+  await flow.recoverName();
+  assert.equal(flow.state.stage, "found", "a wrong code keeps the person on the form");
+  assert.match(flow.state.naming.error, /does not match/);
+  assert.equal(flow.state.naming.recover.busy, false);
+  flow.setRecoverCode("abcd-efgh-ijkl-mnop-qrst-uv");
+  await flow.recoverName();
+  assert.equal(flow.state.stage, "named");
+  assert.deepEqual([flow.state.named.name, flow.state.named.pendingUntil, flow.state.named.recoveryCode], ["harlow-legal-server", 9_000_000, "wxyz-abcd-efgh-ijkl-mnop-qr"]);
+  assert.equal(flow.state.named.saved, false, "the new code must be saved before going on");
+  assert.deepEqual(flow.state.naming.recover, { open: false, code: "", busy: false });
+  flow.stop();
 });

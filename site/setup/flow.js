@@ -40,8 +40,8 @@ export function suggestName(text) {
  *   box: null | { name: string, fingerprint: string, words: string[], handle: string|null },
  *   confirm: "none"|"pending"|"matched",
  *   channel: "none"|"connecting"|"ready"|"failed",
- *   naming: { input: string, check: null | { name: string, valid: boolean, available: boolean, why: string|null, address: string|null }, checking: boolean, claiming: boolean, error: string|null },
- *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean },
+ *   naming: { input: string, check: null | { name: string, valid: boolean, available: boolean, why: string|null, address: string|null }, checking: boolean, claiming: boolean, error: string|null, recover: { open: boolean, code: string, busy: boolean } },
+ *   named: null | { name: string, address: string|null, recoveryCode: string|null, saved: boolean, pendingUntil?: number },
  *   domain: { open: boolean, input: string, checking: boolean, error: string|null,
  *     result: null | { domain: string, ok: boolean, cname: { host: string, expected: string, found: string[], ok: boolean }, caa: { present: boolean, ok: boolean|null, optional: boolean } } },
  *   tailscale: { status: null | { state: string, login: string|null, tailnet: string|null, tailnetKind: string|null, ip: string|null }, loginUrl: string|null, busy: boolean, error: string|null,
@@ -71,7 +71,7 @@ export function createFlow(o) {
   const blankClaim = () => ({ phase: "idle", url: null, expiresAt: 0, error: null });
   const blankDevices = () => ({ phone: "idle", expiresAt: 0, error: null, paired: null });
   const blankDomain = () => ({ open: false, input: "", checking: false, error: null, result: null });
-  const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null });
+  const blankNaming = () => ({ input: "", check: null, checking: false, claiming: false, error: null, recover: { open: false, code: "", busy: false } });
   let state = { machine: "linux", stage: "start", installLine: "", code: "", lines: [], box: null, confirm: "none", channel: "none", naming: blankNaming(), named: null, domain: blankDomain(), tailscale: blankTs(), ai: blankAi(), devices: blankDevices(), claim: blankClaim(), error: null, expiresAt: 0, listening: false };
   let run = 0;
   /** @type {BoxChannel|null} */
@@ -270,6 +270,37 @@ export function createFlow(o) {
     } catch (e) {
       if (mine !== run) return;
       set({ naming: { ...state.naming, claiming: false, error: String(/** @type {Error} */ (e).message).slice(0, 200) } });
+    }
+  }
+
+  /** Show or hide "this is my address, I have its recovery code" under a taken name. @param {boolean} open */
+  function openRecover(open) {
+    if (state.stage !== "found") return;
+    set({ naming: { ...state.naming, recover: { ...state.naming.recover, open: Boolean(open) }, error: null } });
+  }
+  /** @param {string} text */
+  function setRecoverCode(text) {
+    if (state.stage !== "found") return;
+    set({ naming: { ...state.naming, recover: { ...state.naming.recover, code: String(text || "").slice(0, 80) } } });
+  }
+  /**
+   * Take a taken address back with the recovery code from the first install. The directory holds the move for 72
+   * hours, so the page says when it lands, shows the NEW recovery code once, and goes on to the next steps.
+   */
+  async function recoverName() {
+    const n = state.naming, name = n.check && n.check.valid ? n.check.name : "";
+    if (!chan || !name || !n.recover.code.trim() || n.recover.busy || state.stage !== "found") return;
+    const mine = run;
+    set({ naming: { ...n, recover: { ...n.recover, busy: true }, error: null } });
+    try {
+      const r = await chan.call("names.recover", { name, code: n.recover.code.trim() });
+      if (mine !== run) return;
+      set({ stage: "named", naming: { ...state.naming, recover: { open: false, code: "", busy: false } },
+        named: { name: String((r && r.name) || name), address: null, recoveryCode: r && r.recoveryCode ? String(r.recoveryCode) : null, saved: false, pendingUntil: Number(r && r.pendingUntil) || 0 } });
+    } catch (e) {
+      if (mine !== run) return;
+      const msg = String(/** @type {Error} */ (e).message || "");
+      set({ naming: { ...state.naming, recover: { ...state.naming.recover, busy: false }, error: /do not match|refused/i.test(msg) ? "That code does not match this address. Check it and try again." : msg.slice(0, 200) || "The address could not be taken back." } });
     }
   }
 
@@ -541,7 +572,7 @@ export function createFlow(o) {
 
   return {
     get state() { return state; },
-    setName, claim, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
+    setName, claim, openRecover, setRecoverCode, recoverName, confirmWords, denyWords, markSaved, openDomain, setDomain, checkDomain,
     continueToClaim, mintClaim, continueToDevices, addPhone, currentTicket: () => ticket,
     continueToAi, continueToTailscale, connectTailscale, startAi, submitAiCode,
     /** Start (or start again): a new key and a new code; the old one is forgotten. */

@@ -14,7 +14,7 @@ export function h(doc, tag, attrs, ...kids) {
   return el;
 }
 
-/** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
+/** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, openRecover: (open: boolean) => void, setRecoverCode: (text: string) => void, recoverName: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
  *   continueToAi: () => void, continueToTailscale: () => void, connectTailscale: () => void, startAi: (provider: string) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
  *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
@@ -123,7 +123,7 @@ export function render(s, ctx) {
 
   // ---- naming: built once when the connection is ready, then updated in place ----
   const saved = Boolean(s.named && s.named.saved);
-  const namingKey = s.stage === "found" && s.confirm === "pending" ? "none" : s.stage === "found" && s.channel === "ready" ? "form" : s.stage === "found" ? `wait:${s.channel}` : s.stage === "named" && s.named ? `done:${s.named.name}:${saved}` : "none";
+  const namingKey = s.stage === "found" && s.confirm === "pending" ? "none" : s.stage === "found" && s.channel === "ready" ? "form" : s.stage === "found" ? `wait:${s.channel}` : s.stage === "named" && s.named ? `done:${s.named.name}:${saved}:${s.named.pendingUntil || 0}` : "none";
   const rebuiltNaming = region("naming", namingKey, () => {
     if (namingKey === "form") {
       const input = el("input", { type: "text", class: "name", name: "address", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Address", "aria-describedby": "name-status", maxlength: "40" });
@@ -137,6 +137,7 @@ export function render(s, ctx) {
         el("div", { class: "field" }, input, el("span", { class: "suffix" }, ".vyre.run")),
         el("p", { id: "name-status", class: "hint", role: "status", "data-role": "hint" }, ""),
         el("div", { class: "actions" }, claim),
+        el("div", { class: "field", "data-role": "recover" }),
       ];
     }
     if (namingKey.startsWith("wait:")) return [el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), s.channel === "failed" ? "Could not connect to your server" : "Connecting to your server")];
@@ -147,12 +148,12 @@ export function render(s, ctx) {
       const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi()));
       return code ? [
         el("h2", { class: "sub" }, "Your recovery code"),
-        el("p", { class: "lead" }, "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
+        el("p", { class: "lead" }, s.named.pendingUntil ? "This is the new recovery code for this address. The one you typed stops working when the move lands. Save this one somewhere safe. It is shown once." : "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
         el("div", { class: "cmd" }, el("pre", null, el("code", null, code)), copy),
         el("p", { class: "note" }, "Copying puts it on your clipboard, where a clipboard history tool may keep it: clear that afterwards, or write it down instead."),
         el("p", { class: "warn", role: "alert" }, "This page is the only place it is shown. If you close it or reload before you have saved the code, it is gone."),
         el("div", { class: "actions" }, button("I saved it", "primary", () => actions.markSaved())),
-      ] : [el("p", { class: "lead" }, s.named.recoveryCode ? "Saved." : "This address was already yours."), go];
+      ] : [el("p", { class: "lead" }, s.named.recoveryCode ? "Saved." : "This address was already yours."), s.named.pendingUntil ? el("p", { class: "note" }, `${s.named.name}.vyre.run moves to this server on ${new Date(s.named.pendingUntil).toLocaleString()}, 72 hours after you asked, unless the old server cancels it. Until then it still reaches the old one. Setup carries on without it.`) : null, go];
     }
     return [];
   });
@@ -165,6 +166,26 @@ export function render(s, ctx) {
       : c ? (c.available ? `${c.address || c.name} is free` : (c.why || "That name is not available")) : "";
     if (hint) hint.textContent = text;
     if (claim) { const ok = Boolean(c && c.available) && !s.naming.claiming; if (ok) claim.removeAttribute?.("disabled"); else claim.setAttribute("disabled", "disabled"); claim.textContent = s.naming.claiming ? "Claiming" : "Claim this address"; }
+  }
+  if (namingKey === "form") {
+    // A taken address that is the person's own: the recovery code from the first install takes it back.
+    const slot = findByRole(m.regions.naming, "recover");
+    const c = s.naming.check, r = s.naming.recover;
+    const mineToTake = Boolean(c && c.valid && !c.available);
+    const rk = `${mineToTake}|${r.open}|${r.busy}`;
+    if (slot && /** @type {any} */ (slot).__rk !== rk) {
+      /** @type {any} */ (slot).__rk = rk;
+      slot.textContent = "";
+      if (mineToTake && !r.open) slot.appendChild(button("This is my address and I have its recovery code", "quiet", () => actions.openRecover(true)));
+      if (mineToTake && r.open) {
+        const code = el("input", { type: "text", class: "name", name: "recovery-code", autocomplete: "off", autocapitalize: "none", spellcheck: "false", "aria-label": "Recovery code", placeholder: "abcd-efgh-ijkl-mnop-qrst-uv" });
+        /** @type {any} */ (code).value = r.code;
+        code.addEventListener("input", ev => actions.setRecoverCode(/** @type {any} */ (ev.currentTarget).value));
+        slot.appendChild(el("p", { class: "note" }, "Type the recovery code you saved when you first claimed this address. The move takes 72 hours: it waits so your old server, if it is still on, can cancel it."));
+        slot.appendChild(code);
+        slot.appendChild(el("div", { class: "actions" }, button(r.busy ? "Checking" : "Take this address back", "primary", () => actions.recoverName()), button("Cancel", "quiet", () => actions.openRecover(false))));
+      }
+    }
   }
   void rebuiltNaming;
 
