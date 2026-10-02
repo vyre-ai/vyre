@@ -621,10 +621,10 @@ for (const hibernateEveryEvent of [false, true]) {
   });
 }
 
-test("worker: the setup mailbox holds 64 KB, limits per address and globally, and answers any origin", async t => {
-  let allow = true, globalAllow = true;
+test("worker: the setup mailbox holds 64 KB, limits per address and per locator, has no global limit, and answers any origin", async t => {
+  let allow = true, locAllow = true, globalSpent = 0;
   const limiter = fn => ({ limit: async () => ({ success: fn() }) });
-  const rt = world(t, { env: { SETUP_LIMITER: limiter(() => allow), SETUP_LIMITER_GLOBAL: limiter(() => globalAllow), SETUP_POLL_MS: "20" } });
+  const rt = world(t, { env: { SETUP_LIMITER: limiter(() => allow), SETUP_LOC_LIMITER: limiter(() => locAllow), SETUP_LIMITER_GLOBAL: { limit: async () => { globalSpent++; return { success: false }; } }, SETUP_POLL_MS: "20" } });
   const loc = "z".repeat(43);
   const post = (line, extra = {}) => worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", headers: { origin: "https://vyre.run" }, body: JSON.stringify({ loc, fp: "f".repeat(22), wtok: "w".repeat(43), ...(line ? { line } : {}), ...extra }) }), rt.env);
   const first = await post();
@@ -639,8 +639,12 @@ test("worker: the setup mailbox holds 64 KB, limits per address and globally, an
   assert.equal((await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "POST", body: "x".repeat(9000) }), rt.env)).status, 413);
   allow = false;
   assert.equal((await post()).status, 429, "per-address limiter");
-  allow = true; globalAllow = false;
-  assert.equal((await post()).status, 429, "global limiter");
+  allow = true; locAllow = false;
+  assert.equal((await post()).status, 429, "per-locator limiter");
+  locAllow = true;
+  assert.equal((await post()).status, 200, "a spent global budget (the old one, bound here as always-refusing) blocks nobody");
+  assert.equal(globalSpent, 0, "no global limiter is consulted any more");
+  assert.equal((await post(undefined, { loc: "y".repeat(43) })).status, 200, "another locator is unaffected");
   const pre = await worker.fetch(new Request(`${H}/v1/setup/mbx`, { method: "OPTIONS", headers: { origin: "https://vyre.run" } }), rt.env);
   assert.equal(pre.status, 204);
   assert.match(String(pre.headers.get("access-control-allow-headers")), /x-vyre-setup-key/);
@@ -648,7 +652,7 @@ test("worker: the setup mailbox holds 64 KB, limits per address and globally, an
   assert.equal(badLoc.status, 400);
 });
 
-test("worker: /v1/pair has no global limit, so nothing an outsider sends can stop a real ticket from resolving; one address's own limit still applies", async t => {
+test("worker: /v1/pair serves a hit and a contested ticket with no charge, charges only a miss to its own address, and has no global limit", async t => {
   const rt = world(t);
   const b = await box(rt);
   await b.s.json();
@@ -656,15 +660,15 @@ test("worker: /v1/pair has no global limit, so nothing an outsider sends can sto
   const sealed = wire.ticketSeal(ticket, JSON.stringify({ v: 1, name: "alex", relay: BASE, route: b.route, box: "x".repeat(43), exp }));
   b.s.ws.send(JSON.stringify({ t: "ticket", loc: "f".repeat(43), record: sealed, mac: "b".repeat(43), exp }));
   await rt.settle();
-  let global = 0;
+  let global = 0, charged = [];
   rt.env.PAIR_LIMITER_GLOBAL = { limit: async () => { global++; return { success: false }; } };
+  rt.env.PAIR_LIMITER = { limit: async ({ key }) => { charged.push(key); return { success: key !== "203.0.113.7" }; } };
   const resolve = (loc, ip = "203.0.113.5") => worker.fetch(new Request(`${BASE.replace(/^ws/, "http")}/v1/pair`, { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ loc }) }), rt.env);
-  const miss = await resolve("g".repeat(43));
-  assert.equal(miss.status, 404, "a miss answers as a miss, whatever the traffic");
+  // an address that has spent its own miss budget still gets a real ticket resolved
+  assert.equal((await resolve("g".repeat(43), "203.0.113.7")).status, 429, "its miss is refused");
+  assert.equal((await resolve("f".repeat(43), "203.0.113.7")).status, 200, "its hit is served");
+  assert.deepEqual(charged, ["203.0.113.7"], "only the miss was charged");
+  // another address is unaffected by it, and a plain miss answers as a miss
+  assert.equal((await resolve("h".repeat(43))).status, 404);
   assert.equal(global, 0, "a global limiter, if one is still bound, is never consulted");
-  assert.equal((await resolve("f".repeat(43))).status, 200, "a hit is always served");
-  // one address over its own limit is refused, and only that address
-  rt.env.PAIR_LIMITER = { limit: async ({ key }) => ({ success: key !== "203.0.113.7" }) };
-  assert.equal((await resolve("h".repeat(43), "203.0.113.7")).status, 429);
-  assert.equal((await resolve("h".repeat(43), "203.0.113.8")).status, 404, "another address is unaffected");
 });
