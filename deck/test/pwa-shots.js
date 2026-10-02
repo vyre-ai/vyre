@@ -86,7 +86,12 @@ const SCREENS = [
   // CHAT_DEMO=1 for the ask and the question; the held drafts are always there.
   { name: "now-sheet-ask", path: "/now", wait: 4000, script: `await waitFor('.np-row[data-kind=ask] .np-main', 15000); await click('.np-row[data-kind=ask] .np-main'); await wait(900);` },
   { name: "now-sheet-draft", path: "/now", script: `await waitFor('.np-row[data-kind=draft] .np-main', 8000); await click('.np-row[data-kind=draft] .np-main'); await wait(900);` },
-  { name: "now-sheet-question", path: "/now", wait: 4000, script: `await waitFor('.np-row[data-kind=question] .np-main', 15000); await click('.np-row[data-kind=question] .np-main'); await wait(600);
+  { name: "now-sheet-question", path: "/now", wait: 4000,
+    // The CI world is not started with CHAT_DEMO, so the question is stubbed: the ask and the one waiting row that names it.
+    stub: { "threads.asks": [{ id: "q-1", kind: "question", thread: "t-1", agent: "kit", at: 1, summary: "Which tone for the client update?",
+        questions: [{ question: "Which tone for the client update?", header: "Tone", options: [{ label: "Short and plain" }, { label: "Warm" }] }] }],
+      "waiting.list": { count: 1, rows: [{ id: "ask:q-1", kind: "ask", title: "kit has a question", at: 1 }] } },
+    script: `await waitFor('.np-row[data-kind=question] .np-main', 15000); await click('.np-row[data-kind=question] .np-main'); await wait(600);
       const c = document.querySelector('.ns-choice'); c && c.click(); await wait(300);` },
   { name: "now-sheet-draft-paper", path: "/now", theme: "paper", script: `await waitFor('.np-row[data-kind=draft] .np-main', 8000); await click('.np-row[data-kind=draft] .np-main'); await wait(900);` },
   // A row dragged 70 px right and let go short of 100: Approve stays showing (nothing is sent).
