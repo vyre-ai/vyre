@@ -695,6 +695,8 @@ export function peerIdentity(pid, look = processTable(), platform = process.plat
   } catch { /* unreadable: null */ }
   return { session: start ? `${target}:${start}` : null, cwd };
 }
+
+/**
  * The process group a process is in and the foreground process group of its controlling terminal, or null.
  * The person's own `vyre` in their shell is in the foreground group of its login terminal; a setsid child
  * has no controlling terminal, and a nohup or background child has the terminal but is not in its foreground
