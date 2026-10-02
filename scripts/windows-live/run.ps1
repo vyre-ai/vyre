@@ -71,7 +71,7 @@ Set-Content (Join-Path $rel "SHA256SUMS") "$hash  VyreSetup.exe" -Encoding ASCII
 # that key through its test seam (the real key's private half is never here).
 $signer = @'
 const c = require("crypto"), fs = require("fs");
-const dir = process.argv[2];
+const dir = process.argv[1];
 const { publicKey, privateKey } = c.generateKeyPairSync("ed25519");
 const sums = fs.readFileSync(dir + "/SHA256SUMS");
 fs.writeFileSync(dir + "/SHA256SUMS.sig", c.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), privateKey).toString("base64") + "\n");
