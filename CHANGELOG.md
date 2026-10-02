@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- A watcher can wake a session. With `about: { "session": "<thread id>" }`, `owner: { "kind": "session",
+  "thread": <the same id> }`, `act: true` and optionally `wake: { "maxPerDay": 5 }` (at most 20), a run that
+  files new items posts them to that session through `threads.post` (kind `watcher.item`) as ONE post per
+  run, as quoted untrusted data: a header in Vyre's voice, then the items inside a `<vyre-data>` block
+  whose marker carries a nonce chosen per post, with marker look-alikes and control characters removed
+  and every field cut to 300 characters, so a PR review comment never arrives as an instruction. Before
+  each post: the watcher is owned by that session, the thread exists, it belongs to the watcher's
+  project, and the day's budget is not spent; a refusal skips the post with a line in the run's log and
+  is never retried or counted. The card says "Posts what it finds into session <id> as quoted notes".
+  New event `watcher.woke`.
+
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
