@@ -322,3 +322,43 @@ test("media: the thread's own folder swapped for a link at the last moment is st
   assert.equal(r.error?.code, "denied", JSON.stringify(r));
   assert.deepEqual(fs.readdirSync(victim), [], "nothing was created in the target");
 });
+
+const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32BE(n); return b; };
+const pngOf = (w, h, pad = 0) => Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), u32(13), Buffer.from("IHDR"), u32(w), u32(h), Buffer.alloc(9), Buffer.alloc(pad, 1)]);
+
+test("media: a file's own size and length are kept, a gallery pages through them within scope, and usage and the box-wide cap are reported", async t => {
+  const { ok, call, asVyre } = await boot(t);
+  const made = [];
+  for (const [i, [w, h]] of [[640, 480], [800, 600], [1024, 1024]].entries()) {
+    const m = await asVyre("artifacts.media.register", { thread: i === 2 ? "t3" : "t1", mime: "image/png", data_b64: pngOf(w, h, i + 1).toString("base64"), provider: i === 1 ? "codex" : "grok", prompt: `picture ${i} ${"x".repeat(200)}`, title: `Picture ${i}` });
+    made.push(m);
+    await new Promise(r => setTimeout(r, 5)); // distinct created_at for paging
+  }
+  assert.deepEqual([made[0].media.width, made[0].media.height], [640, 480], "the size comes from the file's own header");
+  const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypmp42"), Buffer.alloc(4), Buffer.alloc(8, 0)]);
+  const vid = await asVyre("artifacts.media.register", { thread: "t1", mime: "video/mp4", data_b64: mp4.toString("base64"), title: "Clip" });
+  assert.equal(vid.media.duration_s, undefined, "nothing is claimed that the file does not say");
+  // The gallery: the person sees every project, newest first, a prompt cut short, paged by created_at.
+  const g1 = await ok("artifacts.media.gallery", { kind: "image", limit: 2 });
+  assert.deepEqual(g1.items.map(x => x.title), ["Picture 2", "Picture 1"]);
+  assert.equal(g1.items[0].prompt.length, 140);
+  assert.deepEqual([g1.items[0].width, g1.items[0].height], [1024, 1024]);
+  assert.ok(g1.next);
+  const g2 = await ok("artifacts.media.gallery", { kind: "image", limit: 2, before: g1.next });
+  assert.deepEqual(g2.items.map(x => x.title), ["Picture 0"]);
+  assert.equal(g2.next, null);
+  assert.deepEqual((await ok("artifacts.media.gallery", { provider: "codex" })).items.map(x => x.title), ["Picture 1"]);
+  assert.deepEqual((await ok("artifacts.media.gallery", { kind: "video" })).items.map(x => x.title), ["Clip"]);
+  // An agent sees its own project only: t3 is northwind's, kit (t2) is harlow-legal's.
+  const kit = (await call("artifacts.media.gallery", { kind: "image" }, "mcp:agent:kit", { thread: "t2" })).data;
+  assert.deepEqual(kit.items.map(x => x.title).sort(), ["Picture 0", "Picture 1"]);
+  // Usage: the person and Vyre's modules read it; a model does not.
+  const use = await ok("artifacts.media.usage", {});
+  assert.equal(use.total_bytes, made.reduce((n, m) => n + m.media.bytes, 0) + vid.media.bytes);
+  assert.deepEqual(use.projects.map(p => p.project).sort(), ["harlow-legal", "northwind"]);
+  assert.equal(use.limit_bytes, 20 * 1024 ** 3);
+  assert.equal((await call("artifacts.media.usage", {}, "mcp:agent:kit", { thread: "t2" })).error.code, "denied");
+  // The box-wide cap refuses with a plain sentence.
+  _test.mediaCaps = { project: 1e12, thread: 1e12, total: use.total_bytes + 10 };
+  await assert.rejects(asVyre("artifacts.media.register", { thread: "t1", mime: "image/png", data_b64: pngOf(10, 10, 100).toString("base64") }), /generated media on this box is at its limit/);
+});
