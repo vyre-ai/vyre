@@ -169,8 +169,9 @@ async function wakeSetup(t, { act = true, on = true, live = true } = {}) {
   return { ...s, d, queued, wake };
 }
 
-test("wake: a firing duty that acts and is on queues one low request from the duty, naming it", async t => {
-  const { d, queued, wake } = await wakeSetup(t);
+test("wake: a firing duty that acts and is on queues one low request from the duty, naming it, even before its row says started (the first run fires inside create)", async t => {
+  const { d, queued, wake, db } = await wakeSetup(t);
+  db.prepare("UPDATE team_duties SET started = 0 WHERE id = ?").run(d.id);
   assert.equal(wake({ name: d.watcher, items: 2, seen: 2, trigger: "schedule" }), true);
   assert.equal(queued.length, 1);
   assert.equal(queued[0].teammate, tm.agent);

@@ -147,7 +147,8 @@ export function makeWake({ dutyApi, live, waiting, queue }) {
   return e => {
     if (!e || typeof e.name !== "string" || !(Number(e.items) > 0)) return false;
     const d = dutyApi.byWatcher(e.name);
-    if (!d || !d.act || !d.enabled || !d.started || !live(d.teammate)) return false;
+    // Not `started`: a duty's first run happens inside watchers.duty.create, before the row is marked started; a firing proves it has a watcher.
+    if (!d || !d.act || !d.enabled || !live(d.teammate)) return false;
     const from = `duty:${d.id}`;
     if (waiting(d.teammate, from)) return false;
     queue({ teammate: d.teammate, project: d.project, from_kind: "duty", from, priority: "low",
