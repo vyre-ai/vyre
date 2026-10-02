@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(release): site-deploy.yml puts vyre.run on a published stable release by itself: it assembles the site from main's pages and the tag's signed files, deploys behind the `deploy` environment's reviewer, then checks the served copy byte for byte. It runs from main (the deploy environment takes only main and stage, not tags), so it takes effect once it is on main. Fixes #16.
 - fix(release): install-mac-server.sh is a release asset, listed in the Ed25519-signed SHA256SUMS, and the release gate requires it. install-box.sh already checked it against the sums before running it on a Mac (test: a tampered copy is refused), so the script is now covered by the release signature instead of being served only from the site. Fixes #9.
 - feat(release): the release carries setup.json (the hashes of what vyre.run serves for the setup page, /i and /w), listed in the signed SHA256SUMS, and the release gate requires it (check-release-dist --setup). After a deploy, scripts/check-served.mjs --release <dir> can now compare vyre.run with what was signed (5b).
 - fix(update): the updater compares versions as semver. A release is above its own prereleases and prereleases compare identifier by identifier, so a box no longer treats 0.2.0 and 0.2.0-rc.N as equal: it is not offered an earlier prerelease of its own version as an automatic update, and the floor holds the same rule. J2b has a case for it. Fixes #15.
