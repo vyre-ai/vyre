@@ -34,7 +34,7 @@ This decision gives each space a network of its own and one way in.
 4. **The iPhone is relay-first with no VPN**, and browsers are relay-only. The relay (Cloudflare Workers, or a self-hosted
    container) carries pairing, signalling, push and the encrypted fallback. It is correct without the network and fast with it.
 5. **A device talks to its own home server.** The home server is the only thing that joins an org's network, as an isolated
-   outbound-only doorway. A device never joins an org's network.
+   outbound-only doorway, and it forwards the org's traffic as ciphertext it cannot read. A device never joins an org's network.
 6. **Identity is the device's Noise key.** A network node is a path, never an identity. A node reaches nothing until its key is
    bound to a live device row by that device's own proof; the caller is then `device:<id>`. Access rules are generated from
    device rows, never from tags.
@@ -42,7 +42,12 @@ This decision gives each space a network of its own and one way in.
    own account, a small server of their own, or the relay alone. The relay path always exists.
 8. **No Tailscale features are used.** Taildrive, Taildrop, SSH, exit nodes and tags as identity are not part of the product.
    VyreDrive, VyreDrop and VyreVault ride Vyre's own channel.
-9. **Version policy.** v0.2.x keeps Tailscale and is not broken. 0.3 migrates installs in a dual mode that the person ends with
+9. **Machines are nodes with capabilities, and work needs three yeses.** A node offers capabilities (client, compute, storage,
+   browser, gpu, ingress, always on, presence). Placing work on a node needs the space's grants, the node owner's consent for that
+   space, and the space's residency policy, which can forbid member machines even when they are online. A session belongs to a
+   space, not to the machine running it. Wink translates roles, consent and policy into network and data grants, and the network
+   is replaceable behind one interface.
+10. **Version policy.** v0.2.x keeps Tailscale and is not broken. 0.3 migrates installs in a dual mode that the person ends with
    one click; Vyre never touches the person's own Tailscale.
 
 ## Consequences
