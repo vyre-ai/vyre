@@ -14,7 +14,7 @@
 // unchanged until a person adds a second account.
 
 import crypto from "node:crypto";
-import { addressRefused, metadataName } from "./endpoint.js";
+import { addressRefused, metadataName, loopbackRefused, isLoopbackHost } from "./endpoint.js";
 
 // kind: what the credential is. "api-key" and "setup-token" name a vault item; "login" names none:
 // the provider's own sign-in (codex login, grok login) wrote its token into this account's own
@@ -47,10 +47,11 @@ export function endpointOk(u) {
   const text = String(u || "").trim();
   let x;
   try { x = new URL(text); } catch { throw bad("that is not a web address"); }
-  const loop = ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname);
+  const loop = isLoopbackHost(x.hostname);
   if (!(x.protocol === "https:" || (x.protocol === "http:" && loop))) throw bad("the address must be https (plain http only to this machine)");
   if (x.username || x.password) throw bad("the address must not carry a login");
   if (x.search || x.hash) throw bad("the address must not have a query or a fragment");
+  if (loopbackRefused(x)) throw bad("a key may not be sent to a service on this machine here (on a server these are Vyre's own; Vyre's own ports are never allowed)");
   if (addressRefused(x.hostname) || metadataName(x.hostname)) throw bad("that address is not a place a key may be sent");
   if (text.length > 300) throw bad("the address is too long");
   return `${x.protocol}//${x.host}${x.pathname}`.replace(/\/+$/, "");

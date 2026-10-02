@@ -402,8 +402,10 @@ export default {
         const answers = await askMacs(ctx, "recall.thread", q);
         const found = answers.find(a => a.ok && a.data);
         if (found) return gate({ ...found.data, ...macLabel(found) });
+        // Not a failure of the server: no Mac to ask, or none that has it, is "not found", as recall.transcript says (a 404, with words a person can read).
         const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
-        throw new Error(`no session ${q.session} (${why})`);
+        const asleep = answers.some(a => a.error && a.error.code !== "not_found" && !/^no session /.test(String(a.error.message || "")));
+        throw Object.assign(new Error(answers.length && !asleep ? `no session ${q.session} (${why})` : `That session is on a Mac that isn't connected. (${why})`), { code: "not_found" });
       },
     });
     ctx.tool("recall.transcript", {

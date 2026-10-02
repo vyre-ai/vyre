@@ -21,7 +21,7 @@ import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
 import crypto from "node:crypto";
-import { hostSafe } from "./endpoint.js";
+import { resolveSafe, pinnedFetch, loopbackRefused } from "./endpoint.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -396,13 +396,13 @@ export default {
     });
     /** One cheap, read-only call that proves the key works at the address (no model is run, nothing is spent). Redirects are refused so the key never follows one elsewhere. */
     const checkKey = async (/** @type {string} */ kind, /** @type {string} */ base, /** @type {string} */ key) => {
-      const doFetch = globalThis.fetch;
       const url = kind === "anthropic-compatible" ? `${base.replace(/\/v1$/, "")}/v1/models` : kind === "openrouter" ? "https://openrouter.ai/api/v1/auth/key" : `${base}/models`;
       const headers = kind === "anthropic-compatible" ? { "x-api-key": key, "anthropic-version": "2023-06-01" } : { authorization: `Bearer ${key}` };
       const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 15_000);
       try {
-        if (!(await hostSafe(url))) throw Object.assign(new Error("that address is not a place a key may be sent"), { code: "bad_input" });
-        const r = await doFetch(url, { headers, redirect: "error", signal: ac.signal });
+        const pin = await resolveSafe(url);
+        if (!pin) throw Object.assign(new Error("that address is not a place a key may be sent"), { code: "bad_input" });
+        const r = await pinnedFetch(url, { headers, signal: ac.signal }, pin);
         // The answer is read for nothing; a server that streams without end is cut off after about 1 MB.
         if (r.body) { let n = 0; for await (const c of /** @type {any} */ (r.body)) { n += c.length; if (n > 1_000_000) { ac.abort(); break; } } }
         if (r.status === 401 || r.status === 403) throw Object.assign(new Error("the service refused that key"), { code: "bad_input" });

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { boot } from "./testing/boot.js";
 
-const GOOD = "sk-test-key-1234567890abcdef";
+const GOOD = "test-key-1234567890abcdef";
 
 /** A service: GET /v1/models (and OpenRouter-style /v1/auth/key) check the key; POST /v1/chat/completions streams an echo and says which key it saw. */
 async function service(t) {
@@ -65,7 +65,7 @@ test("api key: a wrong key, an unsafe address, a bad shape, an agent and OpenRou
   const s = await service(t);
   const add = (input, caller = "cli") => w.d.registry.call("sessions.accounts.key", input, caller, {});
   const none = async () => (await w.tool("sessions.accounts.list", {})).data.filter(a => a.kind === "api-key").length;
-  assert.match((await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: "sk-wrong-key-1234567890", base_url: `${s.base}/v1` })).error.message, /refused that key/);
+  assert.match((await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: "wrong-key-1234567890", base_url: `${s.base}/v1` })).error.message, /refused that key/);
   for (const bad of ["http://example.com/v1", "https://user:pw@example.com/v1", "https://example.com/v1?x=1", "https://169.254.169.254/latest", "https://100.100.100.200/v1", "https://192.0.0.192/v1", "https://10.0.0.5/v1", "https://192.168.1.9/v1", "https://100.64.1.1/v1", "https://[fd00:ec2::254]/v1", "ftp://example.com", "not a url"]) {
     assert.equal((await w.tool("sessions.accounts.key", { kind: "openai-compatible", key: GOOD, base_url: bad })).error.code, "bad_input", bad);
   }

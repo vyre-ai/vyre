@@ -12,7 +12,7 @@
 // module) so a resume after a restart carries on where it was; without one it lives in memory.
 // The key comes from o.env.OPENROUTER_API_KEY (an account of kind api-key), read here and nowhere else.
 
-import { hostSafe } from "../endpoint.js";
+import { resolveSafe, pinnedFetch } from "../endpoint.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
@@ -67,10 +67,12 @@ function runChat(entry, store, o) {
     try {
       if (!okBase(base)) throw new Error("the OpenRouter address must be https");
       // Resolved again on every turn: a name that now points at a private, tailnet or metadata address gets no key and no prompt.
-      if (!(entry.fetch && !entry.lookup) && !(await hostSafe(base, entry.lookup))) throw new Error("that address is not a place a key may be sent");
+      // A test double (entry.fetch) is called as is; otherwise the request goes to the address just resolved, so nothing can change under it.
+      const pin = entry.fetch && !entry.lookup ? null : await resolveSafe(base, entry.lookup);
+      if (!(entry.fetch && !entry.lookup) && !pin) throw new Error("that address is not a place a key may be sent");
       if (!key) throw new Error("no OpenRouter key on this account");
       if (!model) throw new Error("choose a model for OpenRouter (in the routing list, or when the session starts)");
-      const res = await doFetch(`${base}/chat/completions`, { method: "POST", signal: ac.signal,
+      const res = await (pin && !entry.fetch ? (u, i) => pinnedFetch(u, i, pin) : doFetch)(`${base}/chat/completions`, { method: "POST", signal: ac.signal,
         headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-title": "Vyre" },
         body: JSON.stringify({ model, messages, stream: true, usage: { include: true }, provider: { data_collection: "deny" } }) });
       if (!res.ok) throw new Error(`OpenRouter answered ${res.status}: ${String(await res.text().catch(() => "")).slice(0, 200)}`);
