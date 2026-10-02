@@ -14,7 +14,7 @@ import * as config from "../config/index.js";
  * @param {string} method @param {string} path @param {any} [payload]
  * @param {{ root?: string, caller?: string, timeout?: number, session?: { id: string, key: string } | null, headers?: Record<string, string>, socket?: string }} [opts]
  */
-export function request(method, path, payload, { root, caller = "cli", timeout = 10_000, session = null, headers = {}, socket } = {}) {
+export function requestRaw(method, path, payload, { root, caller = "cli", timeout = 10_000, session = null, headers = {}, socket } = {}) {
   // Inside a session Vyre started, VYRE_SOCKET is that session's own socket (ADR 0030 phase 3):
   // vyred binds the caller there, so what this says it is changes nothing. An explicit root or
   // socket wins, so a test or a CLI aimed at another home is never sent to the session's vyred.
@@ -39,6 +39,25 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
     if (data) req.write(data);
     req.end();
   });
+}
+
+/** @type {((tool: string, input: any, opts: any) => Promise<any>) | null} */
+let presenceHandler = null;
+/**
+ * The CLI installs its terminal prompt here. A tool call that answers presence_required with `terminal: true` (a Tier 1 tool run from
+ * a terminal, core/presence TERMINAL_ASKS) is then asked again with the person's proof, once, tied to that call.
+ * @param {((tool: string, input: any, opts: any) => Promise<any>) | null} fn
+ */
+export function setPresenceHandler(fn) { presenceHandler = fn; }
+
+/** @type {typeof requestRaw} */
+export async function request(method, path, payload, opts = {}) {
+  const r = await requestRaw(method, path, payload, opts);
+  if (presenceHandler && method === "POST" && path.startsWith("/v1/tools/") && r?.error?.code === "presence_required" && r.error.terminal === true
+    && !(opts.headers && opts.headers["x-vyre-presence"])) {
+    return presenceHandler(decodeURIComponent(path.slice("/v1/tools/".length)), payload, opts);
+  }
+  return r;
 }
 
 export const call = (tool, input = {}, opts) => request("POST", "/v1/tools/" + encodeURIComponent(tool), input, opts);

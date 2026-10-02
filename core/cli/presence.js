@@ -9,7 +9,9 @@
 
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { request, call } from "../daemon/client.js";
+import { request, requestRaw } from "../daemon/client.js";
+
+const call = (tool, input, opts) => requestRaw("POST", "/v1/tools/" + encodeURIComponent(tool), input, opts);
 import * as config from "../config/index.js";
 
 export const NO_TERMINAL = "this needs a person at a terminal; run it in your own terminal";

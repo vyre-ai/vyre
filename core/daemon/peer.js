@@ -695,3 +695,96 @@ export function peerIdentity(pid, look = processTable(), platform = process.plat
   } catch { /* unreadable: null */ }
   return { session: start ? `${target}:${start}` : null, cwd };
 }
+
+/**
+ * The process group a process is in and the foreground process group of its controlling terminal, or null.
+ * The person's own `vyre` in their shell is in the foreground group of its login terminal; a setsid child
+ * has no controlling terminal, and a nohup or background child has the terminal but is not in its foreground
+ * group (tpgid). Read from /proc on Linux and ps elsewhere.
+ * @param {number} pid @returns {{ pgid: number, tpgid: number } | null}
+ */
+export function foreground(pid) {
+  try {
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      return { pgid: Number(f[2]), tpgid: Number(f[5]) };
+    }
+    const out = execFileSync("ps", ["-o", "pgid=,tpgid=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim().split(/\s+/).map(Number);
+    return out.length === 2 && out.every(Number.isFinite) ? { pgid: out[0], tpgid: out[1] } : null;
+  } catch { return null; }
+}
+
+/** Terminal hosts' own pty helpers, the one process a real terminal's chain may hold that has no terminal itself. */
+const PTY_HOST = /ptyHost|iTermServer|pty-host/;
+/** sshd's own pair for a login (the user process and its privileged parent): a login over `ssh -t` passes through them. */
+const SSHD = /^sshd(?:-session)?: /;
+
+/**
+ * Is this peer's pty one the proved server's own terminal host made? Walk from the peer up to the server: every process
+ * between must share the peer's terminal (the shell, login), except one pty helper (VS Code's ptyHost, iTerm2's iTermServer)
+ * and sshd's login pair. A helper counts only when its executable sits inside the proved server's own install folder (the
+ * .app bundle, or the server's directory), and an sshd only when its executable is sshd or, unreadable, its uid is 0: a name
+ * in an argument list proves nothing. A pty an extension, task or agent made itself (script, python pty.spawn, node-pty) has
+ * the maker above the pty, with no terminal and no helper identity, so the chain fails (reviewer-2, 2 Oct 2026). Not a
+ * boundary against an agent typing into the person's own terminal.
+ * @param {number} pid @param {{ pid: number, exe?: string }} server
+ * @param {(pid: number) => ({ ppid: number, tty: string|null, args: string }|null)} [look]
+ * @param {{ exe?: (pid: number) => string|null, uid?: (pid: number) => number|null }} [seam]
+ */
+export function ptyHosted(pid, server, look = procInfo, { exe = exePath, uid = processUid } = {}) {
+  const me = look(pid);
+  if (!me || !me.tty) return false;
+  const exeOfServer = String(server.exe || "");
+  const app = exeOfServer.indexOf(".app/");
+  const folder = app >= 0 ? exeOfServer.slice(0, app + 5) : exeOfServer.startsWith("/") ? exeOfServer.slice(0, exeOfServer.lastIndexOf("/") + 1) : null;
+  let helper = 0, sshd = 0, cur = me;
+  for (let hops = 0; hops < 64; hops++) {
+    const up = cur.ppid;
+    if (up === server.pid) return true;
+    if (!up || up <= 1) return false;
+    const n = look(up);
+    if (!n) return false;
+    if (n.tty !== me.tty) {
+      if (SSHD.test(n.args)) {
+        const e = exe(up);
+        if (!(e ? /\/sshd(?:-session)?$/.test(e) : uid(up) === 0) || ++sshd > 2) return false;
+      } else {
+        const e = exe(up);
+        if (!PTY_HOST.test(n.args) || !folder || !e || !e.startsWith(folder) || ++helper > 1) return false;
+      }
+    }
+    cur = n;
+  }
+  return false;
+}
+
+/** @type {"strict"|"label"|null} */
+let socketTrustMode = null;
+/** @type {"strict"|"label"|null} */
+let hostedTrust = null;
+/**
+ * "strict" (the default): a person's label on the socket (cli, local, deck, capsule, mobile) is kept only for a
+ * peer that proves it is the person (the pinned Capsule, a terminal login in the foreground, or a server the
+ * person already proved); anything else is capped at mcp. "label" trusts the label as it always did: for tests
+ * that host vyred in their own process and have no terminal. Set by code, never by the environment.
+ * @param {"strict"|"label"} mode
+ */
+export function setSocketTrust(mode) { socketTrustMode = mode === "label" ? "label" : "strict"; }
+/**
+ * What a test sets wins. Otherwise strict, except for a vyred a test started as a child process (`vyre up` in a temp home under node's
+ * test runner): it takes the label rule on the same conditions peerHosting() takes VYRE_TEST_HOSTED (a live parent that is not init,
+ * and a home that is not ~/.vyre), since a CI runner gives that child no login terminal. The person's daemon never qualifies.
+ */
+export function socketTrust() {
+  if (socketTrustMode) return socketTrustMode;
+  if (hostedTrust === null) {
+    // And only over a home under the temp folder, where every test home is made: a person's daemon over a custom home (a Docker box, a
+    // second home) never takes it, whatever its environment (reviewer-2, 2 Oct 2026).
+    const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+    const home = process.env.VYRE_HOME;
+    const underTmp = Boolean(home) && (real(home) + path.sep).startsWith(real(os.tmpdir()) + path.sep);
+    hostedTrust = underTmp && peerHosting() ? "label" : "strict";
+  }
+  return hostedTrust;
+}

@@ -496,11 +496,14 @@ export default {
 
     const LEVEL = { type: "string", enum: ["account", "project", "device", "session"] };
 
+    /** From a terminal a change that loosens a guard or widens what Claude does needs the person's proof (Tier 1, core/presence). */
+    const loosensKey = i => { const d = decls().find(x => x.key === (i && i.key)); return Boolean(d && !(i && i.preview) && (d.security === "loosens" || d.confirm)); };
     ctx.tool("settings.set", {
       description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing, with confirm naming what it widens or loosens. No confirm step and no proof: every change is logged (settings.changes) and can be undone (settings.undo). Returns the value now in effect.",
       input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: LEVEL, ...where,
         preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE,
+      terminalAsk: loosensKey,
       run: async (i, meta) => {
         if (i.value === null) throw Object.assign(new Error("use settings.reset to remove a value"), { code: "bad_input" });
         return change(i, meta, i.value);
@@ -511,6 +514,7 @@ export default {
       description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Logged and undoable like settings.set.",
       input: { type: "object", required: ["key"], properties: { key: str, level: LEVEL, ...where, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE,
+      terminalAsk: loosensKey,
       run: async (i, meta) => change(i, meta, undefined),
     });
 

@@ -25,6 +25,7 @@
   "watches": {
     "emits": [
       "onboard.stepped",
+      "onboard.linked",
       "onboard.finished"
     ]
   },
