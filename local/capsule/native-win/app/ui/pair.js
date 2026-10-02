@@ -7,6 +7,9 @@ import { fromBase64url } from "./relay/bytes.js";
 
 const invoke = window.__TAURI_INTERNALS__.invoke;
 const RELAY = "wss://relay.vyre.run";
+// The box now waits for the person's Confirm tap before it enrols a pairing, so the handshake may take
+// as long as the person does: up to 90 seconds, not the client's 15-second default for ordinary dials.
+const PAIR_HANDSHAKE_MS = 90_000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const PLAIN = {
   ticket_gone: "This pairing ran out of time or was already used. Start again.",
@@ -42,7 +45,7 @@ export async function startPairing({ onSeed, onWaiting, onError, onDone, onEnd }
       if (st === "cancelled") throw new Error("Pairing was cancelled.");
       await sleep(1000);
     }
-    const link = await pairOffer(found.offer, { name: "this computer", about: { kind: "app" }, ...shellDeviceKey(invoke) });
+    const link = await pairOffer(found.offer, { name: "this computer", about: { kind: "app" }, timeout: PAIR_HANDSHAKE_MS, ...shellDeviceKey(invoke) });
     await invoke("finish_pair", { link });
     onEnd();
     onDone();
