@@ -268,6 +268,16 @@ jobs:
     permissions:
       contents: read
 
+  # The iOS app for TestFlight (native-ios.yml): archived unsigned here, exported, signed and uploaded only in its upload job (the apple environment, tags
+  # v* only, approved by a required reviewer). It is not part of the release job's needs: an Apple problem never holds back the box release.
+  ios:
+    needs: prepare
+    uses: ./.github/workflows/native-ios.yml
+    permissions:
+      contents: read
+    with:
+      upload: ${{ needs.prepare.outputs.publish == 'true' }}
+
   # The hosted phone app's web export (no secrets): built on its own, handed to the release job, which seals and signs it there
   # (scripts/build-app-out.mjs) so the key is only ever used in the one job that has the release environment.
   app-web:

@@ -1,0 +1,44 @@
+#!/bin/bash
+# The iOS TestFlight step: export the UNSIGNED archive the build job made, signed by Apple's cloud-managed signing, and upload it to App Store Connect.
+#   ARCHIVE_TGZ=<Vyre.xcarchive.tgz> ARCHIVE_SHA256=<its sha256 from the build job> WORK=<scratch dir> \
+#   ASC_KEY_ID=... ASC_ISSUER_ID=... ASC_KEY_P8=<the .p8 text> APPLE_TEAM_ID=... bash scripts/native/ios-upload.sh
+# It runs in the job with the `apple` environment (a required reviewer, v* tags only) and nothing else runs there: no npm, no pods. The key file is written
+# mode 600 and deleted on exit; the key's id, issuer and path are the only things on the xcodebuild command line, never the key's text.
+# A missing secret prints one "skipped:" line and ends well. XCODEBUILD overrides the tool (the test uses a fake).
+set -euo pipefail
+set +x
+: "${ARCHIVE_TGZ:?}" "${ARCHIVE_SHA256:?}" "${WORK:?}"
+skip() { echo "skipped: $1 is not set in the apple environment, so nothing was sent to TestFlight"; exit 0; }
+[ -n "${ASC_KEY_ID:-}" ] || skip ASC_KEY_ID
+[ -n "${ASC_ISSUER_ID:-}" ] || skip ASC_ISSUER_ID
+[ -n "${ASC_KEY_P8:-}" ] || skip ASC_KEY_P8
+[ -n "${APPLE_TEAM_ID:-}" ] || skip APPLE_TEAM_ID
+echo "::add-mask::$ASC_KEY_ID"; echo "::add-mask::$ASC_ISSUER_ID"; echo "::add-mask::$APPLE_TEAM_ID"
+printf '%s\n' "$ASC_KEY_P8" | while IFS= read -r l; do [ -z "$l" ] || echo "::add-mask::$l"; done
+case "$APPLE_TEAM_ID" in *[!A-Z0-9]*) echo "APPLE_TEAM_ID is not a ten-character team id"; exit 1 ;; esac
+
+got=$(shasum -a 256 "$ARCHIVE_TGZ" | cut -d' ' -f1)
+[ "$got" = "$ARCHIVE_SHA256" ] || { echo "the archive is not the one the build job made (sha256 $got, expected $ARCHIVE_SHA256)"; exit 1; }
+echo "archive sha256: $got"
+
+umask 077
+mkdir -p "$WORK"; key="$WORK/AuthKey.p8"; trap 'rm -f "$key"' EXIT
+printf '%s\n' "$ASC_KEY_P8" > "$key"
+tar -xzf "$ARCHIVE_TGZ" -C "$WORK"
+archive=$(ls -d "$WORK"/*.xcarchive | head -1)
+[ -d "$archive" ] || { echo "no .xcarchive in the tarball"; exit 1; }
+cat > "$WORK/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>upload</string>
+  <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>uploadSymbols</key><true/>
+  <key>manageAppVersionAndBuildNumber</key><false/>
+</dict></plist>
+PLIST
+"${XCODEBUILD:-xcodebuild}" -exportArchive -archivePath "$archive" -exportPath "$WORK/export" -exportOptionsPlist "$WORK/ExportOptions.plist" \
+  -allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+echo "uploaded to App Store Connect: the build appears in TestFlight once Apple has processed it"

@@ -38,10 +38,11 @@ test("release.yml: the step that holds the signing key runs only checked-in scri
   assert.match(step, /node scripts\/sign-manifest\.mjs/);
 });
 
-test("release.yml, capsule-win.yml and native-android.yml: every action is pinned by commit sha (the key signs whatever those jobs built)", () => {
+test("release.yml, capsule-win.yml, native-android.yml and native-ios.yml: every action is pinned by commit sha (the key signs whatever those jobs built)", () => {
   const win = fs.readFileSync(path.join(REPO, ".github/workflows/capsule-win.yml"), "utf8");
   const droid = fs.readFileSync(path.join(REPO, ".github/workflows/native-android.yml"), "utf8");
-  const loose = [...(yml + "\n" + win + "\n" + droid).matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
+  const ios = fs.readFileSync(path.join(REPO, ".github/workflows/native-ios.yml"), "utf8");
+  const loose = [...(yml + "\n" + win + "\n" + droid + "\n" + ios).matchAll(/uses: ([^\s@]+)@(\S+)/g)].filter(m => !/^[0-9a-f]{40}$/.test(m[2]) && !m[1].startsWith("./"));
   assert.deepEqual(loose.map(m => `${m[1]}@${m[2]}`), []);
 });
 
@@ -111,4 +112,19 @@ test("release.yml: the Android APK is built unsigned by the reusable workflow fo
   assert.ok(rc > 0 && droid.slice(rc).includes("environment: release") && !/\n    environment:/.test(droid.slice(0, rc)), "only record-cert holds the environment, and nothing before it does");
   assert.ok(!/secrets\./.test(droid.slice(0, rc)), "the build and dry-sign jobs read no secret");
   for (const p of ["scripts/native", "docs/native", "apps/app/app.json"]) assert.ok(yml.includes(" " + p), `the approver's signing-path diff covers ${p}`);
+});
+
+test("release.yml and native-ios.yml: iOS is archived unsigned with no secret, exported only in the apple-environment job that runs one checked-in script, and never holds back the release", () => {
+  const ios = fs.readFileSync(path.join(REPO, ".github/workflows/native-ios.yml"), "utf8");
+  assert.match(yml, /\n  ios:\n    needs: prepare\n    uses: \.\/\.github\/workflows\/native-ios\.yml/);
+  assert.ok(!/needs: \[[^\]]*\bios\b/.test(yml), "no job waits for iOS");
+  const up = ios.indexOf("\n  upload:");
+  assert.ok(up > 0);
+  assert.ok(!/secrets\.|environment:/.test(ios.slice(0, up).replace(/^#.*$/gm, "")), "the build job reads no secret and holds no environment");
+  const job = ios.slice(up);
+  assert.match(job, /environment: apple/);
+  assert.match(job, /startsWith\(github\.ref, 'refs\/tags\/v'\)/);
+  assert.equal([...job.matchAll(/^\s+run: /gm)].length, 1, "one run step in the job that sees the key");
+  assert.match(job, /run: bash scripts\/native\/ios-upload\.sh/);
+  assert.deepEqual([...new Set([...ios.matchAll(/secrets\.([A-Z0-9_]+)/g)].map(m => m[1]))].sort(), ["APPLE_TEAM_ID", "ASC_ISSUER_ID", "ASC_KEY_ID", "ASC_KEY_P8"]);
 });

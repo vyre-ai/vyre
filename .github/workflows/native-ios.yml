@@ -1,0 +1,101 @@
+# The iOS app for TestFlight (0.2.2 native apps): the one Expo app, apps/app, bundle id sh.vyre.app, archived UNSIGNED, then exported with Apple's cloud-managed
+# signing and uploaded to App Store Connect. The App Store follows once Apple can approve it. The paused apps/ios never ships.
+#   build    no secrets: npm, pods and Xcode run here and make an unsigned archive; its Info.plist usage keys are checked against docs/native/permissions.json
+#   upload   the only job with the `apple` environment (a required reviewer, v* tags only): runs scripts/native/ios-upload.sh and nothing else, so no npm and
+#            no pods ever see the App Store Connect key. Without the key it prints one skip line.
+# release.yml calls this for every release tag with upload only on a publishing run; by hand (workflow_dispatch) it only builds, because the apple
+# environment refuses a branch.
+name: native-ios
+on:
+  push:
+    paths: ["scripts/native/ios-*", ".github/workflows/native-ios.yml"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      upload:
+        description: "Export, sign and upload to TestFlight (needs the apple environment's approval and key)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: native-ios-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+env:
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - name: Prebuild
+        working-directory: apps/app
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npx expo prebuild -p ios --clean
+      - name: Archive, unsigned
+        working-directory: apps/app/ios
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          version=$(node -p 'require("../../../package.json").version'); version=${version%%-*}
+          ws=$(ls -d *.xcworkspace | head -1); scheme=$(basename "$ws" .xcworkspace)
+          xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Vyre.xcarchive" \
+            MARKETING_VERSION="$version" CURRENT_PROJECT_VERSION="$BUILD_NUMBER" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive
+          echo "iOS archive: version $version, build $BUILD_NUMBER" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: What the built app asks the phone for (Info.plist usage keys), against docs/native/permissions.json
+        run: |
+          plists=$(find "$RUNNER_TEMP/Vyre.xcarchive/Products/Applications" -name Info.plist -not -path '*/Frameworks/*' -not -path '*.bundle/*')
+          [ -n "$plists" ] || { echo "no Info.plist in the archive"; exit 1; }
+          # shellcheck disable=SC2086
+          node scripts/native/check-permissions.mjs ios $plists | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Pack and checksum
+        id: pack
+        run: |
+          mkdir -p dist-native
+          tar -czf dist-native/Vyre.xcarchive.tgz -C "$RUNNER_TEMP" Vyre.xcarchive
+          sum=$(shasum -a 256 dist-native/Vyre.xcarchive.tgz | cut -d' ' -f1)
+          echo "$sum  Vyre.xcarchive.tgz" > dist-native/SHA256SUMS-build
+          echo "sha256=$sum" >> "$GITHUB_OUTPUT"
+          echo "unsigned archive sha256 (the upload job exports exactly these bytes): $sum" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ios-archive-${{ github.sha }}
+          path: dist-native/
+          retention-days: 14
+
+  upload:
+    needs: build
+    # A publishing release run only: workflow_call with upload true. The apple environment allows tags v* only, so a branch run is refused there as well.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && inputs.upload == true
+    runs-on: macos-latest
+    timeout-minutes: 30
+    environment: apple
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          sparse-checkout: scripts/native
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ios-archive-${{ github.sha }}
+          path: archive
+      - name: Export with cloud-managed signing and upload to TestFlight
+        env:
+          ARCHIVE_TGZ: archive/Vyre.xcarchive.tgz
+          ARCHIVE_SHA256: ${{ needs.build.outputs.sha256 }}
+          WORK: ${{ runner.temp }}/ios-export
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bash scripts/native/ios-upload.sh | tee -a "$GITHUB_STEP_SUMMARY"
