@@ -319,6 +319,7 @@ export function mountSession(container, opts) {
     }
     // Only a box without the tool gets the earlier view: api.js calls any 404 "missing", and a
     // transcript not found yet (code not_found) is a live thread that still reads as blocks.
+    if (t.error && !r.error && !t.error.missing && t.error.code !== "not_found") noRecall = true;
     if (t.error && t.error.missing && t.error.code !== "not_found") return legacyBoot(r);
     // Neither the Switchboard nor this box's transcripts have it: recall.thread asks the paired Mac.
     if (t.error && r.error) return legacyBoot(r);
@@ -371,7 +372,15 @@ export function mountSession(container, opts) {
   /** Pages from a paired Mac are smaller: each is one link reply, under its 5 MB body cap. */
   const page = () => isMac(where) ? MAC_PAGE : PAGE;
   /** One read of the session as blocks, from the Mac when it lives there. @param {Record<string, any>} q */
-  const transcript = q => attempt("recall.transcript", { session: thread, ...q, limit: page(), ...(isMac(where) ? { source: "mac" } : {}) });
+  const transcript = async q => {
+    // A thread of this server's own that recall cannot read (recall.* answers for a paired Mac's sessions, and fails for a server thread when none is
+    // paired, #56): asked once, then its history is threads.get's events and nothing asks again.
+    if (noRecall && !opts.recorded && !recorded.on && !isMac(where)) return { data: { blocks: [], next: 0, first: null } };
+    const t = await attempt("recall.transcript", { session: thread, ...q, limit: page(), ...(isMac(where) ? { source: "mac" } : {}) });
+    if (t.error && !t.error.missing && t.error.code !== "not_found" && !opts.recorded && !isMac(where) && record.current) noRecall = true;
+    return t;
+  };
+  let noRecall = false;
 
   /** The latest page of the session. A box that reads from the start (no `first` in the answer) is paged forward to its end. */
   async function readTail() {

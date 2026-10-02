@@ -67,6 +67,7 @@ const calls = [];
 let reads = 0;
 // The second session: a live headless thread the transcript read cannot find yet.
 const LIVE = "9d0e4c1a-live-thread";
+const NOREC = "norec-server-thread";
 let liveReads = 0;
 const liveBlocks = [
   { seq: 0, kind: "user", ts: T0, text: "ask" },
@@ -204,6 +205,13 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     else if (tool === "threads.thinking") data = { thread: NEW, thinking: input.on };
     else if (tool === "threads.shell") data = { thread: NEW, code: 1, output: "1 failing\n  estate intake: total" };
     else if (tool === "threads.remember") data = { thread: NEW, scope: input.scope, file: `/home/alex/work/harlow-legal/${input.scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md"}` };
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
+  if (input.thread === NOREC || input.session === NOREC) {
+    if (tool === "threads.get") data = { thread: { id: NOREC, name: "server thread", cwd: "/srv/w", status: "idle", canonical_status: "waiting", holder: null, agent: null },
+      events: [{ id: 1, type: "thread.sent", thread: NOREC, at: T0, payload: { text: "hello from the server", surface: "deck" } }], asks: [] };
+    else if (tool === "recall.transcript" || tool === "recall.thread") return { status: 500, statusText: "", json: async () => ({ error: { code: "internal", message: "no paired Mac" } }) };
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
@@ -1013,4 +1021,16 @@ test("@role: an existing teammate's own turn, never this session's; an unknown r
   assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore3, "nothing sent");
   assert.equal(calls.filter(c => c.tool === "team.ask").length, teamAsksBefore + 1, "still tried the ask itself - only creation is gated on team.default");
   teamWorld = null;
+});
+
+test("a server thread opens from its own history when no Mac is paired, and recall is asked once, not on every read (#56)", async () => {
+  const box = new El("div");
+  doc.body.append(box);
+  const before = calls.length;
+  const stopN = mountSession(box, { thread: NOREC, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text(box), /hello from the server/, "the thread's events drew it");
+  assert.equal(calls.slice(before).filter(c => c.tool === "recall.transcript").length, 1, "one failed ask, then none");
+  assert.equal(calls.slice(before).filter(c => c.tool === "recall.thread").length, 0, "recall.thread is for a Mac's sessions");
+  stopN();
 });
