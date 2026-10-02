@@ -534,3 +534,43 @@ test("sync: link.unpair really turns sync off on its own, through the watch modu
   assert.equal(syncOn(), 0, "core/sync's own link.unpaired listener turned sync off");
   assert.deepEqual(revoked, [{ machine: name }]);
 });
+
+test("sync: a companion core uploads only with a token its own key signed for that exact call; the tailnet node alone is no companion", async t => {
+  const { call, db, root } = await boxRegistry(t, { modules: ["relay"] });
+  const APP = "abcdefgabcdefgab";
+  db.prepare("INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, kind, trusted) VALUES (?, 'alex desktop', 'p', 'kh1', ?, 'app', 1)").run(APP, Date.now() - 60_000);
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const core = publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const id = crypto.randomUUID();
+  db.prepare("INSERT INTO link_peers (id, name, key_hash, paired_at, kind, parent, core_pub) VALUES (?, 'alex pc core', ?, ?, 'companion', ?, ?)").run(id, crypto.randomBytes(16).toString("hex"), Date.now(), APP, core);
+  const info = (await call("link.companion.hello", { token: "c1.bad" }, "tailnet:owner", { peer: { stableId: "nPC", node: "pc.ts.net" } }));
+  assert.equal(info.error?.code, "denied", "a malformed token is refused");
+  const consent = await call("sync.consent", { machine: "alex pc core", on: true }, "cli");
+  assert.ok(!consent.error, JSON.stringify(consent.error));
+  const peer = { stableId: "nPC", node: "pc.ts.net" };
+  const { tokenMessage, boxId } = await import("../link/companion.js");
+  const boxPubKey = (await import("../link/assert.js")).boxKey(root).publicKey;
+  const sign = (tool, input) => {
+    const ts = Date.now(), nonce = crypto.randomBytes(12).toString("base64url");
+    const sig = crypto.sign("sha256", tokenMessage({ box: boxId(boxPubKey), companion: id, ts, nonce, tool, input }), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    return `c1.${id}.${ts}.${nonce}.${sig}`;
+  };
+  const text = "0123456789", h = hash(text);
+  const start = { path: "a.jsonl", bytes: text.length, hash: h };
+  // no token and an unknown node: not a paired device
+  assert.equal((await call("sync.upload.start", start, "tailnet:owner", { peer })).error?.code, "no_link");
+  // a token for a different input, or a different tool: refused, and never falls back to the node
+  assert.equal((await call("sync.upload.start", { ...start, bytes: 3, companion: sign("sync.upload.start", start) }, "tailnet:owner", { peer })).error?.code, "no_link");
+  assert.equal((await call("sync.upload.start", { ...start, companion: sign("sync.upload.plan", start) }, "tailnet:owner", { peer })).error?.code, "no_link");
+  const ok = await call("sync.upload.start", { ...start, companion: sign("sync.upload.start", start) }, "tailnet:owner", { peer });
+  assert.ok(ok.data?.upload, JSON.stringify(ok.error));
+  const chunk = { upload: ok.data.upload, offset: 0, data: Buffer.from(text) };
+  assert.equal((await call("sync.upload.chunk", { ...chunk, data: Buffer.from("0123456780"), companion: sign("sync.upload.chunk", chunk) }, "tailnet:owner", { peer })).error?.code, "denied", "a changed byte breaks the signature");
+  assert.ok(!(await call("sync.upload.chunk", { ...chunk, companion: sign("sync.upload.chunk", chunk) }, "tailnet:owner", { peer })).error);
+  const fin = { upload: ok.data.upload, hash: h };
+  const done = await call("sync.upload.finish", { ...fin, companion: sign("sync.upload.finish", fin) }, "tailnet:owner", { peer });
+  assert.ok(!done.error, JSON.stringify(done.error));
+  // the parent app device is removed: the next call is refused at once
+  db.prepare("UPDATE relay_devices SET removed_at = ? WHERE id = ?").run(Date.now(), APP);
+  assert.equal((await call("sync.upload.plan", { files: [], companion: sign("sync.upload.plan", { files: [] }) }, "tailnet:owner", { peer })).error?.code, "no_link");
+});

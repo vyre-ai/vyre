@@ -674,7 +674,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let data;
     try { data = await rawBinary(req, 4 * 1024 * 1024); }
     catch (e) { return send(res, 400, { error: { code: /** @type {any} */ (e).code || "bad_input", message: /** @type {Error} */ (e).message } }); }
-    const r = await registry.call("sync.upload.chunk", { upload, offset, data }, caller, { peer: policy.peer });
+    // A companion core's proof rides in a header (never the URL, which gets logged); sync.upload.chunk asks core/link to check it.
+    const companion = typeof req.headers["x-vyre-companion"] === "string" ? req.headers["x-vyre-companion"] : null;
+    const r = await registry.call("sync.upload.chunk", { upload, offset, data, ...(companion ? { companion } : {}) }, caller, { peer: policy.peer });
     return send(res, r.error ? (r.error.code === "denied" ? 403 : r.error.code === "bad_input" ? 400 : 409) : 200, r);
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {

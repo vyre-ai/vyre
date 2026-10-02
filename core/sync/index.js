@@ -117,7 +117,13 @@ export default {
     }
 
     /** The link_peers row this connection's own tailnet node is, or null. Never trusts a claimed name. */
-    async function peerOf(peer) {
+    async function peerOf(peer, tool, companion, input) {
+      // A companion core proves its own key on every call (core/link/companion.js): when a token is present it alone decides who the
+      // peer is, and a bad one is no peer. It never falls back to the tailnet node, which a companion row does not carry.
+      if (companion !== undefined && companion !== null) {
+        const r = await ctx.call("link.companion.verify", { token: companion, tool, input });
+        return r && r.data ? { id: r.data.id, name: r.data.name, kind: "companion" } : null;
+      }
       if (!peer || !peer.stableId) return null;
       const r = await ctx.call("link.peer-of", { stableId: String(peer.stableId) });
       return r && r.data ? r.data : null;
@@ -253,10 +259,10 @@ export default {
 
     ctx.tool("sync.upload.plan", {
       description: "For a paired peer's own connection: which of its files are new, changed, already here, or outside the approved plan's included folders (excluded, sync.upload.start refuses these too, not merely reported), and its quota. Internal to the device's sender.",
-      input: { type: "object", required: ["files"], properties: { files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
+      input: { type: "object", required: ["files"], properties: { companion: { type: "string" },  files: { type: "array", items: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } } } },
       callers: ["tailnet"],
-      run: async ({ files }, meta) => {
-        const peer = await peerOf(meta.peer);
+      run: async ({ files, companion }, meta) => {
+        const peer = await peerOf(meta.peer, "sync.upload.plan", companion, { files });
         if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
         const row = syncRow(peer.id, peer.name);
         if (!row.sync_on) throw Object.assign(new Error(`"${peer.name}"'s session import is off; turn it on for this device first`), { code: "sync_disabled" });
@@ -277,11 +283,11 @@ export default {
 
     ctx.tool("sync.upload.start", {
       description: "Start (or resume) sending one file: offset is 0 for new, or how many bytes the box already holds for a retry of the exact same path and hash.",
-      input: { type: "object", required: ["path", "bytes", "hash"], properties: { path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } },
+      input: { type: "object", required: ["path", "bytes", "hash"], properties: { companion: { type: "string" },  path: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } },
       callers: ["tailnet"],
-      run: async ({ path: rel, bytes, hash }, meta) => {
+      run: async ({ path: rel, bytes, hash, companion }, meta) => {
         sweepUploads();
-        const peer = await peerOf(meta.peer);
+        const peer = await peerOf(meta.peer, "sync.upload.start", companion, { path: rel, bytes, hash });
         if (!peer) throw Object.assign(new Error("this connection is not a paired device"), { code: "no_link" });
         const row = syncRow(peer.id, peer.name);
         if (!row.sync_on) throw Object.assign(new Error(`"${peer.name}"'s session import is off; turn it on for this device first`), { code: "sync_disabled" });
@@ -317,12 +323,12 @@ export default {
     // parsed as JSON, since a chunk is arbitrary bytes (e2e: "application/octet-stream only").
     ctx.tool("sync.upload.chunk", {
       description: "One chunk of an upload's bytes, at an exact offset. Internal: the daemon's own route calls this after reading the request body.",
-      input: { type: "object", required: ["upload", "offset", "data"], properties: { upload: { type: "string" }, offset: { type: "number" }, data: {} } },
+      input: { type: "object", required: ["upload", "offset", "data"], properties: { companion: { type: "string" },  upload: { type: "string" }, offset: { type: "number" }, data: {} } },
       callers: ["tailnet"],
-      run: async ({ upload, offset, data }, meta) => {
+      run: async ({ upload, offset, data, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
-        const peer = await peerOf(meta.peer);
+        const peer = await peerOf(meta.peer, "sync.upload.chunk", companion, { upload, offset, data });
         // Resume state is keyed by machine + path hash, and an upload is never another peer's to
         // write into, even one that somehow names the same id (e2e's condition).
         if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device"), { code: "denied" });
@@ -344,12 +350,12 @@ export default {
 
     ctx.tool("sync.upload.cancel", {
       description: "Give up on an open upload before it finishes: drops its temp file and its slot, freeing one of the peer's " + MAX_OPEN + " open uploads without waiting for the idle sweep. Not an error if the id is already gone (finished, expired, or never existed); cancel always succeeds.",
-      input: { type: "object", required: ["upload"], properties: { upload: { type: "string" } } },
+      input: { type: "object", required: ["upload"], properties: { companion: { type: "string" },  upload: { type: "string" } } },
       callers: ["tailnet"],
-      run: async ({ upload }, meta) => {
+      run: async ({ upload, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) return { ok: true, cancelled: false };
-        const peer = await peerOf(meta.peer);
+        const peer = await peerOf(meta.peer, "sync.upload.cancel", companion, { upload });
         if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device"), { code: "denied" });
         uploads.delete(String(upload));
         try { fs.rmSync(u.tmp, { force: true }); } catch {}
@@ -359,12 +365,12 @@ export default {
 
     ctx.tool("sync.upload.finish", {
       description: "Verify and land a finished upload: checks its hash, scrubs it for secrets, and renames it into synced/<machine>/ (or quarantines it).",
-      input: { type: "object", required: ["upload", "hash"], properties: { upload: { type: "string" }, hash: { type: "string" } } },
+      input: { type: "object", required: ["upload", "hash"], properties: { companion: { type: "string" },  upload: { type: "string" }, hash: { type: "string" } } },
       callers: ["tailnet"],
-      run: async ({ upload, hash }, meta) => {
+      run: async ({ upload, hash, companion }, meta) => {
         const u = uploads.get(String(upload));
         if (!u) throw Object.assign(new Error("no such upload (it may have expired; start again)"), { code: "denied" });
-        const peer = await peerOf(meta.peer);
+        const peer = await peerOf(meta.peer, "sync.upload.finish", companion, { upload, hash });
         if (!peer || peer.id !== u.peer) throw Object.assign(new Error("this upload belongs to another device"), { code: "denied" });
         const row = syncRow(peer.id, peer.name);
         uploads.delete(String(upload));

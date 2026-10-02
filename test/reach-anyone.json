@@ -681,6 +681,10 @@
    "module": "link",
    "reason": "read-only, scoped by the module itself"
   },
+  "link.companion.hello": {
+   "module": "link",
+   "reason": "callers limited in code to tailnet, and the call is signed by the companion core key, checked against a live companion row and its parent device on every call"
+  },
   "link.companion.pair": {
    "module": "link",
    "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"

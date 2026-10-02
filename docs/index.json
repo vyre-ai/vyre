@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":881,"event":351,"config":242,"env":196,"screen":19,"concept":43},
+  "counts": {"command":336,"tool":883,"event":351,"config":242,"env":196,"screen":19,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -551,9 +551,11 @@
     {"kind":"event","name":"lesson.tampered","definedIn":"core/learn/index.js","page":"reference/events.md#learn","module":"learn","mentions":[]},
     {"kind":"tool","name":"link.call","definedIn":"core/link/mac.js","page":"reference/tools.md#linkcall","module":"link","mentions":[{"page":"concepts/box-and-mac.md","line":167,"anchor":"how-they-talk"},{"page":"concepts/box-and-mac.md","line":199,"anchor":"what-it-will-not-do"},{"page":"adr/0021-box-reads-the-mac.md","line":18,"anchor":"context"},{"page":"adr/0032-person-and-device.md","line":25,"anchor":"context"},{"page":"adr/0040-vyre-core.md","line":70,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"},{"page":"adr/0040-vyre-core.md","line":79,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"}]},
     {"kind":"tool","name":"link.companion.approve","definedIn":"core/link/companion.js","page":"reference/tools.md#linkcompanionapprove","module":"link","mentions":[]},
+    {"kind":"tool","name":"link.companion.hello","definedIn":"core/link/companion.js","page":"reference/tools.md#linkcompanionhello","module":"link","mentions":[]},
     {"kind":"tool","name":"link.companion.list","definedIn":"core/link/companion.js","page":"reference/tools.md#linkcompanionlist","module":"link","mentions":[]},
     {"kind":"tool","name":"link.companion.pair","definedIn":"core/link/companion.js","page":"reference/tools.md#linkcompanionpair","module":"link","mentions":[]},
     {"kind":"tool","name":"link.companion.remove","definedIn":"core/link/companion.js","page":"reference/tools.md#linkcompanionremove","module":"link","mentions":[]},
+    {"kind":"tool","name":"link.companion.verify","definedIn":"core/link/companion.js","page":"reference/tools.md#linkcompanionverify","module":"link","mentions":[]},
     {"kind":"event","name":"link.connected","definedIn":"core/link/mac.js","page":"reference/events.md#link","module":"link","mentions":[{"page":"concepts/box-and-mac.md","line":193,"anchor":"when-the-box-is-away"}]},
     {"kind":"tool","name":"link.events","definedIn":"core/link/box.js","page":"reference/tools.md#linkevents","module":"link","mentions":[{"page":"adr/0021-box-reads-the-mac.md","line":80,"anchor":"sending-to-a-mac-session"},{"page":"adr/0021-box-reads-the-mac.md","line":129,"anchor":"v2-answering-a-macs-permission-question-from-the-box"},{"page":"adr/0040-vyre-core.md","line":80,"anchor":"2-what-moves-into-vyre-core----by-module-not-by-tool"}]},
     {"kind":"tool","name":"link.find","definedIn":"core/link/mac.js","page":"reference/tools.md#linkfind","module":"link","mentions":[{"page":"concepts/box-and-mac.md","line":148,"anchor":"how-the-mac-finds-the-box"},{"page":"adr/0008-install-journey.md","line":107,"anchor":"3-tailscale"},{"page":"adr/0008-install-journey.md","line":206,"anchor":"7-pairing-the-mac-and-the-box"},{"page":"adr/0008-install-journey.md","line":307,"anchor":"who-builds-what"}]},
