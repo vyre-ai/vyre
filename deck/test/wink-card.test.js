@@ -94,3 +94,80 @@ test("at most six renewals in a row, then a plain expiry; redemption disarms it"
   await w2.advance(10 * 60_000);
   assert.equal(w2.renews(), 0, "a paired phone: nothing is minted for a card that is done");
 });
+
+/** A card against a server that has the pairing window: its tools and its events. */
+function windowWorld() {
+  let now = 1_000_000_000_000; const realNow = Date.now; Date.now = () => now;
+  /** @type {{ name: string, input: any, opts: any }[]} */ const calls = [];
+  let n = 0;
+  /** @type {Record<string, (e: any) => void>} */ const events = {};
+  /** @type {(() => void) | null} */ let tick = null;
+  const attempt = async (/** @type {string} */ name, /** @type {any} */ input = {}, /** @type {any} */ opts) => {
+    calls.push({ name, input, opts });
+    if (name === "relay.pair.window.open") return { data: { window: "w1", closesAt: now + 30_000, pingEveryMs: 15_000, ticket: T(n++), ticketExpiresAt: now + 5 * 60_000 } };
+    if (name === "relay.pair.window.renew") return { data: { ticket: T(n++), ticketExpiresAt: now + 5 * 60_000 } };
+    return { data: {} };
+  };
+  const el = buildWinkCard({ attempt, subscribe: (e, f) => { events[e] = f; }, every: f => { tick = f; }, cleanup: () => {}, calm: () => true });
+  const click = (/** @type {string} */ label) => { const b = /** @type {any[]} */ ([...el.querySelectorAll("button")]).find(x => x.textContent === label); assert.ok(b, label); b.listeners.get("click")[0](); };
+  const settle = async () => { for (let i = 0; i < 6; i++) await new Promise(r => setTimeout(r, 0)); };
+  const advance = async (/** @type {number} */ ms) => { now += ms; tick?.(); await settle(); };
+  const count = (/** @type {string} */ name) => calls.filter(c => c.name === name).length;
+  return { el, calls, click, settle, advance, events, count, restore: () => { Date.now = realNow; } };
+}
+
+test("a pairing window: one proof opens it, pings go every 15 s only while in view, renewals carry the window id and ask for no proof", async t => {
+  const w = windowWorld(); t.after(w.restore);
+  w.click("Add a device"); await w.settle();
+  assert.equal(w.count("relay.pair.window.open"), 1);
+  assert.deepEqual(w.calls[0].opts, { presence: "asked" }, "the one Touch ID");
+  assert.equal(w.count("relay.pair.ticket"), 0, "no per-code mint when the window exists");
+  await w.advance(14_000); assert.equal(w.count("relay.pair.window.ping"), 0);
+  await w.advance(2_000); assert.equal(w.count("relay.pair.window.ping"), 1, "a ping after 15 s");
+  assert.deepEqual(w.calls.find(c => c.name === "relay.pair.window.ping")?.input, { window: "w1" });
+  /** @type {any} */ (document).visibilityState = "hidden";
+  await w.advance(6 * 60_000); assert.equal(w.count("relay.pair.window.ping"), 1, "out of view: no ping, the window will close on its own");
+  /** @type {any} */ (document).visibilityState = "visible";
+  await w.advance(1_000);
+  const renew = w.calls.find(c => c.name === "relay.pair.window.renew");
+  assert.ok(renew, "the code ran out while hidden: renewed on return");
+  assert.deepEqual(renew?.input, { window: "w1" });
+  assert.equal(renew?.opts, undefined, "no proof for a renewal");
+});
+
+test("a phone redeems: 'A phone is pairing' with its name and fingerprint; only Confirm enrols; Not now closes the window and pairs nothing", async t => {
+  const w = windowWorld(); t.after(w.restore);
+  w.click("Add a device"); await w.settle();
+  await w.events["pairing.requested"]({ payload: { window: "w9", device: "dX", name: "Evil", fingerprint: "FF" } });
+  await w.settle(); assert.doesNotMatch(text(w.el), /Evil/, "another window's phone is not ours");
+  await w.events["pairing.requested"]({ payload: { window: "w1", device: "d1", name: "Alex's iPhone", fingerprint: "AB12 CD34" } });
+  await w.advance(1_000);
+  assert.match(text(w.el), /A phone is pairing/); assert.match(text(w.el), /Alex's iPhone/); assert.match(text(w.el), /AB12 CD34/);
+  assert.equal(w.count("relay.pair.window.confirm"), 0, "nothing is enrolled until Confirm");
+  w.click("Confirm"); await w.settle();
+  assert.deepEqual(w.calls.filter(c => c.name === "relay.pair.window.confirm").map(c => [c.input, c.opts]), [[{ window: "w1", device: "d1" }, undefined]]);
+  const w2 = windowWorld(); t.after(w2.restore);
+  w2.click("Add a device"); await w2.settle();
+  await w2.events["pairing.requested"]({ payload: { window: "w1", device: "d2", name: "Sam's Pixel", fingerprint: "11 22" } });
+  await w2.advance(1_000);
+  w2.click("Not now"); await w2.settle();
+  assert.equal(w2.count("relay.pair.window.close"), 1);
+  assert.equal(w2.count("relay.pair.window.confirm"), 0);
+  assert.match(text(w2.el), /Nothing was paired/);
+});
+
+test("the server closes the window: a plain line and Refresh (which asks for the next proof); completed leaves it to relay.paired", async t => {
+  const w = windowWorld(); t.after(w.restore);
+  w.click("Add a device"); await w.settle();
+  await w.events["pairing-window.closed"]({ payload: { window: "w1", reason: "silence" } });
+  await w.advance(1_000);
+  assert.match(text(w.el), /went quiet/);
+  w.click("Refresh"); await w.settle();
+  assert.equal(w.count("relay.pair.window.open"), 2, "the next window is a new proof");
+  const w2 = windowWorld(); t.after(w2.restore);
+  w2.click("Add a device"); await w2.settle();
+  await w2.events["pairing-window.closed"]({ payload: { window: "w1", reason: "completed" } });
+  await w2.events["relay.paired"]({ payload: { device: "d1", name: "Alex's iPhone", fingerprint: "AB12" } });
+  await w2.settle();
+  assert.match(text(w2.el), /Your phone is connected/);
+});
