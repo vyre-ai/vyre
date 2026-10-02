@@ -66,7 +66,19 @@ function UiaPress($name) {
 $rel = Join-Path $env:RUNNER_TEMP "rel"; New-Item -ItemType Directory -Force -Path $rel | Out-Null
 Copy-Item $env:VYRE_INSTALLER (Join-Path $rel "VyreSetup.exe")
 $hash = (Get-FileHash (Join-Path $rel "VyreSetup.exe") -Algorithm SHA256).Hash.ToLower()
-Set-Content (Join-Path $rel "SHA256SUMS") "$hash  VyreSetup.exe" -Encoding ASCII
+Set-Content (Join-Path $rel "SHA256SUMS") "$hash  VyreSetup.exe" -Encoding ASCII -NoNewline:$false
+# The install script verifies the release signature: sign the local list with a throwaway key and hand the script
+# that key through its test seam (the real key's private half is never here).
+$signer = @'
+const c = require("crypto"), fs = require("fs");
+const dir = process.argv[2];
+const { publicKey, privateKey } = c.generateKeyPairSync("ed25519");
+const sums = fs.readFileSync(dir + "/SHA256SUMS");
+fs.writeFileSync(dir + "/SHA256SUMS.sig", c.sign(null, Buffer.concat([Buffer.from("vyre-release-sums\n"), sums]), privateKey).toString("base64") + "\n");
+process.stdout.write(publicKey.export({ type: "spki", format: "der" }).toString("base64"));
+'@
+$env:VYRE_RELEASE_KEY = (node -e $signer $rel)
+Result "release-signature-fixture" ($env:VYRE_RELEASE_KEY.Length -eq 60) "throwaway key and SHA256SUMS.sig made"
 $srv = Start-Process python -ArgumentList "-m", "http.server", "8099", "--bind", "127.0.0.1", "-d", $rel -PassThru -WindowStyle Hidden
 Start-Sleep 3
 $env:VYRE_RELEASE_BASE = "http://127.0.0.1:8099"; $env:VYRE_CODE = "live-check"

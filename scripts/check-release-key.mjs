@@ -21,6 +21,13 @@ export function keyProblems(root) {
   const scr = /^RELEASE_KEY=(.*)$/m.exec(fs.readFileSync(path.join(root, "scripts", "install-mac-server.sh"), "utf8"))?.[1];
   // The box wrapper pins the same key (the updater on every Linux box), as a default in its seams block.
   const box = /^RELEASE_KEY=\$\{VYRE_RELEASE_KEY:-([^}]+)\}$/m.exec(fs.readFileSync(path.join(root, "box", "vyre"), "utf8"))?.[1];
+  // The Windows install script pins the same key (the first install verifies the signature itself).
+  const winPath = path.join(root, "scripts", "install-windows.ps1");
+  if (fs.existsSync(winPath)) {
+    const win = /\$ReleaseKey = if \(\$env:VYRE_RELEASE_KEY\) \{ \$env:VYRE_RELEASE_KEY \} else \{ "([^"]+)" \}/.exec(fs.readFileSync(winPath, "utf8"))?.[1];
+    if (!win) out.push("scripts/install-windows.ps1 has no pinned $ReleaseKey");
+    else if (rel && win !== rel) out.push("$ReleaseKey in scripts/install-windows.ps1 differs from core/vyre-core/release.js");
+  }
   if (!box) out.push("box/vyre has no pinned RELEASE_KEY");
   else if (rel && box !== rel) out.push("RELEASE_KEY in box/vyre differs from core/vyre-core/release.js");
   if (!rel) out.push("core/vyre-core/release.js has no RELEASE_KEY");
