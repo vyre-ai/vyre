@@ -233,17 +233,17 @@ doc.body.append(container);
 const stop = mountSession(container, { thread: SID, project: null, onBack() {} });
 await wait();
 
-test("avatars (ADR 0043): the person's circle for you; a chat in no project wears its draft tile on its replies and header", () => {
+test("avatars (ADR 0043): the person's circle for you; a chat in no project wears the assistant on its replies and header, never the dashed draft tile", () => {
   const you = $(container, ".cv-user .msg-av");
   assert.equal(you.getAttribute("data-family"), "person");
   assert.ok($(you, "svg"), "drawn, not a letter");
   assert.equal(you.getAttribute("title"), "alex");
   const reply = $(container, ".cv-head .msg-av");
-  assert.equal(reply.getAttribute("data-family"), "project");
-  assert.ok(reply.hasAttribute("data-draft"), "no project yet: the dashed draft tile");
+  assert.equal(reply.getAttribute("data-family"), "assistant");
+  assert.ok(!reply.hasAttribute("data-draft"), "no project yet: not the dashed draft tile, which read as a warning");
   assert.ok($(reply, "svg"));
   const head = $(container, ".cv-head-av");
-  assert.equal(head.getAttribute("data-family"), "project", "the session header wears the same tile");
+  assert.equal(head.getAttribute("data-family"), "assistant", "the session header wears the same one");
   assert.match(text($(container, ".cv-num")), /^#[0-9a-z-]{6}$/, "and the session's short id beside its title");
 });
 

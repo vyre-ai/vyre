@@ -33,6 +33,7 @@ import { watchRemoval } from "./wipe.js";
 import { enrollPasskey } from "./phone-setup.js";
 import { rail, placeForKey } from "./rail.js";
 import { starButton } from "./star-button.js";
+import { installRows } from "./rows.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme, deviceId } from "./theme-live.js";
@@ -133,6 +134,7 @@ const pop = h("div", { class: "search-pop", id: "search-pop", role: "listbox", h
 const needsPill = link("/now", { class: "needs-pill", hidden: true }, h("span", { class: "dot beacon" }), h("span", null, ""));
 // Sample data stands in for a module that is not merged yet: said once, quietly, in the header.
 const fixtureNote = h("span", { class: "fixture-note", hidden: true }, "Sample data for modules not merged yet");
+installRows();
 const railEl = rail();
 // The list column, right of the rail: a view's own list (ctx.rail, e.g. Chat's sessions; the
 // deck:rail event, e.g. Vault's places), or the pinned and recent projects beside a project.
