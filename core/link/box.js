@@ -529,7 +529,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     },
   });
 
-  const companion = companionSide(ctx, { db, now, box: () => ({ pub: assertKey().publicKey, name: ctx.config.name || null }), deviceInfo: async id => { const r = /** @type {any} */ (await ctx.call("relay.device.info", { id })); return r && r.data ? r.data : null; } });
+  const companion = companionSide(ctx, { db, now, box: () => ({ pub: assertKey().publicKey, name: ctx.config.name || null }), sign: bytes => crypto.sign(null, bytes, assertKey().privateKey).toString("base64url"), deviceInfo: async id => { const r = /** @type {any} */ (await ctx.call("relay.device.info", { id })); return r && r.data ? r.data : null; } });
 
   return {
     async stop() {
