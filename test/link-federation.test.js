@@ -205,3 +205,28 @@ test("link federation: unpairing from the Mac stops its loop, and pairing again 
   await polling(s);
   assert.equal((await ask(s, "threads.list")).data[0].ok, true);
 });
+
+test("link federation: a Mac that says goodbye is offline at once, link.sleep stops its loop, link.wake brings it back, and the events say so", async t => {
+  const s = await pair(t);
+  await polling(s);
+  const seen = [];
+  s.box.events.on("link.*", e => { if (/^link\.mac-/.test(e.type)) seen.push(e.type); });
+  const slept = (await s.macCall("link.sleep")).data;
+  assert.deepEqual([slept.ok, slept.linked], [true, true]);
+  // offline now, not after the 65 s online window
+  const m = (await s.boxCall("link.macs")).data;
+  assert.equal(m[0].online, false);
+  const t0 = Date.now();
+  assert.equal((await ask(s, "recall.sessions", {}, { timeout: 15_000 })).data[0].error.code, "mac_offline");
+  assert.ok(Date.now() - t0 < 1000, "mac_offline answers without waiting");
+  await wait(600);
+  assert.equal((await s.macCall("link.status")).data.serving, false, "a sleeping Mac does not serve, even though the box answered its goodbye");
+  assert.equal((await s.boxCall("link.macs")).data[0].online, false, "and the heartbeat does not undo it");
+  // the wake
+  assert.equal((await s.macCall("link.wake")).data.ok, true);
+  await polling(s);
+  assert.equal((await ask(s, "recall.sessions")).data[0].ok, true);
+  assert.deepEqual(seen, ["link.mac-offline", "link.mac-online"]);
+  // a wrong key says goodbye to nothing
+  assert.equal((await s.boxCall("link.goodbye", { key: "nope" })).data.paired, false);
+});

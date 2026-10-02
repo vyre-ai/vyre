@@ -26,7 +26,7 @@ export const WRITE = Object.freeze(["threads.send", "threads.answer"]);
 
 /** The events of a Mac thread the box sent to that the Mac forwards back (link.events). */
 /** @type {readonly string[]} */
-export const FOLLOWED = Object.freeze(["thread.queued", "thread.sent", "thread.text", "thread.finished", "thread.stopped", "thread.contended", "thread.limit"]);
+export const FOLLOWED = Object.freeze(["thread.queued", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped", "thread.contended", "thread.limit"]);
 
 /**
  * The events of every ask on the Mac, for any of its threads, that the Mac forwards while paired:

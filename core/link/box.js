@@ -216,6 +216,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const row = byKey(key, meta);
       if (!row) return { paired: false };
       db.prepare("UPDATE link_peers SET last_seen = ? WHERE id = ?").run(now(), row.id);
+      wake(row);
       // assertKey and you: a Mac paired before answers crossed takes them once, over this pinned channel.
       return { paired: true, peer: row.id, box: { name: ctx.config.name || null, role: ctx.config.role, assertKey: assertKey().publicKey },
         you: row.stable_id ? { stableId: row.stable_id } : null };
@@ -303,6 +304,8 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const waiting = new Map();
   /** @type {Map<string, number>} */
   const lastServe = new Map();
+  /** Macs that said goodbye as they went to sleep: offline at once, until they serve or say hello again. @type {Set<string>} */
+  const asleep = new Set();
   /** @type {Map<string, string[]>} */
   const queues = new Map();
   /** @type {Map<string, { id: string, mac: string, tool: string, input: any, as?: string, assertion?: any, sent: boolean, done: (r: any) => void }>} */
@@ -338,15 +341,17 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   /** A Mac was unpaired: let go of its held request and fail what was waiting on it. */
   const forget = macId => {
     release(macId, null);
-    lastServe.delete(macId); queues.delete(macId);
+    lastServe.delete(macId); queues.delete(macId); asleep.delete(macId);
     for (const [thread, macs] of forwarded) { macs.delete(macId); if (!macs.size) forwarded.delete(thread); }
     for (const [ask, m] of macAsks) if (m.mac === macId) macAsks.delete(ask);
     for (const a of [...asks.values()]) if (a.mac === macId) a.done({ ok: false, error: { code: "unpaired", message: "this Mac was unpaired" } });
   };
   // A Mac counts as there when it holds a request, asked within FRESH, or is working on a question
   // right now (it answers one at a time, so a slow search must not make it look gone).
-  const online = macId => waiting.has(macId) || (lastServe.get(macId) ?? -Infinity) >= now() - FRESH
-    || [...asks.values()].some(a => a.mac === macId && a.sent);
+  const online = macId => !asleep.has(macId) && (waiting.has(macId) || (lastServe.get(macId) ?? -Infinity) >= now() - FRESH
+    || [...asks.values()].some(a => a.mac === macId && a.sent));
+  /** A Mac that was asleep is awake: say so once. @param {any} row */
+  const wake = row => { if (asleep.delete(row.id)) ctx.events.emit("link.mac-online", { mac: row.id, name: row.name }); };
 
   ctx.tool("link.serve", {
     description: "A paired Mac waits here for the box's next question. Answers { id, tool, input }, or null when there was none for a while.",
@@ -355,6 +360,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const row = byKey(key, meta);
       if (!row) return { paired: false };
       lastServe.set(row.id, now());
+      wake(row);
       // One held request per Mac: a newer one means the older is gone or abandoned.
       release(row.id, null);
       const q = next(row.id);
@@ -364,6 +370,20 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         timer.unref();
         waiting.set(row.id, { resolve, timer });
       });
+    },
+  });
+
+  ctx.tool("link.goodbye", {
+    description: "A paired Mac says it is going to sleep: the box marks it offline at once (not after the online window) and fails what it was asked meanwhile. It is online again when the Mac serves or says hello.",
+    input: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
+    run: async ({ key }, meta) => {
+      const row = byKey(key, meta);
+      if (!row) return { paired: false };
+      release(row.id, null);
+      lastServe.delete(row.id);
+      if (!asleep.has(row.id)) { asleep.add(row.id); ctx.events.emit("link.mac-offline", { mac: row.id, name: row.name, why: "sleep" }); }
+      for (const a of [...asks.values()]) if (a.mac === row.id) a.done({ ok: false, error: { code: "mac_offline", message: `the Mac "${row.name}" went to sleep` } });
+      return { ok: true };
     },
   });
 
@@ -493,7 +513,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     // "device" peers are not Macs (no live reads, no Taildrop): left out here, same as macs.call.
     run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node, stable_id FROM link_peers WHERE kind = 'mac' ORDER BY paired_at").all()).map(m => ({
       mac: m.id, name: m.name, node: m.node || null, stableId: m.stable_id || null,
-      online: waiting.has(m.id) || (lastServe.get(m.id) ?? -Infinity) >= now() - hold - 5000,
+      online: !asleep.has(m.id) && (waiting.has(m.id) || (lastServe.get(m.id) ?? -Infinity) >= now() - hold - 5000),
       lastServe: lastServe.get(m.id) ?? null })),
   });
 

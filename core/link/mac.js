@@ -184,7 +184,7 @@ export function macSide(ctx, seam = {}) {
   }
 
   async function hello() {
-    if (!saved || saved.revoked) return;
+    if (!saved || saved.revoked || sleeping) return;
     const asked = saved;
     const r = await boxCall("link.hello", { key: saved.key });
     // An unpair or a new pairing while this was out wins: its answer is about a pairing that is gone.
@@ -347,10 +347,12 @@ export function macSide(ctx, seam = {}) {
   // The serve loop: the box's questions for this Mac. Request-driven, never on a timer: each turn
   // waits on the box (up to its hold), and a failure ends the loop until up() starts it again.
   let serving = false;
+  /** This Mac said goodbye and has not woken: nothing here talks to the box until link.wake. */
+  let sleeping = false;
   /** @type {AbortController | null} */
   let serveStop = null;
   async function serveLoop() {
-    if (serving || stopped || !saved || saved.revoked || !conn) return;
+    if (serving || sleeping || stopped || !saved || saved.revoked || !conn) return;
     serving = true;
     const c = conn, key = saved.key, ac = new AbortController();
     serveStop = ac;
@@ -503,6 +505,32 @@ export function macSide(ctx, seam = {}) {
       signing = { server, url, expires };
       setTimeout(stop, 10 * 60_000).unref();
       return { url, expires };
+    },
+  });
+
+  ctx.tool("link.sleep", {
+    description: "This Mac is going to sleep (the app calls it on the system's willSleep): stop serving and tell the box now, so it marks this Mac offline at once. link.wake undoes it.",
+    callers: ["cli", "local", "capsule"],
+    input: { type: "object", properties: {} },
+    run: async () => {
+      if (!saved || saved.revoked || !conn) return { ok: false, linked: false };
+      sleeping = true;
+      if (serveStop) serveStop.abort();
+      const r = await boxCall("link.goodbye", { key: saved.key }, conn, { timeout: 3000 });
+      return { ok: !r.error, linked: true };
+    },
+  });
+
+  ctx.tool("link.wake", {
+    description: "This Mac woke (the app calls it on didWake): say hello to the box and start serving again, so the box sees it online without waiting for the next heartbeat.",
+    callers: ["cli", "local", "capsule"],
+    input: { type: "object", properties: {} },
+    run: async () => {
+      sleeping = false;
+      if (!saved || saved.revoked || !conn) return { ok: false, linked: false };
+      await hello();
+      setImmediate(serveLoop);
+      return { ok: true, linked: true };
     },
   });
 
