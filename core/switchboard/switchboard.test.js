@@ -17,7 +17,7 @@ import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
-import { Leases, TTL } from "./lease.js";
+import { Leases, TTL, ownSurface } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
@@ -254,7 +254,7 @@ async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
   // keystore, so no test goes near the login keychain.
   const transcripts = path.join(root, "transcripts");
   fs.mkdirSync(transcripts);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [transcripts],
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", network: { owner: "owner@example" }, transcripts: [transcripts],
     ...(vault ? { vault: { keystore: "file" },
       // A Gate sender, so an agent's gate.request shows which thread vyred verified. Nothing is sent.
       gate: { senders: { mail: { type: "gmail", vault: "no-such-item", from: "alex@example.com" } } } } : {}) }));
@@ -308,7 +308,7 @@ const of = (events, thread, type) => events.filter(e => e.thread === thread && e
 
 test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
   const w = await boot(t);
-  const { root, work, tool, launches } = w;
+  const { root, work, tool, launches, d } = w;
   const a = sse(root), b = sse(root);
   t.after(() => { a.close(); b.close(); });
 
@@ -382,8 +382,23 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   // The lease: the other surface is read-only until it takes the keyboard.
   // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
   assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
-  assert.equal((await tool("threads.send", { thread: id, text: "over the tailnet", surface: "tailnet:owner@example" })).data.sent, true);
-  assert.equal((await tool("threads.lease", { thread: id, surface: "tailnet:owner@example" })).data.holder, "deck", "a tailnet login is the person's Deck, not a participant of its own");
+  // The owner over the tailnet (the verified label whose login is the recorded owner) is the person's Deck, not a participant of its own.
+  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true });
+  assert.equal((await asOwner("threads.send", { thread: id, text: "over the tailnet", surface: "whatever" })).data.sent, true);
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck");
+  // Two different people: taking the keyboard really moves it, and the taker types at once; the owner is read-only until they take it back.
+  const asBob = (name, input) => d.registry.call(name, input, "tailnet:bob@example", { person: true });
+  assert.equal((await asBob("threads.send", { thread: id, text: "bob without the keyboard" })).data.sent, false, "another login contests the owner's keyboard");
+  const took = (await asBob("threads.lease", { thread: id })).data;
+  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "deck"], "the keyboard moved to the other person");
+  assert.equal((await asBob("threads.send", { thread: id, text: "bob types at once" })).data.sent, true);
+  const locked = (await asOwner("threads.send", { thread: id, text: "owner while bob has it" })).data;
+  assert.deepEqual([locked.sent, locked.holder], [false, "tailnet:bob@example"]);
+  assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
+  assert.equal((await asOwner("threads.send", { thread: id, text: "owner again" })).data.sent, true);
+  await until(() => of(a.got, id, "thread.finished").length >= 3, "the turns before the lease checks go on");
+  // A surface name in a call is not an identity: a person's socket caller saying "tailnet:owner@example" is just another label, which contests.
+  assert.equal((await tool("threads.send", { thread: id, text: "claimed", surface: "tailnet:owner@example" })).data.sent, false);
   assert.equal((await tool("threads.send", { thread: id, text: "back on the deck", surface: "deck:1" })).data.sent, true);
   const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "box:phone" })).data;
   assert.deepEqual(refused.sent, false);
@@ -1477,4 +1492,42 @@ test("switchedLine: what carries over is said plainly, per kind of move", async 
   assert.equal(switchedLine({ from: "grok", to: "claude", had: true, reason: "back" }), "Back on Claude. It has this session's memory and files, and what Grok said this turn.");
   assert.equal(modelName("claude-opus-4-1[high]"), "claude-opus-4-1");
   assert.equal(providerName("openrouter"), "OpenRouter");
+});
+
+test("ownSurface: only the person's own surface names, anchored; every other string is a contest", () => {
+  for (const own of ["deck", "deck:1", "phone", "phone:ab", "capsule", "capsule:x", "glass", "lumen", "mac", "mac:studio", "web"]) assert.equal(ownSurface(own), true, own);
+  for (const not of ["machine", "webhook:x", "deckx", "phones", "webby", "tailnet:other@x", "tailnet:owner@example", "tailnet:agent:a", "tailnet-guest:g@x", "device:x", "device:aaaaaaaaaaaaaaaa",
+    "box:phone", "cli:123", "chat", "person", "you", "vyre", "", "mcp", "xdeck"]) assert.equal(ownSurface(not), false, not);
+});
+
+test("surfaceFor: identity comes from the verified caller, never from the surface a call names", async () => {
+  const { surfaceFor } = await import("./index.js");
+  const owner = "Owner@Example";
+  // The owner's own devices.
+  assert.equal(surfaceFor({}, "tailnet:owner@example", owner), "deck", "the login equals the recorded owner (case aside)");
+  assert.equal(surfaceFor({ surface: "capsule" }, "tailnet:owner@example", owner), "capsule");
+  assert.equal(surfaceFor({ surface: "tailnet:other@x" }, "tailnet:owner@example", owner), "deck", "the owner cannot be turned into another label by input");
+  assert.equal(surfaceFor({}, "device:abcdefghijklmnop", owner), "phone", "a verified paired device");
+  assert.equal(surfaceFor({ surface: "glass" }, "device:abcdefghijklmnop", owner), "glass");
+  // A person's own socket caller says which of their surfaces.
+  assert.equal(surfaceFor({ surface: "deck:2" }, "deck", owner), "deck:2");
+  assert.equal(surfaceFor({ surface: "cli:123" }, "cli", owner), "cli:123", "a terminal is its own, contested surface");
+  assert.equal(surfaceFor({}, "cli", owner), "cli");
+  // Not the owner: its own label, and never an own surface by claiming one.
+  assert.equal(surfaceFor({}, "tailnet:other@x", owner), "tailnet:other@x", "another login is another person");
+  assert.equal(surfaceFor({ surface: "deck" }, "tailnet:other@x", owner), "via:tailnet:other@x");
+  assert.equal(surfaceFor({}, "tailnet:owner@example", ""), "tailnet:owner@example", "no recorded owner, so nobody is the owner");
+  assert.equal(surfaceFor({}, "tailnet:agent:a", owner), "tailnet:agent:a");
+  assert.equal(surfaceFor({ surface: "deck" }, "tailnet:agent:a", owner), "via:tailnet:agent:a");
+  assert.equal(surfaceFor({}, "tailnet-guest:g@x", owner), "tailnet-guest:g@x");
+  assert.equal(surfaceFor({ surface: "phone" }, "tailnet-guest:g@x", owner), "via:tailnet-guest:g@x");
+  assert.equal(surfaceFor({ surface: "device:aaaaaaaaaaaaaaaa" }, "mcp", owner), "via:mcp", "a device claimed from input");
+  for (const bad of ["deck", "deck:1", "phone", "capsule", "glass", "lumen", "mac", "web", "device:x", "tailnet:other@x", "tailnet:owner@example", "tailnet:agent:a"]) {
+    for (const caller of ["mcp", "harness", "hook", "module:planner", "mcp:agent:kit"]) assert.equal(ownSurface(surfaceFor({ surface: bad }, caller, owner)), false, `${caller} naming ${bad}`);
+  }
+  for (const odd of ["machine", "webhook:x", "deckx", "tailnet:other@x", "tailnet:agent:a", "device:x"]) assert.equal(ownSurface(surfaceFor({ surface: odd }, "mcp", owner)), false, odd);
+  // Not by prefix: a login that merely starts like the owner's is another person.
+  assert.equal(surfaceFor({}, "tailnet:owner@example.evil", owner), "tailnet:owner@example.evil");
+  // The link's words are always the box's.
+  assert.equal(surfaceFor({ surface: "deck" }, "link:abc", owner), "box:via:link:abc");
 });
