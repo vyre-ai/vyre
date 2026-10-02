@@ -31,7 +31,7 @@ test("probe: the length of a sound and the size and length of a video", async ()
   assert.deepEqual(await run("mp4", mp4), { duration_s: 12.5, width: 1280, height: 720 }, "moov at the end of the file, as a streamed render writes it");
   assert.deepEqual(await run("m4a", mp4), { duration_s: 12.5, width: 1280, height: 720 });
   const dur = Buffer.alloc(8); dur.writeDoubleBE(4000);
-  const webm = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80]), Buffer.from([0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40]), Buffer.from([0x44, 0x89, 0x88]), dur, Buffer.from([0xb0, 0x82, 0x05, 0x00, 0xba, 0x82, 0x02, 0xd0])]);
+  const webm = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80]), Buffer.from([0x2a, 0xd7, 0xb1, 0x83, 0x0f, 0x42, 0x40]), Buffer.from([0x44, 0x89, 0x88]), dur, Buffer.from([0x16, 0x54, 0xae, 0x6b, 0x90, 0xae, 0x8e, 0xe0, 0x8c, 0xb0, 0x82, 0x05, 0x00, 0xba, 0x82, 0x02, 0xd0])]);
   assert.deepEqual(await run("webm", webm), { duration_s: 4, width: 1280, height: 720 });
 });
 
@@ -46,4 +46,11 @@ test("probe: nothing it cannot read is claimed, and hostile or truncated headers
   const huge = Buffer.concat([u32(0x7fffffff), Buffer.from("moov"), Buffer.alloc(100)]);
   assert.deepEqual(await run("mp4", huge), {}, "a box longer than the file is not read");
   assert.deepEqual(await run("png", Buffer.concat([Buffer.alloc(16), u32(0), u32(70000)])), {}, "a size beyond sanity is dropped");
+  // A short version-1 mvhd (it needs 32 bytes) is skipped, and the rest of the file is still read.
+  const shortV1 = Buffer.alloc(24); shortV1[0] = 1;
+  const tk = Buffer.alloc(84); tk.writeUInt32BE(640 * 65536, 76); tk.writeUInt32BE(360 * 65536, 80);
+  assert.deepEqual(await run("mp4", Buffer.concat([box("ftyp", Buffer.from("mp42"), Buffer.alloc(4)), box("moov", box("mvhd", shortV1), box("trak", box("tkhd", tk)))])), { width: 640, height: 360 });
+  // A stray 0xb0 byte far from the video track is not a width.
+  const stray = Buffer.concat([Buffer.from([0x1a, 0x45, 0xdf, 0xa3, 0x80]), Buffer.from([0xb0, 0x82, 0x05, 0x00, 0xba, 0x82, 0x02, 0xd0]), Buffer.alloc(200)]);
+  assert.deepEqual(await run("webm", stray), {}, "no Tracks > Video element, no size claimed");
 });
