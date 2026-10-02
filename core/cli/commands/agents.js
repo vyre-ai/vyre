@@ -90,7 +90,8 @@ async function createOrUpdate(which, args) {
   let fields;
   try { fields = agentFields(flags); } catch (e) { return usage(/** @type {Error} */ (e).message, "vyre help agents"); }
   if (which === "update" && !Object.keys(fields).length) return usage("vyre agents update: nothing to change", FLAGS);
-  // Both are on the floor's human-only list: Touch ID or a code typed at this terminal.
+  // From a terminal both are on the terminal-asks list (core/presence TERMINAL_ASKS): they widen what an agent can do, so vyred asks for
+  // the person's proof for this one call, by Touch ID or a code typed here. The Deck, which holds a person session, is not asked.
   const r = await asPerson(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
   if (r.error) { failTool(r.error); return 1; }
   const a = r.data;
