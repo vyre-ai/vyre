@@ -114,3 +114,21 @@ test("the page source: innerHTML only for the constant icon drawings, no storage
   const entry = fs.readFileSync(path.join(import.meta.dirname, "wink.js"), "utf8");
   assert.doesNotMatch(entry, /localStorage|sessionStorage|indexedDB|document\.cookie|fetch\(/);
 });
+
+test("no host from the ring or the server is ever navigated to: whatever the record says, the hand-off is app.vyre.run and the card names the address as display text", async () => {
+  const hostile = { name: "Alex's Mac", fingerprint: "AB12 CD34", handle: "evil.example", rpId: "evil.example", enroll: { grant: "x".repeat(43), rpId: "evil.example" },
+    url: "https://evil.example/", redirect: "https://evil.example/", address: "evil.example", host: "evil.example" };
+  for (const record of [hostile, { ...hostile, handle: "10.0.0.1" }, { ...hostile, handle: "alex" }]) {
+    const w = world({ userAgent: ANDROID, record });
+    w.cam().onFound(TICKET); await w.run();
+    const text = allText(w.root);
+    if (record.handle === "alex") assert.ok(text.includes("alex.vyre.run"), "the address is its own line on the card");
+    else assert.ok(!text.includes("evil.example") && !text.includes("10.0.0.1"), "an invalid handle is not shown as an address");
+    const main = /** @type {any} */ ([...w.root.querySelectorAll("button")].find((/** @type {any} */ b) => b.className.includes("main")));
+    main.dispatchEvent(Object.assign(new Event("click"), { button: 0 })); await w.run();
+    const navs = w.log.filter(l => l.startsWith("navigate "));
+    assert.equal(navs.length, 1);
+    assert.ok(navs[0].startsWith("navigate https://app.vyre.run/#pair="), navs[0]);
+    assert.ok(!navs[0].includes("evil") && !navs[0].includes("10.0.0.1"), "nothing the record said is in the URL");
+  }
+});

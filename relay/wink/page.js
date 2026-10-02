@@ -13,7 +13,7 @@ import { initial, step, needsInstall, cardOf, cardId, handoffUrl } from "./flow.
 /**
  * @typedef {{ nav: any, standalone?: boolean, relay: string, crypto: any,
  *   startScan: (o: { video: HTMLVideoElement, onFound: (ticket: Uint8Array) => void, onError: (e: Error) => void, onSlow?: () => void }) => { stop: () => void },
- *   resolveTicket: (ticket: Uint8Array, o: { relay: string, crypto: any }) => Promise<{ name: string, fingerprint: string }>,
+ *   resolveTicket: (ticket: Uint8Array, o: { relay: string, crypto: any }) => Promise<{ name: string, fingerprint: string, handle?: string | null }>,
  *   sha256: (b: Uint8Array) => Promise<Uint8Array>, haptic: (k: "tick" | "success" | "warning") => unknown,
  *   navigate: (url: string) => void, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
  */
@@ -114,6 +114,8 @@ export function mountWink(root, d) {
       h("h2", { class: "who" }, card.who),
       h("span", { class: "chip" }, card.expires),
       h("p", { class: "note" }, card.note),
+      // The server's address, a line of its own (display only: the hand-off goes to app.vyre.run whatever the record says).
+      h("p", { class: "addr" }, card.address ? ["Server address ", h("b", null, card.address)] : "This server has no name yet."),
       h("p", { class: "fp" }, "Code ", h("b", null, card.fingerprint), ". Check it matches your Vyre screen."),
       h("div", { class: "row" },
         h("button", { type: "button", class: "btn", onclick: notNow }, card.other),

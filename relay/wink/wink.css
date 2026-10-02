@@ -48,6 +48,7 @@ body { font: 16px/22px "Instrument Sans", system-ui, -apple-system, "Segoe UI", 
 .sheet .who { margin: 2px 0 6px; font-size: 20px; line-height: 26px; font-weight: 600; overflow-wrap: anywhere; }
 .chip { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; margin-bottom: 10px; border-radius: 12px; font-size: 12px; background: var(--accent-wash); color: var(--accent); }
 .sheet .note { margin: 0 auto 8px; max-width: 32ch; color: var(--text-2); font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
+.sheet .addr { margin: 0 auto 6px; color: var(--label); font-size: 13px; line-height: 18px; overflow-wrap: anywhere; } .sheet .addr b { color: var(--text); font-weight: 600; }
 .sheet .fp { margin: 0 auto 14px; color: var(--label); font-size: 13px; line-height: 18px; } .sheet .fp b { font: 600 13px ui-monospace, "JetBrains Mono", monospace; color: var(--text); letter-spacing: .06em; }
 .sheet .err { margin: 6px 0 14px; color: var(--text-2); }
 .sheet .row { display: flex; gap: 10px; } .sheet .row .btn { flex: 1; height: 50px; } .sheet .row .main { flex: 1.6; }

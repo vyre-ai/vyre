@@ -20,7 +20,7 @@ export const APP_ORIGIN = "https://app.vyre.run";
 
 /** @typedef {{ kind: "install" } | { kind: "idle" } | { kind: "search" } | { kind: "seen" } | { kind: "locked", card: Card }
  *   | { kind: "card", card: Card } | { kind: "handoff", card: Card } | { kind: "error", code: string, message: string, retryable: boolean }} State */
-/** @typedef {{ purpose: "pair.device", id: string, kind: string, who: string, fingerprint: string, note: string, expires: string, main: string, other: string }} Card */
+/** @typedef {{ purpose: "pair.device", id: string, kind: string, who: string, address: string, fingerprint: string, note: string, expires: string, main: string, other: string }} Card */
 
 const CONTROL = new RegExp("[\\u0000-\\u001f\\u007f-\\u009f\\u061c\\u180e\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u2069\\ufeff]+", "g");
 const NAME_MAX = 64;
@@ -41,20 +41,24 @@ export function needsInstall(nav, displayStandalone = false) {
   return ios && !(nav.standalone === true || displayStandalone);
 }
 
-/** The card for a pairing, from what resolveTicket verified (the box's own sealed record), never from the scanned payload. @param {{ name: string, fingerprint: string }} r @param {string} id @returns {Card} */
+const LABEL = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
+/** The server's own address, shown on the card as a line of its own: a vyre.run name from the record's handle, or nothing. Display only: no page navigates to it (the hand-off is APP_ORIGIN). @param {unknown} handle */
+export const addressOf = handle => (typeof handle === "string" && LABEL.test(handle) ? `${handle}.vyre.run` : "");
+
+/** The card for a pairing, from what resolveTicket verified (the box's own sealed record), never from the scanned payload. @param {{ name: string, fingerprint: string, handle?: string | null }} r @param {string} id @returns {Card} */
 export function cardOf(r, id) {
   const who = inert(r.name, "a Vyre server");
-  return { purpose: "pair.device", id, kind: "Pair this phone", who, fingerprint: inert(r.fingerprint),
+  return { purpose: "pair.device", id, kind: "Pair this phone", who, address: addressOf(r.handle), fingerprint: inert(r.fingerprint),
     note: `Pairing lets this phone talk to ${who}. You can remove it later in Settings.`, expires: "Single use, five minutes", main: "Pair", other: "Not now" };
 }
 
 /**
  * The id a card is bound to: a hash of the ticket (never shown, never kept past the card) and the words on it. A confirm must
  * carry this id; a card that changed between being shown and being confirmed has a different one.
- * @param {Uint8Array} ticket @param {{ name: string, fingerprint: string }} r @param {(b: Uint8Array) => Promise<Uint8Array>} sha256
+ * @param {Uint8Array} ticket @param {{ name: string, fingerprint: string, handle?: string | null }} r @param {(b: Uint8Array) => Promise<Uint8Array>} sha256
  */
 export async function cardId(ticket, r, sha256) {
-  const words = new TextEncoder().encode(`${inert(r.name)}\n${inert(r.fingerprint)}\n`);
+  const words = new TextEncoder().encode(`${inert(r.name)}\n${inert(r.fingerprint)}\n${addressOf(r.handle)}\n`);
   const all = new Uint8Array(ticket.length + words.length);
   all.set(ticket); all.set(words, ticket.length);
   const d = await sha256(all);

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { APP_ORIGIN, inert, needsInstall, cardOf, cardId, b64url, handoffUrl, initial, step } from "./flow.js";
+import { APP_ORIGIN, addressOf, inert, needsInstall, cardOf, cardId, b64url, handoffUrl, initial, step } from "./flow.js";
 
 const sha = async (/** @type {Uint8Array} */ b) => new Uint8Array(crypto.createHash("sha256").update(b).digest());
 const IOS = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
@@ -73,4 +73,13 @@ test("step: errors are inert text and retry returns to the camera; an install pa
   assert.equal(step(e, { type: "retry" }).kind, "search");
   const i = initial({ install: true });
   for (const ev of [{ type: "start" }, { type: "seen" }, { type: "retry" }]) assert.equal(step(i, /** @type {any} */ (ev)).kind, "install");
+});
+
+test("addressOf: a vyre.run name from a plain handle, and nothing for anything else (no host, IP, path or label with a dot)", () => {
+  assert.equal(addressOf("alex"), "alex.vyre.run");
+  assert.equal(addressOf("harlow-legal"), "harlow-legal.vyre.run");
+  for (const bad of ["evil.example", "a.b", "10.0.0.1", "-x", "x-", "", "A", "alex/../x", "alex:8080", "alex@evil", null, undefined, 5, "x".repeat(64)]) assert.equal(addressOf(bad), "", String(bad));
+  const card = cardOf({ name: "Alex's Mac", fingerprint: "AB12", handle: "alex" }, "id");
+  assert.equal(card.address, "alex.vyre.run");
+  assert.equal(cardOf({ name: "Alex's Mac", fingerprint: "AB12", handle: "evil.example" }, "id").address, "");
 });

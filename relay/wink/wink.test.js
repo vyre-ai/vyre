@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { keygen, verify } from "../app/release.js";
 import { build, closure, specifiers, ENTRY, STYLE } from "./release.js";
+import { CSP, CSP_BODY, HEADERS } from "./headers.js";
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "wink-"));
 
@@ -36,7 +37,8 @@ test("build: sealed, every folder verifies, the entry is pinned by SRI, no inlin
   assert.match(html, /src="\/relay\/wink\/wink.js" integrity="sha384-/);
   assert.match(html, /href="\/relay\/wink\/wink.css" integrity="sha384-/);
   assert.doesNotMatch(html, /<script>|<style>|style="|onclick=/, "the CSP allows no inline script or style");
-  assert.doesNotMatch(html, /https?:\/\/(?!vyre\.run)/, "nothing third party");
+  assert.doesNotMatch(html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ""), /https?:\/\/(?!vyre\.run)/, "nothing third party");
+  assert.ok(html.includes(`content="${CSP_BODY}"`), "the page carries the same CSP as the header, minus frame-ancestors");
   assert.ok(fs.readFileSync(path.join(out, "sw.js"), "utf8").includes(`"${pub}"`));
   const m = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
   assert.deepEqual(m.entry, [ENTRY, STYLE]);
@@ -79,4 +81,17 @@ test("scripts/build-wink-out: the real path (a PEM key from the environment, not
   await assert.rejects(buildWinkOut({ release: "0.2.0", out: path.join(tmp(), "o5") }), /no signing key/);
   const t = await buildWinkOut({ release: "0.2.0", out: path.join(tmp(), "o6"), throwaway: true });
   assert.equal(t.throwaway, true);
+});
+
+test("headers: no framing, no inline, no third party, camera for this origin only, no referrer, the relay as the only connection", () => {
+  assert.match(CSP, /frame-ancestors 'none'/);
+  assert.match(CSP, /default-src 'none'/);
+  assert.match(CSP, /script-src 'self'(;|$)/);
+  assert.match(CSP, /connect-src https:\/\/relay\.vyre\.run wss:\/\/relay\.vyre\.run(;|$)/);
+  assert.doesNotMatch(CSP, /unsafe-inline|unsafe-eval|\*/);
+  assert.equal(CSP_BODY.includes("frame-ancestors"), false, "a meta CSP cannot carry it; the header does");
+  assert.equal(HEADERS["x-frame-options"], "DENY");
+  assert.match(HEADERS["permissions-policy"], /camera=\(self\)/);
+  assert.equal(HEADERS["referrer-policy"], "no-referrer");
+  assert.equal(HEADERS["content-security-policy"], CSP);
 });

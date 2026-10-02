@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sealed, verify, publicOf, rawKey } from "../app/release.js";
 import { sri } from "../app/manifest.js";
+import { CSP_BODY } from "./headers.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
@@ -67,7 +68,7 @@ export async function build(o) {
   for (const rel of closure(undefined, root)) files[rel] = new Uint8Array(fs.readFileSync(path.join(root, rel)));
   files[STYLE] = new Uint8Array(fs.readFileSync(path.join(root, STYLE)));
   let html = fs.readFileSync(path.join(root, "relay/wink/index.html"), "utf8");
-  html = html.replace("{{wink.js}}", await sri(files[ENTRY])).replace("{{wink.css}}", await sri(files[STYLE]));
+  html = html.replace("{{csp}}", CSP_BODY).replace("{{wink.js}}", await sri(files[ENTRY])).replace("{{wink.css}}", await sri(files[STYLE]));
   files["index.html"] = new Uint8Array(Buffer.from(html));
   fs.rmSync(o.out, { recursive: true, force: true });
   fs.mkdirSync(o.out, { recursive: true });
