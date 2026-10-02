@@ -253,10 +253,11 @@ export function names(deps) {
     return status();
   }
 
-  async function release() {
+  /** @param {{ handoff?: boolean }} [o] handoff: the name stays this person's, and their recovery code takes it at once on the next install (an uninstall) */
+  async function release(o = {}) {
     const name = ctx.config.name;
     if (name && net().via === "vyre.run") {
-      if (dir) await dir.release(name);
+      if (dir) await dir.release(name, { handoff: Boolean(o.handoff) });
       else {
         const dns = await zoneDns();
         for (const r of await dns.find(`${name}.${domain()}`, "A")) await dns.remove(r.id);

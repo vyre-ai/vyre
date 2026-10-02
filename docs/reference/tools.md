@@ -4233,9 +4233,10 @@ names.recover for a new install's setup channel, where the recovery code is the 
 
 ### `names.release`
 
-Remove this box's vyre.run record and stop serving on the tailnet.
+Remove this box's vyre.run record and stop serving on the tailnet. With handoff, the address stays yours and your recovery code takes it at once on the next install (what an uninstall offers).
 
-- Input: none
+- Input:
+  - `handoff` boolean
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.status`

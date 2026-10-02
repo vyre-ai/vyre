@@ -502,3 +502,24 @@ test("admin rebind: refused with no secret configured, no header, a wrong header
   assert.equal(code(await admin(w, { name: "alex", route: other.route })), "one_per_route");
   assert.equal(data(await a.get("/v1/names/mine")).name, "alex", "the owner still holds it after every refusal");
 });
+
+test("release with handoff: the recovery code moves the tombstone at once, and a plain release still waits 72 hours", async t => {
+  const w = world(t), { a, code: c } = await claimed(w);
+  data(await a.post("/v1/names/release", { name: "alex", handoff: true }));
+  assert.equal(data(await boxOf(w).get("/v1/names/check?name=alex")).status, "taken", "it is still the person's, not free");
+  const n = boxOf(w);
+  const r = data(await n.post("/v1/names/recover", { name: "alex", code: c, next: await nextHash("alex", "again") }));
+  assert.equal(r.pendingUntil, w.clock.t, "no wait");
+  const m = data(await n.get("/v1/names/mine"));
+  assert.equal(m.name, "alex");
+  assert.ok(m.notices.some(x => x.kind === "handed-off") && m.notices.some(x => x.kind === "recovered"));
+  // someone with the wrong code gets nothing, handoff or not
+  const w2 = world(t), b = await claimed(w2);
+  data(await b.a.post("/v1/names/release", { name: "alex", handoff: true }));
+  assert.equal(code(await boxOf(w2).post("/v1/names/recover", { name: "alex", code: "wrong", next: await nextHash("alex", "x") })), "refused");
+  // a plain release is not a handoff
+  const w3 = world(t), p = await claimed(w3);
+  data(await p.a.post("/v1/names/release", { name: "alex" }));
+  const q = boxOf(w3);
+  assert.equal(data(await q.post("/v1/names/recover", { name: "alex", code: p.code, next: await nextHash("alex", "x") })).pendingUntil, w3.clock.t + 72 * HOUR);
+});

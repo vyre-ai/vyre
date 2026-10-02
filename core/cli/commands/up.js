@@ -553,13 +553,38 @@ async function upSystem(flags) {
   return 0;
 }
 
+/**
+ * Before an uninstall takes vyred down: a box that holds a name.vyre.run address offers to hand it back. The
+ * address stays the person's and their recovery code takes it at once on the next install; without that the
+ * directory still holds it for this box's route and a reinstall's setup says someone else has it.
+ * @param {{ root: string, keep: boolean, release: boolean }} o
+ */
+export async function keepName({ root, keep, release }, io = { call, out, ask: async q => { const rl = readline.createInterface({ input: process.stdin, output: process.stdout }); try { return (await rl.question(q)).trim(); } finally { rl.close(); } }, tty: Boolean(process.stdin.isTTY) }) {
+  if (keep) return "kept";
+  const st = await io.call("names.status", {}, { root }).catch(() => null);
+  const s = st && st.data;
+  if (!s || !s.name || s.via !== "vyre.run") return "none";
+  const address = `${s.name}.vyre.run`;
+  let yes = release;
+  if (!yes) {
+    if (!io.tty) { io.out(beacon(`  ${address} stays held for this server. Run again with --release-name to hand it back, or take it back later with its recovery code (a 72-hour wait).`)); return "held"; }
+    const a = (await io.ask(`  Hand ${address} back so your recovery code takes it at once on your next install? [Y/n] `)).toLowerCase();
+    yes = a === "" || a === "y" || a === "yes";
+  }
+  if (!yes) { io.out(beacon(`  ${address} stays held for this server. Your recovery code takes it back after a 72-hour wait.`)); return "held"; }
+  const r = await io.call("names.release", { handoff: true }, { root });
+  if (r && r.error) { io.out(beacon(`  could not hand ${address} back (${r.error.message || r.error.code}); it stays held for this server`)); return "failed"; }
+  io.out(beacon(`  ${address} is handed back: your recovery code takes it at once on the next install.`));
+  return "handed";
+}
+
 export default [
   {
     name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {
-    name: "uninstall", order: 95, hidden: true, usage: "vyre uninstall --system [--purge] [--dry-run]", summary: "remove the systemd units (the data stays unless --purge)",
+    name: "uninstall", order: 95, hidden: true, usage: "vyre uninstall --system [--purge] [--keep-name | --release-name] [--dry-run]", summary: "remove the systemd units (the data stays unless --purge)",
     async run(args) {
       const { flags } = parse(args);
       if (!flags.system) return usage("vyre uninstall needs --system", "vyre uninstall --system [--purge] [--dry-run]");
@@ -568,6 +593,7 @@ export default [
       const user = String(flags.user || process.env.SUDO_USER || os.userInfo().username);
       let home = os.homedir();
       try { home = account(user).home; } catch {}
+      if (!dryRun) await keepName({ root: path.join(home, ".vyre"), keep: Boolean(flags["keep-name"]), release: Boolean(flags["release-name"]) });
       await system.apply(system.uninstallPlan({ purge: Boolean(flags.purge), home, wall: process.platform === "linux" ? wallUninstallSteps() : [] }), { dryRun, out: l => out("  " + l) });
       return 0;
     },

@@ -139,10 +139,10 @@ export default {
       run: async (_, meta = {}) => { setupSteps(meta); return svc.fallback(); },
     });
     ctx.tool("names.release", {
-      description: "Remove this box's vyre.run record and stop serving on the tailnet.",
-      input: obj(),
+      description: "Remove this box's vyre.run record and stop serving on the tailnet. With handoff, the address stays yours and your recovery code takes it at once on the next install (what an uninstall offers).",
+      input: obj({ handoff: { type: "boolean" } }),
       callers: WHO,
-      run: async (_, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.release(); },
+      run: async (input, meta = {}) => { ownerOnly(meta); if (!person(meta.caller)) throw new Error("not from the onboarding page"); return svc.release({ handoff: Boolean(input && input.handoff) }); },
     });
     ctx.tool("names.connect", {
       description: "Start `tailscale up`. Returns the sign-in link to open, or nothing when already signed in.",

@@ -887,7 +887,7 @@ vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to 
 Remove the systemd units (the data stays unless --purge).
 
 ```
-vyre uninstall --system [--purge] [--dry-run]
+vyre uninstall --system [--purge] [--keep-name | --release-name] [--dry-run]
 ```
 
 ### vyre daemon

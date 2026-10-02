@@ -76,7 +76,7 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     /** @param {string} name @param {string} next the hash of the new recovery code */
     rotate: (name, next) => call("POST", "/v1/names/code", { name, next }),
     /** @param {string} name */
-    release: name => call("POST", "/v1/names/release", { name }),
+    release: (name, o = {}) => call("POST", "/v1/names/release", { name, ...(o.handoff ? { handoff: true } : {}) }),
     /** This route's name, its state, a pending recovery and the notices. */
     mine: () => call("GET", "/v1/names/mine"),
   };

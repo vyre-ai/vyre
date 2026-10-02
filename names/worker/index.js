@@ -10,7 +10,7 @@
 //   POST   /v1/names/recover         {name, code, next}    a 72-hour pending rebind to the caller's route
 //   POST   /v1/names/recover/cancel  {name}                the current owner's route cancels it
 //   POST   /v1/names/code            {name, next}          the owner replaces the recovery code (and cancels a pending one)
-//   POST   /v1/names/release         {name}                give the name up (a tombstone if it was ever pointed)
+//   POST   /v1/names/release         {name, handoff?}      give the name up (a tombstone if it was ever pointed; handoff: the recovery code then moves it at once)
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
 //   POST   /v1/names/admin/rebind    {name, route}        support only: move a name to a route at once; needs the ADMIN_SECRET header
@@ -429,6 +429,7 @@ export class Directory {
     rec.state = rec.everPointed ? "live" : "claimed";
     rec.claimedAt = this.now();
     rec.ips = {};
+    delete rec.handoff;
     this.note(rec, "recovered", {});
     await this.save(rec);
     await this.wipeDns(rec);
@@ -547,7 +548,9 @@ export class Directory {
     // Ever live: it can never be anyone else's. Only the recovery code moves it.
     await this.unpend(rec);
     Object.assign(rec, { state: "tombstone", route: null, ips: {} });
-    this.note(rec, "released", {});
+    // A handoff: the owner let the name go on purpose (an uninstall), so the recovery code moves it at once, with no 72-hour wait.
+    if (b.handoff === true) rec.handoff = true; else delete rec.handoff;
+    this.note(rec, rec.handoff ? "handed-off" : "released", {});
     await this.save(rec);
     await this.wipeDns(rec);
     return { name: rec.name, tombstone: true };
@@ -570,7 +573,7 @@ export class Directory {
       if (rec.pending.route === a.route) return { name: rec.name, pendingUntil: rec.pending.eta };
       throw err(409, "pending", "another recovery of that name is already waiting");
     }
-    rec.pending = { route: a.route, at: this.now(), eta: this.now() + LIMITS.recoverMs, next: b.next };
+    rec.pending = { route: a.route, at: this.now(), eta: rec.handoff && rec.state === "tombstone" ? this.now() : this.now() + LIMITS.recoverMs, next: b.next };
     await this.store.put(`p/${a.route}`, rec.name);
     this.note(rec, "recovery-pending", { eta: rec.pending.eta, by: a.route.slice(0, 8) });
     await this.save(rec);
