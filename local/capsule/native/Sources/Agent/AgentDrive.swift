@@ -94,6 +94,16 @@ enum Drive {
             return
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
+        if let mode = c["display"] as? String {
+            // Deep glass proof: "glass" forces Reduce Transparency off, "reduced" on, "system" reads the Mac's setting.
+            DeepGlass.reduceTransparencyOverride = mode == "glass" ? false : mode == "reduced" ? true : nil
+            DisplayPrefs.shared.refresh()
+            say(["display": mode, "reduced": DeepGlass.reduceTransparency]); return
+        }
+        if let mode = c["appearance"] as? String {
+            NSApp.appearance = mode == "dark" ? NSAppearance(named: .darkAqua) : mode == "light" ? NSAppearance(named: .aqua) : nil
+            say(["appearance": mode]); return
+        }
         if VJ.truthy(c["windowid"]) { say(["windowid": a.panel.panel.windowNumber, "visible": a.panel.panel.isVisible]); return }
         if VJ.truthy(c["views"]) {
             // What the server gave this Lumen: which tools it has, the module commands it read, the next meeting.
