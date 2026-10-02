@@ -190,6 +190,18 @@ export default {
 
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...extra });
 
+    tool("computers.rename", "Rename an agent's computer: the person's own label for it, shown wherever the computer appears. An empty name goes back to the agent's name.",
+      obj({ computer: str, name: str }, ["computer", "name"]), async (i, { caller }) => {
+        if (agentClaim(caller)) throw new Error("renaming a computer is the person's, never an agent's");
+        const agent = String(i.computer || "");
+        if (!AGENT.test(agent)) throw new Error(`"${agent}" is not an agent name`);
+        const label = String(i.name ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+        if (label.length > 64) throw new Error("a name is 1 to 64 printable characters");
+        config.save({ computerLabels: { [agent]: label || null } }, ctx.paths.root, ctx.config);
+        ctx.events.emit("device.renamed", { kind: "computer", id: agent, name: label || null });
+        return { id: agent, name: label || null };
+      });
+
     tool("computers.list", "Every agent's computer: its state (none, running, frozen, stopped), its screen and thread when checked out, viewers, take-over and pause. Says driver none when this machine cannot run computers.",
       obj({}), async (_, { caller }) => {
         const names = new Set(pool.rows().map(r => String(r.agent)));
@@ -197,7 +209,8 @@ export default {
         if (!r.error) for (const a of r.data || []) if (a && a.computer === true) names.add(String(a.name));
         const claim = agentClaim(caller);
         const mine = claim && (await kindOf(claim)) !== "assistant" ? claim : null;
-        const computers = [...names].filter(n => !mine || n === mine).sort().map(n => pool.view(n));
+        const labels = (ctx.config.computerLabels && typeof ctx.config.computerLabels === "object") ? ctx.config.computerLabels : {};
+        const computers = [...names].filter(n => !mine || n === mine).sort().map(n => ({ ...pool.view(n), label: labels[n] || null }));
         return { driver: driver ? driver.name : "none", screens: pool.opts.screens, computers };
       });
 

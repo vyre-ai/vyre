@@ -27,7 +27,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 36 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 30 | 20 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 11 | 4 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
@@ -68,7 +68,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
-| [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
+| [`system`](#system) | `core/system` | `box`, `local` | 3 | 2 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 52 | 35 | cli |
@@ -200,8 +200,8 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [30](tools.md#computers), 8 of them only for other modules
-- Emits: [20 events](events.md#computers)
+- Tools: [31](tools.md#computers), 8 of them only for other modules
+- Emits: [21 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
 - Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`
@@ -656,8 +656,8 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 - Folder: `core/system`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [2](tools.md#system)
-- Emits: [1 events](events.md#system)
+- Tools: [3](tools.md#system)
+- Emits: [2 events](events.md#system)
 - Shows on: cli
 
 ## team

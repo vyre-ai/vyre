@@ -124,7 +124,7 @@ export default {
     const route = () => routeId(keys.route.pub);
     // The box's name as the names module knows it (config.name), never the machine's hostname: it rides in QR codes and
     // shows in screenshots.
-    const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
+    const boxName = () => String(ctx.config.serverName || ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
     // The claimed <handle>.vyre.run subdomain (core/names/service.js's own `ctx.config.name`,
     // set only once a name is actually claimed), not boxName()'s fallback chain, since a display
     // name is not necessarily a real, resolvable handle. Null when nothing is claimed yet: the
