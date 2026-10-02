@@ -131,7 +131,7 @@ export function readTeammates(attempt) {
  */
 export function readProjects(attempt, o = {}) {
   if (!readingProjects || o.again) {
-    readingProjects = attempt("projects.list").then(r => { if (r.error) readingProjects = null; else setProjects(r.data?.projects || []); });
+    readingProjects = attempt("projects.list", {}, { share: true }).then(r => { if (r.error) readingProjects = null; else setProjects(r.data?.projects || []); });
   }
   return readingProjects;
 }

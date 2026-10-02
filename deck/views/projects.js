@@ -3,40 +3,36 @@
 // thread reads).
 //
 //   /projects                     every project (projects.list), with pins and New project
-//   /projects/:slug               the board: threads + brief on the left, the thread in the
-//   /projects/:slug/:thread       centre, the files it touched on the right. ?tab= brief|files|memory
-//   /threads/:thread              the same thread for a session in no project, with "Add to a project"
+//   /projects/:slug               the project's page: its chats, brief and the rest. ?tab= team|brief|files|memory
 //
-// A thread is either a recorded session (recall.thread, read from its transcript) or a live
-// switchboard thread (threads.get, then thread.* and ask.raised events). Everything a thread says
-// is untrusted and goes in through h() as text only.
+// Projects is a shell: it lists and describes a project and never draws a conversation. Every chat opens in
+// Chat (/chat/<project>/<thread>), scoped to the project, where the one real session view lives; a start
+// box is the same New chat there. /projects/<slug>/<thread> and /threads/<id> still work and go to Chat
+// (js/app.js). The board used to draw its own copy of a thread, which read events by the wrong fields and
+// drew empty rows and a composer that sent nothing (#37, #42).
 //
-// On the box, the paired Mac's rows come in too (js/machine.js): its projects in the list, a Mac
-// session picked into a box project in the board, a Mac thread at /threads/:thread. Each carries
-// a machine chip and is read only: a Mac project has no board here, and a Mac thread opens from
-// recall.thread with no reply, keyboard or Take. Picking a Mac session into a box project is fine.
+// On the box, the paired Mac's rows come in too (js/machine.js): its projects in the list with a machine
+// chip. A Mac project has no page here; a Mac session opens in Chat like any other.
 
 import { h, put, link, go, head, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { projectAvatar, setProjects } from "../js/avatars.js";
-import { mountSession } from "../chat/session.js";
 import * as needs from "../js/needs.js";
 import { when, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
 import { elsewhere } from "../js/need-rows.js";
-import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline, offerThen } from "../js/empty-actions.js";
+import { createProject, createProjectInline, startThread, indexHistoryInline, offerThen } from "../js/empty-actions.js";
 import { renameProject, archiveProject } from "../js/project-actions.js";
 import { openGithubRepoPicker } from "../js/github-repo-picker.js";
 import { showToast } from "../js/toast.js";
 
 const enc = encodeURIComponent;
-const TABS = [["threads", "Threads"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
+const TABS = [["threads", "Chats"], ["team", "Team"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"]];
 
 /** @param {any} ctx */
 export default async function projects(ctx) {
   if (ctx.params.slug) return board(ctx);
-  if (ctx.params.thread) return loose(ctx);
   return list(ctx);
 }
 
@@ -202,10 +198,10 @@ async function board(ctx) {
     ...live.sort((a, b) => (b.last || 0) - (a.last || 0)).map(t => ({ id: t.id, name: t.name || t.id, at: t.last || t.started, live: t })),
     ...recorded.map(t => ({ id: t.id, name: t.label || t.name || t.title || t.id, at: t.last, rec: t })),
   ];
-  const chosen = ctx.params.thread || null;
-  const selected = chosen || items[0]?.id || null;
-  const hrefFor = id => `/projects/${enc(slug)}/${enc(id)}`;
-  const tabHref = t => (chosen ? hrefFor(chosen) : `/projects/${enc(slug)}`) + (t === "threads" ? "" : `?tab=${t}`);
+  // A chat opens in Chat, scoped to this project: the old /projects/<slug>/<thread> address goes there.
+  if (ctx.params.thread) { go(`/chat/${enc(slug)}/${enc(ctx.params.thread)}`); return; }
+  const hrefFor = id => `/chat/${enc(slug)}/${enc(id)}`;
+  const tabHref = t => `/projects/${enc(slug)}` + (t === "threads" ? "" : `?tab=${t}`);
 
   const ppl = peopleText(p.people);
   const nameEl = h("h1", { class: "pj-name" }, p.name);
@@ -222,9 +218,9 @@ async function board(ctx) {
     h("div", { class: "pj-grow" }),
     agents.length ? h("span", { class: "pj-agents small faint" }, agents.map(a => h("span", { class: "initial sm", "aria-hidden": "true" }, initial(a))), agents.join(", ")) : null,
     h("button", { type: "button", class: "btn btn-ghost btn-sm pj-archive", "data-act": "archive", title: "Take it out of the list. Nothing is deleted.", onclick: () => archiveProject(p) }, "Archive"),
-    newThreadButton(ctx, p, sw.error));
+    link(`/chat?new&project=${enc(slug)}`, { class: "btn", "aria-label": "New chat in this project" }, icon("plus", 14), h("span", { class: "nt-label" }, "New chat")));
 
-  const root = h("div", { class: "pj" + (chosen ? " has-thread" : "") + " tab-" + tab });
+  const root = h("div", { class: "pj tab-" + tab });
   put(ctx.root, root);
 
   if (tab === "brief") { put(root, header, briefTab(ctx, p, cx, sw.error)); return; }
@@ -232,34 +228,21 @@ async function board(ctx) {
   if (tab === "memory") { put(root, header, memoryTab(ctx, p)); return; }
   if (tab === "team") { const box = h("div", { class: "pj-page" }); put(root, header, box); const m = await import("./project-team.js"); if (ctx.alive()) await m.drawTeam(box, ctx, p); return; }
 
+  // The project's chats, newest first: each opens in Chat. Beside them, the start of the brief.
   const threadList = h("div", { class: "pj-threads" });
   const drawList = () => put(threadList,
-    h("div", { class: "lbl pj-threads-l" }, "Threads"),
-    items.length ? items.map(it => threadItem(it, it.id === selected, hrefFor(it.id), needs.current()))
-      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No threads yet. Sessions are not available on this box, so one cannot start here.")
-      : h("div", { class: "empty pj-none" }, "No threads yet.", startThreadInline(p)),
+    items.length ? items.map(it => threadItem(it, false, hrefFor(it.id), needs.current()))
+      : sw.error?.missing ? h("div", { class: "empty pj-none" }, "No chats yet. Sessions are not available on this box, so one cannot start here.")
+      : h("div", { class: "empty pj-none" }, "No chats yet. ", link(`/chat?new&project=${enc(slug)}`, { class: "link" }, "Start one")),
     sw.error && !sw.error.missing ? h("div", { class: "code pj-none" }, String(sw.error.message)) : null);
   drawList();
   ctx.cleanup(needs.watch(drawList));
   const brief = h("section", { class: "pj-brief", "aria-labelledby": "brief-h" },
     h("div", { class: "pj-brief-top" }, h("h2", { id: "brief-h", class: "lbl" }, "Brief"), link(tabHref("brief"), { class: "link small muted" }, "Read all")),
     cx.error ? empty("", cx.error) : shortBrief(cx.data?.text).map(l => h("p", { class: l.mono ? "pj-brief-mono" : "pj-brief-p" }, l.text)));
+  put(root, header, h("div", { class: "pj-page pj-chats" }, h("div", { class: "lbl pj-threads-l" }, "Chats"), threadList, brief));
 
-  const centre = h("section", { class: "pj-centre", "aria-label": "Thread" });
-  const files = h("aside", { class: "pj-files", "aria-label": "Files this thread touched" });
-  put(root, header, h("div", { class: "pj-body" },
-    h("aside", { class: "pj-left", "aria-label": "Threads and brief" }, threadList, h("div", { class: "pj-grow" }), brief),
-    centre, files));
-
-  if (!selected) {
-    put(centre, h("div", { class: "th-empty" }, h("div", { class: "empty" }, "The thread you start shows here.")));
-    put(files, h("div", { class: "pj-files-head" }, h("h2", { class: "lbl" }, "Files")), h("div", { class: "pj-files-pad empty" }, "The files a thread touches show here."));
-    return;
-  }
-  const it = items.find(x => x.id === selected);
-  await threadPane(ctx, selected, { centre, files, known: it, project: p, switchboard: sw, back: `/projects/${enc(slug)}` });
-
-  // Keep the list's states fresh when a thread starts, finishes or raises a question.
+  // Keep the list's states fresh when a chat starts: read the page again.
   ctx.on("thread.started", e => { if (e.project === slug) go(location.pathname + location.search); });
 }
 
@@ -293,40 +276,6 @@ function threadItem(it, on, href, open) {
       held ? h("span", { class: "pj-held" }, h("span", { class: "dot beacon", "aria-hidden": "true" }), "held") : null));
 }
 
-function newThreadButton(ctx, p, swErr) {
-  const wrap = h("div", { class: "nt" });
-  const btn = h("button", { type: "button", class: "btn", "aria-label": "New thread", "aria-expanded": "false", "aria-haspopup": "dialog", onclick: () => toggle(pop.hidden) }, icon("plus", 14), h("span", { class: "nt-label" }, "New thread"));
-  const pop = h("form", { class: "nt-pop", hidden: true, role: "dialog", "aria-label": "New thread" });
-  const toggle = openIt => {
-    pop.hidden = !openIt;
-    btn.setAttribute("aria-expanded", String(openIt));
-    if (openIt) draw();
-  };
-  const draw = () => {
-    const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", { class: "input", rows: "3", "aria-label": "What should the new thread do?", placeholder: "What should it do? You can leave this empty." }));
-    const status = h("div", { class: "small muted", role: "status" });
-    const go_ = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Start"));
-    pop.onsubmit = async e => {
-      e.preventDefault();
-      go_.disabled = true;
-      put(status, "Starting…");
-      const r = await startThread(p, ta.value.trim());
-      go_.disabled = false;
-      if (r.error) { put(status, r.error); return; }
-      toggle(false);
-      if (r.id) go(`/projects/${enc(p.slug)}/${enc(r.id)}`);
-    };
-    put(pop,
-      h("div", { class: "code faint ellipsis" }, "In ", base(p.home)),
-      ta,
-      h("div", { class: "nt-actions" }, go_, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => toggle(false) }, "Cancel")),
-      swErr?.missing ? h("div", { class: "small faint" }, "Sessions are not available on this box, so this will not start yet.") : null,
-      status);
-    ta.focus();
-  };
-  pop.addEventListener("keydown", e => { if (/** @type {KeyboardEvent} */ (e).key === "Escape") { toggle(false); btn.focus(); } });
-  return put(wrap, btn, pop);
-}
 
 // ---- tabs ---------------------------------------------------------------------------------
 
@@ -337,7 +286,7 @@ function briefTab(ctx, p, cx, swErr) {
     head("Brief", h("span", { class: "code faint" }, "Built from this project's threads")),
     cx.error ? empty("The brief is not available.", cx.error)
       : lines.length ? h("div", { class: "pj-brief-full" }, lines.map(l => h("p", { class: /^(People|Other threads|From this project)/.test(l.text) ? "pj-brief-h" : "" }, l.text)))
-        : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run.", swErr?.missing ? null : startThreadInline(p)),
+        : h("div", { class: "empty" }, "Nothing in the brief yet. It fills in as threads run.", swErr?.missing ? null : link(`/chat?new&project=${enc(p.slug)}`, { class: "link" }, " Start a chat")),
     h("div", { class: "pj-facts code" },
       h("div", null, h("span", { class: "faint" }, "Home  "), p.home || ""),
       (p.workspaces || []).filter(w => w !== p.home).map(w => h("div", null, h("span", { class: "faint" }, "Also  "), w))),
@@ -399,7 +348,7 @@ function filesTab(ctx, p, items) {
     const err = rs.find(r => r.error)?.error;
     const all = rs.flatMap((r, i) => (r.data || []).map(f => ({ ...f, thread: ids[i] }))).sort((a, b) => (b.at || 0) - (a.at || 0));
     if (!all.length) { put(box, err ? empty("Files are not available.", err) : h("div", { class: "empty" }, "No thread in this project has changed a file yet.")); return; }
-    put(box, all.map(f => fileRow(f, link(`/projects/${enc(p.slug)}/${enc(f.thread.id)}`, { class: "link quiet small muted ellipsis pj-file-th" }, f.thread.name))));
+    put(box, all.map(f => fileRow(f, link(`/chat/${enc(p.slug)}/${enc(f.thread.id)}`, { class: "link quiet small muted ellipsis pj-file-th" }, f.thread.name))));
   })();
   return page;
 }
@@ -440,160 +389,4 @@ function fileRow(f, extra) {
 function shortDir(d) {
   const parts = d.split("/").filter(Boolean);
   return (parts.length > 2 ? "…/" : d.startsWith("/") ? "/" : "") + parts.slice(-2).join("/") + (parts.length ? "/" : "");
-}
-
-// ---- /threads/:thread --------------------------------------------------------------------
-
-async function loose(ctx) {
-  const id = ctx.params.thread;
-  const [sw, cx, pl, rt] = await Promise.all([attempt("threads.list", {}), attempt("projects.context", { session: id }), attempt("projects.list"),
-    attempt("recall.thread", { session: id, limit: 1 })]);
-  const known = (sw.data || []).find(t => t.id === id);
-  // A Mac thread (the box read it from the Mac): its project and folder are the Mac's, so only a
-  // pick into one of this machine's projects (projects.context) says where it is here.
-  const mac = isMac(known) || isMac(rt.data);
-  const cwd = mac ? null : known?.cwd || rt.data?.session?.cwd;
-  const of = !mac && !known?.project && !cx.data?.project && cwd ? await attempt("projects.of", { cwd }) : null;
-  if (!ctx.alive()) return;
-  const inProject = (mac ? null : known?.project) || cx.data?.project || of?.data?.slug || null;
-  // Picking goes into this machine's projects only.
-  const projectsAll = (pl.data?.projects || []).filter(x => !isMac(x));
-  const owner = projectsAll.find(x => x.slug === inProject);
-
-  const add = h("div", { class: "lt-add" });
-  const drawAdd = () => {
-    if (owner) { put(add, h("span", { class: "small muted" }, "In ", link(`/projects/${enc(owner.slug)}/${enc(id)}`, { class: "link" }, owner.name))); return; }
-    if (inProject) { put(add, h("span", { class: "small muted" }, "In ", inProject)); return; }
-    if (pl.error) { put(add, h("span", { class: "small faint" }, "Projects are not available.")); return; }
-    // Made into a new project, this chat's draft tile carries over and turns solid (projects.create
-    // from_thread keeps its seed); filed into an existing one, it takes that project's tile.
-    const make = h("button", { type: "button", class: "btn btn-sm", onclick: () => newProject() }, icon("plus", 14), "New project from this");
-    // Still offered with zero existing projects: form() falls back to "New project from a
-    // GitHub repo…" alone when there's nothing to pick from the select.
-    const btn = h("button", { type: "button", class: "btn btn-sm", "aria-expanded": "false", onclick: () => form() }, "Add to a project");
-    put(add, h("span", { class: "lt-none-ico faint", "aria-hidden": "true" }, icon("projects", 16)), h("span", { class: "small faint lt-none" }, "Not in a project."), make, btn);
-  };
-  const newProject = () => {
-    const name = /** @type {HTMLInputElement} */ (h("input", { class: "input lt-sel", "aria-label": "Project name", placeholder: "Project name" }));
-    const status = h("span", { class: "small muted", role: "status" });
-    const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Make it"));
-    put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
-      e.preventDefault();
-      if (!name.value.trim()) { put(status, "Give it a name."); return; }
-      ok.disabled = true;
-      const r = await createProject({ name: name.value.trim(), from_thread: id });
-      ok.disabled = false;
-      if (r.error || !r.slug) { put(status, r.error || "The project was not made."); return; }
-      const slug = r.slug;
-      offerThen(status, r, () => go(`/projects/${enc(slug)}/${enc(id)}`));
-    } }, name, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
-    name.focus();
-  };
-  /** A newly-made project (from a GitHub repo) still needs the thread filed into it, same as
-   * picking an existing one from the select. */
-  const fileInto = async (/** @type {string} */ slug, /** @type {HTMLElement} */ status) => {
-    const r = await attempt("projects.add-threads", { project: slug, threads: [id] });
-    if (r.error) { put(status, r.error.missing ? `The ${r.error.module} module is not running.` : String(r.error.message)); return false; }
-    window.dispatchEvent(new Event("deck:pins"));
-    go(`/projects/${enc(slug)}/${enc(id)}`);
-    return true;
-  };
-  const form = () => {
-    const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input lt-sel", "aria-label": "Project" }, projectsAll.map(x => h("option", { value: x.slug }, x.name))));
-    const status = h("span", { class: "small muted", role: "status" });
-    const ok = /** @type {HTMLButtonElement} */ (h("button", { type: "submit", class: "btn btn-sm" }, "Add"));
-    const ghBtn = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => openGithubRepoPicker({
-      title: "New project from a GitHub repo",
-      onPick: async (repo, account) => {
-        put(status, `Cloning ${repo.full_name}…`);
-        // from_thread (github's contract, sha 9cf93817) both sets the new project's avatar_seed
-        // to this chat's id and files the chat in, in the one call: the same carry-over a
-        // native project-from-chat gets, and no separate projects.add-threads needed here.
-        const r = await attempt("github.project", { repo: repo.full_name, account, from_thread: id });
-        if (r.error) { put(status, r.error.message || "Could not create the project from that repo."); return; }
-        if (r.data?.project) { window.dispatchEvent(new Event("deck:pins")); go(`/projects/${enc(r.data.project)}/${enc(id)}`); }
-      },
-    }) }, icon("branch", 12), "New project from a GitHub repo…");
-    put(add, h("form", { class: "lt-form", onsubmit: async (/** @type {Event} */ e) => {
-      e.preventDefault();
-      ok.disabled = true;
-      await fileInto(sel.value, status);
-      ok.disabled = false;
-    } }, projectsAll.length ? [sel, ok] : null, ghBtn, h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: drawAdd }, "Cancel"), status));
-    if (projectsAll.length) sel.focus(); else ghBtn.focus();
-  };
-  drawAdd();
-
-  const centre = h("section", { class: "pj-centre", "aria-label": "Thread" });
-  const files = h("aside", { class: "pj-files", "aria-label": "Files this thread touched" });
-  put(ctx.root, h("div", { class: "pj has-thread lt" },
-    h("div", { class: "pj-head" },
-      h("div", { class: "pj-id" }, link("/now", { class: "pj-back pj-phone" }, icon("right", 14), "Now"), h("span", { class: "lbl" }, "Thread"),
-        machineChip(mac ? { source: "mac", machine: known?.machine || rt.data?.machine } : null)),
-      h("div", { class: "pj-grow" }), add),
-    h("div", { class: "pj-body" }, centre, files)));
-  await threadPane(ctx, id, { centre, files, known: known ? { live: known } : mac ? { rec: rt.data } : null, project: owner || null, switchboard: sw, back: owner ? `/projects/${enc(owner.slug)}` : "/now" });
-}
-
-// ---- one thread -----------------------------------------------------------------------------
-
-/**
- * A thread, in the middle of a project board or on its own: the chat's own session view (deck/chat/session.js), the same one /chat opens, so
- * every kind of item draws the one way and the composer, asks, plan, media and replies are the real ones. The files the thread touched stay
- * beside it. (The board used to draw its own simpler copy, which read events by the wrong field names and drew empty rows and a dead
- * composer.)
- * @param {any} ctx
- * @param {string} id
- * @param {{ centre: HTMLElement, files: HTMLElement, known: any, project: any, switchboard: any, back: string }} o
- */
-async function threadPane(ctx, id, o) {
-  const { centre, files } = o;
-  const row = o.known?.live || o.known?.rec || null;
-  const container = h("div", { class: "chat-session" });
-  put(centre, container);
-  const pl = await attempt("projects.list", {});
-  if (!ctx.alive()) return;
-  ctx.cleanup(mountSession(container, /** @type {any} */ ({ thread: id, project: o.project?.slug || row?.project || null, projects: pl.data?.projects || [],
-    recorded: !!row && !o.known?.live, known: !!row, turns: row?.turns || 0, source: row?.source || null, machine: row?.machine || null,
-    shown: () => ctx.alive(), onBack: () => go(o.back) })));
-
-  // The files this thread touched, from the Harness, else from its own tool calls (events as the box sends them: { type, at, payload }).
-  const mac = isMac(row);
-  /** @type {any[]} */ let tools = [];
-  if (!mac) {
-    const g = await attempt("threads.get", { thread: id });
-    if (!ctx.alive()) return;
-    tools = (g.data?.events || []).filter((/** @type {any} */ e) => e.type === "thread.tool").map((/** @type {any} */ e) => ({ type: e.type, at: e.at, ...(e.payload || {}) }));
-  }
-  const drawFilesFromEvents = () => drawFiles(ctx, files, id, tools);
-  drawFilesFromEvents();
-  ctx.on("thread.tool", e => { if ((e.thread || e.payload?.thread) !== id) return; tools.push({ type: e.type, at: e.at, ...(e.payload || {}) }); drawFilesFromEvents(); });
-  ctx.on("file.touched", e => { if (e.payload?.session === id) drawFilesFromEvents(); });
-}
-
-
-// ---- files the thread touched ------------------------------------------------------------
-
-async function drawFiles(ctx, box, id, toolEvents) {
-  const r = await attempt("harness.touched", { session: id, limit: 100 });
-  if (!ctx.alive()) return;
-  let rows = r.data || [], from = "harness";
-  if (!rows.length) {
-    // The Harness has not recorded this thread (it ran elsewhere, or not yet): read the paths
-    // from its own tool calls instead.
-    const seen = new Map();
-    for (const ev of [...toolEvents].reverse()) {
-      const p = ev.input && typeof ev.input === "object" ? (ev.input.file_path || ev.input.path || ev.input.notebook_path) : null;
-      if (typeof p === "string" && !seen.has(p)) seen.set(p, { path: p, tool: ev.tool, at: ev.at });
-    }
-    rows = [...seen.values()];
-    from = rows.length ? "tools" : from;
-  }
-  put(box,
-    h("div", { class: "pj-files-head" }, h("h2", { class: "lbl" }, "Files"), h("span", { class: "code faint" }, rows.length ? plural(rows.length, "file") : "")),
-    r.error && !rows.length ? h("div", { class: "pj-files-pad" }, empty("Files are not available.", r.error))
-      : rows.length ? h("div", { class: "rows pj-files-list" }, rows.map(f => fileRow(f)))
-        : h("div", { class: "pj-files-pad empty" }, "This thread has not changed a file."),
-    from === "tools" ? h("p", { class: "small faint pj-files-pad" }, "Read from this thread's tool calls.") : null,
-    h("div", { class: "pj-files-pad" }, noContents()));
 }

@@ -204,7 +204,7 @@ window.addEventListener("deck:rail", e => { railOwned = true; side.classList.rem
 const ON_PROJECT = /^\/(projects\/[^/]+|threads\/)/;
 async function drawRail() {
   if (!ON_PROJECT.test(location.pathname)) { if (!railOwned) { side.classList.remove("rail-projects"); put(pins); sideSync(); } return; }
-  const r = await attempt("projects.list");
+  const r = await attempt("projects.list", {}, { share: true });
   if (railOwned || !ON_PROJECT.test(location.pathname)) return;
   // Pins open a board on this machine, so a paired Mac's projects (on the box) are not pinned here.
   info.projects = (r.data?.projects || []).filter(p => !isMac(p));
@@ -344,7 +344,7 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** Pushed screens that draw their own back control, so the shell's back row stays out of the way. */
 function ownBack(/** @type {string} */ name, /** @type {Record<string, string>} */ params) {
   return (name === "chat" && !!(params.thread || params.project)) || name === "needs" || name === "find"
-    || (name === "projects" && !!(params.slug || params.thread));
+    || (name === "projects" && !!params.slug);
 }
 /** The page under the pushed screens: where Back goes when history has nothing of the Deck's. */
 let lastPage = "/now";
@@ -425,8 +425,6 @@ function leave(/** @type {string} */ key, /** @type {{ page: HTMLElement, name: 
   } else hide();
 }
 
-/** The last place the person was on that the rail shows (Now or Chat), for a thread that belongs to no project. */
-let cameFrom = "";
 async function route() {
   // "/" is the assistant's current thread (js/home.js), else Now; the header's "+" asks Agents for its form by event.
   if (location.pathname === "/") history.replaceState(history.state, "", (await homePath(attempt)) + location.search + location.hash);
@@ -435,16 +433,19 @@ async function route() {
     history.replaceState(history.state, "", "/agents" + location.hash);
     newAgent = true;
   }
+  // Projects never draws a conversation: a chat opens in Chat, scoped to its project (#47). The old addresses still work and go there.
+  {
+    const m = /^\/projects\/([^/]+)\/([^/]+)\/?$/.exec(location.pathname), t = /^\/threads\/([^/]+)\/?$/.exec(location.pathname);
+    const to = m ? `/chat/${m[1]}/${m[2]}` : t ? `/chat/thread/${t[1]}` : null;
+    if (to) history.replaceState(history.state, "", to + location.search + location.hash);
+  }
   const { view: name, params } = match(location.pathname);
   trace.routeStart(location.pathname + location.search, name);
   // /quick is the hotkey panel: the compact ask alone, no rail (css/views/quick.css reads this).
   document.documentElement.dataset.quick = name === "quick" ? "1" : "";
   const key = location.pathname + location.search;
   put(address.lastChild, location.host, h("b", null, location.pathname));
-  // A session in no project (/threads/<id>) is not a place in Projects: the rail keeps where the person came from (Now or Chat), else nothing.
-  const looseThread = name === "projects" && !!params.thread && !params.slug;
-  if (!looseThread) cameFrom = name === "now" || name === "chat" ? name : "";
-  railEl.setCurrent(looseThread ? cameFrom : name, location.hash);
+  railEl.setCurrent(name, location.hash);
   // A detail (a session, a project's board or thread): under 900 it takes the list column's place.
   deck.toggleAttribute("data-detail", (name === "chat" && !!params.thread) || (name === "projects" && !!(params.slug || params.thread)));
   pwa.remember(key);
