@@ -7,9 +7,9 @@
 # lists both in the release's SHA256SUMS. This script takes the newest plain stable vX.Y.Z release that carries
 # VyreSetup.exe and SHA256SUMS (a prerelease tag is never chosen; VYRE_RELEASE_BASE names another one), checks
 # the installer's SHA-256 against its line there, and tells the person about "More info, then Run anyway".
-# It does NOT check SHA256SUMS.sig (Ed25519): Windows PowerShell 5.1 cannot, so the first install trusts
-# GitHub's https for SHA256SUMS; every later update is verified by the app against the Vyre release key, and
-# anything unsigned is refused there. This file is also what https://vyre.run/w serves (scripts/build-site.sh).
+# It first verifies SHA256SUMS.sig (Ed25519) against the pinned Vyre release key and refuses a release with no
+# signature or a bad one; the installer is only fetched after that, and checked against the signed list.
+# This file is also what https://vyre.run/w serves (scripts/build-site.sh).
 #
 # Env: VYRE_CODE (the single-use setup ticket, plans/windows.md section 3 "Pairing" -- read from
 # the environment or a prompt, NEVER written to a file or passed as an argv token per reviewer
