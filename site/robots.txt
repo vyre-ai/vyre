@@ -1,18 +1,4 @@
-# Everyone, including AI crawlers and assistants, is welcome to read this site.
 User-agent: *
-Allow: /
-Disallow: /setup/
-
-User-agent: GPTBot
-Allow: /
-
-User-agent: ClaudeBot
-Allow: /
-
-User-agent: PerplexityBot
-Allow: /
-
-User-agent: Google-Extended
 Allow: /
 
 Sitemap: https://vyre.run/sitemap.xml

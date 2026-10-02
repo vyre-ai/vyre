@@ -18,12 +18,3 @@
   Content-Type: text/plain; charset=utf-8
   X-Content-Type-Options: nosniff
   Cache-Control: public, max-age=300
-
-# The v2 pages ship one stylesheet and one script, each linked with ?v=<hash of its bytes> (scripts/gen-site.mjs), so a change is a new URL
-# and the files can be cached for a year. Social cards change rarely.
-/v2.css
-  Cache-Control: public, max-age=31536000, immutable
-/v2.js
-  Cache-Control: public, max-age=31536000, immutable
-/og/*
-  Cache-Control: public, max-age=86400

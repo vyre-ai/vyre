@@ -1,23 +1,55 @@
 # Vyre
 
-> Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
+> Vyre is an open-source, self-hosted home for your AI agents. Agents run on a server you own,
+> keep working when your laptop is closed, and answer from your Mac (Option-Space, Vyre Lumen),
+> your phone (the web app on your Home Screen) or Windows (a Windows app).
 
-Current release: 0.2.1. Site: https://vyre.run. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0. Vyre is free; you pay your AI providers directly.
+## What it is
+One small daemon plus apps around it. It runs Claude (through the Agent SDK), Codex and Grok
+(through ACP) and OpenRouter from your own subscriptions. A session belongs to Vyre, not to a model:
+you pick the model for each session, or add @codex or @grok to one message, and the session keeps its
+memory and files.
 
-## Start here
-- [Home](https://vyre.run/): what Vyre is and what it does
-- [Set up Vyre](https://vyre.run/setup/): the setup page, which gives one install line with a one-time code
-- [Get started](https://vyre.run/start/): the steps in order
-- [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
+## What runs where
+- Vyre runs on a server you control: a Linux machine with Docker, or a Mac that stays on.
+- The Deck (the web app) is served from your own address, `<you>.vyre.run` or your own domain.
+- Vyre Lumen is the Mac app; press Option-Space to reach it. There is a Windows app too (a tray icon
+  and an Alt-Space panel).
+- Your devices reach your server over Tailscale, which is required (the free plan is enough).
 
-## Devices
-- [Mac: Vyre Lumen](https://vyre.run/mac/): Option-Space ask window, built on your Mac
-- [Windows: Vyre Lumen](https://vyre.run/windows/): tray app with an Alt+Space panel
-- [Linux server](https://vyre.run/linux/): where Vyre runs
-- [Phone](https://vyre.run/phone/): the Deck installed to the Home Screen
+## Set up
+Open https://vyre.run/setup. It gives you one line to paste on your server, then walks you through
+naming your server, signing in to your AI, connecting Tailscale and adding your phone.
 
-## Machine-readable
-- [llms-full.txt](https://vyre.run/llms-full.txt): the same content in full
-- [agents.md](https://vyre.run/agents.md): guidance for AI agents that install or operate Vyre
-- [sitemap.xml](https://vyre.run/sitemap.xml)
-- [GitHub](https://github.com/vyre-ai/vyre)
+On a Linux server or a Mac that stays on, the line the page shows is:
+```
+curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh
+```
+Without a code, from the terminal only: `curl -fsSL https://vyre.run/install.sh | sh`.
+On your Mac, with Tailscale installed and signed in (Node 22.5 or newer):
+```
+npm install -g https://vyre.run/box/vyre.tgz
+vyre up
+vyre capsule install
+```
+`vyre capsule install` builds Vyre Lumen on your Mac; nothing is downloaded for it.
+
+## Cost
+Vyre itself is free and open source. You pay your AI providers the way you do today.
+
+## Data
+Prompts go to the provider you choose. Keys, memory and sessions stay on your server, and the server
+publishes no port to the internet. vyre.run holds your name's DNS record and runs the relay
+(relay.vyre.run), which carries setup progress and phone pairing end to end encrypted: it can see that a
+server and a device talk, and when, but never what is said or your keys.
+
+## Not in 0.2.0
+0.2.1: Touch ID prompts for terminal commands that need them, a Safari fix for interactive artifacts,
+Chrome API routing and parallel tabs, "give it to two" and per-provider blocks. 0.2.5: Spaces
+(team spaces and sharing), memory rollover, putting idle sessions to sleep.
+
+## License
+Apache 2.0.
+
+## Docs
+https://github.com/vyre-ai/vyre/tree/main/docs
