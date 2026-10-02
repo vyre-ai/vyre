@@ -299,3 +299,20 @@ test("a box that closes a data socket with 4401 'device removed' tells the devic
     assert.deepEqual(await dev.closed(), want, `${code} ${reason}`);
   }
 });
+
+test("/v1/pair charges only misses to an address: a spent miss budget still resolves a real ticket, and there is no global limit", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const http = base.replace(/^ws/, "http");
+  const a = await box(base);
+  await a.s.json();
+  const resolve = loc => fetch(`${http}/v1/pair`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ loc }) });
+  let last = 0;
+  for (let i = 0; i < 40; i++) last = (await resolve(`m${String(i).padStart(2, "0")}`.padEnd(43, "x"))).status;
+  assert.equal(last, 429, "this address's misses ran out");
+  const exp = Date.now() + 5 * 60_000, loc = "h".repeat(43);
+  a.s.ws.send(JSON.stringify({ t: "ticket", loc, record: ticketSeal(Buffer.alloc(8, 3), JSON.stringify({ v: 1, name: "alex" })), mac: "m".repeat(43), exp }));
+  assert.equal((await a.s.json()).status, 200);
+  assert.equal((await resolve(loc)).status, 200, "a hit is served even with the miss budget spent");
+});

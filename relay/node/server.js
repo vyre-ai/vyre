@@ -151,8 +151,9 @@ export function createRelay(o = {}) {
   const sha256b64 = v => crypto.createHash("sha256").update(String(v)).digest("base64url");
   const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && x.length > 0 && crypto.timingSafeEqual(x, y); };
   const pairRegisterLimit = rateLimiter(60, 60_000);
+  // Charged to misses only, per address, and no global limit: a hit (or a contested ticket) is always served, so nothing an
+  // outsider sends can stop a real pairing, and a shared address cannot block one (GHSA-25xh-w9j7-7v28).
   const pairResolveLimitByIp = rateLimiter(30, 60_000);
-  const pairResolveLimitGlobal = rateLimiter(600, 60_000);
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url || "/", "http://relay");
@@ -180,7 +181,6 @@ export function createRelay(o = {}) {
    * access log. Single-use: found or not, the entry is gone either way after this call. */
   function onPairResolve(req, res) {
     const ip = String(req.socket.remoteAddress || "");
-    if (!pairResolveLimitByIp(ip) || !pairResolveLimitGlobal("*")) { res.writeHead(429, { "content-type": "application/json" }); res.end('{"error":"too many pairing attempts; wait a minute"}'); return; }
     let body = "";
     let over = false;
     req.on("data", c => { body += c; if (body.length > 1024) { over = true; req.destroy(); } });
@@ -193,7 +193,11 @@ export function createRelay(o = {}) {
       const t = pairTickets.get(loc);
       if (t && t.contested) { res.writeHead(409, { "content-type": "application/json" }); res.end('{"error":"contested"}'); return; }
       if (t && !t.setup) pairTickets.delete(loc);
-      if (!t || t.exp <= Date.now() || !t.record) { res.writeHead(404, { "content-type": "application/json" }); res.end('{"error":"this pairing code has expired or was already used"}'); return; }
+      if (!t || t.exp <= Date.now() || !t.record) {
+        // A miss is charged to this address only.
+        if (!pairResolveLimitByIp(ip)) { res.writeHead(429, { "content-type": "application/json" }); res.end('{"error":"too many pairing attempts; wait a minute"}'); return; }
+        res.writeHead(404, { "content-type": "application/json" }); res.end('{"error":"this pairing code has expired or was already used"}'); return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ record: t.record, mac: t.mac }));
     });
