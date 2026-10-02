@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2, step 4: the emblem, the nod, the avatar card and message details
+
+- Project avatars are the new emblem (`deck/vendor/vyrecode/emblem.js`): four cells of eight shapes and four rotations on a ground, chosen by the project's eight seed bytes, so projects stop looking alike. A draft is the same emblem dashed. The seed rule is unchanged (the stored avatar seed, never the name).
+- `deck/js/avatar-card.js`: tapping an avatar nods it (scale 0.86 to 1.1 to 1 with a tilt and an accent ring, 460 ms) and 170 ms in opens its card, a glass popover on a desk and a sheet on a phone, for a person, the assistant, an agent, a teammate or a project: name, kind, a few rows, up to three actions. Avatars inside a link or a button keep their row's job.
+- `deck/js/message-details.js`: the avatar, name or time on a message opens its details (who, model, time, tools, turn), read from the rows already drawn. Cost and sources come with the Chat pass.
+- Not in this step: the Wink ring on the non-person cards (step 6), devices and spaces cards.
+
 #### deck v2, step 3: the one thread row
 
 - `deck/js/thread-row.js` and `deck/css/thread-row.css`: the one thread row, 56 high (phone 64): the project's emblem or the agent's mark, a title, a last line (where it is and how many messages), a stack of up to three participants, the time, and the state in words ("Running", "2 need you"). No ids. Chat's Recent list and a project's chats draw it. Both open the one thread view (a project's chats open in Chat, #47). Now's run list and search results take it in the Now pass.

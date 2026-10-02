@@ -35,7 +35,7 @@
 import { userAvatar, USER_GRADIENTS, PROJECT_COLORS, defaultAvatarOption } from "../vendor/vyrecode/identity.js";
 import { creature } from "../vendor/vyrecode/creature.js";
 import { blob, character } from "../vendor/vyrecode/characters.js";
-import { projectTile } from "../vendor/vyrecode/project.js";
+import { emblem } from "../vendor/vyrecode/emblem.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
 import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
 // A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
@@ -45,7 +45,7 @@ import { projectBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";
 export { projectBytes };
 
 /** @typedef {"person" | "assistant" | "agent" | "teammate" | "project"} Family */
-/** @typedef {{ size?: number, label?: string|null, title?: string|null, cls?: string }} Opts */
+/** @typedef {{ size?: number, label?: string|null, title?: string|null, cls?: string, ref?: string|null }} Opts */
 /** @typedef {(tool: string, input?: any) => Promise<{ data?: any, error?: any }>} Attempt */
 
 /** How many looks the person's circle has (defaultAvatarOption's modulus). */
@@ -171,7 +171,7 @@ export function avatarSource(family, seed, size, o = {}) {
   }
   if (family === "assistant") return creature(seed, size);
   if (family === "teammate") return character(seed, size, th, o.color || null);
-  if (family === "project") return projectTile(projectBytes(seed), { draft: !!o.draft, theme: th, size });
+  if (family === "project") return emblem(projectBytes(seed), { draft: !!o.draft, theme: th, size });
   return blob(seed, size);
 }
 
@@ -249,6 +249,7 @@ export function avatar(family, seed, o = {}) {
   el.setAttribute("style", `--av:${size}px`);
   el.setAttribute("data-family", family);
   if (draft) el.setAttribute("data-draft", "");
+  if (o.ref) el.setAttribute("data-ref", String(o.ref));
   if (o.title) el.setAttribute("title", o.title);
   if (o.label) { el.setAttribute("role", "img"); el.setAttribute("aria-label", o.label); } else el.setAttribute("aria-hidden", "true");
   const spec = { family, seed: String(seed), size, fp: o.fp || null, ring, draft, color: o.color || null,
@@ -257,6 +258,9 @@ export function avatar(family, seed, o = {}) {
   el.append(drawing(spec));
   return el;
 }
+
+/** The owner's and the assistant's names and fingerprints (system.info), for the avatar card. */
+export function whoIs() { return who; }
 
 /** The person (the owner of this Vyre). `ring` draws the Vyre code at RING_AT and above. */
 export function personAvatar(/** @type {Opts & { ring?: boolean }} */ o = {}) {
@@ -273,7 +277,7 @@ export function assistantAvatar(/** @type {Opts} */ o = {}) {
 
 /** An agent by its stable id (its name): a blob, or a character when team.list says it is a teammate. */
 export function agentAvatar(/** @type {string} */ id, /** @type {Opts} */ o = {}) {
-  return isTeammate(id) ? teammateAvatar(id, o) : avatar("agent", String(id || ""), o);
+  return isTeammate(id) ? teammateAvatar(id, o) : avatar("agent", String(id || ""), { ref: String(id || ""), ...o });
 }
 
 /**
@@ -283,12 +287,12 @@ export function agentAvatar(/** @type {string} */ id, /** @type {Opts} */ o = {}
  */
 export function teammateAvatar(/** @type {string} */ id, /** @type {Opts & { project?: string|null }} */ o = {}) {
   const slug = o.project || teammates.get(String(id)) || null;
-  return avatar("teammate", String(id || ""), { ...o, color: slug ? projectColor(projectSeed(slug)) : null });
+  return avatar("teammate", String(id || ""), { ref: String(id || ""), ...o, color: slug ? projectColor(projectSeed(slug)) : null });
 }
 
 /** A project's tile by its slug (its stored avatar_seed, else the slug). */
 export function projectAvatar(/** @type {string} */ slug, /** @type {Opts} */ o = {}) {
-  return avatar("project", projectSeed(slug), o);
+  return avatar("project", projectSeed(slug), { ref: String(slug || ""), ...o });
 }
 
 /** A chat in no project: the draft tile, seeded from the chat's id (carried over if it becomes a project). */

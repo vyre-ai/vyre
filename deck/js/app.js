@@ -44,6 +44,8 @@ import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
 import { installed, mac } from "./platform.js";
 import { createCmdBar } from "./cmdbar.js";
+import { createAvatarCards } from "./avatar-card.js";
+import { messageHit, openMessageDetails } from "./message-details.js";
 import { reportContext } from "./context-report.js";
 import { homePath } from "./home.js";
 import { installTrustAsk } from "./trust-ask.js";
@@ -240,6 +242,14 @@ export function snippet(/** @type {any} */ s) {
 }
 // The command bar (js/cmdbar.js): Cmd or Ctrl K from anywhere, and the rail's Search button.
 document.addEventListener("keydown", cmd.onGlobalKey);
+// An avatar nods and opens its card; the avatar, name or time of a message opens that message's details.
+const cards = createAvatarCards();
+document.addEventListener("click", e => {
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  const row = messageHit(e.target);
+  if (row) { openMessageDetails(row); return; }
+  cards.onClick(e);
+});
 // Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
 // phone has no rail, so no rail keys.
 const MAC = mac();
