@@ -1,9 +1,11 @@
 # J1 on its own, while it is built (e2e2). Push to work/e2e2-j1 or dispatch it.
 name: matrix-j1
+# Runs when dispatched or on a release-candidate branch (work/rc-*), not on every work push: each run takes
+# the shared hosted and Mac/Windows runners for a long time.
 on:
   workflow_dispatch:
   push:
-    branches: ["work/e2e2-j1"]
+    branches: ["work/rc-*"]
 permissions:
   contents: read
 concurrency:

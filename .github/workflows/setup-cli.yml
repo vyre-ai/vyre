@@ -8,7 +8,7 @@ permissions:
   contents: read
 concurrency:
   group: setup-cli-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   setup-cli:
     runs-on: ubuntu-24.04
