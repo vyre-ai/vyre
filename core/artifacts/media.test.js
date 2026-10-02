@@ -406,6 +406,7 @@ test("media: a public link serves the file with its own type, Range and a sandbo
   assert.equal(full.headers["x-content-type-options"], "nosniff");
   assert.match(full.headers["content-security-policy"], /^sandbox;/);
   assert.equal(full.headers["cache-control"], "no-store");
+  assert.equal(full.headers["cross-origin-resource-policy"], "cross-origin", "a public link may be embedded on any page, by design");
   assert.ok(full.body.equals(MP4), "the bytes are the file");
   assert.ok(!JSON.stringify(full.headers).includes("harlow") && !JSON.stringify(full.headers).includes(v.id), "nothing names the project or the artifact");
   const part = await fetchRaw(port, url, { range: "bytes=4-11" });

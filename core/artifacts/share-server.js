@@ -73,7 +73,7 @@ function serveMedia(req, res, hash, dir, media) {
   try { const st = fs.lstatSync(file); if (!st.isFile()) return plain(res, 404, "Not found"); size = st.size; } catch { return plain(res, 404, "Not found"); }
   const r = range(req.headers.range, size);
   const head = { "content-type": MEDIA_TYPES[m[1]], "x-content-type-options": "nosniff", "accept-ranges": "bytes", "content-security-policy": "sandbox; default-src 'none'", "content-disposition": "inline",
-    "referrer-policy": "no-referrer", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-frame-options": "DENY", "cross-origin-resource-policy": "same-origin" };
+    "referrer-policy": "no-referrer", "cache-control": "no-store", "x-robots-tag": "noindex, nofollow", "x-frame-options": "DENY", "cross-origin-resource-policy": "cross-origin" }; // public by design: a link is put in landing pages and emails
   if (r === "bad") { res.writeHead(416, { "content-range": `bytes */${size}`, "cache-control": "no-store" }); return res.end(); }
   const [start, end] = r ? [r.start, r.end] : [0, size - 1];
   res.writeHead(r ? 206 : 200, { ...head, "content-length": end - start + 1, ...(r ? { "content-range": `bytes ${start}-${end}/${size}` } : {}) });
@@ -81,6 +81,7 @@ function serveMedia(req, res, hash, dir, media) {
   if (!r || start === 0) views(hash);
   const stream = fs.createReadStream(file, { start, end });
   stream.on("error", () => res.destroy());
+  res.on("close", () => stream.destroy());
   stream.pipe(res);
 }
 

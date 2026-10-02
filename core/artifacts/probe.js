@@ -62,7 +62,7 @@ function moov(moovBuf) {
       if (size === 1 && i + 16 <= b.length) { size = Number(b.readBigUInt64BE(i + 8)); start = 16; }
       if (size < start || i + size > b.length) break;
       const body = b.subarray(i + start, i + size);
-      if (type === "mvhd" && body.length >= 20) {
+      if (type === "mvhd" && body.length >= (body[0] === 1 ? 32 : 20)) {
         const v = body[0];
         const scale = body.readUInt32BE(v === 1 ? 20 : 12), dur = v === 1 ? Number(body.readBigUInt64BE(24)) : body.readUInt32BE(16);
         if (scale > 0 && dur > 0) out.duration_s = dur / scale;
@@ -108,8 +108,11 @@ function webm(b) {
   if (i > 0) { const s = size(i); let v = 0; for (let k = 0; k < s.v && k < 6; k++) v = v * 256 + b[i + s.len + k]; if (v > 0) scale = v; }
   i = find([0x44, 0x89]);
   if (i > 0) { const s = size(i); if (s.v === 8) out.duration_s = (b.readDoubleBE(i + s.len) * scale) / 1e9; else if (s.v === 4) out.duration_s = (b.readFloatBE(i + s.len) * scale) / 1e9; }
-  const px = (/** @type {number[]} */ id) => { const j = find(id); if (j < 0) return 0; const s = size(j); let v = 0; for (let k = 0; k < s.v && k < 4; k++) v = v * 256 + b[j + s.len + k]; return v; };
-  const w = px([0xb0]), h = px([0xba]);
+  // The picture size lives in the video track's own element, so look only just after Tracks > Video, never across the whole header.
+  const tracks = find([0x16, 0x54, 0xae, 0x6b]), video = tracks > 0 ? find([0xe0], tracks) : -1;
+  const vb = video > 0 ? b.subarray(video, video + 48) : Buffer.alloc(0);
+  const px = (/** @type {number} */ id) => { for (let j = 0; j + 3 < vb.length; j++) if (vb[j] === id) { const len = vb[j + 1] & 0x7f; if ((vb[j + 1] & 0x80) && len >= 1 && len <= 4 && j + 2 + len <= vb.length) { let v = 0; for (let k = 0; k < len; k++) v = v * 256 + vb[j + 2 + k]; return v; } } return 0; };
+  const w = px(0xb0), h = px(0xba);
   if (sane(w) && sane(h)) { out.width = w; out.height = h; }
   if (out.duration_s !== undefined && !(out.duration_s > 0 && out.duration_s < 86_400)) delete out.duration_s;
   return out;

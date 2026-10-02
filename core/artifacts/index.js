@@ -1303,6 +1303,7 @@ export default {
         if (req.method === "HEAD") return void res.end();
         const stream = fs.createReadStream(file, { start, end });
         stream.on("error", () => res.destroy());
+        res.on("close", () => stream.destroy());
         return void stream.pipe(res);
       }
       const n = url.searchParams.get("v") ? Number(url.searchParams.get("v")) : r.head;
