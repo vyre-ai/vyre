@@ -37,6 +37,7 @@ final class HistoryImportExtension: CapsuleExtension {
         sub = host.vyred.on("import.progress") { [weak self] e in self?.model.apply(e) }
         host.showPanel(Self.id)
         if model.step == .idle || model.step == .unpaired || model.step == .nothing { await model.scan() }
+        else if model.step == .sending { await model.refresh() } // events missed while Lumen was hidden
         return .openPanel
     }
 
