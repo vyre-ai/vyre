@@ -75,7 +75,7 @@ test("places: the head (avatar, name, address), a grid of seven links named by t
     assert.ok(d.$(a, "svg"), "an icon over the label");
     assert.equal(a.getAttribute("aria-description"), "Long-press to pin as a page");
   }
-  assert.equal(d.$(d.body, ".plc-hint").textContent, "Long-press a tile to pin it as a fourth page.");
+  assert.equal(d.$(d.body, ".plc-hint").textContent, "Long-press a tile to pin it as a page.");
   // No owner name yet: the head still names the account.
   const n = await draw({ name: null });
   assert.equal(n.$(n.head, ".plc-name").textContent, "Account");
@@ -197,7 +197,7 @@ test("places: js/places.js is the one list of places; the phone's More sheet rea
   const app = read("js/app.js"), sheet = read("css/sheet.css");
   assert.match(app, /class: "ph-avatar", "aria-label": "More and account"[^\n]*onclick: \(\) => openMore\(\)/);
   assert.doesNotMatch(app, /openSettings|Settings and account/, "no Settings sheet left; Settings is a tile");
-  assert.match(read("js/more.js"), /import \{ TILES \} from "\.\/places\.js"/, "no second copy of the list");
+  assert.match(read("js/more.js"), /import \{ TILES, fillPlaces \} from "\.\/places\.js"/, "no second copy of the list");
   // The sheet's geometry from the spec.
   assert.match(sheet, /\.sheet-places \.sheet-head \{ padding: 12px 16px 8px; \}/);
   assert.match(sheet, /\.plc-grid \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 8px; \}/);

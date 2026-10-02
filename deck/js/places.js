@@ -25,7 +25,7 @@ export const TILES = Object.freeze([
 ]);
 
 export const PIN_KEY = "vyre.pin";
-export const HOLD_HINT = "Long-press a tile to pin it as a fourth page.";
+export const HOLD_HINT = "Long-press a tile to pin it as a page.";
 const HOLD = "Long-press to pin as a page";
 const KEPT = "Pinned as a page";
 
@@ -80,7 +80,7 @@ function holdMs() {
  * @param {{ head: HTMLElement, sheet: HTMLElement }} parts
  * @param {{ name?: string | null, letter?: string, host?: string, open: (tile: typeof TILES[number]) => void,
  *   pinned?: (tile: typeof TILES[number] | null) => void, store?: any, hold?: number,
- *   health?: (fn: (x: any | null) => void) => () => void, line?: (x: any) => string }} o
+ *   health?: (fn: (x: any | null) => void) => () => void, line?: (x: any) => string, tiles?: readonly typeof TILES[number][] }} o  tiles: the places to show (default all of TILES; the phone's More sheet leaves out its tabs)
  * @returns {{ tiles: HTMLElement[], stop: () => void }}
  */
 export function fillPlaces(body, close, parts, o) {
@@ -98,7 +98,7 @@ export function fillPlaces(body, close, parts, o) {
   }) : () => {};
 
   const hold = o.hold ?? holdMs();
-  const tiles = TILES.map(t => {
+  const tiles = (o.tiles || TILES).map(t => {
     // heldAt: when a hold last toggled; swallow: the click that ends that press opens nothing.
     let timer = 0, heldAt = 0, swallow = false, x0 = 0, y0 = 0;
     const a = h("a", { href: t.href, class: "plc-tile", "data-place": t.label, "aria-keyshortcuts": "Shift+F10 ContextMenu" },
