@@ -63,7 +63,8 @@ if (!process.getuid || process.getuid() !== 0) {
     const sdk = path.join(base, "node_modules", "@anthropic-ai");
     try { for (const n of fs.readdirSync(sdk)) if (/^claude-agent-sdk-linux-/.test(n) && fs.existsSync(path.join(sdk, n, "claude"))) bundled.push(path.join(sdk, n, "claude")); } catch {}
   }
-  const allow = ["/usr/local/bin/claude", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
+  // The image's own Codex (and its ACP adapter) and Grok Build, for sign-in and for sessions as an account's uid (box/Dockerfile pins them).
+  const allow = ["/usr/local/bin/claude", "/usr/local/bin/codex", "/usr/local/bin/codex-acp", "/usr/local/bin/grok", ...bundled, ...String(env.VYRE_SPAWNER_ALLOW || "").split(":").filter(p => p.startsWith("/"))];
   const home = env.VYRE_AGENT_HOME || "/home/vyre-agent";
   const makeDir = (dir, who) => execFileSync("/usr/bin/setpriv", [`--reuid=${who.uid}`, `--regid=${who.gid}`, who.groups.length ? `--groups=${who.groups.join(",")}` : "--clear-groups", "--inh-caps=-all", "--",
     "/bin/sh", "-c", 'umask 002; exec mkdir -p "$1"', "sh", dir], { stdio: "ignore" });
