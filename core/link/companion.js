@@ -58,14 +58,16 @@ export const boxId = pub => crypto.createHash("sha256").update(String(pub)).dige
 
 /**
  * @param {any} ctx
- * @param {{ box?: () => { pub: string, name?: string|null } | null, db: any, now: () => number, deviceInfo: (id: string) => Promise<{ kind: string, trusted: boolean, pairedAt: number, presenceKey: string|null, removed: boolean } | null> }} o
+ * @param {{ maxNonces?: number, box?: () => { pub: string, name?: string|null } | null, db: any, now: () => number, deviceInfo: (id: string) => Promise<{ kind: string, trusted: boolean, pairedAt: number, presenceKey: string|null, removed: boolean } | null> }} o
  */
-export function companionSide(ctx, { db, now, deviceInfo, box = () => null }) {
+export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxNonces = MAX_NONCES }) {
+  /** Spent nonces live in memory only, so a token made before this start is refused: a captured one cannot be replayed after a restart. */
+  const started = now();
   /** @type {Map<string, number[]>} */
   const attempts = new Map();
   /** @type {Set<string>} */
   const nonces = new Set();
-  /** Call-token nonces, kept as long as a token's timestamp could still be accepted. @type {Map<string, number>} */
+  /** Call-token nonces per companion, kept as long as a token's timestamp could still be accepted; one companion's calls never push out another's. @type {Map<string, Map<string, number>>} */
   const used = new Map();
   /** @type {null | { id: string, device: string, name: string, core: string, fp: string, nonce: string, expires: number }} */
   let pending = null;
@@ -189,6 +191,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null }) {
     if (!m) throw deny("not a companion token");
     const [, id, tsText, nonce, sig] = m, ts = Number(tsText), t = now();
     if (Math.abs(t - ts) > SKEW_MS) throw deny("the time is outside two minutes");
+    if (ts < started) throw deny("it was made before this box started; sign a fresh one");
     const row = /** @type {any} */ (db.prepare("SELECT id, name, parent, core_pub FROM link_peers WHERE id = ? AND kind = 'companion'").get(id));
     if (!row) throw deny("no such companion");
     const parent = await valid(id);
@@ -203,11 +206,12 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null }) {
     } catch { ok = false; }
     if (!ok) throw deny("the signature is not from this companion's key, or not for this call");
     // A nonce is spent only by a valid signature, so a stranger cannot fill the table; entries live as long as their timestamps could still pass.
-    for (const [k, at] of used) if (t - at > 2 * SKEW_MS) used.delete(k);
-    const key = `${id}:${nonce}`;
-    if (used.has(key)) throw deny("the nonce was already used");
-    if (used.size >= MAX_NONCES) throw deny("too many calls in flight; try again in a moment");
-    used.set(key, ts);
+    let mine = used.get(id);
+    if (!mine) used.set(id, mine = new Map());
+    for (const [k, at] of mine) if (t - at > 2 * SKEW_MS) mine.delete(k);
+    if (mine.has(nonce)) throw deny("the nonce was already used");
+    if (mine.size >= maxNonces) throw deny("too many calls in flight for this companion; try again in a moment");
+    mine.set(nonce, ts);
     return { id: row.id, name: row.name, device: parent.parent };
   }
 

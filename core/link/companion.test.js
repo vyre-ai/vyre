@@ -11,7 +11,7 @@ import { companionSide, coreFingerprint, WINDOW_MS, tokenMessage, boxId, inputDi
 const APP = "abcdefgabcdefgab", WEB = "bcdefgabcdefgabc", KEYID = "kh1";
 const spki = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
 
-function world() {
+function world({ maxNonces } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT, key_hash TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, last_seen INTEGER, kind TEXT NOT NULL DEFAULT 'mac', parent TEXT, core_pub TEXT)`);
   const clock = { t: 10_000_000 };
@@ -19,7 +19,7 @@ function world() {
   const tools = new Map(), events = [];
   const ctx = { tool: (n, d) => tools.set(n, d), events: { emit: (t, p) => events.push([t, p]), on: () => () => {} } };
   const boxPub = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).toString("base64url");
-  const side = companionSide(ctx, { db, now: () => clock.t, box: () => ({ pub: boxPub, name: "alex" }), deviceInfo: async id => devices.get(id) || null });
+  const side = companionSide(ctx, { db, now: () => clock.t, maxNonces, box: () => ({ pub: boxPub, name: "alex" }), deviceInfo: async id => devices.get(id) || null });
   const call = (tool, input, caller = `device:${APP}`, meta = {}) => tools.get(tool).run(input, { caller, person: { id: "ps1" }, presence: { method: "device", keyId: KEYID }, ...meta });
   const ask = (extra = {}, caller, meta) => call("link.companion.pair", { core: spki(), name: "alex's PC core", nonce: crypto.randomBytes(12).toString("base64url"), ts: clock.t, ...extra }, caller, meta);
   return { db, clock, devices, tools, events, side, call, ask, boxPub };
@@ -173,4 +173,36 @@ test("companion call: checked on every call: a removed or limited app device, a 
   w.devices.set(APP, { ...w.devices.get(APP), removed: false });
   await w.call("link.companion.remove", { id: c.id });
   await refusal(go(), /no such companion/);
+});
+
+test("companion call: a token made before this box started is refused, so a restart cannot replay a captured one", async () => {
+  const w = world();
+  const c = await pairedCore(w);
+  const captured = c.sign("link.companion.hello", {});
+  assert.ok((await verify(w, captured, "link.companion.hello", {})).id);
+  // the daemon restarts 30 seconds later: a new side over the same table, with an empty nonce set
+  w.clock.t += 30_000;
+  const ctx2 = { tool: (n, d) => w.tools.set(n, d), events: { emit: () => {}, on: () => () => {} } };
+  companionSide(ctx2, { db: w.db, now: () => w.clock.t, box: () => ({ pub: w.boxPub, name: "alex" }), deviceInfo: async id => w.devices.get(id) || null });
+  await refusal(verify(w, captured, "link.companion.hello", {}), /made before this box started/);
+  assert.ok((await verify(w, c.sign("link.companion.hello", {}), "link.companion.hello", {})).id, "a fresh token works");
+});
+
+test("companion call: the nonce cap is per companion, so one companion cannot make another refuse", async () => {
+  const w = world({ maxNonces: 3 });
+  const APP2 = "cdefgabcdefgabcd";
+  w.devices.set(APP2, { kind: "app", trusted: true, pairedAt: w.clock.t - 60_000, presenceKey: "kh3", removed: false });
+  const a = await pairedCore(w);
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const r = await w.call("link.companion.pair", { core: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), name: "other core", nonce: crypto.randomBytes(12).toString("base64url"), ts: w.clock.t }, `device:${APP2}`, { presence: { method: "device", keyId: "kh3" } });
+  assert.ok(r.id, "a second app device gets its own companion");
+  const signB = () => {
+    const ts = w.clock.t, nonce = crypto.randomBytes(12).toString("base64url");
+    return `c1.${r.id}.${ts}.${nonce}.${crypto.sign("sha256", tokenMessage({ box: boxId(w.boxPub), companion: r.id, ts, nonce, tool: "link.companion.hello", input: {} }), { key: privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url")}`;
+  };
+  for (let i = 0; i < 3; i++) assert.ok((await verify(w, a.sign("link.companion.hello", {}), "link.companion.hello", {})).id);
+  await refusal(verify(w, a.sign("link.companion.hello", {}), "link.companion.hello", {}), /too many calls in flight for this companion/);
+  assert.ok((await verify(w, signB(), "link.companion.hello", {})).id, "the other companion is not affected");
+  w.clock.t += 5 * 60_000;
+  assert.ok((await verify(w, a.sign("link.companion.hello", {}), "link.companion.hello", {})).id, "after its own entries age out the first works again");
 });
