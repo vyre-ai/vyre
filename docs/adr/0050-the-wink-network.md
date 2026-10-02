@@ -57,8 +57,8 @@ This decision gives each space a network of its own and one way in.
   minutes-long key created after the person's confirm; Headscale and the client core are pinned in the signed release with a
   floor on the client.
 - ADR 0002's rule that the Tailscale container is the only way in is replaced: a home publishes the control paths and the
-  UDP ports, and the names directory gains two rule changes (claim without publishing an address; a second record class for
-  the control URL's public address).
+  UDP ports, and the names directory gains one rule change (claim without publishing an address). The control address and
+  its pinned key travel in the sealed pairing record, not in public DNS.
 - The 45-file `tailnet:<login>` caller seam does not go away at once. New code does not add to it; the signed companion
   envelope and `device:<id>` carry identity, and `tailnet:` is removed after the last migrated install.
 - Per-project encrypted folders with key leases and crypto-shred on revoke are proposed alongside (spec section 3.5), owned by
