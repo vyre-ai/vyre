@@ -119,7 +119,7 @@ hello() {
   else
     say "  Vyre${v:+ $v}"
   fi
-  say "  Installing Vyre on this server. This takes about 3 minutes."
+  say "  Installing Vyre on this server. This takes 1 to 3 minutes."
   say ""
 }
 

@@ -620,7 +620,7 @@ main() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   if [ "$UNINSTALL" = 1 ]; then uninstall; return 0; fi
-  say "Installing Vyre on this Mac. This takes about 3 minutes."
+  say "Installing Vyre on this Mac. This takes 1 to 3 minutes."
   preflight
   install_app
   setup_colima

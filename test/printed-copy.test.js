@@ -119,7 +119,7 @@ function server(t) {
 test("printed copy: a dry run of the installer reads plainly, in order, with no sign-off", t => {
   const r = spawnSync("sh", [path.join(REPO, "scripts", "install-box.sh"), "--dry-run", "--yes", "--from", REPO], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: server(t) });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /Installing Vyre on this server\. This takes about 3 minutes\./);
+  assert.match(r.stdout, /Installing Vyre on this server\. This takes 1 to 3 minutes\./);
   assert.match(r.stdout, /Vyre's files go in /);
   for (const re of FILLER) assert.doesNotMatch(r.stdout, re);
   for (const [re, name] of INTERNAL) assert.doesNotMatch(strip(r.stdout.replace(/would run: .*|would write .*|would put .*|would download.*|would read .*/g, "")), re, name);
