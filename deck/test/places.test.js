@@ -193,20 +193,11 @@ test("places: the path to the box joins the address only when link.health knows 
   assert.equal(stopped, 1, "the sheet stops asking when it closes");
 });
 
-test("places: the shell opens the Places sheet from the avatar and keeps a fourth page", () => {
-  const app = read("js/app.js"), css = read("css/deck.css"), sheet = read("css/sheet.css");
-  assert.match(app, /class: "ph-avatar", "aria-label": "Places and account"[^\n]*onclick: \(\) => openPlaces\(\)/);
-  assert.match(app, /openSheet\(\{ title: "Places", label: "Places", build\(body, close, parts\) \{\s*stop = fillPlaces\(/);
+test("places: js/places.js is the one list of places; the phone's More sheet reads it, and the sheet geometry holds", () => {
+  const app = read("js/app.js"), sheet = read("css/sheet.css");
+  assert.match(app, /class: "ph-avatar", "aria-label": "More and account"[^\n]*onclick: \(\) => openMore\(\)/);
   assert.doesNotMatch(app, /openSettings|Settings and account/, "no Settings sheet left; Settings is a tile");
-  // The fourth page: read at start from this device, then changed by the sheet.
-  assert.match(app, /\{ const kept = readPin\(\); if \(kept\) strip\.push\(fourth\(kept\)\); \}/);
-  assert.match(app, /pinned: keep/);
-  assert.match(app, /export const slotOf = \(\/\*\* @type \{string\} \*\/ key\) => strip\.findIndex/);
-  assert.match(app, /const slots = strip\.map/);
-  assert.match(app, /const phLabels = strip\.map\(tab\);/);
-  // The labels scroll sideways when four do not fit, and never shrink.
-  assert.match(css, /\.ph-tabs \{[^}]*min-width: 0; overflow-x: auto/);
-  assert.match(css, /\.ph-tab \{[^}]*white-space: nowrap; flex-shrink: 0/);
+  assert.match(read("js/more.js"), /import \{ TILES \} from "\.\/places\.js"/, "no second copy of the list");
   // The sheet's geometry from the spec.
   assert.match(sheet, /\.sheet-places \.sheet-head \{ padding: 12px 16px 8px; \}/);
   assert.match(sheet, /\.plc-grid \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 8px; \}/);
