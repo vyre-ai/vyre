@@ -28,6 +28,7 @@ import { canRelayJoin } from "../js/join-caps.js";
 import { buildWinkCard } from "../js/wink-card.js";
 import { watchTrustAsks } from "../js/trust-ask.js";
 import { renameField, renameCall } from "../js/rename-field.js";
+import { readRailMode, setRailMode } from "../js/rail-mode.js";
 import { buildAddPcCard } from "../js/add-pc-card.js";
 
 const SECTIONS = [
@@ -1254,7 +1255,13 @@ function drawAppearance(el) {
     put(hint, hub ? "Kept for this device. Your other devices keep their own." : "Kept in this browser only. Your other devices keep their own.");
   };
   draw();
-  put(el, h("div", { class: "rows" }, row("Theme", seg, hint)));
+  // The rail's form (js/rail-mode.js): Auto shows names from 1200 px, Icons and Labels override it from 720 px.
+  const railSeg = h("div", { class: "seg", role: "group", "aria-label": "Rail" });
+  const drawRail = () => put(railSeg, [["auto", "Auto"], ["icons", "Icons"], ["labels", "Labels"]].map(([v, t]) =>
+    h("button", { type: "button", "aria-pressed": String(readRailMode() === v), onclick: () => { setRailMode(v); drawRail(); } }, t)));
+  drawRail();
+  put(el, h("div", { class: "rows" }, row("Theme", seg, hint),
+    row("Rail", railSeg, h("div", { class: "small faint" }, "Auto shows names beside the icons from 1200 px wide. Kept on this device."))));
 }
 
 // ---- 10. This machine ----------------------------------------------------------------------

@@ -45,6 +45,7 @@ import { installAvatars, setIdentity, personAvatar } from "./avatars.js";
 import { checkBuild } from "./build-check.js";
 import { installed, mac } from "./platform.js";
 import { createCmdBar } from "./cmdbar.js";
+import { readRailMode } from "./rail-mode.js";
 import { createAvatarCards } from "./avatar-card.js";
 import { messageHit, openMessageDetails } from "./message-details.js";
 import { reportContext } from "./context-report.js";
@@ -137,7 +138,7 @@ const info = { projects: /** @type {any[]} */ ([]) };
 // Sample data stands in for a module that is not merged yet: said once, quietly, in the header.
 const fixtureNote = h("span", { class: "fixture-note", hidden: true }, "Sample data for modules not merged yet");
 installRows();
-try { if (localStorage.getItem("vyre.rail") === "labels") document.documentElement.dataset.rail = "labels"; } catch {}
+document.documentElement.dataset.rail = readRailMode();
 const cmd = createCmdBar();
 const railEl = rail({ onSearch: () => cmd.open() });
 // The list column, right of the rail: a view's own list (ctx.rail, e.g. Chat's sessions; the

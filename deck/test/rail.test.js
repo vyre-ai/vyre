@@ -209,9 +209,27 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
 test("rail: a label on hover and focus, a labelled rail from 1200 px, and below 720 px the phone layout (the rail is gone)", () => {
   const css = noComments(read("css/shell-v2.css"));
   assert.match(css, /\.rail-place:hover \.rail-label, \.rail-place:focus-visible \.rail-label \{ opacity: 1;/);
-  assert.match(css, /@media \(min-width: 1200px\) \{\s*:root\[data-rail="labels"\]/);
-  assert.match(read("js/app.js"), /vyre\.rail"\) === "labels"/);
+  assert.match(css, /@media \(min-width: 1200px\) \{\s*:root:not\(\[data-rail="icons"\]\) \.rail \{/);
+  assert.match(css, /pointer: none\) \{\s*:root\[data-rail="labels"\] \.rail \{/);
+  assert.match(read("js/app.js"), /dataset\.rail = readRailMode\(\)/);
+  assert.match(read("views/settings.js"), /"aria-label": "Rail"/, "the setting is in Settings, Appearance");
   // The phone layout starts below 720, so a 390 screen gets the tab bar and no rail.
   const deck = noComments(read("css/deck.css"));
   assert.match(deck, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\s*\.rail \{ display: none; \}/);
+});
+
+test("rail mode: auto by default, icons or labels kept per device, junk reads as auto", async () => {
+  const { readRailMode, setRailMode, MODES } = await import("../js/rail-mode.js");
+  const mem = () => { const m = new Map(); return { getItem: (/** @type {string} */ k) => m.get(k) ?? null, setItem: (/** @type {string} */ k, /** @type {string} */ v) => { m.set(k, v); }, removeItem: (/** @type {string} */ k) => { m.delete(k); } }; };
+  const s = mem();
+  const doc = /** @type {any} */ ({ documentElement: { dataset: {} } });
+  assert.deepEqual([...MODES], ["auto", "icons", "labels"]);
+  assert.equal(readRailMode(s), "auto");
+  assert.equal(setRailMode("labels", { doc, store: s }), "labels");
+  assert.equal(doc.documentElement.dataset.rail, "labels");
+  assert.equal(readRailMode(s), "labels");
+  setRailMode("auto", { doc, store: s });
+  assert.equal(s.getItem("vyre.rail"), null, "auto is the absence of a choice");
+  s.setItem("vyre.rail", "wide");
+  assert.equal(readRailMode(s), "auto");
 });

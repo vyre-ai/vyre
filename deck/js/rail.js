@@ -11,25 +11,13 @@
 // the account menu is drawn.
 
 import { macKeys } from "./mac-keys.js";
-import { h, link } from "./dom.js";
+import { ALL } from "./place-list.js";
+import { h, put, link } from "./dom.js";
 import { icon, mark } from "./icons.js";
 import { badge } from "./status-mark.js";
 
-/**
- * The places, in rail order: `key` is the digit that opens it with Cmd (or Ctrl), `end` puts it
- * in the bottom group. `views` are the routes (deck/views) the place is current on.
- * @type {readonly { href: string, label: string, icon: string, views: string[], key?: string, end?: boolean }[]}
- */
-export const PLACES = Object.freeze([
-  { href: "/now", label: "Now", icon: "now", views: ["now", "needs", "planner"], key: "1" },
-  { href: "/chat", label: "Chat", icon: "chat", views: ["chat"], key: "2" },
-  { href: "/projects", label: "Projects", icon: "projects", views: ["projects"], key: "3" },
-  { href: "/agents", label: "Agents", icon: "agents", views: ["agents", "glass"], key: "4" },
-  { href: "/memory", label: "Memory", icon: "memory", views: ["memory"], key: "5" },
-  { href: "/vault", label: "Vault", icon: "vault", views: ["vault"], key: "6" },
-  { href: "/files", label: "Drive", icon: "drive", views: ["files"], key: "7" },
-  { href: "/settings", label: "Settings", icon: "settings", views: ["settings"], key: "8", end: true },
-]);
+/** The places on the rail, in rail order: js/place-list.js's, the one list the phone's sheets read too. */
+export const PLACES = Object.freeze(ALL.filter(p => p.rail));
 
 /**
  * The place a route is in: the view's place, except that Settings scrolled to its devices
@@ -88,8 +76,9 @@ export function rail({ onSearch = () => {} } = {}) {
   const links = PLACES.map(place);
   const byLabel = new Map(links.map(a => [a.getAttribute("data-place"), a]));
   const initial = h("span", { class: "rail-initial", "aria-hidden": "true" }, "V");
-  const avatar = link("/settings", { class: "rail-avatar", "aria-label": "Account", title: "Account" }, initial);
-  const home = link("/now", { class: "rail-home", "aria-label": "Vyre home" }, mark(22));
+  const ownerName = h("span", { class: "rail-name", "aria-hidden": "true" }, "");
+  const avatar = link("/settings", { class: "rail-avatar", "aria-label": "Account", title: "Account" }, initial, ownerName);
+  const home = link("/now", { class: "rail-home", "aria-label": "Vyre home" }, mark(22), h("span", { class: "rail-word", "aria-hidden": "true" }, "Vyre"));
   const search = h("button", { type: "button", class: "rail-place rail-search", "data-place": "Search", "aria-label": "Search", "aria-keyshortcuts": "Meta+K Control+K", onclick: () => onSearch() },
     icon(/** @type {any} */ ("search"), 20), h("span", { class: "rail-label" }, "Search"));
   const el = h("nav", { class: "rail", "aria-label": "Vyre" },
@@ -114,6 +103,7 @@ export function rail({ onSearch = () => {} } = {}) {
   function setOwner(/** @type {string | null | undefined} */ name, /** @type {string} */ letter, /** @type {Element | null} */ face = null) {
     initial.replaceChildren(face || letter || "V");
     avatar.setAttribute("title", name || "Account");
+    put(ownerName, name || "");
   }
   return { el, links, search, avatar, home, count, setNeeds, setCurrent, setOwner };
 }

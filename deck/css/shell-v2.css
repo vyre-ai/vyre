@@ -16,15 +16,35 @@
 .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { opacity: 1; transition-delay: 300ms; }
 .rail-place .sm-badge { top: 2px; right: 2px; }
 .rail-avatar { margin-top: var(--s-2); }
-/* The labelled rail: from 1200 px a person may keep the names beside the icons (localStorage vyre.rail = "labels", js/app.js sets html[data-rail]). */
+/* The labelled rail (js/rail-mode.js): 216 wide with the name beside each icon, the wordmark by the logo, the person's name by their avatar, and no tooltips. Auto is labels from 1200 px; Icons and Labels override it from 720 px. */
+.rail-word, .rail-name { display: none; }
+@media (min-width: 1200px) { :root:not([data-rail="icons"]) { --rail-w: 216px; } }
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) { :root[data-rail="labels"] { --rail-w: 216px; } }
 @media (min-width: 1200px) {
-  :root[data-rail="labels"] { --rail-w: 208px; }
+  :root:not([data-rail="icons"]) .rail { align-items: stretch; padding-left: var(--s-3); padding-right: var(--s-3); }
+  :root:not([data-rail="icons"]) .rail-set { align-items: stretch; }
+  :root:not([data-rail="icons"]) .rail-home { width: auto; justify-content: flex-start; gap: var(--s-2); padding: 0 var(--s-2); }
+  :root:not([data-rail="icons"]) .rail-word { display: inline; font: 600 var(--fs-title)/var(--lh-title) var(--sans); color: var(--text); }
+  :root:not([data-rail="icons"]) .rail-place { width: auto; height: 40px; justify-content: flex-start; gap: var(--s-3); padding: 0 var(--s-3); }
+  :root:not([data-rail="icons"]) .rail-label { position: static; transform: none; opacity: 1; padding: 0; background: none; border: 0; box-shadow: none; pointer-events: auto; font: 400 var(--fs-body)/var(--lh-body) var(--sans); transition: none; }
+  :root:not([data-rail="icons"]) .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { transition-delay: 0s; }
+  :root:not([data-rail="icons"]) .rail-place[aria-current="page"]::before { left: -12px; }
+  :root:not([data-rail="icons"]) .rail-place .sm-badge { top: 50%; right: var(--s-3); transform: translateY(-50%); }
+  :root:not([data-rail="icons"]) .rail-avatar { width: auto; display: flex; align-items: center; gap: var(--s-2); }
+  :root:not([data-rail="icons"]) .rail-name { display: inline; font: 400 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) {
   :root[data-rail="labels"] .rail { align-items: stretch; padding-left: var(--s-3); padding-right: var(--s-3); }
   :root[data-rail="labels"] .rail-set { align-items: stretch; }
-  :root[data-rail="labels"] .rail-place { width: auto; justify-content: flex-start; gap: var(--s-3); padding: 0 var(--s-3); }
-  :root[data-rail="labels"] .rail-label { position: static; transform: none; opacity: 1; padding: 0; background: none; border: 0; box-shadow: none; pointer-events: auto; }
+  :root[data-rail="labels"] .rail-home { width: auto; justify-content: flex-start; gap: var(--s-2); padding: 0 var(--s-2); }
+  :root[data-rail="labels"] .rail-word { display: inline; font: 600 var(--fs-title)/var(--lh-title) var(--sans); color: var(--text); }
+  :root[data-rail="labels"] .rail-place { width: auto; height: 40px; justify-content: flex-start; gap: var(--s-3); padding: 0 var(--s-3); }
+  :root[data-rail="labels"] .rail-label { position: static; transform: none; opacity: 1; padding: 0; background: none; border: 0; box-shadow: none; pointer-events: auto; font: 400 var(--fs-body)/var(--lh-body) var(--sans); transition: none; }
+  :root[data-rail="labels"] .rail-place:hover .rail-label, .rail-place:focus-visible .rail-label { transition-delay: 0s; }
   :root[data-rail="labels"] .rail-place[aria-current="page"]::before { left: -12px; }
   :root[data-rail="labels"] .rail-place .sm-badge { top: 50%; right: var(--s-3); transform: translateY(-50%); }
+  :root[data-rail="labels"] .rail-avatar { width: auto; display: flex; align-items: center; gap: var(--s-2); }
+  :root[data-rail="labels"] .rail-name { display: inline; font: 400 var(--fs-body)/var(--lh-body) var(--sans); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (prefers-reduced-motion: reduce) { .rail-place, .rail-label { transition: none; } }
 

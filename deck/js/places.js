@@ -11,18 +11,11 @@
 import { h, put } from "./dom.js";
 import { icon } from "./icons.js";
 import { closeGlyph } from "./sheet.js";
+import { ALL } from "./place-list.js";
 
-/** The phone's tiles, in order: the places that are not one of the three pages. The desk rail is seven places (js/rail.js) and has folded Planner into Now and Devices into Settings; the phone keeps its own until its pass. */
+/** The phone's tiles, in order: every place in js/place-list.js that is not one of the phone's four tabs (More takes the same list). */
 /** @type {readonly { href: string, label: string, icon: string }[]} */
-export const TILES = Object.freeze([
-  { href: "/projects", label: "Projects", icon: "projects" },
-  { href: "/planner", label: "Planner", icon: "planner" },
-  { href: "/memory", label: "Memory", icon: "memory" },
-  { href: "/vault", label: "Vault", icon: "vault" },
-  { href: "/files", label: "Drive", icon: "drive" },
-  { href: "/settings#devices", label: "Devices", icon: "devices" },
-  { href: "/settings", label: "Settings", icon: "settings" },
-]);
+export const TILES = Object.freeze(ALL.filter(p => !["/now", "/chat", "/agents"].includes(p.href)).map(p => ({ href: p.href, label: p.label, icon: p.icon })));
 
 export const PIN_KEY = "vyre.pin";
 export const HOLD_HINT = "Long-press a tile to pin it as a page.";

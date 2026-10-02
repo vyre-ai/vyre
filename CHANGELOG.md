@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck v2: one list of places, the rail setting
+
+- Merged pwa's `work/pwa-v2-pin` (phone: four tabs plus More, hold-to-pin as a page). `deck/js/place-list.js` is the one list of places: the desk rail and the phone's Places and More sheets all read it, so they cannot drift.
+- Settings > Appearance > Rail: Auto (names beside the icons from 1200 px, the default), Icons, Labels. Icons and Labels override Auto from 720 px. The labelled rail is 216 wide with the wordmark by the logo and the person's name by their avatar; tooltips apply only to the icon form.
+
 #### deck v2, step 4: the emblem, the nod, the avatar card and message details
 
 - Project avatars are the new emblem (`deck/vendor/vyrecode/emblem.js`): four cells of eight shapes and four rotations on a ground, chosen by the project's eight seed bytes, so projects stop looking alike. A draft is the same emblem dashed. The seed rule is unchanged (the stored avatar seed, never the name).
