@@ -456,6 +456,13 @@ async function turn(prompt, uuid = null) {
     return result(true, text);
   }
   // "media <json array>": a finished tool call that returned generated media (vyre_media, as the ACP drivers put it on a tool_result), then a reply.
+  // "tooluse <name>": a finished tool call with that name (a connector's, the web's, Vyre's own), then a reply.
+  const tooluse = /^tooluse (\S+)$/.exec(p);
+  if (tooluse) {
+    out({ type: "assistant", message: { id: "m-tool", role: "assistant", content: [{ type: "tool_use", id: "tu-x", name: tooluse[1], input: {} }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
+    await say("done"); return result(true, "done");
+  }
   const media = /^media (\[.*\])$/s.exec(p);
   if (media) {
     out({ type: "assistant", message: { id: "m-media", role: "assistant", content: [{ type: "tool_use", id: "tu-media", name: "image_gen", input: {} }] } });

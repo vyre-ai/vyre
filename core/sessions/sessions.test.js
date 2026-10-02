@@ -1508,6 +1508,30 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", thread: a1 })).error, undefined, "the verified assistant");
   });
 
+  test(`${driver}: thread.taint: a tool result from outside or from the person's private things flags the thread for good, per what the tool is; a fork inherits it; nothing clears it`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { max_live: 0 } });
+    const mk = async tool => { const r = await w.tool("threads.start", { cwd: w.work, prompt: tool ? `tooluse ${tool}` : "hello", surface: "deck" }); assert.equal(r.error, undefined, `${tool}: ${JSON.stringify(r.error)}`); await w.finished(r.data.id); return r.data.id; };
+    const taint = async id => (await w.tool("threads.get", { thread: id })).data.thread.taint;
+    assert.deepEqual(await taint(await mk(null)), { outside: false, private: false }, "a plain thread is clean");
+    assert.deepEqual(await taint(await mk("Read")), { outside: false, private: false }, "a file read is not a flag");
+    assert.deepEqual(await taint(await mk("WebFetch")), { outside: true, private: false });
+    assert.deepEqual(await taint(await mk("mcp__someserver__lookup")), { outside: true, private: false }, "any MCP server that is not Vyre's");
+    assert.deepEqual(await taint(await mk("mcp__vyre__mail_search")), { outside: true, private: true }, "mail is both");
+    assert.deepEqual(await taint(await mk("mcp__vyre__vault_list")), { outside: false, private: true });
+    assert.deepEqual(await taint(await mk("mcp__vyre__waiting_count")), { outside: false, private: false }, "Vyre's own tools that touch neither");
+    // Sticky across more turns, a clean tool after a flagged one clears nothing, and a fork carries it.
+    const id = await mk("WebFetch");
+    await w.tool("threads.send", { thread: id, text: "tooluse Read", surface: "deck" });
+    await w.finished(id, 2);
+    assert.deepEqual(await taint(id), { outside: true, private: false });
+    await w.tool("threads.send", { thread: id, text: "tooluse mcp__vyre__vault_get", surface: "deck" });
+    await w.finished(id, 3);
+    assert.deepEqual(await taint(id), { outside: true, private: true }, "flags only ever add");
+    const fork = (await w.tool("threads.fork", { thread: id, surface: "deck" })).data;
+    assert.ok(fork && fork.id, JSON.stringify(fork));
+    assert.deepEqual(await taint(fork.id), { outside: true, private: true }, "a fork inherits");
+  });
+
   test(`${driver}: a session starts strict: Vyre's own MCP server only, so none of the account's claude.ai connectors (Gmail, Drive, Docs) is in its tools`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
