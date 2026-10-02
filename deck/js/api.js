@@ -63,7 +63,7 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean }} [opts] presence: true proves a
+ * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean, share?: boolean }} [opts] share: true lets identical calls in flight at once share one request (the rail, the view and the avatars all read projects.list). presence: true proves a
  *   person is here with a passkey first (ADR 0004), for what goes outside as the person (sending a
  *   held draft) and the vault. The proof is bound to this exact tool and input. "asked" is the
  *   owner's own action (answers, approvals, agents): it goes without a proof, and asks for the
@@ -78,7 +78,10 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
 export async function call(name, input = {}, opts = {}) {
   if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
   // The same read asked for twice at once (the rail, the view and the avatars all want projects.list) is one request: they share its answer.
-  if (!opts.write && !opts.key && !opts.presence && !opts.keepalive && READS.test(name)) {
+  // Only a caller that says `share: true` joins one (a read whose answer may be a moment old for the other), and a write clears them all, so a
+  // read asked for after a change never gets an answer from before it.
+  if (opts.write || opts.key) inflight.clear();
+  if (opts.share && !opts.write && !opts.key && !opts.presence && !opts.keepalive) {
     const k = name + "\n" + JSON.stringify(input);
     let p = inflight.get(k);
     if (!p) { p = callOnce(name, input, opts).finally(() => inflight.delete(k)); inflight.set(k, p); }
@@ -87,8 +90,6 @@ export async function call(name, input = {}, opts = {}) {
   return callOnce(name, input, opts);
 }
 
-/** Tools that only read, by their last word: safe to share one answer between identical calls in flight. */
-const READS = /\.(?:list|get|info|status|summary|names|search|read|show|ls|current)$/;
 /** @type {Map<string, Promise<any>>} */
 const inflight = new Map();
 

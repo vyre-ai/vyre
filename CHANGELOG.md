@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### deck: Projects is a shell (#47), and starting never hangs (#42)
+
+- A project's page shows what the project is (its chats, team, brief, files and memory) and never draws a conversation or a start box: the board's own thread view is deleted (about 400 lines), and every chat opens in Chat, scoped to the project (`/chat/<project>/<thread>`). "New chat" opens Chat's New session in that project. The old addresses `/projects/<slug>/<thread>` and `/threads/<id>` still work and go to Chat. (The board's copy read events by the wrong fields: that was behind the empty replies, the repeated sends and the "Starting…" with nothing after it on a new project.)
+- Chat's New session no longer waits forever: after 8 seconds it says "Still starting. A new project can take a moment.", and after 45 seconds it says the server did not answer and the session may still have started, so the person looks in Chat.
+- Sharing identical reads in flight is now opt-in (`share: true`, used for the project list by the rail, avatars, Now and Chat) instead of automatic for every read tool, because an automatic share could hand a read the answer from before a change.
+
 #### deck: faster navigation (#35)
 
 - **Measure first.** `?trace=1` (or localStorage `vyre.trace` = 1) records, for each route, the time from the tap to the route starting, the frame, the view's stylesheet, its code and its first data, with every tool call and how long it took, in `window.__deckTrace` and a console table (`deck/js/trace.js`). `&lag=250` adds that delay to every tool call, to feel and measure a far-away server. Off, it costs one boolean check.

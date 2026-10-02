@@ -158,7 +158,7 @@ export default async function now(ctx) {
   const drawLearned = async () => {
     // The box's own catalogue: it only maps Memory's sessions to projects, so the Mac is not asked for 500 rows.
     // projects.list is asked with the others (the Recent projects block asks it too, and the two share one request).
-    const [f, cat, pl] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500, machines: "local" }), attempt("projects.list")]);
+    const [f, cat, pl] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500, machines: "local" }), attempt("projects.list", {}, { share: true })]);
     if (!ctx.alive()) return;
     const projectOf = new Map((cat.data?.sessions || []).map(s => [s.id, s.projects?.[0] || null]));
     const names = new Map(pl.data?.projects?.map(p => [p.slug, p.name]) || []);
@@ -181,7 +181,7 @@ export default async function now(ctx) {
 
   // Recent projects: a way back in without the rail, for a phone or a narrow window.
   const drawRecent = async () => {
-    const r = await attempt("projects.list");
+    const r = await attempt("projects.list", {}, { share: true });
     if (!ctx.alive()) return;
     // Each opens its board on this machine, so a Mac's projects (listed under Projects) are left out.
     const list = [...(r.data?.projects || [])].filter(p => !isMac(p)).sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);

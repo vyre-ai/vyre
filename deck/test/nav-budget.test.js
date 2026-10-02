@@ -58,12 +58,15 @@ for (const view of ["now", "chat", "projects", "vault", "files", "planner"]) {
 test("the same read asked for several times at once is one request", async () => {
   const { call } = await import("../js/api.js");
   calls = []; t0 = Date.now();
-  const all = await Promise.all([call("projects.list", {}), call("projects.list", {}), call("projects.list", {})]);
+  const all = await Promise.all([call("projects.list", {}, { share: true }), call("projects.list", {}, { share: true }), call("projects.list", {}, { share: true })]);
   assert.equal(calls.filter(c => c.tool === "projects.list").length, 1);
   assert.deepEqual(all[0], all[2]);
   calls = [];
-  await Promise.all([call("projects.list", {}), call("projects.list", { archived: true })]);
+  await Promise.all([call("projects.list", {}, { share: true }), call("projects.list", { archived: true }, { share: true })]);
   assert.equal(calls.length, 2, "different input is a different read");
+  calls = [];
+  await Promise.all([call("projects.list", {}), call("projects.list", {})]);
+  assert.equal(calls.length, 2, "a caller that did not ask to share never shares");
   calls = [];
   await Promise.all([call("threads.send", { text: "a" }), call("threads.send", { text: "a" })]);
   assert.equal(calls.length, 2, "a write is never shared");
