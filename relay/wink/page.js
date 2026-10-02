@@ -15,7 +15,7 @@ import { initial, step, needsInstall, cardOf, cardId, handoffUrl } from "./flow.
  *   startScan: (o: { video: HTMLVideoElement, onFound: (ticket: Uint8Array) => void, onError: (e: Error) => void, onSlow?: () => void }) => { stop: () => void },
  *   resolveTicket: (ticket: Uint8Array, o: { relay: string, crypto: any }) => Promise<{ name: string, fingerprint: string, handle?: string | null }>,
  *   sha256: (b: Uint8Array) => Promise<Uint8Array>, haptic: (k: "tick" | "success" | "warning") => unknown,
- *   navigate: (url: string) => void, registerWorker?: () => void, redeem?: (ticket: Uint8Array) => void | Promise<void>, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
+ *   navigate: (url: string) => void, ticket?: Uint8Array, registerWorker?: () => void, redeem?: (ticket: Uint8Array) => void | Promise<void>, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
  */
 
 const SVG = {
@@ -78,6 +78,12 @@ export function mountWink(root, d) {
 
   function startCamera() {
     scan?.stop();
+    if (d.ticket) { // a ticket handed over in the app's address: no camera, the same lookup and the same card
+      const given = d.ticket; d.ticket = undefined;
+      dispatch({ type: "start" });
+      put(hint, "Reading the code"); onFound(given);
+      return;
+    }
     slow = false;
     sheet.classList.remove("up"); put(sheet);
     reticle.setAttribute("class", "reticle"); done.setAttribute("class", "done");

@@ -9,7 +9,7 @@
 // device key is a non-extractable CryptoKey in IndexedDB, and the box record in localStorage
 // holds no secret. release.js stamps the release public key below.
 
-import { pair, pairTicket, connect, PAIR_BASE } from "./client/client.js";
+import { pair, connect, PAIR_BASE } from "./client/client.js";
 import { webCrypto, indexedDbKeyStore } from "./client/webcrypto.js";
 import { verifyManifest, folderOf, MANIFEST, SIGNATURE } from "./manifest.js";
 import { fromBase64url } from "./client/bytes.js";
@@ -79,13 +79,16 @@ async function main() {
   const last = load(LAST) || {};
   const about = { kind: /** @type {"web"} */ ("web"), ...(last.release ? { release: last.release, manifest: last.manifest } : {}) };
   let box = load(BOX);
-  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`: take it out of the address at once, then
-  // redeem it here, with this origin's own device key. The passkey is enrolled here too, by the app, once it is connected.
+  // The camera page (wink.vyre.run) hands a scanned ticket over as `#pair=<ticket>`: take it out of the address at once. This app then
+  // looks the ticket up again and shows its own card before it redeems anything (pairing.js), with this origin's own device key.
+  // The passkey is enrolled here too, by the app, once it is connected.
   const handed = pairTicketFrom(location.hash);
-  if (handed) {
-    history.replaceState(null, "", "/");
-    status("Pairing this device with your server");
-    box = await pairTicket(handed, { relay: HOSTED_RELAY, name: browserName(), about, keyStore, crypto });
+  if (handed) history.replaceState(null, "", "/");
+  if (handed || (!box && location.pathname !== "/pair")) {
+    // No server yet (the installed app's first launch) opens the scanner right here, never by navigating to wink.vyre.run, which on
+    // iOS leaves the installed app for a browser sheet.
+    const { pairInApp } = await import("./pairing.js");
+    box = await pairInApp({ ticket: handed, relay: HOSTED_RELAY, name: browserName(), about, keyStore, crypto });
     store(BOX, box);
   } else if (location.pathname === "/pair" && location.hash.length > 1) {
     status("Pairing this browser with your box");
@@ -93,9 +96,7 @@ async function main() {
     store(BOX, box);
     history.replaceState(null, "", "/");
   }
-  // No server yet: the loader only says so. The installed app opens the scanner inside itself (the app bundle's piece, on
-  // app.vyre.run), never by navigating to wink.vyre.run, which on iOS leaves the installed app for a browser sheet.
-  if (!box) { status("This browser is not paired with a box yet. On your box, open Settings, Devices, and scan the code with this device's camera."); return; }
+  if (!box) { status("This browser is not paired with a server yet. On your server, open Settings, Devices, and scan the code with this device's camera."); return; }
   status(`Connecting to ${box.name || "your box"}`);
   const conn = connect({ ...box, about, keyStore, crypto });
   const { base, manifest, want } = await loadBuild(conn);

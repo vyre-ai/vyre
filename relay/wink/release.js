@@ -16,47 +16,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { sealed, verify, publicOf, rawKey } from "../app/release.js";
 import { sri } from "../app/manifest.js";
+import { closure, ENTRY, STYLE, specifiers } from "./closure.js";
 import { CSP_BODY } from "./headers.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "..");
-export const ENTRY = "relay/wink/wink.js";
-export const STYLE = "relay/wink/wink.css";
-// Code the page loads at run time without a static import the walk can see: the decode worker is made with new URL().
-const EXTRA = ["deck/js/scan-worker.js"];
-
-/** The relative specifiers a module imports: static, dynamic with a string, and new URL("./x", import.meta.url). @param {string} src */
-export function specifiers(src) {
-  const out = new Set();
-  for (const m of src.matchAll(/(?:^|[\s;}])import\s+(?:[^"'`;]*?\sfrom\s+)?["'`]([^"'`]+)["'`]/gm)) out.add(m[1]);
-  for (const m of src.matchAll(/\bimport\(\s*["'`]([^"'`]+)["'`]\s*\)/g)) out.add(m[1]);
-  for (const m of src.matchAll(/new URL\(\s*["'`]([^"'`]+)["'`]\s*,\s*import\.meta\.url/g)) out.add(m[1]);
-  for (const m of src.matchAll(/^export\s+(?:\*|\{[^}]*\})\s+from\s+["'`]([^"'`]+)["'`]/gm)) out.add(m[1]);
-  return [...out].filter(s => s.startsWith("."));
-}
-
-/**
- * Every repo file the page loads, as repo-relative paths with forward slashes.
- * @param {string[]} [entries] @param {string} [root]
- */
-export function closure(entries = [ENTRY, ...EXTRA], root = ROOT) {
-  /** @type {Set<string>} */ const seen = new Set();
-  /** @param {string} rel */
-  const walk = rel => {
-    if (seen.has(rel)) return;
-    const file = path.join(root, rel);
-    if (!fs.existsSync(file)) throw new Error(`${rel} is imported but is not in the repo`);
-    seen.add(rel);
-    if (!/\.m?js$/.test(rel)) return;
-    for (const s of specifiers(fs.readFileSync(file, "utf8"))) {
-      const next = path.posix.normalize(path.posix.join(path.posix.dirname(rel), s));
-      if (next.startsWith("..")) throw new Error(`${rel} imports ${s}, which is outside the repo`);
-      walk(next);
-    }
-  };
-  for (const e of entries) walk(e);
-  return [...seen].sort();
-}
+export { closure, ENTRY, STYLE, specifiers };
 
 /**
  * The page into <out>/. Returns { release, manifest, files }.

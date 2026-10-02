@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { buildManifest, verifyManifest, signManifest, canonical, newer, folderOf, sha256Hex, MANIFEST, SIGNATURE } from "./manifest.js";
 import { keygen, build, loader, verify, loadKey, entriesOf } from "./release.js";
@@ -295,4 +296,60 @@ test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and not
   assert.equal(pairTicketFrom(`#enroll=${ticket.toString("base64url")}`), null);
   assert.equal(pairTicketFrom(""), null);
   assert.equal(pairTicketFrom("#pair=!!!!!!!!!!!!"), null);
+});
+
+// ---- the installed app pairs inside itself (loader/pairing.js and the scanner it ships) ----
+
+test("release: the sealed loader ships the scanner and the in-app pairing, and every import in that tree resolves", async t => {
+  const dir = scratch(t);
+  const key = path.join(dir, "release.key");
+  keygen(key);
+  const out = path.join(dir, "out");
+  await loader({ release: "1.0.0", key, out });
+  const m = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
+  for (const f of ["pairing.js", "fragment.js", "relay/wink/page.js", "relay/wink/flow.js", "relay/wink/wink.css", "deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/haptics.js", "deck/js/pair-ticket.js"]) assert.ok(m.files[f], `${f} is sealed in the loader`);
+  assert.ok(!m.files["deck/js/api.js"] && !m.files["deck/js/app.js"], "no Deck API client or shell in the app loader");
+  const { specifiers } = await import("../wink/closure.js");
+  for (const f of Object.keys(m.files).filter(f => /\.js$/.test(f))) {
+    const dirOf = path.posix.dirname(f);
+    for (const s of specifiers(fs.readFileSync(path.join(out, f), "utf8"))) {
+      const next = path.posix.normalize(path.posix.join(dirOf, s));
+      assert.ok(m.files[next], `${f} imports ${s}, which is not in the sealed loader`);
+    }
+  }
+  assert.doesNotMatch(fs.readFileSync(path.join(out, "pairing.js"), "utf8"), /"\.\.\/\.\.\//, "the repo-relative scanner paths were rewritten");
+});
+
+test("pairing.js, from the sealed tree: a handed ticket is looked up again and shown on this origin's own card, and redeemed only on the tap", async t => {
+  const dir = scratch(t);
+  const key = path.join(dir, "release.key");
+  keygen(key);
+  const out = path.join(dir, "out");
+  await loader({ release: "1.0.0", key, out });
+  const { install } = await import("../../deck/test/fake-dom.js");
+  install();
+  /** @type {any} */ (globalThis).matchMedia = () => ({ matches: true });
+  /** @type {any} */ (document).visibilityState = "visible";
+  /** @type {any} */ (document).getElementById = () => null;
+  /** @type {string[]} */ const log = [];
+  const TICKET = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const timers = /** @type {(() => void)[]} */ ([]);
+  const realSet = globalThis.setTimeout;
+  /** @type {any} */ (globalThis).setTimeout = (/** @type {() => void} */ fn, /** @type {number} */ ms) => (ms === 650 || ms === 450 ? (timers.push(fn), 0) : realSet(fn, ms));
+  t.after(() => { globalThis.setTimeout = realSet; });
+  const { pairInApp } = await import(pathToFileURL(path.join(out, "pairing.js")).href);
+  const tick = () => new Promise(r => realSet(r, 0));
+  const done = pairInApp({ ticket: TICKET, relay: "wss://relay.test", name: "Alex's iPhone", about: {}, keyStore: {}, crypto: {}, nav: { userAgent: "Mozilla/5.0 (Linux; Android 14)" },
+    client: { resolveTicket: async () => { log.push("resolve"); return { name: "Alex's Mac", fingerprint: "AB12 CD34", handle: "alex" }; }, pairTicket: async (/** @type {Uint8Array} */ tk) => { log.push("pair " + [...tk].join(",")); return { name: "Alex's Mac", box: "k" }; } } });
+  for (let i = 0; i < 8; i++) { await tick(); while (timers.length) timers.shift()?.(); }
+  assert.deepEqual(log, ["resolve"], "looked up again here, and nothing redeemed before the tap");
+  const body = /** @type {any} */ (document.body);
+  const main = /** @type {any} */ ([...body.querySelectorAll("button")].find((/** @type {any} */ b) => b.className.includes("main")));
+  assert.ok(main, "this origin shows its own card");
+  main.dispatchEvent(Object.assign(new Event("click"), { button: 0 }));
+  for (let i = 0; i < 8; i++) { await tick(); while (timers.length) timers.shift()?.(); }
+  const box = await done;
+  assert.deepEqual(log, ["resolve", "pair 1,2,3,4,5,6,7,8"]);
+  assert.deepEqual(box, { name: "Alex's Mac", box: "k" });
+  assert.equal(body.querySelectorAll("#vyre-wink").length, 0, "the screen is gone when pairing is done");
 });
