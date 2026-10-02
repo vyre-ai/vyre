@@ -1,0 +1,14 @@
+{
+  "header": "device key=zpfsINQ2YaGbIVyy43ammN ts=1700000000123 nonce=proofnonce0001 sig=MEUCIQC1ZQnIwnS-MPyln9nNW4gLPA9OgZYrBdr0dMoD-Vx95gIgE0oLWCfBjGNozzHozegjlFjeAv2GpTxADyx495rRWLc",
+  "input": {
+    "core": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "name": "Alex's PC",
+    "nonce": "nnnnnnnnnnnnnnnnnnnnnn",
+    "ts": 1700000000000
+  },
+  "key_id": "zpfsINQ2YaGbIVyy43ammN",
+  "nonce": "proofnonce0001",
+  "scalar_hex": "0707070707070707070707070707070707070707070707070707070707070707",
+  "spki": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHhhTL9R1TALzBB2cdc6zO4P_2BrHzk_ogsyxyYvFiW6kbDEcTi_0DdlqNlPm5FRF0y3-SG7O11x6kMahiIHAow",
+  "ts": 1700000000123
+}

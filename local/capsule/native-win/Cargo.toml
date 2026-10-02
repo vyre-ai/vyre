@@ -21,6 +21,7 @@ sha2 = "0.10"
 base64 = "0.22"
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 serde_json = "1"
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
 flate2 = "1"
 tar = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
