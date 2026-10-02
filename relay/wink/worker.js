@@ -19,8 +19,8 @@ function dress(r, cache = REVALIDATE) {
 }
 
 const NOT_FOUND = () => dress(new Response("not found", { status: 404 }));
-/** A redirect is never an answer here: the assets binding would only send one for a path it rewrote. A 304 is a cache hit, not a redirect. */
-const REDIRECT = new Set([301, 302, 303, 307, 308]);
+/** A redirect is never an answer here: the assets binding would only send one for a path it rewrote. Any 3xx is refused except 304, a cache hit. */
+const redirect = (/** @type {number} */ s) => s >= 300 && s < 400 && s !== 304;
 
 /**
  * The path exactly as it was sent: after the host, before the query. Refused when it is anything but a plain path of plain
@@ -45,6 +45,6 @@ export default {
     // The assets binding does no HTML handling (wrangler.toml html_handling = "none"), so the page's one route is mapped here.
     const asset = p === "/" ? new Request(new URL("/index.html", req.url), req) : req;
     const r = await env.ASSETS.fetch(asset);
-    return REDIRECT.has(r.status) ? NOT_FOUND() : dress(r);
+    return redirect(r.status) ? NOT_FOUND() : dress(r);
   },
 };

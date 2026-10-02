@@ -54,6 +54,11 @@ test("seal-check: the app's loader and builds pass, and a stray file in a build,
   await assert.rejects(checkSealed(build, pub, ROOT, { loader: false }), /does not list: sw\.js/, "a build folder carries no service worker of its own");
   fs.rmSync(path.join(build, "sw.js"));
   fs.writeFileSync(path.join(out, "stray.html"), "x");
+  const keep = path.join(path.dirname(out), "v-moved");
+  fs.renameSync(path.join(out, "v"), keep);
+  fs.symlinkSync(keep, path.join(out, "v"));
+  await assert.rejects(checkSealed(out, pub, ROOT, { loader: true }), /v is not a plain directory/, "a symlinked v is refused even though the walk skips v by name");
+  fs.rmSync(path.join(out, "v")); fs.renameSync(keep, path.join(out, "v"));
   await assert.rejects(checkSealed(out, pub, ROOT, { loader: true }), /does not list: stray\.html/);
 });
 

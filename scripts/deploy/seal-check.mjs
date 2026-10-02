@@ -33,6 +33,8 @@ export function walk(dir, skip = () => false, rel = "") {
  */
 export async function checkSealed(dir, pub, repoRoot, { loader }) {
   const sha = await verify(dir, pub);
+  // The walk skips the loader's v/ tree by name, so the entry itself is checked here: a real directory, never a symlink or a file.
+  if (loader) { try { const st = fs.lstatSync(path.join(dir, "v")); if (!st.isDirectory()) throw new Error("v is not a plain directory"); } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") throw e; } }
   const listed = new Set(Object.keys(JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), "utf8")).files));
   const extra = walk(dir, r => loader && (r === "v" || r.startsWith("v/"))).filter(r => !listed.has(r) && r !== MANIFEST && r !== SIGNATURE && !(loader && r === "sw.js"));
   if (extra.length) throw new Error(`files the signed manifest does not list: ${extra.slice(0, 5).join(", ")}${extra.length > 5 ? ` and ${extra.length - 5} more` : ""}`);

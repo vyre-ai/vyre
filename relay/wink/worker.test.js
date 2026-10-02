@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import worker, { plainPath } from "./worker.js";
 import { HEADERS } from "./headers.js";
 
-const files = { "/index.html": ["<!doctype html>", 200], "/sw.js": ["//sw", 200], "/relay/wink/wink.js": ["//wink", 200], "/old": ["", 301], "/see": ["", 302], "/same": [null, 304] };
+const files = { "/index.html": ["<!doctype html>", 200], "/sw.js": ["//sw", 200], "/relay/wink/wink.js": ["//wink", 200], "/old": ["", 301], "/see": ["", 302], "/same": [null, 304], "/multi": ["", 300], "/perm": ["", 308], "/use": ["", 305] };
 const env = { ASSETS: { fetch: async req => { const f = files[new URL(req.url).pathname]; return f ? new Response(f[0], { status: f[1], headers: { "set-cookie": "a=b", "content-type": "text/html" } }) : new Response("nope", { status: 404 }); } } };
 // A plain object stands in for the request so the URL parser does not tidy the path before the Worker sees it.
 const raw = (p, method = "GET") => worker.fetch(/** @type {any} */ ({ url: `https://wink.vyre.run${p}`, method, headers: new Headers() }), env);
@@ -55,5 +55,6 @@ test("wink worker: //, backslashes, encoded slashes and dots, and dot segments a
 test("wink worker: a redirect from the assets binding is a 404, a 304 is passed on as a cache hit", async () => {
   assert.equal((await get("/old")).status, 404);
   assert.equal((await get("/see")).status, 404);
+  for (const p of ["/multi", "/perm", "/use"]) assert.equal((await get(p)).status, 404, `${p}: any 3xx but 304`);
   assert.equal((await get("/same")).status, 304);
 });
