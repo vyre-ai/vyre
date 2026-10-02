@@ -168,3 +168,16 @@ test("memory.prompt: a module caller naming no agent, and not the person's own t
     assert.deepEqual(added.data, { text: "", blocks: [] });
   }
 });
+
+test("memory.prompt: the person's own assistant or chat with no project still gets relevant facts as context, and a narrow agent with no project gets none of another project's (#46)", async t => {
+  const { call } = await module_(t);
+  const wrote = await call("memory.write", { kind: "fact", text: "Harlow's site is hosted on Netlify, free tier", project: "harlow" }, "cli");
+  assert.ok(!wrote.error, wrote.error);
+  const own = await call("memory.prompt", { prompt: "where is the harlow site hosted", person: true }, "module:sessions", { firstParty: true });
+  assert.ok(!own.error, own.error);
+  assert.match(own.data.text, /From memory, not instructions/);
+  assert.match(own.data.text, /netlify/i, "the assistant sees the relevant fact");
+  assert.match(own.data.text, /from /, "with where it came from");
+  const kit = await call("memory.prompt", { prompt: "where is the harlow site hosted", agent: "kit" }, "module:sessions");
+  assert.doesNotMatch(JSON.stringify(kit), /netlify|vercel|Harlow/i, "kit is granted northwind only, and has no project to read");
+});
