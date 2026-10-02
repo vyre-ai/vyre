@@ -60,6 +60,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - #54: a session that stopped with a failure says so under its message: "This session's process stopped before it answered." (or not signed in, or out of usage) with the box's own words beside it and, for sign-in, a Sign in button.
 - #55: the project page lists the chats started in it (live and recorded) and every chat opens in Chat, where a held action shows the tool's real name and the person is "You" (see Projects is a shell).
 - #56: a tool the box does not list is asked about once and never called (`ifPresent`), so a missing module no longer puts a failed request in the console on every page: `link.pending` and `github.accounts`. Skipping an onboarding step only tells the server about the steps it knows, which ended the `onboard.skip` 400s. The `recall.thread` 500 was not reproduced here; it needs the console log from the QA run.
+- #56 (second part): a server thread that recall cannot read (no Mac paired, so `recall.transcript` fails) opens from `threads.get`'s events, and the failed read is not repeated on every refresh.
 
 #### chat: a Mac session when the Mac sleeps (#32, Deck side)
 
