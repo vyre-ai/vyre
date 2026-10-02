@@ -103,7 +103,7 @@ test("the assistant-only guard refuses an agent on every spelling of its claim, 
     const r = await c("agents.list", {}, who);
     assert.ok(r.error, `${who} listed agents: ${JSON.stringify(r)}`);
   }
-  assert.ok(!(await c("agents.list", {}, "mcp:agent:juno")).error, "the assistant may");
+  assert.ok((await c("agents.list", {}, "mcp:agent:juno")).error, "a label alone, with nothing vyred verified, is a claim");
   // A label alone never grants the assistant's powers: a surface label naming the assistant, with or without
   // the identity vyred verifies, is refused; the verified assistant is let in.
   for (const who of ["cli:agent:juno", "CLI:AGENT:juno", "capsule agent:juno"]) {
