@@ -25,6 +25,7 @@ import { Tickets, register } from "./streams.js";
 import { checkRel, checkName, MAX_PREVIEW, DEFAULT_UPLOAD_MB, KEY_SNIFF, isKeyBytes } from "./guard.js";
 import { INLINE, isText, mimeOf } from "./mime.js";
 import { within } from "../../lib/within.js";
+import { callerKind } from "../modules/index.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE glass_sessions (
@@ -87,11 +88,14 @@ export default {
 
     /**
      * Where a target's files are, for this caller. Glass's file browser is a person's: an agent
-     * may reach only its own computer's files through it, never the box or another agent's.
+     * may reach only its own computer's files through it, never the box or another agent's, and a model with no agent behind it reaches none.
      */
     const filesFor = (target, caller) => {
       const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/.exec(String(caller || ""));
       if (said && target !== `computer:${said[1]}`) throw new Error("an agent may browse only its own computer's files through Glass");
+      // A model caller with no agent behind it (a plain mcp or harness session) has no computer of its own: it is held like a named agent, which leaves it nothing (Glass's file browser is a person's,
+      // or an agent's own computer).
+      if (!said && ["mcp", "harness"].includes(callerKind(caller))) throw new Error("a model caller with no agent behind it has no computer of its own, so it may browse no files through Glass");
       return providerFor(target);
     };
 
