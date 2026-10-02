@@ -130,7 +130,9 @@ if [ "$MODE" = stripped ]; then
   mk good 9.9.9-e2e.1 good; offer good
   out=$(VYRE_RELEASE_KEY="$GOODPUB" VYRE_BOX_URL="http://127.0.0.1:$PORT/" VYRE_RELEASES_API="" vyre update </dev/null 2>&1); rc=$?
   ready; hv_now=$(hv)
-  if [ "$hv_now" = "$V0" ] && ! printf '%s' "$out" | grep -q "127.0.0.1:$PORT"; then rec S4-hand-run-overrides-ignored ok "rc $rc: $(printf %s "$out" | tail -1)"
+  # With the real network and no override, a hand-run update by the person installs the newest real signed release when there is one
+  # (a person may go back; only the automatic path refuses), so the box may legitimately end on that; it must never end on the local 9.9.9 one.
+  if [ "$hv_now" != "9.9.9-e2e.1" ] && ! printf '%s' "$out" | grep -q "127.0.0.1:$PORT"; then rec S4-hand-run-overrides-ignored ok "rc $rc: $(printf %s "$out" | tail -1)"
   else rec S4-hand-run-overrides-ignored false "rc $rc, runs '$hv_now': $(printf %s "$out" | tail -3)"; fi
   while read -r p; do kill "$p" 2>/dev/null; done <"$OUT/pids"
   exit $([ $FAILED -eq 0 ] && echo 0 || echo 1)

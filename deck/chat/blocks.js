@@ -86,16 +86,17 @@ function fileChip(p) {
  * number (an older read, or another device's send: the box does not echo the bytes back) falls
  * back to a plain count, as before.
  * @param {string} who @param {string} text @param {number|null} ts @param {string|null} me
- * @param {number|import("./core/images.js").Picture[]} [images]
+ * @param {number|import("./core/images.js").Picture[]} [images] @param {boolean} [sending] drawn on send, the box has not answered yet
  */
-export function userRow(who, text, ts, me = null, images = 0) {
+export function userRow(who, text, ts, me = null, images = 0, sending = false) {
   const list = Array.isArray(images) ? images : [];
   const inline = inlineable(list), big = tooLarge(list);
   const count = Array.isArray(images) ? list.length : images;
   return tag(h("div", { class: "msg cv-row cv-user" },
     personAv(who, me),
     h("div", { class: "msg-body" },
-      h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null),
+      h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null,
+        sending ? h("span", { class: "msg-state", role: "status" }, "Sending…") : null),
       h("div", { class: "msg-text cv-user-text" }, String(text ?? "")),
       inline.length ? h("div", { class: "cv-user-images" }, inline.map(p => pictureThumb(p, `from ${who}`))) : null,
       big.length ? h("div", { class: "cv-user-images" }, big.map(fileChip)) : null,
@@ -444,7 +445,7 @@ export function toolCard(b) {
 
 /** A block as its row. @param {any} b @param {{ who?: string, me?: string|null }} [ctx] */
 export function blockRow(b, ctx = {}) {
-  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Array.isArray(b.images) ? b.images : Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
+  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Array.isArray(b.images) ? b.images : Number(b.images) || 0, b.sending === true); if (b.command) el.classList.add("cv-command"); return el; }
   if (b.kind === "text") return textRow(b.text, b.ts);
   if (b.kind === "thinking") return thinkingRow(b.text, b.ts);
   if (b.kind === "tool") return toolCard(b);

@@ -24,6 +24,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
 /** The loader's own files: the page, its module and the device client it imports. */
 export const LOADER_FILES = ["index.html", "loader.js", "loader.css", "adopt.js", "manifest.js",
+  // What makes "Add to Home Screen" install the app and not a bookmark: the web app manifest and its icons (the Deck's own).
+  "manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png",
   ...["bytes.js", "channel.js", "client.js", "noise.js", "paths.js", "response.js", "sse.js", "webcrypto.js"].map(f => `client/${f}`)];
 
 /** @param {string} dir @returns {Record<string, Uint8Array>} relative path -> bytes */
@@ -132,7 +134,9 @@ export async function loader(o) {
   /** @type {Record<string, Uint8Array>} */
   const files = {};
   for (const f of LOADER_FILES) {
-    const src = f.startsWith("client/") ? path.join(HERE, "..", f) : path.join(HERE, "loader", f === "manifest.js" ? "../manifest.js" : f);
+    const icon = /\.png$/.test(f);
+    const src = icon ? path.join(HERE, "..", "..", "deck", f) : f.startsWith("client/") ? path.join(HERE, "..", f) : path.join(HERE, "loader", f === "manifest.js" ? "../manifest.js" : f);
+    if (icon) { files[f] = new Uint8Array(fs.readFileSync(src)); continue; }
     let text = fs.readFileSync(src, "utf8");
     // In the served tree the loader's modules sit beside the client's: fix the one relative import.
     if (f === "manifest.js") text = text.replace('"../client/bytes.js"', '"./client/bytes.js"');
