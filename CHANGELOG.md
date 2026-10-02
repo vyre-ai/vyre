@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### chat: a Mac session when the Mac sleeps (#32, Deck side)
+
+- A session that lives on a paired Mac already takes your messages (they go to the Mac over the link). When the Mac goes to sleep (`link.mac-offline`, from the link's own goodbye) the session's line says "<Mac> is asleep or offline. Your message waits for it, or you can carry on here." with a "Continue on the server" button; it asks the box to carry the same conversation on from what the Mac had (`threads.continue-here`) and opens that copy. The Mac's own session is left alone. When the Mac wakes (`link.mac-online`) the line goes back to "On <Mac>". The button needs the box to have `threads.continue-here` (asked of sessions, not shipped yet); without it the button says it needs the sessions update.
+
 #### planner: add, edit, finish and delete from the page (#48)
 
 - A quick-add box at the top: type plain words ("alarm 7am", "remind me to call the bank at 6", "todo send the invoice", "note printer code 4471") and see what the planner read ("Alarm · Wake · Tue, 7:00 AM") before pressing Enter; "todo", "task", "note" and "event" at the start say the kind. If the words cannot be placed it says so.

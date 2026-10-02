@@ -460,7 +460,13 @@ export function mountSession(container, opts) {
     composer.setBusy(busy());
     tip?.sync();
     // A Mac session: the keyboard is the Mac's own (the lease is not forwarded), so no Take.
-    if (isMac(where)) { put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : ""))); return; }
+    if (isMac(where)) {
+      put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, mac.offline ? `${macName()} is asleep or offline. Your message waits for it, or you can carry on here.` : `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : "")),
+        // The Mac is away: the same conversation continues on this server, from what the Mac had (threads.continue-here); the Mac's own copy is left alone.
+        mac.offline && CAPS.has("threads.continue-here") !== false ? h("button", { class: "btn btn-sm cv-continue-here", type: "button", "data-act": "continue-here", disabled: continuing, onclick: () => continueHere() }, continuing ? "Continuing…" : "Continue on the server") : null,
+        continueError ? h("span", { class: "err cv-stop-err" }, continueError) : null);
+      return;
+    }
     // "paused" (lib/thread-status.js) already means exactly an idle timeout/restart/rewind - a
     // closed-but-resumable session, not an error; session-state.js's own guess (thread.stopped,
     // before any real thread.status arrives) already speaks this word too.
@@ -481,6 +487,20 @@ export function mountSession(container, opts) {
       rec?.holder && !OURS.has(rec.holder) ? h("button", { class: "btn btn-ghost btn-sm", onclick: take }, "Take") : null,
       stop.error ? h("span", { class: "err cv-stop-err" }, stop.error) : null,
     );
+  }
+  let continuing = false, continueError = /** @type {string|null} */ (null);
+  /** Is this link event about the Mac this session lives on? @param {any} p */
+  const sameMac = p => !!p && String(p.name || "").toLowerCase() === macName().toLowerCase();
+  async function continueHere() {
+    if (continuing) return;
+    continuing = true; continueError = null; drawHead();
+    const r = await CAPS.use("threads.continue-here", () => attempt("threads.continue-here", { thread, machine: where.machine || undefined }));
+    continuing = false;
+    if (r.error) { continueError = r.missing ? NEEDS_UPDATE : `Could not continue here: ${r.error.message || r.error.code}`; drawHead(); return; }
+    const d = /** @type {any} */ (r.data) || {};
+    const id = typeof d.thread === "string" ? d.thread : d.thread?.id;
+    if (!id) { continueError = "It started, but the server did not say which conversation it is."; drawHead(); return; }
+    go(threadHref({ id }, record.current?.project || opts.project || null));
   }
   async function take() { if (!isMac(where)) await attempt("threads.lease", { thread }); }
 
@@ -1683,6 +1703,9 @@ export function mountSession(container, opts) {
     on("ask.raised", onLive),
     on("ask.answered", onLive),
     on("ask.cancelled", onLive),
+    // A paired Mac going to sleep or coming back (tailnet's link events): this session's composer and "Continue on the server" follow it.
+    on("link.mac-offline", e => { if (isMac(where) && sameMac(e.payload)) { mac.offline = macName(); drawHead(); } }),
+    on("link.mac-online", e => { if (isMac(where) && sameMac(e.payload)) { mac.offline = null; drawHead(); } }),
     on("gate.held", onLive),
     on("gate.revised", onLive),
     on("gate.released", onLive),

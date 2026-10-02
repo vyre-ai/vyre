@@ -19,6 +19,7 @@ const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
  *  it is expected, not a bug this test should catch. A tool leaves this list the day every box
  *  registers it - it does not grow to paper over a call nothing answers by design. */
 const OPTIONAL = {
+  "threads.continue-here": "sessions ships it (0.2.2, drafted in CHAT.md); the Mac session's \"Continue on the server\" button says so when a box lacks it. Leaves this list when sessions merges.",
   "watchers.card": "watchers ships it (work/watchers 4e04a220); the watcher card reads it only after a proposal and says so in a line when it fails. Leaves this list when watchers merges.",
   "watchers.create": "watchers ships it (work/watchers 4e04a220); the watcher card reads it only after a proposal and says so in a line when it fails. Leaves this list when watchers merges.",
   "watchers.pause": "watchers ships it (work/watchers 4e04a220); the watcher card reads it only after a proposal and says so in a line when it fails. Leaves this list when watchers merges.",
