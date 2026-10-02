@@ -10,7 +10,9 @@ import http from "node:http";
 import path from "node:path";
 import { start } from "../../daemon/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
-import { checkKey, baseOf } from "./apikey.js";
+import { checkKey, baseOf, register } from "./apikey.js";
+import { open, migrate } from "../../store/index.js";
+import { Vault, MIGRATIONS, ensureMacColumns } from "../vault.js";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
 
@@ -61,29 +63,44 @@ test("check: one authenticated GET per kind, the key is never in the answer, and
   assert.equal(baseOf("openai", "https://api.deepseek.com/v1/").href, "https://api.deepseek.com/v1");
 });
 
-test("save: a good key is kept as an api-credential for the provider's host only, never shown, and a bad key is refused and not stored", async t => {
+test("save: a good key is kept as an api-credential for the provider's host only, never shown, and a bad key or an unnamed host is refused and not stored", async t => {
+  const root = tempHome(t);
+  const db = open(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  migrate(db, "vault", MIGRATIONS); ensureMacColumns(db);
+  const vault = new Vault({ db, dir: path.join(root, "vault"), config: { name: "test-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
   const key = fake("good");
-  const p = await provider(t, key);
-  const { reg } = await daemon(t);
-  const refused = await reg("vault.apikey.save", { kind: "openai", key: fake("bad"), base_url: p.base + "/v1" });
-  assert.equal(refused.error && refused.error.code, "key_refused");
-  assert.ok(!(await reg("vault.list")).data.items.some(i => i.name.startsWith("ai-")), "a refused key stores nothing");
+  const calls = [];
+  // The provider is a function, not a network: it knows the one good key.
+  const fetch = async (url, init) => {
+    calls.push({ url: String(url), auth: init.headers.authorization, xkey: init.headers["x-api-key"] });
+    const ok = init.headers.authorization === `Bearer ${key}` || init.headers["x-api-key"] === key;
+    return new Response(JSON.stringify(ok ? { data: [{ id: "m1" }, { id: "m2" }] } : { error: "bad" }), { status: ok ? 200 : 401 });
+  };
+  const tools = new Map();
+  register({ ctx: { tool: (n, d) => tools.set(n, d) }, vault, fetch });
+  const save = (input, caller = "cli") => tools.get("vault.apikey.save").run(input, { caller });
 
-  const saved = await reg("vault.apikey.save", { kind: "openai", key, base_url: p.base + "/v1" });
-  assert.equal(saved.error, undefined, JSON.stringify(saved));
-  assert.equal(saved.data.name, "ai-openai-localhost");
+  await assert.rejects(save({ kind: "openai", key: fake("bad"), base_url: "https://api.deepseek.com/v1" }), e => e.code === "key_refused");
+  await assert.rejects(save({ kind: "openai", key, base_url: "http://localhost:11434/v1" }), /named internet host/);
+  await assert.rejects(save({ kind: "openai", key, base_url: "https://93.184.216.34/v1" }), /named internet host/);
+  assert.equal(calls.filter(c => /localhost|93\.184/.test(c.url)).length, 0, "an unnamed host is refused before any call");
+  assert.equal(vault.list().items.length, 0, "a refused key stores nothing");
+
+  const saved = await save({ kind: "openai", key, base_url: "https://api.deepseek.com/v1" });
+  assert.deepEqual([saved.name, saved.base_url, saved.models], ["ai-openai-api.deepseek.com", "https://api.deepseek.com/v1", 2]);
   assert.ok(!JSON.stringify(saved).includes(key), "the answer never carries the key");
-  const item = (await reg("vault.list")).data.items.find(i => i.name === "ai-openai-localhost");
-  assert.equal(item.kind, "api-credential");
-  assert.ok(!JSON.stringify(item).includes(key), "the listing never carries the key");
-  // A server named by an IP address cannot be a credential's host (the host list takes names only): a plain refusal, nothing stored.
-  const byIp = await reg("vault.apikey.save", { kind: "openai", key, base_url: p.base.replace("localhost", "127.0.0.1") + "/v1" });
-  assert.match(byIp.error.message, /hostname/);
-  // Never handed out: reveal, copy and release refuse an api-credential.
-  for (const tool of ["vault.reveal", "vault.copy"]) assert.ok((await reg(tool, { name: "ai-openai-localhost" })).error, `${tool} refuses it`);
-  // The default name for the provider's own address carries no host.
-  const own = await reg("vault.apikey.save", { kind: "anthropic", key, base_url: p.base, name: "ai-anthropic" });
-  assert.equal(own.data.name, "ai-anthropic");
+  const row = vault.row("ai-openai-api.deepseek.com");
+  assert.equal(row.kind, "api-credential");
+  const cfg = JSON.parse((await vault.fields(row, { sealed: true })).config);
+  assert.deepEqual([cfg.hosts, cfg.auth.type], [["api.deepseek.com"], "bearer"]);
+  assert.ok(!JSON.stringify(vault.list()).includes(key), "the listing never carries the key");
+  await assert.rejects(vault.fields(row), /never handed out/, "only vault.request can use it");
+  // The provider's own address needs no host in the name; anthropic takes its key in x-api-key.
+  const own = await save({ kind: "anthropic", key });
+  assert.equal(own.name, "ai-anthropic");
+  assert.equal(calls[calls.length - 1].xkey, key);
+  assert.equal(JSON.parse((await vault.fields(vault.row("ai-anthropic"), { sealed: true })).config).auth.header, "x-api-key");
 });
 
 test("check and save are the person's own: a model, an agent, a module and a hook are refused, and save needs a proof when presence is real", async t => {

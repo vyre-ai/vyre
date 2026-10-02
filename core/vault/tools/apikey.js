@@ -86,7 +86,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
     run: async (input, { caller }) => {
       if (!callerAllowed(PEOPLE, caller)) throw new Error("vault.apikey.save is for people");
       const b = baseOf(input.kind, input.base_url);
-      if (/^[0-9.]+$/.test(b.host) || b.host.startsWith("[")) throw new Error("to keep a key for this server, give its hostname (an IP address cannot be a credential's host); localhost works for a server on this machine");
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(b.host) || /^[0-9.]+$/.test(b.host)) throw new Error("a key is kept only for a named internet host (for example api.deepseek.com): an IP address or a bare name such as localhost cannot be a credential's host. You can still check a local server.");
       const checked = await checkKey(input, fetch);
       if (!checked.ok) throw Object.assign(new Error(checked.why || "the key did not pass the check"), { code: "key_refused", detail: { status: checked.status } });
       const p = PROVIDERS[/** @type {keyof typeof PROVIDERS} */ (input.kind)];
