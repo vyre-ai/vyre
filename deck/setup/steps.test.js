@@ -138,3 +138,19 @@ test("mount: with onboard.setup the box's own list is drawn, skip and pass go th
   await until(() => text(host).includes("Juno is ready when you are"));
   m.stop();
 });
+
+test("mount: an account name from a file is text: markup in it is a value, never an element, and the field stays editable", async () => {
+  const dom = install();
+  const { mountSetup } = await import("./mount.js");
+  const host = dom.createElement("div");
+  const hostile = '<img src=x onerror="alert(1)">Alex';
+  const m = mountSetup(host, { call: async () => status({ accountName: hostile }), pollMs: 50 });
+  await until(() => $(host, "input[name=you]"));
+  const you = $(host, "input[name=you]");
+  assert.equal(you.value, hostile.slice(0, 60));
+  assert.equal($$(host, "img").length, 0, "no element is made from it");
+  you.value = "Alex Rivera";
+  you.listeners.get("input")[0]({});
+  assert.equal(you.value, "Alex Rivera");
+  m.stop();
+});
