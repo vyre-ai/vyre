@@ -4,6 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### settings: AI accounts
+
+- A new Settings section, "AI accounts" (`deck/views/settings-accounts.js`), lists every account sessions can run on (Claude, Codex, Grok, OpenRouter): its provider's badge, its name, whether it is the default, and where it stands in words ("Signed in as a@b.co, Acme", "Needs signing in again", "Waiting for you to finish it", "Signed in on this machine"). From it a person can make one the provider's default when there are two, sign one in again, remove one (asked first; Claude's login on the machine itself cannot be removed), and for Grok record whether privacy mode is on, with the box's own wording about what that means. "Add an account" signs Codex or Grok in with the provider's own login: it shows the page to open (https only, never a link otherwise) and the code, follows the sign-in while the panel is open, and refreshes the list when it is done; Cancel stops following. No token or key is ever shown. Adding by pasted API key is the setup screen's (#20).
+
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
