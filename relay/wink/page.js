@@ -15,7 +15,7 @@ import { initial, step, needsInstall, cardOf, cardId, handoffUrl } from "./flow.
  *   startScan: (o: { video: HTMLVideoElement, onFound: (ticket: Uint8Array) => void, onError: (e: Error) => void, onSlow?: () => void }) => { stop: () => void },
  *   resolveTicket: (ticket: Uint8Array, o: { relay: string, crypto: any }) => Promise<{ name: string, fingerprint: string, handle?: string | null }>,
  *   sha256: (b: Uint8Array) => Promise<Uint8Array>, haptic: (k: "tick" | "success" | "warning") => unknown,
- *   navigate: (url: string) => void, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
+ *   navigate: (url: string) => void, redeem?: (ticket: Uint8Array) => void | Promise<void>, later?: (fn: () => void, ms: number) => unknown, appHref?: string }} Deps
  */
 
 const SVG = {
@@ -133,13 +133,16 @@ export function mountWink(root, d) {
   function confirm(id) {
     dispatch({ type: "confirm", id });
     if (state.kind !== "handoff" || !pending) return; // no card on screen, or not this card: nothing happens
-    const url = handoffUrl(pending.ticket);
-    pending = null; // the ticket lives only in the URL from here
+    // On wink.vyre.run the ticket goes to the hosted app in the URL fragment. Inside the hosted app itself (d.redeem, the unpaired
+    // app opening to its scanner) it goes straight to the app's own pairing: no URL, no navigation.
+    const ticket = pending.ticket;
+    const url = d.redeem ? "" : handoffUrl(ticket);
+    pending = null; // from here the ticket lives only in the URL, or in the app's own pairing call
     sheet.classList.remove("up");
-    put(done, h("div", { class: "tick" }, icon("check", 34)), h("b", null, "Opening Vyre"), h("p", null, "Finish pairing there."));
+    put(done, h("div", { class: "tick" }, icon("check", 34)), h("b", null, d.redeem ? "Pairing" : "Opening Vyre"), h("p", null, d.redeem ? "One moment." : "Finish pairing there."));
     done.classList.add("on");
     d.haptic("success");
-    later(() => d.navigate(url), 450);
+    later(() => { if (d.redeem) Promise.resolve(d.redeem(ticket)).catch(e => fail(/** @type {Error} */ (e))); else d.navigate(url); }, 450);
   }
 
   /** @param {Error & { code?: string }} err */

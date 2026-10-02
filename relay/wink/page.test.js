@@ -132,3 +132,22 @@ test("no host from the ring or the server is ever navigated to: whatever the rec
     assert.ok(!navs[0].includes("evil") && !navs[0].includes("10.0.0.1"), "nothing the record said is in the URL");
   }
 });
+
+test("inside the hosted app (redeem given): the ticket goes to the app's own pairing, never into a URL or a navigation", async () => {
+  /** @type {Uint8Array[]} */ const got = [];
+  const log = /** @type {string[]} */ ([]);
+  const timers = /** @type {(() => void)[]} */ ([]);
+  /** @type {any} */ let cam = null;
+  const root = document.createElement("div");
+  const wink = mountWink(root, { nav: { userAgent: ANDROID }, relay: "wss://relay.test", crypto: {}, startScan: o => { cam = o; return { stop() {} }; },
+    resolveTicket: async () => ({ name: "Alex's Mac", fingerprint: "AB12" }), sha256, haptic: () => {}, navigate: u => log.push("navigate " + u),
+    redeem: async t => { got.push(t); }, later: fn => { timers.push(fn); } });
+  cam.onFound(TICKET);
+  for (let i = 0; i < 4; i++) { await new Promise(r => setTimeout(r, 0)); while (timers.length) timers.shift()?.(); }
+  const main = /** @type {any} */ ([...root.querySelectorAll("button")].find((/** @type {any} */ b) => b.className.includes("main")));
+  main.dispatchEvent(Object.assign(new Event("click"), { button: 0 }));
+  for (let i = 0; i < 3; i++) { await new Promise(r => setTimeout(r, 0)); while (timers.length) timers.shift()?.(); }
+  assert.deepEqual(got.map(t => [...t]), [[...TICKET]]);
+  assert.deepEqual(log, [], "no navigation");
+  assert.equal(wink.state().kind, "handoff");
+});
