@@ -169,3 +169,32 @@ test("a blocked call on a blind page names the tab and the reason, never the pag
   const t = await dispatchT("tabs.open", { url: "https://harlow.example/x", timeoutMs: 99_999_999 }, ctx);
   assert.equal(typeof t.id, "number", "an absurd timeout is capped rather than honoured");
 });
+
+test("tabs.many opens several pages together, reuses a tab already on that exact URL, and a refused page does not stop the others", async () => {
+  const { chrome, ctx } = world();
+  const r = await dispatchT("tabs.many", { urls: ["https://app.northwind.example/inbox", "https://new-a.example/", "https://new-b.example/", "chrome://settings"] }, ctx);
+  assert.equal(r.tabs.length, 4);
+  assert.deepEqual([r.tabs[0].reused, r.tabs[0].id], [true, 1]);
+  assert.ok(r.tabs[1].opened && r.tabs[2].opened, JSON.stringify(r.tabs));
+  assert.ok(r.tabs[3].error && r.tabs[3].code === "blocked", "the floor still applies to each page: " + JSON.stringify(r.tabs[3]));
+  assert.equal(chrome._.counts.create, 2);
+  await assert.rejects(dispatchT("tabs.many", { urls: Array.from({ length: 7 }, (_, i) => `https://x${i}.example/`) }, ctx), e => e.code === "bad_request");
+  await assert.rejects(dispatchT("tabs.many", {}, ctx), e => e.code === "bad_request");
+  // Opened tabs are Vyre's own: closable.
+  assert.equal((await dispatchT("tabs.close", { tabId: r.tabs[1].id }, ctx)).closed, true);
+});
+
+test("tabs.prefetch opens in the background, keeps at most 6 (oldest closed), and tabs.use then finds the tab loaded and says it was prefetched", async () => {
+  const { chrome, ctx } = world();
+  const a = await dispatchT("tabs.prefetch", { urls: ["https://p1.example/", "https://p2.example/", "https://p3.example/", "https://p4.example/"], focus: true }, ctx);
+  assert.equal(a.prefetched, true);
+  assert.ok(a.tabs.every(t => t.opened));
+  assert.equal(chrome._.counts.update, 0, "prefetch never takes focus, even when asked to");
+  const b = await dispatchT("tabs.prefetch", { urls: ["https://p5.example/", "https://p6.example/", "https://p7.example/"] }, ctx);
+  assert.equal(b.closedOldest.length, 1);
+  assert.equal(b.closedOldest[0], a.tabs[0].id, "the oldest prefetched tab went first");
+  const use = await dispatchT("tabs.use", { url: "https://p3.example/" }, ctx);
+  assert.deepEqual([use.reused, use.prefetched, use.id], [true, true, a.tabs[2].id]);
+  const again = await dispatchT("tabs.use", { url: "https://p3.example/" }, ctx);
+  assert.equal(again.prefetched, undefined, "a used tab is no longer ahead-of-need");
+});
