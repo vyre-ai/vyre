@@ -235,4 +235,28 @@ let startVyreSuite = Suite("start vyre") { t in
         t.ok(s.problem(bundle: app, runner: { _ in false })?.contains("signature no longer verifies") == true, "inside an app that no longer verifies: refused")
         t.ok(s.problem(bundle: "/somewhere/else", runner: { _ in false }) == nil, "not inside that app: the signature is not asked about")
     }
+
+    t.test("the button says Set up Vyre on this Mac only while the app has setup to do, and Start Vyre when Vyre is set up and not running") {
+        let v = FakeVyred()
+        defer { v.stop() }
+        let dir = vyScratch("setup-words-\(UUID().uuidString.prefix(6))")
+        executable(dir + "/install-mac-server.sh")
+        let fake = fakeUp(0)
+        MainActor.assumeIsolated {
+            let m = offlineModel(v, cli: nil)
+            m.setupOverride = BundledSetup.locate(env: ["VYRE_CAPSULE_SETUP_DIR": dir], resources: nil)
+            t.ok(m.setupNeeded)
+            t.eq(m.startWords, "Set up Vyre on this Mac")
+            t.eq(m.startingWords, "Setting up Vyre on this Mac…")
+            t.eq(m.startFirstItem(["up"]).title, "Set up Vyre on this Mac")
+            t.eq(m.startFirstItem(["voice", "status"]).title, "Set up Vyre first")
+            t.ok(m.startFirstItem(["up"]).subtitle.contains("with your Mac password once"))
+            m.cliOverride = [fake.cli]
+            t.ok(!m.setupNeeded, "a vyre is on this Mac")
+            t.eq(m.startWords, "Start Vyre")
+            t.eq(m.startFirstItem(["up"]).title, "Start Vyre")
+            m.cliOverride = nil; m.setupOverride = nil
+            t.eq(m.startWords, "Start Vyre", "no bundled setup either: the old words")
+        }
+    }
 }

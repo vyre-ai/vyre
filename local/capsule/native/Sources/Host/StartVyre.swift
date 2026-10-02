@@ -132,6 +132,14 @@ extension CapsuleModel {
     /// vyred is being started from this Capsule.
     var startingVyre: Bool { commandRun.map { $0.argv == Self.startArgv && $0.running } ?? false }
 
+    /// This Mac has no vyre to start but the app carries the setup: the button says "Set up Vyre on this Mac", not "Start Vyre".
+    var setupNeeded: Bool {
+        (cliOverride ?? VyreCLI.locate(home: home)) == nil && (setupOverride ?? BundledSetup.locate()) != nil
+    }
+    /// The button's words: setting up the first time, starting when Vyre is already set up and just not running.
+    var startWords: String { setupNeeded ? "Set up Vyre on this Mac" : "Start Vyre" }
+    var startingWords: String { setupNeeded ? "Setting up Vyre on this Mac…" : "Starting Vyre on this Mac…" }
+
     /// Return on an empty box while offline starts Vyre.
     func returnStartsVyre() -> Bool {
         guard offline, target == nil, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -176,10 +184,12 @@ extension CapsuleModel {
     /// The row a `vyre ...` line gets while vyred is down: start it, since nothing else can run.
     func startFirstItem(_ argv: [String]) -> ResultItem {
         let up = argv.first == "up"
-        return ResultItem(id: "cli:start", kind: "cli", title: up ? "Start Vyre" : "Start Vyre first",
-                          subtitle: up ? "Vyre is not running on this Mac. Return starts it." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not running. Return starts it.",
+        let setup = setupNeeded
+        return ResultItem(id: "cli:start", kind: "cli", title: setup ? (up ? "Set up Vyre on this Mac" : "Set up Vyre first") : (up ? "Start Vyre" : "Start Vyre first"),
+                          subtitle: setup ? (up ? "Vyre is not set up on this Mac. Return sets it up, with your Mac password once." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not set up here. Return sets it up, with your Mac password once.")
+                                          : (up ? "Vyre is not running on this Mac. Return starts it." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not running. Return starts it."),
                           icon: .symbol("power", .stone), section: .top, score: 2,
-                          actions: [ResultAction(id: "start", title: "Start Vyre", symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
+                          actions: [ResultAction(id: "start", title: setup ? "Set up Vyre" : "Start Vyre", symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
                               await MainActor.run { self?.startVyre() }
                               return .said("")
                           }])
