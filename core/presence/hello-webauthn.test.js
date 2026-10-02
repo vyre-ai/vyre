@@ -1,5 +1,5 @@
 // @ts-check
-// A real Windows Hello WebAuthn capture, taken in the app's WebView2 on a Windows 11 vTPM VM (core/presence/testing/windows-hello.json):
+// A real Windows Hello WebAuthn capture, taken on Windows 11 with a PIN (core/presence/testing/windows-hello.json):
 // the registration's attestationObject gives the credential id and the RSA public key (COSE), and the assertion's RS256 signature must
 // verify through verifyAssertion with the rpId, origin and challenge the capture names. The capture is real data or this test skips and says
 // so; it is never faked. A second test builds the same shapes in-process (an RSA key, a "none" attestation) and runs them through the same
@@ -55,11 +55,13 @@ test("a real Windows Hello registration and assertion verify through verifyAsser
   assert.equal(u(reg.credentialId), fx.registration.credentialId, "the attested credential is the one named");
   assert.ok(reg.rpIdHash.equals(crypto.createHash("sha256").update(fx.rpId).digest()), "the registration is for this rpId");
   const created = JSON.parse(b64(fx.registration.clientDataJSON).toString("utf8"));
-  assert.deepEqual([created.type, created.origin], ["webauthn.create", fx.origin]);
-  const a = { publicKey: reg.publicKey, alg: -257, rpId: fx.rpId, challenge: fx.challenge, origins: [fx.origin],
+  assert.deepEqual([created.type, created.origin, created.challenge], ["webauthn.create", fx.origin, fx.challenge], "the registration used the registration challenge");
+  const a = { publicKey: reg.publicKey, alg: -257, rpId: fx.rpId, challenge: fx.assertionChallenge, origins: [fx.origin],
     authenticatorData: fx.assertion.authenticatorData, clientDataJSON: fx.assertion.clientDataJSON, signature: fx.assertion.signature };
   const ok = verifyAssertion(a);
   assert.equal(ok.ok, true, JSON.stringify(ok));
+  assert.ok(Number(/** @type {any} */ (ok).signCount) > 0, "a real authenticator counts its signatures");
+  assert.notEqual(verifyAssertion({ ...a, challenge: fx.challenge }).ok, true, "the registration challenge is not the assertion's");
   // The same capture, broken three ways, must each be refused.
   assert.notEqual(verifyAssertion({ ...a, challenge: u(crypto.randomBytes(32)) }).ok, true, "another challenge");
   assert.notEqual(verifyAssertion({ ...a, origins: ["https://evil.example"] }).ok, true, "another origin");
