@@ -1,0 +1,62 @@
+# Records the model's replies for the SEALED 0.2 memory eval world and prints its scores, nothing else. Dispatch only, in the protected
+# environment `eval` (a required reviewer approves each dispatch), once per release candidate, inside the round's budget. The sealed
+# world's questions, answers and replies are never printed, never uploaded and never committed: the replies live in the runner's temp
+# folder for this one run and go with it (scripts/eval-bar.js, --record-sealed, which refuses to run anywhere else). The artifact is the
+# printed score table only. The run reads the key's own usage first and refuses to start at $14 or more, and stops before a call that
+# could pass VYRE_EVAL_LIMIT_USD (4 here: $5 a round with headroom). The key is never printed.
+name: memory-sealed-record
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: OpenRouter model for Vyre Memory's answers (haiku is the product's quick path)
+        type: choice
+        default: anthropic/claude-haiku-4.5
+        options:
+          - anthropic/claude-haiku-4.5
+          - anthropic/claude-sonnet-4.6
+permissions:
+  contents: read
+concurrency:
+  group: memory-sealed-record
+  cancel-in-progress: false
+env:
+  VYRE_NO_DIALOGS: "1"
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    environment: eval
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Record the sealed world and print its scores
+        env:
+          VYRE_EVAL_RECORD: "1"
+          VYRE_EVAL_SEALED_RECORD: "1"
+          VYRE_EVAL_RUNNER: openrouter
+          VYRE_EVAL_MODEL: ${{ inputs.model }}
+          VYRE_EVAL_LIMIT_USD: "4"
+          VYRE_EVAL_SPEND_FILE: ${{ runner.temp }}/sealed-spend.json
+          OPENROUTER_EVAL_KEY: ${{ secrets.OPENROUTER_EVAL_KEY }}
+        run: |
+          set +e
+          nice -n 10 node scripts/eval-bar.js --world sealed --record-sealed | tee "$RUNNER_TEMP/scores.txt"
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_ENV"
+          exit 0
+      - name: Summary
+        run: |
+          { echo '### memory-sealed-record (scores only)'; echo '```'; cat "$RUNNER_TEMP/scores.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p out && cp "$RUNNER_TEMP/scores.txt" out/scores.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sealed-scores
+          path: out/scores.txt
+          if-no-files-found: error
+      - name: Fail when the recording stopped or failed
+        if: env.code != '0'
+        run: echo "eval-bar exited with ${{ env.code }} (3 means the spend stop or a refusal to start; nothing of the sealed world was kept)"; exit 1
