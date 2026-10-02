@@ -20,6 +20,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
+import { hostSafe } from "../../lib/api-endpoint.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
@@ -2568,6 +2569,8 @@ export default {
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
       // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
       const own = {};
+      // The Claude CLI resolves the name itself, so nothing can pin it: look it up again before every spawn and refuse (the lookup race is what is left).
+      if (a.base_url && a.provider === "claude" && !(await hostSafe(String(a.base_url)))) throw Object.assign(new Error(`${a.label}'s address is not a place a key may be sent now`), { code: "bad_input" });
       if (a.base_url) { if (a.provider === "claude") own.ANTHROPIC_BASE_URL = String(a.base_url); else own.VYRE_API_BASE_URL = String(a.base_url); }
       if (a.model && a.provider !== "claude") own.VYRE_API_MODEL = String(a.model);
       return { auth: a.kind === "api-key" ? "api-key" : "subscription", env: { [name]: String(v), ...own } };

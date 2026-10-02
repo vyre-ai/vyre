@@ -21,7 +21,7 @@ import { Signins, LOGINS } from "./signin.js";
 import { spawnSession } from "./spawn.js";
 import { readIdentity } from "./identity.js";
 import crypto from "node:crypto";
-import { resolveSafe, pinnedFetch, loopbackRefused } from "./endpoint.js";
+import { resolveSafe, pinnedFetch, loopbackRefused } from "../../lib/api-endpoint.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -14,7 +14,7 @@
 // unchanged until a person adds a second account.
 
 import crypto from "node:crypto";
-import { addressRefused, metadataName, loopbackRefused, isLoopbackHost } from "./endpoint.js";
+import { addressRefused, metadataName, loopbackRefused, isLoopbackHost } from "../../lib/api-endpoint.js";
 
 // kind: what the credential is. "api-key" and "setup-token" name a vault item; "login" names none:
 // the provider's own sign-in (codex login, grok login) wrote its token into this account's own

@@ -12,7 +12,7 @@
 // module) so a resume after a restart carries on where it was; without one it lives in memory.
 // The key comes from o.env.OPENROUTER_API_KEY (an account of kind api-key), read here and nowhere else.
 
-import { resolveSafe, pinnedFetch } from "../endpoint.js";
+import { resolveSafe, pinnedFetch } from "../../../lib/api-endpoint.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
