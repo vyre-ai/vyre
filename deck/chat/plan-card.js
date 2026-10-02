@@ -53,13 +53,21 @@ export function planCard(ask, opts = {}) {
     state.width = widthOf(el, act);
     state.busy = act; state.error = null; draw();
     const message = act === "revise" ? state.words.trim() : "";
+    // Codex's plan is a question: the answer is the label of the button, Implement or Revise (anything else the box reads as Revise).
+    const codex = /** @type {any} */ (ask).codex;
     // Through the outbox like the other cards (offline, it goes when the box is back).
-    const r = await queued("threads.answer", { ask: ask.id, decision: act === "start" ? "allow" : "deny", surface: "deck",
-      ...(message ? { message } : {}) });
+    const r = await queued("threads.answer", codex
+      ? { ask: ask.id, decision: "allow", surface: "deck", answers: { [codex.question]: act === "start" ? "Implement" : "Revise" } }
+      : { ask: ask.id, decision: act === "start" ? "allow" : "deny", surface: "deck", ...(message ? { message } : {}) });
     if (r.error) { state.busy = null; state.error = r.error; draw(); return; }
     // Approved: the plan is answered whatever the mode call says; a failure is said, not undone.
     const thread = opts.thread ?? ask.thread;
-    if (act === "start" && thread) {
+    // Codex stays in plan mode when it is sent back: the words that change the plan go as the person's next message.
+    if (codex && act === "revise" && message && thread) {
+      const sent = await attempt("threads.send", { thread, text: message, surface: "deck" });
+      if (sent.error) state.error = sent.error;
+    }
+    if (act === "start" && thread && !codex) {
       const m = await attempt("threads.mode", { thread, mode: state.mode, surface: "deck" });
       if (m.error) state.modeError = m.error;
     }
@@ -121,7 +129,7 @@ export function planCard(ask, opts = {}) {
     const n = plan.steps.length;
     if (state.decided) {
       const line = state.decided === "start"
-        ? [h("div", { class: "cv-plan-building" }, h("span", { class: "cv-spin", "aria-hidden": "true" }), `Building · ${planModeLabel(state.mode)}`),
+        ? [h("div", { class: "cv-plan-building" }, h("span", { class: "cv-spin", "aria-hidden": "true" }), /** @type {any} */ (ask).codex ? "Building" : `Building · ${planModeLabel(state.mode)}`),
           h("div", { class: "gate-resolved" }, icon("check", 14), `Plan approved on this screen${n ? ` · ${n} ${n === 1 ? "step" : "steps"}` : ""}`),
           state.modeError ? h("div", { class: "cv-plan-err" }, `The mode did not change: ${state.modeError.message || state.modeError.code}`) : null]
         : state.decided === "cancelled" ? [h("div", { class: "gate-resolved" }, icon("close", 14), "Withdrawn")]
@@ -145,22 +153,24 @@ export function planCard(ask, opts = {}) {
         plan.notTouch ? h("div", { class: "cv-plan-not" }, inline(/^will not touch/i.test(plan.notTouch) ? plan.notTouch : `Will not touch ${plan.notTouch}`)) : null,
         !n && !plan.title && plan.rest ? h("div", { class: "cv-plan-rest" }, plan.rest) : null,
         files(),
-        modes()),
+        /** @type {any} */ (ask).codex ? null : modes()),
       revise ? h("div", { class: "cv-deny-row cv-plan-revise-row" }, revise,
         button("revise", "cv-always", "Send changes", null, null, () => answer("revise")),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !!state.busy, onclick: () => { state.revising = false; draw(); } }, "Back")) : null,
       h("div", { class: "gate-actions cv-ask-actions cv-plan-actions" },
         button("start", "btn-primary", "Start building", kbd("Enter"), "Meta+Enter Control+Enter", () => answer("start")),
         revise ? null : button("revise", "cv-always", "Revise", "R", "R", () => { state.revising = true; draw(); }),
-        button("keep", "btn-ghost", "Keep planning", null, null, () => answer("keep"))),
+        /** @type {any} */ (ask).codex ? null : button("keep", "btn-ghost", "Keep planning", null, null, () => answer("keep"))),
       state.error ? problemLine(state.error) : null);
     if (revise) { revise.focus?.(); try { revise.setSelectionRange?.(state.words.length, state.words.length); } catch {} }
   }
 
   el.update = a => { Object.assign(ask, a); plan = parsePlan(planText(ask)); if (!state.decided) draw(); };
-  el.answered = (decision, _answers, from) => {
+  el.answered = (decision, answers, from) => {
     if (!state.decided && from) state.from = from;
-    if (!state.decided) state.decided = decision === "allow" || decision === "always" ? "start" : decision === "deny" ? "keep" : "cancelled";
+    const codex = /** @type {any} */ (ask).codex;
+    if (!state.decided) state.decided = codex && (decision === "allow" || decision === "always") && answers && answers[codex.question] !== "Implement" ? "revise"
+      : decision === "allow" || decision === "always" ? "start" : decision === "deny" ? "keep" : "cancelled";
     state.busy = null; state.error = null; draw();
   };
   el.isOpen = () => !state.decided;

@@ -221,3 +221,23 @@ export function planText(ask) {
 
 /** Whether an ask is a plan to approve: kind "plan", or Claude Code's ExitPlanMode permission. @param {any} ask */
 export const isPlanAsk = ask => !!ask && (ask.kind === "plan" || ask.tool === "ExitPlanMode");
+
+/**
+ * Codex's plan arrives as a question, not a plan ask: "Implement this plan?", header "Plan", two options Implement (its preview is the plan text) and
+ * Revise (core/sessions/drivers/acp.js). Read it as a plan to approve: { question, plan }, or null for any other question.
+ * @param {any} ask
+ * @returns {{ question: string, plan: string }|null}
+ */
+export function codexPlanOf(ask) {
+  const q = ask && ask.kind === "question" && Array.isArray(ask.questions) && ask.questions.length === 1 ? ask.questions[0] : null;
+  if (!q || q.header !== "Plan" || q.multiSelect === true || !Array.isArray(q.options) || q.options.length !== 2) return null;
+  const [yes, no] = q.options;
+  if (!yes || !no || yes.label !== "Implement" || no.label !== "Revise" || typeof yes.preview !== "string" || !yes.preview.trim()) return null;
+  return { question: String(q.question || "Implement this plan?"), plan: yes.preview };
+}
+
+/** The ask the plan card draws for a Codex plan question: the plan text where the card looks for it, and what to answer with. @param {any} ask */
+export function planAskFromCodex(ask) {
+  const c = codexPlanOf(ask);
+  return c ? { ...ask, kind: "plan", detail: { ...(ask.detail || {}), input: { plan: c.plan } }, codex: { question: c.question } } : null;
+}

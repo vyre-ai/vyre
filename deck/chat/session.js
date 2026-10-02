@@ -64,7 +64,7 @@ import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
 import { mountTip } from "./tip-line.js";
 import { planCard } from "./plan-card.js";
-import { isPlanAsk } from "./core/plan.js";
+import { isPlanAsk, planAskFromCodex } from "./core/plan.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
 import { askCardFor, defaultOpen } from "./cards/index.js";
@@ -886,7 +886,7 @@ export function mountSession(container, opts) {
   }
   function askEl(it) {
     const full = askData(it.ask, it);
-    const el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : full.kind === "question" ? questionCard(full) : askCard(full)));
+    const el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : planAskFromCodex(full) ? planCard(/** @type {any} */ (planAskFromCodex(full)), { thread }) : full.kind === "question" ? questionCard(full) : askCard(full)));
     el._ask = full;
     cards.set(it.ask, el);
     settleAsk(el, it);
@@ -1442,7 +1442,7 @@ export function mountSession(container, opts) {
     const full = { ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
-    el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : a.kind === "question" ? questionCard(full) : askCard(full)));
+    el = /** @type {any} */ (askCardFor(full, { thread }) || (isPlanAsk(full) ? planCard(full, { thread }) : planAskFromCodex(full) ? planCard(/** @type {any} */ (planAskFromCodex(full)), { thread }) : a.kind === "question" ? questionCard(full) : askCard(full)));
     el._ask = full;
     cards.set(a.id, el);
     timeline.append(el);

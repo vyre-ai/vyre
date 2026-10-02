@@ -149,3 +149,27 @@ test("plan card: a failed answer gives the buttons back and says why; a failed m
   assert.match(text(d), /Plan approved/);
   assert.match(text(d), /The mode did not change: no such mode/);
 });
+
+test("Codex's plan question reads as a plan card: Implement answers with that label and no mode; Revise answers Revise and sends the words as the next message", async () => {
+  const { planAskFromCodex, codexPlanOf } = await import("./core/plan.js");
+  const ask = { id: "a1", kind: "question", agent: "Codex", questions: [{ question: "Implement this plan?", header: "Plan", multiSelect: false,
+    options: [{ label: "Implement", description: "Leave plan mode and carry it out", preview: "## Door\n1. Measure the frame\n2. Paint it red" }, { label: "Revise", description: "Stay in plan mode" }] }] };
+  assert.deepEqual(codexPlanOf(ask), { question: "Implement this plan?", plan: "## Door\n1. Measure the frame\n2. Paint it red" });
+  assert.equal(codexPlanOf({ ...ask, questions: [{ ...ask.questions[0], header: "Which?" }] }), null, "any other question is just a question");
+  assert.equal(codexPlanOf({ ...ask, questions: [{ ...ask.questions[0], options: [{ label: "Implement" }, { label: "Revise" }] }] }), null, "no plan text, no plan card");
+  const planAsk = /** @type {any} */ (planAskFromCodex(ask));
+  const v = vyred();
+  const el = planCard(planAsk, { thread: "t1" });
+  assert.match(text(el), /Measure the frame/);
+  assert.equal($(el, ".cv-plan-seg"), null, "no mode choice: that is Claude's");
+  assert.equal($(el, "[data-act=keep]"), null);
+  $(el, "[data-act=start]").click(); await settle();
+  assert.deepEqual(v.of("threads.answer")[0].input, { ask: "a1", decision: "allow", surface: "deck", answers: { "Implement this plan?": "Implement" } });
+  assert.equal(v.of("threads.mode").length, 0, "no threads.mode for Codex");
+  const el2 = planCard(planAsk, { thread: "t1" });
+  el2.onKey(key("r")); await settle();
+  $(el2, ".cv-plan-revise").value = "Change the plan: use blue"; $(el2, ".cv-plan-revise").dispatchEvent(new /** @type {any} */ (globalThis).Event("input"));
+  $(el2, "[data-act=revise]").click(); await settle();
+  assert.deepEqual(v.of("threads.answer")[1].input.answers, { "Implement this plan?": "Revise" });
+  assert.deepEqual(v.of("threads.send")[0].input, { thread: "t1", text: "Change the plan: use blue", surface: "deck" });
+});
