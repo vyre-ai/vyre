@@ -628,3 +628,4 @@ Listens for: `link.unpaired`
 | `watcher.fired` | `items`, `name`, `seen`, `trigger` |
 | `watcher.paused` | `name`, `why` |
 | `watcher.resumed` | `name` |
+| `watcher.woke` | `items`, `name`, `thread` |

@@ -29,6 +29,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Lumen Deep glass: proved on the built app. CI now compiles a small probe, puts a window that is white on the left half and black on the right behind the panel, captures the panel with macOS's own window capture, and compares the panel's two halves with the glass on and with Reduce Transparency forced on, in dark and light (the Mac check prints the numbers and the stills glass-<look>-<ground>.png). New drive commands `display` and `appearance` set those two for the check.
 - feat(github): `github.session.review`, the read behind review comments reaching a session. For a session's open pull requests it answers the new comments from other people (the connected account's own are left out), each cut to 1500 characters and marked as outside text, with a cursor to pass back. Only watchers, sessions and threads may call it; it never returns a token. Comments now carry their link.
 - A one-click DigitalOcean image (packaging/digitalocean): Ubuntu 24.04 with a firewall, security updates and Docker, whose first boot installs the latest Vyre release only after checking its signature and every file's hash. The Packer template, the first-boot installer, the login banner and the Marketplace listing text are there; nothing is submitted to DigitalOcean yet.
+- A watcher can wake a session. With `about: { "session": "<thread id>" }`, `owner: { "kind": "session",
+  "thread": <the same id> }`, `act: true` and optionally `wake: { "maxPerDay": 5 }` (at most 20), a run that
+  files new items posts them to that session through `threads.post` (kind `watcher.item`) as ONE post per
+  run, as quoted untrusted data: a header in Vyre's voice, then the items inside a `<vyre-data>` block
+  whose marker carries a nonce chosen per post, with marker look-alikes and control characters removed
+  and every field cut to 300 characters, so a PR review comment never arrives as an instruction. Before
+  each post: the watcher is owned by that session, the thread exists, it belongs to the watcher's
+  project, and the day's budget is not spent; a refusal skips the post with a line in the run's log and
+  is never retried or counted. The card says "Posts what it finds into session <id> as quoted notes".
+  New event `watcher.woke`.
+
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
