@@ -289,3 +289,19 @@ test("person: a device whose passkey was removed is told device_removed, but onl
     assert.notEqual(r.error && r.error.code, "device_removed", bad);
   }
 });
+
+test("person: a cookie sent by a request another site or an opaque frame started is not the person's (Safari sends SameSite=Strict from a sandboxed frame)", async t => {
+  const { call } = await box(t);
+  const s = await call(MAC_IP, "presence.person.start", {}, { "x-vyre-presence": "passkey id=x" });
+  const cookie = cookieOf(s);
+  const status = headers => call(MAC_IP, "presence.person.status", {}, { cookie, ...headers });
+  assert.equal((await status({})).data.signed, true, "no Sec-Fetch headers (curl, a native client, an old browser): untouched");
+  assert.equal((await status({ "sec-fetch-site": "same-origin", "sec-fetch-dest": "empty" })).data.signed, true, "the Deck's own fetch");
+  assert.equal((await status({ "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" })).data.signed, true, "the Deck's own iframe load stays working");
+  assert.equal((await status({ "sec-fetch-site": "none", "sec-fetch-dest": "document" })).data.signed, true, "the person typing the address");
+  assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "document" })).data.signed, false, "another site");
+  assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "iframe" })).data.signed, false);
+  assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "iframe" })).data.signed, false, "a frame that is not from this origin");
+  assert.equal((await status({ "sec-fetch-site": "same-site", "sec-fetch-dest": "embed" })).data.signed, false);
+  assert.equal((await status({ "sec-fetch-site": "cross-site", "sec-fetch-dest": "object" })).data.signed, false);
+});
