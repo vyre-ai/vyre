@@ -1490,6 +1490,28 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(evs.some(e => /Could not save a generated file/.test(String(e.payload.text))), "the refused path says so once in the thread");
   });
 
+  test(`${driver}: a generated file from a Grok account is registered with that account's privacy mode (zdr when on, off when off)`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    const g = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
+    w.d.registry.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), g.id);
+    const registered = [];
+    const realCall = w.d.registry.call.bind(w.d.registry);
+    w.d.registry.call = async (tool, input, caller, meta) => {
+      if (tool === "artifacts.media.register") { registered.push(input); return { data: { id: `a${registered.length}` } }; }
+      return realCall(tool, input, caller, meta);
+    };
+    for (const [on, want] of [[true, "zdr"], [false, "off"]]) {
+      assert.equal((await w.tool("sessions.accounts.set", { account: g.id, privacy: on })).error, undefined);
+      const th = (await w.tool("threads.start", { cwd: w.work, provider: "grok", account: g.id, prompt: "imagecodex", surface: "deck" })).data;
+      await w.finished(th.id);
+      for (let i = 0; i < 50 && registered.length < (on ? 1 : 2); i++) await new Promise(r => setTimeout(r, 40));
+      assert.equal(registered.at(-1).privacy, want);
+      assert.equal(registered.at(-1).provider, "grok");
+    }
+  });
+
   test(`${driver}: a Grok account's privacy choice defaults to on, only the person sets it, and the rows say plainly what it means`, { skip }, async t => {
     const w = await boot(t, { driver });
     const g = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;

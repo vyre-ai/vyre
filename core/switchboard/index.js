@@ -527,6 +527,20 @@ export class Switchboard {
   }
 
   /**
+   * Whether the provider kept what it made for this account: "zdr" when the account's privacy mode is on (xAI keeps nothing), "off" when it is off
+   * (xAI keeps the account's sessions), null for a provider with no such setting or when sessions cannot say. Recorded on the artifact as media.privacy.
+   * @param {any} rec @returns {Promise<"zdr"|"off"|null>}
+   */
+  async privacyOf(rec) {
+    if (!rec || rec.provider !== "grok" || !rec.account) return null;
+    try {
+      const r = await this.deps.call("sessions.accounts.list", { provider: "grok" });
+      const a = r && !r.error && Array.isArray(r.data) ? r.data.find(x => x && x.id === rec.account) : null;
+      return a && typeof a.privacy === "boolean" ? (a.privacy ? "zdr" : "off") : null;
+    } catch { return null; }
+  }
+
+  /**
    * Generated media a provider's tool call returned (an image or audio block with its bytes, or a file Grok left in the account's folder) is saved as an
    * artifact of the thread (artifacts.media.register, which keeps the bytes and the provenance). A file is read as the account by sessions.files.read.
    * Quiet when artifacts is not here; a failure says so once in the thread, never breaks the turn.
@@ -545,7 +559,8 @@ export class Switchboard {
           mime = mime || MIME[String(m.file).split(".").pop().toLowerCase()];
         }
         if (!data || !mime) continue;
-        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}) });
+        const privacy = await this.privacyOf(rec);
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(privacy ? { privacy } : {}) });
         if (r.error && r.error.code === "no_such_tool") return;
         if (r.error) throw new Error(r.error.message || r.error.code);
       } catch (e) {
