@@ -6,6 +6,7 @@
 // config.json under "onboard". The steps call other modules' tools (names.*, vault.put,
 // recall.*, projects.*) and work without them: a missing module blocks its step and says why.
 
+import { deviceHistory } from "./device-history.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +17,8 @@ import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
 import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 
-export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
+// devices before history (the lead, 2 Oct 2026, #26): you pair your computers first and then import their history, so history never has to say "come back later".
+export const STEPS = ["you", "claude", "tailscale", "name", "devices", "history"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
 const PHASES = ["idle", "dns", "certificate", "serving"];
 const ROWS = ["reserve", "dns", "cert"];
@@ -245,13 +247,19 @@ export default {
         if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
         else if (history.sessions === 0) {
+          // Nothing found is never Done (#26): the step stays todo and says where the history is, so the person pairs the Mac, or skips on purpose.
           const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
-          Object.assign(history, { state: "done",
+          Object.assign(history, { state: "todo", found: false,
             why: !box ? "no Claude Code sessions on this machine yet"
               : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
-              : "Your Mac's sessions appear here when you connect your Mac" });
+              : "Nothing found on this server yet. Pair your Mac in the next step and import from there." });
         }
-        else if (ob().history && history.indexed >= own) history.state = "done";
+        else {
+          history.found = true;
+          const sentence = [own > 0 ? `${own} on this server` : null, ...macs.map(m => `${count(m)} on ${m.machine || "your Mac"}`).filter(x => !x.startsWith("0 "))].filter(Boolean);
+          history.summary = `Found ${history.sessions} ${history.sessions === 1 ? "session" : "sessions"}${sentence.length ? `: ${sentence.join(", ")}` : ""}`;
+          if (ob().history && history.indexed >= own) history.state = "done";
+        }
       }
 
       // The Mac counts once link has paired one; the first paired is the one shown.
@@ -259,7 +267,7 @@ export default {
       const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
       // peers: the owner's other tailnet devices and whether each is online, for the phone's line.
       const tailnet = t && t.running ? await tailnetPeers() : [];
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
+      const devices = { state: ob().finished || mac.connected ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
@@ -566,10 +574,12 @@ export default {
     });
 
     ctx.tool("onboard.history", {
-      description: "Find and index this machine's Claude Code sessions, in the background.",
-      input: obj({ action: { type: "string", enum: ["status", "start"] } }),
+      description: "Find and index this machine's Claude Code sessions, in the background; action devices lists the history on the person's paired computers (Claude Code, Codex, Grok) by project, with counts and dates.",
+      input: obj({ action: { type: "string", enum: ["status", "start", "devices"] } }),
       run: async ({ action = "status" }, { caller }) => {
         boxOnly();
+        // The person's own computers (#26): each paired Mac's history by project, counts and dates, asked through the link (import.offer, read-only).
+        if (action === "devices") return deviceHistory(await call("link.macs.call", { tool: "import.offer", timeout: 10_000 }).catch(() => []));
         if (action === "start" && !indexing) {
           save({ onboard: { history: true } });
           indexing = call("recall.index").catch(e => ctx.log("onboard: indexing failed: " + e.message)).finally(() => { indexing = null; });

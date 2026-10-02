@@ -34,7 +34,7 @@
       },
       "history": {
         "state": "todo",
-        "why": "Your Mac's sessions appear here when you connect your Mac"
+        "why": "Nothing found on this server yet. Pair your Mac in the next step and import from there."
       },
       "devices": {
         "state": "todo",
@@ -53,7 +53,28 @@
     "ok": true
   },
   "onboard.history": {
-    "ok": true
+    "$by": "action",
+    "cases": {
+      "start": { "ok": true },
+      "status": { "ok": true },
+      "devices": {
+        "found": true,
+        "sessions": 5,
+        "summary": "Found 5 sessions on Alex's Mac (3 projects)",
+        "devices": [
+          {
+            "mac": "m1", "name": "Alex's Mac", "online": true, "ok": true, "sessions": 5, "projects": 3,
+            "agents": [
+              { "agent": "claude-code", "sessions": 3, "bytes": 3000, "from": 1759200000000, "to": 1759300000000, "folders": [
+                { "cwd": "/home/alex/Work/harlow", "name": "Harlow", "sessions": 2, "bytes": 2000, "from": 1759200000000, "to": 1759250000000, "ticked": true },
+                { "cwd": "/tmp/scratch", "name": null, "sessions": 1, "bytes": 1000, "from": 1759280000000, "to": 1759300000000, "ticked": false, "why": "a temporary folder" } ] },
+              { "agent": "codex", "sessions": 2, "bytes": 800, "from": 1759100000000, "to": 1759150000000, "folders": [
+                { "cwd": "/home/alex/Work/northwind", "name": null, "sessions": 2, "bytes": 800, "from": 1759100000000, "to": 1759150000000, "ticked": true } ] }
+            ]
+          }
+        ]
+      }
+    }
   },
   "onboard.name": {
     "$by": "action",

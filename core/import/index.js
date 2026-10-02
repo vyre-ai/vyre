@@ -32,6 +32,9 @@ export default {
     /** @type {Map<string, { at: number, files: string[], sessions: number, bytes: number, folders: string[] }>} */
     const plans = new Map();
     let last = null;
+    /** @type {{ at: number, value: any } | null} */
+    let offered = null;
+    const OFFER_TTL_MS = 60_000;
 
     const roots = extra => {
       // <home>/synced holds other devices' sessions: never offered as this device's own.
@@ -51,24 +54,43 @@ export default {
       return list.map(p => ({ slug: String(p.slug), name: String(p.name || p.slug), folders: (Array.isArray(p.folders) ? p.folders : p.home ? [p.home] : []).map(String) }));
     };
 
+    /** What this device holds, by source and folder (never turn text). `folders` adds roots the person named; a box-asked offer passes none. */
+    const scanDevice = async (/** @type {string[] | undefined} */ folders, remember = true) => {
+      const ps = await projects().catch(() => []);
+      const projectOf = cwd => {
+        let best = null;
+        for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, name: p.name, len: f.length };
+        return best ? { slug: best.slug, name: best.name } : null;
+      };
+      // Left out before anything is listed (e2e): Vyre's own folders, and folders the person
+      // excluded from memory (memory.personal.skipCwds) or from imports (import.exclude).
+      const exclude = [...(ctx.config.memory?.personal?.skipCwds || []), ...(ctx.config.import?.exclude || [])].filter(x => typeof x === "string");
+      const candidates = ps.flatMap(p => p.folders);
+      const r = scan(roots(folders), { projectOf, candidates, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
+      // Only the person's own scan feeds import.plan: a box's offer never changes what the Mac would import.
+      if (remember) last = { at: Date.now(), files: r.files };
+      return { sources: r.sources, left_out: r.left_out, capped: r.capped, claude_keeps_days: keepsDays() };
+    };
+
     ctx.tool("import.scan", {
       description: "The coding-agent sessions on this device (Claude Code, Codex, Gemini CLI; each source is tagged with its agent), by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).",
       input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
-      run: async ({ folders } = {}) => {
-        const ps = await projects().catch(() => []);
-        const projectOf = cwd => {
-          let best = null;
-          for (const p of ps) for (const f of p.folders) if ((cwd === f || cwd.startsWith(f.replace(/\/+$/, "") + "/")) && (!best || f.length > best.len)) best = { slug: p.slug, name: p.name, len: f.length };
-          return best ? { slug: best.slug, name: best.name } : null;
-        };
-        // Left out before anything is listed (e2e): Vyre's own folders, and folders the person
-        // excluded from memory (memory.personal.skipCwds) or from imports (import.exclude).
-        const exclude = [...(ctx.config.memory?.personal?.skipCwds || []), ...(ctx.config.import?.exclude || [])].filter(x => typeof x === "string");
-        const candidates = ps.flatMap(p => p.folders);
-        const r = scan(roots(folders), { projectOf, candidates, exclude, isDev: cwd => VYRE_DIR.test(cwd), quick: root ? path.join(root, "quick") : null, ask: root ? path.join(root, "capsule", "ask") : null });
-        last = { at: Date.now(), files: r.files };
-        return { sources: r.sources, left_out: r.left_out, capped: r.capped, claude_keeps_days: keepsDays() };
+      run: async ({ folders } = {}) => scanDevice(folders),
+    });
+
+    // What a paired box may ask of this device (the link allowlist): the same listing as import.scan, but only this device's own agent
+    // folders and never a folder the caller names, so a box can read counts and dates and nothing more (#26).
+    ctx.tool("import.offer", {
+      description: "What this device holds of Claude Code, Codex, Gemini CLI and Grok history, by source and project folder: counts, sizes and dates, never what was said. For the paired box (through the link), which cannot name a folder to look in.",
+      input: { type: "object", properties: {} },
+      callers: ["module"],
+      // Kept for a minute (reviewer-2): a box that asks again and again does not make this device rescan a large history each time.
+      run: async () => {
+        if (offered && Date.now() - offered.at < OFFER_TTL_MS) return offered.value;
+        const value = await scanDevice(undefined, false);
+        offered = { at: Date.now(), value };
+        return value;
       },
     });
 

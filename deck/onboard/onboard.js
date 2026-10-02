@@ -27,9 +27,9 @@ const STEPS = [
   { id: "tailscale", title: "Tailscale" },         // 2a
   { id: "name", title: "Your address" },           // 2b
   { id: "claude", title: "Claude Code" },          // 3
-  { id: "history", title: "Your history" },        // 4
   { id: "accounts", title: "Connect accounts" },   // 6
   { id: "devices", title: "Your devices" },        // 9
+  { id: "history", title: "Your history" },        // 4: after devices (the lead, 2 Oct 2026, #26): pair your computers first, then import their history
   { id: "capsule", title: "Lumen" },         // 10
 ];
 
@@ -818,7 +818,7 @@ const SCREENS = {
   history(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Your history."),
-      h("p", { class: "lead" }, "Vyre finds the Claude Code sessions already on this machine, so you can search and ask about your own work as soon as it reads them."));
+      h("p", { class: "lead" }, "Vyre finds the Claude Code sessions already on this server, and the history on your own computer once you pair it, so you can search and ask about your own work."));
     const body = h("div", { class: "ob-panel" });
     col.append(body);
     attempt("onboard.history", { action: "start" });
@@ -851,7 +851,7 @@ const SCREENS = {
       put(body,
         h("p", { class: "lbl" }, "What Vyre found"),
         sources.length === 0 || sources.every(src => !src.folders.length)
-          ? empty("No Claude Code sessions found on this machine yet. Start one with claude and come back.")
+          ? empty("Nothing found on this server yet. Pair your Mac in the next step and import from there, or start a session with claude here and come back.")
           : sources.filter(src => src.folders.length).map(src => h("div", { style: { marginBottom: "16px" } },
             h("p", { class: "small muted", style: { padding: "8px 0 0" } }, src.path),
             h("div", { class: "rows" }, src.folders.map(f => {
@@ -866,6 +866,23 @@ const SCREENS = {
         leftCount ? h("p", { class: "small muted", style: { marginTop: "4px" } },
           `${plural(leftCount, "session")} from Vyre's own development and excluded folders never left the device and aren't listed.`) : null);
       syncFoot();
+      // The person's own computers (#26): what each paired Mac holds, by project, counts and dates, asked through the link. The choosing and the
+      // sending happen in Lumen on that Mac (its Import screen), so this is a read-only list and one honest sentence, never a Done with nothing found.
+      const dv = await attempt("onboard.history", { action: "devices" });
+      if (!dv.error && dv.data) {
+        const devs = Array.isArray(dv.data.devices) ? dv.data.devices : [];
+        body.append(
+          h("p", { class: "lbl", style: { marginTop: "20px" } }, "Your computers"),
+          h("p", { class: "small" }, dv.data.summary || ""),
+          ...devs.filter((/** @type {any} */ d) => d.agents && d.agents.length).map((/** @type {any} */ d) => h("div", { style: { marginBottom: "16px" } },
+            h("p", { class: "small muted", style: { padding: "8px 0 0" } }, `${d.name}: open Lumen on your Mac to choose what to import.`),
+            h("div", { class: "rows" }, d.agents.flatMap((/** @type {any} */ g) => g.folders.map((/** @type {any} */ f) =>
+              h("div", { class: "pick" }, h("span", { class: "x" },
+                h("span", { class: "ellipsis" }, `${f.name || f.cwd || "unknown folder"} · ${g.agent}`),
+                h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · latest ${when(f.to)}` + (f.why ? ` · ${f.why}` : ""))))))))),
+          devs.some((/** @type {any} */ d) => d.agents && d.agents.length) ? h("p", { class: "small muted", style: { marginTop: "8px" } }, "Your history stays on that computer until you choose what to send.") : null
+        );
+      }
     };
 
     const drawChoose = async (/** @type {Source[]} */ sources) => {
