@@ -260,20 +260,17 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
   .ph-mark { display: inline-flex; flex-shrink: 0; }
   .ph-mark circle { fill: var(--mark-dot) !important; }
   .ph-head[data-needs] .ph-mark circle { fill: var(--beacon-dot) !important; }
-  .ph-tabs { display: flex; align-items: center; gap: 16px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-  .ph-tabs::-webkit-scrollbar { display: none; }
-  .ph-tab { display: inline-flex; align-items: center; min-height: 44px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em;
-    color: var(--label); text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
-  .ph-tab[aria-current="page"] { color: var(--text); }
+  /* The page's own name, in Page type; the glass tab bar below says where you are (css/tabbar.css). */
+  .ph-title { margin: 0; min-width: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ph-grow { flex-grow: 1; }
-  .ph-avatar, .ph-plus { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  .ph-avatar, .ph-plus, .ph-search { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
     padding: 0; border: none; background: transparent; color: var(--text); cursor: pointer; }
   .ph-initial { width: 34px; height: 34px; border-radius: 17px; display: inline-flex; align-items: center; justify-content: center;
     background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text); font-size: 15px; line-height: 20px; font-weight: 600; }
   .ph-back { display: none; align-items: center; gap: 2px; height: 44px; margin-left: -8px; padding: 0 8px 0 2px; border: none; background: transparent;
     color: var(--text); font-size: 17px; line-height: 22px; cursor: pointer; }
   #deck[data-at="pushed"] .ph-back { display: inline-flex; }
-  #deck[data-at="pushed"] :is(.ph-mark, .ph-tabs, .ph-avatar, .ph-plus) { display: none; }
+  #deck[data-at="pushed"] :is(.ph-mark, .ph-title, .ph-avatar, .ph-plus, .ph-search) { display: none; }
   #deck[data-at="pushed"][data-own-back] .ph-head, #deck[data-at="find"] .ph-head { display: none; }
 
   /* The pager: the three pages side by side, native scroll that snaps a page at a time. */
@@ -340,7 +337,7 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 /* Reduce Motion: pages and pushed screens crossfade; nothing slides (js/app.js picks ph-fade). */
 @media (prefers-reduced-motion: reduce) {
   .pager { overflow-x: hidden; scroll-behavior: auto; }
-  .ph-tab { transition: none; }
+  .tb-item { transition: none; }
   .cap-rise.going, .ph-settle { transition: none; }
 }
 @media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) { .phone-head { display: none; } }

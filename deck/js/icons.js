@@ -5,6 +5,7 @@
 const P = {
   now: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>',
   drive: '<path d="M3.8 7.2V11L8 13.5 12.2 11V7.2"/><path d="M8 8.9v4.6"/><path d="M8 2.7L12.2 5 8 7.4 3.8 5z"/>',
+  more: '<circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/>',
   projects: '<path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/>',
   memory: '<circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/><circle cx="12.5" cy="12" r="1.3"/><path d="M5.5 10.3l5-4.6M5.9 11.7h5.3"/>',
   agents: '<rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/>',

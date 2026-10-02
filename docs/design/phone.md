@@ -15,7 +15,9 @@ on work/deck-design e1428b1), pasted verbatim; this file adds only phone roles, 
 behaviour. Desktop (the Deck) shares the same tokens and
 chat items, so a card looks the same on both.
 
-Decision (2026-09-27): Direction B's shell (no tab bar, pages you swipe between, the floating
+UPDATE (2 Oct 2026, v2, team/0.2.2/ux-prototype.html, approved by the user): the phone now has a glass tab bar of five (Now, Chat, Projects, Agents, More); More is a sheet (Planner, Memory, Vault, Drive, Devices, Settings); the header carries the page title, search and the avatar; Lumen floats above the bar. Where this page says "no tab bar", the update wins.
+
+Decision (2026-09-27, superseded for the tab bar): Direction B's shell (no tab bar, pages you swipe between, the floating
 Capsule with hold-to-talk) with Direction A's screens (Chat, Find, Agents, the approval sheet).
 Now is A's grouped "Needs you" list: every row swipes to approve or deny and opens a detail sheet
 with Open session. The screens feel native to iOS: sentence-case sans type, grouped cards,
