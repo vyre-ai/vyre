@@ -73,6 +73,33 @@ public struct BundledSetup: Equatable {
         return e
     }
 
+    /// Nil when this setup is safe to run as the person's install (it ends with one sudo), else the reason it is not. The files must be
+    /// ordinary (no links) and writable by nobody but the person. Inside the app, the app's own signature must still verify, so a file
+    /// changed after the build refuses to run. (An ad hoc signature can be redone by whoever changed the file; a Developer ID one cannot
+    /// be redone without that certificate, which is why the release is signed with one.)
+    public func problem(bundle: String? = Bundle.main.bundlePath, runner: (String) -> Bool = BundledSetup.codesignOK) -> String? {
+        let fm = FileManager.default
+        for name in ["install-mac-server.sh", "vyre-sudo", "askpass"] + (nodeTgz.map { [($0 as NSString).lastPathComponent] } ?? []) {
+            let path = dir + "/" + name
+            guard let a = try? fm.attributesOfItem(atPath: path) else { return "\(name) is missing from the setup" }
+            if a[.type] as? FileAttributeType != .typeRegular { return "\(name) is not an ordinary file" }
+            if let perm = a[.posixPermissions] as? NSNumber, perm.intValue & 0o022 != 0 { return "\(name) can be changed by others" }
+        }
+        if let bundle, dir.hasPrefix(bundle + "/"), !runner(bundle) { return "this app's signature no longer verifies, so the setup inside it will not run. Download Lumen again." }
+        return nil
+    }
+
+    /// `codesign --verify --deep --strict` on the app: true when it passes.
+    public static func codesignOK(_ bundle: String) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        p.arguments = ["--verify", "--deep", "--strict", bundle]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
     /// The setup folder inside this app, or VYRE_CAPSULE_SETUP_DIR (tests, and a hand-run check). Nil when there is none.
     public static func locate(env: [String: String] = ProcessInfo.processInfo.environment, resources: String? = Bundle.main.resourcePath) -> BundledSetup? {
         let dir = env["VYRE_CAPSULE_SETUP_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? resources.map { $0 + "/setup" }
@@ -115,6 +142,10 @@ extension CapsuleModel {
             // Mac password in a dialog (not a terminal). Only when the app was built with it; otherwise the old words.
             guard let setup = setupOverride ?? BundledSetup.locate() else {
                 run.finish(nil, failure: "Lumen could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
+                return
+            }
+            if let why = setupOverride == nil ? setup.problem() : nil {
+                run.finish(nil, failure: "Lumen will not run its setup: \(why)")
                 return
             }
             Task { @MainActor in

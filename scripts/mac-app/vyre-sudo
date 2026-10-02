@@ -1,6 +1,13 @@
 #!/bin/sh
-# vyre-sudo: what Lumen sets as VYRE_SUDO for install-mac-server.sh. sudo, asking through the dialog instead of a terminal.
+# vyre-sudo: what Lumen sets as VYRE_SUDO for install-mac-server.sh: sudo, asking for the password in a dialog instead of a
+# terminal, and nothing else. It runs exactly one shape of command, the one the installer's single root step uses
+# (`/bin/sh -c <script> ...`, the root installer, which checks the signed release before it does anything). Any other command
+# is refused, so this file cannot be used to run a different program as root.
 here="$(cd "$(dirname "$0")" && pwd)"
+if [ "$1" != /bin/sh ] || [ "$2" != -c ]; then
+  echo "vyre-sudo: refused: it runs only the installer's root step" >&2
+  exit 126
+fi
 SUDO_ASKPASS="$here/askpass"
 export SUDO_ASKPASS
 exec /usr/bin/sudo -A "$@"

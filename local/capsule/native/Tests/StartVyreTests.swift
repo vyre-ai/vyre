@@ -201,4 +201,25 @@ let startVyreSuite = Suite("start vyre") { t in
             m.vyred.follower.stop()
         }
     }
+
+    t.test("the bundled setup refuses to run when a file is a link, is writable by others, or the app's signature no longer verifies") {
+        let dir = vyScratch("setup-safe-\(UUID().uuidString.prefix(6))")
+        for n in ["install-mac-server.sh", "vyre-sudo", "askpass"] {
+            FileManager.default.createFile(atPath: dir + "/" + n, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        }
+        let s = BundledSetup(dir: dir, nodeTgz: nil, args: ["--yes"])
+        t.eq(s.problem(bundle: nil), nil, "ordinary files, outside an app: fine")
+        try? FileManager.default.setAttributes([.posixPermissions: 0o775], ofItemAtPath: dir + "/vyre-sudo")
+        t.ok(s.problem(bundle: nil)?.contains("vyre-sudo can be changed") == true, "group-writable is refused")
+        try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dir + "/vyre-sudo")
+        try? FileManager.default.removeItem(atPath: dir + "/askpass")
+        try? FileManager.default.createSymbolicLink(atPath: dir + "/askpass", withDestinationPath: "/bin/echo")
+        t.ok(s.problem(bundle: nil)?.contains("askpass is not an ordinary file") == true, "a link is refused")
+        try? FileManager.default.removeItem(atPath: dir + "/askpass")
+        FileManager.default.createFile(atPath: dir + "/askpass", contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        let app = (dir as NSString).deletingLastPathComponent
+        t.eq(s.problem(bundle: app, runner: { _ in true }), nil, "inside an app whose signature verifies")
+        t.ok(s.problem(bundle: app, runner: { _ in false })?.contains("signature no longer verifies") == true, "inside an app that no longer verifies: refused")
+        t.ok(s.problem(bundle: "/somewhere/else", runner: { _ in false }) == nil, "not inside that app: the signature is not asked about")
+    }
 }
