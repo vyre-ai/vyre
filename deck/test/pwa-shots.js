@@ -163,6 +163,20 @@ const SCREENS = [
       if (document.querySelectorAll('.pager .pager-slot').length !== 4) throw new Error('the pager still has a fifth page');` },
 ];
 
+// The Deck v2 passes, for showing the user the real thing (the sample world's data): Now, Chat, a thread, Projects, a project, Planner, Settings > Devices, in both
+// themes. Run with ONLY="^v2-" and DESKTOP=1440x900 for the laptop and the phone together.
+for (const [theme, suffix] of [[undefined, ""], ["paper", "-paper"]]) {
+  const t = theme ? { theme } : {};
+  SCREENS.push(
+    { name: "v2-now" + suffix, path: "/now", wait: 3500, ...t },
+    { name: "v2-chat" + suffix, path: "/chat", wait: 3000, ...t },
+    { name: "v2-thread" + suffix, path: "/chat", shell: "pushed", ...t, script: `await waitFor('.chat-recent a.thread-row', 8000); await click('.chat-recent a.thread-row'); await wait(3000);` },
+    { name: "v2-projects" + suffix, path: "/projects", wait: 3000, ...t },
+    { name: "v2-project" + suffix, path: "/projects/harlow-legal", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-planner" + suffix, path: "/planner", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-devices" + suffix, path: "/settings#devices", shell: "pushed", wait: 3500, ...t });
+}
+
 let failed = 0;
 for (const dev of DEVICES) {
   for (const s of SCREENS) {

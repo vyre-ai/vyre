@@ -8,6 +8,9 @@ on:
     branches: ["work/*-shots"]
   workflow_dispatch:
     inputs:
+      desktop:
+        description: "Laptop sizes to add, e.g. 1440x900 (empty: phones only)"
+        required: false
       only:
         description: "A regex on screen names (empty: all)"
         required: false
@@ -31,7 +34,9 @@ jobs:
       # docs-shots does, and the step waits for the exit code.
       - name: pwa-shots (detached from the runner's process tree)
         env:
-          ONLY: ${{ github.event.inputs.only }}
+          # A push to a work/*-shots branch takes the Deck v2 screens at the laptop and the phone; a manual run says what it wants.
+          ONLY: ${{ github.event_name == 'push' && '^v2-' || github.event.inputs.only }}
+          DESKTOP: ${{ github.event_name == 'push' && '1440x900' || github.event.inputs.desktop }}
         run: |
           rm -f "$RUNNER_TEMP/shots.exit"
           cat > "$RUNNER_TEMP/run-shots.sh" <<'SH'
@@ -48,9 +53,7 @@ jobs:
           CDP=http://127.0.0.1:9422 node deck/test/pwa-shots.js http://127.0.0.1:4790 "$RUNNER_TEMP/out"
           CODE=$?
           # Below 720 px the Deck is the phone layout at every width, on every place (deck/test/phone-widths.js).
-          if [ -z "${ONLY:-}" ]; then
-            CDP=http://127.0.0.1:9422 node deck/test/phone-widths.js http://127.0.0.1:4790 || CODE=1
-          fi
+          CDP=http://127.0.0.1:9422 node deck/test/phone-widths.js http://127.0.0.1:4790 || CODE=1
           kill $WORLD $CHROME 2> /dev/null
           echo $CODE > "$RUNNER_TEMP/shots.exit"
           SH
