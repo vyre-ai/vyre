@@ -252,3 +252,27 @@ test("harness: without the Gate running, an agent's send falls back to asking", 
   const r = (await reg.call("harness.rules", { tool_name: "mcp__mail__send_message", tool_input: { to: "dana@harlowlegal.com" }, agent: "juno" })).data;
   assert.equal(r.decision, "ask");
 });
+
+test("harness: an assistant outside any project reads the whole account for its prompt, a person's own session outside one reads the unfiled room (#46)", async t => {
+  const projects = `export default { async start(ctx) {
+    ctx.tool("projects.of", { run: async () => null });
+    ctx.tool("projects.context", { run: async () => ({ project: null, candidates: [], text: "" }) });
+    return {};
+  } };`;
+  const memory = `export default { async start(ctx) {
+    globalThis.__asked = [];
+    ctx.tool("memory.relevant", { run: async (input) => { globalThis.__asked.push(input); return [{ text: "The owner prefers short replies", source: "an earlier session", age: "3 days", confidence: 0.8 }]; } });
+    return {};
+  } };`;
+  const { reg } = await harness(t, [
+    ["projects", { version: "0.1.0", does: { tools: ["projects.of", "projects.context"] } }, projects],
+    ["memory", { version: "0.1.0", does: { tools: ["memory.relevant"] } }, memory],
+  ]);
+  const asked = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__asked);
+  const a = (await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex", projects: "*" })).data.text;
+  assert.match(a, /The owner prefers short replies/);
+  assert.match(a, /an earlier session/, "the fact comes with its source");
+  assert.equal(asked().at(-1).room, undefined, "the assistant's read is not narrowed to the unfiled room");
+  await reg.call("harness.enrich", { prompt: "how should you reply to me?", cwd: "/home/alex" });
+  assert.equal(asked().at(-1).room, "unfiled", "a person's own session outside a project still reads the unfiled room");
+});
