@@ -208,7 +208,7 @@ vyre threads start|send|list|get|watch|queue|take-back|send-now|edit|interrupt|m
 
 Running a session vyred owns:
   vyre threads start [prompt] [--cwd D | --project P] [--name N] [--model M] [--purpose P]
-                                                    purpose: chat, agent, project, teammate, capsule, job, memory, planner, learn, helper
+                                                    purpose: chat, agent, project, capsule, job, memory, planner, learn
   vyre threads send <thread> <text>                 mid-turn, vyred joins it to the running turn
   vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)
   vyre threads send <thread> --steer <text>         join the running turn at its next step
@@ -266,7 +266,7 @@ vyre sessions [status]                          the driver, sign-in, Claude Code
   vyre sessions models                            the model each kind of session runs on
   vyre sessions models <purpose|project> <model>  set one (opus, sonnet, haiku or a model id)
   vyre sessions models <purpose|project> --clear  back to the default
-                                                  purposes: chat, agent, project, teammate, capsule, job, memory, planner, learn, helper
+                                                  purposes: chat, agent, project, capsule, job, memory, planner, learn
   vyre sessions prompt [scope] [show]             what sessions are told at one level
   vyre sessions prompt [scope] set [--text T | --file F] [--replace] [--note N]
                                                   a new version; with neither, opens $EDITOR
