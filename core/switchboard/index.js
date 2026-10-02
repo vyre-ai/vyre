@@ -28,10 +28,11 @@ import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
-import { Leases } from "./lease.js";
+import { Leases, ownSurface } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
@@ -2525,6 +2526,30 @@ function imagesOf(list) {
  * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
  * @param {string} [caller]
  */
+/**
+ * Who is typing, as the keyboard lease sees it. Identity comes from the caller vyred verified, never from what the call says about itself:
+ *  - the owner (a tailnet:<login> whose login is the recorded network.owner, or a relay-paired device:<id>) is the person's own surface: "deck" or
+ *    what they name among deck, phone, capsule, glass, lumen, mac, web (anchored). The login is compared with the recorded owner, not matched by prefix;
+ *  - a person's own socket callers (cli, deck, capsule, local) say which of their surfaces they are in `surface`;
+ *  - anything else (a model's mcp or harness call, a module, a hook, a guest, an agent's node, another login, an anonymous label) is its own label and
+ *    can never claim one of the person's surfaces with `surface`: a name that would is replaced by "via:<label>", which contests like any other.
+ * The link's words are always the box's surface, whatever the input says.
+ * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
+ */
+export function surfaceFor(input, caller, owner) {
+  const c = String(caller || "");
+  const asked = String((input && input.surface) || "");
+  const o = String(owner || "").trim().toLowerCase();
+  const login = /^tailnet:(?!agent:)(.+)$/.exec(c);
+  const verifiedOwner = Boolean(login && o && login[1].trim().toLowerCase() === o) || /^device:[a-z2-7]{16}$/.test(c);
+  const claim = (/** @type {string} */ x) => ownSurface(x) || /^(?:tailnet|tailnet-guest|device):/.test(x);
+  let s;
+  if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
+  else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
+  else s = asked && !claim(asked) ? asked : asked ? `via:${c || "vyre"}` : (c || "vyre");
+  return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
+}
+
 export const fromLink = caller => /^link:/.test(String(caller || ""));
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -2679,13 +2704,7 @@ export default {
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => {
-      let s = String(input.surface || caller || "vyre");
-      // The owner's own tailnet login (the only login the listener admits) is the person at their Deck: one participant, never "tailnet:<login>".
-      if (/^tailnet:(?!agent:)/.test(s)) s = "deck";
-      // The link's words are always the box's surface, whatever the input says.
-      return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
-    };
+    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner);
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;

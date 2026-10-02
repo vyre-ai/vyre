@@ -34,11 +34,11 @@ export function pidAlive(pid) {
 const cliPid = surface => { const m = /^cli:(\d+)$/.exec(String(surface)); return m ? Number(m[1]) : 0; };
 
 /**
- * A person's own surfaces (their Deck, phone, Capsule, Glass, Mac, a tailnet login) are one participant: they never lock each other out.
+ * A person's own surfaces (their Deck, phone, Capsule, Glass, Lumen, Mac, web) are one participant: the names are anchored, and a surface only ever gets one of them from the caller vyred verified (surfaceOf in index.js), never from what a call says about itself. A tailnet login or a paired device is mapped to one there. They are one participant: they never lock each other out.
  * The keyboard is contested only between that person and a terminal process, an agent, another box or another person.
  * @param {string} surface
  */
-export const ownSurface = surface => /^(?:tailnet:(?!agent:)|device:|deck|phone|capsule|glass|lumen|mac|web|chat$|person$|you$|vyre$)/.test(String(surface));
+export const ownSurface = surface => /^(?:deck|phone|capsule|glass|lumen|mac|web)(?::|$)/.test(String(surface));
 const sameKeyboard = (a, b) => a === b || (ownSurface(a) && ownSurface(b));
 
 export class Leases {
