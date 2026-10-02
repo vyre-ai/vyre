@@ -1,0 +1,17 @@
+{
+  "_comment": "Real WebAuthn capture, 2026-10-02: Windows 11 Enterprise build 26100 (evaluation VM, software TPM, Windows Hello PIN), Microsoft Edge calling navigator.credentials.create then get against a throwaway localhost relying party (rpId localhost, origin http://localhost:8765). Edge reaches Windows Hello through the same webauthn.dll platform authenticator WebView2 uses, but this was Edge, not the Vyre app's WebView2. Attestation fmt is packed (alg -257, no x5c), user verification required. Throwaway credential, no secrets. The assertion was made over assertionChallenge, a fresh challenge; challenge is the registration one. Every binary field is base64url.",
+  "rpId": "localhost",
+  "origin": "http://localhost:8765",
+  "challenge": "OVxHCqkZBTKPqwWFufiRzVlEKmXBAgg1jYlSqfppFbo",
+  "assertionChallenge": "kDa_ytCM6Vo9SzRkdr3wQI_3wNayp_OK9LNmIYGAEVo",
+  "registration": {
+    "credentialId": "YzoJikMX3ucHplOrXygAQU7UKePC-QI8bN4tkXODrq4",
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiT1Z4SENxa1pCVEtQcXdXRnVmaVJ6VmxFS21YQkFnZzFqWWxTcWZwcEZibyIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODc2NSIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+    "attestationObject": "o2NmbXRmcGFja2VkZ2F0dFN0bXSiY2FsZzkBAGNzaWdZAQAa5MINeLgZJjLY3DLnnDEBAQUQc2nx1Q5G2s37a9ItHSKnU16z5knc_LGKiJolfJ4wQbOUQ-vwbmtIXZ1olOewzrZlCOyLSSk22LCqdeyKypV-0Qic_L9Xy293SYoXvUr93xzes91AaUX6TkHJr7OWJxmMZ-uOqO1gpvyi_SN7spm-WBCSmWqUJnl_QspB3uujk0ILDTGYQgRl3WueEePBV4cfn4XT2ELEuryVmf9IbYs3h1iVL4lAGznN-aTnO7qqlDAndbghkyXiDXRiezxsaBrR5kvbzIPlfMMOwRs9z8d80uKjxH4XXbXMqJ1amFrrgLqfmnibctLq9ynlawfwaGF1dGhEYXRhWQFnSZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAAiYcFjK3EuBtuEw3lDcvpYAIGM6CYpDF97nB6ZTq18oAEFO1CnjwvkCPGzeLZFzg66upAEDAzkBACBZAQCipU__6TdMTvX4VDcAFYVInBhNB6HVtRyGEYW_1-qmmisKYrQauGL8c4A4QSQy2Z5i2W5PYyrC1q4BlkkfnuS1OAdqTijQp8QaXgUBfIvw3paG0NNiEOgEkwL6GtlqmP-4xTHvkFzACl6bYXgdjBVns397vfRGyvtG_Hr8nI_2Kvxo1m1FkrEhsTvhMXGP7asF-q8AAUT3SCCjlgmu1u4XjpB-FW4XSye4jpJKQrioJQJvzKQfXRQMKS5FCwZT1Ff_TqwkFWZ6Y3zK-rUgCnj_JUC8e6W1OrIiN4SOexLc7BokglzTY8yWrZPxnOSC7V14rkSkSbu1RX-dCqGF3qcPIUMBAAE"
+  },
+  "assertion": {
+    "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoia0RhX3l0Q002Vm85U3pSa2RyM3dRSV8zd05heXBfT0s5TE5tSVlHQUVWbyIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6ODc2NSIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+    "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MFAAAAAg",
+    "signature": "nDoVl8-dUU58LNJGpHx01VLvUgnLOfMszkJfthsXnK8qezlqKonJPeK8YWbAIXpeaIkgHMNDBnNHl4wJxsgwzzp8PrjZ8nxG_xq1poUjM7f2jrdGXZ8HTkrywn8KxRmcL9qsoQCi5HFeT-GAUiubUTcigZg9BoGtkYHUndYCsTGRg3N9eA5rNb4BmmNbUXhS95aqSk3cSC7bPJrD0FCzM1-8pW6_WzHG63raNn__RbNJn0pwq2kJJ0ZfkW2cORddiNbDNq0CmLFOLMAU42WB0lXrrjV8Ps0T23hqcA-qXolfQTyrSz3ABmXGMQZ9Yl-ckyE85uhuJQn81qwyNDP_Ew"
+  }
+}
