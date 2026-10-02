@@ -304,7 +304,7 @@ export class Vault {
    *   testKdf: tests only, a cheap password KDF (`{ kdf: "argon2id", m, t, p }`) used for a new
    *   account and allowed on unlock. Nothing outside a test passes it; the defaults never drop.
    */
-  constructor({ db, dir, config, emit, log = () => {}, testKdf = null }) {
+  constructor({ db, dir, config, emit, log = () => {}, testKdf = null, clock = Date.now }) {
     this.db = db; this.dir = dir; this.log = log;
     /** Set by sync (devices.js): told of every event, so a local write can be pushed. */
     /** @type {((type: string, payload: any) => void) | null} */ this.onEmit = null;
@@ -344,6 +344,8 @@ export class Vault {
     this.shared = new Shared(this);
     /** This person's other devices: join, approve, and syncing items between them (devices.js). */
     this.devices = new Devices(this);
+    /** The time agent grants expire by; tests pass a fake one instead of sleeping. */
+    this.clock = clock;
     /** Agent logins (ADR 0028, decision 2). */
     this.agents = new AgentGrants(this);
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */

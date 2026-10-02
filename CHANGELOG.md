@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(vault) #77: agent grants read the time from the vault's `clock` (default `Date.now`), and "an expired grant is out of force" moves a fake clock instead of sleeping, so it can no longer flake.
 - ci(matrix): J2b update refusals, J2c cosign refusals, J5 (the phone QR, a Needs-you push, removing a device) and J1/J6/J7/J8 as jobs of the full matrix workflow, plus matrix-j5.yml and matrix-update-refusals.yml. Harness only (e2e2).
 - test(matrix): J2 upgrade fits 0.1.1's wrapper (no --print-link, update without --yes, rollback with it) and reads the seeded fact through memory.me; J8 checks the sealed export, an uninstall that keeps and deletes with an audit, and an import into a fresh box. Harness only (e2e2).
 - test(matrix): J1 box advertises the setup page's loopback relay host through a forwarder in its network namespace, J1 asserts the page requests no private address beyond the stand-in origins, J1b names the box with `vyre setup --name --yes`, the Mac lane gets one fresh onboarding link per device (fetch-link.sh, link-server.py), and Safari open waits up to 20 s for the page. Harness only (e2e2).
