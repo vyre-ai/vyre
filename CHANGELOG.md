@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- `watchers.test` on a real event (a webhook's body) is refused for every model caller by a positive
+  check on who is asking: an agent claim, a verified Vyre thread (meta.thread or a thread claim in the
+  caller label), a bare model session and the harness; only the person's own surfaces may. Tested
+  through the real module and registry.
+
 - test(update): the update-refusals candidate is built as 8.0.0-e2e.1, not 0.2.0-e2e.1. The updater's version compare ignores the suffix, so once 0.2.0 was a stable release the stripped wrapper really updated the test box to it and S3 and S4 failed; a real release is now older than the candidate and refused as a downgrade. S4 (a hand-run update, which may go back) no longer demands the box stay put: it must not end on the local 9.9.9 release or name the local port. Closes #12.
 - fix(sessions): Claude's sign-in takes the code the page shows, which is <code>#<state> (up to 512 characters, with # and the URL-safe and base64 marks; still never a space or a control character). The old check refused the # and so refused every real code. fixes #10
 #### app.vyre.run: Add to Home Screen installs the app, not a bookmark
