@@ -233,7 +233,7 @@ async function freeZone(t) {
   });
 }
 
-test("onboard: step 1 saves your name and the assistant's; a name that fits becomes the vyre.run candidate", async t => {
+test("onboard: step 1 saves your name and the assistant's; the address is never taken from the name (#50)", async t => {
   const { root } = await box(t);
   const { url, port } = (await call("onboard.link", {}, { root })).data;
   const base = `http://127.0.0.1:${port}`;
@@ -247,19 +247,20 @@ test("onboard: step 1 saves your name and the assistant's; a name that fits beco
   const long = await (await tool(base, session, "onboard.you", { name: "Alex Smith", assistant: "juno" })).json();
   assert.equal(long.data.state, "done", JSON.stringify(long.error));
   assert.equal(long.data.person, "Alex Smith");
-  assert.equal(long.data.name, null, "no Cloudflare token needed, and a name with a space is no candidate");
+  assert.equal(long.data.name, null, "the box's own address name is not the person's");
   assert.equal(saved().name, undefined);
 
   const you = await (await tool(base, session, "onboard.you", { name: "Alex", assistant: " juno " })).json();
   assert.equal(you.data.person, "Alex");
-  assert.equal(you.data.name, "alex", "the typed name, lowercased, is the default candidate");
+  assert.equal(you.data.name, null, "a name that would fit as an address is still not one");
+  assert.equal(saved().name, undefined, "nothing was saved as the address");
   assert.equal(you.data.assistant, "juno");
   assert.equal(saved().onboard.person, "Alex");
   await tool(base, session, "onboard.you", { name: "Sam" });
-  assert.equal(saved().name, "sam", "Continue with a new name confirms it, while no address serves yet");
+  assert.equal(saved().name, undefined, "a new name never becomes the address");
   const s = (await (await tool(base, session, "onboard.status")).json()).data;
   assert.equal(s.steps.you, "done");
-  assert.equal(s.name, "sam");
+  assert.equal(s.name, "Sam", "status name is the person");
   assert.equal(s.person, "Sam");
   assert.equal(s.assistant, "juno");
   assert.equal(s.current, "claude");
@@ -775,4 +776,44 @@ test("onboard: the named assistant is made at the You step, takes the Claude ste
   assert.equal(made[0].auth, "api-key", "it took the Claude step's Vault item");
   assert.equal((await (await tool(base, session, "onboard.assistant")).json()).data.state, "made");
   assert.equal((await agents()).filter(x => x.kind === "assistant").length, 1);
+});
+
+test("onboard: the box holds the setup step list: skips and passes are kept, the name is the person and never the address, and the assistant retry is the same tool", async t => {
+  const { root } = await box(t, { vault: { keystore: "file" } });
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const base = `http://127.0.0.1:${port}`;
+  const { session } = await redeem(url);
+  const setup = async (input = {}) => (await (await tool(base, session, "onboard.setup", input)).json());
+  const fresh = (await setup()).data;
+  assert.deepEqual(fresh.steps.map(s => s.id), ["install", "words", "address", "tailscale", "ai", "phone", "passkey", "assistant", "computers", "history"]);
+  assert.equal(fresh.steps[0].status, "done", "the box is installed if it answers");
+  assert.ok(fresh.current && fresh.finished === false);
+  assert.equal(fresh.name, null, "no name yet");
+  // Skipping keeps the step listed; only ai, phone, computers and history can be skipped; history is passed by the person.
+  const skipped = (await setup({ skip: "phone" })).data;
+  assert.equal(skipped.steps.find(s => s.id === "phone").status, "skipped");
+  assert.deepEqual(skipped.skipped, ["phone"]);
+  assert.ok((await (await tool(base, session, "onboard.setup", { skip: "passkey" })).json()).error, "passkey cannot be skipped");
+  assert.equal((await setup({ skip: "ai" })).data.steps.find(s => s.id === "ai").status, "skipped");
+  assert.equal((await setup({ unskip: "ai" })).data.steps.find(s => s.id === "ai").status !== "skipped", true);
+  assert.equal((await setup({ pass: "history" })).data.steps.find(s => s.id === "history").status, "done");
+  // The setup list survives a restart of the page: it is the box's own.
+  assert.deepEqual((await setup()).data.skipped, ["phone"]);
+  // The name is the person's, any letters up to 60, and is never taken for the address (#50).
+  const before = (await call("system.info", {}, { root, caller: "cli" })).data;
+  const bad = await (await tool(base, session, "onboard.you", { name: "12345", assistant: "Kit" })).json();
+  assert.ok(bad.error, "a name needs a letter");
+  const you = await (await tool(base, session, "onboard.you", { name: "  Álex Müller  ", assistant: "Kit" })).json();
+  assert.equal(you.error, undefined, JSON.stringify(you));
+  const after = (await setup()).data;
+  assert.equal(after.name, "Álex Müller", "trimmed");
+  assert.equal(after.steps.find(s => s.id === "assistant").status, "done");
+  const status = (await (await tool(base, session, "onboard.status")).json()).data;
+  assert.equal(status.name, "Álex Müller");
+  assert.equal(status.accountName, null, "no signed-in AI account says a name");
+  assert.equal((await call("system.info", {}, { root, caller: "cli" })).data.name, before.name, "saving the person never changes the box's own name");
+  // The assistant retry the setup module calls: the same tool, {retry: true}.
+  const retry = (await (await tool(base, session, "onboard.assistant", { retry: true })).json()).data;
+  assert.equal(retry.state, "made");
+  assert.equal((await setup()).data.assistant.display, "Kit");
 });

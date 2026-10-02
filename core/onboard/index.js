@@ -13,6 +13,7 @@ import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
+import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "./steps.js";
 import { checkName } from "../names/service.js";
 import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 
@@ -271,6 +272,8 @@ export default {
       lastStates = Object.fromEntries(STEPS.map(k => [k, detail[k].state]));
       const steps = Object.fromEntries(STEPS.map(k => [k, ["done", "skipped"].includes(detail[k].state) ? detail[k].state : "todo"]));
       const current = STEPS.find(k => steps[k] === "todo") || null;
+      // The signed-in AI account's own display name, to prefill the person's name (editable; null when it says none).
+      const accountName = await aiAccount().then(a => a.name).catch(() => null);
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
@@ -278,7 +281,7 @@ export default {
       const can = canRelayJoin(process.platform);
       return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
-        host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
+        host: (t && t.node && t.node.name) || os.hostname(), name: ob().person || null, accountName, person: ob().person || null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
         // loopback page is done with and `vyre box add` may close its tunnel.
         current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
@@ -384,12 +387,10 @@ export default {
       run: async ({ name, assistant }, { caller }) => {
         boxOnly();
         const p = String(name ?? "").trim(), a = String(assistant ?? "").trim();
-        if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
+        if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p) || !/\p{L}/u.test(p)) throw new Error("your name is any letters, one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
-        const c = checkName(p);
-        // Continue is the person confirming this name, so it replaces any earlier candidate, unless
-        // an address already serves under the old one.
-        save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // The address is never derived from the person's name (#50): this saves the person and the assistant's name, nothing else.
+        save({ onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         // The assistant is made as soon as it has a name and its person exists: no second click, whatever the Claude step does later.
         if (a) await ensureAssistant();
         return stepOf("you", caller);
@@ -648,7 +649,7 @@ export default {
 
     ctx.tool("onboard.assistant", {
       description: "Make the assistant now, if it is not made: the name given in the You step, on every project. The retry for \"your assistant was not made\". Says whether it exists and, when not, why.",
-      input: obj(),
+      input: obj({ retry: { type: "boolean" } }),
       run: async (_, { caller }) => {
         boxOnly();
         const a = await ensureAssistant({ fallbackName: Boolean(ob().finished) });
@@ -694,6 +695,54 @@ export default {
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
         return { ...s, url: s.address, passkeyUrl: HANDS_CODE.has(String(caller)) && (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
+      },
+    });
+
+    /** The AI accounts that are signed in (a real account that has signed in, or the Claude step's stored token) and the first one's display name, if it says one. */
+    async function aiAccount() {
+      const l = await tryCall("sessions.accounts.list", {});
+      const rows = Array.isArray(l) ? l : [];
+      const live = rows.filter(a => a && !a.synthetic && !a.pending && (a.kind === "login" ? a.signed_in_at != null : true));
+      const who = live.map(a => a.identity && a.identity.name).find(x => typeof x === "string" && x.trim());
+      return { signedIn: live.length > 0 || Boolean(ob().claude), name: who ? String(who).trim().slice(0, 60) : null };
+    }
+
+    /**
+     * The list the page, the onboarding module and `sudo vyre setup` share (#11): the ten steps with what the box sees for each, and the person's own saved
+     * skips and passes. Cheap enough for the page to ask every couple of seconds.
+     */
+    async function setupSnapshot(caller = "local") {
+      const st = await status(caller);
+      const [setup, keys, devices, peers, ai] = await Promise.all([tryCall("relay.setup.status", {}), tryCall("presence.keys", {}), tryCall("relay.devices.list", {}), tryCall("link.peers", {}), aiAccount()]);
+      const keyList = Array.isArray(keys) ? keys : keys && Array.isArray(keys.keys) ? keys.keys : [];
+      const devList = devices && Array.isArray(devices.devices) ? devices.devices : [];
+      const people = Array.isArray(peers) ? peers : [];
+      const addressDone = st.detail.name.state === "done";
+      const tailscaleDone = st.detail.tailscale.state === "done";
+      const passkey = keyList.some(k => k && k.kind === "passkey");
+      const assistant = Boolean(ob().person);
+      // What the box cannot ask directly is told by what came after it: a step later in the list being done means the earlier ones were passed.
+      const later = addressDone || tailscaleDone || passkey || assistant || Boolean(net().ownerSeen);
+      const facts = { install: true, words: Boolean(setup && !setup.__error && setup.state === "paired") || later, address: addressDone, tailscale: tailscaleDone, ai: ai.signedIn,
+        phone: devList.some(d => d && d.kind !== "web"), passkey, assistant, computers: people.length > 0, history: false };
+      const list = setupList(facts, { skipped: ob().setupSkipped || [], passed: ob().setupPassed || [] });
+      return { ...list, name: st.name, accountName: st.accountName, address: st.address, assistant: { display: ob().assistant || null, state: ob().assistantState || null }, finished: list.finished || Boolean(ob().finished) && list.current === null };
+    }
+
+    ctx.tool("onboard.setup", {
+      description: "The setup step list the box holds: the ten steps in order, each done, current, skipped or todo, with the current step and whether setup is finished. skip puts one of ai, phone, computers or history aside to finish later (it stays listed as skipped), unskip takes it back, pass says the person has been through history. It never completes a step the box can see for itself.",
+      input: obj({ skip: { type: "string", enum: [...SKIPPABLE] }, unskip: { type: "string", enum: [...SKIPPABLE] }, pass: { type: "string", enum: [...PASSABLE] } }),
+      run: async (input, { caller }) => {
+        boxOnly();
+        const i = input || {};
+        const set = k => new Set(ob()[k] || []);
+        if (i.skip || i.unskip) {
+          const sk = set("setupSkipped");
+          if (i.skip) sk.add(String(i.skip)); if (i.unskip) sk.delete(String(i.unskip));
+          save({ onboard: { setupSkipped: [...sk] } });
+        }
+        if (i.pass) { const ps = set("setupPassed"); ps.add(String(i.pass)); save({ onboard: { setupPassed: [...ps] } }); }
+        return setupSnapshot(String(caller));
       },
     });
 

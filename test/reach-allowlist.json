@@ -465,6 +465,10 @@
    "module": "onboard",
    "default": "open to any caller"
   },
+  "onboard.setup": {
+   "module": "onboard",
+   "default": "open to any caller"
+  },
   "onboard.skip": {
    "module": "onboard",
    "default": "open to any caller"
