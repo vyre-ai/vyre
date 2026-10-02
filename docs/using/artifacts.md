@@ -86,8 +86,9 @@ first bytes match its format (png, jpeg, gif, webp, mp4, webm, mp3, wav, ogg, m4
 When the agent that made a page or an app is in a session that both read content from outside (mail, a
 web page, a connector) and used your private data (your vault, mail or files), Vyre holds the page: its
 card says why, and you see a plain note instead of the page until you open it on purpose from the card.
-Changing the page from such a session holds it again. If Vyre cannot tell what a session read, it does
-not hold the page.
+Changing the page from such a session holds it again, and a public link
+keeps showing the last version you had until you open the new one. This needs Vyre's sessions to report
+what each session read; until a session reports it, nothing is held.
 
 ## Backup, restore and uninstall
 
