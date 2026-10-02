@@ -24,7 +24,6 @@ import { startScan } from "./scan.js";
 import { resolveTicket, pairOffer, crypto, classifyError } from "./pair-ticket.js";
 import { enrollUrl } from "./enroll-grant.js";
 import { renderPersonAvatar } from "./pair-avatar.js";
-import { attempt } from "./api.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
 import { initial, step } from "../views/pair-scan.js";
 
@@ -37,11 +36,14 @@ function style() {
 
 const reducedMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 
-/** The device name sent with the pairing: the person's first name (system.info owner.name) plus
- * the model (User-Agent Client Hints - Android usually gives it, e.g. "Pixel 8"; iOS Safari
- * doesn't support UA-CH at all and falls back to a plain "iPhone"/"iPad") - "Alex's iPhone"
- * (team-lead, 2026-09-28). */
-async function deviceName() {
+/**
+ * The phone's model for a device name: User-Agent Client Hints where there are (Android usually gives
+ * "Pixel 8"); iOS Safari has none and falls back to a plain "iPhone" or "iPad". Needs no box, so the
+ * hosted page (relay/wink, no Vyre yet) can use it as it is; the Deck adds the owner's first name
+ * (views/wink.js: "Alex's iPhone") because it can ask system.info.
+ * @returns {Promise<string>}
+ */
+export async function deviceModel() {
   let model = null;
   try {
     const uaData = /** @type {any} */ (navigator).userAgentData;
@@ -50,22 +52,19 @@ async function deviceName() {
       if (info?.model) model = String(info.model).trim();
     }
   } catch {}
-  const kind = model || (/iPhone|iPod/.test(navigator.userAgent) ? "iPhone" : /iPad/.test(navigator.userAgent) ? "iPad" : /Android/.test(navigator.userAgent) ? "Android phone" : "This phone");
-  const r = await attempt("system.info");
-  const first = r.data?.owner?.name ? String(r.data.owner.name).trim().split(/\s+/)[0] : null;
-  return first ? `${first}'s ${kind}` : kind;
+  return model || (/iPhone|iPod/.test(navigator.userAgent) ? "iPhone" : /iPad/.test(navigator.userAgent) ? "iPad" : /Android/.test(navigator.userAgent) ? "Android phone" : "This phone");
 }
 
 /**
  * The scan-to-pair sheet. Mount it, call open() when the person taps "Scan", close() to tear
  * down the camera (always call close() when the sheet is dismissed, not just on success/error -
  * a live camera stream left open is exactly what "Light by default" (SPEC 8) rules out).
- * @param {{ relay: string }} opts the box's relay address (nothing in the 72-bit code carries
- *   this - PENDING launch: where its "Add your phone" screen gets it from, to pass in here)
+ * @param {{ relay: string, deviceName?: () => Promise<string>, styles?: boolean }} opts the relay address, and how this phone is named at pairing
+ *   (default: its model; the Deck adds the owner's first name); `styles: false` when the page brings its own CSS (relay/wink)
  * @returns {{ el: HTMLElement, open: () => void, close: () => void }}
  */
 export function pairScanSheet(opts) {
-  style();
+  if (opts.styles !== false) style();
   let state = initial();
   /** @type {{ stop: () => void } | null} */ let scan = null;
   /** @type {{ relay: string, route: string, box: Uint8Array, secret: string } | null} */ let pendingOffer = null;
@@ -105,7 +104,7 @@ export function pairScanSheet(opts) {
     const offer = pendingOffer;
     dispatch({ type: "confirm" });
     try {
-      const name = await deviceName();
+      const name = await (opts.deviceName ? opts.deviceName() : deviceModel());
       const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto, enroll: true });
       enrollTo = enrollUrl(result.enroll || /** @type {any} */ (null));
       pendingOffer = null;
