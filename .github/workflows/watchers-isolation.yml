@@ -15,6 +15,9 @@ on:
     paths: ["core/watchers/**", "lib/sandbox/**", ".github/workflows/watchers-isolation.yml"]
 permissions:
   contents: read
+concurrency:
+  group: watchers-isolation-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   wall:
     strategy:

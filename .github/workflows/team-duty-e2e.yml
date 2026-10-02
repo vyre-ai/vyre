@@ -10,6 +10,9 @@ on:
     paths: ["core/team/**", "core/watchers/**", "lib/sandbox/**", ".github/workflows/team-duty-e2e.yml"]
 permissions:
   contents: read
+concurrency:
+  group: team-duty-e2e-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   duty:
     name: linux-profile

@@ -9,6 +9,9 @@ on:
     paths: ["apps/app/package.json", "apps/app/package-lock.json", "scripts/build-app-out.mjs", "relay/app/**", "test/build-app-out.test.js", "scripts/check-release-dist.mjs", "scripts/pin-release-compose.mjs", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "box/**", ".github/workflows/release-dist.yml"]
 permissions:
   contents: read
+concurrency:
+  group: release-dist-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 jobs:
   dist:
     runs-on: ubuntu-24.04

@@ -2,18 +2,20 @@
 # runner: nothing here ever reaches the user's server or Mac. Dispatch it for a branch:
 #   gh workflow run matrix.yml --ref work/<team> -f journeys=J0 -f on=all
 name: matrix
+# Runs when dispatched or on a release-candidate branch (work/rc-*), not on every work push: each run takes
+# the shared hosted and Mac/Windows runners for a long time.
 on:
   workflow_dispatch:
     inputs:
       journeys: { description: "Journeys to run (J0 for now)", default: "J0" }
       on: { description: "Targets: all, or a comma list of linux,arm64,android,windows,mac,ios", default: "all" }
   push:
-    branches: ["work/e2e2"]
+    branches: ["work/rc-*"]
 permissions:
   contents: read
 concurrency:
   group: matrix-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 env:
   WANT: ${{ github.event.inputs.on || 'all' }}
 jobs:

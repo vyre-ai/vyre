@@ -210,12 +210,16 @@ test("drop: files.deliver refuses a machine that is not a paired Mac, before Tai
   const w = work(f.home);
   const macs = [{ mac: "m1", name: "alex-mac", node: "alex-mac.tail0000.ts.net", stableId: "nMac000", online: true, lastServe: 1 }];
   const { reg } = await registry(t, f.home, { role: "box", files: { roots: [w] }, macs });
+  // The box's own inbox receiver looks at Tailscale once at start (and stops there: its inbox is outside this test's files root).
+  // Wait for that call, so only a call files.deliver makes can change the log after this point.
+  assert.ok(await until(() => f.calls().length > 0), "the box's receiver has looked at Tailscale");
+  const base = f.calls();
   const r = await reg.call("files.deliver", { path: path.join(w, "report.pdf"), mac: "no-such-mac" }, "cli");
   assert.equal(r.error?.code, "no_link");
-  assert.deepEqual(f.calls(), []);
+  assert.deepEqual(f.calls(), base);
   const s = await reg.call("files.deliver", { path: path.join(w, ".env"), mac: "alex-mac" }, "cli");
   assert.equal(s.error?.code, "not_available");
-  assert.deepEqual(f.calls(), []);
+  assert.deepEqual(f.calls(), base);
 });
 
 test("drop: files.deliver refuses a Mac paired without a known node", async t => {

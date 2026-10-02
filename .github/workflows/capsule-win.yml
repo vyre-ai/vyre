@@ -9,7 +9,7 @@
 name: capsule-win
 on:
   push:
-    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml", "package.json"]
+    paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
   pull_request:
     paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
   workflow_dispatch:
