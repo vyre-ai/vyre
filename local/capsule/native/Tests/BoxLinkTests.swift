@@ -204,6 +204,22 @@ let boxLinkSuite = Suite("box link") { t in
         t.eq(MainActor.assumeIsolated { m2.pending }, false, "no longer starting")
         _ = m
     }
+
+    t.test("the Mac's IANA zone name goes to context.report, and nothing else about where it is (#58)") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("context.report") { _ in ["ok": true] as [String: Any] }
+        let m = MainActor.assumeIsolated { CapsuleModel(home: vyScratch("tz-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: v.socket), providers: []) }
+        let _: Bool? = t.wait { _ = await m.vyred.refreshTools(); await MainActor.run { m.reportZone() }; return await until { !v.callsOf("context.report").isEmpty } }
+        let sent = v.callsOf("context.report").first ?? [:]
+        t.eq(VJ.s(sent["surface"]), "capsule")
+        t.eq(VJ.s(sent["tz"]), TimeZone.current.identifier)
+        t.eq(Set(sent.keys), ["surface", "device", "tz"], "only the zone name, the surface and the device")
+        t.eq(CapsuleModel.zoneName(TimeZone(identifier: "America/Los_Angeles")!), "America/Los_Angeles")
+        let old = FakeVyred(); old.start(); defer { old.stop() }
+        let m2 = MainActor.assumeIsolated { CapsuleModel(home: vyScratch("tz2-\(UUID().uuidString.prefix(6))"), vyred: VyredClient(socket: old.socket), providers: []) }
+        let _: Bool? = t.wait { _ = await m2.vyred.refreshTools(); await MainActor.run { m2.reportZone() }; try? await Task.sleep(nanoseconds: 200_000_000); return true }
+        t.eq(old.callNames.filter { $0 == "context.report" }.count, 0, "a vyred without context.report is not called")
+    }
 }
 
 final class HeardBox: @unchecked Sendable {

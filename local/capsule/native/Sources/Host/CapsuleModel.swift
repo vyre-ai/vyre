@@ -313,6 +313,7 @@ public final class CapsuleModel: ObservableObject {
             guard vyred.isUp else { return }
             // A Mac paired to a server asks it for the assistant, memory and agents (BoxLink.swift), so know that before the catalog loads.
             await vyred.box.refresh(vyred)
+            self.reportZone()
             self.loadNextMeeting()
             await self.loadModels()
             await self.loadIdentities()
