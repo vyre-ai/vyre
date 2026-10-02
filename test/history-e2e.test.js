@@ -72,9 +72,11 @@ test("history: the box's own sessions and a paired Mac's imported ones are index
   assert.match(await hit("marzipan seasonal page"), /marzipan/i, "and so is its Grok session");
 
   // Memory learns from what was read: its graph holds both worlds.
-  await box("memory.curate", { full: true });
+  // Nobody presses a second button: memory curates when the index says a session was read.
+  await until(async () => (await box("memory.stats")).nodes > 0);
   const stats = await box("memory.stats");
   assert.ok(stats.nodes > 0, `memory has learned something: ${JSON.stringify(stats).slice(0, 200)}`);
+  await until(async () => /Sam Okafor/.test(JSON.stringify(await box("memory.graph", { limit: 200 }))));
   const graph = JSON.stringify(await box("memory.graph", { limit: 200 }));
   assert.match(graph, /Dana Reyes/, "memory knows what the server's session said");
   assert.match(graph, /Sam Okafor/, "and what the Mac's imported sessions said");
