@@ -174,14 +174,25 @@ try {
           const g = path.join(dir, `glass-${look}-${display}-screen.png`);
           execFileSync("/usr/sbin/screencapture", ["-x", "-R", `${Math.round(fr.x)},${Math.round(fr.y)},${Math.round(fr.w)},${Math.round(fr.h)}`, g], { timeout: 20_000 });
           const [mean, left, right] = execFileSync(probe, ["luma", g], { timeout: 20_000 }).toString().trim().split(/\s+/).map(Number);
-          rows.push({ look, display, mean, left, right, gap: left - right });
+          rows.push({ look, display, mean, left, right, gap: left - right, sysReduced: d.systemReduced === true });
           console.log(`glass ${look} ${display}: screen mean ${mean} left ${left} right ${right} gap ${(left - right).toFixed(2)}; window-only mean ${wmean} left ${wleft} right ${wright} gap ${(wleft - wright).toFixed(2)}; system reduce transparency ${d.systemReduced}`);
         } finally { bd.kill("SIGTERM"); await pause(300); }
       }
     }
     await send({ display: "system" }); await send({ appearance: "system" }); await send({ text: "" });
     const get = (look, display) => rows.find(r => r.look === look && r.display === display);
+    // GitHub's Mac runner has Reduce Transparency on, which switches macOS's blur off for every app: the glass cannot be measured
+    // there (run 36957197608: the same gap with the glass on and with it forced off). Say so, and prove what can be proved: the
+    // reduced ground is opaque in both looks. The blur itself is the user's check on a real Mac (docs/work/capsule-pro.md, step 16).
+    if (rows.some(r => r.sysReduced)) {
+      console.log("NOTE this Mac has Reduce Transparency on, so the glass blur cannot be measured here; only the opaque fallback is checked");
+      for (const look of ["dark", "light"]) {
+        const r = get(look, "reduced");
+        if (r) check(Math.abs(r.gap) < 3, `${look} reduced transparency: an opaque ground, the two halves match (gap ${r.gap.toFixed(2)})`);
+      }
+    } else
     for (const look of ["dark", "light"]) {
+      if (rows.some(x => x.sysReduced)) break;
       const g = get(look, "glass"), r = get(look, "reduced");
       if (g && r) {
         budget(Math.abs(r.gap) < 3, `${look} reduced transparency: the two halves match (gap ${r.gap.toFixed(2)})`);
