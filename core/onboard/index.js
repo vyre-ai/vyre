@@ -17,7 +17,8 @@ import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
 import { run as tailscale, lockStatus, up as tailscaleUp } from "../names/tailscale.js";
 
-export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
+// devices before history (the lead, 2 Oct 2026, #26): you pair your computers first and then import their history, so history never has to say "come back later".
+export const STEPS = ["you", "claude", "tailscale", "name", "devices", "history"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
 const PHASES = ["idle", "dns", "certificate", "serving"];
 const ROWS = ["reserve", "dns", "cert"];
@@ -266,7 +267,7 @@ export default {
       const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
       // peers: the owner's other tailnet devices and whether each is online, for the phone's line.
       const tailnet = t && t.running ? await tailnetPeers() : [];
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
+      const devices = { state: ob().finished || mac.connected ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.

@@ -27,9 +27,9 @@ const STEPS = [
   { id: "tailscale", title: "Tailscale" },         // 2a
   { id: "name", title: "Your address" },           // 2b
   { id: "claude", title: "Claude Code" },          // 3
-  { id: "history", title: "Your history" },        // 4
   { id: "accounts", title: "Connect accounts" },   // 6
   { id: "devices", title: "Your devices" },        // 9
+  { id: "history", title: "Your history" },        // 4: after devices (the lead, 2 Oct 2026, #26): pair your computers first, then import their history
   { id: "capsule", title: "Lumen" },         // 10
 ];
 
@@ -866,6 +866,22 @@ const SCREENS = {
         leftCount ? h("p", { class: "small muted", style: { marginTop: "4px" } },
           `${plural(leftCount, "session")} from Vyre's own development and excluded folders never left the device and aren't listed.`) : null);
       syncFoot();
+      // The person's own computers (#26): what each paired Mac holds, by project, counts and dates, asked through the link. The choosing and the
+      // sending happen in Lumen on that Mac (its Import screen), so this is a read-only list and one honest sentence, never a Done with nothing found.
+      const dv = await attempt("onboard.history", { action: "devices" });
+      if (!dv.error && dv.data) {
+        const devs = Array.isArray(dv.data.devices) ? dv.data.devices : [];
+        body.append(
+          h("p", { class: "lbl", style: { marginTop: "20px" } }, "Your computers"),
+          h("p", { class: "small" }, dv.data.summary || ""),
+          ...devs.filter((/** @type {any} */ d) => d.agents && d.agents.length).map((/** @type {any} */ d) => h("div", { style: { marginBottom: "16px" } },
+            h("p", { class: "small muted", style: { padding: "8px 0 0" } }, `${d.name}: open Lumen on it and choose Import history to pick what comes in`),
+            h("div", { class: "rows" }, d.agents.flatMap((/** @type {any} */ g) => g.folders.map((/** @type {any} */ f) =>
+              h("div", { class: "pick" }, h("span", { class: "x" },
+                h("span", { class: "ellipsis" }, `${f.name || f.cwd || "unknown folder"} · ${g.agent}`),
+                h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · ${when(f.from)}–${when(f.to)}` + (f.why ? ` · ${f.why}` : "")))))))))
+        );
+      }
     };
 
     const drawChoose = async (/** @type {Source[]} */ sources) => {
