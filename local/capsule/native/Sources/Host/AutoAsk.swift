@@ -37,6 +37,21 @@ extension CapsuleModel {
         return words.count >= 3 && Route.intent(text, topKind: topKind, topScore: topScore) == .ask
     }
 
+    /// "memory: who is Dana" -> "who is Dana": the person asked memory on purpose. Nil for anything else.
+    nonisolated static func memoryRequest(_ text: String) -> String? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard t.lowercased().hasPrefix("memory:") else { return nil }
+        let rest = t.dropFirst("memory:".count).trimmingCharacters(in: .whitespacesAndNewlines)
+        return rest.isEmpty ? nil : rest
+    }
+
+    /// Memory answers, as asked: memory.ask with its sources and Wrong?/Forget. Never the default.
+    func askMemory(_ words: String) async -> ActionOutcome {
+        guard !words.isEmpty else { return .said("Type a question for memory first.") }
+        if let out = await askIQ(words) { return out }
+        return .failed("This Vyre has no memory to ask yet.")
+    }
+
     /// The best local row: what the words would open if they are not a question.
     var topLocal: ResultItem? { flat.first { $0.kind != "ask" && $0.kind != "mention" } }
 
@@ -56,8 +71,6 @@ extension CapsuleModel {
             let top = self.topLocal
             guard Self.wantsAnswer(words, topKind: top?.kind, topScore: top?.score ?? 0), self.quickFirst(words) else { return }
             if let hit = self.answerCache.first(where: { $0.key == key }) { self.showCached(hit, words); return }
-            await self.waitForMemory(words)
-            guard !Task.isCancelled, t == self.token else { return }
             self.autoKey = key
             self.handle(await self.ask(words))
             if !self.userMoved { self.selected = -1 }
@@ -69,13 +82,6 @@ extension CapsuleModel {
     func quickFirst(_ words: String) -> Bool {
         let first = Route.destinations(nil, words, catalog, quick: true, models: (models.quick, models.deeper)).options.first
         return first == nil || first?.kind == .quick
-    }
-
-    /// Memory is asked 180 ms after the last key; give it a moment more so the answer has it.
-    func waitForMemory(_ words: String) async {
-        for _ in 0..<8 where memory?.text != words && recallTask != nil {
-            try? await Task.sleep(nanoseconds: 50_000_000)
-        }
     }
 
     func showCached(_ hit: (key: String, reply: Reply, memory: MemoryAnswer?), _ words: String) {
@@ -124,6 +130,14 @@ extension CapsuleModel {
         if userMoved && !command { return false }
         // "do …": computer use, from ⏎ or ⌘⏎.
         if let job = Self.doRequest(words) { startComputerUse(job); return true }
+        // "memory: …": memory answers, on purpose, with its sources (the default is the assistant, #46).
+        if !command, let q = Self.memoryRequest(words) {
+            autoTask?.cancel()
+            autoKey = Self.autoKey(q)
+            Task { @MainActor in self.handle(await self.askMemory(q)) }
+            commitFollowUp()
+            return true
+        }
         let top = topLocal
         let onScreen = answerOnTop && autoKey == Self.autoKey(text)
         let question = onScreen || (Self.wantsAnswer(words, topKind: top?.kind, topScore: top?.score ?? 0) && quickFirst(words))
@@ -220,7 +234,7 @@ extension CapsuleModel {
         guard let r = reply, !r.thread.isEmpty else { return }
         guard let box = catalog.box, let url = URL(string: box.hasPrefix("http") ? box : "https://" + box)?
             .appendingPathComponent("chat/thread").appendingPathComponent(r.thread) else {
-            line = "Vyre chat is on your box, and this Mac is not paired with one."
+            line = "Vyre chat is on your server, and this Mac is not paired with one."
             return
         }
         NSWorkspace.shared.open(url)

@@ -209,7 +209,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
             command("sideview", "Side view", ["split", "tile", "chrome", "session", "side by side", "assistant"], "rectangle.split.2x1",
                     "Your assistant on the left, Chrome filling the rest") { await $0.openPanel(nil, glass: false) },
             command("sideview-glass", "Side view with Glass", ["split", "tile", "glass", "box"], "rectangle.split.2x1.fill",
-                    "Your assistant on the left, the box's Glass filling the rest") { await $0.openPanel(nil, glass: true) },
+                    "Your assistant on the left, your server's Glass filling the rest") { await $0.openPanel(nil, glass: true) },
             command("sideview-close", "Close side view", ["untile", "restore"], "rectangle",
                     "Put the windows back where they were") { await $0.closeSideView() },
             command("sideview-terminal", "Side view with this terminal", ["split", "tile", "terminal", "claude code"], "terminal",
