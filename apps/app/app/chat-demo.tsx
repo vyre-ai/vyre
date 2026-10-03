@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo } from "react";
 import { Platform } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { ThemeProvider } from "@vyre/ui";
 import { ChatScreen } from "../src/chat/ChatScreen";
 import { createMockStream, historyFrames } from "../src/chat/mock-stream";
@@ -24,6 +24,7 @@ export default function ChatDemo() {
     () => createMockStream({ session: "demo", scenario: group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
     [n, at, q.tps, q.hold, group],
   );
+  const router = useRouter();
   const meter = useMemo<Meter>(() => ({ delta: [], first: [], keys: [], paints: [], mounted: 0 }), []);
   useEffect(() => {
     if (Platform.OS === "web") (window as unknown as { __chat: unknown }).__chat = { meter, source, answer: (a: string) => source.answer(a, "approve"), send: (t: string) => source.send(t) };
@@ -32,6 +33,7 @@ export default function ChatDemo() {
     <ThemeProvider>
       <ChatScreen
         sessionId="demo"
+        onBack={() => router.back()}
         title={group ? "Northwind lease, before the 3 pm call" : "Fix the intake date check"}
         about={group ? { record: { title: "Northwind Bakery, lease dispute", type: "Matter" }, space: "Harlow Legal", sealed: 2, runsOn: "server" } : undefined}
         initialAbout={q.about === "1"}
