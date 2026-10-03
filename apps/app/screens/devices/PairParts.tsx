@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
 import { ScanCamera, canScanLive, requestCamera, scanProps, type ScannedCode, type ScanSupport } from "../../src/native/scan";
 import { parseWinkCode, type WinkCode } from "../../src/api/wink-code";
-import { openPairing, type PairingSession } from "../../src/api/pairing-session";
+import { openPairing, wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { COPY } from "./wink.js";
 
 /** A scanned code as the text the parser reads. */
@@ -55,22 +55,35 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
   );
 }
 
-/** The three words. Confirm only if the other screen shows the same ones. */
+/** The other screen shows three words. Pick the set it shows, or type all three. A wrong answer pairs nothing. */
 export function PairWords({ session, who, onConfirmed, onRejected }: { session: PairingSession; who: string; onConfirmed: () => void; onRejected: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [typed, setTyped] = useState("");
   const [err, setErr] = useState("");
-  const words = session.words();
+  const choices = useMemo(() => session.choices(), [session]);
+  const send = (given: readonly string[]) => {
+    setBusy(true);
+    session.answer(given).then((ok) => { if (ok) onConfirmed(); else onRejected(); }).catch(() => { setBusy(false); setErr(COPY.ended); });
+  };
   return (
     <Card className="w-full items-center gap-s3">
       <Text strong className="text-center">{COPY.askLine(who)}</Text>
-      <View className="flex-row flex-wrap justify-center gap-s2">
-        {words.map((w) => <Text key={w} mono size="title" strong>{w}</Text>)}
-      </View>
-      <Text tone="muted" className="text-center">{COPY.compare}</Text>
+      <Text tone="muted" className="text-center">{COPY.pick}</Text>
       {err ? <Banner tone="warn">{err}</Banner> : null}
+      {typing ? (
+        <View className="w-full gap-s2">
+          <Field label="The three words" name="Three words" value={typed} onChangeText={setTyped} placeholder="three words, a space between" mono />
+          <Button kind="primary" size="sm" icon="check" label="Confirm" loading={busy} disabled={typed.trim().split(/\s+/).length !== 3} onPress={() => send(typed.trim().split(/\s+/))} />
+        </View>
+      ) : (
+        <View className="w-full gap-s2">
+          {choices.map((c) => <Button key={c.join(" ")} size="md" label={wordsLine(c)} loading={busy} onPress={() => send(c)} />)}
+        </View>
+      )}
       <View className="w-full flex-row flex-wrap justify-center gap-s2">
-        <Button kind="primary" size="sm" icon="check" label="Confirm" loading={busy} onPress={() => { setBusy(true); session.confirm().then(onConfirmed).catch(() => { setBusy(false); setErr(COPY.ended); }); }} />
-        <Button kind="ghost" size="sm" label="These are not the same" onPress={() => { session.reject(); onRejected(); }} />
+        <Button kind="ghost" size="sm" label={typing ? "Pick from three sets" : "Type the three words"} onPress={() => setTyping(!typing)} />
+        <Button kind="ghost" size="sm" label="Not the same" onPress={() => { session.reject(); onRejected(); }} />
       </View>
     </Card>
   );

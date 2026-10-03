@@ -9,6 +9,10 @@ import type { WinkCode } from "./wink-code.ts";
 export type PairingSession = {
   /** The three words both screens show. */
   words(): [string, string, string];
+  /** Three word sets in a fixed shuffled order, one of them the real words. The person picks the one the other screen shows. */
+  choices(): [string, string, string][];
+  /** The person's answer: a pick from choices() or all three words typed. True and the pairing is made when they are the real words; false rejects it for good. */
+  answer(given: readonly string[]): Promise<boolean>;
   /** The person says they match. Resolves when the pairing is made; rejects if it was rejected or ended. */
   confirm(): Promise<void>;
   /** The person says they do not match. Nothing is paired. */
@@ -28,8 +32,16 @@ export function mockPairingSession(code: Extract<WinkCode, { ok: true }>): Pairi
   for (let i = 0; i < seed.length; i++) n = (n * 31 + seed.charCodeAt(i)) >>> 0;
   const words = MOCK_WORDS[n % MOCK_WORDS.length];
   let state: "open" | "rejected" | "done" = "open";
+  const decoys = [MOCK_WORDS[(n + 1) % MOCK_WORDS.length], MOCK_WORDS[(n + 2) % MOCK_WORDS.length]];
+  const order = [words, ...decoys].map((w, i) => ({ w, k: ((n >>> (i * 3)) & 7) + i / 10 })).sort((a, b) => a.k - b.k).map((x) => x.w);
   return {
     words: () => [...words] as [string, string, string],
+    choices: () => order.map((w) => [...w]) as [string, string, string][],
+    answer: (given) => {
+      const ok = state === "open" && given.length === 3 && given.every((g, i) => g.trim().toLowerCase() === words[i]);
+      state = ok ? "done" : "rejected";
+      return Promise.resolve(ok);
+    },
     confirm: () => (state === "rejected" ? Promise.reject(new Error("rejected")) : ((state = "done"), Promise.resolve())),
     reject: () => { if (state === "open") state = "rejected"; },
   };

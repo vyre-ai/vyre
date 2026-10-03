@@ -32,7 +32,7 @@ test("every step has words", () => {
 });
 
 test("the words ask for a match and name who is asking", () => {
-  assert.match(COPY.compare, /same three words/);
+  assert.match(COPY.pick, /Pick the set/);
   assert.equal(COPY.askLine("Alex's iPhone"), "Alex's iPhone is asking to pair. Both screens show these three words.");
   assert.match(COPY.rejected, /Nothing was paired/);
 });

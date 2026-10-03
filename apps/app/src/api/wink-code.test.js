@@ -60,3 +60,19 @@ test("the mock session shows three words, confirms once and can be rejected", { 
   r.reject();
   await assert.rejects(r.confirm());
 });
+
+test("a pairing answer: the real set or all three typed words pair, anything else rejects for good", { skip: !strip }, async () => {
+  const { parseWinkCode } = await import("./wink-code.ts");
+  const { mockPairingSession } = await import("./pairing-session.ts");
+  const c = parseWinkCode(LONG);
+  assert.ok(c.ok);
+  const w = mockPairingSession(c).words();
+  const a = mockPairingSession(c);
+  assert.equal(a.choices().length, 3);
+  assert.ok(a.choices().some((x) => x.join(" ") === w.join(" ")));
+  assert.equal(await a.answer(w), true);
+  const b = mockPairingSession(c);
+  assert.equal(await b.answer(["amber", "amber", "amber"]), false);
+  assert.equal(await b.answer(w), false);
+  assert.equal(await mockPairingSession(c).answer(w.map((x) => x.toUpperCase())), true);
+});
