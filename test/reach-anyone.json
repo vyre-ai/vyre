@@ -157,6 +157,22 @@
    "module": "assistant",
    "reason": "read-only; in-code gate: allowed() in core/assistant admits only the person's own surfaces, their own session and the assistant, never a project agent"
   },
+  "bridges.continue": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
+  "bridges.copy": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
+  "bridges.resolve": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
+  "bridges.view.read": {
+   "module": "bridges",
+   "reason": "guard() builds the chain from the verified caller and the lib runs authorize() on it: a share or a membership is required, a model's call is held for a person to approve, sealed values need the person's presence proof"
+  },
   "chrome.act": {
    "module": "chrome",
    "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
@@ -957,6 +973,62 @@
    "module": "providers",
    "reason": "read-only: names and states, never a value"
   },
+  "publish.approve": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.create": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.domain.add": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.domain.verify": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.flow": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.list": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.plan": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.preview": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.publish": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.rollback": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.secret.grant": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.secret.revoke": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.status": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
   "relay.pair.first": {
    "module": "relay",
    "reason": "callers list in the tool: only the onboarding page's caller, and the tool refuses once a device is paired or an owner exists"
@@ -1120,6 +1192,14 @@
   "sight.watch": {
    "module": "sight",
    "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "spaces.code.submit": {
+   "module": "spaces",
+   "reason": "the pairing code is the guard: its hash is held here, five tries, ten minutes, checked in the lib; it is the one tool a relay caller may use and refuses a spent or timed-out code"
+  },
+  "spaces.invites.redeem": {
+   "module": "spaces",
+   "reason": "the signed invite token, the person's own signature checked against the directory's current list for their name, and the use count are the authority; a forged, used or revoked invite is refused"
   },
   "sync.consent": {
    "module": "sync",

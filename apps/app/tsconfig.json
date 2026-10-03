@@ -8,6 +8,7 @@
       "@vyre/resilience/*": ["../../core/resilience/*"],
       "@vyre/chat-core/*": ["../../deck/chat/core/*"],
       "@vyre/relay-client/*": ["./src/types/relay-client/*"],
+      "@vyre/stream/*": ["../../core/stream/*"],
       "@vyre/perf/*": ["../../lib/perf/*"],
       "@vyre/ui": ["./ui/index.ts"],
       "@vyre/ui/*": ["./ui/*"],

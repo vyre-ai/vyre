@@ -9,6 +9,8 @@ import { createGate } from "../core/gate.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
+import { createLeases } from "./leases.js";
+import { createDriveGateway } from "./drive.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
@@ -67,13 +69,19 @@ export function createGateway(cfg) {
 
   const seal = cfg.sealer ? createSealing({ enforce, clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
 
+  const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, routeAction: cfg.routeAction }) : undefined;
+
+  const drive = cfg.drive ? createDriveGateway({ space: cfg.space, drive: cfg.drive, authorizer, log: cfg.log, enforce }) : undefined;
+
   return Object.freeze({
     authorize: authorizer.authorize,
+    ...(drive ? { drive } : {}),
+    ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, addActor: gs.addActor, rebuild: gs.rebuild, offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, addActor: gs.addActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet }), rebuild: gs.rebuild, chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead, bind: gs.chatBind }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);

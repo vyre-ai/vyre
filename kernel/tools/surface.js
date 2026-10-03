@@ -35,7 +35,10 @@ export function createToolSurface({ kernel, space, types, actions = () => [], ta
       if (!NOUN.test(t.name)) continue;
       const nm = noun(t.name), label = cap(t.label || t.name, 40), fields = (t.fields || []).filter((/** @type {any} */ f) => f.kind !== "sealed");
       const stageField = (t.fields || []).find((/** @type {any} */ f) => f.kind === "stage")?.name;
-      const names = fields.map((/** @type {any} */ f) => f.name);
+      // The field names the schema shows are the ones this chain's grant allows (a `fields` allow-list hides the rest, names included).
+      const probe = await kernel.authorize({ chain, action: "records.read", resource: urn(t.name), probe: true });
+      const allow = (probe.obligations || []).filter((/** @type {any} */ o) => o.type === "fields").reduce((/** @type {Set<string> | null} */ acc, /** @type {any} */ o) => (acc === null ? new Set(o.allow) : new Set([...acc].filter(x => o.allow.includes(x)))), null);
+      const names = fields.map((/** @type {any} */ f) => f.name).filter((/** @type {string} */ n) => !allow || allow.has(n));
       out.push({ name: `${nm}.find`, description: `Find ${label} records, optionally where a field has a value. Sealed fields come back as placeholders.`, risk: "read", action: "records.read", resource: urn(t.name),
         schema: { type: "object", properties: { where: { type: "object", description: `Field and value pairs. Fields: ${names.join(", ")}.` }, limit: { type: "integer" } } },
         run: async (/** @type {any} */ c, /** @type {any} */ i) => {
@@ -67,7 +70,9 @@ export function createToolSurface({ kernel, space, types, actions = () => [], ta
         schema: { type: "object", required: ["summary"], properties: { summary: { type: "string", description: "What is being done, in a sentence." }, record: { type: "string" }, payload: { type: "object" } } },
         run: async () => { throw new KernelError("bad_state", "an outward act is held, never run here"); } });
     }
-    return out;
+    // A tool name is unique: a type tool (or any earlier tool) keeps its name, and a later one with the same name is dropped, never shadowed (T-1).
+    const seen = new Set();
+    return out.filter(d => (seen.has(d.name) ? false : (seen.add(d.name), true)));
   }
 
   const decide = (/** @type {any} */ chain, /** @type {any} */ d) => kernel.authorize({ chain, action: d.action, resource: d.resource });

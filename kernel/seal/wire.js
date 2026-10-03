@@ -10,6 +10,8 @@ export function canonical(v) {
 }
 export const sha256b64 = s => crypto.createHash("sha256").update(s).digest("base64url");
 /** sha-256 (base64url) of the canonical payload a person approves: `{ op, space, ...fields }`, for example op "seal.reveal" with ref and purpose. */
+/** What a device's identity-chain key signs to vouch for a presence key: the person, the key id and the key. The native signer uses this too. */
+export const bindBytes = (person, key_id, spki) => Buffer.from(`vyre-presence-bind-v1\n${person}\n${key_id}\n${sha256b64(spki)}`);
 export const payloadHash = (op, space, fields) => sha256b64(canonical({ op, space, ...fields }));
 /** The bytes a presence proof signs: the proof without its signature. */
 export const proofBytes = proof => { const { signature, ...rest } = proof; return Buffer.from(canonical(rest)); };
@@ -18,7 +20,7 @@ export function chainCtx(chain) {
   const hops = chain.hops, first = hops[0];
   return {
     space: chain.space, chain_hash: sha256b64(canonical(hops.map(h => [h.actor.kind, h.actor.id, h.actor.space]))),
-    one_person: hops.length === 1 && first.actor.kind === "person", person: first.actor.kind === "person" ? first.actor.id : null,
+    one_person: chain.viewer !== true && hops.length === 1 && first.actor.kind === "person", person: first.actor.kind === "person" ? first.actor.id : null,
     model_originated: hops.some(h => h.actor.kind === "agent"), surface: first.via?.surface ?? null,
   };
 }

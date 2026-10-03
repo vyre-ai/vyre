@@ -38,7 +38,15 @@ function fieldText(name, v) {
  * @param {{ space: string, project?: { type: string, id: string }, record?: { type: string, id: string }, doing?: Record<string, string>, playbooks?: boolean, budget?: number }} o
  *   `project` is the project record in scope, `record` a more specific one (a task's matter); `doing` maps a teammate's name to its live line.
  */
-export async function buildSituation(kernel, chain, { space, project, record, doing = {}, playbooks = true, budget = SITUATION_TOKENS }) {
+export async function buildSituation(kernel, chain, { space, project, record, doing = {}, playbooks = true, budget = SITUATION_TOKENS, room = null }) {
+  // A chat with more than one person: the reply is the same words for everyone, so the situation is built for the audience (DESIGN-chat, "An assistant in a
+  // group writes for the whole room"). A field every person in the chat may read arrives as a value; any other arrives as a token the model can only cite, drawn
+  // per viewer by chat, exactly like a sealed field. Tool calls still run under the asker's own chain; only what the model SEES is narrowed.
+  // `room` is the kernel's handle for the chat (ctx.kernel.audienceFor): { group, size, read(resource) -> { values, restricted } | null, canRead(resource) }. The kernel
+  // does the "every viewer holds the same value" comparison; no chain for another person ever reaches this module.
+  const group = Boolean(room && room.group);
+  /** @type {string[]} */ const restricted = [];
+  const canRead = (/** @type {string} */ urn) => /** @type {any} */ (room).canRead(urn).then((/** @type {any} */ ok) => ok === true, () => false);
   const me = chain.hops[0].actor;
   const inputs = [chain.labels || memberLabels(space)];
   const urns = [];
@@ -47,7 +55,7 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   const sealedNames = [];
 
   const focus = record || project;
-  let rec = null;
+  let rec = null, focusHidden = false;
   if (focus) {
     rec = await kernel.records.get(chain, focus.type, focus.id).catch(() => null);
     if (rec) { urns.push(rec.urn); inputs.push(rec.labels); }
@@ -56,11 +64,23 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   const lines = [`Vyre. Space ${clean(space, 40)}. You act for ${clean(actorName(me), 40)}${role ? ` (${clean(role, 20)})` : ""}.`];
 
   // The record: its type, stage and fields. A tainted record's text is quoted, not stated.
+  if (rec && group) {
+    const r = await /** @type {any} */ (room).read(rec.urn).catch(() => null);
+    if (!r || !r.values || !Array.isArray(r.restricted)) { lines.push(`In: a ${clean(rec.type, 30)} that not everyone in this chat may read. Nothing of it is shown to you.`); rec = null; focusHidden = true; }
+    else {
+      // What every viewer holds as a value is `values`; every other field is a token the model can only cite.
+      const data = { ...r.values };
+      for (const k of r.restricted) { data[String(k)] = { restricted: true, ref: `${rec.urn}#${k}` }; restricted.push(String(k)); }
+      rec = { ...rec, data };
+    }
+  }
   if (rec) {
     const tainted = isTainted(rec.labels);
-    const stage = Object.entries(rec.data).find(([k, v]) => k === "stage" && typeof v === "string");
-    lines.push(`In: ${clean(rec.type, 30)} ${clean(rec.data.name || rec.data.title || rec.id, 60)}${stage ? ` (stage: ${clean(stage[1], 30)})` : ""}.`.replace(/ \.$/, "."));
-    const fields = Object.entries(rec.data).filter(([k]) => k !== "stage").sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => fieldText(clean(k, 30), v)).filter(Boolean);
+    const shownStage = (/** @type {any} */ v) => (v && typeof v === "object" && v.restricted ? `a restricted field, cite it as {{field:${v.ref}}}` : clean(v, 30));
+    const stage = Object.entries(rec.data).find(([k, v]) => k === "stage" && (typeof v === "string" || (v && /** @type {any} */ (v).restricted)));
+    const nameOf = rec.data.name || rec.data.title;
+    lines.push(`In: ${clean(rec.type, 30)} ${nameOf && typeof nameOf === "object" ? `{{field:${nameOf.ref}}}` : clean(nameOf || rec.id, 60)}${stage ? ` (stage: ${shownStage(stage[1])})` : ""}.`.replace(/ \.$/, "."));
+    const fields = Object.entries(rec.data).filter(([k]) => k !== "stage").sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => (v && typeof v === "object" && /** @type {any} */ (v).restricted ? `${clean(k, 30)}: restricted here, cite it as {{field:${/** @type {any} */ (v).ref}}}` : fieldText(clean(k, 30), v))).filter(Boolean);
     sealedNames.push(...sealedFields(rec.data));
     if (tainted) quoted.push(...fields.map(f => `${rec.urn} ${f}`));
     else sections.push({ key: "record", head: "Record:", items: /** @type {string[]} */ (fields) });
@@ -68,9 +88,15 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   if (sealedNames.length) lines.push(`Sealed (${sealedNames.sort().join(", ")}): the values are never shown to you; ask for what is on file, and the kernel fills a template slot only when a checked message is sent.`);
 
   // Tasks: what waits on the caller (any record), and the open tasks on this record.
-  const all = kernel.tasks && kernel.tasks.list ? await kernel.tasks.list(chain, {}) : [];
+  let all = kernel.tasks && kernel.tasks.list ? await kernel.tasks.list(chain, {}) : [];
+  if (group) {
+    // Only tasks every viewer may see; what waits on the asker is the asker's own business and is left out of a shared room.
+    const keep = [];
+    for (const t of all) if (await canRead(`vyre://${space}/task/${t.id}`)) keep.push(t);
+    all = keep;
+  }
   const mine = (/** @type {any} */ x) => x && x.kind === "person" && x.id === me.id;
-  const waiting = all.filter((/** @type {any} */ t) => (t.state === "needs_check" && mine(t.checker)) || (t.state === "ready" && (mine(t.doer))) || (t.state === "stuck" && (mine(t.doer) || mine(t.assigned_by) || mine(t.checker))))
+  const waiting = group ? [] : all.filter((/** @type {any} */ t) => (t.state === "needs_check" && mine(t.checker)) || (t.state === "ready" && (mine(t.doer))) || (t.state === "stuck" && (mine(t.doer) || mine(t.assigned_by) || mine(t.checker))))
     .sort((/** @type {any} */ a, /** @type {any} */ b) => rank(a) - rank(b) || String(a.id).localeCompare(String(b.id)));
   const taskLine = (/** @type {any} */ t) => {
     inputs.push(t.labels);
@@ -85,7 +111,9 @@ export async function buildSituation(kernel, chain, { space, project, record, do
 
   // The team: people and assistant teammates of the project, each with a live line when there is one.
   if (project) {
-    const team = await kernel.records.query(chain, "team_member", { filter: { field: "project", op: "eq", value: { urn: rec ? rec.urn : "" } }, page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows).catch(() => []);
+    const teamQ = (/** @type {any} */ c) => kernel.records.query(c, "team_member", { filter: { field: "project", op: "eq", value: { urn: rec ? rec.urn : "" } }, page: { limit: 50 } }).then((/** @type {any} */ r) => r.rows);
+    let team = await teamQ(chain).catch(() => []);
+    if (group) { const keep = []; for (const m of team) if (await canRead(m.urn || `vyre://${space}/team_member/${m.id}`)) keep.push(m); team = keep; }
     const items = team.map((/** @type {any} */ m) => {
       inputs.push(m.labels);
       const nm = clean(m.data.name || m.id, 40), kind = m.data.kind === "assistant" ? "assistant" : "person";
@@ -121,7 +149,8 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   /** @type {any[]} */ let pbs = [];
   if (playbooks && rec) {
     const stage = typeof rec.data.stage === "string" ? rec.data.stage : undefined;
-    pbs = await playbooksFor(kernel, chain, { type: rec.type, stage });
+    pbs = await playbooksFor(kernel, chain, { type: rec.type, stage: typeof stage === "string" ? stage : undefined });
+    if (group) { const keep = []; for (const p of pbs) if (await canRead(p.urn)) keep.push(p); pbs = keep; }
     for (const p of pbs) { inputs.push(p.labels); urns.push(p.urn); quoted.push(`playbook "${p.title}" v${p.version}${p.reviewed ? "" : " (not yet reviewed)"}: ${p.text}`); }
   }
   if (quoted.length) {
@@ -130,7 +159,7 @@ export async function buildSituation(kernel, chain, { space, project, record, do
   }
   const text = out.join("\n");
   const labels = joinLabels(inputs);
-  return { text, urns: [...new Set(urns)].sort(), labels, approxTokens: tokens(text), parts: { role, stage: rec ? rec.data.stage ?? null : null, sealed: sealedNames, waiting: waiting.length, open: open.length, shown, playbooks: pbs.map(p => p.urn) } };
+  return { text, urns: [...new Set(urns)].sort(), labels, approxTokens: tokens(text), parts: { group, restricted: restricted.sort(), role, stage: rec ? rec.data.stage ?? null : null, sealed: sealedNames, waiting: waiting.length, open: open.length, shown, playbooks: pbs.map(p => p.urn) } };
 }
 
 /** needs_check first, then stuck, then ready. @param {any} t */

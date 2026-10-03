@@ -20,23 +20,18 @@
       },
       {
         "name": "runner.start",
-        "summary": "start a session here (both grants needed)",
-        "reach": "modules"
+        "summary": "start a session here: the kernel supplies its program, routes and credentials (both grants needed)",
+        "reach": "person"
       },
       {
         "name": "runner.stop",
         "summary": "stop a session running here",
-        "reach": "modules"
+        "reach": "person"
       },
       {
         "name": "runner.lock",
         "summary": "close the workspace on this computer; the data stays encrypted",
         "reach": "person"
-      },
-      {
-        "name": "runner.revoke",
-        "summary": "access ended: lock and delete the workspace",
-        "reach": "modules"
       },
       {
         "name": "runner.move",

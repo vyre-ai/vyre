@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { keyPair } from "./noise.js";
 import { deviceSide, boxSide } from "./channel.js";
 import { bridge } from "./bridge.js";
-import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 
 const ROUTE = "abcdefghijklmnopqrstuvwxyz";
 
@@ -109,4 +109,118 @@ test("a refused stream reaches the device as its status, and a bad path never re
   assert.equal((await new Promise(r => { b.onhead = r; })).status, 400);
   assert.equal(log.length, 1);
   device.close();
+});
+
+// ---- the wink peer stream (lead's ruling, 3 Oct 2026) ----
+
+import { resetPeerLimits, PEER_PER_MIN } from "./bridge.js";
+
+/** A bridge whose peer door records what it accepts. */
+async function peerWorld(extra = {}, caller = "device:srv1") {
+  resetPeerLimits();
+  const { device, boxCh } = await pair();
+  /** @type {any[]} */
+  const accepted = [];
+  bridge(boxCh, { caller, peer: {}, handler: () => {},
+    peers: { space: "harlow", allow: () => true, accept: (s, who) => { accepted.push({ s, who }); s.ondata = c => s.write(c); s.onend = () => s.end(); }, ...extra } });
+  return { device, accepted };
+}
+const answer = s => new Promise(resolve => { s.onhead = h => resolve(h); });
+
+test("peer stream: an authenticated paired server's stream reaches the peer door as that device, and bytes echo", async () => {
+  const { device, accepted } = await peerWorld();
+  const s = device.open({ peer: "wink", space: "harlow" });
+  const got = new Promise(r => { s.ondata = c => r(c.toString()); });
+  assert.equal((await answer(s)).status, 200);
+  s.write(Buffer.from("kernel bytes"));
+  assert.equal(await got, "kernel bytes");
+  assert.deepEqual(accepted[0].who, { via: "relay", deviceId: "srv1", space: "harlow" });
+  device.close();
+});
+
+test("peer stream: no peers option, a refusing allow(), a wrong space, a stranger caller and a stray head field are all refused", async () => {
+  resetPeerLimits();
+  { const { device, boxCh } = await pair(); bridge(boxCh, { caller: "device:srv1", peer: {}, handler: () => {} });
+    assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 403, "a box with no peer door"); device.close(); }
+  { const { device } = await peerWorld({ allow: () => false });
+    assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 403, "unauthenticated for peers"); device.close(); }
+  { const { device } = await peerWorld({ allow: () => { throw new Error("db down"); } });
+    assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 403, "a throwing check refuses"); device.close(); }
+  { const { device, accepted } = await peerWorld();
+    assert.equal((await answer(device.open({ peer: "wink", space: "other" }))).status, 403, "another space");
+    assert.equal((await answer(device.open({ peer: "wink", space: "harlow", device: "someone-else" }))).status, 400, "a head cannot name an identity");
+    assert.equal((await answer(device.open({ peer: "tcp", space: "harlow" }))).status, 400);
+    assert.equal(accepted.length, 0); device.close(); }
+  { const { device, accepted } = await peerWorld({}, "tailnet:alex@example.com");
+    assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 403, "only paired devices");
+    assert.equal(accepted.length, 0); device.close(); }
+});
+
+test("peer stream: per device, perMin new streams a minute and open at once, counted across channels, and a slot frees on end", async () => {
+  let t = 1_000_000;
+  const { device } = await peerWorld({ perMin: 3, open: 2, now: () => t });
+  const a = device.open({ peer: "wink", space: "harlow" }), b = device.open({ peer: "wink", space: "harlow" });
+  assert.equal((await answer(a)).status, 200); assert.equal((await answer(b)).status, 200);
+  assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 429, "two are open");
+  a.end(); await new Promise(r => setTimeout(r, 30));
+  const c = device.open({ peer: "wink", space: "harlow" });
+  assert.equal((await answer(c)).status, 200, "a closed stream frees its slot");
+  c.end(); await new Promise(r => setTimeout(r, 30));
+  assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 429, "three in the minute");
+  t += 61_000;
+  assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 200, "the window moved on");
+  device.close();
+  assert.ok(PEER_PER_MIN > 0);
+});
+
+test("peer stream W-3: a hook that ends or resets the stream itself, or installs no handler, frees the slot", async () => {
+  for (const hook of [
+    (s) => { s.ondata = () => {}; s.onend = () => s.end(); setTimeout(() => s.end(), 5); },
+    (s) => { setTimeout(() => s.reset("done"), 5); },
+    (s) => { s.onend = undefined; s.onreset = undefined; },
+  ]) {
+    const { device } = await peerWorld({ accept: hook });
+    for (let i = 0; i < 12; i++) {
+      const s = device.open({ peer: "wink", space: "harlow" });
+      assert.equal((await answer(s)).status, 200, `open ${i}`);
+      await new Promise(r => setTimeout(r, 20));
+      try { s.end(); } catch {}
+      await new Promise(r => setTimeout(r, 10));
+    }
+    device.close();
+  }
+});
+
+test("peer stream: a hook that ends or resets the stream itself frees its slot (10 sequential opens all get 200)", async () => {
+  for (const how of ["end", "reset"]) {
+    const { device } = await peerWorld({ accept: s => { s.ondata = () => {}; setImmediate(() => (how === "end" ? s.end() : s.reset("done"))); } });
+    for (let i = 0; i < 10; i++) {
+      const s = device.open({ peer: "wink", space: "harlow" });
+      assert.equal((await answer(s)).status, 200, `${how} open ${i}`);
+      await new Promise(r => setTimeout(r, 15));
+    }
+    device.close();
+  }
+});
+
+test("peer stream: a hook installing no handler does not throw when the device ends the stream, and the slot frees", async () => {
+  const { device } = await peerWorld({ accept: () => {}, open: 1 });
+  for (let i = 0; i < 3; i++) {
+    const s = device.open({ peer: "wink", space: "harlow" });
+    assert.equal((await answer(s)).status, 200, `open ${i}`);
+    s.end();
+    await new Promise(r => setTimeout(r, 25));
+  }
+  device.close();
+});
+
+test("peer stream W-3b: allow() is asked about this device", async () => {
+  const asked = [];
+  const { device } = await peerWorld({ allow: id => { asked.push(id); return id === "srv1"; } });
+  assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 200);
+  assert.deepEqual(asked, ["srv1"]);
+  device.close();
+  const other = await peerWorld({ allow: id => id === "srv2" });
+  assert.equal((await answer(other.device.open({ peer: "wink", space: "harlow" }))).status, 403);
+  other.device.close();
 });

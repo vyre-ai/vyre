@@ -7,6 +7,7 @@
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
+import { Leases } from "./leases.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
@@ -34,7 +35,7 @@ export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
   constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
     this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
-    this.sessions = new Map(); this.lookups = new Map();
+    this.sessions = new Map(); this.lookups = new Map(); this.leases = new Leases(this.store, now);
     // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
     const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
     sweep(); setInterval(sweep, 3_600_000).unref();
@@ -180,7 +181,11 @@ export class Sealer {
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
       case "lookup": return this.lookup(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
-      case "presence.enrol": { const r = this.presence.enrol({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
+      case "presence.enrol": {
+        const ctx = this.ctxOf(req.ctx);
+        // A pinned person's enrolment first takes the current chain (V-1): a device removed since the last sync is gone, with its keys, before its bind is looked at.
+        if (this.presence.pins.has(req.person)) { need(Array.isArray(req.ops), "needs_chain"); const s = await this.presence.sync({ person: req.person, ops: req.ops, ctx }); if (s.refused) throw err(s.refused); }
+        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
       // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
       // and the proof is used up. The kernel supplies who is in the chain; only task and grant ops are accepted, so this is not a path to a seal op.
@@ -196,7 +201,18 @@ export class Sealer {
         const k = this.spaceKey(ctx);
         return { key_id: k.key_id, signature: crypto.sign(null, bytes, k.priv).toString("base64url") };
       }
-      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok" };
+      case "presence.sync": { const r = await this.presence.sync({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { ...r, events: r.pruned.map(key_id => ({ type: "presence.revoked", key_id, why: "device_removed" })) }; }
+      case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, event: { type: "presence.recovered", person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
+      case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); need(c.person, "bad_input"); return this.leases.issue({ space: c.space, member: c.person, device: req.device, allowed: req.allowed }); }
+      case "lease.renew": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.renew({ id: req.lease, member: c.person, allowed: req.allowed }); }
+      case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.revoke({ space: c.space, member: req.member, device: req.device }); }
+      case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { member: req.member, device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, member: req.member, device: req.device }); }
+      case "lease.check": { const c = this.ctxOf(req.ctx); return this.leases.check({ id: req.lease, member: c.person }); }
+      // The kernel's own channel only: this process's pipes belong to the kernel, and a call that says a model started it is refused. The key never leaves.
+      case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
+      case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
+      case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
+      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }
   }

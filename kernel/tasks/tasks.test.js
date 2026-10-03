@@ -33,7 +33,7 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
   const agents = ["research", "intake", "rogue"];
-  const grants = [...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
+  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read"]), ...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
@@ -487,4 +487,60 @@ test("N1 and N2: delivery recipients are the ones on the card, the sink is shown
   const t2 = await r.tasks.request(owner(), draftTask({ record: `vyre://${SPACE}/contact/c2` }));
   await r.tasks.start(asIntake(), t2.id);
   await assert.rejects(() => r.tasks.complete(asIntake(), t2.id, evidenceSent({ payload: payload({ sealed_slots: [{ slot: "ssn", ref: "sv_1", record: `vyre://${SPACE}/contact/c2` }] }) })), { code: "bad_input" }, "the ref belongs to c1, the slot says c2");
+});
+
+test("sessions bug: a required task with no checker completes on the kernel's output check; required only makes a skip a proposal", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" }, required: true });
+  await r.tasks.start(agentChain("research"), t.id);
+  const done = await r.tasks.complete(agentChain("research"), t.id, { note: "found it", sources: ["https://x"] });
+  assert.equal(done.state, "done", "no checker, no outward output: nothing to wait for");
+  const s = await r.tasks.request(owner(), { title: "Optional", doer: actor("agent", "research"), output: { kind: "note" }, required: true });
+  const sk = await r.tasks.skip(agentChain("research"), s.id, "not needed");
+  assert.ok(sk.proposal, "a skip of a required task is still a proposal for a person");
+});
+
+test("continue_in_space is a task source only from a service chain; flow and form travel as opaque, capped data", async () => {
+  const r = rig();
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ source: "continue_in_space" })), { code: "bad_input" }, "not a person's");
+  await assert.rejects(() => r.tasks.request(asIntake(), draftTask({ source: "continue_in_space" })), /./, "not a model's");
+  const svc = chains.fromFacts({ kind: "module", module: "tasks", first_party: true });
+  const made = await r.tasks.request(svc, { title: "Continue in the Space", doer: actor("agent", "research"), output: { kind: "note" }, source: "continue_in_space" });
+  assert.equal(made.source, "continue_in_space");
+  const t = await r.tasks.request(owner(), draftTask({ flow: "fl_welcome", form: { fields: [{ name: "x", label: "X" }] } }));
+  assert.equal(t.flow, "fl_welcome");
+  assert.deepEqual(t.form, { fields: [{ name: "x", label: "X" }] });
+  assert.ok(Object.isFrozen(t.form));
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ form: { big: "x".repeat(9000) } })), { code: "bad_input" });
+});
+
+test("idempotency: a repeated key returns the first task and makes one; the same key with other input is a conflict", async () => {
+  const r = rig();
+  const a = await r.tasks.request(owner(), draftTask(), { idem: "step-1" });
+  const b = await r.tasks.request(owner(), draftTask(), { idem: "step-1" });
+  assert.equal(a.id, b.id);
+  assert.equal(r.log.read({ type: "task.created" }).length, 1);
+  await assert.rejects(() => r.tasks.request(owner(), draftTask({ title: "Another" }), { idem: "step-1" }), { code: "idem_conflict" });
+  const c = await r.tasks.request(owner(), draftTask(), { idem: "step-2" });
+  assert.notEqual(c.id, a.id);
+});
+
+test("approval on authorize: an approved held-act task allows exactly that act by its doer once, and nothing else", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal((await r.authorizer.authorize(act)).effect, "ask", "without the approval an outward act asks");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), true);
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, resource: `vyre://${SPACE}/message/other` }), false, "another resource");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, chain: agentChain("rogue") }), false, "another doer");
+  assert.equal(r.tasks.approvedAct({ id: "nope", ...act }), false);
+  // A-4: the approval is spent by the decision that uses it, whoever asked, and it has a day to live
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act }), true);
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act }), false, "once");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), false);
+  const t2 = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
+  T += 25 * 3600_000;
+  assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
 });

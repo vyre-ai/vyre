@@ -178,6 +178,22 @@
     "reach": "person"
    },
    {
+    "name": "spaces.self",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.people",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.merge-list",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.compute.status",
     "reach": "person"
    },

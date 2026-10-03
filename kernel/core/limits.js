@@ -94,15 +94,17 @@ export function createLimits(cfg) {
         reserve(/** @type {any} */ input) {
           const limit = o.limitOf(input.chain);
           if (limit === undefined) return null;
-          try { open.set(input, api.reserve(input.chain, { key: keyOf(input.chain), meter: "ai_spend", amount: o.estimate ? o.estimate(input) : 0, limit })); } catch (e) { return /** @type {any} */ (e).code === "budget_exhausted" ? "ai_spend" : "ai_spend"; }
+          try { const amount = o.estimate ? o.estimate(input) : 0; open.set(input, { id: api.reserve(input.chain, { key: keyOf(input.chain), meter: "ai_spend", amount, limit }), amount }); } catch (e) { return /** @type {any} */ (e).code === "budget_exhausted" ? "ai_spend" : "ai_spend"; }
           return null;
         },
         /** The call failed or was refused after the reservation: give it back, spend nothing. */
-        release(/** @type {any} */ input) { const id = open.get(input); if (!id) return; open.delete(input); api.release(input.chain, id); },
+        release(/** @type {any} */ input) { const r = open.get(input); if (!r) return; open.delete(input); api.release(input.chain, r.id); },
         settle(/** @type {any} */ input, /** @type {any} */ usage) {
-          const id = open.get(input); if (!id) return;
+          const r = open.get(input); if (!r) return;
           open.delete(input);
-          api.settle(input.chain, id, o.cost ? o.cost(input, usage) : Number(usage && usage.cost_micro) || 0);
+          // A provider that reports no usage at all is charged what was reserved: unmetered spend is never free (D-1).
+          const reported = usage === undefined || usage === null ? null : o.cost ? o.cost(input, usage) : Number(usage.cost_micro);
+          api.settle(input.chain, r.id, Number.isFinite(reported) && reported !== null ? reported : r.amount);
         },
       };
     },

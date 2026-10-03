@@ -7,3 +7,4 @@ dist/
 modules/*/android/build/
 modules/*/android/.gradle/
 expo-env.d.ts
+public/term/

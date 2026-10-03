@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { record, load, diff, added } from "./index.js";
+import { record, load, diff, added, weakened } from "./index.js";
 import { CALLERS, WORLDS } from "./matrix.js";
 
 let fresh = null;
@@ -62,4 +62,16 @@ test("diff: a new tool is recorded, not judged; a changed cell or a vanished too
   assert.equal(diff(base, changed).length, 1);
   const gone = { ...base, roles: { box: { rows: {}, emptyBad: {} } } };
   assert.equal(diff(base, gone)[0].now, "absent");
+});
+
+test("a refresh fails on any existing cell moving from refused to run unless an allow entry with a reason names it; additions and tightenings pass", () => {
+  const set = (rows) => ({ v: 1, callers: ["cli", "deck"], worlds: ["bare"], legend: { R: "would run", a: "denied", b: "no_such_tool" }, roles: { box: { rows, emptyBad: {} } } });
+  const was = set({ t1: "aR", t2: "Ra", t3: "bb" });
+  assert.deepEqual(weakened(was, set({ t1: "aR", t2: "aa", t3: "Ra" })), [], "R to a is a tightening; no_such_tool to a decision is an addition");
+  const loosened = set({ t1: "RR", t2: "Ra", t3: "bb" });
+  assert.equal(weakened(was, loosened).length, 1);
+  assert.deepEqual(weakened(was, loosened).map(d => [d.tool, d.caller, d.was, d.now]), [["t1", "cli", "denied", "would run"]]);
+  assert.equal(weakened(was, loosened, [{ tool: "t1", reason: "" }]).length, 1, "a reason is required");
+  assert.equal(weakened(was, loosened, [{ tool: "t1", caller: "deck", reason: "x" }]).length, 1, "another caller's entry does not cover it");
+  assert.equal(weakened(was, loosened, [{ tool: "t1", reason: "the CLI may now start it" }]).length, 0);
 });

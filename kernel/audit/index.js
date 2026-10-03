@@ -30,7 +30,7 @@ export const ed25519Signer = privateKey => (/** @type {Buffer} */ bytes) => cryp
 
 /**
  * The home's side: sign and append checkpoints.
- * @param {{ space: string, log: any, chains: any, sign: (bytes: Buffer) => string | Promise<string>, key_id: string, clock?: () => number, every_events?: number, every_ms?: number }} cfg
+ * @param {{ publicKey?: crypto.KeyObject | string, space: string, log: any, chains: any, sign: (bytes: Buffer) => string | Promise<string>, key_id: string, clock?: () => number, every_events?: number, every_ms?: number }} cfg
  */
 export function createCheckpointer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -60,7 +60,12 @@ export function createCheckpointer(cfg) {
     },
     /** A 60-second timer (nothing runs faster), never keeping the process alive. @returns {() => void} */
     start() { const t = setInterval(() => { api.tick().catch(() => {}); }, 60_000); t.unref(); return () => clearInterval(t); },
-    latest() { const l = cfg.log.read({ type: "checkpoint.signed" }); return l.length ? l[l.length - 1].data.checkpoint : null; },
+    /** The latest checkpoint in the log that verifies under the Space's checkpoint key (`publicKey`); any chain may append that event type, so one that does not verify is skipped. */
+    latest() {
+      const l = cfg.log.read({ type: "checkpoint.signed" });
+      for (let i = l.length - 1; i >= 0; i--) { const c = l[i].data && l[i].data.checkpoint; if (!cfg.publicKey || verifyCheckpoint(c, cfg.publicKey)) return c; }
+      return null;
+    },
   };
   return Object.freeze(api);
 }
@@ -94,22 +99,31 @@ export function verifyLog(cfg) {
 /**
  * The device's side: it keeps the latest checkpoint it has seen from the home, refuses a checkpoint that does not verify, and holds the home to what
  * it has seen. `held` is whatever durable store the device has (the device's own, never the home's).
- * @param {{ space: string, publicKey: crypto.KeyObject | string, held?: { get(): any, set(cp: any): void } }} cfg
+ * @param {{ space: string, publicKey: crypto.KeyObject | string, held?: { get(): any, set(cp: any): void }, clock?: () => number, max_age_ms?: number }} cfg
+ *   Staleness: a held checkpoint older than `max_age_ms` (three checkpoint intervals) by THIS device's clock at receipt means the home has stopped producing them
+ *   (a rolled-back or silenced home looks exactly like that), and the device says so. `time` in a checkpoint is the home's own claim and is never used for this.
  */
 export function createDeviceCheckpoints(cfg) {
-  let mem = null;
+  let mem = null, receivedAt = 0;
+  const clock = cfg.clock || Date.now, maxAge = cfg.max_age_ms ?? 3 * EVERY_MS;
+  /** @type {Set<string>} key ids an owner revoked: their checkpoints are no longer accepted */ const revoked = new Set();
   const held = cfg.held || { get: () => mem, set: (/** @type {any} */ c) => { mem = c; } };
   return Object.freeze({
     /** Take a checkpoint from the home. Newer and valid replaces the held one; older or invalid is refused. @returns {{ ok: boolean, why?: string }} */
     accept(/** @type {any} */ cp) {
+      if (cp && revoked.has(cp.key_id)) return { ok: false, why: "key_revoked" };
       if (!verifyCheckpoint(cp, cfg.publicKey) || cp.space !== cfg.space) return { ok: false, why: "bad_signature" };
       const cur = held.get();
       if (cur && cp.seq < cur.seq) return { ok: false, why: "older_than_held" };
       if (cur && cp.seq === cur.seq && cp.hash !== cur.hash) return { ok: false, why: "split_history" };
-      held.set(cp);
+      held.set(cp); receivedAt = clock();
       return { ok: true };
     },
     held: () => held.get(),
+    /** An owner revoked the checkpoint key (kernel/audit/key.js `verifyRevocation` has checked it): nothing more is accepted from it. */
+    revoke(/** @type {string} */ key_id) { revoked.add(key_id); },
+    /** Has the home gone quiet? Judged by this device's clock since it last accepted a checkpoint. @returns {{ stale: boolean, age_ms: number | null }} */
+    staleness() { return held.get() ? { stale: clock() - receivedAt > maxAge, age_ms: clock() - receivedAt } : { stale: true, age_ms: null }; },
     /**
      * Is the home's log still the history this device saw? A log shorter than the held checkpoint is a rollback; a log whose event at that
      * position has another hash is a rewrite or a split.

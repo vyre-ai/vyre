@@ -9,8 +9,12 @@
 //   - nothing is cached or written: the vault is asked once per request and the value lives in one header;
 //   - only the routes the space granted exist; any other path, host or method gets a plain refusal.
 //
-// A route is { prefix: "/provider", upstream: "https://api.anthropic.com", credential?: { ref, header, prefix? } }.
-// vault.credential({ ref, session, route }) returns the secret as a string, or throws.
+// A route is { prefix: "/provider", upstream: "https://models.example", credential?: { header, prefix? }, allow: [{ method, path }] }.
+// A route with a credential MUST list what the session may do with it: each entry names a method and a path ("/v1/messages",
+// or "/v1/files/*" for a prefix). Anything else is refused here, before the vault is asked (reviewer-2 R4: a read-only grant must
+// never become a refund or a delete). The vault is then asked per request with the method and path, and it classifies them the
+// way the kernel does: a read is allowed, anything that changes state is an outward act held for approval (kernel/seal/uses.js
+// leasedUse). vault.credential({ session, route, lease, method, path }) (the Space maps the request to a credential; the runner never names one) returns the secret as a string, or throws.
 
 import http from "node:http";
 import https from "node:https";
@@ -24,8 +28,8 @@ const MAX_BODY = 64 * 1024 * 1024;
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 /**
- * @param {{ routes: { prefix: string, upstream: string, credential?: { ref: string, header: string, prefix?: string } }[],
- *   vault: { credential(o: { ref: string, session: string, route: string }): Promise<string> },
+ * @param {{ routes: { prefix: string, upstream: string, credential?: { header: string, prefix?: string }, allow?: { method: string, path: string }[] }[],
+ *   vault: { credential(o: { session: string, route: string, lease?: string, method: string, path: string }): Promise<string> },
  *   session: string, token: string, lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
  */
@@ -33,6 +37,7 @@ export function createEgress(o) {
   const routes = o.routes.map(r => ({ ...r, url: new URL(r.upstream) }));
   for (const r of routes) {
     if (!/^\/[a-z0-9-]+$/.test(r.prefix)) throw new Error("a route prefix is one lowercase segment");
+    if (r.credential && !(Array.isArray(r.allow) && r.allow.length && r.allow.every(a => /^[A-Z]+$/.test(a.method) && /^\/[^\s]*$/.test(a.path)))) throw new Error("a route with a credential must list its allowed methods and paths");
     if (r.url.protocol !== "https:" && !isLoopback(r.url.hostname)) throw new Error("an upstream must be https");
   }
   const server = http.createServer(async (req, res) => {
@@ -43,8 +48,11 @@ export function createEgress(o) {
       const u = new URL(req.url, "http://proxy");
       const route = routes.find(r => u.pathname === r.prefix || u.pathname.startsWith(r.prefix + "/"));
       if (!route) return refuse(403, "that address is not one this space allows");
+      if (/%2e|%2f|%5c|%00/i.test(u.pathname)) return refuse(400, "that path is not allowed", route.prefix);
+      const rest0 = u.pathname.slice(route.prefix.length) || "/";
       const presented = firstToken(req.headers);
       if (!presented || !same(presented, o.token)) return refuse(401, "unknown session");
+      if (route.credential && !route.allow.some(a => a.method === req.method && (a.path.endsWith("*") ? rest0.startsWith(a.path.slice(0, -1)) : rest0 === a.path))) return refuse(403, "this space does not allow that request with this credential", route.prefix);
       const headers = {};
       for (const [k, v] of Object.entries(req.headers)) {
         const key = k.toLowerCase();
@@ -53,7 +61,7 @@ export function createEgress(o) {
       }
       if (route.credential) {
         let secret;
-        try { secret = await o.vault.credential({ ref: route.credential.ref, session: o.session, route: route.prefix, lease: o.lease?.() }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
+        try { secret = await o.vault.credential({ session: o.session, route: route.prefix, lease: o.lease?.(), method: req.method, path: rest0 }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
         if (typeof secret !== "string" || !secret) return refuse(502, "the space's vault did not give the credential", route.prefix);
         headers[route.credential.header] = (route.credential.prefix || "") + secret;
         secret = "";
@@ -69,7 +77,7 @@ export function createEgress(o) {
         for (const [k, v] of Object.entries(ur.headers)) if (!STRIP_IN.has(k)) out[k] = v;
         res.writeHead(ur.statusCode || 502, out);
         ur.pipe(res);
-        ur.on("end", () => o.onEvent?.({ route: route.prefix, status: ur.statusCode || 0, ms: Date.now() - t0 }));
+        ur.on("end", () => o.onEvent?.({ route: route.prefix, method: req.method, path: rest0, status: ur.statusCode || 0, ms: Date.now() - t0 }));
       });
       up.on("error", () => refuse(502, "the upstream did not answer", route.prefix));
       res.on("close", () => up.destroy());

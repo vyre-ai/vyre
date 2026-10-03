@@ -65,6 +65,7 @@ export function contains(parent, child, since = () => 0, riskOf = () => undefine
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
+ * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
@@ -106,6 +107,8 @@ export function createAuthorizer(cfg) {
       // An unknown trust value is the most restrictive, never trusted (invariant 9).
       const trust = TRUST_ORDER.includes(chain.labels.trust) ? chain.labels.trust : "untrusted";
       if (trust === "untrusted" && risk !== "read") return deny("tainted");
+      // A viewer chain (one person in the room an assistant writes for) reads and does nothing else.
+      if (chain.viewer === true && risk !== "read") return deny("viewer_chain");
       // A grant is a person's act: never from a chain that holds a model, whatever it was lent (invariants 2 and 4).
       if (risk === "grant" && hasKind(chain, "agent")) return deny("model_chain");
 
@@ -162,6 +165,12 @@ export function createAuthorizer(cfg) {
       if (hasKind(chain, "agent") && cfg.sealedFields) {
         const fields = cfg.sealedFields(resource);
         if (fields && fields.length) obligations.push({ type: "placeholders", fields: [...fields] });
+      }
+
+      // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
+      // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
+      if (ask && OUTWARD.has(risk) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource }) === true) {
+        ask = null; presence = "none";
       }
 
       // Is each obligation met by evidence the kernel holds? An unmet one makes the effect ask, not allow.

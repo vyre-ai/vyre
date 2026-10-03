@@ -16,6 +16,11 @@
    "owner": "module's own team",
    "note": "reviewed by the assistant: every computed call runs as module:assistant and names a read tool of another owner (agents.list, waiting.count and waiting.list, memory.facts and memory.digest, context.now, modules.capabilities, mcp.servers, link.macs, push.devices, team.list, providers.list, threads.list, sessions.prompt.history, undo.list, onboard.status), plus agents.rollover (the one write, whose own code admits module:assistant). Each is dropped when it refuses, so a callee that closes to modules degrades the answer and never errors it."
   },
+  "core/bridges/index.js": {
+   "count": 1,
+   "owner": "windows",
+   "note": "call() runs as module:bridges and names spaces.membership and spaces.merge-list (modules-only, built) and spaces.policy and spaces.ask (not built yet: a missing tool is tolerated and the share is refused or held)"
+  },
   "core/gate/index.js": {
    "count": 2,
    "owner": "module's own team",
@@ -75,6 +80,11 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/publish/index.js": {
+   "count": 1,
+   "owner": "windows",
+   "note": "call() runs as module:publish and names only spaces.membership and spaces.self (modules-only), plus the vault's secret tools it has been granted"
   },
   "core/settings/index.js": {
    "count": 4,

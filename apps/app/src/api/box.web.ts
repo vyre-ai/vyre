@@ -23,7 +23,8 @@ export function configure(o: { base?: string; paths?: string[] }): void {
   if (o.paths) paths = o.paths;
 }
 
-const boxOrigin = () => (base ? new URL(base).origin : location.origin);
+/** The box's origin (scheme, host, port): where a ticketed stream or a terminal page is reached directly. */
+export const boxOrigin = () => (base ? new URL(base).origin : location.origin);
 const crossOrigin = () => boxOrigin() !== location.origin;
 
 /** The box's host name: what its stores on this device (outbox, cursor, view cache) are keyed by. */
@@ -48,6 +49,7 @@ const b = makeBox(async () => {
     base: origin,
     // One path for follow(): which way the box is reached is the paths layer's job.
     paths: ["box"],
+    socket: (path) => p.socket(path),
     open: o.open,
     caller: (_base, co) => o.caller(co),
     outboxStore: idbStore(name),
@@ -72,7 +74,7 @@ const b = makeBox(async () => {
   };
 });
 
-export const { connect, listen, call, send, prove, disconnect } = b;
+export const { connect, listen, call, send, prove, disconnect, socket } = b;
 
 /**
  * A hint the page may not outlive (push.seen on hide): straight to the box's origin with
