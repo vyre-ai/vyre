@@ -78,7 +78,10 @@ if (cmd === "init-device") {
   out("home", { space: SPACE, invite: inv.id, members: (await g.members.list(oc)).map(m => `${m.person}:${m.role}`) });
   const server = createRemoteServer({ space: SPACE, kernel: k });
   const people = { dev_alice: ALICE, dev_bob: BOB };
-  const serve = withKernelCall(async () => { throw Object.assign(new Error("no such tool"), { code: "no_such_tool" }); }, { serverFor: s => (s === SPACE ? server : null), personOf: d => people[d] });
+  const none = async () => { throw Object.assign(new Error("no such tool"), { code: "no_such_tool" }); };
+  const opts = { serverFor: s => (s === SPACE ? server : null), personOf: d => people[d] };
+  const serve = withKernelCall(none, { ...opts, pathOf: () => "wink" });         // the direct listener
+  const serveRelay = withKernelCall(none, { ...opts, pathOf: () => "relay" });   // the relay's peer door
   if (relayUrl) {
     // Behind the relay: the home holds a box link to it; a device that is paired (its Noise key is listed) opens a `peer` stream and is the caller `device:<id>` (bridge peer door).
     const { relayLink } = await wink("core/relay/link.js"), { bridge } = await wink("core/relay/bridge.js"), { newRouteKey, routeId } = await wink("core/relay/wire.js"), { keyPair } = await wink("core/relay/noise.js");
@@ -88,7 +91,7 @@ if (cmd === "init-device") {
       admit: async pub => { const d = byPub.get(pub.toString("hex")); if (!d) throw new Error("not paired"); return { device: d }; },
       onchannel: (channel, { reply }) => bridge(channel, { handler: () => {}, caller: `device:${reply.device}`, peer: {},
         peers: { space: SPACE, allow: () => true, accept: (stream, who) => { peerSession(streamPipe(stream), { first: 2, serve: async (tool, input) => {
-          const r = await serve(`device:${who.deviceId}`, tool, input);
+          const r = await serveRelay(`device:${who.deviceId}`, tool, input);
           out("served", { via: "relay", caller: `device:${who.deviceId}`, call: input && input.call, ok: r && r.ok, ...(r && r.ok === false ? { error: r.error.code } : {}) });
           return r;
         } }); } } }) });

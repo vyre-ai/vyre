@@ -29,8 +29,8 @@ const P = {
   actor: a => ({ presence: proof("grants.role", { actor: a }, `vyre://${SPACE}/member/${a.id}`) }),
 };
 
-async function rig() {
-  const log = createEventLog({ space: SPACE, clock });
+async function rig(wrap) {
+  const log = wrap ? wrap(createEventLog({ space: SPACE, clock })) : createEventLog({ space: SPACE, clock });
   const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
   const store = createMemoryStore({ clock });
   const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
@@ -419,4 +419,26 @@ test("owner.changed carries the owner op for the identity chain, visible to the 
   await g.removeMember(owner(), { person: ALICE }, P.role({ remove: ALICE }));
   const gone = log.read({}).filter(e => e.type === "owner.changed").pop();
   assert.equal(gone.data.owner_change.op, "remove");
+});
+
+test("transferOwner: one proof hands the Space on; a failure between the two steps leaves two owners and a repeat finishes it", async () => {
+  let fail = false, sets = 0;
+  const { g } = await rig(real => ({ ...real, append: (c, e, ...r) => { if (fail && e.type === "member.set" && ++sets === 2) throw new Error("killed"); return real.append(c, e, ...r); } }));
+  const mk = to => ({ presence: proof("grants.role", { transfer: { to, demote_to: "admin" } }, `vyre://${SPACE}/member/${to}`) });
+  await g.setRole(owner(), { person: ALICE, role: "member" }, P.role({ person: ALICE, role: "member" }));
+  const owners = async () => (await g.members.list(owner())).filter(m => m.role === "owner").map(m => m.person).sort();
+  await assert.rejects(() => g.transferOwner(owner(), { to: ALICE }), { code: "needs_presence" });
+  await assert.rejects(() => g.transferOwner(personChain(ALICE), { to: OWNER }, mk(OWNER)), e => ["not_found", "not_allowed"].includes(e.code), "a member does not hand on the Space");
+  await assert.rejects(() => g.transferOwner(owner(), { to: "per_nobody" }, mk("per_nobody")), { code: "not_found" });
+  // the second step dies (the process is killed after the new owner is made)
+  fail = true;
+  await assert.rejects(() => g.transferOwner(owner(), { to: ALICE }, mk(ALICE)), /killed/);
+  fail = false;
+  assert.deepEqual(await owners(), [ALICE, OWNER].sort(), "two owners, never none");
+  assert.equal((await g.members.list(personChain(ALICE))).length, 2, "the new owner holds the Space in full");
+  // a repeat (a fresh proof) does only the second step
+  const done = await g.transferOwner(owner(), { to: ALICE }, mk(ALICE));
+  assert.equal(done.previous_role, "admin");
+  assert.deepEqual(await owners(), [ALICE]);
+  assert.equal((await g.members.get(personChain(ALICE), OWNER)).role, "admin");
 });

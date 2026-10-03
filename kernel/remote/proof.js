@@ -25,6 +25,7 @@ const CALLS = {
   revoke: (s, id, reason) => ({ action: "grants.revoke", resource: urn(s, "grant", id), input: { id, reason } }),
   narrow: (s, id, patch) => ({ action: "grants.narrow", resource: urn(s, "grant", id), input: { id, patch } }),
   setRole: (s, m) => ({ action: "grants.role", resource: urn(s, "member", m.person), input: m }),
+  transferOwner: (s, t) => ({ action: "grants.role", resource: urn(s, "member", t.to), input: { transfer: { to: t.to, demote_to: t.demote_to || "admin" } } }),
   removeMember: (s, m) => ({ action: "grants.role", resource: urn(s, "member", m.person), input: { remove: m.person } }),
   addActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { actor } }),
   offer: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer"), input: o }),

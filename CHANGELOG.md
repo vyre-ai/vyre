@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel): `grants.transferOwner(chain, { to, demote_to }, { presence })`, ownership handed on under one proof (the new owner is made first, then the caller steps down; a failure between leaves two owners and a repeat finishes it, the store restored from the log). fix(kernel): reviewer-2's W-1 and W-2 on the Wink adapter: `withKernelCall` requires `pathOf` (no default; anything but "wink" is recorded as the relay), the two-machine run passes it on each leg, and a removed device maps to nobody at its next call.
+
 - feat(kernel): `acceptProofRequest` (what an invitee signs from the join card) and `proofChainHash` on ctx.kernel, and kernel/remote/run/real.mjs, the hand-run proof of the remote call between two machines (home on one, device on the other, direct and through a relay; see the kernel-remote-run review).
 
 - feat(kernel): the remote kernel call over Wink's peer wire (`kernel/remote/wink.js`). `winkTransport({ sessionFor })` is the device's transport; `withKernelCall(serve, { serverFor, personOf })` wraps the peer door's dispatcher so the `kernel.call` tool reaches the Space's remote server with the proven device as peer, mapped to a person by the identity chain. Verified against the real `peerSession` of work/wink over an in-memory pipe.
