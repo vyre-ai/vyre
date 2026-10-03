@@ -275,6 +275,13 @@ export function SealedChip({ f }: { f: Extract<RecordField, { sealed: true }> })
   return <Chip tone="sealed" icon="shield">{`${f.cls}: ${f.present ? "on file, sealed" : "not set, sealed"}`}</Chip>;
 }
 
+/** A cited field in a reply, drawn for this viewer: the value, or a chip that says something is there (sealed, or kept from their role). Never a value it was not sent. */
+export function FieldChip({ block }: { block: Extract<Block, { block: "field" }> }) {
+  if (block.state === "sealed") return <Chip tone="sealed" icon="shield">{`${block.label}: ${block.present ? "on file, sealed" : "not set, sealed"}`}</Chip>;
+  if (block.state === "hidden") return <Chip tone="sealed" icon="shield">{`${block.label}: ${block.present ? "on file, not shown to you" : "not shown to you"}`}</Chip>;
+  return <Chip>{`${block.label}: ${block.value}`}</Chip>;
+}
+
 export function RecordCard({ block, ctx }: { block: Extract<Block, { block: "record" }>; ctx: BlockCtx }) {
   const sealed = sealedCount(block);
   return (
@@ -413,6 +420,7 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "diff": return <DiffBlock block={block} ctx={ctx} />;
     case "record": return <RecordCard block={block} ctx={ctx} />;
     case "task": return <TaskCard block={block} ctx={ctx} decided={extra.decided} />;
+    case "field": return <FieldChip block={block} />;
     case "draft": return <DraftBlock block={block} ctx={ctx} />;
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;

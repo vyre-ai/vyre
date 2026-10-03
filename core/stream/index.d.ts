@@ -11,12 +11,14 @@ export type EphemeralKind = "presence" | "read-marker";
 export type Author = `person:${string}` | `assistant:${string}` | `model:${string}`;
 export type State = "starting" | "working" | "asking" | "waiting" | "paused" | "stopped" | "finished" | "failed";
 
-export type BlockName = "terminal" | "diff" | "files" | "record" | "task" | "draft" | "flow-change" | "answer" | "screen" | "text";
+export type BlockName = "terminal" | "diff" | "files" | "record" | "task" | "draft" | "flow-change" | "answer" | "screen" | "text" | "field-ref" | "field";
+/** A cited field: which record and field, never a value. The server draws it per viewer into a `field` block or a placeholder chip. */
+export interface FieldRef { block: "field-ref"; record: string; field: string; label?: string }
 export interface Block { block: BlockName; [prop: string]: any }
 
 export interface DataByKind {
   "text-delta": { message: string; index: number; text: string; reasoning?: boolean; parts?: number[]; parent?: string };
-  "text-done": { message: string; index?: number };
+  "text-done": { message: string; index?: number; blocks?: Block[] };
   "tool-started": { tool_id: string; tool: string; kind: string; summary: string };
   "tool-progress": { tool_id: string; text?: string; pct?: number };
   "tool-finished": { tool_id: string; ok: boolean; result: Block };
@@ -87,8 +89,13 @@ export interface Participant { id: Author; name?: string }
 /** Who answers a message: mentioned assistants, the assigned one, else the default assistant when no person is talking to a person. */
 export function whoAnswers(a: { participants: readonly Participant[]; defaultAssistant?: string | null; text?: string; mentions?: readonly string[]; assigned?: string | readonly string[] | null; author: string; previous?: string | null }): string[];
 
-export interface Viewer { id?: string; roles?: readonly string[] }
+export interface FieldSpec { label?: string; kind?: string; value?: unknown; read_roles?: readonly string[]; seal?: unknown; present?: boolean }
+export interface Viewer { id?: string; roles?: readonly string[]; resolve?: (record: string, field: string) => Promise<FieldSpec | null> }
 export function render<F>(frame: F, viewer: Viewer): F;
+export function forViewer<F>(frame: F, viewer: Viewer): F;
+export function forViewerAsync<F>(frame: F, viewer: Viewer): Promise<F>;
+export function resolveRefs<F>(frame: F, viewer: Viewer): Promise<F>;
+export function hasRefs(frame: unknown): boolean;
 export function assertAskerCanRead(frame: unknown, asker: Viewer): void;
 export function canRead(field: unknown, viewer: Viewer): boolean;
 export function placeholder(field: unknown, viewer: Viewer): Record<string, any>;

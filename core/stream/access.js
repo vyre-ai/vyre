@@ -10,10 +10,11 @@
 //                                     The caller's person (verified peer, else the named or owner person
 //                                     of a local surface; an assistant never names its own) must be one.
 //
-// With the kernel wired in and the call carrying a session token (ctx.kernel.chain(meta) is then the
-// caller's chain, not the module's own), the kernel's authorize is asked too, for action session.read on
-// vyre://<space>/session/<id>; an `unknown_action` answer (the action is not registered in this Space yet)
-// does not decide, the participant rule above always does. A deny from the kernel always refuses.
+// With the kernel wired in (ctx.kernel) and the call carrying a session token (ctx.kernel.chain(meta) is then the caller's
+// chain, not the module's own), a chat is the kernel's: chats.read(chain, id) decides, so its readers are the chat's
+// participants as the kernel holds them (an owner or admin outside the chat, and an assistant acting for someone outside
+// it, are refused; a refusal looks like absence). The 0.2 group store is then only a mirror of the kernel's list, and the
+// group path below is closed. A session that is not a kernel chat (a switchboard thread) is still read with threads.get.
 // Where no kernel is wired (a 0.2 daemon) only the two paths above run. Nothing here creates a log or a
 // map entry for an id it refuses.
 
@@ -41,31 +42,55 @@ export function createAccess({ ctx, groups, logs }) {
     return false; // not_found, no_such_tool, not_available: not a thread this box knows
   }
 
-  /** The kernel's say, when it can speak for the caller. @param {string} session @param {any} meta */
-  async function kernel(session, meta) {
+  /** The person a kernel chain is for: its first hop, when that is a person. @param {any} chain */
+  const kernelPerson = chain => { const h = chain && Array.isArray(chain.hops) ? chain.hops[0] : null; return h && h.actor && h.actor.kind === "person" ? String(h.actor.id) : ""; };
+  /** The role the Space holds for the person behind a chain (kernel members: a person reads their own membership), else none. @param {any} chain @param {string} id */
+  const kernelRole = async (chain, id) => {
     const k = ctx.kernel;
-    if (!k || typeof k.authorize !== "function" || typeof k.chain !== "function" || !meta || typeof meta.token !== "string") return "none";
+    try { const m = k && k.grants && k.grants.members && typeof k.grants.members.get === "function" ? await k.grants.members.get(chain, id) : null; return m && typeof m.role === "string" ? m.role : ""; } catch { return ""; }
+  };
+
+  /**
+   * The kernel's chat for this call, when it can speak for the caller: null when no kernel or no token (0.2), { chat: null } when the caller is
+   * not in a chat by that id (or there is none: the kernel does not say which), else { chat, chain, person }.
+   * @param {string} session @param {any} meta
+   * @returns {Promise<null | { chat: any, chain: any, person: string }>}
+   */
+  async function chat(session, meta) {
+    const k = ctx.kernel;
+    if (!k || !k.chats || typeof k.chats.read !== "function" || typeof k.chain !== "function" || !meta || typeof meta.token !== "string") return null;
     const chain = await k.chain(meta);
-    const r = await k.authorize({ chain, action: "session.read", resource: `vyre://${k.space}/session/${session}` });
-    if (r && r.effect === "allow") return "allow";
-    if (r && r.reason === "unknown_action") return "none";
-    return "deny";
+    const person = kernelPerson(chain);
+    if (!person) return { chat: null, chain, person };
+    try { return { chat: await k.chats.read(chain, session), chain, person }; }
+    catch (e) { if (/** @type {any} */ (e).code === "not_found") return { chat: null, chain, person }; throw e; }
   }
 
   return {
     personOf,
+    chat,
     /**
      * Throws not_found or denied unless the caller may read the session. Returns the viewer and which path decided.
      * @param {string} session @param {any} meta @param {any} [i]
-     * @returns {Promise<{ viewer: { id: string, roles: string[] }, via: "thread"|"group" }>}
+     * @returns {Promise<{ viewer: { id: string, roles: string[] }, via: "thread"|"group"|"chat", chain: any }>}
      */
     async read(session, meta, i = {}) {
+      const kc = await chat(session, meta);
+      if (kc) {
+        const id = `person:${kc.person}`;
+        const role = await kernelRole(kc.chain, kc.person);
+        const viewer = { id, roles: /** @type {string[]} */ (role ? [role] : []) };
+        if (kc.chat) return { viewer, via: "chat", chain: kc.chain };
+        // The kernel is on and this person is not in a chat by that id: only a switchboard thread they may read remains. The group store never decides.
+        if (await thread(session, meta)) return { viewer, via: "thread", chain: kc.chain };
+        throw fail("not_found", "no such session");
+      }
       const person = personOf(meta, i);
-      if ((await kernel(session, meta)) === "deny") throw fail("denied", "you may not read this session");
-      const viewer = { id: person, roles: /** @type {string[]} */ ([]) };
-      if (await thread(session, meta)) return { viewer, via: "thread" };
+      // 0.2: every person caller on the box's own surfaces is the owner; a tailnet peer holds no role here (it fails closed).
+      const viewer = { id: person, roles: /** @type {string[]} */ (person === "person:owner" ? ["owner"] : []) };
+      if (await thread(session, meta)) return { viewer, via: "thread", chain: null };
       if (groups && groups.known(session)) {
-        if (groups.people(session).has(person)) return { viewer, via: "group" };
+        if (groups.people(session).has(person)) return { viewer, via: "group", chain: null };
         throw fail("not_found", "no such session");
       }
       throw fail("not_found", "no such session");
