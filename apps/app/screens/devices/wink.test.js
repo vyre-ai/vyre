@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { COPY, deviceLine, lastStep, lendState, list, removeText, stepCount, stepLine, stepWords, wordsStep } from "./wink.js";
+import { COPY, SOFTWARE_KEY, deviceSub, deviceLine, lastStep, lendState, list, removeText, stepCount, stepLine, stepWords, wordsStep } from "./wink.js";
 
 test("a phone or computer has four steps and a server three", () => {
   assert.equal(stepCount("phone"), 4);
@@ -57,4 +57,11 @@ test("a device says which spaces it is in", () => {
 test("removal says what happens first", () => {
   assert.match(removeText("Device", "Alex's Mac"), /stops it opening anything of yours/);
   assert.match(removeText("Person", "Dana Reyes"), /Dana loses its projects and servers at once/);
+});
+
+test("a device row says its key is in software only when it is", () => {
+  assert.deepEqual(deviceSub("Phone", "Now", false), ["Phone, last used Now"]);
+  assert.deepEqual(deviceSub("Phone", "Now", undefined), ["Phone, last used Now"]);
+  assert.deepEqual(deviceSub("Server", "Now", true), ["Server, last used Now", "This device keeps its key in software"]);
+  assert.equal(SOFTWARE_KEY, "This device keeps its key in software");
 });

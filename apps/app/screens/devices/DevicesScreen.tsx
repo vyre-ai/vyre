@@ -4,7 +4,7 @@ import { Avatar, Button, Card, Divider, Row, Switch, Text, showToast, markRef } 
 import { Group, Page } from "../places/Frame";
 import { SPACE_NAMES } from "./data";
 import { useDevices } from "./state";
-import { deviceLine } from "./wink.js";
+import { deviceLine, deviceSub } from "./wink.js";
 
 /** Devices under your identity: each joins each space on its own. */
 export function DevicesScreen() {
@@ -20,7 +20,7 @@ export function DevicesScreen() {
             <View key={d.id}>
               {i ? <Divider inset={68} /> : null}
               <Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={deviceLine(d.name, (devSpaces[d.id] ?? []).map((s) => SPACE_NAMES[s] ?? s))}
-                sub={`${d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer"}, last used ${d.last}`} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
+                sub={<View>{deviceSub(d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer", d.last, d.software).map((l, n) => <Text key={n} size="secondary" tone="label">{l}</Text>)}</View>} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
                 chevron />
             </View>
           ))}

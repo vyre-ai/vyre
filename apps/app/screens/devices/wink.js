@@ -18,6 +18,12 @@ export const COPY = {
   noClipboard: "Vyre could not read what you copied. Paste the long code into the field.",
 };
 
+/** The one plain line a device row shows when its key is kept in software. */
+export const SOFTWARE_KEY = "This device keeps its key in software";
+
+/** The line under a device's name: what it is and when it was used, then the software-key line only when that is true. */
+export const deviceSub = (/** @type {string} */ what, /** @type {string} */ last, /** @type {boolean | undefined} */ software) => [`${what}, last used ${last}`, ...(software ? [SOFTWARE_KEY] : [])];
+
 /** A server prints its code and waits; a phone or computer shows a ring for the other device to scan. */
 export const showsRing = (/** @type {DeviceKind} */ kind) => kind !== "server";
 
