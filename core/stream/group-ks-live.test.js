@@ -4,10 +4,8 @@
 // chats, the REAL Switchboard (core/switchboard, the module named threads: threads.start/send/get, its own database, its own thread events) running the fake claude
 // (core/switchboard/testing/fake-claude.js) as a real child process, the module registry that hands the stream the seam the way the daemon does (deps.kernelThreads ->
 // ctx.kernelSession), and real websockets for the viewers. The assistant's words are the fake claude's own stream-json deltas, translated by the Switchboard into thread.text events.
-// What is still a RIG, and the only thing: "vyred opens the thread's kernel session from the person's own send". The real Switchboard cannot do it yet (threads.start and threads.send
-// carry no chat and no asker, and no thread record has `rec.chat`; see docs/work/chat.md Needs), so the rig wraps the registry's call for the stream's threads.start and threads.send and
-// calls ks.open({ chain, chat, agent, thread }) when the Switchboard has answered, which is where the daemon's deps.kernelSession would run. Not a vyred process, so this is the
-// stream on the seam, not a daemon.
+// Task U: the Switchboard itself now opens each turn's kernel session (threads.start and threads.send carry `chat` and `asker` from module:stream; the stream passes them). The rig only
+// supplies deps.kernelSession the way core/daemon/index.js composes it; no registry call is wrapped. It is still not a vyred process: the same flow on a real process is core/stream/e2e-step7.test.js.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -26,6 +24,7 @@ import { createKernelSessions } from "../../lib/kernel-session.js";
 import { connect, wsDuplex } from "./client.js";
 import { FAKE } from "../sessions/testing/boot.js";
 
+process.env.VYRE_SESSION_SANDBOX = "0"; // the kernel session is what this tests; the sandbox has its own tests (lib/agent-sandbox.e2e.test.js)
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada";
 const used = new Set();
@@ -56,11 +55,11 @@ async function world(t) {
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-stream-ks-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_THREAD_SOCKET: process.env.VYRE_SESSIONS_THREAD_SOCKET, VYRE_SESSIONS_SPAWNER: process.env.VYRE_SESSIONS_SPAWNER };
-  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", VYRE_SESSIONS_THREAD_SOCKET: "off", VYRE_SESSIONS_SPAWNER: "off" });
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", VYRE_SESSIONS_THREAD_SOCKET: "on", VYRE_SESSIONS_SPAWNER: "off" });
   t.after(() => { for (const [k2, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k2]; else process.env[k2] = v; } });
   const personChainFor = async (/** @type {string} */ person) => k.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
   /** @type {any[]} */ const gaveUp = [];
-  const rig = { chat: "", asker: "bob" };
+  /** What the Switchboard asked the daemon to open: the thread, the chat and the asker. @type {any[]} */ const asked = [];
   /** What the stream asked of the seam, in order, per thread: beginTurn must come before the first appendOpen. @type {string[]} */ const seamCalls = [];
 
   /** Start the stream the way the daemon does: the Registry is handed the seam as deps.kernelThreads, over a createKernelSessions that has the kernel's chats and the durable turns. */
@@ -76,15 +75,14 @@ async function world(t) {
       },
       reopenPending: (/** @type {any} */ a) => ks.reopenPending({ personChainFor: o.personChainFor || personChainFor, ...a }),
     });
-    // The one stand-in. vyred's side of a person's send, which the Switchboard cannot carry yet: once the real Switchboard has answered the stream's threads.start or threads.send,
-    // open the thread's kernel session from the person's own chain, the chat and the assistant. A thread whose open turn the seam already holds (reopened) is left alone.
-    const realCall = reg.call.bind(reg);
-    /** @type {any} */ (reg).call = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller, /** @type {any} */ meta) => {
-      const r = await realCall(tool, input, caller, meta);
-      if (r.error || caller !== "module:stream" || (tool !== "threads.start" && tool !== "threads.send")) return r;
-      const thread = String(tool === "threads.start" ? r.data.id : input.thread);
-      if (!turns.get(thread)) await ks.open({ chain: await personChainFor(`per_${rig.asker}`), chat: rig.chat, agent: "kit", thread });
-      return r;
+    // vyred's side of a person's send, as the daemon composes it (core/daemon/index.js): the Switchboard asks deps.kernelSession for each turn and gets the asker's own session in the chat.
+    // Nothing here wraps a call: the Switchboard itself carries chat and asker (it honours them from module:stream alone).
+    reg.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
+      const person = k.chains.fromFacts({ kind: "session_person", person: q.asker || OWNER, session: `thread:${q.thread}`, vouched: true });
+      const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      asked.push({ thread: q.thread, chat: chat || null, asker: q.asker || null });
+      const s = await ks.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+      return { token: ks.tokenFor(s.id), end: () => ks.end(s.id) };
     };
     await reg.start(discover([CORE]).filter(f => f.manifest && (["stream", "threads", "sessions"].includes(f.manifest.name))), { role: "box" });
     for (const m of ["sessions", "threads", "stream"]) assert.equal(reg.modules.get(m)?.state, "running", reg.modules.get(m)?.error);
@@ -100,9 +98,9 @@ async function world(t) {
       t.after(() => c.close());
       return { frames, close: () => c.close() };
     };
-    return { ks, reg, realCall, as, port, stop, watch, stream: () => reg.modules.get("stream")?.handle, events };
+    return { ks, reg, realCall: reg.call.bind(reg), as, port, stop, watch, stream: () => reg.modules.get("stream")?.handle, events };
   }
-  return { k, chains, tokens, kept, boot, gaveUp, rig, work, seamCalls, C: g.chats };
+  return { k, chains, tokens, kept, boot, gaveUp, asked, work, seamCalls, C: g.chats };
 }
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:kit").thread);
@@ -113,7 +111,6 @@ test("a person sends, the real Switchboard's reply streams through the seam's ha
   const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  w.rig.chat = chat.id; w.rig.asker = "bob";
   const bob = await b.watch("bob", chat.id);
   const sent = await b.as("bob")("stream.send", { session: chat.id, text: LONG, to: ["assistant:kit"], cwd: w.work });
   assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
@@ -138,6 +135,43 @@ test("a person sends, the real Switchboard's reply streams through the seam's ha
   await b.stop();
 });
 
+test("a turn asked by carol is stamped with carol's session, and chat and asker named on stream.send by a caller are ignored", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
+  const other = await w.C.create(w.chains.bob, { people: [], assistants: ["kit"] });
+  const carol = await b.watch("carol", chat.id);
+  // carol also names another chat and another asker in her own call: the stream takes them from the group and the caller's chain, never from the input
+  const sent = await b.as("carol")("stream.send", { session: chat.id, text: "hello from carol", to: ["assistant:kit"], cwd: w.work, chat: other.id, asker: BOB });
+  assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
+  await until(() => carol.frames.some(f => f.type === "session.text-done"), "the reply", 20_000);
+  assert.match(textOf(carol.frames), /hello from carol/);
+  const kit = kitThread(b, chat.id);
+  assert.deepEqual(w.asked.filter(a => a.thread === kit).map(a => ({ chat: a.chat, asker: a.asker })), [{ chat: chat.id, asker: CAROL }], "the Switchboard was asked to open carol's session in this chat");
+  const opened = w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && e.data.by.agent === "kit");
+  assert.ok(opened.length >= 1 && opened.every((/** @type {any} */ e) => e.data.by.person === CAROL && e.data.chat === chat.id), "every reply the kernel recorded was opened under carol's session, not the owner's or bob's");
+  await b.stop();
+});
+
+test("a person who is not in the chat gets no session and no reply, from the stream or from a direct call", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
+  const bob = await b.watch("bob", chat.id);
+  // ada is not in the chat: the stream refuses her send
+  const out = await b.as("ada")("stream.send", { session: chat.id, text: "ADASECRET", to: ["assistant:kit"], cwd: w.work });
+  assert.ok(out.error, "an outsider's send is refused");
+  assert.equal(w.asked.length, 0, "no session was asked for");
+  // and a turn the stream itself starts for an asker who is not in the chat: the kernel refuses the session, nothing is opened, no reply reaches the chat
+  const r = await b.reg.call("threads.start", { cwd: w.work, prompt: "ADASECRET2", surface: "deck", chat: chat.id, asker: ADA }, "module:stream");
+  await sleep(1500);
+  assert.equal(b.ks.list().length, 0, "the kernel opened no session for ada");
+  assert.ok(!w.k.log.read({}).some((/** @type {any} */ e) => e.type === "message.opened"), "no reply was recorded in the chat");
+  assert.ok(!JSON.stringify(bob.frames).includes("ADASECRET"), "nothing she asked reached the room");
+  assert.ok(r, "the call answered");
+  await b.stop();
+});
+
 /** boot() with a stopper registered for the test. @param {any} w @param {any} t */
 async function world0(w, t) { const b = await w.boot(); t.after(() => b.stop().catch(() => {})); return b; }
 
@@ -145,7 +179,6 @@ test("a restart in the middle of a turn: the seam reopens the person's session, 
   const w = await world(t);
   const b1 = await w.boot();
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  w.rig.chat = chat.id; w.rig.asker = "bob";
   const bob1 = await b1.watch("bob", chat.id);
   const sent = await b1.as("bob")("stream.send", { session: chat.id, text: LONG, to: ["assistant:kit"], cwd: w.work });
   assert.ok(!sent.error, sent.error && sent.error.message);
@@ -170,7 +203,6 @@ test("a restart where the person can no longer be reopened: the turn is given up
   const w = await world(t);
   const b1 = await w.boot();
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
-  w.rig.chat = chat.id; w.rig.asker = "bob";
   const sent = await b1.as("bob")("stream.send", { session: chat.id, text: LONG, to: ["assistant:kit"], cwd: w.work });
   assert.ok(!sent.error, sent.error && sent.error.message);
   await until(() => b1.stream().groups.member(chat.id, "assistant:kit")?.thread, "the thread");

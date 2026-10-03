@@ -602,9 +602,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     // The turn begins at the kernel before the assistant is asked anything (a thread with no session yet begins it when its first reply opens).
     if (viaKs() && m.thread) await beginTurn(m);
     const surface = row.surface ? String(row.surface) : "deck";
+    // On the seam the Switchboard opens this turn's kernel session for the asker in this chat, from these two inputs (it honours them from module:stream alone); the kernel checks the asker is in the chat.
+    const turn = viaKs() ? { chat: String(row.grp), asker: String(row.asker) } : {};
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
-      const r = await ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface });
+      const r = await ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn });
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       m.thread = String(r.data.id);
       save(m);
@@ -612,7 +614,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const r = await ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid) });
+      const r = await ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn });
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
     }
     q.outDone.run(row.uuid);
