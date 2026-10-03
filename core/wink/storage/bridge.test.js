@@ -101,7 +101,7 @@ test("a drive is accepted only from the home, only when this device sees it, and
   for (const v of [w.homeVault, w.devVault]) assert.equal(v.items.size, 0, "no secret left in either vault");
   assert.equal(w.endpoint.has(OFFER.id), false);
   await assert.rejects(() => acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => null })("device:dev_home", { ...d, secret: "s".repeat(43) }), { code: "not_found" });
-  await assert.rejects(() => acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home" })("device:dev_home", { ...d, secret: "short" , location: { path: w.dirD } }), { code: "bad_input" });
+  await assert.rejects(() => acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [w.dirD] })("device:dev_home", { ...d, secret: "short" , location: { path: w.dirD } }), { code: "bad_input" });
 });
 
 test("the secret is nowhere but the two vaults: not in the wire frames, cards, logs, the pool node or any call result", async () => {
