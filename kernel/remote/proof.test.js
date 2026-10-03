@@ -55,3 +55,13 @@ test("proof pass-through: a proof for other input, a used proof, and a legacy or
   assert.throws(() => proofRequest(SPACE, "records.read"), { code: "bad_input" });
   assert.throws(() => proofRequest(SPACE, "constructor"), { code: "bad_input" });
 });
+
+test("join card: the Space's name and fingerprint words come from the module that holds the Space's identity, set after the kernel starts", async () => {
+  const { k, owner, signed, g } = await rig();
+  const inv = { role: "member" };
+  const card = await g.invites.create(owner, inv, (({ kernel_proof }) => ({ presence: kernel_proof }))(signed("inviteCreate", inv)));
+  const stranger = await k.chains.fromFacts({ kind: "invitee", person: "per_stranger", vouched: true });
+  assert.deepEqual((await g.invites.get(stranger, card.id)).space, { id: SPACE });
+  k.setLabel(() => ({ name: "Harlow Legal", words: "amber river stone lamp" }));
+  assert.deepEqual((await g.invites.get(stranger, card.id)).space, { id: SPACE, name: "Harlow Legal", words: "amber river stone lamp" });
+});
