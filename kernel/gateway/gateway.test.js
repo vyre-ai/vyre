@@ -280,3 +280,54 @@ test("K2-8: odd types and ids are refused on every call", async () => {
   for (const i of ["../x", "1", "", "%2e%2e", 7]) await assert.rejects(() => r.get(owner(), "contact", i), { code: "bad_input" });
   await assert.rejects(() => r.search(owner(), { text: "x", types: ["Bad"], page: { limit: 1 } }), { code: "bad_input" });
 });
+
+test("K2-5: a store that alters a field, or returns a stale version, is caught and nothing is recorded as done", async () => {
+  const inner = createMemoryStore({ clock });
+  let bad = null;
+  const liar = new Proxy(inner, { get: (t, k) => (k === "create" ? async (...a) => { const r = await t.create(...a); return bad === "drop" ? { ...r, data: { ...r.data, name: "Changed" } } : r; } : k === "update" ? async (...a) => { const r = await t.update(...a); return bad === "stale" ? { ...r, version: a[3] } : r; } : t[k]) });
+  const { r, log } = await withType(rig({ store: liar }));
+  bad = "drop";
+  await assert.rejects(() => r.create(owner(), "contact", { name: "Jane" }), { code: "store_disagreed" });
+  assert.equal(log.read({ type: "contact.created" }).length, 0);
+  assert.equal(log.read({ type: "store.disagreed" }).length, 1);
+  bad = null;
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  bad = "stale";
+  await assert.rejects(() => r.update(owner(), "contact", c.id, { age: 3 }, 1), { code: "store_disagreed" });
+  assert.equal(r.openIntents(), 0);
+});
+
+test("K2-7: row policy reads kernel attributes the gateway wrote; a record it did not write has none and never matches", async () => {
+  const where = [{ attr: "sensitivity", op: "ne", value: "privileged" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
+  const store = createMemoryStore({ clock });
+  const { r } = await withType(rig({ grants, members: ["agent:kit"], store }));
+  const open = await r.create(owner(), "contact", { name: "Open" }, { attrs: { sensitivity: "internal" } });
+  const secret = await r.create(owner(), "contact", { name: "Secret" }, { attrs: { sensitivity: "privileged" } });
+  const foreign = await store.create("contact", "0190c3f2-1111-4abc-8def-0000000000ff", { name: "Foreign" });
+  assert.equal((await r.get(agent(), "contact", open.id)).data.name, "Open");
+  assert.equal(await r.get(agent(), "contact", secret.id), null);
+  assert.equal(await r.get(agent(), "contact", foreign.id), null, "no kernel attributes, so a predicate does not match (not ne)");
+  await assert.rejects(() => r.create(owner(), "contact", { name: "x" }, { attrs: { created_by: "forged" } }), { code: "bad_input" });
+});
+
+test("K2-10: no cursor when only rows the chain cannot read remain", async () => {
+  const where = [{ attr: "sensitivity", op: "eq", value: "internal" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
+  const { r } = await withType(rig({ grants, members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "a" }, { attrs: { sensitivity: "internal" } });
+  for (let i = 0; i < 3; i++) await r.create(owner(), "contact", { name: `hidden${i}` }, { attrs: { sensitivity: "privileged" } });
+  const q = await r.query(agent(), "contact", { sort: [{ field: "name", dir: "asc" }], page: { limit: 1 } });
+  assert.equal(q.rows.length, 1);
+  assert.equal(q.next_cursor, undefined, "the hidden rows after it do not make a cursor");
+  assert.equal((await r.query(owner(), "contact", { page: { limit: 1 } })).next_cursor !== undefined, true);
+});
+
+test("K1-9b: audit.verify also checks each kept event against its commitment", async () => {
+  const { r, gw, log } = await withType(rig());
+  await r.create(owner(), "contact", { name: "Jane" });
+  assert.equal((await gw.audit.verify()).ok, true);
+  assert.equal(log.proves(log.read({ type: "contact.created" })[0].seq), true);
+  log.erase(log.read({ type: "contact.created" })[0].seq);
+  assert.equal((await gw.audit.verify()).ok, true, "an erased event keeps only its envelope and still verifies");
+});

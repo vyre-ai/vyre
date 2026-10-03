@@ -3,7 +3,7 @@
 // Steps: space check, candidates per hop, effective grant per hop, narrowing, policy obligations, sealed, return.
 // K1 stops at the decision; sealing placeholders, presence signatures and approvals are enforced by K3/K4 against
 // the obligations returned here.
-import { isChain, hasKind } from "./chain.js";
+import { isChain, hasKind, isExactlyPerson } from "./chain.js";
 import { mintId } from "./ids.js";
 import { segments, covers, containedPrefix, spaceOf } from "./urn.js";
 import { KernelError } from "./errors.js";
@@ -12,6 +12,8 @@ import { TRUST_ORDER } from "../contracts/index.js";
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
 const PRESENCE_RANK = { none: 0, session: 1, fresh: 2 };
 const maxPresence = (/** @type {string} */ a, /** @type {string} */ b) => (PRESENCE_RANK[/** @type {'none'} */ (a)] >= PRESENCE_RANK[/** @type {'none'} */ (b)] ? a : b);
+// An obligation the kernel cannot recognise is never silently met: it makes the effect an ask (K1 item 8c).
+const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders"]);
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
@@ -62,7 +64,7 @@ export function contains(parent, child, since = () => 0, riskOf = () => undefine
  * @property {{ has(actor: any): boolean, membership?(actor: any): any }} members
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
- * @property {(service: string) => boolean} [standing] a service that declared a standing read
+ * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
  * @property {(proof: any, ctx: any) => boolean} [verifyPresence] K4 supplies the hardware-signer check; default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
@@ -109,15 +111,16 @@ export function createAuthorizer(cfg) {
       const used = [];
       /** @type {any[]} */ const obligations = [];
       let presence = "none";
+      let unknownObligation = false;
       let approver = null;
       for (const h of chain.hops) {
         const actor = h.actor;
         if (!cfg.members.has(actor)) {
           // A standing service reads without a person in the chain; it never writes (4.3).
-          if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id))) return deny("not_a_member");
+          if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource))) return deny("not_a_member");
           continue;
         }
-        if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id) && !(await cfg.grants.forSubject(actor, h, input)).length) continue;
+        if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource) && !(await cfg.grants.forSubject(actor, h, input)).length) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") {
           if (ms.expires === undefined || ms.expires <= now) return deny("expired");
@@ -135,7 +138,7 @@ export function createAuthorizer(cfg) {
         for (const o of chosenObs) {
           if (o.type === "presence") presence = maxPresence(presence, o.method);
           else if (o.type === "ask") approver = approver || o.approver;
-          else obligations.push(o);
+          else { obligations.push(o); if (!KNOWN_OBLIGATIONS.has(o.type)) unknownObligation = true; }
         }
       }
 
@@ -151,6 +154,7 @@ export function createAuthorizer(cfg) {
       if (trust === "external" && (risk === "grant" || risk === "admin")) tainted = true;
       if (chain.labels.source_spaces.length > 1 && risk !== "read") tainted = true;
       if (tainted && !ask) ask = { kind: risk, approver: "owner" };
+      if (unknownObligation && !ask) ask = { kind: risk, approver: "owner" };
 
       // 6. Sealed fields go to a model as placeholders; a property of the destination and the chain.
       if (hasKind(chain, "agent") && cfg.sealedFields) {
@@ -159,8 +163,11 @@ export function createAuthorizer(cfg) {
       }
 
       // Is each obligation met by evidence the kernel holds? An unmet one makes the effect ask, not allow.
-      const ctxEvidence = { decision, chain, action, resource };
-      const presenceMet = presence === "none" || (presence === "session" && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
+      // Binding evidence: the proof must cover the canonical input, so it is not reusable for another payload (K4 supplies the hash).
+      const ctxEvidence = { decision, chain, action, resource, input_hash: input.input_hash };
+      // A session stands for presence on admin and grant only when the chain is exactly one person: an assistant in the chain never inherits it.
+      const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
+      const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
         || (input.presence && cfg.verifyPresence ? cfg.verifyPresence(input.presence, ctxEvidence) : false)
         || (presence === "session" && input.presence && cfg.verifyPresence ? cfg.verifyPresence(input.presence, ctxEvidence) : false);
       const out = [...obligations];
@@ -211,6 +218,8 @@ export function createAuthorizer(cfg) {
     if (c.how && c.how.presence && c.how.presence !== "none") obs.push({ type: "presence", method: c.how.presence });
     if (c.how && c.how.approval) obs.push({ type: "ask", kind: reg.get(action).risk, approver: c.how.approval.by, checker_must_be_person: true });
     if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, amount: 1 });
+    if (c.rate) obs.push({ type: "rate", ...c.rate });
+    for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once"].includes(k)) obs.push({ type: `unknown:${k}` });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.
     if (g.parent) {

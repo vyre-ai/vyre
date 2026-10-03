@@ -45,7 +45,7 @@ export function createEventLog(cfg) {
   const rand = cfg.rand || (n => randomBytes(n));
   /** @type {any[]} */ const log = [];
   /** @type {Map<number, string>} the salt kept beside the data, erased with it */ const salts = new Map();
-  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean }>} */ const consumers = new Map();
+  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
 
   /**
    * Append one event. `chain` must be kernel-built; `ev` is a NewEvent. Throws a KernelError for a refusal.
@@ -135,6 +135,8 @@ export function createEventLog(cfg) {
   }
 
   const cursors = new Map();
+  /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
+  const MAX_ATTEMPTS = 8;
   async function pump() {
     for (const [name, c] of consumers) {
       if (c.busy) continue;
@@ -148,7 +150,16 @@ export function createEventLog(cfg) {
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
         }
-      } catch { /* the cursor did not move: the next pump retries the same event */ }
+      } catch {
+        // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
+        // poison event cannot stall the consumer for ever (K1 item 9f).
+        const next = log.find(e => e.seq > c.cursor && typeMatches(c.filter && c.filter.type, e.type));
+        if (next) {
+          c.fails = c.fails && c.fails.seq === next.seq ? { seq: next.seq, n: c.fails.n + 1 } : { seq: next.seq, n: 1 };
+          if (c.fails.n >= MAX_ATTEMPTS) { dead.push({ consumer: name, seq: next.seq, at: clock() }); c.cursor = next.seq; cursors.set(name, c.cursor); c.fails = undefined; queueMicrotask(pump); }
+          else setTimeout(pump, Math.min(100 * 2 ** c.fails.n, 30_000)).unref();
+        }
+      }
       finally { c.busy = false; }
     }
   }
@@ -157,6 +168,7 @@ export function createEventLog(cfg) {
     append, read, verify, proves, erase, subscribe, pump,
     cursor: (/** @type {string} */ n) => (consumers.get(n) ? /** @type {any} */ (consumers.get(n)).cursor : cursors.get(n) ?? 0),
     latestSeq: () => log.length,
+    deadLetters: () => [...dead],
     head: () => (log.length ? log[log.length - 1].hash : genesis(cfg.space)),
   });
 }

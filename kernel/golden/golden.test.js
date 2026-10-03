@@ -45,3 +45,10 @@ test("K2b: with the kernel retrofit deciding the gates, every decision is the sa
   const d = diff(load(), record({ gates: true }));
   assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions changed under the kernel gates`);
 });
+
+test("K2-9: generated callers outside the matrix get the same decisions from the gates as from the registry's own rules", () => {
+  const was = record({ generated: true }), now_ = record({ gates: true, generated: true });
+  assert.ok(was.callers.length > 100);
+  const d = diff(was, now_);
+  assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions differ for generated callers`);
+});
