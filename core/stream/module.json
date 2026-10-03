@@ -13,7 +13,7 @@
   ] },
   "watches": { "emits": [] },
   "shows": { "streams": ["session"] },
-  "needs": {},
+  "needs": { "daemon": ["kernelThreads"] },
   "teaches": { "tips": [] },
   "settings": []
 }

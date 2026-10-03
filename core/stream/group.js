@@ -72,7 +72,7 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 /**
  * @typedef {{ who: string, name: string, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
- *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, ended?: number, turnWaiters?: (() => void)[], pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
+ *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
  */
 
@@ -81,7 +81,7 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
 /**
  * @param {{ ctx: any, logs: import("./log.js").Logs, db: any, now?: () => number, replyPort?: import("./reply-port.js").ReplyPort, standIn?: boolean, timers?: { set: (fn: () => void, ms: number) => any, clear: (t: any) => void },
  *   ks?: KernelThreads }} o
- *   ks: the kernel-session seam (lib/kernel-session.js, handed to the stream by the daemon as ctx.kernelSession, or injected by a test): the assistant's kernel session is opened by vyred from the person's own send,
+ *   ks: the kernel-session seam (lib/kernel-session.js, handed to the stream by the daemon as ctx.kernelThreads, or injected by a test): the assistant's kernel session is opened by vyred from the person's own send,
  *   and the stream only asks for calls on a thread's session (`forThread(thread)`), never a token. With it the stream opens no session of its own for an assistant; without it (a test with no daemon) the older path runs.
  */
 export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn = false, timers, ks: ksOpt }) {
@@ -99,7 +99,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   let stopped = false;
   const log = (/** @type {string} */ m) => { try { ctx.log(`stream: ${m}`); } catch {} };
   /** The kernel-session seam: handed by the daemon, injected by a test, or none. */
-  const ks = /** @type {KernelThreads | null} */ (ksOpt || ctx.kernelSession || null);
+  const ks = /** @type {KernelThreads | null} */ (ksOpt || ctx.kernelThreads || null);
   /** @type {Promise<any> | null} the restart's reopening of the open turns, while it runs */ let reopening = null;
   const holdWho = () => process.env.VYRE_STREAM_TEST_HOLD || ""; // tests only: a delivery to this member waits for the next start
 
@@ -323,6 +323,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     m.last = id;
     let specs = [];
     try { specs = m.ad.event(e); } catch (err) { log(`${e.type} for ${m.thread}: ${/** @type {Error} */ (err).message}`); }
+    const p = e.payload || {};
+    if (e.type === "thread.sent" && p.via === "turn" && p.queued != null && m.queuedTurns && m.queuedTurns.has(Number(p.queued))) specs = [{ kind: "turn-start", queued: Number(p.queued), data: {} }, ...specs];
     if (kernelOn()) projectKernel(m, specs); else project0(m, specs);
     dirty.add(m);
     if (!timer && !stopped) { timer = setTimeout(flush, 100); timer.unref?.(); }
@@ -389,9 +391,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         if (s.kind === "status") {
           const st = s.data && s.data.state;
           if (st === "working") m.running = true;
-          else if (st) { await endTurn(m); if (st !== "starting") turnOver(m); } // a turn ends when the thread leaves working (for waiting, done, failed, stopped); "starting" is not its end. A turn that only waits for an answer still counts as running at the Switchboard: its busy refusal holds the message again until the next end
+          else if (st) { await endTurn(m); if (st !== "starting") m.running = false; } // a turn ends when the thread leaves working (for waiting, done, failed, stopped); "starting" is not its end
           continue;
         }
+        // A queued message's turn begins (the Switchboard's thread.sent via "turn"): from here the replies belong to ITS asker and answer id, and the waiting message shows as taken up.
+        if (s.kind === "turn-start") { startQueued(m, s.queued); continue; }
         if (SKIP.has(s.kind)) continue;
         if (s.kind === "text-delta" || s.kind === "text-done") await reply(m, s); else await activity(m, s);
       }
@@ -399,17 +403,19 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   }
 
   /**
-   * A turn of this assistant ended (its thread's status left "working", or the turn was given up): the message waiting behind it is let go. This is the one event a held delivery
-   * waits on; nothing polls. `ended` counts the ends, so a delivery that was refused as busy just before the end does not wait for an end that already came.
-   * @param {Member} m
+   * A message the Switchboard queued behind another person's turn has reached its turn: the replies from here on are its asker's, under its answer id, and the message frame
+   * goes from "queued" to "picked-up". The running turn was never touched while this one waited. @param {Member} m @param {number} queued
    */
-  function turnOver(m) {
-    m.running = false; m.ended = (m.ended || 0) + 1;
-    const w = m.turnWaiters || []; m.turnWaiters = [];
-    for (const f of w) f();
+  function startQueued(m, queued) {
+    const w = m.queuedTurns && m.queuedTurns.get(queued); if (!w) return;
+    m.queuedTurns.delete(queued);
+    m.asker = w.asker; m.answer = w.answer; m.msgs = new Map(); m.dead = false; m.running = true; save(m);
+    shown(w.grp, w.message, "picked-up", w.text, w.asker, queued);
   }
-  /** Wait for the next end of a turn of this assistant (an event, never a timer). @param {Member} m */
-  const nextTurnEnd = (/** @type {Member} */ m) => new Promise(res => { (m.turnWaiters ||= []).push(() => res(undefined)); });
+  /** The state of a person's message, as the viewers fold it (the latest user-message frame of a message wins). @param {string} grp @param {string} message @param {string} state @param {string} text @param {string} author @param {number} [queuedId] */
+  function shown(grp, message, state, text, author, queuedId) {
+    try { logs.get(grp).append("user-message", { message, text, state, ...(queuedId != null ? { queued_id: queuedId } : {}) }, { author, message }); } catch (err) { log(`message state in ${grp}: ${/** @type {Error} */ (err).message}`); }
+  }
 
   /**
    * The turn is over (the thread's status left "working"): the turn's own handle is closed, and thinking that never became a reply is DROPPED, not shown: a turn of
@@ -590,12 +596,16 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   // ---- delivery -----------------------------------------------------------------------------------
 
+  /** The kernel's person id from an actor string (`person:per_x` to `per_x`); the Switchboard refuses any other form. @param {string} a */
+  const askerId = a => a.replace(/^person:/, "");
+  /** The message id of a row: its answer id minus the assistant's suffix. @param {any} row */
+  const messageOf = row => String(row.answer).slice(0, String(row.answer).lastIndexOf("."));
   /** One handing over of a row to its assistant's thread (threads.start or threads.send). @param {Member} m @param {any} row @param {string} asker */
   async function sendTurn(m, row, asker) {
     // The turn begins at the kernel when its session opens (lib/kernel-session.js open, called for the asker by the Switchboard on this very send): the stream does not begin it a second time.
     const surface = row.surface ? String(row.surface) : "deck";
     // On the seam the Switchboard opens this turn's kernel session for the asker in this chat, from these two inputs (it honours them from module:stream alone); the kernel checks the asker is in the chat.
-    const turn = viaKs() ? { chat: String(row.grp), asker: asker.replace(/^person:/, "") } : {};
+    const turn = viaKs() ? { chat: String(row.grp), asker: askerId(asker) } : {};
     if (!m.thread) {
       if (!m.cwd) throw fail("bad_input", `${m.who} has no folder to work in: name its cwd when it joins`);
       const r = await ctx.call("threads.start", { cwd: m.cwd, prompt: String(row.text), surface, ...turn });
@@ -607,7 +617,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       byThread.set(m.thread, m);
       const r = await ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn });
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
+      return r.data;
     }
+    return undefined;
   }
   /** @param {any} row */
   async function deliver(row) {
@@ -615,27 +627,25 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const m = g.bots.get(String(row.who));
     if (!m) { q.outDone.run(row.uuid); return; }
     if (holdWho() === m.who) return; // tests only
+    // The asker is the kernel's person id (per_...), the one form the Switchboard takes: the author recorded by the gate is `person:per_x`, converted here at the boundary.
     const asker = String(row.asker);
-    // A turn belongs to its asker for its whole run (reviewer SS-1): another person's message while one runs is held here, in the order it came, and its turn starts when the running one ends,
-    // under THAT person. The running turn's attribution (m.asker, m.answer, m.msgs) is not touched until then. The same asker steering their own turn goes straight in.
-    while (viaKs() && m.running && m.asker && m.asker !== asker) await nextTurnEnd(m);
     // A stopped stream sends nothing more: the row stays in the outbox for the next start.
-    for (;;) {
-      if (stopped) return;
-      const prev = { asker: m.asker, answer: m.answer, msgs: m.msgs, dead: m.dead, running: m.running };
-      const ended = m.ended || 0;
-      m.asker = asker; m.answer = String(row.answer); m.msgs = new Map(); m.dead = false; m.running = true;
-      save(m);
-      try { await sendTurn(m, row, asker); break; }
-      catch (err) {
-        const busy = viaKs() && /** @type {any} */ (err).code === "busy";
-        Object.assign(m, prev); save(m);
-        if (!busy) throw err;
-        // The Switchboard refused it as busy: hold, and send again when the turn that is running ends (one retry per end, no polling). If an end came meanwhile, go at once.
-        if ((m.ended || 0) === ended) await nextTurnEnd(m);
-        if (stopped) return;
-      }
-    }
+    if (stopped) return;
+    // The stream does not hold, retry or queue: the Switchboard queues another person's message behind a running turn and answers `queued` with a queued_id. The running turn's attribution is
+    // not touched for a message that may queue; it is set when the Switchboard says the message went in at once, or when the queued turn begins (thread.sent via "turn").
+    const mayQueue = viaKs() && m.running && m.asker && m.asker !== asker;
+    const prev = { asker: m.asker, answer: m.answer, msgs: m.msgs, dead: m.dead, running: m.running };
+    const take = () => { m.asker = asker; m.answer = String(row.answer); m.msgs = new Map(); m.dead = false; m.running = true; save(m); };
+    if (!mayQueue) take();
+    let r;
+    try { r = await sendTurn(m, row, asker); }
+    catch (err) { if (!mayQueue) { Object.assign(m, prev); save(m); } throw err; }
+    if (r && r.queued_id != null && (r.queued === true || typeof r.queued === "number")) {
+      // Waiting for the current reply: the queued message is shown so, by the id the Switchboard gave, and its turn starts under its own asker.
+      if (!mayQueue) { Object.assign(m, prev); save(m); }
+      (m.queuedTurns ||= new Map()).set(Number(r.queued_id), { asker, answer: String(row.answer), grp: String(row.grp), message: messageOf(row), text: String(row.text) });
+      shown(String(row.grp), messageOf(row), "queued", String(row.text), asker, Number(r.queued_id));
+    } else if (mayQueue) take();
     q.outDone.run(row.uuid);
   }
   /** One delivery at a time per assistant, in the order asked. @param {any} row */
@@ -870,7 +880,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       // Reopen the kernel session of every turn that was open when the daemon stopped (the seam's reopenPending). One that cannot be reopened within stream.resumeWaitSeconds is
       // given up: its pending reply is dropped and the room is told it could not resume.
       if (viaKs()) {
-        const giveUp = (/** @type {string} */ thread) => { const m = byThread.get(thread); if (m && !m.dead) { m.dead = true; m.buf = new Map(); giveUpNote(m); turnOver(m); } };
+        const giveUp = (/** @type {string} */ thread) => { const m = byThread.get(thread); if (m && !m.dead) { m.dead = true; m.buf = new Map(); giveUpNote(m); m.running = false; m.queuedTurns = undefined; } };
         reopening = /** @type {KernelThreads} */ (ks).reopenPending({ timeoutMs: RESUME_MS, onGiveUp: giveUp }).catch(err => { log(`reopening turns: ${/** @type {Error} */ (err).message}`); }).finally(() => { reopening = null; });
       }
       await Promise.all(ms.map(catchUp));

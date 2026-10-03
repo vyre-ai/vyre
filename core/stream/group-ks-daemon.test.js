@@ -13,11 +13,11 @@ test("a kernel-on vyred hands the stream the seam (forThread, reopenPending) and
   const root = tempHome(t);
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
-  const mine = /** @type {any} */ (d.registry.context({ name: "stream", version: "0.1.0", does: { tools: [] } })).kernelSession;
+  const mine = /** @type {any} */ (d.registry.context({ name: "stream", version: "0.1.0", does: { tools: [] }, needs: { daemon: ["kernelThreads"] } })).kernelThreads;
   assert.deepEqual(Object.keys(mine).sort(), ["forThread", "reopenPending"]);
   assert.equal(typeof mine.open, "undefined");
   assert.equal(typeof mine.tokenFor, "undefined");
-  assert.equal(typeof /** @type {any} */ (d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } })).kernelSession, "undefined", "and nobody else");
+  assert.equal(typeof /** @type {any} */ (d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } })).kernelThreads, "undefined", "and nobody else");
   // a thread with no session: every call says so, and none returns a token
   const s = mine.forThread("thr_none");
   assert.deepEqual(Object.keys(s).sort(), ["append", "appendOpen", "beginTurn", "roomFor"]);
