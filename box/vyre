@@ -545,9 +545,10 @@ publish_release() {
         if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$new/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
       done
       # The whole folder by rename: the old one is set aside and the new one takes its name, so no reader sees half of each release.
-      # The old folder is kept as release.prev until the update has come up healthy (drop_prev_release), so a rollback puts back the list its image was signed with.
-      rm -rf "$UPD_STATE/release.prev"
-      if [ -d "$UPD_STATE/release" ]; then mv "$UPD_STATE/release" "$UPD_STATE/release.prev" || { echo "vyre: could not replace the published release" >&2; rm -rf "$new"; rm -rf "$rt"; return 0; }; fi
+      # The old folder is kept in root's private folder as release.prev (not under the mounted status folder), so a rollback puts back the list its image was signed with.
+      mkdir -p -m 700 "$UPD_PRIV" 2>/dev/null || true
+      rm -rf "$UPD_PRIV/release.prev"
+      if [ -d "$UPD_STATE/release" ]; then mv "$UPD_STATE/release" "$UPD_PRIV/release.prev" || { echo "vyre: could not replace the published release" >&2; rm -rf "$new"; rm -rf "$rt"; return 0; }; fi
       mv "$new" "$UPD_STATE/release" || echo "vyre: could not publish the release folder" >&2
     fi
   else
@@ -581,10 +582,10 @@ android() {
 # restore_release: the folder publish_release set aside goes back (an update that did not come up healthy). After a healthy update it stays as release.prev,
 # the previous release's signed files, which `vyre update --rollback` swaps back with the previous image (and a second --rollback swaps forward again).
 restore_release() {
-  [ -d "$UPD_STATE/release.prev" ] || return 0
-  rm -rf "$UPD_STATE/release.bad"
-  [ ! -d "$UPD_STATE/release" ] || mv "$UPD_STATE/release" "$UPD_STATE/release.bad" || return 0
-  mv "$UPD_STATE/release.prev" "$UPD_STATE/release" && rm -rf "$UPD_STATE/release.bad"
+  [ -d "$UPD_PRIV/release.prev" ] || return 0
+  rm -rf "$UPD_PRIV/release.bad"
+  [ ! -d "$UPD_STATE/release" ] || mv "$UPD_STATE/release" "$UPD_PRIV/release.bad" || return 0
+  mv "$UPD_PRIV/release.prev" "$UPD_STATE/release" && rm -rf "$UPD_PRIV/release.bad"
 }
 roll_back() {
   echo "vyre: the update did not come up healthy; rolling back" >&2
@@ -951,7 +952,7 @@ rollback() {
   # A swap, so a second --rollback goes forward again.
   if [ -d "$SRCDIR.prev" ]; then swap_dirs "$SRCDIR" "$SRCDIR.prev"; fi
   # The signed release files go with the image: stop the daemon, swap the folder whole, and let the container below start on the pair it was signed with.
-  if [ -d "$UPD_STATE/release.prev" ]; then compose stop vyre >/dev/null 2>&1 || true; swap_dirs "$UPD_STATE/release" "$UPD_STATE/release.prev"; fi
+  if [ -d "$UPD_PRIV/release.prev" ]; then compose stop vyre >/dev/null 2>&1 || true; swap_dirs "$UPD_STATE/release" "$UPD_PRIV/release.prev"; fi
   if [ "$have_img" = 1 ]; then
     if docker image inspect "$IMG" >/dev/null 2>&1; then docker image tag "$IMG" vyre:next; fi
     docker image tag vyre:prev "$IMG"
