@@ -1873,7 +1873,7 @@ for (const driver of ["cli", "sdk"]) {
     const sock = w.launches().at(-1).socket;
     assert.ok(sock && sock.endsWith(".sock"), "VYRE_SOCKET is the thread's own");
     assert.notEqual(sock, paths(w.root).socket, "not vyred's own socket");
-    assert.equal(fs.statSync(sock).mode & 0o777, 0o660);
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o600);
     // It said "cli"; vyred bound it to the thread.
     assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { caller: `mcp:thread:${th.id}`, thread: th.id, agent: null });
     // A person's tool is refused on it, whatever the session says it is.

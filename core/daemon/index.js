@@ -180,17 +180,21 @@ async function startLocked(opts, root, p, release) {
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
-      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []) });
-    {
+    // One stages module per Space, over that Space's own kernel: the home's own Space here, and every hosted Space through the Spaces registry's `stageFactory`.
+    const makeStages = async (/** @type {any} */ k, /** @type {string} */ space, /** @type {string} */ ownerId) => {
       const { createStages } = await import("../../kernel/flows/stages.js");
-      const sh = kernel.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
-      const owner = () => kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: "stages", vouched: true });
-      stages = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
-        catalog: async () => ({ space: kernel.id.space, types: Object.fromEntries((await kernel.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
-        chain: () => kernel.chains.appendService(owner(), "stages", true) });
-      kernel.log.subscribe("stages", {}, (/** @type {any} */ e) => stages.onEvent(e));
-    }
+      const sh = k.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
+      const owner = () => k.chains.fromFacts({ kind: "session_person", person: ownerId, session: "stages", vouched: true });
+      const st = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
+        catalog: async () => ({ space, types: Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
+        chain: () => k.chains.appendService(owner(), "stages", true) });
+      k.log.subscribe("stages", {}, (/** @type {any} */ e) => st.onEvent(e));
+      return st;
+    };
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
+      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
+      stageFactory: (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => makeStages(k, space, meta.owner) });
+    stages = await makeStages(kernel, kernel.id.space, kernel.id.owner);
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread

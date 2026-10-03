@@ -437,7 +437,7 @@ export const agentClaim = caller => {
  * Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
  */
 const claimsAgent = (/** @type {any} */ caller) => agentClaim(caller) !== null || /(?:^|[\s:])thread:/.test(String(caller ?? ""));
-const AGENT_SURFACES = new Set(["cli", "local", "mcp", "harness"]);
+const AGENT_SURFACES = new Set(["mcp", "harness", "cli", "local"]);
 /**
  * The assistant claim is PROVEN only when the daemon bound the call to a session: `meta.thread` is set by a session's own socket, or by a vouched agent key or session, and by
  * nothing a client can say. A label such as `mcp:thread:fake` or `cli:agent:kit` sent on the person's own socket proves nothing, so an unproven claim reaches no person-reach

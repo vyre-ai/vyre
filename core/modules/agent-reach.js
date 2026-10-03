@@ -9,6 +9,7 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["spaces.invites.confirm", "needs the person's presence: confirms an invite, which grants access"],
   ["files.drive.access", "widens access: makes a share read-write for the paired Mac; its own code already says never an agent"],
   ["threads.mode", "an assistant must not change its own permission mode: that widens its own authority"],
   ["bridges.accept", "would let an assistant widen its own authority: accepting a bridge approves the assistant's own proposal"],
