@@ -22,7 +22,7 @@ export function createSurfaces(cfg) {
      * @param {{ agent?: string, session?: string, thread?: string, ttl_ms?: number, chat?: string }} [o] @returns {{ token: string, session: string, expires: number }}
      */
     async open(chain, o = {}) {
-      if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person opens a session for a daemon");
+      if (!isChain(chain) || !isExactlyPerson(chain) || chain.delegated === true) throw new KernelError("chain_not_person", "only a person acting directly opens a session for a daemon: a session's own chain cannot mint another");
       // A session's chat is written into its token here, by the kernel, once the opener is checked to be in that chat; there is no later step that could point it elsewhere.
       let chat = null;
       if (o.chat !== undefined && o.chat !== null) {
@@ -42,7 +42,7 @@ export function createSurfaces(cfg) {
      */
     revoke(/** @type {string} */ session, /** @type {any} */ by) {
       if (by !== undefined) {
-        const me = isChain(by) && isExactlyPerson(by) ? by.hops[0].actor.id : null;
+        const me = isChain(by) && isExactlyPerson(by) && by.delegated !== true ? by.hops[0].actor.id : null;
         if (!me || !(openers.get(String(session)) === me || (cfg.isAdmin && cfg.isAdmin(me)))) throw new KernelError("not_found", "no such session");
       }
       revoked.add(String(session));
@@ -63,8 +63,8 @@ export function createSurfaces(cfg) {
     async chainFor(token) {
       const t = await api.verify(token);
       return t.agent
-        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, vouched: true })
-        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, vouched: true });
+        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, chat: t.chat || undefined, vouched: true })
+        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, chat: t.chat || undefined, vouched: true });
     },
     /** The model door for a session: `call(token, input)` and, when the door has one, `stream(token, input)`. The chain is the session's, never the caller's. */
     model: Object.freeze({
