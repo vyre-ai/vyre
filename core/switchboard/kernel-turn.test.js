@@ -54,11 +54,10 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   await finished(r.data.id, 1);
   assert.deepEqual([turnOf(r.data.id)?.person, turnOf(r.data.id)?.chat], [owner, chat.id], "opened for the asker, in the chat");
 
-  // the next turn, asked by someone who is not in the chat: the kernel refuses (the turn gets no session, never the owner's), and the previous turn's session is ended
+  // the next turn, asked by someone who is not in the chat: refused by the kernel BEFORE it is run or queued, and the thread's session is untouched
   const second = await d.registry.call("threads.send", { thread: r.data.id, text: "second", surface: "deck", chat: chat.id, asker: "per_mallory" }, "module:stream");
-  assert.ok(second.data && second.data.sent !== false, JSON.stringify(second));
-  await finished(r.data.id, 2);
-  assert.equal(turnOf(r.data.id), null, "no session for a person who is not in the chat, and the last turn's is gone");
+  assert.equal(second.error && second.error.code, "not_found", JSON.stringify(second));
+  assert.deepEqual([turnOf(r.data.id)?.person, turnOf(r.data.id)?.chat], [owner, chat.id], "nothing ran and no session was swapped");
 });
 
 test("a turn keeps its asker for its whole run: another person's message mid-turn queues as the next turn under its own asker and never steers or swaps the running one", { timeout: 90_000 }, async t => {
@@ -85,23 +84,15 @@ test("a turn keeps its asker for its whole run: another person's message mid-tur
   assert.equal(turnOf(r.data.id)?.person, owner);
   // another person speaks mid-turn: queued, not steered, and the running turn's session is not replaced
   const other = await d.registry.call("threads.send", { thread: r.data.id, text: "delete it", surface: "deck", chat: chat.id, asker: "per_member" }, "module:stream");
-  assert.ok(other.data && !other.error, JSON.stringify(other));
-  assert.ok(other.data.queued_id || other.data.queued, `queued as the next turn: ${JSON.stringify(other.data)}`);
+  assert.equal(other.error && other.error.code, "not_found", `a person who is not in the chat is refused before anything is queued: ${JSON.stringify(other)}`);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM threads_inbox WHERE thread = ?").get(r.data.id).n, 0, "and nothing was queued");
   assert.equal(turnOf(r.data.id)?.person, owner, "the running turn is still the first asker's: nothing was swapped under it");
-  assert.ok(!(await events(r.data.id)).some(e => e.type === "thread.steered" && /delete it/.test(String(e.payload && e.payload.text))), "it did not steer the running turn");
+  assert.ok(!(await events(r.data.id)).some(e => /delete it/.test(JSON.stringify(e.payload || {}))), "it never reached the session");
   // the same asker steering their own turn keeps the session they have
   const same = await d.registry.call("threads.send", { thread: r.data.id, text: "and the date", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
   assert.ok(same.data && !same.error, JSON.stringify(same));
   assert.equal(turnOf(r.data.id)?.person, owner);
-  // the turn ends: the queued message is delivered as its own turn, and the kernel opens (or refuses) THAT asker's session: per_member is not in this chat, so there is none, never the owner's
-  for (let i = 0; i < 4; i++) {
-    const open = (await d.registry.call("threads.asks", { thread: r.data.id }, "cli")).data;
-    for (const a of open) await d.registry.call("threads.answer", { ask: a.id, decision: "allow", surface: "deck" }, "cli");
-    if ((await events(r.data.id)).some(e => e.type === "thread.sent" && e.payload.via === "turn")) break;
-    await new Promise(res => setTimeout(res, 600));
-  }
-  await until(async () => (await events(r.data.id)).some(e => e.type === "thread.sent" && e.payload.via === "turn" && /delete it/.test(String(e.payload.text))), "the queued message to be delivered as its own turn");
-  assert.equal(turnOf(r.data.id), null, "the second person's turn has no kernel session of the first person's, and none of its own");
+  // (queueing a MEMBER's message behind another's turn, and delivering it as its own turn, is exercised with two real members in core/stream/e2e-asker.test.js)
 });
 
 async function chatDaemon(t, root) {
@@ -170,14 +161,14 @@ test("SS-3: two askers sending to an idle thread at the same moment: one runs no
   // an idle thread (its first turn is over), then two askers send at once
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
   await fin(r.data.id, 1);
-  await until(() => !d.registry.call, "tick", 1).catch(() => {});
   const both = await Promise.all([
     d.registry.call("threads.send", { thread: r.data.id, text: "demo from the owner", surface: "deck", chat: chat.id, asker: owner }, "module:stream"),
     d.registry.call("threads.send", { thread: r.data.id, text: "from the other", surface: "deck", chat: chat.id, asker: "per_other" }, "module:stream"),
   ]);
-  assert.ok(both.every(x => x.data && !x.error), JSON.stringify(both));
-  const queued = both.filter(x => x.data.queued_id || x.data.queued);
-  assert.equal(queued.length, 1, `exactly one of the two is queued behind the other's turn: ${JSON.stringify(both.map(x => x.data))}`);
+  assert.ok(both[0].data && !both[0].error, `the owner's goes in: ${JSON.stringify(both[0])}`);
+  assert.equal(both[1].error && both[1].error.code, "not_found", `the person who is not in the chat is refused whatever the timing: ${JSON.stringify(both[1])}`);
+  assert.equal(turnOf(r.data.id)?.person, owner, "the running turn is the owner's");
+  assert.ok(!(await d.registry.call("threads.get", { thread: r.data.id, limit: 500 }, "cli")).data.events.some(e => /from the other/.test(JSON.stringify(e.payload || {}))), "their words never reached the session");
   // a chat turn behind a turn with no chat: a person's own surface types "demo" (busy), then the stream sends
   const mine = await d.registry.call("threads.start", { cwd: work, prompt: "demo", surface: "deck" }, "cli");
   await until(async () => (await d.registry.call("threads.asks", { thread: mine.data.id }, "cli")).data.some(a => a.tool === "Edit"), "the turn to be busy");
