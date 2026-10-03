@@ -516,12 +516,14 @@ start() {
   say ""
   # A root run of `vyre up` refuses a box built from a checkout (--from) once the updater has recorded it, so when the installer runs as
   # root for someone else's account, the first start is that account's own.
-  as=""
-  if [ "$(id -u)" = 0 ] && [ -n "$FROM" ] && [ -n "$OWNER" ] && [ "$OWNER" != root ] && sudo -n -u "$OWNER" docker info >/dev/null 2>&1; then as="sudo -n -u $OWNER"; fi
-  if [ "$LINK_ONLY" = 1 ]; then
-    dk $as env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up --print-link
+  as_owner=0
+  if [ "$(id -u)" = 0 ] && [ -n "$FROM" ] && [ -n "$OWNER" ] && [ "$OWNER" != root ] && sudo -n -u "$OWNER" docker info >/dev/null 2>&1; then as_owner=1; fi
+  upflag=""
+  [ "$LINK_ONLY" = 1 ] && upflag="--print-link"
+  if [ "$as_owner" = 1 ]; then
+    dk sudo -n -u "$OWNER" env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}
   else
-    dk $as env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up
+    dk env "VYRE_DIR=$DIR" "SSH_CONNECTION=${SSH_CONNECTION:-}" "$WRAPPER" up ${upflag:+"$upflag"}
   fi
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
