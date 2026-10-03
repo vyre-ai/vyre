@@ -24,7 +24,7 @@ const BAD = "dg-FAKE-SECRET-kit-9f8e7d6c5b4a";
 const CHUNK = 3200; // 100 ms of 16 kHz linear16
 
 /** A port nothing listens on: bound, read, and closed again. */
-// Speech tests run the legacy direct path (the daemon here has no inference door); the door path is tested in core/sessions/door-bridge.test.js.
+// Speech tests run the legacy direct path (the daemon here has no inference door); the door path is tested in lib/door-bridge.test.js.
 process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
 
 async function closedPort() {

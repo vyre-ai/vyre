@@ -13,7 +13,7 @@
 // The key comes from o.env.OPENROUTER_API_KEY (an account of kind api-key), read here and nowhere else.
 
 import { resolveSafe, pinnedFetch } from "../../../lib/api-endpoint.js";
-import { route, doorMessage, isRefusal } from "../door-bridge.js";
+import { route, doorMessage, isRefusal } from "../../../lib/door-bridge.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
