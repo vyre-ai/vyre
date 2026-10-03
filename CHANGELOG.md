@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- release: prepare refuses a push of a tag that already has a release or draft (a moved tag is never signed); a patch (hotfix) run shows the approver the whole diff from the previous stable and a loud summary; the Mac status carries the sha256 of each dmg and zip and the release job recomputes them; mac-app.yml passes inputs through env; setup-hashes hashes dotfiles and config.json and requires /w. Version 0.2.3-rc.2 and release/notes/0.2.3.md.
+- ci(matrix): the iPhone Safari lane waits for the springboard, starts Safari and retries openurl.
 - fix(install-box): the installer ends only when the vyre container is running (verify_up), and fails with a plain line otherwise; run as root with --from it starts the box as the owner's account, because a root `vyre up` refuses a box built from a checkout. Tests: not running fails, running passes.
 - fix(vitals) #71: a machine with no nvidia-smi is not asked again for an hour. The failed spawn forked the whole daemon once a minute, which was most of the idle CPU blip (about 80 ms a minute, now about 10 ms). perf-check reads CPU from /proc ticks (10 ms) instead of `ps` time (1 s), with budgets p95 2% and sustained 3%; the one remaining blip is the update check two minutes after start.
 - site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.

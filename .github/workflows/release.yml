@@ -58,7 +58,18 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
+      - name: A tag that already has a release (published or draft) is never signed again
+        # A tag that was released and then moved to another commit must not reach the signing steps: the lineage check below drops the tag itself from its
+        # list, and `gh release create` would refuse only after the release job had signed.
+        if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          have=$(gh release list -R "$GITHUB_REPOSITORY" --limit 1000 --json tagName --jq '.[].tagName') || { echo "could not list the releases; refusing to sign without knowing"; exit 1; }
+          if printf '%s\n' "$have" | grep -Fxq "$TAG"; then echo "$TAG already has a release (published or draft); a moved tag is never signed. Make a new tag."; exit 1; fi
       - name: The tag's commit is on main or the 0.2 stage line, or is a proper patch of the newest published stable release (a publishing run signs; any other commit never does)
+        id: lin
         if: github.event_name == 'push' && vars.VYRE_RELEASES == 'go'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,6 +82,7 @@ jobs:
             git fetch --no-tags origin "+refs/heads/hotfix/$GITHUB_REF_NAME:refs/remotes/origin/hotfix/$GITHUB_REF_NAME" || true
             node scripts/check-release-lineage.mjs "$GITHUB_SHA" "$GITHUB_REF_NAME" \
               || { echo "the tag's commit is not on main or work/stage-0.2 and is not a proper patch release; refusing to build and sign a release from it"; exit 1; }
+            echo "patch=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Version, channel, notes
         id: v
@@ -106,6 +118,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          PATCH: ${{ steps.lin.outputs.patch }}
         run: |
           prev=$(gh release list -R "$GITHUB_REPOSITORY" --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty' 2>/dev/null || true)
           if [ -n "$prev" ] && git rev-parse -q --verify "refs/tags/$prev^{commit}" >/dev/null; then base=$prev
@@ -114,6 +127,20 @@ jobs:
           {
             # The right side is what is being released: the tag on a publishing run, the tag name and the commit on a dry run.
             if [ "${{ github.event_name }}" = push ]; then head_label="$TAG"; else head_label="$TAG (dry run, commit $(git rev-parse --short=8 HEAD))"; fi
+            if [ "$PATCH" = true ]; then
+              echo "## PATCH RELEASE from hotfix/$TAG, NOT from main"
+              echo "**This commit is not on main or the stage line. It is on a branch anyone with write access can create. Read the WHOLE diff from $prev below, not only the signing path, before approving.**"
+              echo '```'
+              git diff --stat "$base" HEAD
+              echo '```'
+              mkdir -p signing-diff
+              git diff "$base" HEAD > signing-diff/whole-diff.txt || true
+              echo "whole diff: $(wc -l < signing-diff/whole-diff.txt | tr -d ' ') lines (artifact whole-diff)"
+              echo '```diff'
+              head -n 1500 signing-diff/whole-diff.txt
+              echo '```'
+              if [ "$(wc -l < signing-diff/whole-diff.txt)" -gt 1500 ]; then echo "**TRUNCATED. Read the whole-diff artifact before approving.**"; fi
+            fi
             echo "### Signing path: ${prev:-nothing (no published release yet)} -> $head_label"
             [ "$prev" != "$TAG" ] || echo "_The base is the same tag as the release: a rehearsal, so the diff below is what changed since that tag._"
             # The phone app's dependencies, as a short list first (its build is signed with the release key): the raw lockfile diff below is long.
@@ -155,7 +182,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signing-diff
-          path: signing-diff/signing-diff.txt
+          path: signing-diff/*.txt
           retention-days: 14
       - name: Box files and vyre.tgz, as build-site.sh makes them
         run: |
@@ -447,6 +474,14 @@ jobs:
             [ -f "$st" ] || { echo "the Mac build has no status for $arch; refusing to release without it"; ls "$RUNNER_TEMP/mac"; exit 1; }
             sed "s/^/Mac $arch: /" "$st" | tee -a "$GITHUB_STEP_SUMMARY"
             grep -qx "signed=developer-id" "$st" && grep -qx "notarized=yes" "$st" && grep -qx "gatekeeper=accepted" "$st" || ok=no
+            # The status is written by the package job (code from the tagged commit); its claim is bound to the bytes: the sha256 of each dmg and zip it lists
+            # is recomputed here over the files that will be signed into the release, and all four must be listed.
+            for f in "Vyre-Lumen-$arch.dmg" "Vyre-Lumen-$arch.zip" "Vyre-Lumen_${VERSION}_$arch.dmg" "Vyre-Lumen_${VERSION}_$arch.zip"; do
+              want=$(sed -n "s/^sha256:$f=//p" "$st" | head -n 1)
+              [ -f "$RUNNER_TEMP/mac/$f" ] || continue
+              got=$(sha256sum "$RUNNER_TEMP/mac/$f" | cut -d' ' -f1)
+              [ -n "$want" ] && [ "$want" = "$got" ] || { echo "the Mac status for $arch does not match $f (status says '$want', the file is $got); refusing"; exit 1; }
+            done
           done
           # The repo variable MAC_SIGNING=required turns "no signed build" from a quiet skip into a failure on a publish, so a missing or expired
           # certificate cannot ship a release without the Mac files unnoticed. Set it once the Developer ID is in the "apple" environment.
