@@ -56,6 +56,10 @@ export function readInside(root, rel, maxBytes) {
     if (!st.isFile() || st.size > maxBytes || st.ino !== l.ino || st.dev !== l.dev) return null;
     // After the open, the path must still lead to the same place inside the root (a swap between the checks and the open).
     if (!inside(fs.realpathSync(full), realRoot(root))) return null;
+    // Linux: the descriptor itself says where the file it opened really is. This is race-free, unlike a path check, because a swap
+    // after the open cannot change what the descriptor points at (reviewer-2 S-1). macOS has no /proc: there the sandbox's own
+    // pause (runner.js) is the only guard, and a helper outside the process group can still race it (an open limit).
+    if (process.platform === "linux" && !inside(fs.readlinkSync(`/proc/self/fd/${fd}`), realRoot(root))) return null;
     const buf = Buffer.alloc(st.size);
     let n = 0; while (n < st.size) { const r = fs.readSync(fd, buf, n, st.size - n, n); if (!r) break; n += r; }
     return buf.subarray(0, n);

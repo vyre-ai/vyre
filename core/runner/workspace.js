@@ -166,6 +166,8 @@ function winDriver({ sizeGb = 8 } = {}) {
       await this.unmount(dir);
     },
     async mount(dir, key) {
+      // After a detach the mount-point folder is a dangling reparse point: remove it and make a plain one.
+      try { fs.rmdirSync(mnt(dir)); } catch {}
       fs.mkdirSync(mnt(dir), { recursive: true });
       // Attach, give the partition the mount folder if it lost it, then unlock with the password.
       await dp(dir, [`select vdisk file="${vhd(dir)}"`, "attach vdisk"]);

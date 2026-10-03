@@ -210,3 +210,21 @@ test("resume: the checkpoint carries the session's trust and routes, and a resum
   assert.equal(weakest("member", "external"), "external");
   assert.equal(weakest("untrusted", "system"), "untrusted");
 });
+
+// ---- S-1: a worker outside the session's process group races the read ------------------------------------------------
+
+test("S-1: a racing worker swapping a folder for a link never gets the host file read", { skip: process.platform !== "linux", timeout: 60_000 }, async t => {
+  const a = tmp(), host = tmp(); let racer;
+  t.after(async () => { racer?.kill("SIGKILL"); await sleep(200); rm(a); rm(host); });
+  fs.writeFileSync(path.join(host, "f.txt"), "HOST-FILE-CONTENT");
+  const work = path.join(a, "work"); fs.mkdirSync(path.join(work, "files", "d"), { recursive: true });
+  fs.writeFileSync(path.join(work, "files", "d", "f.txt"), "OWN-CONTENT");
+  racer = spawn(process.execPath, ["-e", `
+    const fs=require("fs"),p=${JSON.stringify(path.join(work, "files", "d"))},real=p+"-real",host=${JSON.stringify(host)};
+    fs.renameSync(p,real);
+    for(;;){ try{fs.symlinkSync(host,p);}catch{} try{fs.unlinkSync(p);}catch{} try{fs.symlinkSync(real,p);}catch{} try{fs.unlinkSync(p);}catch{} }`], { stdio: "ignore" });
+  await sleep(300);
+  let bad = 0;
+  for (let i = 0; i < 4000; i++) { const b = readInside(work, "files/d/f.txt", 1e6); if (b && b.includes("HOST-FILE")) bad++; }
+  assert.equal(bad, 0);
+});
