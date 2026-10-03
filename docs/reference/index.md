@@ -2239,7 +2239,7 @@ generated: scripts/gen-docs-reference
 - `VYRE_SCOPE_CWDS` environment variable, [explained](config.md#set-by-vyre). 1 mention: build/mcp-hub.md [40](../build/mcp-hub.md#inside-an-agents-thread)
 - `VYRE_SCREEN_BIN` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SERVER_DIR` environment variable, not explained on any page yet. No mentions.
-- `VYRE_SESSION_SANDBOX` environment variable, [explained](config.md#environment-variables). No mentions.
+- `VYRE_SESSION_SANDBOX_OFF` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SESSIONS_DRIVER` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SESSIONS_SDK_DIR` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SESSIONS_SDK_INSTALL` environment variable, [explained](config.md#environment-variables). No mentions.

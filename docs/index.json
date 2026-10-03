@@ -2165,7 +2165,7 @@
     {"kind":"env","name":"VYRE_SCOPE_CWDS","definedIn":"core/switchboard/index.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"build/mcp-hub.md","line":40,"anchor":"inside-an-agents-thread"}]},
     {"kind":"env","name":"VYRE_SCREEN_BIN","definedIn":"local/screen-mac/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SERVER_DIR","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
-    {"kind":"env","name":"VYRE_SESSION_SANDBOX","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_SESSION_SANDBOX_OFF","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SESSIONS_DRIVER","definedIn":"core/sessions/config.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SESSIONS_SDK_DIR","definedIn":"core/sessions/config.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_SESSIONS_SDK_INSTALL","definedIn":"core/sessions/sdk.js","page":"reference/config.md#environment-variables","mentions":[]},
