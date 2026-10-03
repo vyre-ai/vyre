@@ -56,7 +56,7 @@ const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
 };
 
 /**
- * @param {{ members?: any, space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
+ * @param {{ enforce?: (chain: any, d: any) => void, members?: any, space: string, store: any, authorizer: { authorize(i: any): Promise<any> }, log: any, chains: any, clock?: () => number, sinks?: Set<string> }} cfg
  */
 export function createRecords(cfg) {
   const { space, store, authorizer, log, chains } = cfg;
@@ -73,7 +73,9 @@ export function createRecords(cfg) {
     return new KernelError("unavailable", "the store could not answer", String(e && e.message));
   }
 
-  const { gate, allowed, check } = createGate({ authorizer, log });
+  const { gate, allowed, check } = createGate({ authorizer, log, enforce: cfg.enforce });
+  /** A read through query, aggregate or search is one act on the type: counted once against the type-level decision, never per row. */
+  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*")); if (d && cfg.enforce) cfg.enforce(chain, d); };
   const members = cfg.members;
 
   /** A field allow-list from a decision's obligations: every hop's grant may narrow it, so the result is their intersection. null means no limit. */
@@ -212,6 +214,7 @@ export function createRecords(cfg) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       await guardSealed(chain, type, spec);
+      await countRead(chain, type);
       let cursor = spec.page.cursor, out = [], next;
       for (let pages = 0; pages < 10; pages++) {
         let p;
@@ -241,6 +244,7 @@ export function createRecords(cfg) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       await guardSealed(chain, type, spec);
+      await countRead(chain, type);
       // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed.
       const rows = [];
       let cursor;

@@ -59,7 +59,7 @@ export async function checkOutput(task, evidence, facts) {
 }
 
 /**
- * @param {{ space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
+ * @param {{ enforce?: (chain: any, d: any) => void, space: string, authorizer: any, log: any, presence: import("../core/presence.js").PresenceVerifier,
  *   members: { has(actor: any): boolean }, roleHolders?: (role: string) => any[], approver?: (chain: any) => any,
  *   responsible?: (person: any, doer: any) => boolean, responsibleFor?: (doer: any) => any,
  *   resolve?: { contact?: (record: string, address: string) => Promise<boolean>, sealed?: (ref: string) => Promise<{ class: string } | null> },
@@ -69,7 +69,7 @@ export async function checkOutput(task, evidence, facts) {
  */
 export function createTasks(cfg) {
   const clock = cfg.clock || Date.now;
-  const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log });
+  const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log, enforce: cfg.enforce });
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
   /** @type {Map<string, any>} */ const bodies = new Map();

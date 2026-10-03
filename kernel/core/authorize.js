@@ -13,7 +13,7 @@ const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outw
 const PRESENCE_RANK = { none: 0, session: 1, fresh: 2 };
 const maxPresence = (/** @type {string} */ a, /** @type {string} */ b) => (PRESENCE_RANK[/** @type {'none'} */ (a)] >= PRESENCE_RANK[/** @type {'none'} */ (b)] ? a : b);
 // An obligation the kernel cannot recognise is never silently met: it makes the effect an ask (K1 item 8c).
-const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders", "fields"]);
+const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", "placeholders", "fields", "once"]);
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
@@ -220,8 +220,10 @@ export function createAuthorizer(cfg) {
     if (c.how && c.how.approval) obs.push({ type: "ask", kind: reg.get(action).risk, approver: c.how.approval.by, checker_must_be_person: true });
     // A field allow-list on the selector: the gateway omits other fields on read and refuses writes to them (the narrowest hop wins).
     if (Array.isArray(g.resource.fields)) obs.push({ type: "fields", allow: [...g.resource.fields] });
-    if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, amount: 1 });
-    if (c.rate) obs.push({ type: "rate", ...c.rate });
+    // These three are counted by the gateway (kernel/core/limits.js): authorize only says the grant carries them.
+    if (c.budget) obs.push({ type: "meter", meter: c.budget.meter, limit: c.budget.limit, amount: 1, grant: g.id });
+    if (c.rate) obs.push({ type: "rate", n: c.rate.n, per_seconds: c.rate.per_seconds, grant: g.id });
+    if (c.once === true || (c.how && c.how.approval && c.how.approval.once === true)) obs.push({ type: "once", grant: g.id });
     for (const k of Object.keys(c)) if (!["when", "where", "how", "audience", "delegate", "budget", "rate", "once"].includes(k)) obs.push({ type: `unknown:${k}` });
     // Narrowing: a delegated grant is contained in its parent, the parent is rechecked now, and its presence and
     // approval conditions come along as obligations (R6-8); revoking a parent kills every child.

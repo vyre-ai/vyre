@@ -356,3 +356,59 @@ test("kernel facade: definitions go through authorize, the action registry and m
   const svc = gw.serviceChain("memory");
   assert.equal(svc.hops[svc.hops.length - 1].actor.id, "memory");
 });
+
+// ---- once, rate and meter (K1-8c-b) ----
+const limited = conditions => { const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], conditions })]; return grants; };
+
+test("limits: a `once` grant carries one act, taken atomically", async () => {
+  const { r, gw } = await withType(rig({ grants: limited({ once: true }), members: ["agent:kit"] }));
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  const results = await Promise.allSettled([r.get(agent(), "contact", c.id), r.get(agent(), "contact", c.id), r.get(agent(), "contact", c.id)]);
+  assert.equal(results.filter(x => x.status === "fulfilled" && x.value).length, 1);
+  assert.deepEqual(results.filter(x => x.status === "rejected").map(x => x.reason.code), ["used_up", "used_up"]);
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "used_up" });
+  gw.limits.rebuild();
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "used_up" }, "the mark is in the log, so a restart does not give the use back");
+});
+
+test("limits: `rate` is a window per grant and actor", async () => {
+  const { r } = await withType(rig({ grants: limited({ rate: { n: 2, per_seconds: 60 } }), members: ["agent:kit"] }));
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  assert.ok(await r.get(agent(), "contact", c.id));
+  assert.ok(await r.get(agent(), "contact", c.id));
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "rate_limited" });
+  await assert.rejects(() => r.query(agent(), "contact", { page: { limit: 1 } }), { code: "rate_limited" }, "a query is one counted act too");
+  assert.ok(await r.get(owner(), "contact", c.id), "the owner has no rate");
+  T += 61_000;
+  assert.ok(await r.get(agent(), "contact", c.id), "the window moves on");
+});
+
+test("limits: a budget meter stops at its limit, reserves and settles with events, and survives a rebuild", async () => {
+  const { r, log, gw } = await withType(rig({ grants: limited({ budget: { meter: "calls", limit: 2 } }), members: ["agent:kit"] }));
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  await r.get(agent(), "contact", c.id); await r.get(agent(), "contact", c.id);
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "budget_exhausted" });
+  assert.equal(log.read({ type: "meter.reserved" }).length, 2);
+  assert.equal(log.read({ type: "meter.settled" }).length, 2);
+  gw.limits.rebuild();
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "budget_exhausted" });
+});
+
+test("limits: the model door's ai_spend and session hours reserve, settle the actual cost and refuse past the limit", async () => {
+  const { gw, log } = rig();
+  const L = gw.limits;
+  const chain = owner();
+  const b = L.doorBudget({ limitOf: () => 1000, estimate: () => 400, cost: (i, u) => u.cost_micro });
+  const call1 = { chain }, call2 = { chain }, call3 = { chain };
+  assert.equal(b.reserve(call1), null);
+  assert.equal(b.reserve(call2), null);
+  assert.equal(b.reserve(call3), "ai_spend", "two holds of 400 leave no room for a third of 400 against 1000");
+  b.settle(call1, { cost_micro: 100 });
+  assert.equal(b.reserve(call3), null, "the first call cost 100, not 400, so the room is back");
+  assert.deepEqual(L.used(OWNER, "ai_spend"), { settled: 100, reserved: 800 });
+  const id = L.sessionStart(chain, { person: OWNER, limit_hours: 10, max_hours: 6 });
+  assert.throws(() => L.sessionStart(chain, { person: OWNER, limit_hours: 10, max_hours: 6 }), { code: "budget_exhausted" });
+  L.sessionEnd(chain, id, 2);
+  assert.deepEqual(L.used(OWNER, "session_hours"), { settled: 2, reserved: 0 });
+  assert.ok(log.read({ type: "meter.settled" }).some(e => e.data.meter === "session_hours" && e.data.actual === 2));
+});

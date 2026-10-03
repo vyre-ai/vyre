@@ -15,7 +15,7 @@ import { recipientsOf } from "../seal/process.js";
 const APPROVAL_MAX_AGE = 24 * 3600_000;
 
 /**
- * @param {{ space: string, sealer: any, authorizer: any, log: any, door?: any,
+ * @param {{ enforce?: (chain: any, d: any) => void, space: string, sealer: any, authorizer: any, log: any, door?: any,
  *   clock?: () => number, approval_max_age?: number,
  *   approvals?: { get(id: string): Promise<{ approver_chain: any, proof: any, template: string, template_version: number, record: string, bindings: { slot: string, ref: string }[] } | null> },
  *   templates?: { get(urn: string, version: number): Promise<{ body: string } | null> },
@@ -23,7 +23,7 @@ const APPROVAL_MAX_AGE = 24 * 3600_000;
  */
 export function createSealing(cfg) {
   const { sealer, door } = cfg;
-  const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log });
+  const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log, enforce: cfg.enforce });
   const mustChain = (/** @type {any} */ c) => { if (!isChain(c)) throw new KernelError("bad_input", "a call needs a kernel-built chain"); };
   const mustRecord = (/** @type {any} */ u) => { const s = segments(u); if (!s || s[0] !== cfg.space || s.length < 3) throw new KernelError("bad_input", "bad record"); };
   const mapErr = (/** @type {any} */ e) => (e instanceof KernelError ? e : new KernelError(typeof e?.code === "string" ? e.code : "unavailable", "sealing refused"));

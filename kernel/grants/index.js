@@ -244,6 +244,6 @@ export function createGrantsStore(cfg) {
   return Object.freeze({
     ...api, provider, members, isAdmin, roleOf,
     /** Called once by the gateway, with the authorizer it built from `provider` and `members`. */
-    bind(/** @type {{ authorizer: any, registry: () => Map<string, any> }} */ b) { bound = { ...createGate({ authorizer: b.authorizer, log: cfg.log }), registry: b.registry }; },
+    bind(/** @type {{ authorizer: any, registry: () => Map<string, any>, enforce?: (chain: any, d: any) => void }} */ b) { bound = { ...createGate({ authorizer: b.authorizer, log: cfg.log, enforce: b.enforce }), registry: b.registry }; },
   });
 }
