@@ -75,24 +75,48 @@ export function page(/** @type {any[]} */ all, /** @type {any} */ spec) {
   return { rows: slice, ...(more && slice.length ? { next_cursor: encodeCursor(slice[slice.length - 1], sort) } : {}) };
 }
 
+/**
+ * An aggregation that folds one row at a time and keeps only a small state per group, so a total never needs the rows in memory (and has
+ * no row cap). `add(row)` skips rows that do not match the filter; `result()` is what `aggregate` returns.
+ * @param {any} spec
+ */
+export function createAggregator(spec) {
+  const measures = spec.measures || [], by = spec.group_by || [];
+  /** @type {Map<string, { group: any, n: number, m: any[] }>} */ const groups = new Map();
+  const fresh = (/** @type {any} */ group) => ({ group, n: 0, m: measures.map(() => ({ nonnull: 0, nums: 0, sum: 0, min: Infinity, max: -Infinity })) });
+  return {
+    add(/** @type {any} */ r) {
+      if (!matches(spec.filter, r)) return;
+      const g = Object.fromEntries(by.map((/** @type {string} */ f) => [f, fieldOf(r, f)]));
+      const k = canonical(g);
+      let s = groups.get(k);
+      if (!s) { s = fresh(g); groups.set(k, s); }
+      s.n++;
+      measures.forEach((/** @type {any} */ m, /** @type {number} */ i) => {
+        if (!m.field) return;
+        const v = fieldOf(r, m.field), a = s.m[i];
+        if (v !== null) a.nonnull++;
+        if (typeof v === "number") { a.nums++; a.sum += v; if (v < a.min) a.min = v; if (v > a.max) a.max = v; }
+      });
+    },
+    result() {
+      if (!groups.size && !by.length) groups.set("{}", fresh({}));
+      return [...groups.values()].sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1)).map(({ group, n, m }) => ({
+        group,
+        values: Object.fromEntries(measures.map((/** @type {any} */ x, /** @type {number} */ i) => {
+          const name = x.field ? `${x.fn}:${x.field}` : x.fn, a = m[i];
+          if (x.fn === "count") return [name, x.field ? a.nonnull : n];
+          if (!a.nums) return [name, null];
+          return [name, x.fn === "sum" ? a.sum : x.fn === "min" ? a.min : x.fn === "max" ? a.max : a.sum / a.nums];
+        })),
+      }));
+    },
+  };
+}
+
 /** Group and measure. Group keys keep their JSON shape; `avg` and `sum` skip nulls; an empty measure is null. */
 export function aggregate(/** @type {any[]} */ all, /** @type {any} */ spec) {
-  const groups = new Map();
-  for (const r of all.filter(r => matches(spec.filter, r))) {
-    const g = Object.fromEntries((spec.group_by || []).map((/** @type {string} */ f) => [f, fieldOf(r, f)]));
-    const k = canonical(g);
-    if (!groups.has(k)) groups.set(k, { group: g, rows: [] });
-    groups.get(k).rows.push(r);
-  }
-  if (!groups.size && !(spec.group_by || []).length) groups.set("{}", { group: {}, rows: [] });
-  return [...groups.values()].sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1)).map(({ group, rows }) => ({
-    group,
-    values: Object.fromEntries(spec.measures.map((/** @type {any} */ m) => {
-      const name = m.field ? `${m.fn}:${m.field}` : m.fn;
-      if (m.fn === "count") return [name, m.field ? rows.filter(r => fieldOf(r, m.field) !== null).length : rows.length];
-      const nums = rows.map(r => fieldOf(r, m.field)).filter(v => typeof v === "number");
-      if (!nums.length) return [name, null];
-      return [name, m.fn === "sum" ? nums.reduce((a, b) => a + b, 0) : m.fn === "min" ? Math.min(...nums) : m.fn === "max" ? Math.max(...nums) : nums.reduce((a, b) => a + b, 0) / nums.length];
-    })),
-  }));
+  const a = createAggregator(spec);
+  for (const r of all) a.add(r);
+  return a.result();
 }

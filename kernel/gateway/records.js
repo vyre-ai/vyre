@@ -7,7 +7,7 @@ import { mintUuid, isUuid } from "../core/ids.js";
 import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
-import { aggregate as aggregateRows } from "../store/query.js";
+import { createAggregator } from "../store/query.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
 import { createIdem } from "../core/idem.js";
@@ -303,10 +303,11 @@ export function createRecords(cfg) {
       checkType(type);
       await guardSealed(chain, type, spec);
       await countRead(chain, type);
-      // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed.
-      const rows = [];
+      // A store cannot hide rows from a total, so the gateway folds in only the rows it has itself allowed. It folds page by page and keeps
+      // a small state per group, never the rows, so there is no row cap: a total over a million rows costs time, not memory.
+      const agg = createAggregator(spec);
       let cursor;
-      for (let pages = 0; pages < 40; pages++) {
+      for (;;) {
         let p;
         try { p = await store.query(type, { filter: spec.filter, page: { limit: 500, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const hiddenSet = await hiddenFields(chain, type);
@@ -315,12 +316,11 @@ export function createRecords(cfg) {
           const dec = await check(chain, "records.read", urn(r.type, r.id));
           if (!dec) continue;
           const al = allowList(dec);
-          rows.push(al || (hiddenSet && hiddenSet.size) ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)))) } : r);
+          agg.add(al || (hiddenSet && hiddenSet.size) ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)))) } : r);
         }
-        if (!p.next_cursor) return aggregateRows(rows, spec);
+        if (!p.next_cursor) return agg.result();
         cursor = p.next_cursor;
       }
-      throw new KernelError("unsupported", "too many rows to total here");
     },
 
     async search(chain, spec) {

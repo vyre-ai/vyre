@@ -7,7 +7,7 @@ import { checkValue } from "./values.js";
 import { page, aggregate as agg, fieldOf } from "./query.js";
 
 /** The conformance suite revision this store last passed. Bump with the suite. */
-export const CONFORMANCE_REVISION = 4;
+export const CONFORMANCE_REVISION = 5;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });

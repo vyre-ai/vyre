@@ -18,13 +18,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { canonical, sha256 } from "../../kernel/core/canonical.js";
 import { isUuid } from "../../kernel/core/ids.js";
-import { aggregate as aggregateRows } from "../../kernel/store/query.js";
+import { createAggregator } from "../../kernel/store/query.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
-export const CONFORMANCE_REVISION = 4;
+export const CONFORMANCE_REVISION = 5;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
@@ -261,7 +261,7 @@ export class TwentyStore {
     do {
       const r = await this.query(type, { ...spec, page: { limit: MAX_PAGE, ...(cursor ? { cursor } : {}) } });
       all.push(...r.rows); cursor = r.next_cursor;
-      if (all.length > MAX_SCAN) throw new StoreError("unsupported", `aggregate and search scan at most ${MAX_SCAN} rows; narrow the filter`);
+      if (all.length > MAX_SCAN) throw new StoreError("unsupported", `a search scans at most ${MAX_SCAN} rows; narrow the filter`);
     } while (cursor);
     return all;
   }
@@ -271,8 +271,15 @@ export class TwentyStore {
     const p = this.#plan(type);
     for (const g of spec.group_by ?? []) { const f = p.byVyre.get(g); if (g !== "id" && !f) throw new StoreError("unknown_field", `${type} has no field ${g}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${g} is sealed`); }
     for (const m of spec.measures ?? []) { const f = m.field ? p.byVyre.get(m.field) : null; if (m.field && !f) throw new StoreError("unknown_field", `${type} has no field ${m.field}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${m.field} is sealed`); }
-    const rows = await this.#scan(type, { filter: spec.filter });
-    return aggregateRows(rows, spec);
+    // Folded page by page: no row cap, and the rows are never all in memory.
+    const agg = createAggregator(spec);
+    let cursor;
+    do {
+      const r = await this.query(type, { filter: spec.filter, page: { limit: MAX_PAGE, ...(cursor ? { cursor } : {}) } });
+      for (const row of r.rows) agg.add(row);
+      cursor = r.next_cursor;
+    } while (cursor);
+    return agg.result();
   }
 
   /** @param {{ text: string, types?: string[], page: { limit: number, cursor?: string } }} spec */

@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 4;
+export const SUITE_REVISION = 5;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -258,6 +258,18 @@ export function conformance(make, { test, assert }, label = "store") {
     await assert.rejects(() => s.define({ change_types: [ACCOUNT] }), code("unique_violation"));
     await acct(s, { name: "C", handle: "dup" });
     assert.equal((await s.query("account", { page: { limit: 10 } })).rows.length, 3, "the type is unchanged, so duplicates are still allowed");
+  });
+
+  // ---- revision 5: totals have no row cap ----
+  T("aggregate: a total is exact over more rows than one page, with no ceiling, and never counts a removed record", async s => {
+    const n = 650, gone = [];
+    for (let i = 0; i < n; i++) { const r = await add(s, { name: `n${i}`, age: i, status: i % 3 === 0 ? "closed" : "open" }); if (i % 50 === 7) gone.push(r); }
+    for (const r of gone) await s.remove("contact", r.id, 1);
+    const live = Array.from({ length: n }, (_, i) => i).filter(i => i % 50 !== 7);
+    const all = await s.aggregate("contact", { measures: [{ fn: "count" }, { fn: "sum", field: "age" }, { fn: "min", field: "age" }, { fn: "max", field: "age" }] });
+    assert.deepEqual(all, [{ group: {}, values: { count: live.length, "sum:age": live.reduce((a, b) => a + b, 0), "min:age": 0, "max:age": n - 1 } }]);
+    const by = await s.aggregate("contact", { group_by: ["status"], measures: [{ fn: "count" }] });
+    assert.deepEqual(by.map((/** @type {any} */ r) => [r.group.status, r.values.count]).sort(), [["closed", live.filter(i => i % 3 === 0).length], ["open", live.filter(i => i % 3 !== 0).length]]);
   });
 
   T("health, version and features are honest", async s => {

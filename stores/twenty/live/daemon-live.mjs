@@ -18,17 +18,20 @@ const d = await start({ root, log: lap, kernel: true });
 const k = d.kernel, id = k.id;
 lap(`daemon up, space ${id.space}, store.json = ${fs.readFileSync(path.join(root, "kernel", "store.json"), "utf8")}`);
 const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: id.owner, path: "direct", session: "s1" });
-const model = () => k.chains.fromFacts({ kind: "socket", surface: "mcp", uid: process.getuid(), pid: process.pid, inside_model_process: true });
+const model = () => k.chains.fromFacts({ kind: "agent_session", vouched: true, agent: "assistant", person: id.owner, session: "s1" });
 const R = k.gateway.records;
 try {
   await R.define(owner(), { add_types: [CONTACT] });
   const c = await R.create(owner(), "contact", { name: "Pat Harlow" });
-  const put = await k.gateway.seal.put({ chain: owner(), record: c.urn, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  // Roles carry no seal.put; a first-party stand-in module with that one action puts the value (the person-typed path needs a presence proof from a real device).
+  await k.grants.installModule("proof", { actions: ["seal.put"] });
+  const putter = k.chains.fromFacts({ kind: "module", module: "proof", first_party: true });
+  const put = await k.gateway.seal.put(putter, { record: c.urn, field: "ssn", class: "us-ssn", value: "123-45-6789" });
   const u = await R.update(owner(), "contact", c.id, { ssn: put.ref }, c.version);
   const asOwner = await R.get(owner(), "contact", c.id);
   console.log("owner reads ssn:", JSON.stringify(asOwner.data.ssn));
   const asModel = await R.get(model(), "contact", c.id).catch((e) => ({ refused: e.code }));
-  console.log("model reads ssn:", JSON.stringify(asModel.data ? asModel.data.ssn : asModel));
+  console.log("model reads ssn:", JSON.stringify(asModel && asModel.data ? asModel.data.ssn : asModel));
   // the plaintext is nowhere in Twenty
   const proj = names(nameOf(id.space)).project;
   const dump = execFileSync("docker", ["compose", "-p", proj, "exec", "-T", "db", "pg_dump", "-U", "postgres", "default"], { cwd: path.join(root, "kernel", "twenty-home", "spaces", nameOf(id.space), "twenty"), maxBuffer: 1 << 28 }).toString();
@@ -41,10 +44,10 @@ try {
   const d2 = await start({ root, log: lap, kernel: true });
   const k2 = d2.kernel;
   const o2 = k2.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: k2.id.owner, path: "direct", session: "s1" });
-  const m2 = k2.chains.fromFacts({ kind: "socket", surface: "mcp", uid: process.getuid(), pid: process.pid, inside_model_process: true });
+  const m2 = k2.chains.fromFacts({ kind: "agent_session", vouched: true, agent: "assistant", person: k2.id.owner, session: "s1" });
   const again = await k2.gateway.records.get(o2, "contact", c.id);
   const againModel = await k2.gateway.records.get(m2, "contact", c.id).catch((e) => ({ refused: e.code }));
-  console.log("after restart: same Space", k2.id.space === id.space, "| owner reads", JSON.stringify(again.data.ssn), "| model reads", JSON.stringify(againModel.data ? againModel.data.ssn : againModel), "| audit", JSON.stringify(await k2.gateway.audit.verify()));
+  console.log("after restart: same Space", k2.id.space === id.space, "| owner reads", JSON.stringify(again.data.ssn), "| model reads", JSON.stringify(againModel && againModel.data ? againModel.data.ssn : againModel), "| audit", JSON.stringify(await k2.gateway.audit.verify()));
   await d2.stop();
   lap("done");
 } finally {

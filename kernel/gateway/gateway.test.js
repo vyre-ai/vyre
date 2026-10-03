@@ -4,7 +4,7 @@ import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
-import { isUuid, timeOf } from "../core/ids.js";
+import { isUuid, timeOf, mintUuid } from "../core/ids.js";
 import { CONTACT } from "../conformance/suite.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
@@ -97,6 +97,21 @@ test("gateway: the gateway filters rows itself; a store that ignores the grant c
   assert.deepEqual(tot[0].values, { count: 3, "sum:age": 6 }, "the total counts only what the caller may see");
   const hits = await r.search(owner(), { text: "harlow", page: { limit: 50 } });
   assert.equal(hits.rows.length, 3);
+});
+
+test("gateway: a total has no row cap, and a row the caller may not read is not counted at any size", async () => {
+  const hidden = new Set();
+  const attrs = urn => ({ project: hidden.has(urn) ? "p9" : "p1" });
+  const g = G({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
+  const ownerAll = G({ actions: ["records.create", "records.define"] });
+  const { r, store } = await withType(rig({ grants: [ownerAll, g], attrs }));
+  const N = 20_700;
+  for (let i = 0; i < N; i++) { const id = mintUuid(); await store.create("contact", id, { name: `n${i}`, age: 1, status: i % 2 ? "open" : "closed" }); if (i % 7 === 0) hidden.add(`vyre://${SPACE}/contact/${id}`); }
+  const seen = N - hidden.size;
+  const tot = await r.aggregate(owner(), "contact", { measures: [{ fn: "count" }, { fn: "sum", field: "age" }] });
+  assert.deepEqual(tot[0].values, { count: seen, "sum:age": seen });
+  const by = await r.aggregate(owner(), "contact", { group_by: ["status"], measures: [{ fn: "count" }] });
+  assert.equal(by.reduce((a, x) => a + x.values.count, 0), seen);
 });
 
 test("gateway: a store that returns rows of another type or a different id is not believed", async () => {

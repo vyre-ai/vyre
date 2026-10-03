@@ -20,6 +20,11 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 - Spike scripts and results now live in `stores/twenty/spike/`.
 - After merging work/kernel 97fe2a0d8: 156 of 161 pass on the Mac; the 4 failures are the kernel golden tests that refuse to run on a Mac (they pass on testbox).
 
+## Done 4 Oct (after the usage-limit restart)
+
+- Step 6 proof: real vyred + real Twenty on testbox4, sealed field written and read back as a placeholder, restart verified; numbers in team/0.3/E2E-RUN.md. Script: `stores/twenty/live/daemon-live.mjs` (4 min, needs a quiet box; reruns with `systemd-run --user`).
+- Conformance revision 5 (suite, memory store, Twenty store): totals have no row cap. `kernel/store/query.js` gains `createAggregator` (folds one row at a time, a small state per group); the gateway aggregate and the Twenty store aggregate use it, so the 20,000-row refusal and the "too many rows" error are gone. Suite case: 650 rows over any page size, removed records not counted. Gateway test: 20,700 rows through a grant that hides every seventh, exact counts. Search keeps its own scan ceiling (50,000 text matches). Kernel-2 owns SQLite GROUP BY and indexes.
+
 ## Doing (3 Oct, resumed after the account switch)
 
 - Merged work/kernel f43c4e570 and work/flows 974d18773. Done in this session: the SDK and the store use the kernel's `link` (record link) and `url` kinds; `records/host.js` (`createRecordsHost`) assembles the real gateway, event log, chain builder and Flow runner over any store, and installs a Kit (types through `kernel.records.define`, Flows approved by the owner). `records/flows/run.js` and the stand-in gateway use are gone: the Stripe connector writes `payment.received` into the log and the Kit's Flow runs on `kernel/flows` (a failed run makes Stripe retry and the retry writes a `payment.received` retry event under a new key).
