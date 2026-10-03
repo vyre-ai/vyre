@@ -11,17 +11,17 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import * as saidTools from "./said.js";
 import { register } from "./request.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { Leases } from "../../kernel/seal/leases.js";
-import { SealStore } from "../../kernel/seal/store.js";
+import { startSealer } from "../../kernel/seal/client.js";
+import { person } from "../../kernel/seal/testing.js";
 import { leasedForward, normalizeRoute } from "../../kernel/seal/uses.js";
 import { Pool } from "../../kernel/storage/pool.js";
 import { Drive, driveFiles } from "../../kernel/storage/drive.js";
 import { memoryBackend } from "../../kernel/storage/backends.js";
 
-const MB = 1 << 20, SP = "spc_harlowharlowharlow", SESSION = "sess1", MEMBER = "per_alexalexalexalex", fake = l => `fixture-${l}-${crypto.randomBytes(12).toString("hex")}`;
+const MB = 1 << 20, SESSION = "sess1", fake = l => `fixture-${l}-${crypto.randomBytes(12).toString("hex")}`;
 const sha = b => crypto.createHash("sha256").update(b).digest("hex");
 
-async function mk(t, routeOver = {}) {
+async function mk(t, routeOver = {}, { filesFor = null } = {}) {
   const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-fwdf-")), db = open(path.join(home, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
@@ -42,15 +42,17 @@ async function mk(t, routeOver = {}) {
     : tool === "gate.get" ? { data: { ...gateItems.get(input.id), state: "sending" } } : { error: { code: "no_such_tool", message: tool } };
   const tools = new Map(), tool = (n, c, d, i, run) => tools.set(n, { run }), internal = (n, d, i, run) => tools.set(n, { run });
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call: gate, said, deps: { lookup, streamTransport, now: () => clock, files } });
+  register({ vault: v, tool, internal, call: gate, said, deps: { lookup, streamTransport, now: () => clock, ...(filesFor ? { filesFor: s => filesFor(s, files) } : { files }) } });
   const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
-  const store = new SealStore(fs.mkdtempSync(path.join(SCRATCH, "vyre-fwdfs-")), crypto.randomBytes(32)), leases = new Leases(store, () => clock), lease = leases.issue({ space: SP, member: MEMBER, device: "dev_mac", allowed: true });
+  // The REAL sealing process holds the lease and a REAL kernel chain stands for the person. SHIM(gateway-forward): `leasedForward` is composed here, the kernel's gateway has no `leases.forward` yet.
+  const sealer = startSealer({ dir: fs.mkdtempSync(path.join(SCRATCH, "vyre-fwdfs-")), timeoutMs: 8000, dev: true }); t.after(() => sealer.close());
+  const who = person("per_alex"), lease = await sealer.lease.issue({ chain: who, device: "dev_mac", allowed: true }), leases = { revoke: () => sealer.lease.revoke({ chain: who, member: "per_alex", device: "dev_mac" }) };
   const routes = new Map([[SESSION, [normalizeRoute({ route: "api.hellosign.test", ref: "dropsign", allow: [{ method: "GET", path: "/v3/*" }, { method: "POST", path: "/v3/*" }], contentTypes: ["application/pdf", "multipart/form-data", "application/json"],
     drive: { read: ["clients/jane/*"], write: ["inbox/*"] }, ...routeOver })]]]);
   const S = fake("dropsign");
   await v.put({ name: "dropsign", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.hellosign.test"], endpoints: [{ method: "POST", path: "/v3/signature_request/send", kind: "send" }, { method: "GET", path: "/v3/*", kind: "read" }] }), secret: S } }, "cli");
-  const go = leasedForward({ chain: null, leaseOf: s => (s === SESSION ? lease.id : null), check: async ({ id }) => leases.check({ id, member: MEMBER }), routesOf: s => routes.get(s) ?? [],
-    forward: async () => { throw new Error("not this path"); }, forwardFile: i => run("vault.forward.file", { credential: i.ref, method: i.method, url: `https://${i.route}${i.path}`, query: i.query, headers: i.headers, upload: i.upload, saveTo: i.saveTo, stream: i.stream, limits: i.limits, drive: i.drive, session: SESSION }, "kernel:leases") });
+  const go = leasedForward({ chain: who, leaseOf: s => (s === SESSION ? lease.id : null), check: ({ id }) => sealer.lease.check({ chain: who, id }), routesOf: s => routes.get(s) ?? [],
+    forward: async () => { throw new Error("not this path"); }, forwardFile: i => run("vault.forward.file", { credential: i.ref, method: i.method, url: `https://${i.route}${i.path}`, query: i.query, headers: i.headers, allow_headers: i.allow_headers, upload: i.upload, saveTo: i.saveTo, stream: i.stream, limits: i.limits, drive: i.drive, session: SESSION }, "kernel:leases") });
   const call = (o) => go({ session: SESSION, route: "api.hellosign.test", method: "GET", ...o });
   const audits = () => JSON.stringify(db.prepare("SELECT * FROM vault_audit").all());
   return { v, net, drive, pool, run, call, S, gateItems, audits, files, leases, lease, tick: ms => { clock += ms; } };
@@ -116,4 +118,14 @@ test("no credential value passes: a token split across two chunks of a download 
   await assert.rejects(m.call({ path: "/v3/leak", saveTo: "inbox/leak.pdf" }), { code: "withheld" }); assert.deepEqual(m.drive.list(), [], "nothing was saved");
   m.net.reply = r => ({ status: 401, headers: { "content-type": "application/json" }, chunks: [Buffer.from(JSON.stringify({ error: `bad key ${r.headers.authorization}` }))] });
   const e = await m.call({ path: "/v3/x", saveTo: "inbox/e.pdf" }); assert.equal(e.status, 401); assert.equal(e.body.toString().includes(m.S), false); assert.equal(m.audits().includes(m.S), false);
+});
+
+test("FW-2: the Drive is reached as the lent member: the kernel's Drive door decides, and a route's Drive lists only narrow what it allows", async t => {
+  const asked = [], member = ({ session }, files) => { asked.push(session); return { read: async (p, v) => { if (p.startsWith("clients/jane/private")) throw Object.assign(new Error("not_found"), { code: "not_found" }); return files.read(p, v); }, write: (p, src, o) => files.write(p, src, o) }; };
+  const m = await mk(t, {}, { filesFor: member }); await m.drive.put("clients/jane/ok.pdf", Buffer.from("fine")); await m.drive.put("clients/jane/private.pdf", Buffer.from("not for this member"));
+  const up = path => ({ method: "POST", path: "/v3/signature_request/send", upload: { drive: { path, contentType: "application/pdf" } } });
+  assert.ok((await m.call(up("clients/jane/ok.pdf"))).held, "a file the member may read, on a path the route lists, is held for approval");
+  await assert.rejects(m.call(up("clients/jane/private.pdf")), { code: "not_found" }); // the route lists the whole folder; the member's own door refuses this file
+  assert.deepEqual([...new Set(asked)], [SESSION], "the Drive door was asked for this session's member every time");
+  await assert.rejects(m.call(up("private/other.pdf")), { code: "not_found" }, "and a path the route does not list is refused before the door is asked");
 });

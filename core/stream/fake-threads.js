@@ -2,7 +2,7 @@
 // A stand-in for the switchboard's threads.get, for tests of modules that ask it as the caller (not a test itself).
 // fakeThreads(dir) writes a module into dir; discover([dir]) finds it. Thread ids that start with thr_ exist;
 // `locked_*` ids exist but are refused to any caller whose label contains "bob" (a person who may not read them);
-// an agent caller is refused as the real guard does. globalThis.__fakeThreadsKnown (a Map: id to { cwd, deny? }) names more threads, with a folder and a caller pattern refused. Every call is noted in globalThis.__fakeThreadsCalls.
+// the manifest says reach anyone like the real threads.get, so an assistant reaches it and the caller pattern decides. globalThis.__fakeThreadsKnown (a Map: id to { cwd, deny? }) names more threads, with a folder and a caller pattern refused. Every call is noted in globalThis.__fakeThreadsCalls.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -10,7 +10,7 @@ import path from "node:path";
 export function fakeThreads(dir) {
   const d = path.join(dir, "threads");
   fs.mkdirSync(d, { recursive: true });
-  fs.writeFileSync(path.join(d, "module.json"), JSON.stringify({ name: "threads", version: "0.0.0", roles: ["box", "local"], requires: [], does: { tools: [{ name: "threads.get", reach: "person" }] }, watches: { emits: [] }, shows: {}, needs: {}, teaches: { tips: [] }, settings: [] }));
+  fs.writeFileSync(path.join(d, "module.json"), JSON.stringify({ name: "threads", version: "0.0.0", roles: ["box", "local"], requires: [], does: { tools: [{ name: "threads.get", reach: "anyone" }] }, watches: { emits: [] }, shows: {}, needs: {}, teaches: { tips: [] }, settings: [] }));
   fs.writeFileSync(path.join(d, "index.js"), `
 export default { async start(ctx) {
   ctx.tool("threads.get", {

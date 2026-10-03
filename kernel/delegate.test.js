@@ -67,3 +67,33 @@ test("a Space without the default assistant (made before it existed) is told so,
   assert.equal(k2.gateway.grants.defaultAssistant.present(), false);
   assert.ok(k && owner && forBob && decide);
 });
+
+test("the default assistant has an off switch: an owner removes it with presence, unnamed chats are then refused plainly, and an owner can add it back", async () => {
+  const { owner, bob, forBob, decide, g } = await rig();
+  const dflt = { kind: "agent", id: "assistant", space: SPACE };
+  assert.equal((await decide(forBob, "records.read", contact)).effect, "allow");
+  await assert.rejects(() => g.defaultAssistant.remove(owner, {}), { code: "needs_presence" }, "needs the owner's presence");
+  await assert.rejects(() => g.defaultAssistant.remove(bob, { presence: proof("grants.role", { remove_actor: dflt }, `vyre://${SPACE}/member/assistant`) }), e => ["chain_not_person", "not_found", "not_allowed", "denied"].includes(e.code), "not a member's act");
+  await g.defaultAssistant.remove(owner, { presence: proof("grants.role", { remove_actor: dflt }, `vyre://${SPACE}/member/assistant`) });
+  assert.equal(g.defaultAssistant.present(), false);
+  const gone = await decide(forBob, "records.read", contact);
+  assert.equal(gone.effect, "deny");
+  assert.equal(gone.reason, "not_a_member", "the reason is plain: no assistant is available");
+  assert.equal((await decide(bob, "records.read", contact)).effect, "allow", "Bob himself is unaffected");
+  await g.defaultAssistant.add(owner, { presence: proof("grants.role", { actor: dflt }, `vyre://${SPACE}/member/assistant`) });
+  assert.equal((await decide(forBob, "records.read", contact)).effect, "allow", "added back");
+  await g.rebuild();
+  assert.equal(g.defaultAssistant.present(), true, "and it survives a rebuild from the log");
+});
+
+test("service.read and service.call: a connector read is a read, a connector call is an outward act that asks first, for a person and for their assistant", async () => {
+  const { owner, bob, forBob, decide, g } = await rig();
+  const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["service.read", "service.call"], resource: { prefix: `vyre://${SPACE}/service/*` }, conditions: {}, source: "test" };
+  await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+  const svc = `vyre://${SPACE}/service/stripe`;
+  assert.equal((await decide(bob, "service.read", svc)).effect, "allow");
+  assert.equal((await decide(bob, "service.call", svc)).effect, "ask");
+  assert.equal((await decide(forBob, "service.read", svc)).effect, "allow", "his assistant reads where he reads");
+  assert.equal((await decide(forBob, "service.call", svc)).effect, "ask", "and a change asks first");
+  assert.equal((await decide(forBob, "service.call", `vyre://${SPACE}/other/stripe`)).effect, "deny");
+});

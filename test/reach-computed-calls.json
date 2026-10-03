@@ -21,6 +21,11 @@
    "owner": "windows",
    "note": "call() runs as module:bridges and names spaces.membership and spaces.merge-list (modules-only, built) and spaces.policy and spaces.ask (not built yet: a missing tool is tolerated and the share is refused or held)"
   },
+  "core/flows/index.js": {
+   "count": 1,
+   "owner": "platform",
+   "note": "registers the flows.* tools in a loop over a fixed name table (ctx.tool with a computed name); it calls no other tool through ctx.call except watchers.items from the watcher bridge, as the flows module"
+  },
   "core/gate/index.js": {
    "count": 2,
    "owner": "module's own team",

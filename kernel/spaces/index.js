@@ -18,7 +18,7 @@ const hostedHandle = (space, k) => Object.freeze({ space, hosted: true, gateway:
 
 /**
  * @param {{ root: string, personal: { space: string, kernel: any }, openDb: (file: string) => import("node:sqlite").DatabaseSync, boot?: (cfg: any) => any,
- *   sealer?: any, fileKey?: boolean, doorFor?: (space: string) => any, storeFor?: (space: string, meta: any) => Promise<any> | any, remote?: (space: string) => any, bootOptions?: Record<string, any>, clock?: () => number }} cfg
+ *   sealer?: any, fileKey?: boolean, doorFor?: (space: string) => any, storeFor?: (space: string, meta: any) => Promise<any> | any, stageFactory?: (space: string, kernel: any, meta: any) => Promise<any> | any, remote?: (space: string) => any, bootOptions?: Record<string, any>, clock?: () => number }} cfg
  *   `personal` is the home's own, already booted kernel (bootHomeKernel's), so the first Space is never booted twice. `sealer` is the home's sealing client: each Space gets
  *   it namespaced (K-3), and no key file is kept. Without it a Space is refused unless `fileKey` is true (development and tests: a 0600 key file per Space).
  */
@@ -43,8 +43,13 @@ export function createSpaceKernels(cfg) {
       custody = { key };
     } else throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer");
     const store = cfg.storeFor ? await cfg.storeFor(id, meta) : undefined;
-    return tell(await boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
+    // Stages made of tasks for this Space (the daemon's stageFactory builds the module over this Space's own kernel): the gateway's two hooks are bound late, because the module needs the booted kernel.
+    /** @type {{ stages: any }} */ const late = { stages: null };
+    const hooks = cfg.stageFactory ? { onStageEnter: (/** @type {any} */ e) => (late.stages ? late.stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (late.stages ? late.stages.stageTasks(u, st) : []) } : {};
+    const booted = tell(await boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, ...hooks, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
+    if (cfg.stageFactory) late.stages = await cfg.stageFactory(id, booted, meta);
+    return booted;
   }
 
   const api = {

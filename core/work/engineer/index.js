@@ -40,8 +40,8 @@ export function createEngineer({ kernel, compile, simulate = null, engineerChain
   /** Only an admin, and the refusal looks like absence. @param {any} chain */
   function requireAdmin(chain) {
     const first = chain && chain.hops && chain.hops[0];
-    // Exactly one person: an assistant acting for an admin is not the admin (the Engineer's own chain is built inside, beside the admin).
-    if (!first || chain.hops.length !== 1 || first.actor.kind !== "person" || !kernel.members || !kernel.members.isAdmin(first.actor)) throw refusal("not_found", "not found");
+    // Exactly one person, built from the person's own device or surface: neither a viewer chain (the kernel's read-only view of a person) nor a delegated one (built from a session token) is the admin acting. An assistant acting for an admin is not the admin (the Engineer's own chain is built inside, beside the admin).
+    if (!first || chain.viewer === true || chain.delegated === true || chain.hops.length !== 1 || first.actor.kind !== "person" || !kernel.members || !kernel.members.isAdmin(first.actor)) throw refusal("not_found", "not found");
     return first.actor;
   }
 

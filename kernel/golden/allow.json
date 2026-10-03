@@ -330,5 +330,85 @@
  {
   "tool": "work.team.add",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1)"
+ },
+ {
+  "tool": "flows.define",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.card",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.get",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.list",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.code",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.compile-text",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.graph",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.simulate",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.start",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.runs",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.run",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.retry",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.card",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.propose",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.list",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.approve",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.pause",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.resume",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.remove",
+  "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "vault.provider.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; provider status is a read, open to the person's assistant (a proven session claim only)"
  }
 ]

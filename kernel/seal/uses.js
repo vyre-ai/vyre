@@ -20,9 +20,11 @@ export const ACTIONS = Object.freeze([
   { action: "drive.restore", resource_type: "file", risk: "admin", label: "Restore an older file or backup", gloss: "Replaces what is there now with an older version or a whole backup." },
   { action: "drive.share", resource_type: "file", risk: "outward.share", label: "Share a file", gloss: "Gives someone outside the Space access to a file." },
   { action: "drive.delete", resource_type: "file", risk: "outward.delete", label: "Delete a file", gloss: "Removes a file for good." },
+  { action: "service.read", resource_type: "service", risk: "read", label: "Read from a connected service", gloss: "Reads (GET or HEAD) through a connector the Space holds, with the Space's own credential, never the person's." },
+  { action: "service.call", resource_type: "service", risk: "outward.send", label: "Call a connected service", gloss: "Changes something at a connected service (POST, PUT, PATCH, DELETE). It asks first." },
   { action: "seal.put", resource_type: "record", risk: "write", label: "Seal a value", gloss: "Moves a value into the sealed store." },
   { action: "seal.use", resource_type: "record", risk: "write", label: "Fill a sealed slot", gloss: "Merges a sealed value into a document or message.", sealed_ok: true },
-  { action: "seal.deliver", resource_type: "record", risk: "outward.send", label: "Send what was filled", gloss: "Sends a message or document that holds a sealed value." },
+  { action: "seal.deliver", resource_type: "record", risk: "outward.send", draftable: true, label: "Send what was filled", gloss: "Sends a message or document that holds a sealed value." },
   { action: "seal.reveal", resource_type: "record", risk: "admin", label: "Show a sealed value", gloss: "Shows it on your screen only, after Face ID." },
 ]);
 
@@ -142,7 +144,10 @@ export function normalizeRoute(r) {
   if (contentTypes.some(t => !/^[a-z0-9.+-]+\/([a-z0-9.+-]+|\*)$/.test(t))) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
   const drive = { read: (r.drive?.read ?? []).map(String), write: (r.drive?.write ?? []).map(String) };
   for (const p of [...drive.read, ...drive.write]) if (!p || p.startsWith("/") || p.slice(0, -2).includes("*") || (p.includes("*") && !p.endsWith("/*"))) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
-  return Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, allow, deny, maxBytes, contentTypes, drive });
+  // Request headers the program may send besides the safe default (accept, content-type, validators): exact names the route's own record lists (core/vault/request.js forwardHeaders).
+  const headers = (Array.isArray(r.headers) ? r.headers : []).map(h => String(h).toLowerCase());
+  if (headers.some(h => !/^[a-z0-9-]{1,64}$/.test(h))) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  return Object.freeze({ route: r.route.toLowerCase(), ref: r.ref, allow, deny, maxBytes, contentTypes, drive, headers });
 }
 /** May this route do this? The path is checked as the kernel checks every path (no dot segments, encoded dots or slashes, backslashes). Deny wins, and the default is no. */
 export function routeAllows(def, method, path) {
@@ -171,8 +176,8 @@ export function leasedForward({ leaseOf, check, routesOf, forward, forwardFile, 
     const file = req.upload !== undefined || req.saveTo !== undefined || req.stream === true;
     if (file && !forwardFile) throw Object.assign(new Error("unavailable"), { code: "unavailable" });
     const res = file
-      ? await forwardFile({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, session: req.session, upload: req.upload, saveTo: req.saveTo, stream: req.stream === true, limits: { maxBytes: def.maxBytes, contentTypes: def.contentTypes }, drive: def.drive })
-      : await forward({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, body: req.body, session: req.session });
+      ? await forwardFile({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, session: req.session, upload: req.upload, saveTo: req.saveTo, stream: req.stream === true, limits: { maxBytes: def.maxBytes, contentTypes: def.contentTypes }, drive: def.drive, allow_headers: def.headers })
+      : await forward({ space, ref: def.ref, route: def.route, method, path, query: req.query, headers: req.headers, body: req.body, session: req.session, allow_headers: def.headers });
     emit({ type: "vault.used", space, member, device, ref: def.ref, route: def.route, method, path, status: res?.status ?? null, held: res?.held ? true : undefined, session: req.session });
     return res;
   };

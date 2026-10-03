@@ -23,6 +23,9 @@ export const CALLERS = Object.freeze([
   { id: "onboard", caller: () => "onboard" },
   { id: "anonymous", caller: () => "anonymous" },
   { id: "unknown", caller: () => "unknown" },
+  // An assistant PROVEN by the daemon: the call arrived on a session's own socket (or a vouched key), so `meta.thread` is bound. Appended last so no row's order changes.
+  { id: "session:mcp:agent:kit", caller: () => "mcp:agent:kit", meta: { thread: "t1", agent: "kit" } },
+  { id: "session:harness:agent:kit", caller: () => "harness:agent:kit", meta: { thread: "t1", agent: "kit" } },
 ]);
 
 /** Meta states: the person's session, a presence proof, an asked-for match, a named project. */

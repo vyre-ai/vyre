@@ -82,16 +82,15 @@ test("C-1: an owner or admin is not a reader of a chat they are not in", async t
   }
 });
 
-test("C-1: an assistant acting for alex cannot open a chat between carol and dave, and reads alex's own", async t => {
+test("C-1: an assistant acting for alex cannot open a chat between carol and dave", async t => {
   const w = await world(t);
   const session = await group(w);
-  const mine = "grp_alex";
-  ok(await w.as(ALEX)("stream.send", { session: mine, text: "note to self", people: [], to: [] }));
-  const assistant = (tool, input) => w.reg.call(tool, input, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` } });
-  assert.equal(codeOf(await assistant("stream.open", { session })), "not_found");
-  // it cannot claim to act for carol by naming her
-  assert.equal(codeOf(await assistant("stream.open", { session, as: `person:${CAROL}` })), "not_found");
-  assert.equal(codeOf(await assistant("stream.open", { session: mine })), "ok");
+  // Without a kernel and a session token there is no person behind the assistant to read as: it never names itself, and a chat of others is not found.
+  // What an assistant CAN read (its person's chats) is decided by the kernel's chats.read, and is tested on a real kernel in kernel.test.js.
+  const assistant = (tool, input) => w.reg.call(tool, input, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` }, thread: "thr_kit" });
+  for (const input of [{ session }, { session, as: `person:${CAROL}` }]) assert.equal(codeOf(await assistant("stream.open", input)), "not_found", JSON.stringify(input));
+  // an assistant claim no daemon bound to a session (no thread) is refused outright (reviewer-2 R-1), never read as the person
+  assert.equal(codeOf(await w.reg.call("stream.open", { session }, "cli:agent:kit", { peer: { login: ALEX, stableId: `n_${ALEX}` } })), "denied");
 });
 
 test("C-1: a ticket minted by one caller fails for another, works once for the same caller", async t => {
