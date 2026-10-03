@@ -24,6 +24,7 @@ import { idDirectory, DEFAULT_BASE } from "../../lib/identity/directory.js";
 import * as C from "../../kernel/identity/chain.js";
 import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
+import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import {
   MIGRATIONS, kvStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
@@ -113,6 +114,14 @@ export default {
       if (!c) throw refuse("This device does not hold the space's list of owners.", "no_chain");
       return { c, state: await C.verifyChain(c.ops, { now: now() + C.SKEW_MS, ownerOps: ownerResolver(c.ops) }) };
     };
+    /** The fingerprint of a space as its inviter saw it: its permanent id and its root key. 32 hex characters; four words show the first 44 bits on the card. */
+    const spaceFingerprint = (/** @type {string} */ chainId, /** @type {string} */ rootPublic) => crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${chainId}\n${rootPublic}`).digest("hex").slice(0, 32);
+    const wordList = String(WORDS).split(/\s+/).filter(Boolean);
+    const fingerprintWords = (/** @type {string|null|undefined} */ hex) => {
+      if (!hex) return null;
+      const bits = BigInt("0x" + hex.slice(0, 11)); // 44 bits, four words
+      return [3, 2, 1, 0].map(k => wordList[Number((bits >> BigInt(11 * k)) & 2047n)]).join(" ");
+    };
     const pinText = (/** @type {any} */ pin) => (pin ? `${pin.id}:${pin.seq}:${pin.head}` : undefined);
     const parsePin = (/** @type {unknown} */ t) => { const m = /^((?:per|spc)_[a-z2-7]{26}):(\d+):([0-9a-f]{64})$/.exec(String(t || "")); return m ? { id: m[1], seq: Number(m[2]), head: m[3] } : undefined; };
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
@@ -181,8 +190,13 @@ export default {
       if (PERSON_RE.test(text)) return text;
       const label = text.replace(/\.vyre\.run$/, "");
       let r;
-      try { r = await dir.resolve(label); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
-      if (!r.ok || r.kind !== "person") throw refuse("That name does not belong to a person.", "not_found");
+      // Pinned from the first time this device saw the name: a later answer that is older, or a different history, is refused.
+      const pinKey = `person-pin/${label}`;
+      const seen = /** @type {any} */ (await kv.get(pinKey));
+      try { r = await dir.resolve(label, { pin: seen || undefined }); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
+      if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, r.code || "unverified");
+      if (r.kind !== "person") throw refuse("That name does not belong to a person.", "not_found");
+      await kv.put(pinKey, r.pin);
       return r.id;
     };
 
@@ -393,7 +407,7 @@ export default {
         if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, r.code || "unverified");
         return {
           name: alias ? (r.payload && r.payload.name ? `${r.payload.name}.vyre.run` : null) : `${text.replace(/\.vyre\.run$/, "")}.vyre.run`, kind: r.kind, id: r.id, pin: pinText(r.pin),
-          label: (r.payload && r.payload.label) || null, ...(r.kind === "space" && r.payload ? { spaceId: r.payload.id } : {}), aliases: r.aliases, entries: r.state.entries.length,
+          label: (r.payload && r.payload.label) || null, ...(r.kind === "space" && r.payload ? { spaceId: r.payload.id } : {}), aliases: r.aliases, entries: r.state.entries.length, words: fingerprintWords(crypto.createHash("sha256").update(`vyre-identity-fingerprint-v1\n${r.id}`).digest("hex")),
         };
       });
 
@@ -642,12 +656,18 @@ export default {
     }, { internal: true });
 
     // 4. invites
+    /** What a link carries so the joiner starts pinned: the space's list as this device last saw it, and the fingerprint of its root key. */
+    const invitePin = async (/** @type {any} */ row) => {
+      const c = await chainOf(row.id);
+      const k = files.keys.load(row.id);
+      return c && c.pin && k ? { chain: c.pin, rk: spaceFingerprint(c.pin.id, k.publicKey) } : {};
+    };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
       obj({ space: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" }, uses: { type: "number" }, ttlDays: { type: "number" }, alias: str, to: str }, ["space", "role"]),
       async i => {
         const row = spaceOf(i.space);
         const s = await gate(row.id);
-        const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined });
+        const r = await invitesFor(row).createInvite({ creator: s.id, role: i.role, scope: i.scope, expires: i.expires, uses: i.uses, ttl: i.ttlDays === undefined ? undefined : Number(i.ttlDays) * DAY, alias: i.alias, to: i.to ? await personRef(i.to) : undefined, ...(await invitePin(row)) });
         return { id: r.id, link: r.link, token: r.token };
       });
     tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async i => {
@@ -686,14 +706,18 @@ export default {
       const p = await parseLink(i.link);
       const local = spaces.byName(p.name);
       const kept = local ? await chainOf(local.id) : null;
-      const pinned = parsePin(i.pin) || (kept && kept.pin) || undefined;
+      let carried;
+      try { carried = JSON.parse(Buffer.from(String(p.token).split(".")[0], "base64url").toString("utf8")).chain; } catch { carried = undefined; }
+      const pinned = parsePin(i.pin) || (kept && kept.pin) || (carried && { id: carried.id, seq: carried.seq, head: carried.head }) || undefined;
+      // Never an unpinned first fetch: the link says which version of the space's list it was made for, or this device already holds one.
+      if (!pinned) return { p, res: { ok: false, code: "unpinned", message: "This invite does not say which version of the space it was made for. Ask for a new one." }, local };
       const res = await previewInvite(p.token, {
         now: now(), expectName: p.name,
         resolveSpace: async (/** @type {string} */ name) => {
           const label = name.replace(/\.vyre\.run$/, "");
           const r = await dir.resolve(label, { pin: pinned, resolve: ownerLookup });
           if (!r.ok || r.kind !== "space" || !r.payload) return null;
-          return { name, id: r.payload.id, root_public_key: r.payload.rootPublic, label: r.payload.label || label };
+          return { name, id: r.payload.id, root_public_key: r.payload.rootPublic, rk: spaceFingerprint(r.id, r.payload.rootPublic), label: r.payload.label || label };
         },
         ...(local ? { store: inviteStore(db, local.id) } : {}),
       });
@@ -703,7 +727,7 @@ export default {
       obj({ link: str, pin: str }, ["link"]), async i => {
         const { res } = await previewLink(i);
         if (!res.ok) throw refuse(res.message, res.code);
-        return res.card;
+        return { ...res.card, fingerprint_words: fingerprintWords(res.card.fingerprint) };
       });
     tool("spaces.invites.accept", "Join a space from its link, signing with this device's person key. When this device is the space's home the membership is made at once; otherwise the signed acceptance is returned for the home to redeem.",
       obj({ link: str, pin: str }, ["link"]), async i => {

@@ -509,7 +509,7 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   const stranger = await device(t);
   await stranger.ok("spaces.identity.create", { name: "stranger" });
   const card = await stranger.ok("spaces.invites.preview", { link: made.member.link });
-  assert.deepEqual(Object.keys(card).sort(), ["button", "label", "role", "role_label", "sees", "space", "valid_until"]);
+  assert.deepEqual(Object.keys(card).sort(), ["button", "fingerprint", "fingerprint_words", "label", "role", "role_label", "sees", "space", "valid_until"]);
   assert.deepEqual([card.space, card.label, card.role, card.button], ["harlow.vyre.run", "Harlow Legal", "member", "Join Harlow Legal"]);
   assert.deepEqual(card.sees.scope, scope);
   const text = JSON.stringify(card);
