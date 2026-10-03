@@ -34,7 +34,7 @@ export function names(space) {
  * A caller may give its own numbers.
  */
 export const MEMORY_PROFILES = Object.freeze({
-  small: Object.freeze({ server: 640, worker: 384, db: 256, redis: 64 }),
+  small: Object.freeze({ server: 1536, worker: 1024, db: 256, redis: 96 }),
   standard: null,
 });
 /** @param {string | { server: number, worker: number, db: number, redis: number } | null | undefined} m */

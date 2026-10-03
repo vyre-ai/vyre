@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -175,12 +176,25 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
+    // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
+    // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
+    /** @type {any} */ let stages = null;
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
+      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []) });
+    {
+      const { createStages } = await import("../../kernel/flows/stages.js");
+      const sh = kernel.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
+      const owner = () => kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: "stages", vouched: true });
+      stages = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
+        catalog: async () => ({ space: kernel.id.space, types: Object.fromEntries((await kernel.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
+        chain: () => kernel.chains.appendService(owner(), "stages", true) });
+      kernel.log.subscribe("stages", {}, (/** @type {any} */ e) => stages.onEvent(e));
+    }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
-    // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
+    // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
-    const { createKernelSessions } = await import("../sessions/kernel-session.js");
+    const { createKernelSessions } = await import("../../lib/kernel-session.js");
     const kernelSessions = createKernelSessions({ kernel });
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
@@ -188,6 +202,16 @@ async function startLocked(opts, root, p, release) {
       const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
+    // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
+    // daemon composes it for the Switchboard, behind the kernel flag). It confines a session to its workspace, its provider's own sign-in paths and its own socket, and keeps
+    // the person's socket, other sessions' sockets, the daemon's ports and Vyre's key files out of reach; the self-test runs before each session and a failure stops it with a plain
+    // reason. Linux and macOS only; VYRE_SESSION_SANDBOX=0 turns it off.
+    if (process.env.VYRE_SESSION_SANDBOX !== "0" && (process.platform === "darwin" || process.platform === "linux")) {
+      const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
+      registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+        probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
+        temp: os.tmpdir() };
+    }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;

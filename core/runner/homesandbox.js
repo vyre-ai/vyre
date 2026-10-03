@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import net from "node:net";
 import { spawn } from "node:child_process";
-import { launch, cleanEnv } from "./sandbox.js";
+import { launch } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
 import { SHIM } from "./sandbox.js";
 
@@ -34,10 +34,21 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  * @property {string} sessionSocket  the one socket this session may reach
  * @property {string[]} [readOnly] Linux: folders bound read-only besides the system ones (the agent's install folder)
  * @property {string[]} [workdirs] folders the session may read and write (the project)
- * @property {{ command: string, args?: string[], settingsPaths?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` gives each session its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR); `settingsPaths` binds a real folder read-write and is only for a provider that cannot do that. `hosts` are what it needs to reach, `versionArgs` make it print its version
+ * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` is REQUIRED: each session gets its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). A provider without it does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
  * @property {string} [temp]  the session's own temp folder (read-write)
+ * @property {string[]} [passEnv]  names of environment variables the caller deliberately passes through (a credential the agent needs); everything else not on the allow-list is dropped
  * @property {{ socket?: string, port?: number, token?: string }} [proxy] Linux: the egress proxy the provider is reached through (a CONNECT tunnel to the agent's hosts only; the token is its password)
  */
+
+/** What a session's environment may hold: the basics, Vyre's own thread variables, and only the credential names the caller lists. No token by default. */
+const HOME_ENV = /^(PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|USER|LOGNAME|SHELL|VYRE_[A-Z0-9_]+)$/;
+/** @param {Record<string, string|undefined>} env @param {string[]} [pass] */
+export function homeEnv(env = {}, pass = []) {
+  const ok = new Set(pass);
+  /** @type {Record<string, string>} */ const out = {};
+  for (const [k, v] of Object.entries(env)) if (typeof v === "string" && (HOME_ENV.test(k) || ok.has(k))) out[k] = v;
+  return out;
+}
 
 /** Does `p` equal or lie above `d`? */
 const above = (p, d) => d === p || d.startsWith(p.endsWith(path.sep) ? p : p + path.sep);
@@ -50,11 +61,14 @@ const protectedPaths = o => { const h = real(o.home), v = real(o.vyreHome || pat
  */
 export function checkEntries(o) {
   const { h, v, secrets } = protectedPaths(o);
-  for (const [kind, list] of [["workdir", o.workdirs || []], ["settings path", o.agent?.settingsPaths || []], ["read-only folder", o.readOnly || []], ["temp folder", o.temp ? [o.temp] : []]]) {
+  for (const [kind, list] of [["workdir", o.workdirs || []], ["read-only folder", o.readOnly || []], ["temp folder", o.temp ? [o.temp] : []]]) {
     for (const e of list) {
       const p = real(e);
       if (p === path.parse(p).root || above(p, h)) throw new Error(`the ${kind} ${p} is the home folder or above it: a session is never given the whole home`);
-      for (const prot of [v, ...secrets]) if (above(prot, p) ) throw new Error(`the ${kind} ${p} is inside ${prot}, which a session never sees`);
+      for (const prot of [v, ...secrets]) {
+        if (above(prot, p)) throw new Error(`the ${kind} ${p} is inside ${prot}, which a session never sees`);
+        if (above(p, prot)) throw new Error(`the ${kind} ${p} contains ${prot}, which a session never sees`);
+      }
     }
   }
 }
@@ -79,7 +93,7 @@ export function seedConfig(o) {
 }
 
 /** The paths a session may touch besides the system: its project, the agent's own settings, its temp folder, the agent's install folder. @param {HomeOpts} o */
-const allowed = o => [...new Set([...(o.workdirs || []), ...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || [])].map(real))];
+const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(o.readOnly || [])].map(real))];
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); return out; };
 
 /**
@@ -104,7 +118,7 @@ export function homeSeatbelt(o) {
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
     // The way into other processes of the same user: their arguments and environment, signals, and the services that hold the
     // pasteboard, the keychain, Apple events and the window server (the same list the lent-computer profile denies).
-    "(deny signal (target others))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
+    "(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
     '(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.DNSConfiguration") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
     `(allow network-outbound (remote unix-socket (path-literal ${q(sock)})))`,
     `(allow file-read-metadata (literal ${q(sock)}))`,
@@ -115,7 +129,7 @@ export function homeSeatbelt(o) {
 function planDarwin(o) {
   const cfg = seedConfig(o);
   o = { ...o, workdirs: [...(o.workdirs || []), ...(cfg ? [cfg.dir] : [])] };
-  const env = { ...cleanEnv(o.env || {}), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
   return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: undefined, cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 
@@ -126,8 +140,8 @@ function planLinux(o) {
   const sock = "/run/vyre-session.sock", inner = 18443;
   const sc = seccompFilter(); if (!sc) throw new Error(`no seccomp filter for this CPU (${process.arch}): a session is not started without one`);
   const ro = [...new Set(o.readOnly || [])].map(real);
-  const rw = [...new Set([...(o.workdirs || []), ...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
-  const env = { ...cleanEnv(o.env || {}), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: "/usr/local/bin:/usr/bin:/bin", ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "" } : {}) };
+  const rw = [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : []), ...(cfg ? [cfg.dir] : [])])].map(d => { try { fs.mkdirSync(d, { recursive: true }); } catch {} return real(d); });
+  const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: sock, HOME: h, PATH: "/usr/local/bin:/usr/bin:/bin", ...(o.proxy ? { HTTPS_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, HTTP_PROXY: `http://vyre:${o.proxy.token || ""}@127.0.0.1:${inner}`, NO_PROXY: "" } : {}) };
   const argv = [
     "bwrap", "--seccomp", "3", "--die-with-parent", "--new-session", "--unshare-all", "--unshare-user", "--cap-drop", "ALL", "--disable-userns", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -152,17 +166,27 @@ export function planHome(o) {
   if (!path.isAbsolute(o.command)) throw new Error("the sandbox runs an absolute program path");
   if (!o.sessionSocket) throw new Error("a session needs its own socket");
   checkEntries(o);
+  if (o.agent && !o.agent.private) throw new Error("this assistant can't run sandboxed yet: its provider entry has no config folder to relocate (configDirEnv and credentialFiles)");
   if (o.platform === "darwin") return planDarwin(o);
   if (o.platform === "linux") return planLinux(o);
   throw new Error("sessions on this system are not sandboxed yet (Windows needs the AppContainer pipe rule), so they do not start");
 }
 
+/** Throw the session's private config folder away when the session ends (the copy of the credential goes with it). @param {HomeOpts} o */
+export function discardConfig(o) {
+  if (!o.temp) return false;
+  const dir = path.join(real(o.temp), "agent-config");
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { return false; }
+  return !fs.existsSync(dir);
+}
+
 const PROBE = `
 const net=require("net"),fs=require("fs");const P=JSON.parse(process.argv[1]);const out={};
-const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127.0.0.1"):net.connect(t);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),2500)});
+const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127.0.0.1"):net.connect(t);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),800)});
 (async()=>{
- out.personSocket=await conn(P.personSocket); out.otherSocket=await conn(P.otherSocket); out.ownSocket=await conn(P.ownSocket);
- out.daemonPorts=[];for(const p of P.daemonPorts)out.daemonPorts.push(await conn(p));
+ // The connects run together: a refusal is instant, and a connect that would succeed does so at once, so a short timeout loses nothing.
+ const [a,b,c,...ports]=await Promise.all([conn(P.personSocket),conn(P.otherSocket),conn(P.ownSocket),...P.daemonPorts.map(conn)]);
+ out.personSocket=a;out.otherSocket=b;out.ownSocket=c;out.daemonPorts=ports;
  out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error")}}
  out.hosts=[];for(const h of P.hosts){const [host,port]=h.split(":");if(P.proxyPort){out.hosts.push(await new Promise(res=>{const s=net.connect(P.proxyPort,"127.0.0.1");let d=false,b="";const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>s.write("CONNECT "+host+":"+(port||443)+" HTTP/1.1\\r\\nHost: "+host+"\\r\\nProxy-Authorization: Basic "+Buffer.from("vyre:"+P.proxyToken).toString("base64")+"\\r\\n\\r\\n"));s.on("data",x=>{b+=x;if(b.includes("\\r\\n"))f(/ 200 /.test(b.split("\\r\\n")[0])?"connected":"refused")});s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}));continue}out.hosts.push(await new Promise(res=>{const s=net.connect(Number(port||443),host);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}))}
  if(P.daemonPid){try{process.kill(P.daemonPid,"SIGCONT");out.signal="ok"}catch(e){out.signal=e.code}try{const r=require("child_process").execFileSync("/bin/ps",["eww","-p",String(P.daemonPid)],{encoding:"utf8",stdio:["ignore","pipe","ignore"]});out.psEnv=r.includes(String(P.daemonPid))?"READ":"empty"}catch(e){out.psEnv="refused"}}
@@ -199,16 +223,28 @@ async function stale(o) {
 
 export async function selfTest(o) {
   const node = o.node || process.execPath;
+  const ts = Date.now();
   const old = await stale(o);
+  const staleMs = Date.now() - ts;
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
-  const probes = { ...o.probes, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.agent?.settingsPaths || []), ...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
+  const probes = { ...o.probes, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
+  // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.
+  const t0 = Date.now();
+  const agentCheck = !o.agent?.command ? Promise.resolve(null) : (async () => {
+    const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...(o.readOnly || []), path.dirname(o.agent.command)] });
+    const c = launch(a); let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
+    const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); });
+    return { code, e2 };
+  })();
   const child = launch(p);
   let out = "", err = "";
   child.stdout.on("data", d => out += d); child.stderr.on("data", d => err += d);
   await new Promise(r => child.on("close", r));
+  const agent = await agentCheck;
+  const probeMs = Date.now() - t0;
   let res; try { res = JSON.parse(out.trim().split("\n").pop() || ""); } catch { return { ok: false, failures: ["the self-test did not run: " + err.trim().slice(0, 200)], results: null }; }
   const failures = [];
   if (res.personSocket === "connected") failures.push("the person's own socket is reachable");
@@ -223,11 +259,6 @@ export async function selfTest(o) {
   // The other half of the proof: the provider's agent can still start and sign in.
   (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w})`); });
   (res.hosts || []).forEach((h, i) => { if (h !== "connected") failures.push(`the agent cannot reach ${probes.hosts[i]} (${h})`); });
-  if (o.agent?.command) {
-    const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...(o.readOnly || []), path.dirname(o.agent.command)] });
-    const c = launch(a); let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
-    const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); });
-    if (code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${code}${e2 ? ": " + e2.trim().slice(0, 120) : ""})`);
-  }
-  return { ok: failures.length === 0, failures, results: res };
+  if (agent && agent.code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${agent.code}${agent.e2 ? ": " + agent.e2.trim().slice(0, 120) : ""})`);
+  return { ok: failures.length === 0, failures, results: res, timings: { staleMs, probeMs } };
 }

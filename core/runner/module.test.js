@@ -1,5 +1,6 @@
 // @ts-check
 // The runner module in a real vyred: manifest, tools, the not-connected answer, and place/start through seam ports.
+import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

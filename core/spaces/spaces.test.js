@@ -836,3 +836,26 @@ test("kernel mode: an invite is the Space kernel's: the link carries its id and 
   const conf = await d.call("spaces.invites.confirm", { space, id: adm.id, words: card.fingerprint_words }, "cli", { token, kernel_proof: sign("inviteConfirm", adm.id, { words: card.fingerprint_words }) });
   assert.ok(!conf.error, JSON.stringify(conf.error));
 });
+
+test("the transport's ports: a paired device is an entry, the entry port answers live and a removed device answers null at its next call, and the device signs only the transport's proof", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t);
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  // alex's own identity is known to this device and a member of harlow
+  const key = fileIdentityStore(d2.space).newDeviceKey();
+  w.clock.t += 2 * 3_600_000;
+  const enrolled = await d.ok("spaces.identity.enrol", { publicKey: key.publicKey, label: "alex's laptop" }, "module:wink");
+  assert.equal(enrolled.eid, key.eid);
+  const entry = await d.ok("spaces.identity.entry", { space: s.space, eid: key.eid }, "module:wink");
+  assert.deepEqual(entry, { eid: key.eid, kind: "device", pub: key.publicKey });
+  assert.equal(await d.ok("spaces.identity.entry", { space: s.space, eid: "a".repeat(26) }, "module:wink"), null, "not on any list");
+  // the person's older device removes it: the very next read says null
+  await d.ok("spaces.identity.entry.remove", { eid: key.eid });
+  assert.equal(await d.ok("spaces.identity.entry", { space: s.space, eid: key.eid }, "module:wink"), null);
+  assert.deepEqual(d.of("identity.entry-removed").map(e => e.eid), [key.eid]);
+  // the signer: the transport's own message only
+  const ok = await d.ok("spaces.identity.sign", { message: Buffer.from("vyre-wink-peer-v2\nnonce\nnode\nbox\n" + alex.eid).toString("base64url") }, "module:wink");
+  assert.equal(ok.eid, alex.eid);
+  assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("anything else").toString("base64url") }, "module:wink")).error?.code, "forbidden");
+});

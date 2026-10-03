@@ -834,8 +834,8 @@ export default {
 
     // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
     // call, never cached: a device the person removed is gone at its next call), and `spaces.people` the candidates to look at. kernel/remote/person-of.js asks both.
-    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => {
-      const id = String(i.person);
+    /** A person's identity list as verified now, read live from the directory (pinned to what this device saw first). @param {string} id */
+    const stateOfPerson = async id => {
       const mineId = identity.status();
       const name = mineId.exists && mineId.id === id ? mineId.name : /** @type {string|null} */ (await kv.get(`person-name/${id}`));
       if (!name) return { entries: [] };
@@ -844,7 +844,45 @@ export default {
       try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
+    };
+    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
+    /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
+    const isMember = async (space, person) => {
+      if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
+      return Boolean(mstore.get(space, person));
+    };
+    /** The people this device knows an identity name for (it has resolved them), the candidates for a proven device. */
+    const knownPeople = () => {
+      const rows = /** @type {any[]} */ (db.prepare("SELECT key FROM spaces_kv WHERE key LIKE 'person-name/%'").all());
+      const mine = identity.status();
+      return [...new Set([...(mine.exists && mine.id ? [mine.id] : []), ...rows.map(r => String(r.key).slice("person-name/".length))])];
+    };
+    // The port the transport asks before EVERY call from a device (team/0.3 tailnet CHAT): is this entry a device on the identity list of a person in this space, now?
+    // Read live from the directory (never cached): a device its person removed answers null at its very next call. A device on two people's lists is no one's.
+    tool("spaces.identity.entry", "A device entry as the identity list holds it now, if it belongs to a member of the space: { eid, kind, pub }, else null. Read live every call. For the transport.", obj({ space: str, eid: str }, ["space", "eid"]), async i => {
+      const row = spaceOf(i.space);
+      const eid = String(i.eid);
+      /** @type {any} */ let found = null;
+      for (const person of knownPeople()) {
+        if (!(await isMember(row.id, person))) continue;
+        const st = await stateOfPerson(person);
+        const e = (st.entries || []).find((/** @type {any} */ x) => x.kind === "device" && x.eid === eid);
+        if (e) { if (found) return null; found = { eid, kind: "device", pub: e.pub }; }
+      }
+      return found;
+    }, { internal: true });
+    // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str }, ["publicKey"]), async i => {
+      me();
+      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label }); } catch (e) { throw idFail(e); }
+    }, { internal: true });
+    // The device's own signer for the transport's proof: only the transport's own message, never anything else.
+    tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {
+      const s0 = me();
+      const msg = Buffer.from(String(i.message), "base64url");
+      if (msg.subarray(0, 18).toString() !== "vyre-wink-peer-v2\n") throw refuse("This key signs only the transport's device proof.", "forbidden");
+      return { eid: s0.eid, sig: b64u(await identity.sign(msg)) };
     }, { internal: true });
     tool("spaces.people", "The people of a space that hold an identity this device knows: its members and the person of a pending invite. For the transport's personOf.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);

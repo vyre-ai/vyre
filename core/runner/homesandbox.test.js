@@ -1,10 +1,11 @@
+import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { planHome, selfTest, homeSeatbelt, seedConfig } from "./homesandbox.js";
+import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig } from "./homesandbox.js";
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
@@ -25,7 +26,8 @@ async function rig(t) {
   const port = servers[3].address().port;
   fs.mkdirSync(path.join(home, "Documents"), { recursive: true }); fs.writeFileSync(path.join(home, "Documents", "private.txt"), "PERSONAL");
   const proj = path.join(home, "proj"), settings = path.join(home, ".agentcfg"), temp = path.join(home, "tmp-session"); for (const d of [proj, settings, temp]) fs.mkdirSync(d, { recursive: true });
-  const agent = { command: process.execPath, versionArgs: ["-v"], settingsPaths: [settings], hosts: [] };
+  const real = path.join(home, ".agentreal"); fs.mkdirSync(real, { recursive: true }); fs.writeFileSync(path.join(real, ".credentials.json"), "{}");
+  const agent = { command: process.execPath, versionArgs: ["-v"], hosts: [], private: { from: real, env: "AGENT_CONFIG_DIR", credentialFiles: [".credentials.json"] } };
   return { home, own, other, person, port, proj, settings, temp, agent, probes: { personSocket: person, otherSocket: other, daemonPorts: [port], keyFile: path.join(home, ".vyre", "keys", "device.key"), homeFile: path.join(home, "Documents", "private.txt"), daemonPid: daemon.pid } };
 }
 
@@ -37,7 +39,7 @@ test("home sandbox: the person's socket, another session's socket, the daemon's 
   assert.equal(res.results.ownSocket, "connected");
   assert.notEqual(res.results.personSocket, "connected");
   assert.notEqual(res.results.homeFile, "READ", "a personal file outside the allowed paths is denied");
-  assert.deepEqual(res.results.writes, ["ok", "ok", "ok"], "settings, temp and project are usable");
+  assert.deepEqual(res.results.writes, ["ok", "ok"], "temp and project are usable");
 });
 
 test("home sandbox: the self-test also fails when the agent cannot reach its host or cannot start", { skip: SKIP, timeout: 90_000 }, async t => {
@@ -106,7 +108,7 @@ test("HS-2: an entry that is the home, above it, or inside the Vyre home or a se
   const plan = over => () => planHome({ ...base(r, over), command: process.execPath });
   assert.throws(plan({ workdirs: [r.home] }), /home folder or above/);
   assert.throws(plan({ workdirs: [path.dirname(r.home)] }), /home folder or above/);
-  assert.throws(plan({ agent: { ...r.agent, settingsPaths: [r.home] } }), /home folder or above/);
+  assert.throws(plan({ workdirs: [path.dirname(path.join(r.home, ".vyre"))] }), /home folder or above/);
   assert.throws(plan({ workdirs: [path.join(r.home, ".vyre", "keys")] }), /never sees/);
   assert.throws(plan({ workdirs: [path.join(r.home, ".ssh")] }), /never sees/);
   assert.throws(plan({ readOnly: [r.home] }), /home folder or above/);
@@ -137,7 +139,10 @@ test("HS-1: each session gets its own config folder with only the credential fil
   assert.match(j.cred, /SIGN-IN/);
   assert.notEqual(typeof j.real, "number", "the real config folder is not visible: " + j.real);
   assert.equal(fs.readFileSync(path.join(real, "settings.json"), "utf8"), "{}", "the real settings were not touched");
-  assert.ok(seedConfig({ ...base(r, { agent }) }).dir.endsWith("agent-config"));
+  const seeded = seedConfig({ ...base(r, { agent }) });
+  assert.ok(seeded.dir.endsWith("agent-config"));
+  assert.equal(discardConfig(base(r, { agent })), true, "the private config folder is thrown away at session end");
+  assert.equal(fs.existsSync(seeded.dir), false);
   assert.throws(() => seedConfig({ ...base(r, { agent: { ...agent, private: { ...agent.private, credentialFiles: ["../x"] } } }) }), /name inside/);
 });
 
@@ -166,7 +171,7 @@ test("HS-4: the session cannot signal the daemon or read its process environment
 test("HS-4: the seatbelt profile denies signals, process info, procargs and the Mach services after the allows", () => {
   const home = tmp(); try {
     const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), workdirs: [path.join(home, "proj")] });
-    for (const rule of ["(deny signal (target others))", "(deny process-info* (target others))", 'kern.procargs2', "com.apple.pasteboard.1", "com.apple.SecurityServer", "com.apple.coreservices.appleevents"]) assert.ok(p.includes(rule), rule);
+    for (const rule of ["(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", 'kern.procargs2', "com.apple.pasteboard.1", "com.apple.SecurityServer", "com.apple.coreservices.appleevents"]) assert.ok(p.includes(rule), rule);
     assert.ok(p.lastIndexOf("(deny file* (subpath") > p.indexOf("(allow file* (subpath"), "the protected denies come after the allows");
   } finally { rm(home); }
 });
@@ -182,4 +187,32 @@ test("HS-7: CONNECT tunnels are capped per session", async t => {
   for (let i = 0; i <= MAX_TUNNELS; i++) { const r = await open(); socks.push(r.s); last = r.line; }
   socks.forEach(s => s.destroy());
   assert.match(last, / 403 /, "the tunnel over the cap is refused");
+});
+
+// ---- the lead's ruling and reviewer-2's E-1, reviewer-3's HS-8 -----------------------------------------------------------
+
+import { homeEnv } from "./homesandbox.js";
+test("a provider entry without a relocatable config folder does not start sandboxed, with one plain reason", async t => {
+  const r = await rig(t);
+  const noPrivate = { command: process.execPath, versionArgs: ["-v"], hosts: [] };
+  assert.throws(() => planHome({ ...base(r, { agent: noPrivate }), command: process.execPath }), /this assistant can't run sandboxed yet/);
+  await assert.rejects(() => selfTest(base(r, { agent: noPrivate })), /can't run sandboxed yet/);
+});
+
+test("env allow-list: planted credentials never reach the plan, and only a name the caller lists is passed", async t => {
+  const planted = { RAILWAY_TOKEN: "t1", AWS_SECRET_ACCESS_KEY: "t2", GITHUB_TOKEN: "t3", ANTHROPIC_API_KEY: "t4", OPENAI_API_KEY: "t5", LD_PRELOAD: "x", PATH: "/usr/bin", LANG: "C", VYRE_THREAD: "th1" };
+  const e = homeEnv(planted);
+  assert.deepEqual(Object.keys(e).sort(), ["LANG", "PATH", "VYRE_THREAD"]);
+  assert.equal(homeEnv(planted, ["ANTHROPIC_API_KEY"]).ANTHROPIC_API_KEY, "t4");
+  const r = await rig(t);
+  const p = planHome({ ...base(r), command: process.execPath, env: planted });
+  assert.ok(!JSON.stringify(p.argv).includes("RAILWAY_TOKEN") && !JSON.stringify(p.env).includes("t1") && !JSON.stringify(p.argv).includes('"t2"'));
+});
+
+test("HS-8: an entry that contains a Vyre home outside the person's home is refused", async t => {
+  const r = await rig(t);
+  const outer = tmp(); t.after(() => rm(outer));
+  const vyre = path.join(outer, "var", "lib", "vyre"); fs.mkdirSync(vyre, { recursive: true });
+  assert.throws(() => planHome({ ...base(r), command: process.execPath, vyreHome: vyre, workdirs: [path.join(outer, "var")] }), /contains/);
+  assert.throws(() => planHome({ ...base(r), command: process.execPath, vyreHome: vyre, workdirs: [vyre] }), /inside|contains/);
 });
