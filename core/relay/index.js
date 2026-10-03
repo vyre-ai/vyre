@@ -970,11 +970,9 @@ export default {
       description: "Close a paired device's connections and refuse it from now on, for a module that has just removed it for the owner.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta = {}) => {
-        // Only the first-party Wink module may cut a device off; the device must be paired to this box and not already removed.
-        if (meta.caller !== "module:wink") throw fail("denied", "relay.devices.drop is for the wink module");
+        if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module closes a paired device's connections"), { code: "denied" });
         const id = String(input.id);
-        if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
-        return { closed: true, id };
+        return { closed: forget(id, "removed"), id };
       },
     });
 

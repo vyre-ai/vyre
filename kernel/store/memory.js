@@ -7,7 +7,7 @@ import { checkValue } from "./values.js";
 import { page, aggregate as agg, fieldOf } from "./query.js";
 
 /** The conformance suite revision this store last passed. Bump with the suite. */
-export const CONFORMANCE_REVISION = 3;
+export const CONFORMANCE_REVISION = 4;
 
 const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -29,6 +29,7 @@ export function createMemoryStore(cfg = {}) {
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
     changes.push(...cfg.initial.changes);
   }
+  // (the unique indexes for a loaded store are rebuilt below, once the helpers exist)
   const touch = (/** @type {string} */ op, /** @type {any[]} */ args) => cfg.hook && cfg.hook(op, args);
   const table = (/** @type {string} */ t) => { if (!types.has(t)) throw fail("unknown_type", `no type ${t}`); return rows.get(t); };
   const note = (/** @type {string} */ kind, /** @type {any} */ r, /** @type {any} */ before) => {
@@ -36,6 +37,42 @@ export function createMemoryStore(cfg = {}) {
     changes.push(entry);
     if (cfg.persist) { cfg.persist.record(clone(r)); cfg.persist.change(clone(entry)); }
   };
+
+  // Unique fields (contract: FieldDefinition.unique): among a type's LIVE records, a non-null value held by one record is refused for another. An index per (type, field)
+  // keeps the check constant-time; it is rebuilt when a type is defined and kept by every write. The store is single-threaded, so check and write are one step.
+  /** @type {Map<string, Map<string, string>>} */ const uidx = new Map();
+  const ukey = (/** @type {any} */ v) => canonical(v);
+  const uniqueOf = (/** @type {string} */ type) => (types.get(type)?.fields || []).filter((/** @type {any} */ f) => f.unique === true);
+  function rebuildUnique(/** @type {string} */ type) {
+    for (const k of [...uidx.keys()]) if (k.startsWith(`${type}\u0000`)) uidx.delete(k);
+    const fields = uniqueOf(type);
+    for (const f of fields) {
+      const m = new Map();
+      for (const r of rows.get(type)?.values() || []) {
+        if (r.deleted_at || r.data[f.name] === undefined || r.data[f.name] === null) continue;
+        const k = ukey(r.data[f.name]);
+        if (m.has(k)) throw fail("unique_violation", `${f.name} of ${type} already has duplicate values, so it cannot be made unique`);
+        m.set(k, r.id);
+      }
+      uidx.set(`${type}\u0000${f.name}`, m);
+    }
+  }
+  /** Throw if `data` would put a value another live record holds. @param {string} type @param {any} data @param {string | null} selfId */
+  function checkUnique(type, data, selfId) {
+    for (const f of uniqueOf(type)) {
+      const v = data[f.name];
+      if (v === undefined || v === null) continue;
+      const holder = uidx.get(`${type}\u0000${f.name}`)?.get(ukey(v));
+      if (holder && holder !== selfId) throw Object.assign(fail("unique_violation", `${f.name} must be unique: another ${type} already has that value`), { field: f.name, value: v });
+    }
+  }
+  function indexSet(/** @type {string} */ type, /** @type {any} */ r, /** @type {boolean} */ on) {
+    for (const f of uniqueOf(type)) {
+      const v = r.data[f.name]; if (v === undefined || v === null) continue;
+      const m = uidx.get(`${type}\u0000${f.name}`); if (!m) continue;
+      if (on) m.set(ukey(v), r.id); else if (m.get(ukey(v)) === r.id) m.delete(ukey(v));
+    }
+  }
 
   function validate(/** @type {string} */ type, /** @type {any} */ data) {
     const def = types.get(type);
@@ -48,6 +85,8 @@ export function createMemoryStore(cfg = {}) {
     }
   }
 
+  for (const name of types.keys()) rebuildUnique(name);
+
   return {
     async define(diff) {
       touch("define", [diff]);
@@ -58,12 +97,15 @@ export function createMemoryStore(cfg = {}) {
         types.set(t.name, clone(t));
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         if (!rows.has(t.name)) rows.set(t.name, new Map());
+        rebuildUnique(t.name);
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
       }
       for (const t of diff.change_types || []) {
         if (!types.has(t.name)) throw fail("unknown_type", `no type ${t.name}`);
         if (canonical(types.get(t.name)) === canonical(t)) continue;
+        const before = types.get(t.name);
         types.set(t.name, clone(t));
+        try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); rebuildUnique(t.name); throw e; }
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         changesMade.push(`changed type ${t.name}`);
       }
@@ -106,9 +148,10 @@ export function createMemoryStore(cfg = {}) {
       if (!isUuid(id)) throw fail("invalid", "id must be a time-prefixed uuid");
       if (t.has(id)) throw fail("invalid", `${type} ${id} already exists`);
       validate(type, data);
+      checkUnique(type, data, null);
       const now = clock();
       const r = { type, id, version: 1, data: clone(data), created_at: now, updated_at: now };
-      t.set(id, r); note("created", r);
+      t.set(id, r); indexSet(type, r, true); note("created", r);
       return clone(r);
     },
     async update(type, id, patch, base) {
@@ -119,8 +162,10 @@ export function createMemoryStore(cfg = {}) {
       const merged = { ...r.data };
       for (const [k, v] of Object.entries(patch)) { if (v === null) delete merged[k]; else merged[k] = clone(v); }
       validate(type, merged);
+      checkUnique(type, merged, id);
       const before = r.data;
-      r.data = merged; r.version += 1; r.updated_at = clock();
+      indexSet(type, r, false);
+      r.data = merged; indexSet(type, r, true); r.version += 1; r.updated_at = clock();
       note("updated", r, before);
       return clone(r);
     },
@@ -129,6 +174,7 @@ export function createMemoryStore(cfg = {}) {
       const r = table(type).get(id);
       if (!r || r.deleted_at) throw fail("not_found", `no ${type} ${id}`);
       if (r.version !== base) throw fail("version_conflict", `${type} ${id} is at version ${r.version}, not ${base}`);
+      indexSet(type, r, false);
       r.version += 1; r.deleted_at = r.updated_at = clock();
       note("removed", r);
       return clone(r);
@@ -137,7 +183,8 @@ export function createMemoryStore(cfg = {}) {
       touch("restore", [type, id]);
       const r = table(type).get(id);
       if (!r || !r.deleted_at) throw fail("not_found", `no deleted ${type} ${id}`);
-      r.version += 1; delete r.deleted_at; r.updated_at = clock();
+      checkUnique(type, r.data, id);
+      r.version += 1; delete r.deleted_at; r.updated_at = clock(); indexSet(type, r, true);
       note("restored", r);
       return clone(r);
     },

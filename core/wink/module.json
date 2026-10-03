@@ -87,6 +87,18 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.release",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.fingerprint",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.reset",
+        "reach": "person"
+      },
+      {
         "name": "wink.device.key",
         "reach": "person"
       },
@@ -135,6 +147,18 @@
         "reach": "person"
       },
       {
+        "name": "wink.storage.bridge",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.bridge.accept",
+        "reach": "person"
+      },
+      {
+        "name": "wink.storage.bridge.drive",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.handover",
         "reach": "modules"
       },
@@ -171,6 +195,8 @@
       "wink.pair-done",
       "wink.pair-failed",
       "wink.server-adopted",
+      "wink.server-released",
+      "wink.server-release",
       "wink.offer-changed",
       "storage.paired",
       "storage.removed",

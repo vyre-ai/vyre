@@ -16,7 +16,7 @@ export function grantPrompt(g, moves = false) {
 const KIND_WORDS = /** @type {Record<string, string>} */ ({
   login: "login", authenticator: "login code", passkey: "passkey", card: "card", address: "address", identity: "ID", note: "note",
   "api-key": "key", pat: "key", oauth: "key", cloud: "key", "db-url": "database address", secret: "key", "env-set": "set of settings", "ssh-key": "key",
-  cert: "certificate", "recovery-codes": "set of recovery codes", wifi: "Wi-Fi password", license: "license key", file: "file", "api-credential": "key",
+  cert: "certificate", "recovery-codes": "set of recovery codes", wifi: "Wi-Fi password", license: "license key", file: "file", "api-credential": "key", "provider-token": "sign-in token",
 });
 export const kindWord = /** @param {string} kind */ kind => KIND_WORDS[kind] || "item";
 

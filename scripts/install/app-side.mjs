@@ -4,7 +4,7 @@
 // with the real i.sh running on a box. Presence is FAKED the way test/wink.test.js does it (a lenient presence double accepts any proof);
 // that is the one stand-in: a headless box cannot give Touch ID. Nothing here is the product's own code path for presence.
 //
-//   node scripts/install/app-side.mjs --relay ws://HOST:PORT [--control 39600] [--root DIR]
+//   node scripts/install/app-side.mjs --relay ws://HOST:PORT [--control 39600] [--root DIR] [--srv]
 //   curl -s localhost:39600/call -d '{"who":"app","tool":"wink.pair.targets","input":{}}'
 //   curl -s localhost:39600/call -d '{"who":"app","tool":"wink.pair.server","input":{...},"proof":true}'
 //
@@ -36,7 +36,8 @@ const lenient = {
 
 /** @type {Record<string, any>} */
 const worlds = {};
-for (const who of ["app", "phone"]) {
+// --srv adds a third vyred, "srv", to stand in as a server with a screen (presence faked) so wink.server.reset, which a headless Docker box cannot give presence for, runs for real.
+for (const who of process.argv.includes("--srv") ? ["app", "phone", "srv"] : ["app", "phone"]) {
   const root = path.join(base, who);
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: who, transcripts: [], network: { name: who }, relay: { enabled: true, url: relay }, modules: { disable: ["names", "onboard"] } }));
@@ -56,7 +57,8 @@ const server = http.createServer((req, res) => {
       if (req.url === "/events") { res.end(JSON.stringify(worlds[b.who].events.slice(-(b.n || 20)))); return; }
       const w = worlds[b.who];
       const meta = { peer: { stableId: `node-${b.who}`, node: b.who }, person: { id: `ps-${b.who}` }, ...(b.proof ? PROOF : {}) };
-      const out = await w.d.registry.call(b.tool, b.input || {}, "device:abcdefghijklmnop", meta);
+      // `caller` overrides the default device caller (a server's own screen is "cli", which wink.server.reset requires).
+      const out = await w.d.registry.call(b.tool, b.input || {}, b.caller || "device:abcdefghijklmnop", meta);
       res.end(JSON.stringify(out));
     } catch (e) { res.statusCode = 500; res.end(JSON.stringify({ error: String(e) })); }
   });

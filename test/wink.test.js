@@ -42,7 +42,7 @@ async function world(t) {
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: () => {}, coreKeys: macCore() });
+  const d = await start({ presence: lenient, root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore() });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
@@ -194,6 +194,42 @@ test("wink: removing a device takes it from the identity with its connections, a
   if (!out.data.closed) await w.d.registry.call("relay.devices.remove", { id: dev.id }, "cli", PROOF);
   const left = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === r.paired.device);
   assert.ok(!left, "the device is gone");
+});
+
+async function pairDevice(t, w) {
+  const open = await w.call("wink.code.open", { flow: "W2" });
+  const { states, done } = typeCode(t, w, open.data.code);
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found" && e[1].offer === open.data.offer));
+  await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code });
+  return (await done).paired.device;
+}
+const relayHas = async (w, id) => (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.some(d => d.id === id);
+
+test("wink: a release drops the adopter's relay device and a refused adopt drops the stranger's; wink.access is empty and the device is refused afterwards", async t => {
+  const w = await world(t);
+  const app = await pairDevice(t, w);
+  const as = id => `device:${id}`;
+  const me = (await w.call("wink.pair.targets", {})).data.targets[0];
+  const adopt = (id, extra = {}) => w.call("wink.server.adopt", { owner: { kind: "identity", id: me.id }, identity: me.id }, as(id), { ...extra });
+  assert.ok((await adopt(app)).data?.owner, "the first caller adopts");
+  // a second device is refused (naming the owner) and nothing of it is left on the box
+  const stranger = await pairDevice(t, w);
+  const refused = await adopt(stranger);
+  assert.ok(refused.error, "refused");
+  assert.match(refused.error.message, /already belongs to Personal/);
+  await until(async () => !(await relayHas(w, stranger)));
+  assert.ok(!(await w.call("wink.access")).data.devices.some(d => d.id === stranger), "no row for the refused device");
+  assert.ok(await relayHas(w, app), "the adopter is still there while it owns the box");
+  // the release: the box lets go, then the adopter's device is gone too
+  const rel = await w.call("wink.server.release", {}, as(app), {});
+  assert.deepEqual(rel.data, { released: true }, JSON.stringify(rel.error));
+  await until(async () => !(await relayHas(w, app)));
+  await until(async () => (await w.call("wink.access")).data.devices.every(d => d.id !== app));
+  assert.equal((await w.call("wink.access")).data.devices.filter(d => d.id === app).length, 0, "wink.access lists nothing for it");
+  // the relay is what authenticates a device's calls: with its row removed it is refused there (4401), never admitted as device:<id> again
+  const row = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === app);
+  assert.equal(row, undefined, "the relay no longer knows it");
 });
 
 test("wink: a ring pairing (the existing path) registers a phone under the identity, and removing the device at the relay clears it", async t => {

@@ -25,3 +25,10 @@ test("printable reads strings out of bytes like `strings`", () => {
   const buf = Buffer.concat([Buffer.from([0, 1, 2]), Buffer.from("com.google.firebase.X"), Buffer.from([0]), Buffer.from("ab"), Buffer.from([0])]);
   assert.deepEqual(printable(buf), ["com.google.firebase.X"]);
 });
+
+test("the photo picker's two intent names are text, anything else with gms is not", () => {
+  assert.deepEqual(central(["2com.google.android.gms.provider.action.PICK_IMAGES", "5com.google.android.gms.provider.extra.PICK_IMAGES_MAX"]), []);
+  assert.deepEqual(central(["$com.google.android.gms.org.conscrypt"]), []);
+  assert.equal(central(["com.google.android.gms.provider.action.PICK_IMAGES.evil.Service"]).length, 1);
+  assert.equal(central(["Lcom/google/android/gms/tasks/Task;"]).length, 1);
+});

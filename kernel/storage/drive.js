@@ -6,6 +6,7 @@
 //   - a delete is a version too (a tombstone), so it can be undone; `prune` is what finally lets old versions go
 //   - a sealed value is never stored here: sealed derivatives stay in the sealing process's folder and a project holds only a reference file (seal/placement.js)
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { safePath } from "../seal/uses.js";
 
@@ -26,15 +27,39 @@ export class Drive {
 
   /** @returns {Promise<{ version: number, conflict: boolean, atRisk: boolean }>} `base` is the version the writer started from (omit for a new file). */
   async put(p, bytes, { by = null, base = null, meter = null } = {}) {
-    const k = this.path(p), r = await this.pool.put(bytes, { class: "working", meter });
+    const k = this.path(p), sha256 = crypto.createHash("sha256").update(bytes).digest("hex"), r = await this.pool.put(bytes, { class: "working", meter });
     // The head, the version number and the conflict are decided inside the path's turn, after the bytes are stored (S-1): two writers at once get two versions.
     return this.turn(k, async () => {
       const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1;
-      f.versions.push({ ver, id: r.id, size: r.size, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
+      f.versions.push({ ver, id: r.id, size: r.size, sha256, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
       // The version before is no longer the newest: it becomes cold. A conflicting write leaves the head's own class alone only until a person picks, so both stay working.
       if (h && !h.deleted && !conflict) await this.pool.reclass(h.id, "cold");
       this.save(); return { version: ver, conflict, atRisk: r.atRisk };
     });
+  }
+  /** Like `put`, for a stream of bytes (a download saved to the Drive): never more than one chunk in memory, `maxBytes` stops it, and nothing is kept if it fails. */
+  async putStream(p, source, { by = null, base = null, meter = null, maxBytes = Infinity } = {}) {
+    const k = this.path(p), r = await this.pool.putStream(source, { class: "working", meter, maxBytes });
+    return this.turn(k, async () => {
+      const f = (this.ix.files[k] ??= { versions: [] }), h = f.versions.at(-1), conflict = !!h && base !== h.ver, ver = (h?.ver ?? 0) + 1;
+      f.versions.push({ ver, id: r.id, size: r.size, sha256: r.sha256, at: this.now(), by, base, ...(conflict ? { conflict: true } : {}) });
+      if (h && !h.deleted && !conflict) await this.pool.reclass(h.id, "cold");
+      this.save(); return { version: ver, size: r.size, sha256: r.sha256, conflict, atRisk: r.atRisk };
+    });
+  }
+  /** What a version is, without reading it: its number, size and content hash (a version never changes). */
+  stat(p, { version = null } = {}) {
+    const f = this.ix.files[this.path(p)]; if (!f) throw err("not_found");
+    const v = version === null ? this.head(f) : f.versions.find(x => x.ver === version);
+    if (!v || v.deleted || !v.id) throw err("not_found");
+    return { version: v.ver, size: v.size, sha256: v.sha256 ?? null };
+  }
+  /** A version as a stream of bytes, one chunk in memory at a time. */
+  stream(p, { version = null } = {}) {
+    const f = this.ix.files[this.path(p)]; if (!f) throw err("not_found");
+    const v = version === null ? this.head(f) : f.versions.find(x => x.ver === version);
+    if (!v || v.deleted || !v.id) throw err("not_found");
+    return this.pool.getStream(v.id);
   }
   /** The head, or a named version. A deleted file is not found unless a version is asked for. */
   async get(p, { version = null } = {}) {
@@ -91,4 +116,16 @@ export class Drive {
     const l = this.ix.backups[name] ?? [], gone = l.slice(0, Math.max(0, l.length - Math.max(1, keep)));
     for (const b of gone) await this.pool.remove(b.id); this.ix.backups[name] = l.slice(gone.length); this.save(); return { removed: gone.length };
   }
+}
+
+/**
+ * The Drive as the vault's file seam (`deps.files` in core/vault/request.js): `read(path, version)` is a file's number, size, content hash and a stream of its bytes, and
+ * `write(path, source, { maxBytes, by })` saves a stream as a new version. Both move a chunk at a time. Which paths a caller may touch is decided by the route; this is the home's own handle.
+ * @param {Drive} drive
+ */
+export function driveFiles(drive) {
+  return {
+    async read(path, version = null) { const st = drive.stat(path, { version }); return { ...st, stream: () => drive.stream(path, { version: st.version }) }; },
+    async write(path, source, { maxBytes, by = null }) { const r = await drive.putStream(path, source, { by, maxBytes }); return { path, version: r.version, size: r.size, sha256: r.sha256 }; },
+  };
 }

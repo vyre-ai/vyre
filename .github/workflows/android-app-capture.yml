@@ -7,6 +7,12 @@
 #                       it starts once this file is on main; on a team branch use workflow_dispatch)
 name: android-app-capture
 on:
+  push:
+    # GitHub lists a manual workflow only once it is on the default branch; on a team branch a push that touches
+    # this file or its script is how it runs.
+    paths:
+      - ".github/workflows/android-app-capture.yml"
+      - "apps/app/scripts/capture-android.sh"
   workflow_dispatch:
     inputs:
       run:
@@ -23,7 +29,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   capture:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

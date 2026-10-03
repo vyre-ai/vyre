@@ -68,6 +68,7 @@ In the order `vyre help` lists them.
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre wink`](#vyre-wink) | free a server that still belongs to an app you no longer have |
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
@@ -657,6 +658,16 @@ Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 ```
 vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]
 ```
+
+### vyre wink
+
+Free a server that still belongs to an app you no longer have.
+
+```
+vyre wink reset [<fingerprint>] [--json]
+```
+
+vyre wink reset: run on the server. It shows the server's short fingerprint and asks you to type it back; then the server forgets its owner and can be paired again. Its keys stay.
 
 ### vyre team
 

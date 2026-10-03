@@ -1059,6 +1059,7 @@ export class Vault {
    */
   async fields(r, o = {}) {
     if (r && r.kind === "api-credential" && !o.sealed) throw new Error(`${r.name} is an api-credential; it is used only by vault.request and is never handed out`);
+    if (r && r.kind === "provider-token" && !o.sealed) throw new Error(`${r.name} is a provider sign-in token; it goes only to the session launcher and is never handed out`);
     return (await this.open(r)).fields;
   }
 
@@ -1077,6 +1078,25 @@ export class Vault {
     let raw;
     try { raw = JSON.parse(fields.config); } catch { throw new Error(`${row.name} has a config that is not JSON`); }
     return { row, config: normalizeApiCredential(raw), secret: fields.secret };
+  }
+
+  /**
+   * A provider's session sign-in token, for the session launcher and nothing else. In-process only (the credentials port in index.js is the one caller); no tool returns it.
+   * @param {string} provider @returns {Promise<string | null>}
+   */
+  async providerToken(provider) {
+    await this.key();
+    const row = this.row(`provider-token.${String(provider).slice(0, 40)}`);
+    if (!row || row.kind !== "provider-token") return null;
+    const { fields } = await this.open(row);
+    this.audit("provider-token", row.name, "launcher", true, "handed to the session launcher");
+    return typeof fields.token === "string" && fields.token ? fields.token : null;
+  }
+
+  /** Which provider sign-in tokens are stored and when each was added: names and times, never a value. */
+  providerTokens() {
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'provider-token' ORDER BY name").all()).filter(r => this.rowOk("vault_items", r))
+      .map(r => ({ provider: String(r.name).slice("provider-token.".length), stored: true, added: r.updated }));
   }
 
   /**
@@ -1162,6 +1182,14 @@ export class Vault {
     // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
     // person's own surface writes or replaces one (reviewer N4), whatever it was before.
     const prior = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
+    // A provider sign-in token is the person's own: only a person's own surface adds, replaces or removes one, and its name is its provider's.
+    if (kind === "provider-token" || (prior && prior.kind === "provider-token")) {
+      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("a provider sign-in token is added and changed only from your own surfaces, never by a module, a watcher or an agent");
+      if (kind !== "provider-token") throw new Error(`${name} is a provider sign-in token; delete it before using the name for another kind`);
+      if (!/^[a-z0-9][a-z0-9-]{1,31}$/.test(String(clean.provider))) throw new Error("provider is a short lowercase name, such as claude");
+      if (String(name) !== `provider-token.${clean.provider}`) throw new Error(`a provider sign-in token is named provider-token.${clean.provider}`);
+      if (/[\r\n\0\s]/.test(String(clean.token))) throw new Error("a sign-in token is one line with no spaces");
+    }
     if (kind === "api-credential" || (prior && prior.kind === "api-credential")) {
       if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
       if (kind !== "api-credential") throw new Error(`${name} is an api-credential; delete it before using the name for another kind`);
@@ -1245,6 +1273,7 @@ export class Vault {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
     if (!r) throw new Error(`no item named ${name}`);
     if (isShared(r.vault)) throw new Error(`${name} is in a shared vault; deleting from a shared vault is not built yet`);
+    if (r.kind === "provider-token" && !(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("a provider sign-in token is removed only from your own surfaces");
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
@@ -1280,6 +1309,7 @@ export class Vault {
   async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
+    if (item.kind === "provider-token") throw new Error(`${name} is a provider sign-in token; nobody is granted it, the session launcher is handed it by vyred itself`);
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
@@ -1358,6 +1388,7 @@ export class Vault {
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
     if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
     if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
+    if (r.kind === "provider-token") { this.audit("release", name, who, false, "provider-token"); throw new Error(`${name} is a provider sign-in token; it goes only to the session launcher and is never handed out`); }
     if (r.kind === "api-credential") { this.audit("release", name, who, false, "api-credential"); throw new Error(`${name} is an api-credential; it is used only by vault.request and is never handed out`); }
     const f = await this.fields(r);
     const want = field || defaultField(r.kind, json(r.fields, []));
@@ -1376,6 +1407,7 @@ export class Vault {
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
       if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
       if (r.kind === "passkey") throw new Error(`${it.name} is a passkey; it signs inside the vault and is never handed out`);
+      if (r.kind === "provider-token") { this.audit("inject", it.name, caller, false, "provider-token"); throw new Error(`${it.name} is a provider sign-in token; it goes only to the session launcher and is never handed out`); }
       if (r.kind === "api-credential") { this.audit("inject", it.name, caller, false, "api-credential"); throw new Error(`${it.name} is an api-credential; it is used only by vault.request and is never handed out`); }
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);

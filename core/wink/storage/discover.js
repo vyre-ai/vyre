@@ -194,9 +194,10 @@ export function realScanners(o = {}) {
 
 /**
  * The cached, rate-limited discovery used by wink.storage.discover.
- * @param {{ scanners: { name: string, scan(a: { from: string }): Promise<{ found: Found[], note?: string }> }[], from: () => string, now?: () => number, gapMs?: number }} o
+ * @param {{ scanners: { name: string, scan(a: { from: string }): Promise<{ found: Found[], note?: string }> }[], from: () => string, fromDevice?: () => string | undefined, now?: () => number, gapMs?: number }} o
+ * `fromDevice` is the id of the device the scan runs on, kept beside the label `from` (the home needs the id to call that device).
  */
-export function createDiscovery({ scanners, from, now = Date.now, gapMs = MIN_SCAN_GAP_MS }) {
+export function createDiscovery({ scanners, from, fromDevice = () => undefined, now = Date.now, gapMs = MIN_SCAN_GAP_MS }) {
   /** @type {{ at: number, candidates: any[], notes: string[], from: string } | null} */
   let last = null;
   let running = /** @type {Promise<any> | null} */ (null);
@@ -207,7 +208,7 @@ export function createDiscovery({ scanners, from, now = Date.now, gapMs = MIN_SC
       if (running) return running;
       if (last && now() - last.at < gap) return shape(last, true);
       running = (async () => {
-        const where = from();
+        const where = from(), whereId = fromDevice();
         /** @type {any[]} */ const candidates = [];
         /** @type {string[]} */ const notes = [];
         const seen = new Set();
@@ -219,7 +220,7 @@ export function createDiscovery({ scanners, from, now = Date.now, gapMs = MIN_SC
               const id = candidateId(f);
               if (seen.has(id)) continue;
               seen.add(id);
-              candidates.push({ id, name: String(f.name).slice(0, 80), kind: f.kind, ...(f.host ? { host: f.host } : {}), ...(f.share ? { share: f.share } : {}), ...(f.path ? { path: f.path } : {}), ...(Number.isFinite(f.size) ? { size: f.size } : {}), seenFrom: where });
+              candidates.push({ id, name: String(f.name).slice(0, 80), kind: f.kind, ...(f.host ? { host: f.host } : {}), ...(f.share ? { share: f.share } : {}), ...(f.path ? { path: f.path } : {}), ...(Number.isFinite(f.size) ? { size: f.size } : {}), seenFrom: where, ...(whereId ? { seenFromDevice: whereId } : {}) });
             }
             if (r.note) notes.push(r.note);
           } catch (err) { notes.push(`${s.name} could not look: ${String(/** @type {Error} */ (err).message).slice(0, 120)}`); }

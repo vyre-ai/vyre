@@ -42,12 +42,13 @@ const mergeLabels = (a, b) => ({ trust: weakest(a?.trust ?? "untrusted", b?.trus
  * @param {{ base: string, platform?: any, driver?: any }} o @returns {Promise<string[]>} the folders it closed
  */
 export async function reconcile(o) {
-  const platform = o.platform || process.platform, driver = o.driver || driverFor(platform);
+  const platform = o.platform || process.platform;
+  const drivers = o.driver ? [o.driver] : platform === "linux" ? [driverFor(platform, { prefer: "fscrypt" }), driverFor(platform, { prefer: "gocryptfs" })] : [driverFor(platform)];
   const root = path.join(o.base, "spaces"), closed = [];
   let ents = []; try { ents = fs.readdirSync(root); } catch {}
   for (const e of ents) {
     const dir = path.join(root, e);
-    if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} if (!driver.isMounted(dir)) closed.push(dir); }
+    for (const driver of drivers) if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} if (!driver.isMounted(dir)) closed.push(dir); }
   }
   return closed;
 }
@@ -63,7 +64,7 @@ export async function reconcile(o) {
 export function createRunner(o) {
   const platform = /** @type {"darwin"|"linux"|"win32"} */ (o.platform || process.platform);
   const dir = spaceDir(o.base, o.space);
-  const driver = o.driver || driverFor(platform);
+  const driver = o.driver || driverFor(platform, { base: o.base });
   const now = o.now || Date.now;
   const emit = e => { try { o.onEvent?.(e); } catch {} };
   /** @type {string|null} */ let mnt = null;
@@ -127,7 +128,7 @@ export function createRunner(o) {
   function startWatchdog() {
     if (o.watchdog === false || process.env.VYRE_NO_WATCHDOG) return;
     try {
-      const p = spawn(process.execPath, [WATCHDOG, platform, dir, String(process.pid), deadlineFile, gen], { detached: true, stdio: "ignore" });
+      const p = spawn(process.execPath, [WATCHDOG, platform, dir, String(process.pid), deadlineFile, gen, driver.name], { detached: true, stdio: "ignore" });
       p.unref();
     } catch (e) { emit({ type: "watchdog-failed", why: String(/** @type {any} */ (e).message) }); }
   }
@@ -210,16 +211,16 @@ export function createRunner(o) {
         h.queue = h.queue.then(async () => {
           await sy.line(line);
           if (!endsTurn(line)) return;
-          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file. Pausing the group as well
-          // just keeps the files steady for a consistent checkpoint.
-          group("SIGSTOP");
-          try {
+          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file, and it reads only files whose size or
+          // modification time changed. The session is NOT paused: stopping it for the length of the read blocked every write (measured:
+          // seconds on a big workspace). A file written during the read is picked up by the next turn's checkpoint.
+          {
             const cur = o.labels ? mergeLabels(h.labels, o.labels(s.session)) : h.labels;
             h.labels = cur;
             const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
             const ok = await sy.checkpoint(st);
             emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
-          } finally { group("SIGCONT"); }
+          }
         }).catch(() => {});
       }
     });
@@ -276,7 +277,7 @@ export function createRunner(o) {
       await o.requestServer?.(session);
       emit({ type: "moved", session, to: "server" });
     },
-    status() { return { state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },
