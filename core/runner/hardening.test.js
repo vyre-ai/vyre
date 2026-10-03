@@ -478,3 +478,38 @@ test("FS-2: another user cannot read an fscrypt workspace, unlocked or locked, a
   assert.notEqual(other().status, 0, "nor while locked");
   await drv.destroy(dir);
 });
+
+import { effectiveNetwork, LENT_NETWORK_DEFAULT } from "./runner.js";
+test("lent network: the default is the internet, the Space can say provider, and the lender's cap always wins", () => {
+  assert.equal(LENT_NETWORK_DEFAULT, "internet");
+  assert.equal(effectiveNetwork(undefined, undefined), "internet");
+  assert.equal(effectiveNetwork("provider", undefined), "provider");
+  assert.equal(effectiveNetwork("internet", undefined), "internet");
+  assert.equal(effectiveNetwork("internet", "provider"), "provider", "the lender's cap beats the Space");
+  assert.equal(effectiveNetwork(undefined, "provider"), "provider");
+  assert.equal(effectiveNetwork("provider", "internet"), "provider", "a lender saying internet does not widen the Space's setting");
+  assert.equal(effectiveNetwork("bogus", undefined), "internet");
+});
+
+import { createEgress as mkEgress } from "./egress.js";
+import netmod from "node:net";
+import osmod from "node:os";
+test("internet mode refusals: a changing answer, a redirect, the machine's own address, IPv6 private and mapped forms, CONNECT to a LAN address", async t => {
+  const target = netmod.createServer(c => { c.on("error", () => {}); c.end("hi"); }); await new Promise(r => target.listen({ port: 0, host: "127.0.0.1" }, r)); t.after(() => target.close());
+  const tp = target.address().port, dialed = [];
+  let n = 0;
+  // A name that answers public to the check and private on the next lookup: the proxy looked once and dialled what it checked.
+  const eg = mkEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true, lookup: async h => (h === "flip.example" ? (n++ === 0 ? [{ address: "93.184.216.34" }] : [{ address: "10.0.0.1" }]) : h === "v6.example" ? [{ address: "fd00::5" }] : h === "map.example" ? [{ address: "::ffff:192.168.1.5" }] : h === "ll.example" ? [{ address: "fe80::1" }] : [{ address: "93.184.216.34" }]), dial: (ip, port) => { dialed.push(ip + ":" + port); return netmod.connect(tp, "127.0.0.1"); } });
+  const { port } = await eg.listen(); t.after(() => eg.close());
+  const ask = host => new Promise(res => { const s = netmod.connect(port, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\nProxy-Authorization: Basic ${Buffer.from("vyre:tok").toString("base64")}\r\n\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 3000); });
+  assert.match(await ask("flip.example:443"), / 200 /);
+  assert.deepEqual(dialed, ["93.184.216.34:443"], "it dialled the address it checked, not a later answer");
+  for (const h of ["v6.example:443", "map.example:443", "ll.example:443", "[fd00::1]:443", "[::ffff:10.0.0.1]:443", "169.254.169.254:80", "100.100.100.100:443"]) assert.match(await ask(h), / 403 /, h);
+  const lan = Object.values(osmod.networkInterfaces()).flat().find(a => a && !a.internal && a.family === "IPv4");
+  if (lan) assert.match(await ask(`${lan.address}:${tp}`), / 403 /, "this machine's own LAN address");
+  // a redirect to a private address is the client's next request through the same proxy, and is refused there
+  const redir = http.createServer((q, r) => { r.writeHead(302, { location: "http://10.0.0.1/secret" }); r.end(); }); await new Promise(r => redir.listen(0, "127.0.0.1", r)); t.after(() => redir.close());
+  const eg2 = mkEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true, lookup: async h => [{ address: h === "10.0.0.1" ? "10.0.0.1" : "93.184.216.34" }] }); const e2 = await eg2.listen(); t.after(() => eg2.close());
+  const get = url => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port: e2.port, path: url, headers: { host: new URL(url).host, "proxy-authorization": "Basic " + Buffer.from("vyre:tok").toString("base64") } }, m => { m.resume(); res(m.statusCode); }); q.on("error", () => res(0)); q.end(); });
+  assert.equal(await get("http://10.0.0.1/secret"), 403, "the redirect target is refused when the client follows it");
+});

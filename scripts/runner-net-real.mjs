@@ -23,7 +23,7 @@ echo "== git clone https"; git clone -q --depth 1 https://github.com/octocat/Hel
 echo "== npm ci"; cp seed/package.json seed/package-lock.json . 2>/dev/null; npm ci --no-audit --no-fund 2>&1 | tail -3; node -e "console.log('is-odd installed:', require('is-odd')(3))" 2>&1 | tail -1
 echo "== pip install into a virtualenv"; python3 -m venv venv 2>&1 | tail -1; venv/bin/pip install --no-input six==1.16.0 2>&1 | tail -2; venv/bin/python -c "import six; print('six', six.__version__)" 2>&1 | tail -1
 echo "== git over ssh (the tunnel on port 22; no key, so a refusal by the host proves it was reached)"
-( ssh -o BatchMode=yes -o ConnectTimeout=15 git@github.com 2>&1 || true ) | head -2
+( GIT_TERMINAL_PROMPT=0 git ls-remote git@github.com:octocat/Hello-World.git 2>&1 || true ) | head -3
 echo "== refusals"
 python3 - <<'PY'
 import urllib.request

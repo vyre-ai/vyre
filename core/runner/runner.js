@@ -27,6 +27,8 @@ import { place, deviceState } from "./placement.js";
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
 /** What a lent session may reach when the Space has not said: the internet (a lent session that cannot clone or install is not usable). The one place to flip it. */
 export const LENT_NETWORK_DEFAULT = "internet";
+/** Shown when the lender offers the machine and in its settings. */
+export const LENDER_NETWORK_LINE = "Sessions you lend can reach the internet from your connection. Sites see your address. You can limit them to the assistant's provider and the space.";
 /** The Space's setting, capped by the lender: the lender's cap "provider" always wins (it is their connection and their address). */
 export const effectiveNetwork = (space, lenderCap) => (lenderCap === "provider" ? "provider" : (space === "provider" || space === "internet" ? space : LENT_NETWORK_DEFAULT));
 
@@ -286,7 +288,7 @@ export function createRunner(o) {
       await o.requestServer?.(session);
       emit({ type: "moved", session, to: "server" });
     },
-    status() { return { workspace: driver.name, notices: [...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },

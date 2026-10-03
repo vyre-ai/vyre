@@ -16,7 +16,7 @@ import path from "node:path";
 import net from "node:net";
 import os from "node:os";
 import { spawn } from "node:child_process";
-import { launch, sshCommand } from "./sandbox.js";
+import { launch, sshCommand, fakePasswd } from "./sandbox.js";
 import { filter as seccompFilter } from "./seccomp.js";
 import { SHIM, PROXYCMD } from "./sandbox.js";
 
@@ -161,7 +161,7 @@ function planLinux(o) {
     "bwrap", "--seccomp", "3", "--die-with-parent", "--new-session", "--unshare-all", "--unshare-user", "--cap-drop", "ALL", "--disable-userns", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--ro-bind-try", "/etc/ssl", "/etc/ssl", "--ro-bind-try", "/etc/alternatives", "/etc/alternatives", "--ro-bind-try", "/etc/resolv.conf", "/etc/resolv.conf",
-    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp",
+    "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--tmpfs", "/tmp", "--ro-bind", fakePasswd(h), "/etc/passwd",
     // The home is a fresh empty folder first; then the read-only tools (they may live under the home), the project, the settings and the temp folder come back.
     "--tmpfs", h,
     ...ro.flatMap(d => ["--ro-bind", d, d]),
