@@ -5398,6 +5398,7 @@ The publish pipeline for a deployment as a Flow definition: build, preview, a pe
 
 - Input:
   - `deployment` string, required
+  - `kernel` boolean
   - `space` string
 - Callers: any caller
 

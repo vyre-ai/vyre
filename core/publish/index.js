@@ -453,11 +453,11 @@ export default {
 
     ctx.tool("publish.flow", {
       description: "The publish pipeline for a deployment as a Flow definition: build, preview, a person approves, production, rollback.",
-      input: obj({ deployment: str }, ["deployment"]),
+      input: obj({ deployment: str, kernel: { type: "boolean" } }, ["deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
         await b.pub.status(b.chain, i.deployment);
-        return { flow: await b.pub.flow(i.deployment) };
+        return { flow: await b.pub.flow(i.deployment, { kernel: i.kernel === true }) };
       },
     });
 
