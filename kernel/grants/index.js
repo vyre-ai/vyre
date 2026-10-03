@@ -4,7 +4,7 @@
 // members from here (`provider`, `members`). Every change is a `grant`-risk act: a fresh presence proof by the granting person, never from a chain
 // that holds a model (authorize denies `model_chain`), and the proof is bound to the exact input (`input_hash`). Widening is always a new grant;
 // narrowing and revoking happen in place; a delegated grant has a parent and must be contained in it; revoking a parent revokes its children.
-import { canonical, sha256 } from "../core/canonical.js";
+import { canonical, sha256, hmac, sameMac } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
@@ -31,8 +31,9 @@ const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
 
 /**
- * @param {{ space: string, log: any, chains: any, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
- *   actions: the registry (read at call time, so the store never holds a stale copy)
+ * @param {{ space: string, log: any, chains: any, key: Uint8Array | string, clock?: () => number, action_set_version?: number, actions?: () => Iterable<any> }} cfg
+ *   actions: the registry (read at call time, so the store never holds a stale copy). key: the kernel's secret (as the chain builder's): every event this
+ *   store writes carries a MAC under it, and `rebuild` takes authority only from events that verify, so an event any chain appends in these names is nothing.
  */
 export function createGrantsStore(cfg) {
   const clock = cfg.clock || Date.now;
@@ -50,8 +51,10 @@ export function createGrantsStore(cfg) {
   const riskOf = (/** @type {string} */ a) => reg().get(a)?.risk;
   const urn = (/** @type {string} */ type, id = "new") => `vyre://${cfg.space}/${type}/${id}`;
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
+  if (!cfg.key) throw new KernelError("bad_input", "the grants store needs the kernel's key to seal its events");
+  const macOf = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data) => hmac(cfg.key, canonical({ type, subject, data }));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) =>
-    cfg.log.append(chain, { type, sv: 1, subject, data, vis: "owner", red: "internal" }, decision ? { decision } : {});
+    cfg.log.append(chain, { type, sv: 1, subject, data: { ...data, mac: macOf(type, subject, data) }, vis: "owner", red: "internal" }, decision ? { decision } : {});
 
   const memberOk = (/** @type {any} */ a) => {
     if (!a || a.space !== cfg.space) return false;
@@ -208,6 +211,36 @@ export function createGrantsStore(cfg) {
       return { membership, grants: made };
     },
 
+    /**
+     * Take a person out of the Space (a grant-risk act with a fresh proof): their membership and every grant made to them go, their compute offers
+     * are withdrawn, and the runner is told at once. The last owner stays.
+     * @param {any} chain @param {{ person: string }} m @param {{ presence?: any }} [o]
+     */
+    async removeMember(chain, m, o = {}) {
+      const issuer = person(chain);
+      if (!m || typeof m.person !== "string") throw new KernelError("bad_input", "name the person to remove");
+      const d = await gate(chain, "grants.role", urn("member", m.person), { remove: m.person }, o.presence);
+      const prior = memberships.get(m.person);
+      if (!prior) throw new KernelError("not_found", "no such member");
+      const mine = roleOf(issuer);
+      if (!mine || !(MAY_SET[/** @type {"owner"} */ (mine)] || []).includes(prior.role)) throw new KernelError("not_allowed", `a ${mine || "non-member"} cannot remove a ${prior.role}`);
+      if (prior.role === "owner" && [...memberships.values()].filter(x => x.role === "owner").length === 1) throw new KernelError("not_allowed", "a Space keeps at least one owner");
+      const actor = { kind: "person", id: m.person, space: cfg.space };
+      const gone = [...grants.values()].filter(g => g.status === "active" && ((g.subject.kind === "actor" && sameActor(g.subject.actor, actor)) || (g.issuer && sameActor(g.issuer, actor) && g.parent)));
+      for (const g of gone) {
+        const n = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "member removed" }); grants.set(n.id, n);
+        note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: "member removed" }, d.decision);
+      }
+      memberships.delete(m.person);
+      note(chain, "member.removed", urn("member", m.person), { person: m.person }, d.decision);
+      for (const o2 of [...offers.values()]) if (o2.member === m.person && o2.status === "active") {
+        const n = freeze({ ...o2, status: "revoked", revoked_at: clock() }); offers.set(n.id, n);
+        note(chain, "offer.revoked", urn("offer", n.id), { id: n.id }, d.decision);
+        tell(n, "removed");
+      }
+      return { removed: m.person, grants_revoked: gone.length };
+    },
+
     /** Add an assistant, service or automation to the Space (a membership of its own kind). */
     async addActor(chain, actor, o = {}) {
       const issuer = person(chain);
@@ -264,7 +297,7 @@ export function createGrantsStore(cfg) {
 
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     bootstrap({ owner }) {
-      if (memberships.size) throw new KernelError("not_allowed", "this Space already has members");
+      if (memberships.size || cfg.log.latestSeq() > 0) throw new KernelError("not_allowed", "this Space already has a history: its first owner is made once, at its start");
       const k = kernelChain();
       const membership = freeze({ space: cfg.space, person: owner, role: "owner", added_by: "kernel", added_at: clock() });
       memberships.set(owner, membership);
@@ -279,11 +312,16 @@ export function createGrantsStore(cfg) {
     rebuild() {
       grants.clear(); memberships.clear(); actors.clear(); offers.clear();
       for (const e of cfg.log.read({})) {
-        const d = e.data;
-        if (!d || typeof d !== "object") continue;
+        let d = e.data;
+        if (!d || typeof d !== "object" || !/^(grant|member|actor|offer)\./.test(e.type)) continue;
+        // Authority comes only from events this store sealed: anything else in these names is ignored (and not trusted for a grant, a member or an offer).
+        const { mac, ...bare } = d;
+        if (typeof mac !== "string" || !sameMac(macOf(e.type, e.subject, bare), mac)) continue;
+        d = bare;
         if (e.type === "grant.created" || e.type === "grant.narrowed") grants.set(d.grant.id, freeze(structuredClone(d.grant)));
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
+        else if (e.type === "member.removed") memberships.delete(d.person);
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
