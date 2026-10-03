@@ -161,3 +161,16 @@ test("search: every page of a ranked search, by cursor, equals the reference's, 
   for (const s of [mem, sql]) { const cur = await s.get("person", first.rows[2].id); await s.remove("person", cur.id, cur.version); }
   assert.deepEqual(await sql.search({ text: "ann bob", page: { limit: 3, cursor: first.rows[2].id } }), await mem.search({ text: "ann bob", page: { limit: 3, cursor: first.rows[2].id } }));
 });
+
+test("search: a type whose definition changes is indexed again, and searches stay equal to the reference meanwhile and after", async () => {
+  const { mem, sql, r, pick } = await world(120, 4, {});
+  await sql.ftsReady;
+  const next = { ...TYPE, fields: [{ name: "bio", kind: "text", label: "Bio" }, { name: "name", kind: "text", label: "Name" }, { name: "city", kind: "choice", label: "City", options: CITIES }] };
+  for (const s of [mem, sql]) await s.define({ change_types: [next] });
+  assert.equal(sql.stats().fts_built, false, "the index is rebuilt after the change");
+  const same = async () => { for (let q = 0; q < 40; q++) { const text = Array.from({ length: 1 + Math.floor(r() * 2) }, () => pick(WORDS)).join(" "); assert.deepEqual(await searchIds(sql, text), await searchIds(mem, text), text); } };
+  await same();
+  await sql.ftsReady;
+  assert.equal(sql.stats().fts_built, true);
+  await same();
+});

@@ -104,14 +104,21 @@ export function createSqliteStore(cfg) {
   };
   const ftsDel = ftsOk ? db.prepare("DELETE FROM kernel_ftf WHERE rowid >= ? AND rowid < ?") : null;
   const ftsPut = ftsOk ? db.prepare("INSERT INTO kernel_ftf (rowid, doc) VALUES (?, ?)") : null;
-  const ftsRead = ftsOk ? db.prepare("SELECT rowid AS i, doc FROM kernel_ftf WHERE rowid >= ? AND rowid < ?") : null;
+  const ftsGet = ftsOk ? db.prepare("SELECT doc FROM kernel_ftf WHERE rowid = ?") : null;
+  const ftsDelOne = ftsOk ? db.prepare("DELETE FROM kernel_ftf WHERE rowid = ?") : null;
+  // (FTS5 scans the whole table for a rowid range, so a record's few field rows are read, replaced and deleted by their own rowids.)
   const ftsWrite = (/** @type {number} */ rid, /** @type {any} */ r) => {
-    const parts = r.deleted_at ? [] : partsOf(r) || [];
-    // An edit that leaves every searched text as it was (most do) leaves the index alone.
-    const have = /** @type {any[]} */ (/** @type {any} */ (ftsRead).all(rid * FIELD_SLOTS, (rid + 1) * FIELD_SLOTS));
-    if (have.length === parts.length && have.every((h, k) => h.i === rid * FIELD_SLOTS + parts[k][0] && h.doc === parts[k][1])) return;
-    /** @type {any} */ (ftsDel).run(rid * FIELD_SLOTS, (rid + 1) * FIELD_SLOTS);
-    for (const [i, text] of parts) /** @type {any} */ (ftsPut).run(rid * FIELD_SLOTS + i, text);
+    const def = defs.get(r.type);
+    const slots = def ? Math.min(def.fields.length, FIELD_SLOTS) : 0;
+    const want = new Map(r.deleted_at ? [] : partsOf(r) || []);
+    for (let i = 0; i < slots; i++) {
+      const row = /** @type {any} */ (/** @type {any} */ (ftsGet).get(rid * FIELD_SLOTS + i));
+      const text = want.get(i);
+      // An edit that leaves a field's searched text as it was (most do) leaves its row alone.
+      if (row ? row.doc === text : text === undefined) continue;
+      if (row) /** @type {any} */ (ftsDelOne).run(rid * FIELD_SLOTS + i);
+      if (text !== undefined) /** @type {any} */ (ftsPut).run(rid * FIELD_SLOTS + i, text);
+    }
   };
   /** Bring one record's entries in step with the record. Called inside the write's transaction. */
   const ftsSync = (/** @type {any} */ r) => {
@@ -119,14 +126,15 @@ export function createSqliteStore(cfg) {
     const row = /** @type {any} */ (getRowid.get(r.type, r.id));
     if (row) ftsWrite(row.r, r);
   };
-  let ftsBuilt = false;
-  /** Resolves when the index covers every record: at once on a new database, in slices (the loop is never held) on one that had records before the index. */
-  const ftsReady = (async () => {
+  let ftsBuilt = false, ftsGen = 0;
+  /** Index every record, in slices (the loop is never held). Run when the index is new to a database that has records, and again when a type's definition changes (a field's position or kind may have). */
+  const ftsBuild = async () => {
     if (!ftsOk) return;
-    if (getFlag.get("ftf_built")) { ftsBuilt = true; return; }
     const walk = db.prepare("SELECT rowid AS rid, * FROM kernel_records WHERE rowid > ? ORDER BY rowid LIMIT 400");
+    const gen = ftsGen;
     let after = 0;
     for (;;) {
+      if (gen !== ftsGen) return; // a newer build owns the index now
       const chunk = /** @type {any[]} */ (walk.all(after));
       if (!chunk.length) break;
       db.exec("BEGIN");
@@ -137,9 +145,21 @@ export function createSqliteStore(cfg) {
       after = chunk[chunk.length - 1].rid;
       await new Promise(res => setImmediate(res));
     }
+    if (gen !== ftsGen) return;
     setFlag.run("ftf_built", "1");
     ftsBuilt = true;
-  })();
+  };
+  /** Resolves when the index covers every record. */
+  let ftsReady = (async () => { if (ftsOk && getFlag.get("ftf_built")) { ftsBuilt = true; return; } await ftsBuild(); })();
+  /** A type's definition changed: rows written under the old one may sit in positions the new one does not use, so the index is emptied and built again (searches scan meanwhile). */
+  const ftsRestart = () => {
+    if (!ftsOk) return;
+    ftsBuilt = false; ftsGen++;
+    db.exec("DELETE FROM kernel_flags WHERE name = 'ftf_built'");
+    db.exec("DELETE FROM kernel_ftf");
+    ftsReady = ftsReady.then(() => ftsBuild());
+    ftsReady.catch(() => {});
+  };
   ftsReady.catch(() => {});
 
   const table = type => {
@@ -228,7 +248,7 @@ export function createSqliteStore(cfg) {
   const store = createMemoryStore({
     clock: cfg.clock, hook: cfg.hook, initial: { types, records: [], changes: [] }, backing: { table, changes },
     persist: {
-      type: (name, def) => { if (def) { putType.run(name, JSON.stringify(def)); defs.set(name, def); } else { delType.run(name); defs.delete(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
+      type: (name, def) => { if (def) { const had = defs.get(name); putType.run(name, JSON.stringify(def)); defs.set(name, def); if (had && canonical(had) !== canonical(def)) ftsRestart(); } else { delType.run(name); defs.delete(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {
@@ -260,5 +280,5 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ ftsReady, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ get ftsReady() { return ftsReady; }, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }
