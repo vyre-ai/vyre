@@ -4,12 +4,22 @@
 // gap; `verify` recomputes the chain from what was read back, so a row edited on disk is found by the same check as one edited in memory.
 //
 // BOUNDED IN MEMORY. Only a recent window of events is held (`window`, by count and by bytes); the log is read back from these tables when an older event is asked for
-// or a scan walks it. The columns `type`, `subject`, `corr` and `actor` repeat what is in the event so the database can filter by index (a by-type read is an index
+// or a scan walks it. The columns `type`, `subject`, `corr`, `actor` and `ref` are generated from the event so the database can filter by index (a by-type read is an index
 // scan, not a parse of every row). Opening reads the last window and two counters, never the whole log: a million events open as fast as a thousand.
 import { createEventLog } from "../core/events.js";
 
+// The filter columns are GENERATED from the event JSON (virtual, indexed), so they cannot disagree with the event a reader is handed: there is nothing to write and nothing a
+// database edit can change without changing the event itself (which the chain then catches). `ref` is the id a message event's data names, the one thing looked up by value.
+const GENERATED = {
+  type: "json_extract(event, '$.type')",
+  subject: "json_extract(event, '$.subject')",
+  corr: "json_extract(event, '$.corr')",
+  actor: "json_extract(event, '$.actor')",
+  ref: "CASE WHEN json_extract(event, '$.type') LIKE 'message.%' AND json_type(event, '$.data.id') = 'text' THEN substr(json_extract(event, '$.data.id'), 1, 120) END",
+};
+const gen = (/** @type {string} */ c) => `${c} TEXT GENERATED ALWAYS AS (${GENERATED[/** @type {keyof typeof GENERATED} */ (c)]}) VIRTUAL`;
 const MIGRATION = `
-  CREATE TABLE IF NOT EXISTS kernel_events (seq INTEGER PRIMARY KEY, space TEXT NOT NULL, event TEXT NOT NULL, salt TEXT, type TEXT, subject TEXT, corr TEXT, actor TEXT, ref TEXT);
+  CREATE TABLE IF NOT EXISTS kernel_events (seq INTEGER PRIMARY KEY, space TEXT NOT NULL, event TEXT NOT NULL, salt TEXT, ${Object.keys(GENERATED).map(gen).join(", ")});
   CREATE TABLE IF NOT EXISTS kernel_cursors (name TEXT PRIMARY KEY, seq INTEGER NOT NULL);
 `;
 const like = (/** @type {string} */ s) => s.replace(/[\\%_]/g, "\\$&");
@@ -18,12 +28,17 @@ const like = (/** @type {string} */ s) => s.replace(/[\\%_]/g, "\\$&");
 export function createSqliteEventLog(cfg) {
   const { db } = cfg;
   db.exec(MIGRATION);
-  // A database made before the filter columns existed gets them, filled from the events once.
-  const cols = new Set(db.prepare("PRAGMA table_info(kernel_events)").all().map((/** @type {any} */ c) => c.name));
-  for (const c of ["type", "subject", "corr", "actor", "ref"]) if (!cols.has(c)) db.exec(`ALTER TABLE kernel_events ADD COLUMN ${c} TEXT`);
-  db.exec("UPDATE kernel_events SET type = json_extract(event, '$.type'), subject = json_extract(event, '$.subject'), corr = json_extract(event, '$.corr'), actor = json_extract(event, '$.actor') WHERE type IS NULL");
-  // `ref` is the id an event's data names (a message's id): the one thing looked up by value rather than by type or place.
-  db.exec("UPDATE kernel_events SET ref = json_extract(event, '$.data.id') WHERE ref IS NULL AND type LIKE 'message.%'");
+  // A database made with plain filter columns (copies of the event that nothing tied to it) has them replaced by generated ones; a database whose column is not generated
+  // for any other reason is refused rather than read.
+  const info = /** @type {any[]} */ (db.prepare("PRAGMA table_xinfo(kernel_events)").all());
+  const plain = Object.keys(GENERATED).filter(c => info.some(i => i.name === c && i.hidden === 0));
+  if (plain.length) {
+    db.exec("DROP INDEX IF EXISTS kernel_events_ref; DROP INDEX IF EXISTS kernel_events_type; DROP INDEX IF EXISTS kernel_events_subject; DROP INDEX IF EXISTS kernel_events_corr;");
+    for (const c of plain) db.exec(`ALTER TABLE kernel_events DROP COLUMN ${c}`);
+  }
+  for (const c of Object.keys(GENERATED)) if (!info.some(i => i.name === c && i.hidden !== 0) ) db.exec(`ALTER TABLE kernel_events ADD COLUMN ${gen(c)}`);
+  const after = /** @type {any[]} */ (db.prepare("PRAGMA table_xinfo(kernel_events)").all());
+  for (const c of Object.keys(GENERATED)) if (!after.some(i => i.name === c && i.hidden !== 0)) throw new Error(`the event log's ${c} column is not generated from the event`);
   db.exec(`
     CREATE INDEX IF NOT EXISTS kernel_events_ref ON kernel_events (space, ref) WHERE ref IS NOT NULL;
     CREATE INDEX IF NOT EXISTS kernel_events_type ON kernel_events (space, type, seq);
@@ -35,7 +50,7 @@ export function createSqliteEventLog(cfg) {
   const window = last.map(r => JSON.parse(r.event));
   const salts = last.filter(r => r.salt !== null).map(r => /** @type {[number, string]} */ ([r.seq, r.salt]));
   const cursors = db.prepare("SELECT name, seq FROM kernel_cursors").all().map((/** @type {any} */ r) => /** @type {[string, number]} */ ([r.name, r.seq]));
-  const ins = db.prepare("INSERT INTO kernel_events (seq, space, event, salt, type, subject, corr, actor, ref) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  const ins = db.prepare("INSERT INTO kernel_events (seq, space, event, salt) VALUES (?, ?, ?, ?)");
   const era = db.prepare("UPDATE kernel_events SET event = ?, salt = NULL WHERE seq = ? AND space = ?");
   const cur = db.prepare("INSERT INTO kernel_cursors (name, seq) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET seq = excluded.seq");
   const latestStmt = db.prepare("SELECT event FROM kernel_events WHERE space = ? AND subject = ? AND seq < ? AND json_extract(event, '$.data.version_hash') IS NOT NULL ORDER BY seq DESC LIMIT 1");
@@ -44,7 +59,7 @@ export function createSqliteEventLog(cfg) {
     space: cfg.space, clock: cfg.clock, rand: cfg.rand, window: cfg.window,
     initial: { count: window.length ? window[window.length - 1].seq : 0, head: window.length ? window[window.length - 1].hash : undefined, window, salts, cursors },
     persist: {
-      append: (e, salt) => { const text = JSON.stringify(e); ins.run(e.seq, cfg.space, text, salt, e.type, e.subject, e.corr ?? null, e.actor, e.type.startsWith("message.") && e.data && typeof e.data.id === "string" ? e.data.id.slice(0, 120) : null); return text.length; },
+      append: (e, salt) => { const text = JSON.stringify(e); ins.run(e.seq, cfg.space, text, salt); return text.length; },
       erase: (seq, e) => { era.run(JSON.stringify(e), seq, cfg.space); },
       cursor: (name, seq) => { cur.run(name, seq); },
       get: seq => { const r = /** @type {any} */ (one.get(seq, cfg.space)); return r ? { event: JSON.parse(r.event), salt: r.salt } : null; },

@@ -93,6 +93,22 @@ export function createRecords(cfg) {
     };
   })();
 
+  /** The kernel attributes of a record. On a store that keeps them on disk (`store.meta`) the disk is only a copy: the record's create event in the log is the authority (BL-3), looked up
+   * by its subject with a small LRU in front, and a copy that disagrees is repaired from it. The disk answers only when the event's data was erased (a deliberate act that leaves no event to
+   * check against) or the log has no create event for the record. */
+  const verified = new Map();
+  function attrsOf(/** @type {string} */ u) {
+    const disk = kattrs.get(u);
+    if (!store.meta || log.durable !== true) return disk;
+    if (verified.has(u)) { const v = verified.get(u); verified.delete(u); verified.set(u, v); return v; }
+    const first = log.read({ subject_prefix: u, limit: 1 })[0];
+    const a = first && first.data && typeof first.data.attrs === "object" && first.data.attrs ? first.data.attrs : undefined;
+    if (!a) return disk;
+    if (JSON.stringify(disk) !== JSON.stringify(a)) kattrs.set(u, a);
+    verified.set(u, a); if (verified.size > 10_000) verified.delete(verified.keys().next().value);
+    return a;
+  }
+
   function mapError(/** @type {any} */ e) {
     if (e instanceof KernelError) return e;
     if (e && STORE_CODES.has(e.code)) return new KernelError(e.code, e.message);
@@ -232,7 +248,7 @@ export function createRecords(cfg) {
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
-  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore) {
+  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
@@ -245,7 +261,7 @@ export function createRecords(cfg) {
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
-    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain) };
+    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain), ...(attrs ? { attrs } : {}) };
     intents.set(intent.id, intent);
     let rec;
     try { rec = await run(); }
@@ -285,7 +301,7 @@ export function createRecords(cfg) {
     const sealed = Object.values(rec.data).some(isSealedShape);
     log.append(chain, {
       type: `${rec.type}.${verb}`, sv: 1, subject: intent.record,
-      data: { changed, version: rec.version, version_hash: hash, ...(before ? { before: redactDiff(before.data, set) } : {}), after: redactDiff(rec.data, set), ...(recovered ? { recovered: true } : {}) },
+      data: { changed, version: rec.version, version_hash: hash, ...(verb === "created" && intent.attrs ? { attrs: intent.attrs } : {}), ...(before ? { before: redactDiff(before.data, set) } : {}), after: redactDiff(rec.data, set), ...(recovered ? { recovered: true } : {}) },
       red: sealed ? "pii" : "internal",
       // Record events carry field values: only a chain that may read the record may read them (R2-1).
       vis: "subject",
@@ -298,9 +314,11 @@ export function createRecords(cfg) {
     const id = mintUuid(clock());
     const a = opts.attrs || {};
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
-    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null);
     const last = chain.hops[chain.hops.length - 1].actor;
-    kattrs.set(urn(type, id), { space, created_by: `${last.kind}:${last.id}`, ...a });
+    // The attributes ride in the create event (the chain covers it), so the log, not the disk, says what a record's owner, project and sensitivity are.
+    const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
+    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
+    kattrs.set(urn(type, id), attrs);
     return rec;
   }
 
@@ -452,7 +470,7 @@ export function createRecords(cfg) {
       const cut = (/** @type {any} */ o) => (o ? Object.fromEntries(Object.entries(o).filter(([k]) => keep(k))) : o);
       return Object.freeze({ ...e, data: { ...d, ...(d.before ? { before: cut(d.before) } : {}), after: cut(d.after), changed: (d.changed || []).filter(keep) }, redacted_view: true });
     },
-    attrsOf: (/** @type {string} */ u) => kattrs.get(u),
+    attrsOf: attrsOf,
 
 
     /**
