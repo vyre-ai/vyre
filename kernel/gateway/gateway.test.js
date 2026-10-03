@@ -331,3 +331,15 @@ test("K1-9b: audit.verify also checks each kept event against its commitment", a
   log.erase(log.read({ type: "contact.created" })[0].seq);
   assert.equal((await gw.audit.verify()).ok, true, "an erased event keeps only its envelope and still verifies");
 });
+
+test("R2-1: an agent with events.read but no records.read cannot read record values from the log, by read or subscribe", async () => {
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["events.read"] })];
+  const { gw, r } = await withType(rig({ grants, members: ["agent:kit"], owner: OWNER }));
+  await r.create(owner(), "contact", { name: "SecretName" });
+  assert.deepEqual(await gw.events.read(agent(), {}), []);
+  const seen = [];
+  gw.events.subscribe(agent(), "w", {}, e => { seen.push(e); });
+  await new Promise(res => setTimeout(res, 20));
+  assert.deepEqual(seen, []);
+  assert.ok(JSON.stringify(await gw.events.read(owner(), {})).includes("SecretName"), "a person who may read it still can");
+});

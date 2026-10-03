@@ -152,6 +152,8 @@ export function createRecords(cfg) {
       type: `${rec.type}.${verb}`, sv: 1, subject: intent.record,
       data: { changed, version: rec.version, version_hash: hash, ...(before ? { before: redactDiff(before.data, set) } : {}), after: redactDiff(rec.data, set), ...(recovered ? { recovered: true } : {}) },
       red: sealed ? "pii" : "internal",
+      // Record events carry field values: only a chain that may read the record may read them (R2-1).
+      vis: "subject",
     }, { decision });
     index.set(intent.record, { version: rec.version, hash });
     intent.state = "completed";
