@@ -41,14 +41,14 @@ async function server(t) {
 
 test("openrouter: conform() passes with no process and no tools; the stream, an interrupt of a slow turn, and a resume", async t => {
   const s = await server(t);
-  const p = openrouterProvider({ baseUrl: s.url });
+  const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url });
   const fails = await conform(p, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" }, extra: { model: "x/y" } });
   assert.deepEqual(fails, []);
 });
 
 test("openrouter: the key is the account's, the model is the one asked for, a resume keeps the conversation, cost comes back", async t => {
   const s = await server(t);
-  const p = openrouterProvider({ baseUrl: s.url });
+  const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url });
   const id = crypto.randomUUID();
   const got = [];
   const run = resume => p.run({ id, resume, model: "anthropic/claude-haiku-4.5", system: { mode: "append", text: "Be brief." }, env: { OPENROUTER_API_KEY: "sk-test" }, onMessage: m => got.push(m), onExit() {} });
@@ -68,7 +68,7 @@ test("openrouter: the key is the account's, the model is the one asked for, a re
 
 test("openrouter: a missing or wrong key, and a 429, end the turn as errors; a limit says so", async t => {
   const s = await server(t);
-  const p = openrouterProvider({ baseUrl: s.url });
+  const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url });
   const turn = async (env, text) => {
     const got = [];
     const r = p.run({ id: crypto.randomUUID(), resume: false, model: "x/y", env, onMessage: m => got.push(m), onExit() {} });
@@ -94,26 +94,26 @@ test("openrouter: it asks not to be trained on, needs a chosen model and an http
     await r.stop();
     return got.find(m => m.type === "result");
   };
-  await turn(openrouterProvider({ baseUrl: s.url }), { model: "x/y" });
+  await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url }), { model: "x/y" });
   assert.deepEqual(s.seen.at(-1).provider, { data_collection: "deny" });
-  assert.match((await turn(openrouterProvider({ baseUrl: s.url }), {})).result, /choose a model/);
-  assert.match((await turn(openrouterProvider({ baseUrl: "http://example.com/v1" }), { model: "x/y" })).result, /must be https/);
+  assert.match((await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: s.url }), {})).result, /choose a model/);
+  assert.match((await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: "http://example.com/v1" }), { model: "x/y" })).result, /must be https/);
   // A server that never stops talking is cut at the cap; one that goes quiet is ended.
   const http = await import("node:http");
   const big = http.createServer((req, res) => { req.resume(); res.writeHead(200, { "content-type": "text/event-stream" }); const t2 = setInterval(() => res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "x".repeat(100_000) } }] })}\n\n`), 5); res.on("close", () => clearInterval(t2)); });
   await new Promise(r => big.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => { big.closeAllConnections?.(); big.close(); });
-  const cut = await turn(openrouterProvider({ baseUrl: `http://127.0.0.1:${/** @type {any} */ (big.address()).port}` }), { model: "x/y" });
+  const cut = await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: `http://127.0.0.1:${/** @type {any} */ (big.address()).port}` }), { model: "x/y" });
   assert.match(cut.result, /1 MB/);
   const quiet = http.createServer((req, res) => { req.resume(); res.writeHead(200, { "content-type": "text/event-stream" }); res.write(": hold\n\n"); });
   await new Promise(r => quiet.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => { quiet.closeAllConnections?.(); quiet.close(); });
-  const stalled = await turn(openrouterProvider({ baseUrl: `http://127.0.0.1:${/** @type {any} */ (quiet.address()).port}`, idleMs: 200 }), { model: "x/y" });
+  const stalled = await turn(openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: `http://127.0.0.1:${/** @type {any} */ (quiet.address()).port}`, idleMs: 200 }), { model: "x/y" });
   assert.match(stalled.result, /stopped answering/);
 });
 
 test("conform: only Vyre's own openrouter driver may skip the process and tool checks", async () => {
-  const p = openrouterProvider({ baseUrl: "http://127.0.0.1:1" });
+  const p = openrouterProvider({ legacyDirect: true, warn() {}, baseUrl: "http://127.0.0.1:1" });
   const fails = await conform({ ...p, id: "sneaky" }, { id: crypto.randomUUID(), cwd: "/tmp", env: { OPENROUTER_API_KEY: "sk-test" }, timeout: 500 });
   assert.ok(fails.length > 0, "a module's provider claiming process:false is checked in full");
 });

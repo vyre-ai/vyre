@@ -24,6 +24,9 @@ const BAD = "dg-FAKE-SECRET-kit-9f8e7d6c5b4a";
 const CHUNK = 3200; // 100 ms of 16 kHz linear16
 
 /** A port nothing listens on: bound, read, and closed again. */
+// Speech tests run the legacy direct path (the daemon here has no inference door); the door path is tested in lib/door-bridge.test.js.
+process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+
 async function closedPort() {
   const s = net.createServer();
   await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
@@ -248,6 +251,15 @@ test("voice: push-to-talk through a real vyred, every failure visible, and the k
     assert.equal((await get(root, r.url)).status, 404, "a ticket plays once");
     assert.deepEqual(fake.got.speak.at(-1), { provider: "deepgram", model: "aura-2-thalia-en", text: "Northwind Bakery opens at nine" });
     assert.equal((await capsule("voice.settings", { voice: "../../etc" })).error.code, "bad_input");
+  });
+
+  await t.test("voice.speak: with no inference door and no legacyDirect, nothing is sent to the speech provider", async () => {
+    const before = fake.got.speak.length;
+    delete process.env.VYRE_LEGACY_DIRECT_MODEL;
+    try {
+      assert.equal((await capsule("voice.speak", { text: "Northwind Bakery opens at nine" })).error.code, "no_door");
+      assert.equal(fake.got.speak.length, before, "the provider saw nothing");
+    } finally { process.env.VYRE_LEGACY_DIRECT_MODEL = "1"; }
   });
 
   await t.test("openai and elevenlabs: held until release, transcribed in one request, and they speak", async () => {

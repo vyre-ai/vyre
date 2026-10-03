@@ -616,6 +616,19 @@ export class Registry {
       rec.contract = moduleContract(m);
       const adapter = adapterFor(rec.contract);
       if (m.apiVersion !== undefined) this.deps.log(`warn: module ${m.name} uses apiVersion, which is deprecated; use "vyre": "${m.apiVersion}"`);
+      // K6: with a module host wired (kernel/modules/host.js), a module that is not first party never runs in this process. It runs under the
+      // supervisor (no network, no files beyond its folder, no child process), its tools call into it, and it has no ctx: only its tool handlers
+      // and the egress proxy. Without the supervisor the host refuses and the module fails to start. Off until the kernel default-on path.
+      if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
+        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m });
+        const ctx = this.context(m);
+        for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input) => this.deps.moduleHost.call(m.name, e.name, input) });
+        rec.handle = { stop: () => this.deps.moduleHost.uninstall(m.name) };
+        rec.sandboxed = true;
+        rec.state = "running";
+        this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
+        return;
+      }
       const mod = (await import(pathToFileURL(entry).href)).default;
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
@@ -1015,40 +1028,48 @@ export class Registry {
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    // Default-deny for an added module (ADR 0047, reviews/platform.md H4): it reaches only a tool
-    // whose reach is declared, and never one declared for Vyre's own modules. `door` is the
-    // loader's own ctx doors (vault.fetch, memory.teach, remote), which check their own declarations.
-    if (!door && String(caller).startsWith("module:")) {
-      const from = this.modules.get(String(caller).slice(7));
-      // A module's own tools are its own business, in either form.
-      if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules")) {
-        return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
+    // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
+    // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
+    // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.
+    if (this.deps.gates) {
+      const refused = await this.deps.gates.before({ tool, def, caller, meta, input, door });
+      if (refused) return refused;
+    } else {
+      // Default-deny for an added module (ADR 0047, reviews/platform.md H4): it reaches only a tool
+      // whose reach is declared, and never one declared for Vyre's own modules. `door` is the
+      // loader's own ctx doors (vault.fetch, memory.teach, remote), which check their own declarations.
+      if (!door && String(caller).startsWith("module:")) {
+        const from = this.modules.get(String(caller).slice(7));
+        // A module's own tools are its own business, in either form.
+        if (from && from.dir && def.module !== from.manifest?.name && !this.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules")) {
+          return { error: { code: "not_declared", message: `${tool} is not open to added modules` } };
+        }
       }
-    }
-    // Fail closed until the Gate's routing and the P17 match are wired into the registry
-    // (reviews/platform.md CR-H1): an outward tool runs only from the person's own surface or
-    // device, and an asked tool never runs for a model, the harness or a module, since nothing
-    // here can yet tell that the person's own words asked for it.
-    if (def.outward && !isPerson(caller)) {
-      return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
-    }
-    if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
-    // A guest from another tailnet is never a person proving they are here, whatever proof it
-    // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
-    // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
-    if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
-      return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
-    }
-    // Over the tailnet a node signed in as the owner, and over the relay a paired device
-    // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
-    // own actions there need the person's session too (core/presence/person.js),
-    // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
-    // way to get it, and the first passkey is enrolled with onboarding's code.
-    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
-      && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
-      return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
+      // Fail closed until the Gate's routing and the P17 match are wired into the registry
+      // (reviews/platform.md CR-H1): an outward tool runs only from the person's own surface or
+      // device, and an asked tool never runs for a model, the harness or a module, since nothing
+      // here can yet tell that the person's own words asked for it.
+      if (def.outward && !isPerson(caller)) {
+        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
+      }
+      if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+      if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+      if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      // A guest from another tailnet is never a person proving they are here, whatever proof it
+      // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
+      // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
+      if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
+        return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
+      }
+      // Over the tailnet a node signed in as the owner, and over the relay a paired device
+      // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
+      // own actions there need the person's session too (core/presence/person.js),
+      // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
+      // way to get it, and the first passkey is enrolled with onboarding's code.
+      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
+        && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+        return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
+      }
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
@@ -1130,7 +1151,7 @@ export class Registry {
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
+    } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
@@ -1150,7 +1171,7 @@ export class Registry {
     // An asked tool runs for a model, the harness or a module only when the person's own words asked for it. This is the
     // LAST gate before the tool runs, and inside the once-per-key run: the match uses the ask up (consume), so a call
     // refused above (bad input, a rule, a proof) and a retry that only replays the stored answer must never spend it.
-    const askedGate = def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
+    const askedGate = this.deps.gates ? await this.deps.gates.needsAsk({ tool, def, caller, meta, input }) : def.reach === "asked" && (["mcp", "harness", "module"].includes(callerKind(caller)) || agentClaim(caller) !== null);
     const run = async () => {
       if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
         return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };

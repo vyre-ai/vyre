@@ -12,3 +12,5 @@ authors, MIT License (deck/vendor/xterm/LICENSE,
 deck/vendor/xterm/LICENSE.addon-fit).
 
 jsQR 1.4.0, Copyright Cosmo Wolfe, Apache License 2.0 (deck/vendor/jsqr): the Deck's QR fallback for browsers without a barcode detector.
+
+@noble/curves 2.4.0 (ristretto255) and @noble/hashes 2.4.0 (sha512), Copyright (c) 2022 Paul Miller, MIT License (relay/client/vendor/LICENSE.noble-curves, LICENSE.noble-hashes): the group and hash under the typed Wink code's PAKE (relay/client/code.js).

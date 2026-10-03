@@ -1,5 +1,33 @@
 # vault
 
+## 0.3: sealing (branch work/sealing, worktree vyre-vault-03; K3 with platform)
+
+Scope: the sealing process, the inference door with the seal ledger, sealed derivatives, the vault and Drive on the kernel's grants and events (team/0.3/KERNEL-brief.md invariants 4, 5, 6; SPEC-core-contract.md section 8; DESIGN-tasks.md sealed slots). Node now, behind a protocol a Rust process can implement later (kernel/seal/process.js header). reviewer-2 gates every merge.
+
+Done (pushed on work/sealing):
+- kernel/seal/normalise.js, ledger.js, classes.js: how a value is recognised in text (case, spacing, separators, full-width, digit words, percent and \u escapes, hex, base64 at three alignments and url alphabet, split across tokens, 75% partial), keyed-hash ledger with derived sessions, class validators and best-effort detectors. Canary-corpus property tests.
+- kernel/seal/process.js, store.js, proof.js, wire.js, client.js: the separate sealing process (stdio NDJSON, bare env, own 0700 folder, AES-GCM with ref/space/record/field/class as AAD): put, use (sealed slots merged into a sealed derivative, own verified contact point or document only, else presence), deliver (to an egress sink socket, only a status returns), reveal and derived.read (human only, hardware-signed proof over the exact payload, one use), detect (placeholders, originals bound to the session), save, lookup (rate limited), drop.
+
+- kernel/door/door.js, sinks.json, sinks.test.js: the inference door (declared sinks, bounds, residency, budget, detect then ledger on every message, driver, detect and ledger on the reply, tool results via `result`, `sanitize` for anything persisted), and the CI check that fails when a file outside the registry names a model provider host (retrofit_pending lists today's three, the list only shrinks).
+- kernel/seal/placement.js, uses.js: sealed derivatives live only in the sealing folder (0700, outside every sandbox root, checked against box/compose.yml), a project folder gets a reference file; the vault and Drive guard (authorize, run once, one typed event, a refusal looks like absence), the action registry fragment, "Used for Gmail 3 times today" summary, and folds of today's vault_audit rows and agent grants.
+- Tests: 39 pass on Node 22 and 24 (kernel/seal and kernel/door): canary corpus and quiet-text properties, human-only reveal, destination rules, delivery to a real unix-socket sink, no plaintext on disk or in any answer, errors carry codes only, line budget (about 600 code lines of 1,500) and the import rule.
+
+K3 gate (reviewer-2, team/0.3/reviews/K3.md at 7ba106454): FIX, items 1 to 5 fixed with regression tests (unique is a person's act and shares the lookup rate limit; vault.use split by kind into fill, totp, read (GET), call (outward), run (admin); dot and encoded-dot paths refused; sessions keyed by (Space, session) and save is a person's; presence enrolment needs the ceremony token, the person's chain, an attestation or an unattested-allowed process, and a proof from a first device for a second). Also item 10 (ref must match the file), 8 (more hosts and SDKs, only the repo's test roots skipped), 11 (recipient_verified, derived outputs expire), 12 (non-ASCII digits, isChain), and 6 (host check, master key mode and owner).
+
+SHIP GATES (record, binding):
+1. The file master key is allowed only on a server where the sealing process runs as its own OS user and no agent or Claude Code session shares that uid (hostCheck refuses profile "desktop" and agent uids). A desktop release needs the OS keystore (Keychain with a presence-gated ACL, DPAPI with entropy, the enclave) supplying the master.
+2. The door retrofit (sessions and voice behind kernel/door, sinks.json retrofit_pending empty) must land before sealed fields or detection reach assistants. Voice sends audio the ledger cannot scan: the contract must say so as a limit.
+Also open: enrolment attestation verifiers (App Attest, Android key attestation, TPM quote, WebAuthn) are plug-ins the native clients supply; where none exists the card says plainly the key is unattested (T6). Reveal requires surface deck, capsule or mobile but a K1 device chain has no via.surface: K1 must set it from the device class, or reveal relies on the proof plus one_person (reconcile before wiring). Ledger scale: a rolling hash would remove the MAX_WINDOWS limit (fails closed today).
+Wiring conditions for platform: dest.verified, dest.record and approver_chain come from the kernel (the record and the recorded approval), never from caller input; template body and bindings come from the Template version the approval hashed; door.ledgerKey goes into every reveal; chainCtx only on isChain chains; every persistence of a tool call or result goes through door.sanitize.
+
+Doing: R-7 done (presence.json MACed, versioned and anchored in the encrypted store; missing, edited, truncated or rolled back means recovery). R-8 recovery path held for the aligned Wink design. Then the space storage pool (DESIGN-space-storage.md): spike Garage against SeaweedFS on the test box (kernel/storage/spike), SPIKE-storage.md, build.
+
+Next: (1) wire into platform's gateway when it lands: chainCtx at the call, Template body and bindings from records for seal.use, presence.enrol from device enrolment, door.ledgerKey into reveal, door.sanitize before any transcript or memory write. (2) The "not sensitive" Ask for a detection (the person marks a match as not a value). (3) The OS keystore as master key custody (fileMaster is the dev path). (4) A real mail egress sink adapter (a small process that sends what the sealing process hands it). (5) Retrofit sessions and voice behind the door (platform).
+
+Needs: platform (gateway hands the process chainCtx, template body and bindings; enrols device keys with presence.enrol; calls door for every model call), tailnet/native (the signer must hash payloads with kernel/seal/wire.js payloadHash and sign proofBytes).
+
+---
+
 Branch: work/vault · Worktree: ../vyre-vault · Milestone: M3 · Wave 1
 
 ## Scope
