@@ -12,6 +12,7 @@ import { Text } from "../components/Text";
 import { Banner } from "../components/Banner";
 import { showToast } from "../components/Toast";
 import { useStore } from "../store";
+import { haptic } from "../motion/haptics";
 import { ActorMark } from "./ActorMark";
 import { TaskFacts, DraftBlock } from "./TaskFacts";
 import { cardFor, nameOf, recordTitle, STATE_LABEL, taskFacts, draftOf, stateTone, type World } from "./model";
@@ -48,13 +49,14 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
       if (id === "fix") { setOpen({ kind: "fix", task }); return; }
       if (id === "reassign") { setOpen({ kind: "reassign", task }); return; }
       if (id === "file") { setOpen({ kind: "file", task }); return; }
-      if (id === "done") { await store.submit(task.id, handEvidence(task), world.me); showToast(`Done: ${task.title}.`); return; }
-      if (id === "no") { await store.submit(task.id, { decision: { answer: "no", reason: "Declined." } }, world.me); showToast(`Declined: ${task.title}.`); return; }
+      if (id === "done") { await store.submit(task.id, handEvidence(task), world.me); haptic.approve(); showToast(`Done: ${task.title}.`); return; }
+      if (id === "no") { await store.submit(task.id, { decision: { answer: "no", reason: "Declined." } }, world.me); haptic.selection(); showToast(`Declined: ${task.title}.`); return; }
       if (id === "save") {
         const name = cardFor(world, task).inline?.name;
         if (!name || !rec || !String(input || "").trim()) { showToast("Enter a value first."); return; }
         await store.update(rec.urn, { [name]: String(input).trim() }, rec.version, world.me);
         await store.submit(task.id, {}, world.me);
+        haptic.approve();
         showToast(`Saved. ${task.title} is done.`);
       }
     } catch (e) { say(e); }
@@ -67,11 +69,14 @@ export function useTaskActions(world: World | undefined, go: (path: string) => v
     try {
       if (id === "yes") {
         await store.submit(task.id, { decision: { answer: "yes", reason: "Approved with Face ID." } }, world.me);
+        haptic.approve();
         showToast(`Approved: ${task.title}.`);
       } else {
         await store.decide(task.id, { outcome: "approved", proof });
         const after = await store.get(task.record);
         const to = after?.data?.stage;
+        haptic.approve();
+        if (to && before && to !== before) setTimeout(haptic.stage, 180);
         const target = typeof task.output?.target === "string" ? task.output.target : task.title;
         showToast(`${id === "send" ? "Sent" : "Approved"}: ${target}.${to && before && to !== before ? ` ${recordTitle(world, after)} moved to ${to}.` : ""}`);
       }

@@ -11,6 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST } from "./agent-reach.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -68,7 +69,11 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
-  connectors: (/** @type {string} */ as) => isPerson(as) };
+  connectors: (/** @type {string} */ as) => isPerson(as),
+  // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
+  stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
+  // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
+  term: (/** @type {string} */ as) => isPerson(as) };
 /**
  * A manifest still says `"roles": ["box"]` or `["local"]` (forty-plus modules across every
  * team; ADR 0039 keeps that vocabulary rather than renaming it everywhere). `start()` is called
@@ -381,7 +386,15 @@ export function checkInput(schema, value, where = "input") {
  * module cannot hand it another turn's token: whatever it passes, the room is the one of the call the registry is running for it.
  */
 const callStore = new AsyncLocalStorage();
-export const currentCall = () => callStore.getStore() ?? null;
+/** The running call's meta, or null: once the call has returned, work it started (a timer, a floating promise) no longer sees it, so a turn's token cannot outlive the turn. */
+export const currentCall = () => { const b = callStore.getStore(); return b && b.live ? b.meta : null; };
+const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>} */ f) => {
+  // A module the running turn calls (ctx.call) is still in that turn: it inherits the outer turn's token unless the call brought its own from the daemon.
+  const outer = callStore.getStore();
+  const inherited = outer && outer.live && typeof outer.meta.token === "string" && typeof meta.token !== "string" ? { ...meta, token: outer.meta.token } : meta;
+  const box = { meta: inherited, live: true };
+  try { return await callStore.run(box, f); } finally { box.live = false; }
+};
 
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
 
@@ -415,6 +428,21 @@ export const agentClaim = caller => {
   const m = AGENT_CLAIM.exec(String(caller ?? ""));
   return m ? m[1] || "(unnamed)" : null;
 };
+
+/**
+ * Person reach and the person's assistant (the user's ruling, 4 Oct 2026; core/modules/agent-reach.js holds the three lists with a reason for each entry). A caller that
+ * carries an agent or thread claim, on any surface, is an assistant. A `reach: person` tool is OPEN to it unless it is on the person-only list (or on no list yet: a new tool
+ * is refused until someone classifies it). It then runs under the person's own narrowed grants like any other call. An ASK_FIRST tool is open but held for a one-tap task
+ * exactly like an outward one. An assistant reaches an open person tool from any of cli, local, mcp or harness: the surface label is not what decides it.
+ * Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
+ */
+const claimsAgent = (/** @type {any} */ caller) => agentClaim(caller) !== null || /(?:^|[\s:])thread:/.test(String(caller ?? ""));
+const AGENT_SURFACES = new Set(["cli", "local", "mcp", "harness"]);
+export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && claimsAgent(caller) && !AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool);
+/** A person-reach tool that is open to this assistant caller even though the surface label is not one of the person's own. */
+export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && claimsAgent(caller) && AGENT_SURFACES.has(callerKind(caller)) && (AGENT_OPEN.has(tool) || AGENT_ASK_FIRST.has(tool));
+/** An open-but-ask-first tool called by an assistant: held for a one-tap task, like an outward one. */
+export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ caller) => AGENT_ASK_FIRST.has(tool) && claimsAgent(caller);
 
 /**
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
@@ -962,6 +990,10 @@ export class Registry {
         list: () => [...this.providers.keys()],
       },
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
+      // The session credential maker is the Switchboard's alone (vyred's own sessions): no other module is handed the way to open a kernel session for a thread.
+      ...(m.name === "switchboard" && this.deps.kernelSession ? { kernelSession: this.deps.kernelSession } : {}),
+      // The confined spawner for the sessions it starts (the runner's home sandbox, composed by the daemon because core/sessions cannot import core/runner): the Switchboard's alone.
+      ...(m.name === "switchboard" && this.deps.sandbox ? { sandbox: this.deps.sandbox } : {}),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1062,12 +1094,12 @@ export class Registry {
       // (reviews/platform.md CR-H1): an outward tool runs only from the person's own surface or
       // device, and an asked tool never runs for a model, the harness or a module, since nothing
       // here can yet tell that the person's own words asked for it.
-      if (def.outward && !isPerson(caller)) {
+      if ((def.outward || agentAskFirst(tool, caller)) && !isPerson(caller)) {
         return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller)) || personRefusesAgent(tool, def, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1207,7 +1239,7 @@ export class Registry {
   /** @param {any} def @param {any} input @param {any} meta */
   async run(def, input, meta) {
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await callStore.run(meta, () => def.run(input, meta)) }; }
+    try { return { data: await runInTurn(meta, () => def.run(input, meta)) }; }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".
@@ -1304,7 +1336,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || callerAllowed(d.callers, caller)))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller) || agentOpensPerson(name, d, caller)) && !personRefusesAgent(name, d, caller))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

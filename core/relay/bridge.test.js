@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { keyPair } from "./noise.js";
 import { deviceSide, boxSide } from "./channel.js";
 import { bridge } from "./bridge.js";
-import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 
 const ROUTE = "abcdefghijklmnopqrstuvwxyz";
 
@@ -191,10 +191,36 @@ test("peer stream W-3: a hook that ends or resets the stream itself, or installs
   }
 });
 
+test("peer stream: a hook that ends or resets the stream itself frees its slot (10 sequential opens all get 200)", async () => {
+  for (const how of ["end", "reset"]) {
+    const { device } = await peerWorld({ accept: s => { s.ondata = () => {}; setImmediate(() => (how === "end" ? s.end() : s.reset("done"))); } });
+    for (let i = 0; i < 10; i++) {
+      const s = device.open({ peer: "wink", space: "harlow" });
+      assert.equal((await answer(s)).status, 200, `${how} open ${i}`);
+      await new Promise(r => setTimeout(r, 15));
+    }
+    device.close();
+  }
+});
+
+test("peer stream: a hook installing no handler does not throw when the device ends the stream, and the slot frees", async () => {
+  const { device } = await peerWorld({ accept: () => {}, open: 1 });
+  for (let i = 0; i < 3; i++) {
+    const s = device.open({ peer: "wink", space: "harlow" });
+    assert.equal((await answer(s)).status, 200, `open ${i}`);
+    s.end();
+    await new Promise(r => setTimeout(r, 25));
+  }
+  device.close();
+});
+
 test("peer stream W-3b: allow() is asked about this device", async () => {
   const asked = [];
   const { device } = await peerWorld({ allow: id => { asked.push(id); return id === "srv1"; } });
   assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 200);
   assert.deepEqual(asked, ["srv1"]);
   device.close();
+  const other = await peerWorld({ allow: id => id === "srv2" });
+  assert.equal((await answer(other.device.open({ peer: "wink", space: "harlow" }))).status, 403);
+  other.device.close();
 });

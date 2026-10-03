@@ -27,6 +27,8 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
 ].map(a => Object.freeze(a)));
 
+/** The default assistant's id: the one agent that acts as a delegate of the person it works for (kernel/core/authorize.js). */
+export const DEFAULT_ASSISTANT = "assistant";
 const SUBJECT_KINDS = new Set(["actor", "role", "group"]);
 const MAX_DEPTH = 3;
 const HISTORY = 1000;
@@ -512,6 +514,14 @@ export function createGrantsStore(cfg) {
       const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: owner, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
       grants.set(g.id, g);
       await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      // The default assistant (user ruling 4 Oct 2026): a DELEGATE. Every session token carries a model hop, and a thread with no named assistant runs as this one. It is an actor of
+      // every new Space from its start and holds NO grant of its own: alone it can do nothing, and acting for a person (a chain of that person and this agent) it may do whatever
+      // that person may (kernel/core/authorize.js treats it as a pass-through hop), minus what an assistant never does: a grant or role change (model chain), anything that needs
+      // presence the person has not given, and chat membership. Anything that leaves the Space raises a task. A Space that already exists gets the actor only by an owner's
+      // approval with presence (`addActor`), never silently.
+      const dflt = freeze({ kind: "agent", id: DEFAULT_ASSISTANT, space: cfg.space });
+      actors.add(actorKey(dflt));
+      await note(k, "actor.added", urn("member", dflt.id), { actor: dflt });
       return membership;
     },
 
@@ -571,6 +581,8 @@ export function createGrantsStore(cfg) {
       if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
       return c;
     },
+    /** Does this Space have the default assistant as an actor? A Space made before it existed does not, and gets it only by an owner's approval with presence (`addActor`), never silently. */
+    hasDefaultAssistant() { return memberOk({ kind: "agent", id: DEFAULT_ASSISTANT, space: cfg.space }); },
     /** Is this person in this chat (and still a member)? Sync, for the Surfaces door's check when it opens a session for a chat, and for every later room or append decision. @param {string} person @param {string} id */
     chatHas(person, id) {
       const c = chats.get(String(id));

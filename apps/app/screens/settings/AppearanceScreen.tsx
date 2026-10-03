@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Field, Row, Segmented, Switch, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import { V3 } from "@vyre/deck-ui/tokens-v3.js";
-import { Group, Page } from "../shell/Page";
+import { Group, Page } from "../places/Frame";
 import { useSpaces } from "../shell/state";
 import { showingLine } from "../shell/spaces.js";
 import { ComponentGallery } from "./Gallery";

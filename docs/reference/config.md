@@ -146,11 +146,13 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
+| `VYRE_SESSION_SANDBOX` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SETUP_CODE` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SETUP_CODE_AT` | Not described yet. | `core/relay/index.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
+| `VYRE_STREAM_TEST_HOLD` | Not described yet. | `core/stream/group.js` |
 | `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/module.js`, `core/cli/commands/up.js`, `core/cli/commands/update.js`, `core/cli/daemonctl.js`, `core/daemon/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js`, `core/relay/tailnet.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
@@ -172,6 +174,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_WATCH_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_WORK` | Not described yet. | `core/watchers/spawner-wall.js` |
+| `VYRE_WINDOWS_LENDING` | Not described yet. | `core/runner/sandbox.js`, `core/runner/workspace.js` |
 | `VYRE_WINK_REAL` | `1`: let a test run the real Headscale and tailscaled (test server only). | `core/wink/control/headscale.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js`, `core/switchboard/index.js` |
 | `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |

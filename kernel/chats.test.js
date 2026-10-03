@@ -448,3 +448,46 @@ test("roomFor(token): the same live room for event-driven code, only for a modul
   k.surfaces.revoke(tg.session);
   await assert.rejects(() => events.chats.roomFor(tg.token), { code: "no_audience" }, "a token that has ended");
 });
+
+test("room canRead: records, tasks, team members and playbooks are judged by every person's own reach; no one is named", async () => {
+  const { k, owner, g, bob, carol } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const exp = Date.now() + 3_600_000;
+  const urn = (type, id) => `vyre://${SPACE}/${type}/${id}`;
+  const room = async (scope) => {
+    const r = { person: CAROL, role: "temp", scope: scope.map(t => urn(t, "*")), expires: exp };
+    await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${CAROL}`) });
+    const chat = await k.gateway.grants.chats.create(bob, { people: [CAROL] });
+    const t = await k.surfaces.open(bob, { chat: chat.id });
+    k.bindCalls(() => ({ token: t.token }));
+    return stream.audienceFor({});
+  };
+  // carol (temp) reaches only tasks: bob reads everything, so the room reads tasks and nothing else
+  let r = await room(["task"]);
+  assert.equal(r.size, 2);
+  assert.equal(await r.canRead(urn("task", "t1")), true);
+  for (const type of ["team_member", "playbook", "contact"]) assert.equal(await r.canRead(urn(type, "x1")), false, type);
+  // carol reaches only team members and playbooks
+  r = await room(["team_member", "playbook"]);
+  assert.equal(await r.canRead(urn("team_member", "m1")), true);
+  assert.equal(await r.canRead(urn("playbook", "p1")), true);
+  assert.equal(await r.canRead(urn("task", "t1")), false);
+  assert.equal(JSON.stringify(Object.keys(r).sort()), JSON.stringify(["canRead", "group", "read", "size"]));
+  void carol;
+});
+
+test("room read of a kernel task: the fields everyone may read with the same value; null when anyone cannot read it or it does not exist", async () => {
+  const { k, owner, bob, C } = await rig();
+  await k.gateway.records.define(owner, { add_types: [CONTACT] });
+  const contact = await k.gateway.records.create(owner, "contact", { name: "Jane" });
+  const svc = k.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "contact/*"] } } });
+  const t = await svc.tasks.request(owner, { title: "Welcome email for Jane", doer: { kind: "agent", id: "kit", space: SPACE }, checker: { kind: "person", id: BOB, space: SPACE }, output: { kind: "sent" }, record: contact.urn });
+  const group = await C.create(bob, { people: [OWNER] });
+  const ses = await k.surfaces.open(bob, { chat: group.id });
+  k.bindCalls(() => ({ token: ses.token }));
+  const room = await svc.audienceFor({});
+  const got = await room.read(`vyre://${SPACE}/task/${t.id}`);
+  assert.ok(got, "the task is readable by both");
+  assert.equal(got.values.title, "Welcome email for Jane");
+  assert.equal(await room.read(`vyre://${SPACE}/task/task_nonesuch00`), null);
+});

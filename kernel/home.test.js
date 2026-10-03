@@ -76,7 +76,7 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });
   assert.ok(made.data && made.data.id, JSON.stringify(made));
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
-  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "chain", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "space", "tasks"]);
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "chain", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "presence", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "sessions", "space", "tasks"]);
 });
 
 test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {
@@ -192,4 +192,53 @@ test("the daemon opens the Spaces registry at boot: a second hosted Space has it
   t.after(() => d.stop());
   assert.deepEqual(d.kernel.spaces.list().sort(), [d.kernel.id.space, second.space].sort());
   assert.equal(d.kernel.spaces.for(second.space).kernel.grants.roleOf({ kind: "person", id: owner2, space: second.space }), "owner", "reopened from its own store and log");
+});
+
+test("R1/R2: the daemon sets meta.token only from a session token the kernel's own door verified; input and other headers never do; the running turn's token does not outlive the turn", { timeout: 60_000 }, async t => {
+  const { call } = await import("../core/daemon/client.js");
+  const { currentCall } = await import("../core/modules/index.js");
+  const root = tempHome(t);
+  globalThis.__vyreLate = [];
+  globalThis.__vyreCC = currentCall;
+  const fp = path.join(root, "modules");
+  fs.mkdirSync(fp, { recursive: true });
+  writeModule(fp, "zz-tok", { does: { tools: [{ name: "zz-tok.peek", reach: "anyone" }] } }, `
+    export default { async start(ctx) { ctx.tool("zz-tok.peek", { run: async (i, meta) => {
+      const cc = globalThis.__vyreCC, inside = cc() && cc().token || null;
+      setTimeout(() => { globalThis.__vyreLate.push(cc() && cc().token || null); }, 20);
+      return { meta: meta.token ?? null, inside };
+    } }); return {}; } };`);
+  const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
+  t.after(() => d.stop());
+  const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct" });
+  const ses = await d.kernel.surfaces.open(person);
+  const first = await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": ses.token } });
+  assert.ok(first.data, JSON.stringify(first));
+  const got = first.data;
+  assert.equal(got.meta, ses.token, "from the verified header");
+  assert.equal(got.inside, ses.token, "the running call sees it");
+  assert.equal((await call("zz-tok.peek", { token: ses.token }, { root })).data.meta, null, "never from the input");
+  const [body] = ses.token.split(".");
+  // KS-4: a credential that is present and not valid refuses the call; it is never run as if it carried none
+  for (const bad of [`${body}.AAAA`, "x.y", "a".repeat(3000), `${body}.${"b".repeat(60)}`, ""]) { const r = await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": bad } }); assert.equal(r.data, undefined, JSON.stringify(bad).slice(0, 20)); assert.equal(r.error && r.error.code, "no_session"); }
+  d.kernel.surfaces.revoke(ses.session);
+  assert.equal((await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": ses.token } })).error?.code, "no_session", "a revoked session's token refuses the call");
+  assert.equal((await call("zz-tok.peek", {}, { root, headers: { authorization: `Bearer ${ses.token}` } })).data.meta, null, "no other header");
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok(globalThis.__vyreLate.length >= 1 && globalThis.__vyreLate.every(x => x === null), "work started in a turn no longer sees its token once the turn is over");
+  assert.equal(currentCall(), null);
+});
+
+test("stages: a record entering a stage reaches the stages module in the daemon (the gateway hook is wired), and a task nobody can do is reported, not lost", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  const logs = [];
+  const d = await start({ root, log: m => logs.push(String(m)), kernel: true });
+  t.after(() => d.stop());
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const type = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open"] }],
+    stages: [{ name: "intake", tasks: [{ title: "Research", doer: "teammate:ghost", output: { kind: "note" } }] }, { name: "open" }] };
+  await d.kernel.gateway.records.define(owner, { add_types: [type] });
+  await d.kernel.gateway.records.create(owner, "matter", { title: "Estate of Rivera", stage: "intake" });
+  await new Promise(r => setTimeout(r, 400));
+  assert.ok(logs.some(m => /stages: .*"stage":"intake"/.test(m) || /stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
 });

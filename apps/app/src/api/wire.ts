@@ -10,6 +10,8 @@ export type Platform = Omit<ClientDeps, "onState" | "onAlive" | "onOutbox" | "on
   lifecycle?: (c: Client) => () => void;
   /** Runs once before the first request, e.g. finishing a sign-in hop. */
   before?: () => Promise<void>;
+  /** A WebSocket on the path that answers (direct or the relay), for a ticketed stream path like /v1/streams/stream/session?ticket=. */
+  socket?: (path: string) => unknown;
 };
 
 const listeners = new Set<(e: BoxEvent) => void>();
@@ -18,10 +20,12 @@ const resets = new Set<(e: BoxEvent) => void>();
 export function makeBox(platform: () => Promise<Platform>) {
   let clientP: Promise<Client> | null = null;
   let unwire: (() => void) | null = null;
+  let socketOn: ((path: string) => unknown) | null = null;
 
   async function start(): Promise<Client> {
     const p = await platform();
     await p.before?.();
+    socketOn = p.socket ?? null;
     connection.paths(p.paths?.length ?? 1);
     const c = await createClient({
       ...p,
@@ -60,6 +64,12 @@ export function makeBox(platform: () => Promise<Platform>) {
         listeners.delete(onEvent);
         if (onReset) resets.delete(onReset);
       };
+    },
+    /** A WebSocket on whichever path answers (direct or relay): the same call for both. It does not move; on close, open another. */
+    async socket(path: string): Promise<unknown> {
+      await client();
+      if (!socketOn) throw new Error("this box connection has no sockets");
+      return socketOn(path);
     },
     /** A read, now. */
     async call<T = unknown>(tool: string, input: Record<string, unknown> = {}, o?: { presence?: string }): Promise<Result<T>> {

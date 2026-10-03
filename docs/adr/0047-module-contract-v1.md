@@ -549,3 +549,7 @@ which already applies those rules.
   no source, the agent's pick is the card's first line, with no extra step (reviews/platform.md
   M6). vault and the assistant agreed (CHAT.md 06:14).
 - Community module list and the public template repo, which wait for the person (ADR 0033 open 1).
+
+## Person reach and an assistant's claim (3 Oct 2026 addendum)
+
+A `reach: person` tool is refused to any caller that carries an agent or thread claim (`cli:agent:kit`, `deck:agent:kit`) on every surface, and is left out of that caller's listing. The tools an assistant legitimately needs from the CLI are named, each with a reason, in `AGENT_REACH` (core/modules/index.js); the default for every other person-reach tool is person only. This stops a caller that declares an agent claim. It does not stop a model with a shell that leaves the claim out and calls the person's own CLI socket as plain `cli`: person reach is not a boundary against a hostile agent, and presence stays the real control. The claim is meant to be assigned by the daemon from a per-session socket that a Vyre-started session alone can reach (design in the team's CHAT.md, L-1); until that ships, and for a session the person starts by hand in their own terminal, the boundary is a courtesy.

@@ -19,7 +19,7 @@
 import { STOPPED, UNKNOWN } from "./pool.js";
 import net from "node:net";
 import { Bytes, ClientParser, INPUT, clientHandshake, serverHandshake } from "./rfb.js";
-import { acceptKey, encodeFrame, FrameParser } from "./ws.js";
+import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 
 /** @param {import("node:net").Socket} socket @param {number} status @param {string} reason */
 function reject(socket, status, reason) {

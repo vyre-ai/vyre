@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ROLES, assignable, canManage, endDate, endingSoon, extend, tempLine, withRole } from "./roles.js";
+import { ROLES, assignable, ownerMoveLine, canManage, endDate, endingSoon, extend, tempLine, withRole } from "./roles.js";
 
 test("there are five fixed roles", () => {
   assert.deepEqual(ROLES.map((r) => r.id), ["owner", "admin", "manager", "member", "temp"]);
 });
 
-test("an owner gives any role, an admin only below admin, others none", () => {
-  assert.equal(assignable("owner").length, 5);
+test("an owner gives any role but Owner, an admin only below admin, others none", () => {
+  assert.deepEqual(assignable("owner"), ["admin", "manager", "member", "temp"]);
   assert.deepEqual(assignable("admin"), ["manager", "member", "temp"]);
   assert.deepEqual(assignable("member"), []);
 });
@@ -51,4 +51,9 @@ test("a temp role gets a scope and an end; any other role drops them", () => {
   const m = withRole(t, "member");
   assert.equal("scope" in m, false);
   assert.equal(m.role, "member");
+});
+
+test("changing a server's owner is done on the server, and the line says so", () => {
+  assert.ok(!assignable("owner").includes("owner"));
+  assert.equal(ownerMoveLine("Chris Park"), "This server already belongs to Chris Park. To move it, do it on this server and approve with your passkey.");
 });

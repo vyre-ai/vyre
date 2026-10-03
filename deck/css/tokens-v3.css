@@ -17,6 +17,7 @@
   --r-button: calc(10px * var(--corner));
   --r-row: calc(10px * var(--corner));
   --r-card: calc(14px * var(--corner));
+  --r-card-hero: calc(16px * var(--corner));
   --r-sheet: calc(20px * var(--corner));
 }
 :root[data-density="compact"] { --density: 0.8; }

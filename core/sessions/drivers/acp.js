@@ -236,7 +236,7 @@ function runAcp(entry, known, o) {
     for (const n of secretEnv) { const v = o.env && o.env[n]; if (typeof v === "string" && v.length >= 6) out = out.split(v).join("[secret]"); }
     return out;
   };
-  const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
+  const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
   let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false;
@@ -537,7 +537,7 @@ function runAcp(entry, known, o) {
       const argv = Array.isArray(p.args) ? p.args.map(String) : [];
       const line = String(p.command);
       const [exe, args] = !argv.length && /\s/.test(line.trim()) ? ["/bin/sh", ["-c", line]] : [line, argv];
-      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account });
+      t.child = spawnSession(exe, args, { cwd: p.cwd ? confine(String(p.cwd), false) : cwd, env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn });
       const add = d => { t.output += d; if (t.output.length > t.limit) { t.output = t.output.slice(-t.limit); t.truncated = true; } };
       t.child.stdout.setEncoding("utf8"); t.child.stderr.setEncoding("utf8");
       t.child.stdout.on("data", add); t.child.stderr.on("data", add);

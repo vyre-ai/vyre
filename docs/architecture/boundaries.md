@@ -51,6 +51,8 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
+| `core/daemon -> core/runner` | homesandbox.js, sandbox.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
+| `core/daemon -> core/sessions` | kernel-session.js | the daemon holds each Vyre-started session's kernel credential and gives the Switchboard its maker (kernelSession); the module is pure and belongs beside the kernel | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/files -> core/link` | transport.js | Mac to box file transfer over the tailnet transport | lib |
 | `core/files -> core/names` | tailscale.js | runs the tailscale CLI (Taildrive) | lib |
@@ -67,7 +69,6 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/switchboard -> core/harness` | rules.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/switchboard -> core/sessions` | config.js, providers.js, sdk.js, spawn.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
 | `core/switchboard -> core/transcripts` | sanitize.js | keeps credentials out of what it builds from transcripts | lib |
-| `core/term -> core/computers` | ws.js | the RFC 6455 framing sliver Glass wrote, a pure helper | lib |
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
 | `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "i.sh");
 
-function rig(t, { installed = false, confirm = "ok", code = "ok" } = {}) {
+function rig(t, { installed = false, confirm = "ok", code = "ok", sudoSays = "" } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-i-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const log = path.join(dir, "log");
@@ -21,10 +21,11 @@ echo "vyre $*" >> "${log}"
 [ "$1" = call ] || exit 0
 case "$2" in
   system.info) [ -f "${dir}/installed" ] || exit 1; echo '{"data":{}}' ;;
-  wink.server.code) ${code === "ok" ? `echo '{"data":{"offer":"wo_000-abc","code":"WINK-K7QM-4P2X","expires":1}}'` : code === "old" ? `printf '\\033[1m  no_such_tool: \\033[0mno tool wink.server.code\\n' >&2; exit 1` : `printf "  unavailable: Can't connect.\\n" >&2; exit 1`} ;;
+  wink.server.code) ${code === "ok" ? `echo '{"data":{"offer":"wo_000-abc","code":"WINK-K7QM-4P2X","expires":1}}'` : code === "old" ? `printf '\\033[1m  no_such_tool: \\033[0mno tool wink.server.code\\n' >&2; exit 1` : `printf "  unavailable: Can't connect.\\n"; exit 1`} ;;
   wink.server.confirm) ${confirm === "ok" ? `echo '{"data":{"ok":true}}'` : `echo '{"data":{"ok":false}}'`} ;;
 esac
 `, { mode: 0o755 });
+  if (sudoSays) fs.writeFileSync(path.join(dir, "sudo"), `#!/bin/sh\necho "sudo $*" >> "${log}"\nprintf '%s\\n' "${sudoSays}" >&2\nexit 1\n`, { mode: 0o755 });
   if (installed) fs.writeFileSync(path.join(dir, "installed"), "");
   const run = (env = {}, input = "") => spawnSync("sh", [SCRIPT], { encoding: "utf8", input, env: { PATH: `${dir}:${process.env.PATH}`, VYRE_WRAPPER: path.join(dir, "vyre"), VYRE_INSTALLER: path.join(dir, "installer.sh"), VYRE_NO_PROMPT: "1", ...env } });
   return { dir, log, run, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "") };
@@ -85,4 +86,12 @@ test("install: when the server will not make a code, the reason it gave is shown
   const out = r.run({ VYRE_CODE_TRIES: "1" });
   assert.notEqual(out.status, 0);
   assert.match(out.stderr, /unavailable: Can't connect/);
+});
+
+test("install: the reason the server gave is kept when the sudo retry fails for a reason of its own (the real run showed the update refusal instead of the relay's)", t => {
+  const r = rig(t, { code: "down", sudoSays: "vyre: this box builds from a checkout of your own" });
+  const out = r.run({ VYRE_CODE_TRIES: "1" });
+  assert.notEqual(out.status, 0);
+  assert.match(out.stderr, /unavailable: Can't connect/);
+  assert.doesNotMatch(out.stderr, /builds from a checkout/);
 });

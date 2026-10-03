@@ -1,0 +1,96 @@
+# The Android app built from the Expo app (apps/app): `expo prebuild`, then gradle on JDK 17. It replaces android.yml, which built the
+# old Kotlin app in apps/android (that directory stays in the tree, parked; its signing setup is the sideload key described in
+# docs/work/vault.md and used by native-android.yml).
+#
+#   debug     every run that touches the native side: prebuild, `assembleDebug`, then the checks that need no secret (aapt2 badging says the
+#             package, the merged manifest asks only for what the app uses). The debug APK is the artifact, as soon as the shell builds.
+#   Release   is not built here. native-android.yml (the vault team's reusable workflow, work/022-native-android) builds the same app unsigned,
+#             and release.yml signs it in the one job that has the `release` environment, with the pin against the previous tag. Nothing in this
+#             file reads a secret or the release environment, so there is no second place that handles the sideload key.
+#
+# No EAS, no Expo account, no expo-observe, no EAS Update: Vyre sends nothing to a central server.
+name: android-app
+on:
+  push:
+    paths:
+      - "apps/app/app.json"
+      - "apps/app/package.json"
+      - "apps/app/package-lock.json"
+      - "apps/app/modules/**"
+      - "apps/app/src/native/**"
+      - "apps/app/android-permissions.json"
+      - "apps/app/scripts/check-android-permissions.*"
+      - "apps/app/scripts/check-apk-nothing-central.*"
+      - "apps/app/plugins/**"
+      - ".github/workflows/android-app.yml"
+  pull_request:
+    paths:
+      - "apps/app/app.json"
+      - "apps/app/package.json"
+      - "apps/app/package-lock.json"
+      - "apps/app/modules/**"
+      - "apps/app/src/native/**"
+      - "apps/app/android-permissions.json"
+      - "apps/app/scripts/check-android-permissions.*"
+      - "apps/app/scripts/check-apk-nothing-central.*"
+      - "apps/app/plugins/**"
+      - ".github/workflows/android-app.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: android-app-${{ github.ref }}
+  cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
+env:
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # modules/vyre-signer builds native code: the NDK and CMake gradle fetches are cached.
+      - run: echo "SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+        working-directory: .
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK }}/ndk/27.1.12297006
+            ${{ env.SDK }}/cmake/3.22.1
+          key: android-ndk-27.1.12297006-cmake-3.22.1
+      - run: npm ci --no-audit --no-fund
+      - name: The checks' own tests
+        run: node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js" "src/native/*.test.js"
+      - run: npx expo prebuild -p android --no-install --clean
+      - run: ./gradlew --no-daemon assembleDebug
+        working-directory: apps/app/android
+      - name: Name the APK, check its package and what it asks the phone for
+        run: |
+          apk=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          test -f "$apk" || { echo "no debug APK"; ls -R android/app/build/outputs; exit 1; }
+          mkdir -p dist-android && cp "$apk" dist-android/vyre-debug.apk
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          badging=$("$bt/aapt2" dump badging dist-android/vyre-debug.apk)
+          echo "$badging" | sed -n "s/^package: name='\([^']*\)' versionCode='\([^']*\)' versionName='\([^']*\)'.*/package \1 versionCode \2 versionName \3/p" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$badging" | grep -q "^package: name='sh.vyre.app' " || { echo "the package is not sh.vyre.app"; exit 1; }
+          node scripts/check-android-permissions.mjs --debug --apk dist-android/vyre-debug.apk | tee -a "$GITHUB_STEP_SUMMARY"
+          node scripts/check-apk-nothing-central.mjs --apk dist-android/vyre-debug.apk | tee -a "$GITHUB_STEP_SUMMARY"
+          sha256sum dist-android/vyre-debug.apk | tee dist-android/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-app-debug-${{ github.sha }}
+          path: apps/app/dist-android/
+          retention-days: 14

@@ -229,3 +229,20 @@ test("alerts: every existing device is told of a new sign-in; a newcomer cannot 
   await phone.ops.removeEntry(extra.eid);
   assert.equal((await thief.ops.sync()).removed, true);
 });
+
+test("personOf: the identity list read live maps a device to its person, and a removed device maps to nobody at its next call", async t => {
+  const { personOfChains } = await import("../../kernel/remote/person-of.js");
+  const w = world(t), phone = w.device("phone"), laptop = w.device("laptop");
+  await phone.ops.create({ name: "alex", deviceLabel: "phone" });
+  w.clock.t += 2 * HOUR;
+  await w.pair(phone, laptop, "alex's laptop");
+  const id = phone.store.status().id, laptopEid = laptop.store.status().eid;
+  // stateOf as the module's tool does it: the directory's current verified list, each call
+  const stateOf = async () => { const r = await w.dir.resolve("alex"); return r.ok ? r.state : null; };
+  const personOf = personOfChains({ people: () => [id], stateOf });
+  assert.equal(await personOf(laptopEid), id);
+  assert.equal(await personOf(phone.store.status().eid), id);
+  assert.equal(await personOf("a".repeat(26)), null);
+  await phone.ops.removeEntry(laptopEid);
+  assert.equal(await personOf(laptopEid), null, "removed: nobody, at once");
+});

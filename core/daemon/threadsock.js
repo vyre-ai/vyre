@@ -42,14 +42,18 @@ const send = (res, status, body) => { res.writeHead(status, { "content-type": "a
  * Open one session's socket.
  * @param {{ handler: (policy: any) => (req: any, res: any, caller: string, peer?: any) => Promise<void>,
  *   thread: string, agent?: string|null, pids: () => Promise<{ pids: number[], pgids?: number[], sids?: number[] }>,
- *   dir?: string, mode?: number, look?: (pid: number) => any, log?: (m: string) => void }} o
+ *   kernelToken?: () => string | undefined | Promise<string | undefined>, dir?: string, mode?: number, look?: (pid: number) => any, log?: (m: string) => void }} o
  * @returns {Promise<{ path: string, close: () => Promise<void> }>}
  */
 export async function openThreadSocket(o) {
   if (!/^[\w-]{1,64}$/.test(String(o.thread))) throw new Error("thread must be a thread id");
   if (o.agent != null && !/^[a-z0-9][a-z0-9-]{0,39}$/.test(String(o.agent))) throw new Error("agent must be an agent name");
   const dir = o.dir || DIR;
-  fs.mkdirSync(dir, { recursive: true, mode: 0o710 });
+  // The box's shared folder is passed through by a group (the agent runs as another user): 0710 and 0660. A private folder of the person's own user (a Mac, the sandboxed
+  // sessions there) is theirs alone: 0700 and 0600, so nothing else of that user can even list it (reviewer-2 D-5).
+  const shared = dir === DIR;
+  fs.mkdirSync(dir, { recursive: true, mode: shared ? 0o710 : 0o700 });
+  if (!shared) { try { fs.chmodSync(dir, 0o700); } catch { /* not ours to change */ } }
   const file = path.join(dir, `${crypto.randomBytes(16).toString("base64url")}.sock`);
   const who = o.agent ? `agent:${o.agent}` : `thread:${o.thread}`;
   const route = o.handler({ thread: o.thread, ...(o.agent ? { agent: o.agent } : {}) });
@@ -65,11 +69,17 @@ export async function openThreadSocket(o) {
       if (!pid || !belongs(pid, await o.pids(), o.look)) return send(res, 403, { error: { code: "denied", message: "this socket is one session's, and the caller is not in it" } });
       // The kind of client (its MCP server or its hooks) is the one thing the call may say.
       const kind = String(req.headers["x-vyre-caller"] || "").startsWith("harness") ? "harness" : "mcp";
+      // The session's kernel credential (core/sessions/kernel-session.js): set here from what vyred holds for this session, never from the client. Whatever the client sent is dropped.
+      delete req.headers["x-vyre-kernel-session"];
+      const kernelToken = o.kernelToken ? await o.kernelToken() : undefined;
+      // A socket that has a kernel credential never lets a call go out unstamped: no valid token (the session ended, a renewal failed) means the call is refused.
+      if (o.kernelToken && !kernelToken) return send(res, 401, { error: { code: "no_session", message: "this session's kernel credential is not valid; the call was not made" } });
+      if (kernelToken) req.headers["x-vyre-kernel-session"] = kernelToken;
       await route(req, res, `${kind}:${who}`);
     } catch (e) { if (!res.headersSent) send(res, 500, { error: { code: "internal", message: /** @type {Error} */ (e).message } }); }
   });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(file, () => resolve(undefined)); });
-  fs.chmodSync(file, o.mode ?? 0o660);
+  fs.chmodSync(file, o.mode ?? (shared ? 0o660 : 0o600));
   return {
     path: file,
     close: () => new Promise(r => { server.closeAllConnections(); server.close(() => { try { fs.rmSync(file, { force: true }); } catch {} r(undefined); }); }),
