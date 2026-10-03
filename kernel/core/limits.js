@@ -3,7 +3,7 @@
 // and the mark), and writes one event per use. `once` is consumed on the act that carries it; `rate` is a sliding window per grant and actor; a
 // `meter` is reserved before the act and settled after, so a call that fails frees its reservation and a call that spends more than it reserved is
 // charged what it spent. The two meters the kernel keeps are `ai_spend` (the model door) and `session_hours`; any grant may name another.
-// Durable parts (once, settled meters) are replayed from the log by `rebuild`; a rate window is short and is not.
+// Durable parts (once, settled meters and the acts inside a rate window) are replayed from the log by `rebuild`, so a restart resets none of them.
 import { KernelError } from "./errors.js";
 import { mintUuid } from "./ids.js";
 
@@ -36,6 +36,8 @@ export function createLimits(cfg) {
       const w = (windows.get(k) || []).filter(t => t > from);
       if (w.length >= r.n) { windows.set(k, w); throw new KernelError("rate_limited", "too many times in a short while; try again shortly"); }
       w.push(now); windows.set(k, w);
+      // One event per counted act on a rate-limited grant, so a restart cannot reset the window.
+      note(chain, "rate.used", urn(cfg.space, "grant", grant), { grant, actor: actorOf(chain), at: now, per_seconds: r.per_seconds });
     },
 
     /**
@@ -109,10 +111,11 @@ export function createLimits(cfg) {
 
     /** Replay the durable counters after a restart: `once` marks and settled meter totals. */
     rebuild() {
-      onceUsed.clear(); meters.clear(); reservations.clear();
+      onceUsed.clear(); meters.clear(); reservations.clear(); windows.clear();
       for (const e of cfg.log.read({})) {
         if (e.type === "grant.used" && e.data && e.data.grant) onceUsed.add(e.data.grant);
         else if (e.type === "meter.settled" && e.data) slot(`${e.data.key}|${e.data.meter}`).settled += e.data.actual;
+        else if (e.type === "rate.used" && e.data && e.data.at > clock() - e.data.per_seconds * 1000) { const k = `${e.data.grant}|${e.data.actor}`; windows.set(k, [...(windows.get(k) || []), e.data.at]); }
       }
     },
   };

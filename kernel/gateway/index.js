@@ -8,6 +8,7 @@ import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
+import { verifyLog } from "../audit/index.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
@@ -95,8 +96,10 @@ export function createGateway(cfg) {
         // Every event that still holds its data must also match its salted commitment (K1 item 9b); an erased event keeps only its envelope.
         let bad = null;
         if (v.ok) for (const e of cfg.log.read()) if (!(e.data && e.data.erased === true) && !cfg.log.proves(e.seq)) { bad = e.seq; break; }
-        const ok = v.ok && bad === null;
-        return { ok, events: cfg.log.latestSeq(), open_intents: records.openIntents(), ...(ok ? {} : { detail: v.ok ? `event ${bad} does not match its commitment` : v.why }) };
+        // With the Space's public key, every signed checkpoint is checked too (K5): signatures, and that the event each names is in the log as signed.
+        const cps = v.ok && cfg.checkpointKey ? verifyLog({ space: cfg.space, log: cfg.log, publicKey: cfg.checkpointKey }) : null;
+        const ok = v.ok && bad === null && (!cps || cps.ok);
+        return { ok, events: cfg.log.latestSeq(), open_intents: records.openIntents(), ...(cps ? { checkpoints: cps.checkpoints } : {}), ...(ok ? {} : { detail: v.ok ? (bad !== null ? `event ${bad} does not match its commitment` : cps && cps.problems[0].why) : v.why }) };
       },
     }),
     async health() {

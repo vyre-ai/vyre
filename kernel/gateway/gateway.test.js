@@ -372,13 +372,15 @@ test("limits: a `once` grant carries one act, taken atomically", async () => {
 });
 
 test("limits: `rate` is a window per grant and actor", async () => {
-  const { r } = await withType(rig({ grants: limited({ rate: { n: 2, per_seconds: 60 } }), members: ["agent:kit"] }));
+  const { r, gw } = await withType(rig({ grants: limited({ rate: { n: 2, per_seconds: 60 } }), members: ["agent:kit"] }));
   const c = await r.create(owner(), "contact", { name: "Jane" });
   assert.ok(await r.get(agent(), "contact", c.id));
   assert.ok(await r.get(agent(), "contact", c.id));
   await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "rate_limited" });
   await assert.rejects(() => r.query(agent(), "contact", { page: { limit: 1 } }), { code: "rate_limited" }, "a query is one counted act too");
   assert.ok(await r.get(owner(), "contact", c.id), "the owner has no rate");
+  gw.limits.rebuild();
+  await assert.rejects(() => r.get(agent(), "contact", c.id), { code: "rate_limited" }, "a restart does not reset the window");
   T += 61_000;
   assert.ok(await r.get(agent(), "contact", c.id), "the window moves on");
 });
@@ -455,4 +457,19 @@ test("stage gates: fail closed when rules exist and no evaluator is wired", asyn
   const { r } = rig();
   await r.define(owner(), { add_types: [DEAL] });
   await assert.rejects(() => r.create(owner(), "deal", { title: "A", stage: "Intake" }), { code: "unavailable" });
+});
+
+test("K5: audit.verify also checks the signed checkpoints when the Space's key is given", async () => {
+  const { createCheckpointer, ed25519Signer } = await import("../audit/index.js");
+  const { generateKeyPairSync } = await import("node:crypto");
+  const k = generateKeyPairSync("ed25519");
+  const { r, gw, log } = await withType(rig({ checkpointKey: k.publicKey }));
+  await r.create(owner(), "contact", { name: "Jane" });
+  const cp = createCheckpointer({ space: SPACE, log, chains, sign: ed25519Signer(k.privateKey), key_id: "space-key-1", clock });
+  await cp.sign();
+  const ok = await gw.audit.verify();
+  assert.deepEqual([ok.ok, ok.checkpoints], [true, 1]);
+  const forged = createCheckpointer({ space: SPACE, log, chains, sign: ed25519Signer(generateKeyPairSync("ed25519").privateKey), key_id: "space-key-1", clock });
+  await forged.sign();
+  assert.equal((await gw.audit.verify()).ok, false);
 });
