@@ -1,0 +1,12 @@
+{
+  "name": "stream",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": [{ "name": "stream.open", "reach": "person" }] },
+  "watches": { "emits": [] },
+  "shows": { "streams": ["session"] },
+  "needs": {},
+  "teaches": { "tips": [] },
+  "settings": []
+}

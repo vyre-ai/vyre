@@ -31,9 +31,13 @@ Base: main + origin/work/kernel (kernel/contracts) + origin/work/ui (@vyre/ui at
 
 ### Done
 Worktree made, kernel and ui merged (d16c0fee4).
+- Task A (core/stream), 3 Oct: protocol.js, log.js, server.js (serve + SSE + WS), client.js (resumable, Node/browser/RN), adapter.js, index.js + module.json (tool `stream.open`, stream `session` at /v1/streams/stream/session), index.d.ts. Tests: protocol, log, server, client, adapter, stream (module in a real Registry), kill (200 + 200 + 100 lossy, seeded, virtual time), perf. See the numbers under "Task A numbers" once the testbox run is in.
+- Changed contracts: none. Merged history frames carry optional `span` + `data.parts` (a stored-history merge; live frames never do). Control frames `reset` and `heartbeat` have cur 0 and are not logged. Route is /v1/streams/stream/session (module `stream`, stream `session`), not /v1/streams/session.
+- Not mapped on purpose: thread.usage, thread.limit, mode/model events, thread.unqueued (no frame kind in the fixed design). Needs a decision if the composer must show a withdrawn queued row.
+- Not done by A: a snapshot builder (client.snapshot() is the caller's: read the session state, then resume from its cur; stream.open returns head and floor to anchor it), docs pages for stream.* config keys, CHANGELOG entry, docs/reference regenerated but not committed (other teams' hunks are in those files).
 
 ### Doing
-Dispatching four tasks: (A) core/stream protocol + log + server + resumable client + kill/resume tests; (B) steer/stop/edit-retry/branch on the existing switchboard; (C) terminal on every device; (D) chat screen + composer + blocks + performance, mock session shots at 390 and 1280.
+Task A: waiting for a testbox slot (load) to run the stream tests and docs tests; then record numbers. B, C, D: see their own lines.
 
 ### Next
 Collect the four, merge, run tests on testbox, report the first milestone to team-lead.
