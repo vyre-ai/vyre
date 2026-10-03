@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import { Ledger } from "../seal/ledger.js";
 import { createStreamScanner } from "./stream.js";
 
-const MAX_MESSAGES = 2000, MAX_CHARS = 2_000_000;
+const MAX_MESSAGES = 2000, MAX_CHARS = 2_000_000, MAX_TOOL_INPUT = 256 * 1024, MAX_TOOLS = 64;
 export class DoorRefusal extends Error {
   /** @param {{ code: string, [k: string]: any }} refusal */
   constructor(refusal) { super(refusal.code); this.code = refusal.code; this.refusal = refusal; }
@@ -106,8 +106,8 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
         for (;;) {
           const { value: ev, done } = await it.next(); if (done) break; answered = true;
           if (typeof ev.text === "string") { const r = await sc.push(ev.text); if (r.cut) { cut = r.cut; break; } if (r.text) yield { type: "text", text: r.text }; }
-          else if (ev.tool_start) tools.set(ev.tool_start.id, { name: ev.tool_start.name, json: "" });
-          else if (ev.tool_delta) { const t = tools.get(ev.tool_delta.id); if (t) t.json += String(ev.tool_delta.json); }
+          else if (ev.tool_start) { if (tools.size >= MAX_TOOLS) { cut = { code: "budget", class: "tool_input" }; break; } tools.set(ev.tool_start.id, { name: ev.tool_start.name, json: "" }); }
+          else if (ev.tool_delta) { const t = tools.get(ev.tool_delta.id); if (t) { t.json += String(ev.tool_delta.json); if (t.json.length > MAX_TOOL_INPUT) { cut = { code: "budget", class: "tool_input" }; break; } } }
           else if (ev.tool || ev.tool_end) {
             const t = ev.tool ?? (() => { const x = tools.get(ev.tool_end.id); tools.delete(ev.tool_end.id); let inp = null; try { inp = x.json ? JSON.parse(x.json) : {}; } catch { inp = x.json; } return { id: ev.tool_end.id, name: x.name, input: inp }; })();
             const bad = await scanTool(chain, session, t.input, input); if (bad) { cut = bad; break; }

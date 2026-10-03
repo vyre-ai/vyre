@@ -197,3 +197,10 @@ test("D-1: a provider that reports no usage is charged what was reserved", async
   await door.call({ chain, purpose: "t", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }] });
   assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 600, reserved: 0 });
 });
+
+test("stream S-2: a tool input that grows past its cap, or too many open tools, cuts the stream", async t => {
+  const w = await world(t), big = "x".repeat(100_000);
+  const ev = await run(w, [{ tool_start: { id: "t", name: "n" } }, ...[1, 2, 3].map(() => ({ tool_delta: { id: "t", json: big } }))]);
+  assert.equal(ev.at(-1).type, "cut"); assert.equal(ev.at(-1).code, "budget"); assert.equal(ev.at(-1).class, "tool_input");
+  const many = await run(w, Array.from({ length: 70 }, (_, i) => ({ tool_start: { id: "t" + i, name: "n" } }))); assert.equal(many.at(-1).type, "cut");
+});

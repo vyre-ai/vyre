@@ -9,6 +9,7 @@ import { verifyChain, checkAnswer, pinOf, verifyWith } from "../identity/chain.j
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
 export const MAX_PROOF_LIFE_MS = 120_000;
 const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
+export const UNBOUND_GRACE_MS = 24 * 3_600_000;
 export const NEWCOMER_MS = 24 * 3_600_000;
 
 export class Presence {
@@ -116,7 +117,7 @@ export class Presence {
     if (st.id !== person) throw Object.assign(new Error("other_id"), { code: "bad_chain" });
     const a = await checkAnswer(this.pins.get(person), ops);
     if (!a.ok) throw Object.assign(new Error(a.code), { code: a.code === "fork" ? "chain_fork" : "chain_stale" });
-    return { st, pin: { ...pinOf(st), devices: Object.fromEntries(st.entries.filter(e => e.kind === "device").map(e => [e.eid, e.pub])) } };
+    return { st, pin: { ...pinOf(st), first: this.pins.get(person)?.first ?? this.now(), devices: Object.fromEntries(st.entries.filter(e => e.kind === "device").map(e => [e.eid, e.pub])) } };
   }
   async bindOk(st, person, b, key_id, spki) {
     const e = st.entries.find(x => x.eid === b?.eid && x.kind === "device");
@@ -169,6 +170,9 @@ export class Presence {
     const k = this.keys.get(proof.key_id);
     if (!k || k.person !== ctx.person || k.signer !== proof.signer) return "unknown_key";
     if (!k.attested && !this.allowUnattested) return "unattested";
+    // V-3: a key from before the chain was pinned and never bound has a day after the first pin to be bound by a sync; after that it proves nothing.
+    const pin = this.pins.get(ctx.person);
+    if (!k.device && pin?.first !== undefined && this.now() - pin.first > UNBOUND_GRACE_MS) return "needs_bind";
     if (proof.decision !== op || proof.chain_hash !== ctx.chain_hash) return "wrong_decision";
     if (proof.payload_hash !== payloadHash(op, space, fields)) return "wrong_payload";
     const t = this.now();
