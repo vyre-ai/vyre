@@ -13,9 +13,45 @@ import { segments } from "./urn.js";
 import { isSealedShape } from "../store/values.js";
 
 const MAX_BODY = 64 * 1024;
+const RATE = Object.freeze({ max: 120, window_ms: 60_000, sessions: 5000 });
 
 /**
- * @param {{ space: string, grantsStore: any, surfaces: any, chains: any, gateway: any, log: any, clock?: () => number, currentCall?: () => any }} cfg
+ * The room as the gateway sees it, for a chain made from a session token that names a chat (kernel/core/chain.js `room`): the chat's LIVE participants at every call (never a
+ * list taken earlier), and a note of the room's version under which a read was made, so a reply written for a smaller room is refused once the room has grown.
+ * @param {{ grantsStore: any }} cfg
+ */
+export function createRoomPort(cfg) {
+  const gs = cfg.grantsStore;
+  /** @type {Map<string, number>} session -> the lowest room version any read since its last reply was made under */ const reads = new Map();
+  return Object.freeze({
+    /** The people of the chain's room when it is a group (more than one), null when it is not; `not_found` when the person the session is for is no longer in the chat. @param {any} chain @returns {string[] | null} */
+    peopleOf(chain) {
+      const r = chain && chain.room;
+      if (!r) return null;
+      const people = gs.chatPeople(r.chat);
+      const asker = chain.hops[0].actor.id;
+      if (!people || !people.includes(asker)) throw new KernelError("not_found", "no such chat");
+      return people.length > 1 ? people : null;
+    },
+    /** A read under a group session happened now: remember the room's version it was made under. @param {any} chain */
+    noteRead(chain) {
+      const v = gs.chatVersion(chain.room.chat);
+      if (!v) return;
+      const sid = chain.room.session, was = reads.get(sid);
+      reads.set(sid, was === undefined ? v.ver : Math.min(was, v.ver));
+      if (reads.size > RATE.sessions) reads.delete(reads.keys().next().value);
+    },
+    /** The reply is about to be written: refuse it when the room has grown since this session's reads (the turn must be run again for the new room). @param {string} session @param {string} chat */
+    beforeReply(session, chat) {
+      const was = reads.get(session), v = gs.chatVersion(chat);
+      reads.delete(session);
+      if (was !== undefined && v && was < v.grew) throw new KernelError("room_changed", "someone joined the chat after this reply was prepared: run the turn again for the whole room");
+    },
+  });
+}
+
+/**
+ * @param {{ space: string, grantsStore: any, port: any, surfaces: any, chains: any, gateway: any, log: any, clock?: () => number, currentCall?: () => any }} cfg
  */
 export function createRoom(cfg) {
   const clock = cfg.clock || Date.now;
@@ -39,21 +75,43 @@ export function createRoom(cfg) {
     return t;
   }
 
-  /** @param {string[]} people */
-  function handle(people) {
-    const viewers = people.map(person => cfg.chains.fromFacts({ kind: "viewer", person, vouched: true }));
-    const everyone = async (/** @type {(v: any) => Promise<boolean>} */ f) => { for (const v of viewers) if (!(await f(v))) return false; return true; };
+  /** @type {Map<string, number[]>} session -> times of its recent room questions */ const asked = new Map();
+  /** One session may ask the room only so often: the answers are one bit about everyone else, and a loop of them is a probe. @param {string} session */
+  function limited(session) {
+    const now = clock();
+    let w = asked.get(session);
+    if (!w) { if (asked.size >= RATE.sessions) asked.delete(asked.keys().next().value); w = []; asked.set(session, w); }
+    while (w.length && now - w[0] > RATE.window_ms) w.shift();
+    if (w.length >= RATE.max) throw new KernelError("rate_limited", "too many questions about this room; wait a moment");
+    w.push(now);
+  }
+
+  /**
+   * The handle for one session's turn. It keeps the chat and the session, never a list of people: the room is the chat's LIVE participants at every question, so a person who
+   * joined after the handle was made is asked too (R3), and a person who left or the asker leaving ends the answer. It has no head count.
+   * @param {{ chat: string, session: string, person: string }} t
+   */
+  function handle(t) {
+    /** Live viewers, or null when the room is no longer a group of the asker's. */
+    const viewers = () => {
+      const people = gs.chatPeople(t.chat);
+      if (!people || !people.includes(t.person)) throw new KernelError("no_audience", "the person this turn is for is no longer in the chat");
+      return people.map(person => cfg.chains.fromFacts({ kind: "viewer", person, vouched: true }));
+    };
+    const everyone = async (/** @type {any[]} */ vs, /** @type {(v: any) => Promise<boolean>} */ f) => { let all = true; for (const v of vs) if (!(await f(v))) all = false; return all; }; // asks every viewer: its time does not say who failed
+    const note = () => cfg.port.noteRead({ room: { chat: t.chat, session: t.session }, hops: [{ actor: { kind: "person", id: t.person } }] });
     return Object.freeze({
       group: true,
-      size: viewers.length,
-      /** True only when every person in the room may read it: a record, a task, a team member or a playbook, by its urn. */
+      /** True only when every person in the room may read it: a record, a task, a team member or a playbook, by its urn. Row predicates apply (no type-level probe). */
       canRead: async (/** @type {string} */ resource) => {
+        limited(t.session);
         if (typeof resource !== "string" || !segments(resource)) return false;
+        note();
         // A task lives in the kernel's task store or as a record, so a task counts as readable only when BOTH reads allow it (the narrower of the two); team members, playbooks and
         // every other record are `records.read` on their urn.
         const type = segments(resource)[1];
         const actions = type === "task" ? ["records.read", "tasks.read"] : ["records.read"];
-        try { return await everyone(async v => { for (const action of actions) if ((await cfg.gateway.authorize({ chain: v, action, resource, probe: true })).effect !== "allow") return false; return true; }); } catch { return false; }
+        try { return await everyone(viewers(), async v => { for (const action of actions) if ((await cfg.gateway.authorize({ chain: v, action, resource })).effect !== "allow") return false; return true; }); } catch (e) { if (e instanceof KernelError && e.code === "no_audience") throw e; return false; }
       },
       /**
        * A record as the whole room may see it: `{ values, restricted }`, where a field is a value only when every person may read it and holds the same value. Any other
@@ -61,10 +119,13 @@ export function createRoom(cfg) {
        * exist), so a record someone cannot see is not mentioned to the room.
        */
       read: async (/** @type {string} */ resource, /** @type {string[] | undefined} */ fields) => {
+        limited(t.session);
         const s = typeof resource === "string" ? segments(resource) : null;
         if (!s || s.length !== 3 || s[0] !== cfg.space) return null;
+        note();
+        const vs = viewers();
         let rows;
-        try { rows = await Promise.all(viewers.map(v => cfg.gateway.records.get(v, s[1], s[2]))); } catch { return null; }
+        try { rows = await Promise.all(vs.map(v => cfg.gateway.records.get(v, s[1], s[2]))); } catch { return null; }
         if (rows.some(r => !r || typeof r.data !== "object")) return null;
         const want = Array.isArray(fields) ? new Set(fields.map(String)) : null;
         const names = [...new Set(rows.flatMap(r => Object.keys(r.data)))].filter(n => !want || want.has(n)).sort();
@@ -89,7 +150,7 @@ export function createRoom(cfg) {
       const people = gs.chatPeople(t.chat);
       if (!people || !people.includes(t.person)) throw new KernelError("no_audience", "the chat is not known");
       if (people.length < 2) return Object.freeze({ group: false });
-      return handle(people);
+      return handle({ chat: t.chat, session: t.session, person: t.person });
     },
     /**
      * Write a message into the chat the session was opened for. `message` is `{ kind?, body, chat? }`; naming a chat other than the token's is refused. Returns the id the
@@ -102,6 +163,8 @@ export function createRoom(cfg) {
       const text = canonical(message.body ?? null);
       if (Buffer.byteLength(text) > MAX_BODY) throw new KernelError("bad_input", "a message is at most 64 KB");
       if (t.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(t.agent)) throw new KernelError("not_found", "no such chat"); }
+      // A reply written for a smaller room than the one now in the chat is refused (R3): the turn must be run again, reading the room as it is.
+      cfg.port.beforeReply(t.session, t.chat);
       const chain = await cfg.surfaces.chainFor(token);
       const id = mintId("msg", clock());
       const hash = sha256(text);
