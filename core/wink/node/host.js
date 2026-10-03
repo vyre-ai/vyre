@@ -27,11 +27,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn as nodeSpawn } from "node:child_process";
 import { listenPeers } from "./peer-channel.js";
-import { peerSession, socketPipe, admitPeer, joinPeer, streamPipe } from "./peer-wire.js";
+import { peerSession, socketPipe, admitPeer, joinPeer, streamPipe, toolAllowed, peerKindOk } from "./peer-wire.js";
 
 export const GRACE_MS = 3000;
 export const DIRECT_RETRY_MS = 60_000;
-/** A direct link that has been silent this long is probed by a ping before a call, and while it is up and idle every this often. */
+/** A direct link that has been silent this long is probed by a ping before the next call (on demand: nothing recurs under 60 s, RULES principle 8). */
 export const PROBE_MS = 20_000;
 /** A direct call with no answer for this long makes the link ping; no pong means the path is dead and the call moves to the relay stream. */
 export const RACE_MS = 5000;
@@ -163,10 +163,10 @@ export function createHost(deps) {
     const sp = spaces.get(id);
     if (!sp) throw err("not_found", `no space ${id}`);
     sp.identity = o.identity || null;
-    const wrapped = o.peers ? o.peers.serve(o.serve) : null;
+    const wrapped = o.peers && typeof o.peers.serve === "function" ? o.peers.serve(o.serve) : null;
     sp.onSession = o.onSession || null;
     sp.serve = { serve: wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => wrapped(c, t, i) : o.serve };
-    const relayWrapped = o.relayServe ? (o.peers ? o.peers.serve(o.relayServe) : o.relayServe) : null;
+    const relayWrapped = o.relayServe ? (wrapped ? o.peers.serve(o.relayServe) : o.relayServe) : null;
     sp.serve.relay = relayWrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => relayWrapped(c, t, i) : sp.serve.serve;
     if (sp.door || !sp.spec.peerPort) return;
     sp.door = await listenPeers({ path: peerSock(id),
@@ -191,7 +191,8 @@ export function createHost(deps) {
       const session = peerSession(streamPipe(stream), { first: 2, serve: async (tool, input) => {
         // the entry is read again on every call: a device removed after the stream opened is refused at once, whatever the sync allow cache says
         const e = sp.identity ? await sp.identity.entry(who.deviceId) : null;
-        if (!e || e.eid !== who.deviceId || e.kind !== "device") { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
+        if (!e || e.eid !== who.deviceId || !peerKindOk(e)) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
+        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call storage functions");
         return legOf.run("relay", () => sp.serve.relay(caller, tool, input));
       } });
       if (sp.onSession) try { sp.onSession(caller, session); } catch { /* the listener must not break the stream */ }
@@ -241,7 +242,7 @@ export function createHost(deps) {
     const st = { direct: /** @type {"idle"|"trying"|"up"|"failed"} */ ("idle"), relay: /** @type {"idle"|"trying"|"up"|"failed"} */ ("idle"), since: Date.now(), lastError: /** @type {string|null} */ (null) };
     /** @type {Array<() => void>} */ const listeners = [];
     /** @type {any[]} */ const waiters = [];
-    let closed = false, graceTimer = null, retryTimer = null, relayStartedAt = 0, probeTimer = null, lastOk = 0;
+    let closed = false, graceTimer = null, retryTimer = null, relayStartedAt = 0, lastOk = 0;
     const changed = () => { for (const f of listeners) try { f(); } catch { /* a listener must not break the link */ } };
     const current = () => (sess.direct && !sess.direct.closed ? "direct" : sess.relay && !sess.relay.closed ? "relay" : null);
     const wake = () => { const p = current(); if (p) for (const w of waiters.splice(0)) w.resolve(p); };
@@ -258,13 +259,9 @@ export function createHost(deps) {
       }).then(s => {
         if (closed) { s.close(); return; }
         sess.direct = s; st.direct = "up"; st.since = Date.now(); lastOk = Date.now();
-        if (probeTimer) clearInterval(probeTimer);
-        // an idle link that is in use is probed, so a path that died quietly is noticed before the next call needs it
-        probeTimer = setInterval(() => { const d = sess.direct; if (d && Date.now() - lastOk >= probeMs) d.ping(probeWait).then(ms => { if (ms === null) directDead("no answer to a probe"); else lastOk = Date.now(); }, () => {}); }, probeMs);
-        probeTimer.unref?.();
+        // no recurring probe: call() pings a link that went quiet before the next call after probeMs of silence, and raceDirect pings after raceMs
         s.onclose = why => {
           sess.direct = null; st.direct = "failed"; st.lastError = String(why);
-          if (probeTimer) { clearInterval(probeTimer); probeTimer = null; }
           changed();
           if (closed) return;
           tryRelay();
@@ -354,7 +351,6 @@ export function createHost(deps) {
         closed = true;
         if (graceTimer) clearTimeout(graceTimer);
         if (retryTimer) clearTimeout(retryTimer);
-        if (probeTimer) { clearInterval(probeTimer); probeTimer = null; }
         for (const k of /** @type {const} */ (["direct", "relay"])) { try { sess[k]?.close("closed"); } catch { /* gone */ } sess[k] = null; }
         for (const w of waiters.splice(0)) w.resolve(null);
         links.delete(link); changed();

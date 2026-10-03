@@ -272,3 +272,66 @@ test("the frame's nonce reaches the engine (it refuses a replayed one), and a re
   const be = resilientBackend({ put: async () => { calls++; const f = { nonce: `n${calls}` }; sent.push(f.nonce); if (calls < 3) throw Object.assign(new Error("bridge put 409"), {}); }, get: async () => null, del: async () => {}, ping: async () => 1 }, { sleep: async () => {} });
   await be.put("k", "v"); assert.deepEqual(sent, ["n1", "n2", "n3"], "each try is a new call, so a new frame and a new nonce");
 });
+
+// ---- Z-1: the roots check follows links (reviewer-3, 4 Oct 2026) ----
+const frame = async (w, op = "ping") => { const secret = await w.devSecrets.get(OFFER.id), ts = Date.now(); return w.endpoint.handle("device:dev_home", { offer: OFFER.id, op, key: "", ts, sig: sign(secret, { op, key: "", ts }) }); };
+async function offerVia(w, drive, location, kind = "usb-disk") {
+  const d = { offer: OFFER.id, kind, location, capacity: 1e9 };
+  const { pub } = await drive("device:dev_home", { ...d, step: "open" });
+  const secret = "k".repeat(43);
+  return drive("device:dev_home", { ...d, step: "seal", ...sealSecret(pub, OFFER.id, secret) });
+}
+
+test("Z-1: a link under a shared root that leaves the root is refused, and so is a root that is itself a link out; the folder served is the real one", async () => {
+  const w = world();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-root-")));
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-out-")));
+  fs.symlinkSync(outside, path.join(root, "link"));
+  const drive = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [root] });
+  await assert.rejects(() => offerVia(w, drive, { path: path.join(root, "link") }), { code: "denied" }, "root/link -> outside is not served");
+  assert.equal(fs.readdirSync(outside).length, 0, "nothing was made outside the root");
+  // a mount the device reports through such a link
+  await assert.rejects(() => offerVia(w, drive, { mount: path.join(root, "link"), path: path.join(root, "link") }, "smb"), { code: "denied" });
+  // a root that is itself a link (like macOS /Volumes/Macintosh HD -> /): the check uses its real path, so a folder outside it is refused through the link
+  const rootLink = path.join(SCRATCH, `z1-rootlink-${crypto.randomBytes(3).toString("hex")}`);
+  fs.symlinkSync(root, rootLink);
+  const viaLinkRoot = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [rootLink] });
+  const good = path.join(root, "disk"); fs.mkdirSync(good);
+  assert.equal((await offerVia(w, viaLinkRoot, { path: path.join(rootLink, "disk") })).ok, true, "a folder really under a linked root is fine");
+  assert.equal(fs.realpathSync(path.join(good, `vyre-${OFFER.id}`)).startsWith(good), true);
+  const escapeViaRoot = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [rootLink] });
+  await assert.rejects(() => offerVia(w, escapeViaRoot, { path: outside }), { code: "denied" });
+  // a dangling link is refused too (a folder made through it would land wherever it points)
+  fs.symlinkSync(path.join(outside, "not-yet"), path.join(root, "dangling"));
+  await assert.rejects(() => offerVia(w, drive, { path: path.join(root, "dangling") }), { code: "denied" });
+  // the offer's own folder planted as a link
+  w.endpoint.stop(OFFER.id);
+  const plant = path.join(root, "plant"); fs.mkdirSync(plant);
+  fs.symlinkSync(outside, path.join(plant, `vyre-${OFFER.id}`));
+  await assert.rejects(() => offerVia(w, drive, { path: plant }), { code: "denied" }, "vyre-<offer> as a link out is refused");
+  assert.equal(fs.readdirSync(outside).length, 0);
+});
+
+test("Z-1: a folder swapped for a link after it was opened is refused on the next operation, and a swap between the check and the open is refused", async () => {
+  const w = world();
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-race-")));
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-raceout-")));
+  const disk = path.join(root, "disk"); fs.mkdirSync(disk);
+  const drive = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [root] });
+  assert.equal((await offerVia(w, drive, { path: disk })).ok, true);
+  assert.equal((await frame(w)).status, 200, "served while the folder is where it was");
+  const mine = path.join(disk, `vyre-${OFFER.id}`);
+  fs.rmSync(mine, { recursive: true }); fs.symlinkSync(outside, mine);
+  await assert.rejects(() => frame(w), { code: "denied" }, "the folder became a link: refused before the engine sees the frame");
+  // the same swap one level up (the disk folder itself)
+  fs.unlinkSync(mine); fs.mkdirSync(mine);
+  fs.renameSync(disk, path.join(root, "disk-old")); fs.symlinkSync(outside, disk);
+  await assert.rejects(() => frame(w), { code: "denied" }, "a parent swapped for a link: refused");
+  // a swap between the check and the open
+  const w2 = world();
+  const disk2 = path.join(root, "disk2"); fs.mkdirSync(disk2);
+  const swapper = acceptDrive({ endpoint: w2.endpoint, secrets: w2.devSecrets, home: () => "dev_home", roots: [root],
+    hooks: { afterCheck: () => { const m = path.join(disk2, `vyre-${OFFER.id}`); fs.rmSync(m, { recursive: true, force: true }); fs.symlinkSync(outside, m); } } });
+  await assert.rejects(() => offerVia(w2, swapper, { path: disk2 }), { code: "denied" }, "swapped for a link between check and open");
+  assert.equal(fs.readdirSync(outside).length, 0, "nothing was ever written outside the root");
+});

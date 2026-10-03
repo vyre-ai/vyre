@@ -34,7 +34,7 @@ test("the device holds a session open and the home calls back on it, a big frame
 });
 
 test("a connection a NAT dropped quietly: the call that finds no pong closes it and goes down the next session; a slow call with a pong is left alone", async () => {
-  const holds = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, beatMs: 0 });
+  const holds = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, quietMs: 3_600_000 });
   const dead = { closed: false, onclose: () => {}, call: () => new Promise(() => {}), ping: async () => null, close(why) { this.closed = true; this.onclose(why); } };
   holds.onSession("device:dev_mini", dead);
   const live = { closed: false, onclose: () => {}, call: async () => ({ status: 200 }), ping: async () => 1, close() { this.closed = true; } };
@@ -42,11 +42,42 @@ test("a connection a NAT dropped quietly: the call that finds no pong closes it 
   assert.deepEqual(await holds.linkTo("dev_mini").call("wink.storage.bridge", {}), { status: 200 });
   assert.equal(dead.closed, true, "the dead session was closed");
   const slow = { closed: false, onclose: () => {}, call: () => new Promise(r => setTimeout(() => r({ status: 200, slow: true }), 120)), ping: async () => 2, close() { this.closed = true; } };
-  const h2 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, beatMs: 0 }); h2.onSession("device:dev_x", slow);
+  const h2 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, quietMs: 3_600_000 }); h2.onSession("device:dev_x", slow);
   assert.deepEqual(await h2.linkTo("dev_x").call("t", {}), { status: 200, slow: true });
   assert.equal(slow.closed, false, "a slow call with a pong keeps its session");
   const quiet = { closed: false, onclose: () => {}, call: async () => ({}), ping: async () => null, close(why) { this.closed = true; this.onclose(why); } };
-  const h3 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, beatMs: 30 }); h3.onSession("device:dev_y", quiet);
-  await new Promise(r => setTimeout(r, 120));
-  assert.equal(quiet.closed, true, "the heartbeat closes a session that stopped answering");
+  const h3 = createHolds({ waitMs: 300, raceMs: 20, probeMs: 20, quietMs: 10 }); h3.onSession("device:dev_y", quiet);
+  await new Promise(r => setTimeout(r, 30));
+  await assert.rejects(() => h3.linkTo("dev_y").call("t", {}), { code: "unreachable" });
+  assert.equal(quiet.closed, true, "a quiet session is pinged before a call and closed when it does not answer; nothing pings on a timer");
+});
+
+test("P-1: nothing in hold.js recurs under 60 s: a held session and a connected holdDrive create no interval, and a quiet session is pinged only before a call", async () => {
+  const made = [];
+  const realSet = globalThis.setInterval;
+  globalThis.setInterval = (f, ms, ...a) => { made.push(ms); return realSet(f, ms, ...a); };
+  try {
+    const holds = createHolds({ waitMs: 100 });
+    let pings = 0;
+    const s = { closed: false, onclose: () => {}, call: async () => ({ status: 200 }), ping: async () => { pings++; return 1; }, close() { this.closed = true; } };
+    holds.onSession("device:dev_p", s);
+    await new Promise(r => setTimeout(r, 60));
+    assert.equal(pings, 0, "an idle held session is never pinged on a timer");
+    await holds.linkTo("dev_p").call("t", {});
+    assert.equal(pings, 0, "a session that was not quiet is not pinged before a call either");
+    const { holdDrive } = await import("./hold.js");
+    const link = { closed: false, status: () => ({ state: "up" }), close() {}, ready: async () => {}, onchange() {} };
+    const h = holdDrive({ connect: () => link, serve: async () => {}, space: "harlow" });
+    await new Promise(r => setTimeout(r, 30));
+    h.stop();
+  } finally { globalThis.setInterval = realSet; }
+  assert.deepEqual(made.filter(ms => ms < 60_000), [], "no recurring timer under 60 s");
+  // the quiet rule: silent for quietMs, pinged once before the call
+  const quietHolds = createHolds({ waitMs: 100, quietMs: 20 });
+  let n = 0;
+  const q = { closed: false, onclose: () => {}, call: async () => ({ status: 200 }), ping: async () => { n++; return 1; }, close() { this.closed = true; } };
+  quietHolds.onSession("device:dev_q", q);
+  await new Promise(r => setTimeout(r, 40));
+  await quietHolds.linkTo("dev_q").call("t", {});
+  assert.equal(n, 1, "one ping before the call, after the silence");
 });

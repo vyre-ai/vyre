@@ -3,9 +3,10 @@
 // or a scan on one device, a card on the other, and then exactly one grant (kernel/contracts/grant.d.ts) and a handful of events. There is no
 // hidden way in. This module owns the flows on a box:
 //
-//   Add a computer or phone   wink.code.open   a typed code (two-sided: the PAKE of relay/client/code.js, then the person types back the code
-//                                              the new device shows, wink.code.ack); the ring (QR) path is the existing pairing window and
-//                                              this module writes its grant and events too (device.paired, device.removed).
+//   Add a phone               wink.phone.open  a QR and a long code; the phone scans or pastes it, both sides show the same three words, the person says yes
+//                                              on the computer (wink.phone.pair.answer); no yes pairs nothing (core/wink/pairing.js). The ring (QR) path is the
+//                                              existing pairing window; this module registers its devices too (device.paired, device.removed).
+//   Typed code (development)  wink.code.open   a short typed code, two-sided (the PAKE of relay/client/code.js, wink.code.ack): off in a release build.
 //   Invite a person           wink.invite      a Wink ticket with the offer sealed into it; the invited person's redemption becomes a membership
 //                                              grant here (a sensitive role waits for the admin's approval).
 //   Share a computer          wink.share       lend one of my computers to my own space: a node.host grant with limits.
@@ -53,6 +54,9 @@ function owner(meta, what) {
  *   bridge      { createBridge, backendFor, home?, roots? } the pool engine'S bridge (kernel/storage/bridge.js, devices.js): a drive reached through another device (core/wink/storage/bridge.js)
  *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
  *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
+ *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
+ *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
+ *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
  * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, bridge?: { createBridge: any, backendFor: any, home?: () => string | null, roots?: string[] }, offers?: any, handover?: import("./pairing.js").Handover }} [inject]
  * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
@@ -191,10 +195,14 @@ export function createWink(inject = {}) {
     };
 
     ctx.tool("wink.code.open", {
-      description: "Show a Wink code for a new computer or server to type (two-sided: the new device then shows a code to type back here, wink.code.ack). Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
+      description: "Development only: show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
       input: obj({ flow: { type: "string", enum: ["W1", "W2", "W3"] } }),
       presence: { summary: async () => "Show a code to add a new device to this server" },
-      run: async (input, meta = {}) => { owner(meta, "adding a device"); return openCode(input.flow || "W2"); },
+      run: async (input, meta = {}) => {
+        owner(meta, "adding a device");
+        if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff"));
+        return openCode(input.flow || "W2");
+      },
     });
 
     ctx.tool("wink.code.status", {
@@ -209,10 +217,10 @@ export function createWink(inject = {}) {
     });
 
     ctx.tool("wink.code.ack", {
-      description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
+      description: "Development only (the typed code is switched off in a release build; a phone, a computer and a server are added by scan or paste and three words, never this). Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
-      run: async (input, meta = {}) => { owner(meta, "adding a device"); return ackOffer(input.offer, input.typed); },
+      run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed); },
     });
 
     ctx.tool("wink.cancel", {
@@ -238,8 +246,12 @@ export function createWink(inject = {}) {
     const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
     const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
       : ownDirectory({ identity: owner1, space: spaceId, name: boxName }));
+    // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
+    // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
+    const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     const pairing = createPairing({
-      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
+      ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, confirmAdopt: inject.confirmAdopt,
+      releaseMaxMs: inject.releaseMaxMs,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
       ports: inject.ports,
@@ -261,6 +273,8 @@ export function createWink(inject = {}) {
     };
     // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
     const registerDevice = async (/** @type {any} */ p) => {
+      // A phone that scanned the QR on show is held for the person's yes (wink.phone.pair.answer): nothing is registered until then.
+      if (await pairing.phone.hold(p)) return null;
       const identity = await owner1();
       const open = /** @type {any} */ (db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' ORDER BY created DESC LIMIT 1").get());
       const o = open ? readOffer(open.id) : null;
@@ -610,6 +624,7 @@ export function createWink(inject = {}) {
       holds,
       bridgeServe: serveBridge,
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
+      ownHandover: () => pairing.ownHandover(),
       async stop() {
         live = null;
         clearInterval(timer);
@@ -628,6 +643,8 @@ export function createWink(inject = {}) {
   // The home's held connections (`wink.holds.onSession` is the host's serveHome onSession) and the device's answer to the home's storage calls (`wink.bridgeServe`).
   Object.defineProperty(mod, "holds", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.holds; } });
   Object.defineProperty(mod, "bridgeServe", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.bridgeServe; } });
+  // What this server was handed when it was adopted, WITH the secrets (auth key, peer secret), for core/wink/compose.js only: it is not a tool, so no other module can ask.
+  Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;
 }
@@ -642,14 +659,12 @@ export function peerDoor(o) {
 
 /**
  * The home's peer door dispatcher (kernel-2's ask, withKernelCall). `inner(caller, tool, input)` is the registry's dispatcher: one call as that caller, where `caller`
- * is `device:<id>` of a device that has just proved itself (a direct peer proved the device secret over the node, a relay peer is authenticated by the relay
- * channel). The result is `serve(caller, tool, input, proof?)`: the same call, plus, for a direct peer, `proof = { nodeKey, stableId }` (the connection's proven
- * node key) which Wink binds to the device row once. Compose with the kernel's wrapper INSIDE, so the proof reaches Wink first:
+ * is `device:<id>` of a device that has just proved itself (a direct peer proved the key on its identity-list entry, a relay peer is authenticated by the relay
+ * channel). It is `inner` unchanged: the node-key claim binding is gone (admission never read it), so there is nothing for Wink to wrap. Kept so callers keep one shape.
  *
- *     const serve = homeServe(peers, withKernelCall(registryServe, { serverFor, personOf }));
- *     host.serveHome(spaceId, { peers, serve: withKernelCall(registryServe, { serverFor, personOf }) });   // same thing: the host wraps with peers.serve
- *
- * @param {{ serve(inner: any): any }} peers @param {(caller: string, tool: string, input: any) => Promise<any>} inner */
-export function homeServe(peers, inner) { return peers.serve(inner); }
+ * @param {any} peers @param {(caller: string, tool: string, input: any) => Promise<any>} inner */
+export function homeServe(peers, inner) { void peers; return inner; }
+
+export { composeWinkHome } from "./compose.js";
 
 export default createWink();

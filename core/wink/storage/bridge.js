@@ -55,6 +55,66 @@ export function createBridgeSecrets({ vault, random = crypto.randomBytes }) {
 }
 
 /**
+ * The real path of a path that may not exist yet: the real path of its nearest existing ancestor with the missing names put back. A symlink (also one that
+ * points nowhere) anywhere in it is followed, never trusted, so a lexical `startsWith` on the result means what it says. A dangling link is refused.
+ * @param {string} p
+ */
+export function realOf(p) {
+  /** @type {string[]} */ const rest = [];
+  let cur = path.resolve(String(p));
+  for (;;) {
+    try { return path.join(fs.realpathSync.native(cur), ...rest.reverse()); }
+    catch (e) {
+      const code = /** @type {any} */ (e).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw e;
+      let l = null; try { l = fs.lstatSync(cur); } catch { /* not there at all */ }
+      if (l && l.isSymbolicLink()) throw err("denied", "That folder is a link that leads nowhere.");
+      const up = path.dirname(cur);
+      if (up === cur) return path.resolve(String(p));
+      rest.push(path.basename(cur)); cur = up;
+    }
+  }
+}
+/** Is a real path one of the real roots or below one? @param {string} x @param {string[]} roots */
+export const within = (x, roots) => roots.some(b => x === b || x.startsWith(b.endsWith(path.sep) ? b : b + path.sep));
+
+/**
+ * A drive folder that must stay under the real roots. `check()` is run before every use: the real path of the folder must still be itself (no link on the way or
+ * at the end), still lie under a real root, and still be the same directory (device and inode) it was when it was opened. The folder is opened with O_NOFOLLOW and
+ * O_DIRECTORY, so a link swapped in for the last name between the check and the open is refused by the kernel, and what was opened is compared with what was checked.
+ * `hooks.afterCheck` runs between the check and the open (tests swap a folder there).
+ * @param {{ dir: string, roots: string[], hooks?: { afterCheck?: () => void } }} o
+ * @returns {{ real: string, check: () => void }}
+ */
+export function rootedDir({ dir, roots, hooks = {} }) {
+  const realRoots = roots.map(r => { try { return realOf(r); } catch { return ""; } }).filter(Boolean);
+  const deny = () => err("denied", "That folder is not one this device shares drives from.");
+  const real = realOf(dir);
+  if (!within(real, realRoots)) throw deny();
+  try { if (fs.lstatSync(real).isSymbolicLink()) throw deny(); } catch (e) { if (/** @type {any} */ (e).code === "denied") throw e; }
+  hooks.afterCheck?.();
+  /** @type {{ dev: number, ino: number } | null} */ let id = null;
+  try {
+    const flags = fs.constants.O_RDONLY | (fs.constants.O_DIRECTORY || 0) | (fs.constants.O_NOFOLLOW || 0);
+    const fd = fs.openSync(real, flags);
+    try { const f = fs.fstatSync(fd), n = fs.statSync(real); if (f.dev !== n.dev || f.ino !== n.ino) throw deny(); id = { dev: f.dev, ino: f.ino }; }
+    finally { fs.closeSync(fd); }
+  } catch (e) {
+    const code = /** @type {any} */ (e).code;
+    if (code === "ENOENT") id = null; // not made yet: the engine makes it, and check() looks again before every use
+    else throw code === "denied" ? e : deny();
+  }
+  if (id && realOf(real) !== real) throw deny();
+  const check = () => {
+    if (realOf(real) !== real || !within(realOf(real), realRoots)) throw deny();
+    let l; try { l = fs.lstatSync(real); } catch (e) { if (/** @type {any} */ (e).code === "ENOENT" && !id) return; throw deny(); }
+    if (l.isSymbolicLink() || !l.isDirectory()) throw deny();
+    if (id) { if (l.dev !== id.dev || l.ino !== id.ino) throw deny(); } else id = { dev: l.dev, ino: l.ino };
+  };
+  return { real, check };
+}
+
+/**
  * The folder on THIS device that holds a drive's files: where it is mounted. A plugged-in disk has its path; a network drive is mounted under the
  * usual places by its share name. Returns null when this device does not have it (so it cannot serve it).
  * @param {{ mount?: string, path?: string, share?: string }} loc @param {{ kind?: string, exists?: (p: string) => boolean }} [o]
@@ -75,15 +135,15 @@ export function localDriveDir(loc, o = {}) {
  *   live?: (offer: string) => boolean | Promise<boolean>, log?: (m: string) => void }} o
  */
 export function createBridgeEndpoint({ createBridge, secrets, live = () => true, log = () => {} }) {
-  /** @type {Map<string, { caller: string, bridge: { handle(f: any): Promise<{ status: number, body?: Buffer }> } }>} */
+  /** @type {Map<string, { caller: string, guard?: () => void | Promise<void>, bridge: { handle(f: any): Promise<{ status: number, body?: Buffer }> } }>} */
   const serving = new Map();
   return {
-    /** Start serving an offer from a folder on this device, for one caller. @param {{ offer: string, dir: string, capacity: number, caller: string }} o */
-    async serve({ offer, dir, capacity, caller }) {
+    /** Start serving an offer from a folder on this device, for one caller. `guard` runs before every frame is handled and throws when the folder is no longer where it was checked. @param {{ offer: string, dir: string, capacity: number, caller: string, guard?: () => void | Promise<void> }} o */
+    async serve({ offer, dir, capacity, caller, guard }) {
       const secret = await secrets.get(offer);
       if (!secret) throw err("no_secret", "This device has no secret for that drive, so it cannot serve it.");
       if (!/^device:[A-Za-z0-9_-]{1,64}$/.test(caller)) throw err("bad_input", "Name the device that may ask, like device:dev_abc.");
-      serving.set(offer, { caller, bridge: createBridge({ dir, secret, capacity }) });
+      serving.set(offer, { caller, ...(guard ? { guard } : {}), bridge: createBridge({ dir, secret, capacity }) });
     },
     /** @param {string} offer */
     stop(offer) { serving.delete(offer); },
@@ -98,6 +158,7 @@ export function createBridgeEndpoint({ createBridge, secrets, live = () => true,
       if (!s) throw err("not_found", "This device is not serving that drive.");
       if (s.caller !== caller) { log("wink storage: a bridge call from a device that does not own the drive was refused"); throw err("denied", "Only the device the drive was offered to may use it."); }
       if (!(await live(input.offer))) throw err("denied", "That drive is no longer offered.");
+      if (s.guard) await s.guard();
       if (input.body !== undefined && (typeof input.body !== "string" || input.body.length > Math.ceil(MAX_FRAME_BODY * 4 / 3) + 4)) return { status: 413 };
       const body = input.body ? Buffer.from(input.body, "base64") : undefined;
       const r = await s.bridge.handle({ op: input.op, key: input.key, ts: input.ts, nonce: input.nonce, sig: input.sig, ...(body ? { body } : {}) });
@@ -245,9 +306,9 @@ export async function pairFromHome({ secrets, linkTo }, d) {
  * mounted on this device, keeps the secret, and starts serving it to that home only. Two steps (see pairFromHome): `open` checks and answers a one-time key
  * (kept in memory for `ttlMs`, used once), `seal` opens the sealed secret with it. A plain `secret` input is refused.
  * `roots` are the folders a drive may be mounted under on this device (the home names a mount, it never gets to name any folder it likes).
- * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean, roots?: string[], ttlMs?: number, now?: () => number }} o
+ * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean, roots?: string[], ttlMs?: number, now?: () => number, hooks?: { afterCheck?: () => void } }} o
  */
-export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volumes", "/mnt", "/media"], ttlMs = 60_000, now = Date.now }) {
+export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volumes", "/mnt", "/media"], ttlMs = 60_000, now = Date.now, hooks }) {
   /** @type {Map<string, { priv: crypto.KeyObject, until: number }>} */
   const open = new Map();
   return async (/** @type {string} */ caller, /** @type {any} */ input) => {
@@ -257,7 +318,9 @@ export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volume
     if (!input || typeof input.offer !== "string" || !ID.test(input.offer)) throw err("bad_input", "That storage id is not valid.");
     if ("secret" in input) throw err("bad_input", "A secret is never sent as it is. Ask to open first, then send it sealed.");
     const loc = input.location || {};
-    const under = (/** @type {string} */ p) => roots.some(r => { const x = path.resolve(p), b = path.resolve(r); return x === b || x.startsWith(b + path.sep); });
+    // Real paths, never lexical ones: a link under a root (or a root that is itself a link, like /Volumes/Macintosh HD) is followed before the check.
+    const realRoots = roots.map(r => { try { return realOf(r); } catch { return ""; } }).filter(Boolean);
+    const under = (/** @type {string} */ p) => { try { return within(realOf(p), realRoots); } catch { return false; } };
     for (const p of [loc.mount, input.kind === "usb-disk" ? loc.path : undefined]) if (p && (typeof p !== "string" || !under(p))) throw err("denied", "That folder is not one this device shares drives from.");
     const dir = localDriveDir(loc, { kind: input.kind, exists });
     if (!dir || !under(dir)) throw err("not_found", "This device cannot see that drive right now.");
@@ -274,7 +337,12 @@ export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volume
     if (!one || one.until <= now()) throw err("denied", "The offer to open has run out. Start the pairing again.");
     const secret = openSecret(one.priv, input.offer, input);
     await secrets.keep(input.offer, secret);
-    try { await endpoint.serve({ offer: input.offer, dir: `${dir.replace(/\/+$/, "")}/vyre-${input.offer}`, capacity: cap, caller }); }
+    try {
+      const target = path.join(realOf(dir), `vyre-${input.offer}`);
+      try { fs.mkdirSync(target, { mode: 0o700 }); } catch { /* it exists already, or the engine makes it; rootedDir looks at what is there */ }
+      const rooted = rootedDir({ dir: target, roots, hooks });
+      await endpoint.serve({ offer: input.offer, dir: rooted.real, capacity: cap, caller, guard: rooted.check });
+    }
     catch (e) { await secrets.remove(input.offer); throw e; }
     return { ok: true };
   };
