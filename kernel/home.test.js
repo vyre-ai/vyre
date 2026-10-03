@@ -107,10 +107,18 @@ test("K-3: the kernel key is derived in the sealing process and never written to
 });
 
 test("K-3: where the sealing process cannot run safely the kernel refuses to start, unless a developer opts into a file key", { timeout: 60_000 }, async t => {
-  const saved = process.env.VYRE_SEAL_DEV;
+  const saved = { dev: process.env.VYRE_SEAL_DEV, profile: process.env.VYRE_SEAL_PROFILE, uids: process.env.VYRE_AGENT_UIDS };
   delete process.env.VYRE_SEAL_DEV;
-  t.after(() => { process.env.VYRE_SEAL_DEV = saved; });
+  t.after(() => { for (const [k, v] of [["VYRE_SEAL_DEV", saved.dev], ["VYRE_SEAL_PROFILE", saved.profile], ["VYRE_AGENT_UIDS", saved.uids]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  // A server whose sealing process would share an agent's uid does not start (a desktop does: its master is a file inside the Vyre home, no development switch).
+  process.env.VYRE_SEAL_PROFILE = "server"; process.env.VYRE_AGENT_UIDS = String(process.getuid?.() ?? 0);
   await assert.rejects(() => start({ root: tempHome(t), log: () => {}, kernel: true }), { code: "key_custody" });
+  delete process.env.VYRE_SEAL_PROFILE; delete process.env.VYRE_AGENT_UIDS;
+  for (const profile of [undefined, "server"]) {
+    if (profile) process.env.VYRE_SEAL_PROFILE = profile; else delete process.env.VYRE_SEAL_PROFILE;
+    const ok = await start({ root: tempHome(t), log: () => {}, kernel: true }); t.after(() => ok.stop()); assert.ok(ok.kernel.fresh, `the kernel boots on the ${profile ?? "default (desktop)"} profile with no development variable`);
+  }
+  delete process.env.VYRE_SEAL_PROFILE;
   process.env.VYRE_KERNEL_FILE_KEY = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_FILE_KEY; });
   const logs = [];
@@ -240,7 +248,7 @@ test("stages: a record entering a stage reaches the stages module in the daemon 
   await d.kernel.gateway.records.define(owner, { add_types: [type] });
   await d.kernel.gateway.records.create(owner, "matter", { title: "Estate of Rivera", stage: "intake" });
   await new Promise(r => setTimeout(r, 400));
-  assert.ok(logs.some(m => /stages: .*"stage":"intake"/.test(m) || /stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
+  assert.ok(logs.some(m => /stage\.error|stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stage|flows/.test(m)).join(" | ")}`);
 });
 
 test("stages: a Space this home hosts gets the same stage hook as the home's own, over its own kernel (a firm Space is not the personal one)", { timeout: 60_000 }, async t => {
@@ -256,5 +264,5 @@ test("stages: a Space this home hosts gets the same stage hook as the home's own
   await h.gateway.records.define(chain, { add_types: [type] });
   await h.gateway.records.create(chain, "matter", { title: "Estate of Rivera", stage: "intake" });
   await new Promise(r => setTimeout(r, 500));
-  assert.ok(logs.some(m => /stages: /.test(m)), `the hosted Space's stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
+  assert.ok(logs.some(m => /stage\.error|stages: /.test(m)), `the hosted Space's stages module saw the entry: ${logs.filter(m => /stage|flows/.test(m)).join(" | ")}`);
 });

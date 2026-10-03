@@ -25,15 +25,15 @@ function fakeSealer() {
 
 async function rig() {
   const sealer = fakeSealer();
-  const released = [];
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async i => { released.push(i); return { secret: "v" }; } });
+  const released = [], forwarded = [];
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async i => { released.push(i); return { secret: "v" }; }, forwardCredential: async q => { forwarded.push(q); return { status: 200, ok: true, headers: {}, body: "e30=" }; } });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const g = k.gateway.grants;
   const role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
   const mk = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
-  return { k, sealer, owner, bob, g, mk, released, un: (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) }) };
+  return { k, sealer, owner, bob, g, mk, released, forwarded, un: (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) }) };
 }
 
 test("leases: `allowed` is the kernel's answer from the two Offers, on every issue and renew, never the caller's", async () => {
@@ -161,3 +161,32 @@ test("runnerPorts: the runner's lease, access answer and revocation are the kern
   assert.throws(() => runnerPorts({ leases: r.k.gateway.leases, offers: r.k.gateway.grants.offers }, { chain: () => r.bob, member: BOB, deviceId: () => "", deviceKey: () => "k" }), { code: "bad_input" });
 });
 async function findAccept(r) { const l = r.k.log.read({ type: "offer.created" }).map(e => e.data.offer).find(o => o.side === "member_accepts"); return l.id; }
+
+
+test("leases.forward: authorized for the caller's chain against the route before the vault is asked; the credential comes from the Space's session definition; a change asks; a file needs the caller's own drive right", async () => {
+  const r = await rig();
+  const { bob, owner, g, forwarded } = r;
+  const L = r.k.gateway.leases;
+  const grant = async actions => { const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions, resource: { prefix: `vyre://${SPACE}/${actions[0].startsWith("drive") ? "file" : "service"}/*` }, conditions: {}, source: "test" }; await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) }); };
+  L.bind("s1", "lease1", { routes: [{ route: "api.stripe.com", ref: "stripe_key", connector: "stripe", methods: ["GET", "POST"], paths: ["/v1/*"] }] });
+  const req = { session: "s1", route: "api.stripe.com", method: "GET", path: "/v1/charges" };
+  await assert.rejects(() => L.forward(bob, req), { code: "not_found" }, "no service grant: absent");
+  assert.equal(forwarded.length, 0, "the vault was never asked");
+  await grant(["service.read", "service.call"]);
+  const ok = await L.forward(bob, { ...req, ref: "other_key", connector: "evil" });
+  assert.equal(ok.status, 200);
+  assert.equal(forwarded[0].ref, "stripe_key", "the credential is the session definition's, never the caller's");
+  assert.equal(forwarded[0].connector, "stripe");
+  const held = await L.forward(bob, { ...req, method: "POST", path: "/v1/refunds" });
+  assert.equal(held.held, true, "a change is an outward act: it asks first");
+  assert.equal(forwarded.length, 1, "and nothing was sent");
+  for (const bad of [{ route: "evil.example" }, { path: "/v2/x" }, { path: "/v1/../v2" }, { method: "DELETE", path: "/v1/x" }, { session: "s2" }]) await assert.rejects(() => L.forward(bob, { ...req, ...bad }), { code: "not_found" }, JSON.stringify(bad));
+  // a connector form (a Flow's "Call a service")
+  assert.equal((await L.forward(bob, { connector: "stripe", method: "GET", path: "/v1/balance" })).status, 200);
+  assert.equal(forwarded.at(-1).connector, "stripe");
+  // a file the request reads or saves must be the caller's own drive right
+  await assert.rejects(() => L.forward(bob, { ...req, upload: { drive: { path: "clients/a.pdf" } } }), { code: "not_found" }, "no drive.read");
+  await assert.rejects(() => L.forward(bob, { ...req, saveTo: "inbox/out.json" }), { code: "not_found" }, "no drive.write");
+  await grant(["drive.read", "drive.write"]);
+  assert.equal((await L.forward(bob, { ...req, upload: { drive: { path: "clients/a.pdf" } }, saveTo: "inbox/out.json" })).status, 200);
+});

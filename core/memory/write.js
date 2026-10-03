@@ -12,6 +12,7 @@
 
 import crypto from "node:crypto";
 import { contentWords } from "./iq/retrieve.js";
+import { scrubbed } from "./sealed.js";
 
 /** The person's own room. */
 export const YOU = "you";
@@ -131,7 +132,7 @@ export function writeStore({ db, now = () => Date.now() }) {
           return { id: String(same.id), linked: true, fresh: true };
         }
         const id = `mw_${crypto.randomBytes(8).toString("hex")}`;
-        q.insert.run(id, w.kind, w.text, w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
+        q.insert.run(id, w.kind, scrubbed(w.text), w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
           w.from.thread ?? null, Number.isInteger(w.from.seq) ? w.from.seq : null, w.untrusted ? 1 : 0, t, t);
         q.addLink.run(id, w.project, t);
         return { id, linked: false, fresh: true };

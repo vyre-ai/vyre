@@ -121,6 +121,9 @@ export function createAuthorizer(cfg) {
       let approver = null;
       for (const h of chain.hops) {
         const actor = h.actor;
+        // A Flow run's automation hop is a job label under its approving person (kernel/core/chain.js forFlow: only the builder makes one, and only from a person's chain): it adds no
+        // grants and takes none away, so the run can do exactly what its approver can, narrowed further by the runner's declared caps. Without a person in the chain it is nothing.
+        if (actor.kind === "automation" && typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         if (!cfg.members.has(actor)) {
           // A standing service reads without a person in the chain; it never writes (4.3).
           if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource))) return deny("not_a_member");

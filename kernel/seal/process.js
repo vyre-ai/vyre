@@ -116,7 +116,8 @@ export class Sealer {
   reveal(r, derived = false) {
     const ctx = this.ctxOf(r.ctx);
     need(typeof r.purpose === "string" && r.purpose.length > 0 && r.purpose.length <= 200, "bad_input");
-    need(ctx.one_person && !ctx.model_originated && HUMAN_SURFACES.has(ctx.surface), "human_only");
+    // A person at the deck, the capsule or the mobile app, or a member on a paired device (the kernel's device chain carries `via.device` and no surface): the hardware-signed proof below is what proves the person.
+    need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
     const op = derived ? "seal.reveal_derived" : "seal.reveal";
     const why = this.presence.refuse(r.proof, { op, space: ctx.space, fields: { ref: r.ref, purpose: r.purpose }, ctx });
     if (why) throw err(why === "no_proof" ? "needs_presence" : why);
@@ -220,7 +221,7 @@ export class Sealer {
       case "service.get": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); const r = this.store.read("values", serviceMeta(req.name).ref, "_service"); need(r, "not_found"); return { value: r.plaintext }; }
       case "service.delete": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); return { deleted: this.store.drop("values", serviceMeta(req.name).ref), event: { type: "service.deleted", name: req.name } }; }
       case "service.list": { need(!req.ctx?.model_originated, "bad_input"); return { names: this.store.metas("values", "_service").map(m => m.record).sort() }; }
-      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
+      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, custody: { master: "file", profile: process.env.VYRE_SEAL_PROFILE || "desktop", platform: process.platform, note: custodyNote() }, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }
   }
@@ -240,11 +241,18 @@ export function fileMaster(dir) {
  * Ship gate (reviewer-2, K3 item 6): a key file beside the values is safe only on a server where this process runs as its own user and no agent
  * or Claude Code session shares that uid. Otherwise any process of that user reads the key and the values, and invariant 5 does not hold.
  * profile "server": refuse when this uid is one of the agent uids (VYRE_AGENT_UIDS, default the box image's 2000 to 2063).
- * profile "desktop": refuse a file master altogether until the OS keystore supplies it; VYRE_SEAL_DEV=1 allows it for development and tests.
+ * profile "desktop" (the default): the master is a 0600 file inside the Vyre home. Vyre's own sessions are sandboxed away from that folder (core/runner/homesandbox.js denies the whole Vyre
+ * home on macOS and Linux) and the disk's own encryption protects it at rest; fileMaster still refuses a file that is not private to this user. An OS keystore (Keychain, DPAPI, secret
+ * service) is the 0.3.1 upgrade. No development switch is needed anywhere; VYRE_SEAL_DEV=1 only skips these checks in tests.
  */
+/** What the person is told about where the master lives, plainly. */
+export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop", platform = process.platform) {
+  if (profile === "server") return "The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it.";
+  if (platform === "win32") return "Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file.";
+  return "The sealing key is a file inside your Vyre folder, private to you. Vyre's own sessions are sandboxed away from it and your disk's encryption protects it at rest; root, or a program running as you outside Vyre's sandbox, can read it.";
+}
 export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = process.env.VYRE_SEAL_DEV === "1", uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
-  if (dev) return;
-  if (profile === "desktop") throw Object.assign(new Error("sealing on a desktop needs the OS keystore for its master key: not available yet"), { safe: true });
+  if (dev || profile === "desktop") return;
   const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
   if (profile !== "server" || agents.includes(uid)) throw Object.assign(new Error("the sealing process must run as its own user, not an agent's"), { safe: true });
 }

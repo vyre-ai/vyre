@@ -176,6 +176,7 @@ async function startLocked(opts, root, p, release) {
   /** @type {any} */ let kernel = null;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
+  /** @type {(() => void) | null} */ let closeFlowsHost = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
@@ -189,21 +190,24 @@ async function startLocked(opts, root, p, release) {
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
-    // One stages module per Space, over that Space's own kernel: the home's own Space here, and every hosted Space through the Spaces registry's `stageFactory`.
-    const makeStages = async (/** @type {any} */ k, /** @type {string} */ space, /** @type {string} */ ownerId) => {
-      const { createStages } = await import("../../kernel/flows/stages.js");
-      const sh = k.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
-      const owner = () => k.chains.fromFacts({ kind: "session_person", person: ownerId, session: "stages", vouched: true });
-      const st = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
-        catalog: async () => ({ space, types: Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
-        chain: () => k.chains.appendService(owner(), "stages", true) });
-      k.log.subscribe("stages", {}, (/** @type {any} */ e) => st.onEvent(e));
-      return st;
-    };
+    // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
+    // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
+    const { createFlowsHost } = await import("./flows-host.js");
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    registry.deps.flowsHost = flowsHost;
+    closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+      // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
+      forwardCredential: async (/** @type {any} */ q) => {
+        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
+        const r = q.request;
+        const out = await registry.call("vault.forward", { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), session: q.session || q.idem || "home" }, "module:leases");
+        if (out.error) throw Object.assign(new Error(out.error.message), { code: out.error.code });
+        return out.data;
+      },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
-      stageFactory: (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => makeStages(k, space, meta.owner) });
-    stages = await makeStages(kernel, kernel.id.space, kernel.id.owner);
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
+    stages = (await flowsHost.attach(kernel.id.space, kernel, kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
@@ -229,9 +233,9 @@ async function startLocked(opts, root, p, release) {
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
-      // A chat turn (the stream asked, and the Switchboard only passes `chat` and `asker` from module:stream): the session is the asker's, in that chat, and the kernel checks they are in it.
+      // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
-      const person = kernel.chains.fromFacts({ kind: "session_person", person: q.asker || kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
+      const person = await personChainFor(q.asker || kernel.id.owner);
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
       const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
@@ -242,11 +246,24 @@ async function startLocked(opts, root, p, release) {
     // reason.
     // On macOS and Linux a Vyre-started session is always confined: a sandbox that cannot be built is a refusal to start the session (with the reason), never a silent unconfined start
     // (reviewer-3 E-2). Only a development build can opt out (VYRE_SESSION_SANDBOX_OFF=1). Windows starts unsandboxed in 0.3, with the notice the user approved.
-    if ((process.platform === "darwin" || process.platform === "linux") && !devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) {
+    if ((process.platform === "darwin" || process.platform === "linux") && devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) registry.deps.sandbox = { off: true };
+    else if (process.platform === "darwin" || process.platform === "linux") {
       try {
         const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
         registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
-          probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
+          // Real targets, made for each self-test and torn down after it: a unix socket standing in for another session's, and a loopback listener standing in for a daemon port. The
+          // sandboxed probe must fail to connect to every one of them, and a probe target that does not exist is refused by the runner's own check.
+          probes: async () => {
+            const net = await import("node:net");
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-probe-"));
+            const other = path.join(dir, "other.sock");
+            const servers = /** @type {import("node:net").Server[]} */ ([net.createServer(c => c.destroy()), net.createServer(c => c.destroy())]);
+            await new Promise(r => servers[0].listen(other, () => r(undefined)));
+            await new Promise(r => servers[1].listen(0, "127.0.0.1", () => r(undefined)));
+            const port = /** @type {any} */ (servers[1].address()).port;
+            return { personSocket: p.socket, otherSocket: other, daemonPorts: [port], keyFile: path.join(root, "kernel", "space.json"),
+              release: async () => { for (const s of servers) await new Promise(r => s.close(() => r(undefined))); fs.rmSync(dir, { recursive: true, force: true }); } };
+          },
           temp: os.tmpdir() };
       } catch (e) {
         registry.deps.sandbox = { unavailable: `Vyre could not set up the sandbox for sessions on this computer (${/** @type {Error} */ (e).message}), so it does not start them.` };
@@ -260,8 +277,19 @@ async function startLocked(opts, root, p, release) {
   }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
+  // The provider sign-in token for the launcher modules (threads, agents), by declaration (needs.daemon: credentials): from the credentials port taken below, never a module grant on the vault
+  // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
+  registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
   if (reopenLater) reopenLater();
+  // The session launcher's way to a provider sign-in token (core/vault/index.js `takeCredentialsPort`): taken ONCE, here, right after the vault starts, and handed to the sandbox the Switchboard
+  // reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). A second take throws, so nothing else can ever hold it. Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
+  try {
+    const { takeCredentialsPort } = await import("../vault/index.js");
+    const credentialsPort = takeCredentialsPort();
+    registry.deps.credentialsPort = credentialsPort;
+    if (registry.deps.sandbox) registry.deps.sandbox.credentials = credentialsPort.credentials;
+  } catch (e) { log(`credentials port not taken: ${/** @type {Error} */ (e).message}`); }
   // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
   // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
   let stopped = false;
@@ -305,6 +333,7 @@ async function startLocked(opts, root, p, release) {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
+    if (closeFlowsHost) closeFlowsHost();
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
