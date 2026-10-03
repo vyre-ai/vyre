@@ -36,6 +36,8 @@ for (const role of ["box", "local"]) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role, transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: [] } }));
   const d = await start({ root, log: () => {} });
   const reg = d.registry;
+  // --gates: decide the static gates, presence and asked requirements through the kernel retrofit instead of the inline rules.
+  if (process.argv.includes("--gates")) { const { createLegacyGates } = await import(path.join(here, "..", "retrofit", "gates.js")); reg.deps.gates = createLegacyGates({ registry: reg }); }
   const world = { proof: false, said: false };
   const realSchemas = new Map();
   // Nothing runs: every body is the sentinel, the said-match door answers from the world, and the

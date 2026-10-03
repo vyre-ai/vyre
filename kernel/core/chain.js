@@ -125,5 +125,16 @@ export function createChainBuilder(cfg) {
     return /** @type {any} */ (c);
   }
 
-  return Object.freeze({ fromFacts, appendService, weaken, serialize, restore });
+  /**
+   * RETROFIT ONLY (K2b, removed at K6): a one-hop chain for a caller string the registry already trusted. The caller
+   * has parsed the string with the registry's own helpers; this only stamps it into a kernel chain so the old rules
+   * can be decided by `authorize`. Surfaces that arrive as SurfaceFacts never use it.
+   * @param {{ kind: "person" | "agent" | "service", id: string, legacy: string, person_session?: boolean, device?: string }} p
+   */
+  function fromLegacy(p) {
+    if (!["person", "agent", "service"].includes(p.kind) || typeof p.id !== "string" || !p.id) return refuse("bad legacy caller");
+    return make([hop(p.kind, p.id, "registry", { legacy: p.legacy, ...(p.person_session ? { session: "person" } : {}), ...(p.device ? { device: p.device } : {}) })], base());
+  }
+
+  return Object.freeze({ fromFacts, appendService, weaken, serialize, restore, fromLegacy });
 }

@@ -50,7 +50,7 @@ export function contains(parent, child, since = () => 0) {
  * @typedef {object} AuthorizerConfig
  * @property {string} space the evaluating Space
  * @property {Iterable<any>} actions ActionDef entries (`since` optional: the action-set version it appeared in)
- * @property {{ forSubject(actor: any): any[] | Promise<any[]>, get(id: string): any | Promise<any> }} grants
+ * @property {{ forSubject(actor: any, hop?: any, req?: any): any[] | Promise<any[]>, get(id: string): any | Promise<any> }} grants the provider may compile grants on demand from the hop and the request (the legacy retrofit does)
  * @property {{ has(actor: any): boolean, membership?(actor: any): any }} members
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
@@ -106,13 +106,13 @@ export function createAuthorizer(cfg) {
           if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id))) return deny("not_a_member");
           continue;
         }
-        if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id) && !(await cfg.grants.forSubject(actor)).length) continue;
+        if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id) && !(await cfg.grants.forSubject(actor, h, input)).length) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") {
           if (ms.expires === undefined || ms.expires <= now) return deny("expired");
           if (!(ms.scope || []).some((/** @type {string} */ s) => covers(s, resource))) return deny("no_grant");
         }
-        const candidates = (await cfg.grants.forSubject(actor)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
+        const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
           const r = await evaluate(g, h, ms, chain, action, resource, attrs, now);
