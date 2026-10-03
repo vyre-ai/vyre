@@ -899,7 +899,7 @@ export class Switchboard {
   async openSocket(id, rec) {
     if (!this.deps.threadSocket || this.socks.has(id)) return;
     try {
-      // The session's kernel credential (core/sessions/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
+      // The session's kernel credential (lib/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
       const ks = this.deps.kernelSession ? await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec }).catch(() => null) : null;
       const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, ...(ks ? { kernelToken: ks.token } : {}), pids: async () => {
         const st = this.live.get(id);

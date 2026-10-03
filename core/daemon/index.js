@@ -177,10 +177,10 @@ async function startLocked(opts, root, p, release) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
-    // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
+    // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
-    const { createKernelSessions } = await import("../sessions/kernel-session.js");
+    const { createKernelSessions } = await import("../../lib/kernel-session.js");
     const kernelSessions = createKernelSessions({ kernel });
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
