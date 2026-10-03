@@ -267,14 +267,9 @@ async function startLocked(opts, root, p, release) {
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
-  // The session launcher's way to a provider sign-in token (core/vault/index.js `takeCredentialsPort`): taken ONCE, here, right after the vault starts, and handed to the sandbox the Switchboard
-  // reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). A second take throws, so nothing else can ever hold it. Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
-  try {
-    const { takeCredentialsPort } = await import("../vault/index.js");
-    const credentialsPort = takeCredentialsPort();
-    registry.deps.credentialsPort = credentialsPort;
-    if (registry.deps.sandbox) registry.deps.sandbox.credentials = credentialsPort.credentials;
-  } catch (e) { log(`credentials port not taken: ${/** @type {Error} */ (e).message}`); }
+  // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
+  // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
+  if (registry.deps.credentialsPort && registry.deps.sandbox) registry.deps.sandbox.credentials = registry.deps.credentialsPort.credentials;
   // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
   // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
   let stopped = false;
