@@ -61,6 +61,20 @@ import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
 import { Pty, size } from "./pty.js";
 import { DtachPty, findDtach, isMaster, socketDir } from "./dtach.js";
 import { Ring } from "./ring.js";
+import { LineTracker, asksForSecret } from "./typed.js";
+import { redact } from "../transcripts/sanitize.js";
+import { execFile } from "node:child_process";
+
+/** Who hears a command the person typed: the session stream adapter subscribes (task A). */
+const commandSubs = new Set();
+/**
+ * Hear every command a person completes in a session's terminal. cb gets
+ * { session, term, command, at }: command is redacted and capped at 2000; never output, never
+ * a line typed at a password prompt. Returns the function that stops listening.
+ * @param {(c: { session: string, term: string, command: string, at: number }) => void} cb
+ */
+export function onCommand(cb) { commandSubs.add(cb); return () => { commandSubs.delete(cb); }; }
+const COMMAND_CAP = 2000;
 
 const str = { type: "string" };
 const int = { type: "integer" };
@@ -101,7 +115,7 @@ const offsetOf = v => {
 };
 
 /**
- * @typedef {{ id: string, cwd: string, surface: string, key: string, pty: any, started: number, durable: boolean,
+ * @typedef {{ id: string, cwd: string, session: string, tail: string, typed: LineTracker, cmds: Promise<void>, surface: string, key: string, pty: any, started: number, durable: boolean,
  *   sock: string, sockets: Set<import("node:net").Socket>, aware: Set<import("node:net").Socket>, ring: Ring,
  *   idle: any, at: any, left: number|null, ended: boolean, owner: import("node:net").Socket|null,
  *   wants: Map<import("node:net").Socket, { cols: number, rows: number }> }} Term
@@ -148,7 +162,7 @@ export default {
     const save = () => {
       if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
       const rows = [...terms.values()].filter(t => t.durable && !t.ended).map(t => ({
-        id: t.id, cwd: t.cwd, surface: t.surface, key: t.key, offset: t.ring.end, started: t.started,
+        id: t.id, cwd: t.cwd, session: t.session, surface: t.surface, key: t.key, offset: t.ring.end, started: t.started,
         pid: t.pty.pid, sock: t.sock, left: t.sockets.size && !stopping ? null : t.left ?? now(), cols: t.pty.cols, rows: t.pty.rows,
       }));
       // A home that is gone stays gone: never make one back to write an empty table into.
@@ -190,7 +204,7 @@ export default {
       return { term: t.id, ticket, path: `/v1/streams/term/pty?ticket=${encodeURIComponent(ticket)}${q}` };
     };
 
-    const view = t => ({ term: t.id, cwd: t.cwd, surface: t.surface, started: t.started, cols: t.pty.cols, rows: t.pty.rows,
+    const view = t => ({ term: t.id, cwd: t.cwd, session: t.session || null, surface: t.surface, started: t.started, cols: t.pty.cols, rows: t.pty.rows,
       attached: t.sockets.size, durable: t.durable, offset: t.ring.end });
 
     /** End a terminal: its sockets get a close frame, its shell's session a hang-up then a kill. */
@@ -235,6 +249,8 @@ export default {
 
     const output = (t, b) => {
       t.ring.push(b);
+      // The last few bytes only, in memory, to tell a password prompt from a shell prompt. Never stored.
+      t.tail = (t.tail + b.toString("utf8")).slice(-256);
       if (t.durable) saveSoon();
       if (!t.sockets.size) return;
       const frame = encodeFrame(b);
@@ -246,10 +262,47 @@ export default {
     };
 
     /** @returns {Term} */
-    const blank = (id, cwd, surface, key, started, offset, durable, sock) => ({
-      id, cwd, surface, key, started, durable, sock, sockets: new Set(), aware: new Set(), owner: null, wants: new Map(), ring: new Ring(ringCap, offset),
+    const blank = (id, cwd, surface, key, started, offset, durable, sock, session = "") => ({
+      id, cwd, session, tail: "", cmds: Promise.resolve(), typed: /** @type {any} */ (null), surface, key, started, durable, sock, sockets: new Set(), aware: new Set(), owner: null, wants: new Map(), ring: new Ring(ringCap, offset),
       idle: null, at: null, left: now(), ended: false, pty: null,
     });
+
+    /** Is the terminal's tty in no-echo mode right now (a password being typed)? Null when it cannot be told. */
+    const noEcho = t => new Promise(resolve => {
+      const tty = t.pty && t.pty.tty;
+      if (!tty) return resolve(null);
+      execFile("stty", [process.platform === "linux" ? "-F" : "-f", tty, "-a"], { timeout: 2000 }, (err, out) => {
+        if (err) return resolve(null);
+        const m = /(?:^|\s)(-?)echo(?=[\s;]|$)/.exec(String(out));
+        resolve(m ? m[1] === "-" : null);
+      });
+    });
+
+    /** Record what the person types in a session's terminal as commands; see typed.js for what counts. */
+    const track = t => {
+      if (!t.session) return;
+      t.typed = new LineTracker({
+        // The first key of a line: is the terminal asking for a secret? The prompt text says so, and
+        // where the tty can be read its echo flag says so too (both are checked before the line is kept).
+        start: () => ({ prompt: asksForSecret(t.tail), echo: noEcho(t) }),
+      });
+    };
+    const typedIn = (t, d) => {
+      if (!t.typed || !t.session) return;
+      for (const line of t.typed.feed(d)) {
+        const text = line.text.trim();
+        if (!text || !line.known) continue;
+        const mark = line.mark || {};
+        t.cmds = t.cmds.then(async () => {
+          // A secret: the prompt asked for one, or the tty was not echoing when the line began.
+          if (mark.prompt || (await mark.echo) === true) return;
+          const command = redact(text).text.slice(0, COMMAND_CAP);
+          const c = { session: t.session, term: t.id, command, at: now() };
+          try { ctx.events.emit("term.command", { term: t.id, session: t.session, command }, { thread: t.session }); } catch {}
+          for (const cb of commandSubs) { try { cb(c); } catch {} }
+        }).catch(() => {});
+      }
+    };
 
     // Pick up the durable terminals a previous vyred left running.
     let table = [], lostBefore = [];
@@ -266,7 +319,8 @@ export default {
       if (!row || typeof row.id !== "string" || typeof row.sock !== "string") continue;
       if (!fs.existsSync(row.sock)) { lost(row); continue; }
       if (!(await isMaster(Number(row.pid), row.sock))) { try { fs.unlinkSync(row.sock); } catch {} lost(row); continue; }
-      const t = blank(row.id, String(row.cwd), String(row.surface), String(row.key), Number(row.started) || now(), offsetOf(row.offset) ?? 0, true, row.sock);
+      const t = blank(row.id, String(row.cwd), String(row.surface), String(row.key), Number(row.started) || now(), offsetOf(row.offset) ?? 0, true, row.sock, typeof row.session === "string" ? row.session : "");
+      track(t);
       t.left = Number(row.left) || now();
       t.pty = new DtachPty({ sock: row.sock, cols: row.cols, rows: row.rows, adopt: { pid: Number(row.pid) }, onData: b => output(t, b), onExit: () => { end(t, "exited"); } });
       terms.set(t.id, t);
@@ -278,11 +332,21 @@ export default {
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, callers: PEOPLE, ...extra });
 
     tool("term.open", "Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path, and whether the shell outlives a vyred restart (durable).",
-      obj({ cwd: str, cols: int, rows: int, surface: str }, ["cwd", "surface"]), async (i, { caller, peer }) => {
+      obj({ cwd: str, session: str, cols: int, rows: int, surface: str }, ["surface"]), async (i, { caller, peer }) => {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
+        const session = i.session ? String(i.session).slice(0, 128) : "";
+        // With a session, the shell opens in the thread's folder (cwd wins when both are given).
+        let want = i.cwd ? String(i.cwd) : "";
+        if (!want && session) {
+          const r = await ctx.call("threads.get", { thread: session }).catch(() => null);
+          const found = r && r.data && typeof r.data.cwd === "string" ? r.data.cwd : "";
+          if (!found) throw fail("not_found", "no such session, or it has no folder");
+          want = found;
+        }
+        if (!want) throw fail("bad_input", "give a cwd or a session");
         let dir;
-        try { dir = g.resolveSafe(String(i.cwd)).real; }
+        try { dir = g.resolveSafe(want).real; }
         catch (e) { throw fail(/** @type {any} */ (e).code === "not_available" ? "not_available" : "bad_input", /** @type {Error} */ (e).message); }
         if (!fs.statSync(dir).isDirectory()) throw fail("bad_input", "cwd must be a folder");
         if (terms.size >= max) throw fail("too_many", `${max} terminals are open; close one first`);
@@ -291,7 +355,8 @@ export default {
         const id = "t_" + crypto.randomBytes(6).toString("hex");
         const durable = Boolean(dtach);
         const sock = durable ? path.join(socketDir(ctx.paths.root), `${id}.sock`) : "";
-        const t = blank(id, dir, surface, key, now(), 0, durable, sock);
+        const t = blank(id, dir, surface, key, now(), 0, durable, sock, session);
+        track(t);
         const hooks = { onData: b => output(t, b), onExit: () => { end(t, "exited"); } };
         t.pty = durable
           ? new DtachPty({ bin: dtach, sock, cwd: dir, cols, rows, shell, login, ...hooks })
@@ -300,8 +365,8 @@ export default {
         // Never attached: the ticket's life, then the usual keep.
         idleSoon(t, keepMs + ticketMs);
         if (durable) save();
-        emit("term.opened", { term: id, cwd: dir });
-        return { ...issue(t), cwd: dir, cols, rows, durable, offset: 0 };
+        emit("term.opened", { term: id, cwd: dir, session: session || null });
+        return { ...issue(t), cwd: dir, session: session || null, cols, rows, durable, offset: 0 };
       });
 
     tool("term.attach", "A fresh one-use ticket for a live terminal (after a reload, a dropped connection or a vyred restart), for the screen that opened it. With from, the stream replays exactly the bytes after that offset.",
@@ -405,7 +470,7 @@ export default {
             if (f.opcode !== 1 || f.message.length > 256 * 1024) continue;
             let m;
             try { m = JSON.parse(f.message.toString("utf8")); } catch { continue; }
-            if (m && m.t === "in" && typeof m.d === "string") t.pty.write(m.d);
+            if (m && m.t === "in" && typeof m.d === "string") { t.pty.write(m.d); typedIn(t, m.d); }
             else if (m && m.t === "size") {
               const want = size(m.cols, m.rows);
               t.wants.set(socket, want);

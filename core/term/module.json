@@ -4,7 +4,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": [{ "name": "term.open", "reach": "person" }, { "name": "term.attach", "reach": "person" }, { "name": "term.list", "reach": "person" }, { "name": "term.close", "reach": "person" }] },
-  "watches": { "emits": ["term.opened", "term.closed"] },
+  "watches": { "emits": ["term.opened", "term.closed", "term.command"] },
   "shows": { "streams": ["pty"] },
   "needs": {},
   "teaches": {
