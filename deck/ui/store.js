@@ -17,6 +17,9 @@ let mockOk = false;
 /** The app asked for the mock on purpose (a dev or capture build). */
 export function allowMock() { mockOk = true; }
 
+/** True where the sample world is in use or allowed: plain Node, or an app build that asked for it. A screen that has a real source of its own reads this to choose. */
+export function allowsMock() { return mockOk || !(/** @type {any} */ (globalThis).__VYRE_APP__); }
+
 /** @returns {Store} */
 function makeStore() {
   const inApp = Boolean(/** @type {any} */ (globalThis).__VYRE_APP__);
