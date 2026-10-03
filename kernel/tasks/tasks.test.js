@@ -544,3 +544,14 @@ test("approval on authorize: an approved held-act task allows exactly that act b
   T += 25 * 3600_000;
   assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
 });
+
+test("approval under an always-ask rule: only the named approver's approval stands", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { person: ALICE } } }), true, "approved by the named person");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { person: "per_someone_else" } } }), false, "approved by someone else");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "no role lookup wired here: a role approver cannot be confirmed, so it fails closed");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), true, "no rule: any approval stands");
+});
