@@ -15,7 +15,7 @@ import { KernelError } from "../core/errors.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CALL_MS = 30_000;
-const EXPECT = ["network", "write_module", "read_outside", "child_process", "worker"];
+const EXPECT = ["network", "write_module", "read_outside", "child_process", "worker", "read_passwd", "read_environ", "proc_listing", "root_listing", "signal_other", "dns", "dlopen", "env_extra"];
 
 /**
  * @param {{ platform?: NodeJS.Platform, execPath?: string, spawn?: typeof nodeSpawn, egress?: { request(module: string, url: string, init?: any): Promise<any> }, callMs?: number }} [cfg]
@@ -40,11 +40,13 @@ export function createSupervisor(cfg = {}) {
       const dir = path.join(tmp, "module"); fs.mkdirSync(dir);
       const secret = path.join(tmp, "secret.txt"); fs.writeFileSync(secret, "outside");
       let hits = 0;
+      // A process the sandbox must not let the module signal or see.
+      const sibling = spawn(cfg.execPath || process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" });
       const srv = net.createServer(s => { hits++; s.destroy(); });
       await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
       const port = /** @type {any} */ (srv.address()).port;
       try {
-        const cmd = sandboxCommand({ platform: cfg.platform, execPath: cfg.execPath, dir, entry: "none.js", script: path.join(HERE, "probe.js"), args: [String(port), secret] });
+        const cmd = sandboxCommand({ platform: cfg.platform, execPath: cfg.execPath, dir, entry: "none.js", script: path.join(HERE, "probe.js"), args: [String(port), secret, String(sibling.pid)] });
         if (!cmd) throw new Error("no command");
         const out = await new Promise((resolve, reject) => {
           const c = spawn(cmd.cmd, cmd.args, { stdio: ["ignore", "pipe", "ignore"], env: {} });
@@ -58,7 +60,7 @@ export function createSupervisor(cfg = {}) {
         if (hits > 0) failures.push("loopback_listener_was_reached");
         proof = failures.length ? { ok: false, mechanism: mech, results, why: `the sandbox let through: ${failures.join(", ")}` } : { ok: true, mechanism: mech, results };
       } catch (e) { proof = { ok: false, mechanism: mech, why: String(e && /** @type {any} */ (e).message) }; }
-      finally { srv.close(); fs.rmSync(tmp, { recursive: true, force: true }); }
+      finally { srv.close(); try { sibling.kill("SIGKILL"); } catch { /* gone */ } fs.rmSync(tmp, { recursive: true, force: true }); }
       return proof;
     },
 

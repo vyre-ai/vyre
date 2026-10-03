@@ -101,3 +101,18 @@ export function grantFromAgent(g, space) {
     source: "vault:agent-grant", reason: `lent to ${g.agent} for ${g.origin}`,
   };
 }
+
+/**
+ * Vault use at the point of use for a lent computer (DESIGN-local-runner.md section 3): the runner's egress proxy asks per request, the session must
+ * hold a live lease, the vault resolves the credential for that route, and one event says it was used, never the value. Nothing is cached here.
+ * @param {{ leaseOf: (session: string) => string | null, check: (i: { chain: any, id: string }) => Promise<{ space: string, device: string }>, resolve: (i: { space: string, ref: string, route: string }) => Promise<string>, emit?: (e: any) => void, chain: any }} o
+ */
+export function leasedUse({ leaseOf, check, resolve, emit = () => {}, chain }) {
+  return async ({ ref, session, route }) => {
+    const id = leaseOf(session); if (!id) throw Object.assign(new Error("no_lease"), { code: "no_lease" });
+    const { space, device } = await check({ chain, id });
+    const value = await resolve({ space, ref, route });
+    emit({ type: "vault.used", space, device, ref, route, session });
+    return value;
+  };
+}
