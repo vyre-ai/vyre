@@ -406,5 +406,9 @@
  {
   "tool": "flows.kit.remove",
   "reason": "user ruling 4 Oct 2026: a person's assistant may run and edit Flows its person may; the call reaches the module, which refuses any caller without a person's own chain or a daemon-bound session token, and the kernel then authorizes every step under that chain"
+ },
+ {
+  "tool": "vault.provider.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; provider status is a read, open to the person's assistant (a proven session claim only)"
  }
 ]
