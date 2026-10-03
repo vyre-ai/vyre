@@ -372,11 +372,13 @@ export const MIGRATIONS = [`
   -- with no maximum life (paired = 1), which still ends after 30 days unused.
   ALTER TABLE presence_people ADD COLUMN paired INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE presence_people ADD COLUMN rotated INTEGER;
+  ALTER TABLE presence_people ADD COLUMN software INTEGER NOT NULL DEFAULT 0;
   CREATE TABLE presence_pair_grants (
     device TEXT PRIMARY KEY,
     key_id TEXT NOT NULL,
     device_key TEXT NOT NULL,
     challenge TEXT NOT NULL,
+    software INTEGER NOT NULL DEFAULT 0,
     created INTEGER NOT NULL,
     expires INTEGER NOT NULL,
     tries INTEGER NOT NULL DEFAULT 0

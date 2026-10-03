@@ -102,9 +102,11 @@ function parseProof(h) {
 export const signed = ({ method, path, raw, t, n }) => `${String(method).toUpperCase()}\n${path}\n${bodyHash(raw)}\n${t}\n${n}`;
 
 export class PersonSessions {
-  /** @param {{ db: import("node:sqlite").DatabaseSync, now?: () => number }} o */
-  constructor({ db, now = Date.now }) {
+  /** @param {{ db: import("node:sqlite").DatabaseSync, now?: () => number, softwareCap?: boolean }} o */
+  constructor({ db, now = Date.now, softwareCap = false }) {
     this.db = db;
+    // A space's standing rule: a device that keeps its key in software gets the 90-day cap back. Off by default.
+    this.softwareCap = Boolean(softwareCap);
     this.now = now;
     migrate(db, "presence", MIGRATIONS);
     /** Nonces seen on bearer proofs, with when each can be forgotten. @type {Map<string, number>} */
@@ -115,16 +117,16 @@ export class PersonSessions {
    * A new session on this node. `cookie` for the Deck at the box's address; `bearer` only
    * through exchange(), which binds the app's key.
    * `keyId` is the presence key whose proof opened it, so removing that key ends the session.
-   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean }} o
+   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean, software?: boolean }} o
    */
-  start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false }) {
+  start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false, software = false }) {
     if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
     const now = this.now();
     this.prune();
     const id = b64url(12), secret = b64url(32);
-    this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, paired ? NEVER : now + MAX, keyId ? String(keyId) : null, paired ? 1 : 0, paired ? now : null);
-    return { id, secret, token: `${id}.${secret}`, expires: paired ? now + IDLE : Math.min(now + IDLE, now + MAX) };
+    this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, paired && !(software && this.softwareCap) ? NEVER : now + MAX, keyId ? String(keyId) : null, paired ? 1 : 0, paired ? now : null, software ? 1 : 0);
+    return { id, secret, token: `${id}.${secret}`, expires: paired && !(software && this.softwareCap) ? now + IDLE : Math.min(now + IDLE, now + MAX) };
   }
 
   /**
@@ -235,17 +237,17 @@ export class PersonSessions {
    * The pairing's one-use grant for a device. Written only by the pairing's owner-confirmed path
    * (the tool checks the caller and reads the pair record); a device with a live grant or a live
    * paired session is replaced, never stacked.
-   * @param {{ device: string, keyId: string, deviceKey: any }} o
+   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean }} o
    */
-  grant({ device, keyId, deviceKey }) {
+  grant({ device, keyId, deviceKey, software = false }) {
     if (!device || !keyId || !jwkOk(deviceKey)) throw Object.assign(new Error("a grant needs the device, the confirming key and the device's public key"), { code: "bad_input" });
     const now = this.now();
     this.prune();
     // Replace, never stack: whatever this device held before ends now.
     this.endDevice(device);
     const challenge = b64url(24);
-    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, created, expires, tries) VALUES (?,?,?,?,?,?,0)")
-      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, now, now + GRANT_TTL);
+    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, software, created, expires, tries) VALUES (?,?,?,?,?,?,?,0)")
+      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, software ? 1 : 0, now, now + GRANT_TTL);
     return { expires: now + GRANT_TTL, challenge };
   }
 
@@ -290,7 +292,7 @@ export class PersonSessions {
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
-      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true });
+      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software) });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
     return { id: s.id, token: s.token, expires: s.expires };
@@ -340,8 +342,8 @@ export class PersonSessions {
   /** Every live session, never a secret or a key. */
   list() {
     this.prune();
-    return /** @type {any[]} */ (this.db.prepare("SELECT id, kind, node, label, created, last_used, max, paired FROM presence_people ORDER BY last_used DESC").all())
-      .map(r => ({ id: r.id, kind: r.kind, node: r.node, label: r.label, created: r.created, last_used: r.last_used, expires: Math.min(r.last_used + IDLE, r.max), ...(r.paired ? { paired: true } : {}) }));
+    return /** @type {any[]} */ (this.db.prepare("SELECT id, kind, node, label, created, last_used, max, paired, software FROM presence_people ORDER BY last_used DESC").all())
+      .map(r => ({ id: r.id, kind: r.kind, node: r.node, label: r.label, created: r.created, last_used: r.last_used, expires: Math.min(r.last_used + IDLE, r.max), ...(r.paired ? { paired: true, ...(r.software ? { software: true } : {}) } : {}) }));
   }
 
   /** @param {string} id */

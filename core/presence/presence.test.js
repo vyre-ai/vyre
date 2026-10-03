@@ -834,13 +834,13 @@ test("paired: a grant is made only through the tool, for the wink module, from a
   rec = { ...good, confirmed: false }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
   rec = { ...good, kind: "web" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
   rec = { ...good, kind: "setup" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
-  rec = { ...good, hardware: false }; await assert.rejects(grant("dev1", "module:wink"), /secure hardware/);
   rec = good;
   await assert.rejects(grant("dev1", "module:relay"), /only the pairing/);
   await assert.rejects(grant("dev1", "cli"), /only the pairing/);
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants").get().n, 0, "no refusal wrote anything");
-  rec = { ...good, hardware: false, softwareAccepted: true };
-  assert.equal((await grant("dev1", "module:wink")).granted, true, "a software key the owner accepted at pairing");
+  rec = { ...good, hardware: false };
+  const sw = await grant("dev1", "module:wink");
+  assert.deepEqual([sw.granted, sw.software], [true, true], "a software key is recorded as one, with no prompt and no refusal");
   rec = { ...good, id: "dev2" };
   assert.equal((await grant("dev2", "module:wink", { presence: { keyId: "verified-key" } })).granted, true);
   assert.equal(db.prepare("SELECT key_id FROM presence_pair_grants WHERE device = 'dev2'").get().key_id, "verified-key", "the key id is the one the presence layer verified in that call");
@@ -851,4 +851,24 @@ test("paired: a grant is made only through the tool, for the wink module, from a
   assert.match((await tools.get("presence.person.pair-challenge").run({}, { caller: "device:aaaaaaaaaaaaaaaa", peer: { kind: "device", node: "dev1" } })).challenge, /^[A-Za-z0-9_-]{32}$/);
   assert.match(String((await grant("dev2", "module:wink")).challenge), /^[A-Za-z0-9_-]{32}$/, "the grant hands the challenge to the pairing");
   await assert.rejects(tools.get("presence.person.start-paired").run({ sig: "x" }, { caller: "cli", peer: { kind: "tailnet" } }), /cannot sign in that way/);
+});
+
+test("paired: a software-key device is recorded as one, and a standing rule gives it the 90-day cap back", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  let clock = 1_800_000_000_000;
+  const { PersonSessions, pairedStart } = await import("./person.js");
+  const k = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = k.publicKey.export({ format: "jwk" });
+  const sign = text => crypto.sign("sha256", Buffer.from(text), { key: k.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  for (const cap of [false, true]) {
+    const people = new PersonSessions({ db, now: () => clock, softwareCap: cap });
+    const device = cap ? "sw-capped" : "sw-free";
+    people.grant({ device, keyId: "owner-key", deviceKey: jwk, software: true });
+    const s = /** @type {any} */ (people.startPaired({ device, sig: sign(pairedStart({ device, challenge: people.challengeFor(device) })) }));
+    assert.equal(people.list().find(x => x.id === s.id).software, true, "the sessions list says so");
+    const max = db.prepare("SELECT max FROM presence_people WHERE id = ?").get(s.id).max;
+    assert.equal(max > clock + 91 * 86_400_000, !cap, cap ? "the standing rule restores the cap" : "the default has none");
+  }
 });

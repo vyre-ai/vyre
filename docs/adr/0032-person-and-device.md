@@ -105,14 +105,18 @@ mechanism, the person session, and the pairing opens it.
   presence proof), the pairing module asks the presence module for one grant
   (`presence.person.pair-grant`, wink only). The tool trusts none of its arguments: it reads the
   pair record, and writes the grant only if the record says the owner's identity confirmed it,
-  the kind is phone or computer, and the key is in secure hardware (or the owner accepted a
-  software key at pairing). The confirming key id is the one the presence layer verified in that
+  and the kind is phone or computer. A key is believed to be in secure
+  hardware only when the pair record says so (platform attestation); otherwise the device is
+  recorded as a software key, with no prompt, and the sessions list shows it ("This device keeps
+  its key in software"). A space's standing rule (config presence.softwareKeyCap, until the rules
+  screen carries it) gives software-key devices the 90-day cap back; the default is no cap. The confirming key id is the one the presence layer verified in that
   call. A web or setup device, a device paired to a space by someone other than its owner and an
   unconfirmed redeemer never get a grant. A device with a live grant or session is replaced, never
   stacked.
-- The grant holds the public key the pairing confirmed and lives 10 minutes. The device's first
-  `presence.person.start-paired`, over its own channel, signs `paired-start`, its id, the time and
-  a nonce with that key; the grant is consumed in one transaction and becomes a session bound to
+- The grant holds the public key the pairing confirmed and a random challenge, and lives 10
+  minutes. The device gets the challenge in the pairing's completion (or asks for it with
+  `presence.person.pair-challenge`). Its first `presence.person.start-paired`, over its own
+  channel, signs `paired-start`, its id and that challenge with that key; the grant is consumed in one transaction and becomes a session bound to
   that key. A different key, a second use, another device's channel, a stale or expired grant all
   get the same one refusal. Three wrong tries delete the grant.
 - The session slides: 30 days from last use, and it has **no maximum life**. That is safe only

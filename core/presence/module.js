@@ -123,7 +123,7 @@ export default {
     });
 
     // The person session (person.js): a browser signed in as the person, not only their device.
-    const people = new PersonSessions({ db: ctx.store.db });
+    const people = new PersonSessions({ db: ctx.store.db, softwareCap: Boolean(ctx.config && ctx.config.presence && ctx.config.presence.softwareKeyCap) });
     const nodeOf = meta => (meta.peer && (meta.peer.stableId || meta.peer.node)) || null;
 
     ctx.tool("presence.person.start", {
@@ -197,14 +197,14 @@ export default {
         const rec = r && r.data;
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
         if (!["phone", "computer"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone or a computer paired to its owner gets a person session"), { code: "denied" });
-        // A software-only key is refused unless the owner accepted that at pairing.
-        if (rec.hardware !== true && rec.softwareAccepted !== true) throw Object.assign(new Error("that device's key is not in secure hardware, and the owner did not accept that"), { code: "denied" });
+        // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
+        const software = rec.hardware !== true;
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
         const keyId = (meta.presence && meta.presence.keyId) || rec.confirmKeyId || null;
         if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof"), { code: "denied" });
-        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key });
+        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software });
         // The challenge goes back to the pairing, which hands it to the device; the device can also ask for it (presence.person.pair-challenge).
-        return { granted: true, expires: g.expires, challenge: g.challenge };
+        return { granted: true, expires: g.expires, challenge: g.challenge, ...(software ? { software: true } : {}) };
       },
     });
 
