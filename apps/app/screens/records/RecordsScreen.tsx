@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
-import { ScrollView, View } from "react-native";
+import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { BoardView, CalendarView, EmptyState, ErrorState, ListView, Segmented, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf, viewsOf } from "@vyre/ui";
+import { BoardView, CalendarView, EmptyState, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, viewDefOf, viewsOf } from "@vyre/ui";
 
 type ViewKind = "list" | "board" | "calendar";
 const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar" };
@@ -15,7 +15,7 @@ export function RecordsScreen({ type }: { type: string }) {
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
   if (error && !world) return <ErrorState title="Could not load the records" reason={error.message} retry={reload} />;
-  if (loading && !world) return <View className="p-s6"><Text tone="label">Loading</Text></View>;
+  if (loading && !world) return <LargeTitleScreen title="Records"><LoadingState rows={5} /></LargeTitleScreen>;
   const def = world?.types.find((t) => t.name === type);
   if (!world || !def) return <EmptyState title="No such record type" body={`This space has no type called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;
   const vd = viewDefOf(def);
@@ -29,7 +29,7 @@ export function RecordsScreen({ type }: { type: string }) {
   };
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
   return (
-    <ScrollView contentContainerClassName="gap-s4 p-s4 max-w-page w-full self-center">
+    <LargeTitleScreen title={vd.plural} own onRefresh={reload}>
       <View className="flex-row items-center gap-s3">
         <View className="min-w-0 flex-1">
           <Text size="page" strong>{vd.plural}</Text>
@@ -41,6 +41,6 @@ export function RecordsScreen({ type }: { type: string }) {
       {shown === "list" ? <ListView def={def} rows={rows} env={env} onOpen={openRec} /> : null}
       {shown === "board" ? <BoardView def={def} rows={rows} env={env} onOpen={openRec} onMove={move} /> : null}
       {shown === "calendar" ? <CalendarView def={def} rows={rows} env={env} onOpen={openRec} /> : null}
-    </ScrollView>
+    </LargeTitleScreen>
   );
 }

@@ -1,11 +1,19 @@
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
+import { PressableScale } from "../motion/PressableScale";
+import { SwipeActions, type SwipeSet } from "../motion/SwipeActions";
+import { useUiTheme } from "../theme";
 
-/** The one list row: a leading mark, a title, a secondary line, an end. Lists, menus, search results and phone tables all use it. */
-export function Row({ lead, title, sub, end, onPress, selected, className, accessibilityLabel }: {
-  lead?: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; end?: React.ReactNode; onPress?: () => void; selected?: boolean; className?: string; accessibilityLabel?: string;
+/**
+ * The one list row: a leading mark, a title, a secondary line, an end. Lists, menus, search results and phone tables all use it.
+ * `swipe` adds swipe actions (a phone, or any native screen): right reveals the leading buttons, left the trailing ones. The same actions are in a
+ * screen reader's action menu on the row, so no action is gesture-only.
+ */
+export function Row({ lead, title, sub, end, onPress, selected, className, accessibilityLabel, swipe }: {
+  lead?: React.ReactNode; title: React.ReactNode; sub?: React.ReactNode; end?: React.ReactNode; onPress?: () => void; selected?: boolean; className?: string; accessibilityLabel?: string; swipe?: SwipeSet;
 }) {
+  const { phone } = useUiTheme();
   const body = (
     <>
       {lead ? <View className="flex-none flex-row items-center">{lead}</View> : null}
@@ -17,11 +25,22 @@ export function Row({ lead, title, sub, end, onPress, selected, className, acces
     </>
   );
   const cls = cn("min-h-row w-full flex-row items-center gap-s3 rounded-row px-s3 py-s2", selected && "bg-selected", className);
-  if (!onPress) return <View className={cls}>{body}</View>;
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ selected }} onPress={onPress} className={cls}
-      style={({ pressed, hovered }: any) => (pressed ? { backgroundColor: "var(--press)" } : hovered && !selected ? { backgroundColor: "var(--hover)" } : undefined)}>
+  const all = [...(swipe?.leading ?? []), ...(swipe?.trailing ?? [])];
+  const row = !onPress ? <View className={cls}>{body}</View> : (
+    <PressableScale
+      depth={0.985}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ selected }}
+      accessibilityActions={all.map((a) => ({ name: a.id, label: a.label }))}
+      onAccessibilityAction={(e) => all.find((a) => a.id === e.nativeEvent.actionName)?.onPress()}
+      onPress={onPress}
+      className={cls}
+      pressedStyle={{ backgroundColor: "var(--press)" }}
+      hoverStyle={selected ? undefined : { backgroundColor: "var(--hover)" }}
+    >
       {body}
-    </Pressable>
+    </PressableScale>
   );
+  return swipe ? <SwipeActions leading={swipe.leading} trailing={swipe.trailing} enabled={phone}>{row}</SwipeActions> : row;
 }
