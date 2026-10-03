@@ -303,13 +303,27 @@ export class FlowRunner {
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
       const w = r.waiting;
       if (!w) continue;
-      if (w.kind === "task" && /^task\./.test(env.type) && env.data && taskIdOf(env) === w.task && ["done", "skipped"].includes(env.data.state)) work.push(this.#resume(r.id, { task: env.data }));
+      if (w.kind === "task" && /^task\./.test(env.type) && env.data && taskIdOf(env) === w.task && TASK_ENDS.has(env.type) && (env.type !== "task.completed" && env.type !== "task.skipped" ? true : ["done", "skipped"].includes(env.data.state))) work.push(this.#taskEnded(r, env));
       else if (w.kind === "event" && w.event && typeMatches(w.event, env.type)) {
         if (w.where) { try { if (!truthy(evaluate(parse(w.where), { event: env, trigger: r.trigger.event ? r.trigger.event.data : r.trigger.input ?? {}, steps: outputs(r) }))) continue; } catch { continue; } }
         work.push(this.#resume(r.id, { event: slim(env) }));
       }
     }
     return Promise.all(work);
+  }
+
+  /**
+   * A task a run waits on has ended: approved or rejected by its checker, completed by its doer (no checker), or skipped. What the run reads is the task as the kernel holds it now (outcome,
+   * and the answer where the kernel or the harness carries one), never only the event, so a rejection (which puts the task back to ready) and an approval read the same way.
+   * @param {any} r the waiting run @param {any} env
+   */
+  async #taskEnded(r, env) {
+    let row = null;
+    try { row = await this.k.ask.get(this.chains.forFlow({ flow: r.flow, space: r.space, approver: r.approver, tainted: false, run: r.id, source_spaces: r.source_spaces }), taskIdOf(env)); } catch { row = null; }
+    const byType = env.type === "task.approved" ? "approved" : env.type === "task.rejected" ? "rejected" : undefined;
+    const t = { ...env.data, ...(row ? { state: row.state, outcome: row.outcome, answer: row.answer, output: row.output } : {}) };
+    if (t.outcome === undefined || t.outcome === null) t.outcome = byType ?? (t.answer === "yes" ? "approved" : t.answer === "no" ? "rejected" : t.outcome);
+    return this.#resume(r.id, { task: t });
   }
 
   /** @param {string} runId @param {{ task?: any, event?: any, timeout?: boolean }} result */
@@ -523,11 +537,22 @@ export class FlowRunner {
       if (ctx.dry) { ctx.dryAsks = (ctx.dryAsks || 0) + 1; }
       else {
         const why = forced ? (run.tainted ? "it started from content outside this Space" : "a model drafted this Flow") : "it needs a person's yes";
-        // An always-ask rule is answered BY the person or role it names, every time, with no "don't ask again": the task says so and carries the rule.
-        const named = alwaysAsk && alwaysAsk.approver && alwaysAsk.approver.person ? { kind: "person", id: alwaysAsk.approver.person, space: run.space } : null;
-        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`, doer: named || run.approver, output: { kind: "decision" }, source: "flow_step",
-          form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why: alwaysAsk ? (d.rule && d.rule.label) || "a rule of this space asks every time" : why, trigger_source: run.trigger.kind, input: info.input ?? null,
+        // A held act is a task the Flow's own service does (it asks) and a person CHECKS: the person's approve or reject is the answer, with their presence, as for any approval. An always-ask
+        // rule is answered BY the person or role it names, every time, with no "don't ask again": the task says so and carries the rule.
+        const namedChecker = alwaysAsk && alwaysAsk.approver ? (alwaysAsk.approver.person ? { kind: "person", id: alwaysAsk.approver.person, space: run.space } : alwaysAsk.approver.role ? { role: alwaysAsk.approver.role } : null) : null;
+        const doerChain = this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
+        const reason = alwaysAsk ? (d.rule && d.rule.label) || "a rule of this space asks every time" : why;
+        const task = await this.k.ask.request(chain, { title: `${ctx.view.flow.label || ctx.view.flow.name}: ${labelOf(ctx.cat, need.action)}?`,
+          ...(doerChain ? { doer: { kind: "service", id: "flows", space: run.space }, checker: namedChecker || run.approver } : { doer: namedChecker && namedChecker.kind ? namedChecker : run.approver }),
+          output: { kind: "decision" }, source: "flow_step",
+          form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why: reason, trigger_source: run.trigger.kind, input: info.input ?? null,
             ...(alwaysAsk ? { rule: alwaysAsk.rule, waivable: false, ...(alwaysAsk.approver && alwaysAsk.approver.role ? { approver_role: alwaysAsk.approver.role } : {}) } : {}) } }, { idem: `${run.id}:${askKey}` });
+        if (doerChain) {
+          // the Flow's service asks: it does the task (a yes with its reason), which puts it in front of the checker; a replay finds it already started
+          for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: String(reason).slice(0, 300) || "needs a person's yes" }]]) {
+            try { await (step === "start" ? this.k.ask.start(doerChain, task.id) : this.k.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
+          }
+        }
         await this.#mark(ctx, askKey, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
         run.waiting = { step: askKey, kind: "task", task: task.id };
         this.#emit("step.waiting", { run: run.id, step: key, task: task.id, why }, run, `vyre://${run.space}/flow_run/${run.id}`);
@@ -912,6 +937,9 @@ const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, act
 const SERVICE_BODY_CAP = 64 * 1024;
 
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
+/** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */
+const TASK_ENDS = new Set(["task.approved", "task.rejected", "task.completed", "task.skipped"]);
+
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }
 
 /** @param {ActorRef} a */

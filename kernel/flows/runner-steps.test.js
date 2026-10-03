@@ -343,7 +343,7 @@ test("recovery: a task answered while the runner was down releases its run on th
   w.kernel.inbound("payment.received", {});
   await settle(w);
   const t = w.kernel.tasks.find(x => x.title === "Ok?");
-  w.kernel.subs.clear(); // the runner is down: nobody hears the answer
+  w.stopListening(); // the runner is down: nobody hears the answer
   w.kernel.completeTask(t.id, { outcome: "approved" });
   assert.equal(mine(w, "payment").length, 0);
   await w.runner.recover(); await settle(w);
@@ -357,7 +357,7 @@ test("stores: the same Flow works when definitions and runs are records in the k
   w.kernel.inbound("payment.received", { who: "Records" });
   await settle(w);
   assert.equal((await last(w, id)).state, "waiting");
-  assert.ok(mine(w, "def_flow").length === 1 && mine(w, "flow_run").length === 1 && mine(w, "flow_approval").length === 1, "definition, approval and run are records");
+  assert.ok(mine(w, "def-flow").length === 1 && mine(w, "flow_run").length === 1 && mine(w, "flow-approval").length === 1, "definition, approval and run are records");
   w.advance(1500); await w.runner.tick(); await settle(w);
   assert.equal((await last(w, id)).state, "done");
   assert.equal(mine(w, "payment").length, 1);
@@ -423,7 +423,7 @@ test("rules, always ask: the held task is answered by the person the rule names,
   await settle(w);
   assert.equal(f.seen.length, 0, "held");
   const task = w.kernel.tasks.find(t => t.form && t.form.kind === "held_act");
-  assert.equal(task.doer.id, "per_josh", "answered by the named person");
+  assert.deepEqual([task.doer.kind, task.checker.id], ["service", "per_josh"], "the Flow's service asks, and the named person is the one who answers");
   assert.equal(task.form.waivable, false, "no 'don't ask again'");
   assert.equal(task.form.rule, "rule_dates");
   assert.match(task.form.why, /approved by Josh/);

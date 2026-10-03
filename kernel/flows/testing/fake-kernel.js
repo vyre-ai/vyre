@@ -99,7 +99,11 @@ export class FakeKernel {
         this.emit("task.created", { id: t.id, title: t.title }, chain, `vyre://${this.space}/task/${t.id}`);
         return t;
       },
-      decide: async () => { throw new Error("not used: tests complete tasks through completeTask"); },
+      // The real kernel's states (kernel/tasks/tasks.js), so tests see the same shape: a guarded task (a checker, or an outward send, or required) goes to needs_check when its doer completes it, and
+      // only a decide moves it on: approved is done with outcome approved, rejected puts it back to ready with outcome rejected. An unguarded task is done when its doer completes it.
+      start: async (/** @type {any} */ chain, /** @type {string} */ id) => this.#start(chain, id),
+      complete: async (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ evidence) => this.#complete(chain, id, evidence),
+      decide: async (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ a) => this.#decide(chain, id, a),
       get: async (/** @type {any} */ _c, /** @type {string} */ id) => this.tasks.find(t => t.id === id) || null,
     };
 
@@ -156,10 +160,30 @@ export class FakeKernel {
   /** An external event, as the Ingress door would label it. @param {string} type @param {any} data @param {'system'|'member'|'external'|'untrusted'} [trust] */
   inbound(type, data, trust = "member") { return this.emit(type, data, { hops: [{ actor: { kind: "service", id: "ingress", space: this.space } }], labels: { trust, red: "internal", source_spaces: [this.space] } }); }
 
-  /** Finish a task as its checker or doer would. @param {string} id @param {{ outcome?: string, answer?: any, state?: string }} r */
+  #start(/** @type {any} */ chain, /** @type {string} */ id) { const t = this.tasks.find(x => x.id === id); if (!t || t.state !== "ready") throw Object.assign(new Error("not ready"), { code: "bad_state" }); return this.#move(id, "working", "task.started", chain); }
+  #complete(/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ evidence) { const t = this.tasks.find(x => x.id === id); if (!t) throw new Error("no task"); const guarded = Boolean(t.checker) || (t.output && t.output.kind === "sent") || Boolean(t.required); if (t.state !== "working") throw Object.assign(new Error("not started"), { code: "bad_state" }); t.evidence = evidence; return this.#move(id, guarded ? "needs_check" : "done", guarded ? "task.needs-check" : "task.completed", chain); }
+  #decide(/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ a) { const t = this.tasks.find(x => x.id === id); if (!t || t.state !== "needs_check") throw Object.assign(new Error("not waiting for a check"), { code: "bad_state" }); if (a.outcome === "rejected") { t.outcome = "rejected"; return this.#move(id, "ready", "task.rejected", chain); } t.outcome = "approved"; return this.#move(id, "done", "task.approved", chain); }
+
+  /** One state change, with the event the real kernel writes (the task's new state rides in the data). */
+  #move(/** @type {string} */ id, /** @type {string} */ state, /** @type {string} */ type, /** @type {any} */ chain) {
+    const t = this.tasks.find(x => x.id === id);
+    t.state = state; t.updated_at = this.now();
+    this.emit(type, { id, task: id, state, ...(state === "done" && t.outcome ? { outcome: t.outcome } : {}), ...(state === "done" && t.answer !== undefined ? { answer: t.answer } : {}) }, chain && chain.hops ? chain : { hops: [{ actor: { kind: "service", id: "kernel", space: this.space } }], labels: { trust: "system", red: "internal", source_spaces: [this.space] } }, `vyre://${this.space}/task/${id}`);
+    if (state === "done") for (const w of this.tasks) if (w.state === "waiting" && w.depends_on.every((/** @type {string} */ d) => ["done", "skipped"].includes(this.tasks.find(y => y.id === d).state))) { w.state = "ready"; this.emit("task.readied", { id: w.id, state: "ready" }, chain, `vyre://${this.space}/task/${w.id}`); }
+    return t;
+  }
+
+  /** Finish a task as its checker or doer would: through the same states as the real kernel (start, complete, then decide when a checker is waiting). @param {string} id @param {{ outcome?: string, answer?: any, state?: string }} r */
   completeTask(id, r = {}) {
     const t = this.tasks.find(x => x.id === id);
     if (!t) throw new Error("no task");
+    if (!r.state) {
+      const sys = { hops: [{ actor: { kind: "service", id: "kernel", space: this.space } }], labels: { trust: "system", red: "internal", source_spaces: [this.space] } };
+      if (t.state === "ready") this.#start(sys, id);
+      if (t.state === "working") { const guarded = Boolean(t.checker) || (t.output && t.output.kind === "sent") || Boolean(t.required); if (!guarded) { t.outcome = r.outcome || "approved"; t.answer = r.answer; } this.#complete(sys, id, { answer: r.answer, outcome: r.outcome }); }
+      if (t.state === "needs_check") this.#decide(sys, id, { outcome: r.outcome === "rejected" ? "rejected" : "approved" });
+      return t;
+    }
     t.state = r.state || "done"; t.outcome = r.outcome || "approved"; t.answer = r.answer; t.updated_at = this.now();
     const sys = { hops: [{ actor: { kind: "service", id: "kernel", space: this.space } }], labels: { trust: "system", red: "internal", source_spaces: [this.space] } };
     const ev = this.emit("task.completed", { id, task: id, state: t.state, outcome: t.outcome, answer: t.answer }, sys, `vyre://${this.space}/task/${id}`);
