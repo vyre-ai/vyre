@@ -1378,3 +1378,7 @@ A device has one id everywhere: its entry id (eid) on the owner's identity list,
 - Relay stream admission: the bridge's sync `allow(eid)` is `createPeerAllowCache({ has })` (peer-cache.js). It only gates opening a stream. `identity.entry-removed` / `identity.removed` (with `eid`) set no at once and refresh; `identity.changed` sets no for every cached id until re-read.
 - Host: `serveHome(id, { identity: { entry }, serve, peers?, relayServe? })`; `createHost({ device: { id: eid, sign(message) -> sig } })`.
 - Open: pairing.js still binds a node key per pairing row (`peers.shared`, claims); that table is now redundant and should go. The relay channel's device id must be the eid too (the Noise key is proven by the channel, not checked against the entry).
+
+### Gate items and the user's rulings (4 Oct)
+
+H-1, S-1, P-1, Z-1, D-1, Q-1, typed code OFF, the dead claim path and the reviewer's two LOW items are in; `composeWinkHome` is in core/wink/compose.js. Idle cost: nothing in core/wink recurs under 60 s (the headscale health check defaults to 60 s, the pool sync and offer sweep run every 60 s, the release retry every 60 s); a quiet direct link or held connection is pinged only before the next call, so an idle link costs no CPU. Still open: the phone flow (`wink.phone.open`, `wink.phone.scan`, `wink.code.ack`) is the same short two-sided code and is not behind the typed-code flag; it needs the QR plus three words form (a server-style ticket with the same confirmation on the computer).

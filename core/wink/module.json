@@ -79,6 +79,14 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.pairing",
+        "reach": "person"
+      },
+      {
+        "name": "wink.server.pair.answer",
+        "reach": "person"
+      },
+      {
         "name": "wink.server.adopt",
         "reach": "person"
       },
@@ -112,6 +120,18 @@
       },
       {
         "name": "wink.phone.scan",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.pairing",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.pair.answer",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.wait",
         "reach": "person"
       },
       {
@@ -165,10 +185,6 @@
       {
         "name": "wink.peer.allow",
         "reach": "modules"
-      },
-      {
-        "name": "wink.peer.shared",
-        "reach": "modules"
       }
     ]
   },
@@ -193,6 +209,9 @@
       "grant.revoked",
       "wink.pair-waiting",
       "wink.pair-done",
+      "wink.pair-asked",
+      "wink.pair-confirm",
+      "wink.pair-answered",
       "wink.pair-failed",
       "wink.server-adopted",
       "wink.server-released",
@@ -201,7 +220,6 @@
       "storage.paired",
       "storage.removed",
       "storage.unreachable",
-      "wink.peer-bound",
       "wink.relay-applied"
     ],
     "on": [
