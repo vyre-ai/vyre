@@ -10,10 +10,12 @@
 import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
+import { createStages, taskIdOf } from "./stages.js";
 import { graph, paintRun, seeAsCode, fromCode, flowChanges } from "./canvas.js";
 import { compileFlow } from "./compile.js";
 import { printFlow, parseFlowTextBounded } from "./text.js";
 
+export { createStages, taskIdOf };
 export { FlowRunner, KitManager, MemoryKitStore, MemoryFlowStore, installCard, diffKits };
 export * as language from "./schema.js";
 export { compileFlow, nextCron, parseCron, deriveCaps } from "./compile.js";
@@ -41,12 +43,14 @@ function personOf(chain) {
  *   store?: any, kitStore?: any, clock?: () => number,
  *   emit?: (type: string, data: any, o: any) => void,
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
+ *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
 export function createFlows(o) {
   const store = o.store || new MemoryFlowStore();
   const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
+  const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit }) : null;
   const cat = async () => o.catalog();
   const view = async (/** @type {string} */ id, /** @type {number} */ [version] = [/** @type {any} */ (undefined)]) => {
     const v = version !== undefined ? await store.getVersion(id, version) : (await store.active(id)) || (await latest(id));
@@ -109,9 +113,9 @@ export function createFlows(o) {
   };
 
   return {
-    runner, kits, store, tools,
+    runner, kits, stages, store, tools,
     /** One subscription feeds triggers, waits and Kit approvals. @param {any} env */
-    onEvent: async env => { await runner.onEvent(env); await kits.onEvent(env); },
+    onEvent: async env => { await runner.onEvent(env); await kits.onEvent(env); if (stages) await stages.onEvent(env); },
     tick: () => runner.tick(),
     nextWake: () => runner.nextWake(),
     recover: () => runner.recover(),

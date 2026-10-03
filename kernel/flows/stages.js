@@ -47,7 +47,7 @@ export function createStages(o) {
   /** @type {Promise<void>} */ let queue = Promise.resolve();
   const serial = (/** @type {() => Promise<void>} */ fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
 
-  const stagesOf = (/** @type {string} */ type) => { const t = o.catalog().types && o.catalog().types[type]; return (t && t.stages) || []; };
+  const stagesOf = async (/** @type {string} */ type) => { const c = await o.catalog(); const t = c.types && c.types[type]; return (t && t.stages) || []; };
 
   /** @param {string} spec @param {string} space */
   async function actorFor(spec, space, ctx) {
@@ -71,10 +71,10 @@ export function createStages(o) {
 
   /** A record entered a stage: make its tasks. @param {{ urn: string, type: string, id: string, stage: string, entry: string }} e */
   async function enter(e) {
-    const stage = stagesOf(e.type).find((/** @type {any} */ s) => s.name === e.stage);
+    const stage = (await stagesOf(e.type)).find((/** @type {any} */ s) => s.name === e.stage);
     const key = `${e.urn}|${e.stage}|${e.entry}`;
     if (entries.has(key)) return;
-    const space = o.catalog().space;
+    const space = (await o.catalog()).space;
     const templates = (stage && stage.tasks) || [];
     const ent = { key, urn: e.urn, type: e.type, id: e.id, stage: e.stage, tasks: /** @type {any[]} */ ([]), advanced: false };
     entries.set(key, ent);
@@ -95,7 +95,9 @@ export function createStages(o) {
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),
         ...(t.due_offset_ms ? { due: now() + t.due_offset_ms } : {}),
-        ...(t.required === false ? {} : { required: true }),
+        // The kernel treats `required` as guarded (completion needs a check). A required task with no checker would wait for nobody, so the flag
+        // goes to the kernel only where a checker or an outward send already guards the task; the module keeps its own required list either way.
+        ...(t.required !== false && (t.checker || t.output.kind === "sent") ? { required: true } : {}),
       };
       const task = await o.kernel.ask.request(chain, spec, { idem: `stage:${key}:${t.title}` });
       made.set(t.title, task.id);
@@ -115,7 +117,7 @@ export function createStages(o) {
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
     if (!ok) { if (rows.some(r => r.state === "stuck")) emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); return; }
-    const stages = stagesOf(ent.type);
+    const stages = await stagesOf(ent.type);
     const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
     const next = stages[at + 1];
     ent.advanced = true;
@@ -147,5 +149,5 @@ export function createStages(o) {
     });
   }
 
-  return { onEvent, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
+  return { onEvent, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
 }

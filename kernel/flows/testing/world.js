@@ -4,6 +4,7 @@ import { RealKernel } from "./real-kernel.js";
 import { FlowRunner } from "../runner.js";
 import { MemoryFlowStore, RecordsFlowStore } from "../store.js";
 import { catalog, SPACE } from "./fixtures.js";
+import { createStages } from "../stages.js";
 
 export const ALEX = { kind: "person", id: "per_alex", space: SPACE };
 export const BOB = { kind: "person", id: "per_bob", space: SPACE };
@@ -31,9 +32,14 @@ export async function world(o = {}) {
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []), ...(o.ports || {}) },
     limits: o.limits,
   });
+  // stages made of tasks: a module over the same events, working under [ALEX, service:stages]
+  const stageEvents = [];
+  const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, emit: (type, data) => stageEvents.push({ type, data }),
+    ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []) } });
+  kernel.onEvent(e => stages.onEvent(e), "stages");
   // the kernel's own event stream feeds the runner, as the real gateway's does
   kernel.onEvent(e => runner.onEvent(e), "flows");
-  return { which, clock, kernel, store, runner, emitted, cat, advance: ms => { clock.t += ms; } };
+  return { which, stages, stageEvents, clock, kernel, store, runner, emitted, cat, advance: ms => { clock.t += ms; } };
 }
 
 /** Define and approve a Flow in one go; returns its id. */
@@ -45,4 +51,4 @@ export async function install(w, flow, approver = ALEX) {
 }
 
 /** Let the event-driven runs settle. */
-export async function settle(w) { await w.kernel.pump(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await new Promise(r => setImmediate(r)); await w.runner.drain(); }
+export async function settle(w) { await w.kernel.pump(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await new Promise(r => setImmediate(r)); await w.runner.drain(); await w.kernel.pump(); await w.stages.idle(); await w.kernel.pump(); }
