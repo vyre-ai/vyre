@@ -85,6 +85,8 @@ export function createSealing(cfg) {
       const d = await cfg.authorizer.authorize({ chain, action: "seal.deliver", resource: i.record });
       if (d.effect === "deny") throw Object.assign(new KernelError("not_found", "no such record", d.reason), { decision: d.decision });
       if (d.effect === "ask" && d.reason !== "needs_approval") throw Object.assign(new KernelError(d.reason, "seal.deliver needs more"), { decision: d.decision, obligations: d.obligations });
+      // A draft-only rule: Vyre never sends this, even after an approval. The caller prepares a draft in the outside system instead.
+      if (d.obligations.some((/** @type {any} */ o) => o.type === "draft_only")) throw Object.assign(new KernelError("draft_only", d.rule ? `${d.rule.label}: this is prepared as a draft, never sent` : "this is prepared as a draft, never sent"), { decision: d.decision, obligations: d.obligations, rule: d.rule });
       const ap = await approvalFor(chain, i);
       const dl = ap.delivery;
       const to = recipientsOf(i.envelope || {});

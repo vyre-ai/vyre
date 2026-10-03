@@ -30,8 +30,10 @@ export function sealerPresence(sealer) {
  */
 export function grantProofVerifier(presence) {
   return async (proof, ctx) => {
-    const m = /^grants\.([a-z_]+)$/.exec(String(ctx && ctx.action));
+    const m = /^(grants|rules)\.([a-z_]+)$/.exec(String(ctx && ctx.action));
     if (!m || !ctx.input_hash) return false;
-    return (await presence.check({ chain: ctx.chain, op: `grant.${m[1]}`, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof })) === null;
+    // A standing-rule act is signed as a grant act named `grant.rule_<verb>`: the sealing process accepts only task and grant acts, and a rule is one (it changes what is allowed).
+    const op = m[1] === "grants" ? `grant.${m[2]}` : `grant.rule_${m[2]}`;
+    return (await presence.check({ chain: ctx.chain, op, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof })) === null;
   };
 }

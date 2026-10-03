@@ -385,6 +385,7 @@ export function checkInput(schema, value, where = "input") {
  * The meta of the tool call now running, as the registry dispatched it. The kernel reads the running turn's own session token from here (`ctx.kernel.audienceFor`), so a
  * module cannot hand it another turn's token: whatever it passes, the room is the one of the call the registry is running for it.
  */
+const PLACEHOLDER = /\{\{field:[^}]+\}\}/;
 const callStore = new AsyncLocalStorage();
 /** The running call's meta, or null: once the call has returned, work it started (a timer, a floating promise) no longer sees it, so a turn's token cannot outlive the turn. */
 export const currentCall = () => { const b = callStore.getStore(); return b && b.live ? b.meta : null; };
@@ -1103,7 +1104,17 @@ export class Registry {
       // device, and an asked tool never runs for a model, the harness or a module, since nothing
       // here can yet tell that the person's own words asked for it.
       if ((def.outward || agentAskFirst(tool, caller)) && !isPerson(caller)) {
-        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
+        // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
+        // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
+        /** @type {any} */ let held = {};
+        if (def.outward && PLACEHOLDER.test(JSON.stringify(input))) {
+          try {
+            if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
+            const r = await this.deps.resolveFields({ tool, input, meta });
+            held = { resolved: r.resolved, slots: r.slots };
+          } catch (e) { return { error: { code: "placeholder_unreadable", message: String(/** @type {any} */ (e).message || e) } }; }
+        }
+        return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.`, ...held } };
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -1229,7 +1240,18 @@ export class Registry {
       if (askedGate && !(await this.saidMatch(tool, meta, def, input))) {
         return { error: { code: "not_asked", message: `${tool} runs for an agent only when your own words asked for it; tell the person what you would do` } };
       }
-      try { return await this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
+      // `{{field:<urn>#<name>}}` in an OUTWARD tool's input (what a group chat's session saw instead of a value the room may not read) is resolved here, before the tool runs, from the record
+      // under the person the turn is for (the kernel's resolveFields, handed in by the daemon): the value goes into the action, a sealed one stays a slot for the sealing door, and a value
+      // that person cannot read refuses the whole action. With no resolver, or no session to resolve for, a placeholder in an outward action is refused rather than sent as text.
+      let toInput = input, resolvedMeta = {};
+      if (def.outward && PLACEHOLDER.test(JSON.stringify(input))) {
+        try {
+          if (!this.deps.resolveFields || typeof meta.token !== "string") throw Object.assign(new Error("a placeholder in an outward action needs the session it came from"), { code: "placeholder_unreadable" });
+          const r = await this.deps.resolveFields({ tool, input, meta });
+          toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots };
+        } catch (e) { return { error: { code: /** @type {any} */ (e).code === "placeholder_unreadable" ? "placeholder_unreadable" : "failed", message: String(/** @type {any} */ (e).message || e) } }; }
+      }
+      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
