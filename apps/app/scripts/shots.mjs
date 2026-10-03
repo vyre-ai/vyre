@@ -1,6 +1,6 @@
 // Screenshots of the exported web app (dist/, base path /app) in headless Chromium, for matching the prototype's reference shots (team/0.3/ui-ref).
 //   node scripts/shots.mjs <outdir> <route>... [--dist dist] [--w 390,1280] [--theme dark,paper] [--h 860]
-// A route is a path under /app (u/now, u/records/contact). Files: <outdir>/<w>-<route with _>-<theme>.png. Needs `playwright` resolvable (it is on the test server, not in the app).
+// A route is a path under /app (u/now, u/records/contact), with an optional ?query kept in the file name. --fixed 1 keeps the viewport height (a screen with its own scroller). Files: <outdir>/<w>-<route with _>[-query]-<theme>.png. Needs `playwright` resolvable (it is on the test server, not in the app).
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -12,6 +12,7 @@ const dist = path.resolve(flag("--dist", "dist"));
 const widths = flag("--w", "390,1280").split(",").map(Number);
 const themes = flag("--theme", "dark,paper").split(",");
 const height = Number(flag("--h", "860"));
+const fixed = flag("--fixed", "") === "1"; // keep the viewport height: a screen with its own scroller (chat) is shot as a phone shows it
 const [out, ...routes] = args;
 fs.mkdirSync(out, { recursive: true });
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
@@ -42,8 +43,8 @@ try {
       const sideways = await page.evaluate(() => document.scrollingElement.scrollWidth > innerWidth + 1);
       if (sideways) { bad++; console.log(`WARN ${w} ${r} ${theme}: scrolls sideways`); }
       const full = await page.evaluate(() => Math.max(document.scrollingElement.scrollHeight, ...[...document.querySelectorAll("*")].filter((e) => e.scrollHeight > e.clientHeight + 1 && getComputedStyle(e).overflowY !== "visible").map((e) => e.scrollHeight)));
-      await page.setViewportSize({ width: w, height: Math.min(Math.max(full, height), 4000) });
-      await page.screenshot({ path: path.join(out, `${w}-${route.replace(/\//g, "_")}-${theme}.png`) });
+      if (!fixed) await page.setViewportSize({ width: w, height: Math.min(Math.max(full, height), 4000) });
+      await page.screenshot({ path: path.join(out, `${w}-${route.replace(/\//g, "_")}${query ? "-" + query.replace(/[^\w]+/g, "-") : ""}-${theme}.png`) });
       await page.setViewportSize({ width: w, height });
     }
     if (errors.length) { console.log(`console errors at ${w} ${theme}:`, errors.slice(0, 5).join(" | ")); }

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Terminal</title>
+<link rel="stylesheet" href="./xterm.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #121110; -webkit-text-size-adjust: 100%; }
+  #t { position: absolute; inset: 0; padding: 8px 10px; box-sizing: border-box; touch-action: pan-x pan-y; }
+  .xterm { height: 100%; }
+  .xterm-viewport { overscroll-behavior: contain; }
+</style>
+</head>
+<body>
+<div id="t"></div>
+<script type="module" src="./frame.js"></script>
+</body>
+</html>

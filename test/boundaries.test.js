@@ -76,8 +76,6 @@ export const ALLOW = {
     why: "sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0" },
   "core/switchboard -> core/transcripts": { files: ["core/transcripts/sanitize.js"], next: "lib",
     why: "keeps credentials out of what it builds from transcripts" },
-  "core/term -> core/computers": { files: ["core/computers/ws.js"], next: "lib",
-    why: "the RFC 6455 framing sliver Glass wrote; a pure helper" },
   "core/term -> core/files": { files: ["core/files/safety.js"], next: "ctx.call",
     why: "the path gate every file path passes through" },
   "core/vyre-core -> core/vault": { files: ["core/vault/vault.js"], next: "host",
