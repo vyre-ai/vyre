@@ -11,6 +11,8 @@ import { payloadHash, proofBytes, chainCtx } from "../kernel/seal/wire.js";
 import { createMemoryStore } from "../kernel/store/memory.js";
 import { createEventLog } from "../kernel/core/events.js";
 import { createChainBuilder } from "../kernel/core/chain.js";
+import { parseExpr, evalExpr } from "../records/language/expr.js";
+import { createAuthorizer } from "../kernel/core/authorize.js";
 import { createToolSurface } from "../kernel/tools/surface.js";
 import { generateKeyPairSync } from "node:crypto";
 
@@ -29,13 +31,15 @@ export async function createRealKernel({ space = "spc_aaaaaaaaaaaa", owner = "al
   const members = new Set([`person:${owner}`, "service:tasks", ...Object.keys(agents).map(a => `agent:${a}`), ...Object.keys(services).map(a => `service:${a}`)]);
   const log = createEventLog({ space, clock });
   const registry = [...TASK_ACTIONS, ...actions];
-  const gw = createGateway({ space, store: createMemoryStore({ clock }), log, chains, clock, actions: registry, grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
+  const gw = createGateway({ expr: { parseExpr, evalExpr }, space, store: createMemoryStore({ clock }), log, chains, clock, actions: registry, grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
   // The one verifier is the sealing process's Presence class; the rig wraps it the way the process's presence.check does (as kernel/tasks/tasks.test.js does).
   const pr = new Presence(clock, { allowUnattested: true });
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
   pr.keys.set(`key-${owner}`, { person: owner, signer: "secure_enclave", attested: true, key: publicKey });
   const presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space, fields, ctx: chainCtx(chain) }) : "no_proof") };
-  const tasks = createTasks({ space, authorizer: { authorize: gw.authorize }, log, presence, chains, clock, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", owner) });
+  // Tasks reads the registry from the authorizer itself (a send must name an outward action), so it gets the real one over the same grants.
+  const authorizer = createAuthorizer({ space, actions: [...registry, ...(await import("../kernel/gateway/records.js")).RECORD_ACTIONS], clock, grants: { forSubject: (/** @type {any} */ a) => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
+  const tasks = createTasks({ space, authorizer, log, presence, chains, clock, members: { has: (/** @type {any} */ a) => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", owner) });
   const person = () => chains.fromFacts({ kind: "device", device_key_id: `d-${owner}`, person: owner, path: "direct" });
   const agent = (/** @type {string} */ name) => chains.fromFacts({ kind: "agent_session", agent: name, session: "s", thread: "t", vouched: true });
   /** @type {any[]} */ const current = [];
