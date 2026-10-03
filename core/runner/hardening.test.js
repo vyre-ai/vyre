@@ -418,3 +418,16 @@ test("fscrypt workspace: opens with the leased key, locks with no key, a wrong k
   assert.equal(fs.existsSync(dir), false);
 });
 import crypto_ from "node:crypto";
+
+import { fscryptSetupPlan, SLOWER_LINE } from "./workspace.js";
+test("fscrypt setup plan: ext4 needs one tune2fs, other filesystems fall back to gocryptfs with the slower line", () => {
+  const fake = (out, status = 0) => () => ({ status, stdout: out }), no = () => false, yes = () => true;
+  const ext4 = fscryptSetupPlan("/x", fake("ext4 /dev/vda1\n"), no);
+  assert.equal(ext4.state, "needs-admin");
+  assert.deepEqual(ext4.command, ["tune2fs", "-O", "encrypt", "/dev/vda1"]);
+  assert.equal(ext4.fallback, "gocryptfs");
+  const btrfs = fscryptSetupPlan("/x", fake("btrfs /dev/nvme0n1p2\n"), no);
+  assert.deepEqual([btrfs.state, btrfs.fallback, btrfs.line], ["unsupported", "gocryptfs", SLOWER_LINE]);
+  assert.equal(fscryptSetupPlan("/x", fake("", 1), no).state, "unsupported");
+  assert.equal(fscryptSetupPlan("/x", fake("ext4 /dev/vda1\n"), yes).state, "ready");
+});

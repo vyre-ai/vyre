@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
-import { driverFor } from "./workspace.js";
+import { driverFor, SLOWER_LINE } from "./workspace.js";
 import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
@@ -277,7 +277,7 @@ export function createRunner(o) {
       await o.requestServer?.(session);
       emit({ type: "moved", session, to: "server" });
     },
-    status() { return { workspace: driver.name, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, ...(driver.name === "gocryptfs" ? { notice: SLOWER_LINE } : {}), state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },
