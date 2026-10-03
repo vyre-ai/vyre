@@ -15,7 +15,7 @@
 export const PROVIDERS = ["claude", "codex", "gemini", "grok", "kimi"];
 /** The cap over every provider together, whichever they are (openrouter and the rest included). */
 export const ALL = "all";
-const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent"];
 
 const SCHEMA = `
   CREATE TABLE spend (

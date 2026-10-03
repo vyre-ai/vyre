@@ -7,18 +7,19 @@
 //      only that person's own assistants (agent hops) may stand beside them. A chain with no person (a module or the daemon calling) is not decided here: the legacy rules stand.
 // With no kernel on the daemon (`ctx.kernel` absent) nothing changes. The 0.2 reach rules (projects.reach, agent project grants) still run after this, and only narrow.
 
-/**
- * The ONE named exception while platform wires the Capsule's code-signature check into the daemon's proven facts: a Capsule call still reaches a module with no kernel chain, so for
- * that caller alone the 0.2 rules decide. core/memory/capsule-exception.test.js FAILS the day a Capsule call carries a person chain, so this line gets deleted and not forgotten.
- */
-export const CAPSULE_EXCEPTION = "capsule";
-
 /** Tools a person asks the ONE Ask door through: in a room they are answered from the Space's memory alone, not refused. */
 export const ROOM_ANSWERS = new Set(["memory.ask"]);
 
+import { whoOfChain, whoOfModule } from "./who.js";
+
 /** @param {any} ctx @param {{ denied: (message: string) => Error }} o */
 export function createKernelGate(ctx, { denied }) {
-  /** @param {string} tool @param {any} extra @returns {Promise<{ group: true } | void>} `{ group: true }` for a room-answered tool in a room; refuses everything else in a room */
+  /** The chain the kernel builds from the daemon's proven facts alone (the surface or device this call arrived on), when there are any; a session token's chain does not carry it. */
+  const surfaceOf = async (/** @type {any} */ extra) => {
+    if (!extra || !extra.kernelFacts || typeof extra.kernelFacts !== "object") return null;
+    try { const c = await ctx.kernel.chain({ kernelFacts: extra.kernelFacts }); return c && c.hops && c.hops.length && c.hops.every((/** @type {any} */ h) => h.actor.kind !== "service") ? c : null; } catch { return null; }
+  };
+  /** @param {string} tool @param {any} extra @returns {Promise<{ group?: true, who?: import("./who.js").Who } | void>} the call's `Who` from its chain (nothing when the kernel is off); `group: true` for a room-answered tool in a room; refuses everything else in a room */
   return async function gate(tool, extra) {
     const k = ctx.kernel;
     if (!k) return;
@@ -32,7 +33,7 @@ export function createKernelGate(ctx, { denied }) {
       try { room = typeof k.audienceFor === "function" ? await k.audienceFor(extra || {}) : null; } catch { room = null; }
       if (!room) throw denied(`${tool}: the room this runs in is not known, so personal memory is not read`);
       if (room.group === true) {
-        if (ROOM_ANSWERS.has(tool)) return { group: true };
+        if (ROOM_ANSWERS.has(tool)) return { group: true, who: whoOfChain(chain, await surfaceOf(extra)) };
         throw denied(`${tool}: personal memory is not shared in a group chat`);
       }
     }
@@ -41,8 +42,7 @@ export function createKernelGate(ctx, { denied }) {
     // token; a model on the socket, a client's claim and an unproven caller get none, and a caller LABEL decides nothing. Two named exceptions, both set by the daemon and never by a
     // client: a first-party module's own call (the registry's `firstParty` flag; its authority is the module's reach rules), and the Capsule (CAPSULE_EXCEPTION above).
     if (!chain || !Array.isArray(chain.hops) || !chain.hops.length || chain.hops.every((/** @type {any} */ h) => h.actor.kind === "service")) {
-      if (extra && extra.firstParty === true && String(extra.caller || "").startsWith("module:")) return;
-      if (extra && extra.caller === CAPSULE_EXCEPTION) return;
+      if (extra && extra.firstParty === true && String(extra.caller || "").startsWith("module:")) return { who: whoOfModule(String(extra.caller)) };
       throw denied(`${tool}: this call carries no kernel chain, so personal memory is not read`);
     }
     const hops = chain.hops.map((/** @type {any} */ h) => h.actor);
@@ -51,5 +51,8 @@ export function createKernelGate(ctx, { denied }) {
     let m = null;
     try { m = typeof k.membership === "function" ? await k.membership(first.id) : null; } catch { m = null; }
     if (!m || m.member !== true || m.role !== "owner") throw denied(`${tool}: personal memory is read only by its person and that person's own assistant`);
+    const who = whoOfChain(chain, await surfaceOf(extra));
+    if (who.conflict) throw denied(`${tool}: this chain names more than one agent, so it is not known which is asking`);
+    return { who };
   };
 }

@@ -23,17 +23,22 @@ function fakeSealer() {
   }, presenceCheck: presence.check };
 }
 
+/** A Drive with just what a forwarded file touches: one file under clients/, and writes recorded. */
+const fakeDrive = () => ({ wrote: [], stat: (p, { version = null } = {}) => ({ path: p, version: version || 1, size: 4, sha256: "ab" }), stream: async function* () { yield Buffer.from("data"); },
+  async putStream(p, src, o) { let n = 0; for await (const c of src) n += c.length; this.wrote.push([p, o]); return { version: 1, size: n, sha256: "cd" }; } });
+
 async function rig() {
   const sealer = fakeSealer();
   const released = [], forwarded = [];
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async i => { released.push(i); return { secret: "v" }; }, forwardCredential: async q => { forwarded.push(q); return { status: 200, ok: true, headers: {}, body: "e30=" }; } });
+  const drive = fakeDrive();
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, drive, resolveCredential: async i => { released.push(i); return { secret: "v" }; }, forwardCredential: async q => { forwarded.push(q); return { status: 200, ok: true, headers: {}, body: "e30=" }; } });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const g = k.gateway.grants;
   const role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
   const mk = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
-  return { k, sealer, owner, bob, g, mk, released, forwarded, un: (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) }) };
+  return { k, sealer, owner, bob, g, mk, released, forwarded, drive, un: (chain, id) => g.offers.unoffer(chain, id, { presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) }) };
 }
 
 test("leases: `allowed` is the kernel's answer from the two Offers, on every issue and renew, never the caller's", async () => {
@@ -189,4 +194,51 @@ test("leases.forward: authorized for the caller's chain against the route before
   await assert.rejects(() => L.forward(bob, { ...req, saveTo: "inbox/out.json" }), { code: "not_found" }, "no drive.write");
   await grant(["drive.read", "drive.write"]);
   assert.equal((await L.forward(bob, { ...req, upload: { drive: { path: "clients/a.pdf" } }, saveTo: "inbox/out.json" })).status, 200);
+});
+
+const gmake = (r, actions, conditions, prefix) => { const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions, resource: { prefix: `vyre://${SPACE}/${prefix}/*` }, conditions, source: "test" }; return r.g.create(r.owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) }); };
+test("LF-1: leases.forward counts a grant's rate, budget and once through the same enforcement as every gated act; a refused request counts nothing", async () => {
+  const r = await rig();
+  const { bob, owner, g, forwarded } = r;
+  const L = r.k.gateway.leases;
+  const grant = (actions, conditions, prefix = "service") => gmake(r, actions, conditions, prefix);
+  L.bind("s1", "lease1", { routes: [{ route: "api.stripe.com", ref: "stripe_key", connector: "stripe", methods: ["GET"], paths: ["/v1/*"] }] });
+  const req = { session: "s1", route: "api.stripe.com", method: "GET", path: "/v1/charges" };
+  await grant(["service.read"], { rate: { n: 2, per_seconds: 3600 } });
+  assert.equal((await L.forward(bob, req)).status, 200);
+  assert.equal((await L.forward(bob, req)).status, 200);
+  await assert.rejects(() => L.forward(bob, req), { code: "rate_limited" }, "the third call in the window is refused");
+  assert.equal(forwarded.length, 2, "and the vault was not asked");
+  // a request refused for a Drive file counts nothing on the service grant
+  const r2 = await rig();
+  const L2 = r2.k.gateway.leases;
+  L2.bind("s1", "lease1", { routes: [{ route: "api.stripe.com", ref: "stripe_key", connector: "stripe", methods: ["GET"], paths: ["/v1/*"], drive: { read: ["clients/*"] } }] });
+  await gmake(r2, ["service.read"], { once: true }, "service");
+  await assert.rejects(() => L2.forward(r2.bob, { ...req, upload: { drive: { path: "clients/a.pdf" } } }), { code: "not_found" }, "no drive.read grant");
+  assert.equal((await L2.forward(r2.bob, req)).status, 200, "the once grant was not spent by the refused request");
+  await assert.rejects(() => L2.forward(r2.bob, req), { code: "used_up" });
+});
+
+test("LF-3: leases.bind keeps the route record whole (deny wins, size cap, content types, Drive lists, header names) and forward carries it to the vault, with the Drive as the caller's own door", async () => {
+  const r = await rig();
+  const { bob, owner, g, forwarded, drive } = r;
+  const L = r.k.gateway.leases;
+  const grant = (actions, prefix) => gmake(r, actions, {}, prefix);
+  await grant(["service.read", "service.call"], "service");
+  L.bind("s1", "lease1", { routes: [{ route: "api.drive.test", ref: "k", connector: "docs", allow: [{ method: "GET", path: "/files/*" }, { method: "POST", path: "/upload" }], deny: [{ path: "/files/secret/*" }], maxBytes: 1000, contentTypes: ["application/pdf"], drive: { read: ["clients/*"], write: ["inbox/*"] }, headers: ["X-Goog-Upload-Protocol"] }] });
+  const req = { session: "s1", route: "api.drive.test", method: "GET", path: "/files/a" };
+  await assert.rejects(() => L.forward(bob, { ...req, path: "/files/secret/b" }), { code: "not_found" }, "a deny entry wins over an allow");
+  await L.forward(bob, req);
+  assert.deepEqual(forwarded.at(-1).allow_headers, ["x-goog-upload-protocol"], "the route's header names go with the request");
+  await grant(["drive.read"], "file/clients"); await grant(["drive.write"], "file/inbox");
+  await L.forward(bob, { ...req, upload: { drive: { path: "clients/a.pdf", contentType: "application/pdf" } }, saveTo: "inbox/out.json" });
+  const f = forwarded.at(-1);
+  assert.equal(f.file, true);
+  assert.deepEqual(f.limits, { maxBytes: 1000, contentTypes: ["application/pdf"] });
+  assert.deepEqual(f.drive, { read: ["clients/*"], write: ["inbox/*"] });
+  assert.equal(typeof f.files.read, "function", "the Drive door under the caller's chain");
+  assert.equal((await f.files.read("clients/a.pdf")).size, 4);
+  await assert.rejects(() => f.files.read("elsewhere/x"), { code: "not_found" }, "the caller's own grant decides outside the route lists too");
+  await f.files.write("inbox/out.json", (async function* () { yield Buffer.from("xy"); })(), { maxBytes: 10 });
+  assert.equal(drive.wrote[0][0], "inbox/out.json");
 });
