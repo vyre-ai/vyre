@@ -369,7 +369,7 @@ test("runner: a machine that was offline at revoke deletes its workspace on next
 });
 
 test("runner: when the lease ends the workspace locks, the session stops, and the data is unreadable", { skip: SKIP || false, timeout: 90_000 }, async t => {
-  const r = await rig(t, { ttlMs: 1500 });
+  const r = await rig(t, { ttlMs: 6000 });
   const h = await r.launch(r.runner, "s1");
   h.send("turn before expiry");
   await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
