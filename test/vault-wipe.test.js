@@ -8,6 +8,7 @@ import { open, migrate } from "../core/store/index.js";
 import { Vault, MIGRATIONS } from "../core/vault/vault.js";
 import { acquire } from "../core/daemon/lock.js";
 import { wipeHome } from "../lib/vault-wipe.js";
+import { startSealer } from "../kernel/seal/client.js";
 import { SCRATCH } from "./scratch.mjs";
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -43,6 +44,28 @@ test("wipeHome refuses while the daemon holds the home's lock, and destroys noth
     await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "daemon_running" && /stop it first/.test(e.message));
   } finally { release(); }
   assert.ok(fs.existsSync(path.join(r.dir, "key")) && fs.existsSync(path.join(r.seal, "master.key")));
+});
+
+test("wipeHome refuses while a sealing process serves the folder, and destroys nothing", async t => {
+  const r = await rig(t); fs.rmSync(r.seal, { recursive: true, force: true });
+  const s = startSealer({ dir: r.seal, timeoutMs: 8000, dev: true, unattested: true }); let closed = false;
+  t.after(async () => { if (!closed) await s.close(); });
+  await s.api.put({ chain: (await import("../kernel/seal/testing.js")).person(), record: "vyre://spc_testspace0001/contact/c_jane", field: "ssn", class: "us-ssn", value: "123-45-6789" });
+  await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "sealer_running" && /stop it first/.test(e.message));
+  assert.ok(fs.existsSync(path.join(r.dir, "key")) && fs.existsSync(path.join(r.seal, "master.key")));
+  await s.close(); closed = true;
+  assert.equal((await wipeHome({ home: r.home })).seal.master_destroyed, true);
+});
+
+test("wipeHome never reports success while a key survives: a keychain keystore with no way to delete it, and a sealing master that is not a file, are refused by name", async t => {
+  const r = await rig(t);
+  await assert.rejects(wipeHome({ home: r.home, keystore: "keychain" }), e => /** @type {any} */ (e).code === "keystore_survives" && /keychain/.test(e.message));
+  fs.rmSync(path.join(r.seal, "master.key")); fs.writeFileSync(path.join(r.seal, "values", "x.json"), "{}");
+  await assert.rejects(wipeHome({ home: r.home }), e => /** @type {any} */ (e).code === "keystore_survives" && /sealing master/.test(e.message));
+  assert.ok(fs.existsSync(path.join(r.dir, "key")), "nothing was destroyed");
+  let called = 0; fs.rmSync(path.join(r.seal, "values", "x.json")); fs.writeFileSync(path.join(r.seal, "master.key"), "00".repeat(32));
+  const out = await wipeHome({ home: r.home, keystore: "keychain", destroyKeychain: () => { called++; } });
+  assert.equal(called, 1); assert.equal(out.vault.keychain_destroyed, true);
 });
 
 test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no file but the host CLI's imports it, and no tool is named wipe", () => {
