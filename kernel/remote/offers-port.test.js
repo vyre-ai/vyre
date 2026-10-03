@@ -11,10 +11,10 @@ const clock = () => ++T;
 
 async function rig() {
   const used = new Set();
-  const presence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, SPACE, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true)) };
+  const presence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, SPACE, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), clock, presence });
   const owner = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
-  await k.gateway.grants.setRole(owner, { person: BOB, role: "member" }, proofFrom({ kernel_proof: { payload_hash: proofRequest(SPACE, "setRole", { person: BOB, role: "member" }).payload_hash, nonce: "n0" } }));
+  await k.gateway.grants.setRole(owner, { person: BOB, role: "member" }, proofFrom({ kernel_proof: { payload_hash: proofRequest(SPACE, "setRole", { person: BOB, role: "member" }).payload_hash, nonce: Math.random().toString(36) } }));
   const handle = { space: SPACE, grants: k.gateway.grants, chain: async () => owner, proofFrom };
   /** The meta a surface sends for the offer call the port will make. */
   const meta = (call, ...a) => ({ kernel_proof: { payload_hash: proofRequest(SPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) } });
