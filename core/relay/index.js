@@ -15,6 +15,7 @@
 // this box knows and shown with every pairing notice.
 
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
 import { within } from "../../lib/within.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
@@ -409,9 +410,8 @@ export default {
     const PENDING_TOOLS = Object.freeze({ phone: ["wink.phone.wait"], ring: ["wink.phone.wait"], server: ["wink.server.adopt"] });
     /** @type {Map<string, { pub: Buffer, name: string, hello: any, gate: string, match: any, channels: Set<any>, timer: any }>} */
     const pendingPairs = new Map();
-    /** Set by the module that confirms pairings with its own words (relay.pair.gate): from then on a ring ticket is gated too. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module. */
-    let gateOn = false;
-    const ringGated = () => gateOn && process.env.VYRE_TEST_UNGATED_RING !== "1";
+    /** A ring ticket (relay.pair.ticket) is always a gated ticket (R-2, 4 Oct 2026): its redeemer is a waiting pairing, and no row, key or session exists for it until the Wink module has had the three words confirmed. It does not depend on that module having registered: with the module down nothing confirms, so nothing pairs. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module; a packaged daemon ignores it. */
+    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING);
     /** @type {Map<string, any>} */
     const pendingHandlers = new Map();
     const pendingHandler = gate => {
@@ -829,16 +829,6 @@ export default {
         if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module confirms a waiting pairing");
         await pendingConfirm(String(input.id));
         return { paired: true, id: String(input.id) };
-      },
-    });
-    ctx.tool("relay.pair.gate", {
-      internal: true,
-      description: "The Wink module says it confirms pairings with three words: from then on a ring ticket (relay.pair.ticket) is a gated ticket too, so nothing is paired before the confirm. Answers { gate }.",
-      input: obj({ on: { type: "boolean" } }),
-      run: async (input, meta = {}) => {
-        if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module sets the pairing gate");
-        gateOn = !input || input.on !== false;
-        return { gate: gateOn };
       },
     });
 

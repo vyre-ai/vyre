@@ -500,14 +500,12 @@ export function createPairing(o) {
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
 
-  /** Tells the relay this module gates pairings (set by the module, retried until the relay answers). @type {() => Promise<void>} */
-  let ensureGate = async () => {};
   /**
    * Puts a ticket from a seed at the relay (relay.ticket.mint, modules only). A `gate` (phone or server) makes its redemption a waiting pairing: nothing is paired, no device or
    * presence key made, until this module confirms (confirmPending) after the person has picked the right words (X-1).
    * @param {Buffer} seed @param {"phone" | "server"} [gate]
    */
-  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { await ensureGate(); return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
+  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
   /**
    * The yes, to the relay: the waiting pairing of this device becomes a paired device now. `not_found` is fine (a pairing the relay never held, a typed code or an ungated ring); any
    * other refusal is an error the caller must not turn into a yes. @param {string} device
@@ -1039,7 +1037,7 @@ export function createPairing(o) {
 
   /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
   const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
-  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, setGate: (/** @type {() => Promise<void>} */ f) => { ensureGate = f; }, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

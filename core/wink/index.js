@@ -291,13 +291,8 @@ export function createWink(inject = {}) {
         // gate "server": the scanner completes its own adoption (wink.server.adopt), and the person at the server answers there
       } catch (err) { ctx.log(`wink: a waiting pairing could not be held: ${/** @type {Error} */ (err).message}`); await pairing.dropPending(String(p.device)).catch(() => {}); }
     });
-    // Tell the relay this module confirms pairings with words, so a ring ticket is gated as well. Retried when the relay was not up yet.
-    let gated = false;
-    const ensureGate = async () => { if (gated) return; try { const r = /** @type {any} */ (await ctx.call("relay.pair.gate", { on: true })); gated = Boolean(r && r.data && r.data.gate); } catch { /* the relay may start after this module */ } };
-    void ensureGate();
-    pairing.setGate(ensureGate);
     const registerDevice = async (/** @type {any} */ p) => {
-      // A ring ticket on a box where the relay was not told to gate it (a relay with no confirming module) is held for the words as it always was; every gated pairing has been
+      // A ring ticket the relay did not gate (only under the test switch VYRE_TEST_UNGATED_RING, which a packaged daemon ignores) is held for the words after the fact; every gated pairing has been
       // confirmed already, a window ticket was confirmed on a screen, a typed code by its ack.
       if (p.via === "ring" && !p.gate) { await pairing.phone.holdRing({ ...p, id: p.id }); return null; }
       const identity = await owner1();
