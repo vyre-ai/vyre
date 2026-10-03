@@ -76,3 +76,45 @@ test("launcherOnly (on by default): onboard stores the token without grants, no 
   await off.reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
   assert.ok(!(await off.reg("vault.grant", { name: "claude-setup-token", module: "agents" }, "cli")).error, "with launcherOnly false a grant is allowed again");
 });
+
+test("VP-5: every grant on a put is checked before anything is written: a refused grant leaves no new item and no changed value", async t => {
+  const { reg } = await daemon(t), mod = "module:onboard";
+  const bad = { grants: ["bad name!"] };
+  const r = await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("new"), ...bad }, mod); assert.ok(r.error, "an invalid grant is refused");
+  assert.equal((await reg("vault.list", {}, "cli")).data.items.some(i => i.name === "onboard.thing"), false, "no item was made");
+  assert.ok(!(await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("first"), grants: ["agents"] }, mod)).error);
+  const rows = async () => (await reg("vault.audit", { limit: 1000 }, "cli")).data.entries;
+  const count = async () => (await rows()).length;
+  const n0 = await count();
+  assert.ok((await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("second"), ...bad }, mod)).error, "refused on an existing item too");
+  const after = await rows(); assert.equal(after.length, n0 + 1, "exactly one audit row for the refused call");
+  const newest = after[0]; assert.equal(newest.action, "put"); assert.equal(newest.ok, false); assert.match(String(newest.why), /^refused:/, "the newest row says the put was refused, and nothing else was written");
+  for (const g of ["../x", "", 5, "UPPER"]) assert.ok((await reg("vault.put", { name: "onboard.other", kind: "secret", value: fake("z"), grants: [g] }, mod)).error, String(g));
+});
+
+test("VP-6: a packaged build keeps launcherOnly on whatever config.json says; a development build honours false", async t => {
+  const { Vault, MIGRATIONS } = await import("./vault.js"), { open, migrate } = await import("../store/index.js"), { SCRATCH } = await import("../../test/scratch.mjs");
+  const mk = (buildKind, vault) => {
+    const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-vp6-")), db = open(path.join(home, "vyre.db")); migrate(db, "vault", MIGRATIONS);
+    t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
+    return new Vault({ db, dir: path.join(home, "vault"), config: { name: "box", vault: { keystore: "file", ...vault } }, emit: () => {}, log: () => {}, buildKind });
+  };
+  assert.equal(mk("release", { launcherOnly: false }).launcherOnly, true, "a release ignores false");
+  assert.equal(mk("development", { launcherOnly: false }).launcherOnly, false, "a development tree honours it");
+  assert.equal(mk("development", {}).launcherOnly, true); assert.equal(mk("release", {}).launcherOnly, true);
+});
+
+test("a refused attempt to attach a grant to a provider sign-in token is a record of its own: who, which item, why, never a value", async t => {
+  const { d, reg } = await daemon(t), tok = fake("claude");
+  await reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
+  const since = d.events.since(0, { limit: 1000 }).length;
+  assert.ok((await reg("vault.grant", { name: "claude-setup-token", module: "agents" }, "cli")).error);
+  assert.ok((await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: fake("evil"), grants: ["agents"] }, "module:onboard")).error);
+  const refused = d.events.since(0, { limit: 1000 }).slice(since).filter(e => e.type === "vault.refused");
+  assert.equal(refused.length, 2, "one event per refusal, not one per write");
+  const [grant, put] = refused.map(e => e.data ?? e.payload ?? e); assert.deepEqual([grant.action, grant.name, grant.who], ["grant", "claude-setup-token", "cli"]); assert.deepEqual([put.action, put.name, put.who], ["put", "claude-setup-token", "module:onboard"]);
+  for (const e of refused) { assert.match(JSON.stringify(e), /provider sign-in token/); assert.equal(JSON.stringify(e).includes(tok) || JSON.stringify(e).includes("evil"), false, "never a value"); }
+  const trail = (await reg("vault.audit", { name: "claude-setup-token", limit: 10 }, "cli")).data.entries.filter(e => /^refused:/.test(String(e.why)));
+  assert.equal(trail.length, 2); assert.ok(trail.every(e => e.ok === false));
+  assert.equal(await d.registry.deps.credentialsPort.credentials("claude"), tok, "and the token is unchanged");
+});

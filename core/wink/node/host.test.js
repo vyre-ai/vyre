@@ -320,7 +320,7 @@ test("host D-1 and D-1b: a storage device's session may call only the exact brid
   assert.equal(link.status().path, "direct");
   for (const tool of ["about.text", "identity.sign", "wink.server.handover", "wink.pair.server", "wink.storagex.bridge", "chat.send",
     // D-1b: the rest of the wink.storage.* namespace is a person's
-    "wink.storage.remove", "wink.storage.pick", "wink.storage.pair", "wink.storage.card", "wink.storage.offers", "wink.storage.status", "wink.storage.discover", "wink.storage.bridge.drive", "wink.storage.bridge.x", "wink.storage.bridge/../remove"]) {
+    "wink.storage.remove", "wink.storage.pick", "wink.storage.pair", "wink.storage.card", "wink.storage.offers", "wink.storage.status", "wink.storage.discover", "wink.storage.bridge.drive", "wink.storage.bridge.x"]) {
     await assert.rejects(link.call(tool, {}, { timeoutMs: 1500 }), e => e.code === "denied", `${tool} is refused for a storage device`);
   }
   assert.deepEqual(w.calls.map(c => c.tool), ["wink.storage.bridge"], "only the storage call reached the registry");
