@@ -83,10 +83,12 @@ test("VP-5: every grant on a put is checked before anything is written: a refuse
   const r = await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("new"), ...bad }, mod); assert.ok(r.error, "an invalid grant is refused");
   assert.equal((await reg("vault.list", {}, "cli")).data.items.some(i => i.name === "onboard.thing"), false, "no item was made");
   assert.ok(!(await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("first"), grants: ["agents"] }, mod)).error);
-  const audits = async () => ((await reg("vault.audit", { name: "onboard.thing" }, "cli")).data?.rows ?? (await reg("vault.audit", {}, "cli")).data ?? []);
-  const before = JSON.stringify(await audits());
+  const rows = async () => (await reg("vault.audit", { limit: 1000 }, "cli")).data.entries;
+  const count = async () => (await rows()).length;
+  const n0 = await count();
   assert.ok((await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("second"), ...bad }, mod)).error, "refused on an existing item too");
-  assert.equal(JSON.stringify(await audits()), before, "the refused call wrote nothing: no second put in the audit");
+  const after = await rows(); assert.equal(after.length, n0 + 1, "exactly one audit row for the refused call");
+  const newest = after[0]; assert.equal(newest.action, "put"); assert.equal(newest.ok, false); assert.match(String(newest.why), /^refused:/, "the newest row says the put was refused, and nothing else was written");
   for (const g of ["../x", "", 5, "UPPER"]) assert.ok((await reg("vault.put", { name: "onboard.other", kind: "secret", value: fake("z"), grants: [g] }, mod)).error, String(g));
 });
 

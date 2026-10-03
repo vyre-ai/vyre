@@ -18,6 +18,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { totp } from "../totp.js";
+import { launcherItem } from "../vault.js";
 import { parseRef, parseTemplate } from "../refs.js";
 import { parseRequest, requestOrigin, candidates, formatResponse } from "../git.js";
 import { parsePrivate, generateKey, TYPES as SSH_TYPES } from "../ssh/keys.js";
@@ -193,6 +194,8 @@ export async function register({ ctx, vault }) {
         if (i.rename !== i.name && vault.row(i.rename)) throw new Error(`${i.rename} already exists`);
       }
       if (i.fields && Object.values(i.fields).some(v => typeof v !== "string")) throw new Error("field values must be text");
+      // Grants are carried to a renamed item after the old one is gone: refuse up front what grant would refuse then (a provider sign-in token takes none), so nothing is left half done.
+      if (i.rename !== undefined && i.rename !== i.name && launcherItem(i.rename) && vault.launcherOnly && (listed(i.name).grants || []).length) throw new Error(`${i.rename} is a provider sign-in token; no module is granted it, so ${i.name} cannot be renamed to it while it has grants`);
       const f = await open(r);
       const fields = { ...f, ...(i.fields || {}) };
       for (const k of i.removeFields || []) delete fields[k];

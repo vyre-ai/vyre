@@ -373,6 +373,7 @@ export class Vault {
     // vault.launcherOnly: once the session launcher reads the sign-in tokens through the credentials port, no module may be granted them. On by default now that sessions reads through the port and onboard no longer attaches grants (`vault.launcherOnly: false` turns it off).
     // `launcherOnly: false` is honoured only in a development build (lib/build-kind.js): a packaged release always has it on, whatever a config file says (reviewer-2 VP-6).
     this.launcherOnly = opts.launcherOnly !== false || buildKind !== "development";
+    if (opts.launcherOnly === false && buildKind !== "development") log("vault.launcherOnly: false in the config is ignored: this is a packaged build, which always keeps it on");
     this.relayGrants = opts.relay && opts.relay.grants === "require" ? "require" : "off";
     /** What each login's node carried at its last relay contact since start: { caps, node, at }. Never decides access. */
     /** @type {Map<string, { caps: Record<string, any[]>, node: string, at: number }>} */ this.seenCaps = new Map();
@@ -1620,6 +1621,18 @@ export class Vault {
     if (!PERSON.test(String(holder || ""))) throw new Error("a holder is a person's name");
     if (!Array.isArray(items) || !items.length) throw new Error("a pass needs at least one item");
     if (!["relayed", "sealed"].includes(mode)) throw new Error("mode is relayed or sealed");
+    // Everything that can refuse is checked BEFORE a card is pinned or a row written (a refused pass must change nothing).
+    const narrowed0 = Array.isArray(hosts) && hosts.length ? hosts.map(origin) : null;
+    if (narrowed0 && narrowed0.includes(null)) throw new Error("hosts must be origins such as https://api.example.com");
+    const ms0 = Array.isArray(methods) && methods.length ? methods.map(m => String(m).toUpperCase()) : null;
+    if (ms0 && !ms0.every(m => /^[A-Z]{3,10}$/.test(m))) throw new Error("methods are HTTP methods such as GET or POST");
+    const ps0 = Array.isArray(paths) && paths.length ? paths.map(String) : null;
+    if (ps0 && !ps0.every(x => x.startsWith("/"))) throw new Error("paths start with /, such as /v1/charges");
+    if (mode === "sealed" && (ms0 || ps0)) throw new Error("methods and paths narrow a relayed pass; a sealed pass hands the value over");
+    for (const n of items) {
+      const r = this.mustRow(n);
+      if (mode === "relayed" && !json(r.hosts, []).filter(h => !narrowed0 || narrowed0.includes(h)).length) throw new Error(`${n} has no hosts it may be sent to, so it cannot be relayed · put it again with --host, or pass it sealed`);
+    }
     if (card) {
       // An agent's new or changed card waits for a person, and so does the pass that needs it.
       const added = await this.share.addPerson({ card, name: holder }, caller);
