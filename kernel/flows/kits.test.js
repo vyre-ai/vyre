@@ -13,7 +13,7 @@ async function kitWorld() {
   const kits = new KitManager({ kernel: w.kernel, runner: w.runner, store: new MemoryKitStore(), catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x) }, clock: () => w.clock.t, installerRole: () => "admin",
     ports: { teammates: { create: async (c, t) => created.push(t), remove: async (c, n) => { const i = created.findIndex(x => x.name === n); if (i >= 0) created.splice(i, 1); } } } });
   const caller = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
-  w.kernel.subs.add(e => { void kits.onEvent(e); });
+  w.offs.push(w.kernel.onEvent(e => { void kits.onEvent(e); }, "kits"));
   return { w, kits, caller, created };
 }
 

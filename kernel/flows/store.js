@@ -1,7 +1,7 @@
 // @ts-check
 // Where Flow definitions, approvals and runs are kept. The runner talks to one small interface; two implementations satisfy it:
 //   MemoryFlowStore   for tests and for simulation (nothing persists)
-//   RecordsFlowStore  over the kernel's record calls: definitions are records of the reserved kind `def_flow`, runs are records of
+//   RecordsFlowStore  over the kernel's record calls: definitions are records of the reserved kind `def-flow`, runs are records of
 //                     `flow_run`, so they inherit version history, grants, undo and audit like any record (contract 5.1, 9.2).
 //
 // A definition is immutable once stored: a change is a new version. An approval binds (flow, version, hash) to the person who gave it.
@@ -129,17 +129,17 @@ export class MemoryFlowStore {
  * Types (declared by `FLOW_TYPES`) are defined once with `records.define`. The chain is the Flow system's own service chain.
  */
 export const FLOW_TYPES = Object.freeze([
-  { name: "def_flow", label: "Flow", icon: "flow", fields: [
+  { name: "def-flow", label: "Flow", icon: "flow", fields: [
     { name: "flow_id", kind: "text", label: "Id" }, { name: "name", kind: "text", label: "Name" }, { name: "space", kind: "text", label: "Space" },
     { name: "version", kind: "number", label: "Version" }, { name: "hash", kind: "text", label: "Hash" }, { name: "body", kind: "text", label: "Definition" },
     { name: "authorship", kind: "text", label: "Authorship" }, { name: "by", kind: "text", label: "Made by" } ] },
-  { name: "flow_approval", label: "Flow approval", fields: [
+  { name: "flow-approval", label: "Flow approval", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "version", kind: "number", label: "Version" }, { name: "hash", kind: "text", label: "Hash" },
     { name: "approver", kind: "text", label: "Approver" }, { name: "at", kind: "number", label: "When" } ] },
   { name: "flow_state", label: "Flow state", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "status", kind: "text", label: "Status" }, { name: "active", kind: "number", label: "Active version" },
     { name: "reason", kind: "text", label: "Reason" }, { name: "since", kind: "number", label: "Since" } ] },
-  { name: "flow_schedule", label: "Flow schedule", fields: [
+  { name: "flow-schedule", label: "Flow schedule", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "last_fire", kind: "number", label: "Last ran" } ] },
   { name: "flow_run", label: "Flow run", icon: "run", fields: [
     { name: "run_id", kind: "text", label: "Id" }, { name: "flow_id", kind: "text", label: "Flow" }, { name: "state", kind: "text", label: "State" },
@@ -162,20 +162,20 @@ export class RecordsFlowStore {
   async putVersion(id, flow, by, at, space) {
     const flowId = id || newId("fl_");
     const hash = flowHash(flow);
-    const rows = await this.#find("def_flow", "flow_id", flowId);
+    const rows = await this.#find("def-flow", "flow_id", flowId);
     const same = rows.find((/** @type {any} */ r) => r.data.hash === hash);
     if (same) return { id: flowId, version: Number(same.data.version), hash, same: true };
     const version = rows.reduce((/** @type {number} */ m, /** @type {any} */ r) => Math.max(m, Number(r.data.version)), 0) + 1;
-    await this.k.records.create(this.chain, "def_flow", { flow_id: flowId, name: flow.name, space, version, hash, body: canonical(flow), authorship: flow.authorship, by: `${by.kind}:${by.id}` });
+    await this.k.records.create(this.chain, "def-flow", { flow_id: flowId, name: flow.name, space, version, hash, body: canonical(flow), authorship: flow.authorship, by: `${by.kind}:${by.id}` });
     return { id: flowId, version, hash, same: false };
   }
 
   /** @param {string} id @param {number} version @param {ActorRef} approver @param {string} hash @param {number} at */
   async approve(id, version, approver, hash, at) {
-    const v = (await this.#find("def_flow", "flow_id", id)).find((/** @type {any} */ r) => Number(r.data.version) === version);
+    const v = (await this.#find("def-flow", "flow_id", id)).find((/** @type {any} */ r) => Number(r.data.version) === version);
     if (!v) throw Object.assign(new Error("no such Flow version"), { code: "not_found" });
     if (v.data.hash !== hash) throw Object.assign(new Error("the approval is for different content than this version"), { code: "hash_mismatch" });
-    await this.k.records.create(this.chain, "flow_approval", { flow_id: id, version, hash, approver: `${approver.kind}:${approver.id}`, at });
+    await this.k.records.create(this.chain, "flow-approval", { flow_id: id, version, hash, approver: `${approver.kind}:${approver.id}`, at });
     await this.#setState(id, { status: "active", active: version, reason: "", since: at });
     return { flow: id, version, hash, approver, at };
   }
@@ -190,10 +190,10 @@ export class RecordsFlowStore {
 
   /** @param {any} row @param {number} version */
   async #viewOf(row, version) {
-    const defs = await this.#find("def_flow", "flow_id", row.data.flow_id);
+    const defs = await this.#find("def-flow", "flow_id", row.data.flow_id);
     const v = defs.find((/** @type {any} */ r) => Number(r.data.version) === version);
     if (!v) return null;
-    const aps = (await this.#find("flow_approval", "flow_id", row.data.flow_id)).filter((/** @type {any} */ a) => Number(a.data.version) === version && a.data.hash === v.data.hash);
+    const aps = (await this.#find("flow-approval", "flow_id", row.data.flow_id)).filter((/** @type {any} */ a) => Number(a.data.version) === version && a.data.hash === v.data.hash);
     const ap = aps.sort((/** @type {any} */ a, /** @type {any} */ b) => Number(b.data.at) - Number(a.data.at))[0];
     const [kind, ...rest] = ap ? String(ap.data.approver).split(":") : [];
     return { id: row.data.flow_id, space: v.data.space, version, hash: v.data.hash, flow: JSON.parse(v.data.body), approver: ap ? { kind, id: rest.join(":"), space: v.data.space } : null, approved_at: ap ? Number(ap.data.at) : null, status: row.data.status };
@@ -225,12 +225,12 @@ export class RecordsFlowStore {
   }
 
   /** @param {string} flow @returns {Promise<number|null>} */
-  async getSchedule(flow) { const r = (await this.#find("flow_schedule", "flow_id", flow))[0]; return r ? Number(r.data.last_fire) : null; }
+  async getSchedule(flow) { const r = (await this.#find("flow-schedule", "flow_id", flow))[0]; return r ? Number(r.data.last_fire) : null; }
   /** @param {string} flow @param {number} lastFire */
   async putSchedule(flow, lastFire) {
-    const r = (await this.#find("flow_schedule", "flow_id", flow))[0];
-    if (r) await this.k.records.update(this.chain, "flow_schedule", r.id, { last_fire: lastFire }, r.version);
-    else await this.k.records.create(this.chain, "flow_schedule", { flow_id: flow, last_fire: lastFire });
+    const r = (await this.#find("flow-schedule", "flow_id", flow))[0];
+    if (r) await this.k.records.update(this.chain, "flow-schedule", r.id, { last_fire: lastFire }, r.version);
+    else await this.k.records.create(this.chain, "flow-schedule", { flow_id: flow, last_fire: lastFire });
   }
 
   /** @param {Run} run */
