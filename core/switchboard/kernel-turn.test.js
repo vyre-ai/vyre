@@ -53,3 +53,32 @@ test("threads.start and threads.send from module:stream open the asker's kernel 
   await finished(r.data.id, 2);
   assert.equal(turnOf(r.data.id), null, "no session for a person who is not in the chat, and the last turn's is gone");
 });
+
+test("a turn keeps its asker for its whole run: another person's message while it runs is refused as busy, the same asker may steer, and the next turn opens for its own asker", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const chat = await d.kernel.gateway.grants.chats.create(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" }), {});
+  const db = d.registry.deps.db;
+  const turnOf = id => { const r = db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(id); return r ? JSON.parse(r.body) : null; };
+  // "demo" is a turn that stays busy (the fake Claude asks to edit and waits), so what arrives next arrives mid-turn
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "demo", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  assert.ok(r.data, JSON.stringify(r));
+  await until(async () => (await d.registry.call("threads.asks", { thread: r.data.id }, "cli")).data.some(a => a.tool === "Edit"), "the turn to be busy");
+  assert.equal(turnOf(r.data.id)?.person, owner);
+  const other = await d.registry.call("threads.send", { thread: r.data.id, text: "delete it", surface: "deck", chat: chat.id, asker: "per_member" }, "module:stream");
+  assert.equal(other.error && other.error.code, "busy", JSON.stringify(other));
+  assert.equal(turnOf(r.data.id)?.person, owner, "the running turn is still the first asker's: nothing was swapped under it");
+  const same = await d.registry.call("threads.send", { thread: r.data.id, text: "and the date", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  assert.ok(same.data && !same.error, JSON.stringify(same));
+  assert.equal(turnOf(r.data.id)?.person, owner, "the same asker steering keeps the session they have");
+});
