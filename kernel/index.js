@@ -91,6 +91,20 @@ export async function createKernel(cfg) {
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
       /** The room the RUNNING turn answers in (see kernel/core/room.js): `{ group: false }` or an opaque handle `{ group, size, read, canRead }`. The turn's own token is used, never an argument; throws `no_audience`. */
       audienceFor: async (/** @type {any} */ _extra) => { if (!room) throw new KernelError("unavailable", "this kernel keeps no chats"); return room.audienceFor(); },
+      /**
+       * Only for a first-party module that declares `needs.kernel.membership: true`: whether ONE named person is a member of this Space and their role, and nothing else
+       * (no list, no grants, no expiry). Each call is an owner-visible event naming the module and the person asked about. A module that must list members runs under
+       * the calling PERSON's chain instead (`grants.members.list(chain)`: a manager and above sees everyone, anyone else only themselves).
+       * @param {string} person @param {string} [space] this Space only
+       */
+      ...(needs.membership === true && grantsStore ? { membership: async (/** @type {string} */ person, /** @type {string} */ space = cfg.space) => {
+        if (space !== cfg.space) throw new KernelError("not_found", "no such space here");
+        if (typeof person !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(person)) throw new KernelError("bad_input", "name one person");
+        const a = { kind: "person", id: person, space: cfg.space };
+        const role = grantsStore.roleOf(a) || null;
+        try { log.append(gateway.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${cfg.space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
+        return Object.freeze({ member: role !== null, role });
+      } } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     };
