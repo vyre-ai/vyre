@@ -221,3 +221,16 @@ test("a REAL daemon boot hands the Switchboard (the module named in its own mani
   sb.deps = { kernelSession: async () => null, sandbox: { off: true } };
   assert.equal(await sb.sandboxFor("t1", { cwd: root }, {}), undefined, "a development opt-out is explicit");
 });
+
+test("helpers: `absent` presence stops a tool that declares presence, and leaves the rest alone", async t => {
+  const { absent } = await import("./helpers.js");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, presence: absent });
+  t.after(() => d.stop());
+  // flows.approve declares presence: with no person present the call is refused and nothing is approved
+  const r = await d.registry.call("flows.approve", { id: "fl_x", version: 1, hash: "h" }, "cli");
+  assert.ok(r.error, JSON.stringify(r));
+  assert.ok(["presence_required", "unavailable", "not_found", "denied"].includes(r.error.code), r.error.code);
+  const ok = await d.registry.call("mentions.kinds", {}, "cli");
+  assert.ok(ok.data, "a tool with no presence declared still runs");
+});

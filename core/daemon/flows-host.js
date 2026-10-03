@@ -14,12 +14,10 @@ import { createFlows, RecordsFlowStore } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
 
 const MIN_TICK_MS = 60_000;
-const SERVICE_ACTIONS = { read: "service.read", call: "service.call" };
 
 /**
  * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined,
- *   service?: (q: { space: string, connector: string, request: any, idem?: string, approval?: string }) => Promise<any> }} o
- *   service: how a Flow's "Call a service" step reaches the vault's forward (the daemon passes it); it is called only after the kernel allowed `service.read` or `service.call`.
+ * }} o
  */
 export function createFlowsHost(o) {
   const log = o.log || (() => {});
@@ -59,14 +57,12 @@ export function createFlowsHost(o) {
     };
     const ports = {
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
-      // "Call a service": the kernel decides first (a read, or an outward call that needs its approved task), then the vault's forward does it with the Space's own credential.
+      // "Call a service": the gateway authorizes it for the run's chain against the route (service.read, or service.call held as outward) BEFORE the vault is asked, then the vault's
+      // forward does it with the Space's own credential (kernel/gateway/leases.js forward).
       service: async (/** @type {{ chain: any, connector: string, request: any, idem?: string, approval?: string }} */ q) => {
-        const method = String(q.request && q.request.method || "GET").toUpperCase();
-        const action = ["GET", "HEAD"].includes(method) ? SERVICE_ACTIONS.read : SERVICE_ACTIONS.call;
-        const d = await gw.authorize({ chain: q.chain, action, resource: `vyre://${space}/service/${encodeURIComponent(q.connector)}`, ...(q.approval ? { approval: q.approval } : {}) });
-        if (d.effect !== "allow") return { held: true, kind: action, summary: `${method} ${q.connector}${q.request && q.request.path || ""}` };
-        if (!o.service) throw Object.assign(new Error("no connected-service forward is wired on this home"), { code: "unavailable" });
-        return o.service({ space, connector: q.connector, request: q.request, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}) });
+        if (!gw.leases) throw Object.assign(new Error("this home has no vault forward"), { code: "unavailable" });
+        const r = q.request || {};
+        return gw.leases.forward(q.chain, { connector: q.connector, method: r.method || "GET", path: r.path || "/", ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}) });
       },
     };
 

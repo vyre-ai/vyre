@@ -192,11 +192,18 @@ async function startLocked(opts, root, p, release) {
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
     const { createFlowsHost } = await import("./flows-host.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      service: async (/** @type {any} */ q) => { const r = await registry.call("vault.forward", { connector: q.connector, ...q.request, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), space: q.space }, "module:flows"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
     registry.deps.flowsHost = flowsHost;
     closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+      // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
+      forwardCredential: async (/** @type {any} */ q) => {
+        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
+        const r = q.request;
+        const out = await registry.call("vault.forward", { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), session: q.session || q.idem || "home" }, "module:leases");
+        if (out.error) throw Object.assign(new Error(out.error.message), { code: out.error.code });
+        return out.data;
+      },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
     stages = (await flowsHost.attach(kernel.id.space, kernel, kernel.id.owner)).stages;
