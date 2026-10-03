@@ -24,8 +24,8 @@ module.exports = {
     fontSize: Object.fromEntries(sizes.map((s) => [s, ["var(--fs-" + s + ")", { lineHeight: "var(--lh-" + s + ")" }]])),
     extend: {
       height: { control: "var(--control)", "control-sm": "var(--control-sm)", row: "var(--row-h)", touch: "var(--touch)" },
-      minHeight: { control: "var(--control)", "control-sm": "var(--control-sm)", row: "var(--row-h)", touch: "var(--touch)" },
-      width: { control: "var(--control)", "control-sm": "var(--control-sm)", touch: "var(--touch)" },
+      minHeight: { control: "var(--control)", "control-sm": "var(--control-sm)", row: "var(--row-h)", touch: "var(--touch)", cell: "calc(var(--row-h) * 2)" },
+      width: { rail: "calc(var(--s-12) * 5)", control: "var(--control)", "control-sm": "var(--control-sm)", touch: "var(--touch)" },
       minWidth: { menu: "calc(var(--s-12) * 4)" },
       maxWidth: { page: "var(--page-max)", read: "var(--read-max)" },
     },
