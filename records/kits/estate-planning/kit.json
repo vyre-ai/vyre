@@ -331,39 +331,57 @@
   ],
   "flows": [
     {
-      "name": "On payment",
+      "format": 1,
+      "authorship": "kit",
+      "name": "on_payment",
+      "label": "On payment",
       "description": "A Stripe payment starts a matter: find or create the contact, find or create the matter, then it begins at Intake.",
-      "on": {
+      "trigger": {
+        "on": "event",
         "event": "payment.received"
       },
       "steps": [
         {
-          "find": "contact",
-          "by": {
-            "stripe_customer": "{{event.customer}}"
+          "id": "client",
+          "kind": "upsert",
+          "type": "contact",
+          "match": {
+            "stripe_customer": {
+              "expr": "trigger.customer"
+            }
           },
-          "createIfMissing": true,
           "set": {
-            "full_name": "{{event.name}}",
-            "email": "{{event.email}}",
-            "stripe_customer": "{{event.customer}}"
-          },
-          "as": "client"
+            "full_name": {
+              "expr": "trigger.display"
+            },
+            "email": {
+              "expr": "trigger.email"
+            }
+          }
         },
         {
-          "find": "matter",
-          "by": {
-            "stripe_payment": "{{event.payment}}"
+          "id": "matter",
+          "kind": "upsert",
+          "type": "matter",
+          "match": {
+            "stripe_payment": {
+              "expr": "trigger.payment"
+            }
           },
-          "createIfMissing": true,
           "set": {
-            "title": "Estate plan for {{client.full_name}}",
-            "client": "{{client.urn}}",
-            "stripe_payment": "{{event.payment}}",
-            "fee": "{{event.amount}}",
+            "title": {
+              "expr": "\"Estate plan for \" + trigger.display"
+            },
+            "client": {
+              "urn": {
+                "expr": "steps.client.record.urn"
+              }
+            },
+            "fee": {
+              "expr": "trigger.amount"
+            },
             "stage": "Intake"
-          },
-          "as": "matter"
+          }
         }
       ]
     }

@@ -4,7 +4,7 @@
 // Not preserved: comments, layout, constant names and any computed code (spec 5.6).
 
 import { LanguageError } from "./errors.js";
-import { labelOf, msToOffset } from "./sdk.js";
+import { labelOf, msToOffset, KERNEL_LINK_KIND } from "./sdk.js";
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** @param {string} s */
@@ -44,7 +44,7 @@ function field(f, d, t) {
   if (kind === "choice" || kind === "multi_choice") { const { options, ...o } = rest; const o2 = labelless(name, o); return `defineField.${kind}(${lit(options, d)}${Object.keys(o2).length ? ", " + lit(o2, d) : ""})`; }
   if (kind === "sealed") { const { seal, ...o } = rest; const o2 = { ...labelless(name, o), class: seal.class, ...(seal.level !== "ai" ? { level: seal.level } : {}), ...(seal.reveal_roles ? { reveal_roles: seal.reveal_roles } : {}), ...(seal.hint_allowed !== undefined ? { hint_allowed: seal.hint_allowed } : {}) }; return `defineField.sealed(${lit(o2, d)})`; }
   const o = labelless(name, rest);
-  return `defineField.${kind}(${Object.keys(o).length ? lit(o, d) : ""})`;
+  return `defineField.${kind === KERNEL_LINK_KIND ? "link" : kind}(${Object.keys(o).length ? lit(o, d) : ""})`;
 }
 /** The label is left out when it is the default made from the name. @param {string} name @param {any} o */
 function labelless(name, o) { const { label, ...r } = o; return label !== undefined && label !== labelOf(name) ? { label, ...r } : r; }
@@ -91,7 +91,7 @@ export function print(kit) {
   emit("", kit.types, type);
   emit("Template", kit.templates, (t) => call("defineTemplate", t));
   emit("Role", kit.roles, (r) => call("defineRole", r));
-  emit("Flow", kit.flows, (f) => call("defineFlow", f));
+  emit("Flow", kit.flows, (f) => { const { format, ...rest } = f; return call("defineFlow", rest); });
   emit("View", kit.views, (v) => call("defineView", v));
   emit("CodeStep", kit.codeSteps, (c) => call("defineCodeStep", c));
   const used2 = new Set(["defineKit"]);

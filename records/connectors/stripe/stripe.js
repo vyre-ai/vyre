@@ -71,7 +71,7 @@ export function normalize(ev) {
   if (typeof p.minor !== "number" || typeof p.cur !== "string" || typeof p.payment !== "string") return null;
   const cur = p.cur.toLowerCase();
   const email = p.email ? String(p.email).toLowerCase() : null;
-  return { event: ev.id, customer: p.customer ?? (email ? `guest:${email}` : `payment:${p.payment}`), email, name: p.name, payment: p.payment, amount: { amount: major(p.minor, cur), currency: cur.toUpperCase() }, description: p.description, livemode: !!ev.livemode, at: new Date((ev.created ?? Date.now() / 1000) * 1000).toISOString(), metadata: Object.fromEntries(Object.entries(p.metadata ?? {}).filter(([, v]) => typeof v === "string")) };
+  return { event: ev.id, display: p.name ?? email ?? p.customer ?? `payment ${p.payment}`, customer: p.customer ?? (email ? `guest:${email}` : `payment:${p.payment}`), email, name: p.name, payment: p.payment, amount: { amount: major(p.minor, cur), currency: cur.toUpperCase() }, description: p.description, livemode: !!ev.livemode, at: new Date((ev.created ?? Date.now() / 1000) * 1000).toISOString(), metadata: Object.fromEntries(Object.entries(p.metadata ?? {}).filter(([, v]) => typeof v === "string")) };
 }
 
 /**

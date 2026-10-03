@@ -21,7 +21,9 @@ test("the estate planning kit compiles to the stored form", () => {
   assert.deepEqual(welcome, { title: "Welcome email", doer: "teammate:intake", checker: "role:attorney", output: { kind: "sent", target: "email" }, how: "tailor", template: "welcome", depends_on: ["Research the client"], due_offset_ms: 86_400_000 });
   assert.deepEqual(kit.roles.map((r) => [r.name, r.kind]), [["research", "teammate"], ["intake", "teammate"], ["attorney", "role"]]);
   assert.equal(kit.templates[0].name, "welcome");
-  assert.equal(kit.flows[0].on.event, "payment.received");
+  assert.equal(kit.flows[0].trigger.event, "payment.received");
+  assert.deepEqual(kit.flows[0].steps.map((x) => [x.id, x.kind]), [["client", "upsert"], ["matter", "upsert"]]);
+  assert.equal(kit.types[1].fields.find((f) => f.name === "client").kind, "ref", "the SDK says link; the kernel kind is still ref");
 });
 
 test("round trip: stored to text to stored is identical, and the text is a fixed point", () => {
@@ -88,8 +90,9 @@ test("a hostile file cannot hold the daemon: the worker parse enforces the limit
 });
 
 test("kit checks: references, sealed fields and expressions", () => {
-  fails(kitOf("", 't: defineField.ref({ to: "ghost" })'), "invalid_definition", /ghost/);
-  fails(kitOf("", 't: defineField.link({ to: "a" })'), "invalid_definition", /defineField\.ref/);
+  fails(kitOf("", 't: defineField.link({ to: "ghost" })'), "invalid_definition", /ghost/);
+  fails(kitOf("", 't: defineField.link()'), "invalid_definition", /name/);
+  fails(kitOf("", 't: defineField.ref({ to: "a" })'), "unknown_function");
   fails(wrap(`export const A = defineType({ name: "a", fields: { s: defineField.sealed({ class: "us-ssn" }) }, rules: [defineRule({ require: "s == 'x'" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /sealed and cannot be used/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text() }, rules: [defineRule({ require: "nope == 1" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /not a field/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text(), s: defineField.sealed({ class: "us-ssn" }) } });\nexport const T = defineTemplate({ name: "t", kind: "email", body: "SSN {{a.s}}" });\nexport default defineKit({ id: "k", version: 1, includes: [A, T] });`), "invalid_definition", /sealed:/);
