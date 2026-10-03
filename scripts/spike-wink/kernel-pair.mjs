@@ -50,7 +50,7 @@ const PERSONS = { owner: "per_owner0000000000000000000", alice: "per_alice000000
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
 // orchestrator
 // ------------------------------------------------------------------------------------------------------------------------------------------------------------
-const sh = (host, cmd, o = {}) => execFileSync("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", HOSTS[host].ssh, cmd], { encoding: "utf8", input: o.input, maxBuffer: 64 << 20, stdio: ["pipe", "pipe", o.quiet ? "ignore" : "inherit"], timeout: o.timeout || 180_000 });
+const sh = (host, cmd, o = {}) => execFileSync("ssh", ["-T", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", HOSTS[host].ssh, cmd], { encoding: "utf8", input: o.input, maxBuffer: 64 << 20, stdio: ["pipe", "pipe", o.quiet ? "ignore" : "inherit"], timeout: o.timeout || 180_000 });
 const q = x => `'${String(x).replace(/'/g, `'\\''`)}'`;
 const asUser = (host, script, o) => sh(host, `sudo -n -u ${HOSTS[host].user} -H bash -lc ${q(script)}`, o);
 const rootDir = host => `/home/${HOSTS[host].user}/${ROOT_REL}`;
