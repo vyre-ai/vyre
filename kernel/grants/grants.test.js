@@ -256,11 +256,29 @@ test("G-2: an event's before and after are cut to the fields the chain may see, 
   const ev = (await gw.events.read(kit, { type: "contact.created" }))[0];
   assert.deepEqual(Object.keys(ev.data.after), ["name"]);
   assert.deepEqual(ev.data.changed, ["name"]);
-  assert.ok(!JSON.stringify(ev).includes("41"));
+  assert.ok(!/"age"/.test(JSON.stringify(ev.data)) && !/"status"/.test(JSON.stringify(ev.data)), "the cut fields are not in the diff at all");
   const seen = [];
   gw.events.subscribe(kit, "w", { type: "contact.created" }, e => { seen.push(e); });
-  await new Promise(r => setTimeout(r, 20));
-  assert.ok(seen.length >= 1 && seen.every(e => !JSON.stringify(e).includes("41")));
+  for (let i = 0; i < 200 && !seen.length; i++) await new Promise(r => setTimeout(r, 10));
+  assert.ok(seen.length >= 1 && seen.every(e => !/"age"/.test(JSON.stringify(e.data))));
   const full = (await gw.events.read(owner(), { type: "contact.created" }))[0];
   assert.equal(full.data.after.age, 41, "the owner sees the whole diff");
+});
+
+
+test("G-1b: a genuine event appended again does not bring back a revoked grant or a removed member (the MAC binds the position)", async () => {
+  const { g, gs, log } = rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const i = input();
+  const made = await g.create(owner(), i, P.create(i));
+  await g.revoke(owner(), made.id, "gone", P.revoke(made.id, "gone"));
+  await g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB }));
+  assert.equal(gs.roleOf(actor("person", BOB)), null);
+  // copy the genuine, validly sealed events and append them again with a chain that has log access
+  const replay = chains.fromFacts({ kind: "module", module: "grants", first_party: true });
+  for (const e of log.read({}).filter(x => x.type === "grant.created" || x.type === "member.set")) log.append(replay, { type: e.type, sv: 1, subject: e.subject, data: e.data });
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", BOB)), null, "the removed person stays removed");
+  assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.id === made.id), [], "the revoked grant stays revoked");
+  assert.equal(gs.roleOf(actor("person", OWNER)), "owner");
 });

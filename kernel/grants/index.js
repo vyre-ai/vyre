@@ -52,9 +52,14 @@ export function createGrantsStore(cfg) {
   const urn = (/** @type {string} */ type, id = "new") => `vyre://${cfg.space}/${type}/${id}`;
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
   if (!cfg.key) throw new KernelError("bad_input", "the grants store needs the kernel's key to seal its events");
-  const macOf = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data) => hmac(cfg.key, canonical({ type, subject, data }));
-  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) =>
-    cfg.log.append(chain, { type, sv: 1, subject, data: { ...data, mac: macOf(type, subject, data) }, vis: "owner", red: "internal" }, decision ? { decision } : {});
+  // The MAC binds the event's POSITION (its seq and the hash of the event before it), not just its content: a genuine event copied and appended again
+  // later sits at another position and does not verify, so a revoked grant or a removed member cannot be brought back by replay.
+  const macOf = (/** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {number} */ seq, /** @type {string} */ prev) => hmac(cfg.key, canonical({ type, subject, data, seq, prev }));
+  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => {
+    // Computed and appended in one synchronous step, so the position it names is the position it takes.
+    const seq = cfg.log.latestSeq() + 1, prev = cfg.log.head();
+    return cfg.log.append(chain, { type, sv: 1, subject, data: { ...data, mac: macOf(type, subject, data, seq, prev) }, vis: "owner", red: "internal" }, decision ? { decision } : {});
+  };
 
   const memberOk = (/** @type {any} */ a) => {
     if (!a || a.space !== cfg.space) return false;
@@ -316,8 +321,9 @@ export function createGrantsStore(cfg) {
         if (!d || typeof d !== "object" || !/^(grant|member|actor|offer)\./.test(e.type)) continue;
         // Authority comes only from events this store sealed: anything else in these names is ignored (and not trusted for a grant, a member or an offer).
         const { mac, ...bare } = d;
-        if (typeof mac !== "string" || !sameMac(macOf(e.type, e.subject, bare), mac)) continue;
+        if (typeof mac !== "string" || !sameMac(macOf(e.type, e.subject, bare, e.seq, e.prev), mac)) continue;
         d = bare;
+        if (e.type === "grant.created" && grants.has(d.grant.id)) continue; // an id is made once: a second creation of it is never a resurrection
         if (e.type === "grant.created" || e.type === "grant.narrowed") grants.set(d.grant.id, freeze(structuredClone(d.grant)));
         else if (e.type === "grant.revoked") { const g = grants.get(d.id); if (g) grants.set(d.id, freeze({ ...g, status: "revoked", revoked_at: e.time, reason: d.reason })); }
         else if (e.type === "member.set") memberships.set(d.membership.person, freeze(structuredClone(d.membership)));
