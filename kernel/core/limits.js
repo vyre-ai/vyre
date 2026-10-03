@@ -97,6 +97,8 @@ export function createLimits(cfg) {
           try { open.set(input, api.reserve(input.chain, { key: keyOf(input.chain), meter: "ai_spend", amount: o.estimate ? o.estimate(input) : 0, limit })); } catch (e) { return /** @type {any} */ (e).code === "budget_exhausted" ? "ai_spend" : "ai_spend"; }
           return null;
         },
+        /** The call failed or was refused after the reservation: give it back, spend nothing. */
+        release(/** @type {any} */ input) { const id = open.get(input); if (!id) return; open.delete(input); api.release(input.chain, id); },
         settle(/** @type {any} */ input, /** @type {any} */ usage) {
           const id = open.get(input); if (!id) return;
           open.delete(input);
