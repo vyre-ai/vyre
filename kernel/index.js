@@ -20,7 +20,7 @@ import { expr as defaultExpr } from "./expr/index.js";
  * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
  *   store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
- *   templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
+ *   resolveCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
 export function createKernel(cfg) {
@@ -47,7 +47,7 @@ export function createKernel(cfg) {
     space: cfg.space, store, log, chains, clock, limits, tasks, owner: cfg.owner, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks,
+    actions: cfg.actions, attrs: cfg.attrs, sinks: cfg.sinks, resolveCredential: cfg.resolveCredential, routeAction: cfg.routeAction,
   });
   return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, fresh });
 }

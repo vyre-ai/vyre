@@ -9,6 +9,7 @@ import { createGate } from "../core/gate.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
+import { createLeases } from "./leases.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
@@ -67,8 +68,11 @@ export function createGateway(cfg) {
 
   const seal = cfg.sealer ? createSealing({ enforce, clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
 
+  const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, routeAction: cfg.routeAction }) : undefined;
+
   return Object.freeze({
     authorize: authorizer.authorize,
+    ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
     registry: authorizer.actions,
     limits,

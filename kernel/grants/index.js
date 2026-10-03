@@ -43,7 +43,7 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
-  const tell = (/** @type {any} */ o, /** @type {string} */ reason) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }); } catch { /* a listener never blocks a change */ } } };
+  const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
   /** @type {{ gate: any, allowed: any, registry: () => Map<string, any> } | null} */ let bound = null;
 
   const reg = () => (bound ? bound.registry() : new Map([...(cfg.actions ? cfg.actions() : [])].map(a => [a.action, a])));
@@ -198,7 +198,7 @@ export function createGrantsStore(cfg) {
       }
       const membership = freeze({ space: cfg.space, person: m.person, role: m.role, ...(m.role === "temp" ? { scope: [...m.scope], expires: m.expires } : {}), added_by: issuer.id, added_at: clock() });
       memberships.set(m.person, membership);
-      for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed");
+      for (const of of offers.values()) if (of.member === m.person && of.status === "active") tell(of, "role_changed", chain);
       note(chain, "member.set", urn("member", m.person), { membership }, d.decision);
       const deleg = m.role === "owner" || m.role === "admin" ? { allowed: true, max_depth: 2 } : { allowed: false, max_depth: 0 };
       const prefixes = m.role === "temp" ? m.scope : [`vyre://${cfg.space}/*/*`];
@@ -236,7 +236,7 @@ export function createGrantsStore(cfg) {
       for (const o2 of [...offers.values()]) if (o2.member === m.person && o2.status === "active") {
         const n = freeze({ ...o2, status: "revoked", revoked_at: clock() }); offers.set(n.id, n);
         note(chain, "offer.revoked", urn("offer", n.id), { id: n.id }, d.decision);
-        tell(n, "removed");
+        tell(n, "removed", chain);
       }
       return { removed: m.person, grants_revoked: gone.length };
     },
@@ -281,7 +281,7 @@ export function createGrantsStore(cfg) {
       const n = freeze({ ...o, status: "revoked", revoked_at: clock() });
       offers.set(id, n);
       note(chain, "offer.revoked", urn("offer", id), { id }, d.decision);
-      tell(n, "withdrawn");
+      tell(n, "withdrawn", chain);
       return n;
     },
 
@@ -293,7 +293,7 @@ export function createGrantsStore(cfg) {
       return { spaceAllows, memberAccepts };
     },
     /** Be told when an offer is withdrawn or a member's role changes (so the runner can end work at once). Returns an unsubscribe. */
-    onRevoke(/** @type {(e: any) => void} */ f) { revokeListeners.add(f); return () => revokeListeners.delete(f); },
+    onRevoke(/** @type {(e: any, by?: any) => void} */ f) { revokeListeners.add(f); return () => revokeListeners.delete(f); },
 
     /** The first owner of a new Space, written by the kernel itself (no chain can give the first grant). Once only. */
     bootstrap({ owner }) {
