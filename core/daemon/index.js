@@ -310,7 +310,7 @@ async function startLocked(opts, root, p, release) {
   // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
   // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
   // Late-bound: if the vault restarts it provides a fresh port, and the sandbox must ask that one, never the port of a stopped vault.
-  if (registry.deps.credentialsPort && registry.deps.sandbox) registry.deps.sandbox.credentials = (/** @type {string} */ p) => registry.deps.credentialsPort.credentials(p);
+  if (registry.deps.credentialsPort && registry.deps.sandbox) registry.deps.sandbox.credentials = (/** @type {string} */ p) => { const port = registry.deps.credentialsPort; if (!port) throw new Error("the vault is not running, so no sign-in token is available"); return port.credentials(p); };
   // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
   // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
   let stopped = false;

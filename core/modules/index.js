@@ -287,7 +287,7 @@ function checkCredentials(list) {
  */
 export function provideOnce(deps, module, name, value) {
   if (!(name === "credentialsPort" && module === "vault")) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
-  deps[name] = value;
+  deps[name] = value ?? null;
 }
 
 /** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
