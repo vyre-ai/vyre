@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "./index.js";
+import { createEventLog } from "./core/events.js";
 import { canonical, sha256 } from "./core/canonical.js";
 import { CONTACT } from "./conformance/suite.js";
 
@@ -84,8 +85,8 @@ test("audienceFor: the room is the running turn's own token; a handle, no chains
   on(tg.token);
   const room = await stream.audienceFor({ token: ts.token });
   assert.equal(room.group, true);
-  assert.equal(room.size, 3, "the running call's own token decides, whatever a module passes");
-  assert.deepEqual(Object.keys(room).sort(), ["canRead", "group", "read", "size"], "no chains, no names");
+  assert.equal(room.size, undefined, "no head count");
+  assert.deepEqual(Object.keys(room).sort(), ["canRead", "group", "read"], "no chains, no names, no size");
   on(ts.token);
   assert.deepEqual(await stream.audienceFor({ token: tg.token }), { group: false });
   // CH-5: the opener leaves the chat: no room, and no write
@@ -173,11 +174,11 @@ test("chats and their changes survive a rebuild from the sealed log, and a token
   await g.rebuild();
   assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
   k.bindCalls(() => ({ token: t.token }));
-  assert.equal((await stream.audienceFor({})).size, 2);
+  assert.equal((await stream.audienceFor({})).group, true);
   await k.grants.snapshot();
   await g.rebuild();
   assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
-  assert.equal((await stream.audienceFor({})).size, 2);
+  assert.equal((await stream.audienceFor({})).group, true);
 });
 
 test("room canRead: records, tasks, team members and playbooks are judged by every person's own reach; no one is named", async () => {
@@ -195,7 +196,7 @@ test("room canRead: records, tasks, team members and playbooks are judged by eve
   };
   // carol (temp) reaches only tasks: bob reads everything, so the room reads tasks and nothing else
   let r = await room(["task"]);
-  assert.equal(r.size, 2);
+  assert.equal(r.group, true);
   assert.equal(await r.canRead(urn("task", "t1")), true);
   for (const type of ["team_member", "playbook", "contact"]) assert.equal(await r.canRead(urn(type, "x1")), false, type);
   // carol reaches only team members and playbooks
@@ -203,8 +204,249 @@ test("room canRead: records, tasks, team members and playbooks are judged by eve
   assert.equal(await r.canRead(urn("team_member", "m1")), true);
   assert.equal(await r.canRead(urn("playbook", "p1")), true);
   assert.equal(await r.canRead(urn("task", "t1")), false);
-  assert.equal(JSON.stringify(Object.keys(r).sort()), JSON.stringify(["canRead", "group", "read", "size"]));
+  assert.equal(JSON.stringify(Object.keys(r).sort()), JSON.stringify(["canRead", "group", "read"]));
   void carol;
+});
+
+const narrowAll = async (g, owner, person, patch) => {
+  for (const x of (await g.list(owner)).filter(x => x.status === "active" && x.subject.kind === "actor" && x.subject.actor.id === person)) await g.narrow(owner, x.id, patch, { presence: proof("grants.narrow", { id: x.id, patch }, `vyre://${SPACE}/grant/${x.id}`) });
+};
+const setTemp = async (g, owner, person, types) => { const r = { person, role: "temp", scope: types.map(t => `vyre://${SPACE}/${t}/*`), expires: Date.now() + 3_600_000 }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${person}`) }); };
+
+test("CH-7: a chain made from a session token is delegated: it cannot create a chat, change who is in one, mint a session or end another's", async () => {
+  const { k, owner, bob, carol, g, C } = await rig();
+  const group = await C.create(bob, { people: [CAROL, OWNER] });
+  const t = await k.surfaces.open(bob, { chat: group.id });
+  const harness = await k.surfaces.chainFor(t.token);            // what a daemon or a module holding the asker's session has
+  assert.equal(harness.delegated, true);
+  assert.equal(bob.delegated, undefined, "a person acting directly is not delegated");
+  await assert.rejects(() => C.change(harness, group.id, { remove_people: [CAROL] }), { code: "chain_not_person" }, "reviewer-2's probe: the harness removes a person");
+  await assert.rejects(() => C.change(harness, group.id, { add_people: [ADA] }), { code: "chain_not_person" });
+  await assert.rejects(() => C.create(harness, { people: [CAROL] }), { code: "chain_not_person" });
+  await assert.rejects(() => k.surfaces.open(harness, { chat: group.id }), { code: "chain_not_person" }, "a session's chain cannot mint a longer one");
+  assert.throws(() => k.surfaces.revoke(t.session, harness), { code: "not_found" });
+  // the same calls from the person acting directly still work
+  const changed = await C.change(bob, group.id, { add_people: [ADA] });
+  assert.ok(changed.people.includes(ADA));
+  void carol; void g;
+});
+
+test("R3: the room is the chat's live participants at every question (no snapshot)", async () => {
+  const { k, owner, bob, g, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const c = await R.create(owner, "contact", { name: "Jane" });
+  await setTemp(g, owner, CAROL, ["task"]);              // carol reads no contact
+  const chat = await C.create(bob, { people: [OWNER, ADA] });
+  const t = await k.surfaces.open(bob, { chat: chat.id });
+  k.bindCalls(() => ({ token: t.token }));
+  const room = await stream.audienceFor({});
+  assert.equal(await room.canRead(c.urn), true);
+  await C.change(bob, chat.id, { add_people: [CAROL] });  // joins AFTER the handle was made
+  assert.equal(await room.canRead(c.urn), false, "the same handle now asks carol too");
+  assert.equal((await room.read(c.urn)), null);
+});
+
+test("a reply belongs to the room version it was written for: someone who joins mid-stream, or after, never receives it; the next reply reaches them", async () => {
+  const { k, owner, bob, carol, ada, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const chat = await C.create(bob, { people: [OWNER] });       // bob and the owner
+  const t = await k.surfaces.open(bob, { chat: chat.id });
+  const reply = await stream.chats.appendOpen(t.token, { kind: "text" });
+  assert.match(reply.id, /^msg_/);
+  await reply.write("the fee is ");
+  await C.change(bob, chat.id, { add_people: [CAROL] });       // carol joins while it streams
+  await reply.write("four thousand");
+  const done = await reply.close();
+  assert.equal(done.ver, reply.ver);
+  const asBob = bob, asOwner = owner;
+  assert.equal(stream.chats.mayReceive(asBob, reply.id), true);
+  assert.equal(stream.chats.mayReceive(asOwner, reply.id), true);
+  assert.equal(stream.chats.mayReceive(carol, reply.id), false, "carol joined after this reply's version: she never receives it");
+  assert.equal(stream.chats.mayReceive(ada, reply.id), false, "not in the chat at all");
+  // the next message is stamped with the new version and reaches carol, and a person's own message is stamped the same way
+  const next = await stream.chats.append(t.token, { body: "welcome carol" });
+  assert.equal(stream.chats.mayReceive(carol, next.id), true);
+  assert.ok(next.ver > reply.ver);
+  assert.equal(stream.chats.mayReceive(carol, "msg_nope"), false, "an unknown message");
+  // someone removed stops receiving at once, even what was said while they were in
+  await C.change(bob, chat.id, { remove_people: [CAROL] });
+  assert.equal(stream.chats.mayReceive(carol, next.id), false);
+  // the join is an event with its version
+  const ev = k.log.read({}).filter(e => e.type === "chat.changed").map(e => [e.data.ver, e.data.joined, e.data.left]);
+  assert.deepEqual(ev, [[2, [CAROL], []], [3, [], [CAROL]]]);
+  // answers are only for the person asking: a viewer chain and a model's chain with no listed assistant get nothing
+  assert.equal(stream.chats.mayReceive(await k.chains.fromFacts({ kind: "viewer", person: BOB, vouched: true }), reply.id), false);
+});
+
+test("a reply opened by a session whose chat is another chat is refused; a handle is dead after close and after the turn's token ends", async () => {
+  const { k, bob, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const mine = await C.create(bob, {}), other = await C.create(bob, { people: [CAROL] });
+  const t = await k.surfaces.open(bob, { chat: mine.id });
+  await assert.rejects(() => stream.chats.appendOpen(t.token, { chat: other.id }), { code: "not_found" });
+  const tn = await k.surfaces.open(bob);
+  await assert.rejects(() => stream.chats.appendOpen(tn.token, {}), { code: "not_found" }, "a session with no chat");
+  const h = await stream.chats.appendOpen(t.token, {});
+  await h.write("hi");
+  await h.close();
+  await assert.rejects(() => h.write("more"), { code: "closed" });
+  await assert.rejects(() => h.close(), { code: "closed" });
+  const h2 = await stream.chats.appendOpen(t.token, {});
+  await h2.write("a");
+  k.surfaces.revoke(t.session);                                   // the turn's token ends
+  await assert.rejects(() => h2.write("b"), { code: "not_found" });
+  const t2 = await k.surfaces.open(bob, { chat: mine.id });
+  const h3 = await stream.chats.appendOpen(t2.token, {});
+  await C.change(bob, other.id, { remove_people: [BOB] });          // leaving another chat changes nothing here
+  await h3.write("still ok");
+  await assert.rejects(() => h3.write("x".repeat(70_000)), { code: "bad_input" }, "at most 64 KB");
+});
+
+test("a delta written under a group token cannot carry a value the gateway returned as a placeholder: the session never held it", async () => {
+  const { k, owner, bob, g, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const c = await R.create(owner, "contact", { name: "Jane", age: 40 });
+  await narrowAll(g, owner, BOB, { fields: ["name"] });
+  const group = await C.create(owner, { people: [BOB] });
+  const t = await k.surfaces.open(owner, { chat: group.id });
+  const harness = await k.surfaces.chainFor(t.token);
+  // everything the session can learn through the gateway, every way it can ask
+  const seen = JSON.stringify([await R.get(harness, "contact", c.id), await R.query(harness, "contact", { page: { limit: 10 } }), await R.aggregate(harness, "contact", { measures: [{ fn: "count" }] }), await R.search(harness, { q: "Jane", page: { limit: 10 } }).catch(() => null)]);
+  const [got, rows, , hits] = JSON.parse(seen);
+  assert.equal(got.data.age, `{{field:${c.urn}#age}}`, "the record read");
+  assert.deepEqual(rows.rows.map(r => r.data.age), [`{{field:${c.urn}#age}}`], "the query");
+  for (const h of (hits && hits.rows) || []) assert.equal(h.snippet, undefined, "no search snippet: it could carry a field's text");
+  assert.equal(typeof got.data.age, "string", "the number 40 is not in the record the session was given");
+  // so a reply composed from it carries the placeholder, which each person's own device fills in under their own grants
+  const reply = await stream.chats.appendOpen(t.token, {});
+  const text = `Jane's age is ${JSON.parse(seen)[0].data.age}`;
+  await reply.write(text);
+  assert.equal(text.includes("is 40"), false);
+  const done = await reply.close(text);
+  assert.ok(done.hash);
+});
+
+test("CH-8: a group session's every gateway read is the room's view: a placeholder where one person may not read, null where anyone cannot; a one-to-one session reads the value", async () => {
+  const { k, owner, bob, g, C } = await rig();
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const c = await R.create(owner, "contact", { name: "Jane", age: 40 }, { attrs: { sensitivity: "internal" } });
+  const secret = await R.create(owner, "contact", { name: "Hidden", age: 1 }, { attrs: { sensitivity: "restricted" } });
+  await narrowAll(g, owner, BOB, { fields: ["name"] });          // bob may read only names
+  await narrowAll(g, owner, CAROL, { where: [{ attr: "sensitivity", op: "ne", value: "restricted" }] });   // carol may not read restricted rows
+  const group = await C.create(owner, { people: [BOB, CAROL] });
+  const solo = await C.create(owner, {});
+  const tg = await k.surfaces.open(owner, { chat: group.id }), ts = await k.surfaces.open(owner, { chat: solo.id });
+  const harnessG = await k.surfaces.chainFor(tg.token), harnessS = await k.surfaces.chainFor(ts.token);
+  // a plain gateway read by the harness, with no room.read in sight
+  const g1 = await R.get(harnessG, "contact", c.id);
+  assert.equal(g1.data.name, "Jane", "everyone may read the name");
+  assert.equal(g1.data.age, `{{field:${c.urn}#age}}`, "bob may not read age: a placeholder for the whole room");
+  assert.equal(await R.get(harnessG, "contact", secret.id), null, "carol cannot read this row: not in the room's view");
+  const s1 = await R.get(harnessS, "contact", c.id);
+  assert.equal(s1.data.age, 40, "a one-to-one session reads the value");
+  assert.equal((await R.get(harnessS, "contact", secret.id)).data.name, "Hidden");
+  // query, search and aggregate give the same view
+  const q = await R.query(harnessG, "contact", { page: { limit: 10 } });
+  assert.deepEqual(q.rows.map(r => r.data.name), ["Jane"]);
+  assert.equal(q.rows[0].data.age, `{{field:${c.urn}#age}}`);
+  await assert.rejects(() => R.query(harnessG, "contact", { filter: { field: "age", op: "eq", value: 40 }, page: { limit: 5 } }), { code: "bad_input" }, "no filtering on a field the room may not all read");
+  assert.equal((await R.query(harnessG, "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1);
+  const agg = await R.aggregate(harnessG, "contact", { measures: [{ fn: "count" }] });
+  assert.equal(JSON.stringify(agg).includes("2"), false, "the row carol cannot read is not counted");
+  // the person who asked leaves the chat: no more reads under that token
+  await C.change(owner, group.id, { remove_people: [OWNER] }).catch(() => {});
+  void bob;
+});
+
+test("room handle: no size, a per-session rate limit, and canRead applies row predicates", async () => {
+  const { k, owner, bob, g, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const open = await R.create(owner, "contact", { name: "Open" }, { attrs: { sensitivity: "internal" } });
+  const priv = await R.create(owner, "contact", { name: "Priv" }, { attrs: { sensitivity: "restricted" } });
+  await narrowAll(g, owner, CAROL, { where: [{ attr: "sensitivity", op: "ne", value: "restricted" }] });
+  const chat = await C.create(bob, { people: [CAROL] });
+  const t = await k.surfaces.open(bob, { chat: chat.id });
+  k.bindCalls(() => ({ token: t.token }));
+  const room = await stream.audienceFor({});
+  assert.deepEqual(Object.keys(room).sort(), ["canRead", "group", "read"]);
+  assert.equal(await room.canRead(open.urn), true);
+  assert.equal(await room.canRead(priv.urn), false, "carol's row predicate is applied, not skipped as a type-level probe would");
+  assert.equal(await room.read(priv.urn), null);
+  let limited = 0;
+  for (let i = 0; i < 130; i++) { try { await room.canRead(open.urn); } catch (e) { if (e.code === "rate_limited") limited++; } }
+  assert.ok(limited > 0, "a session may ask the room only so often");
+});
+
+test("R4 on chats: a failed log write leaves the chat's people as they were, and the caller is told", async () => {
+  let fail = false;
+  const base = createEventLog({ space: SPACE });
+  const log = { ...base, append: (c, e, ...r) => { if (fail && /^chat\./.test(e.type)) throw new Error("killed"); return base.append(c, e, ...r); } };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence, log });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const g = k.gateway.grants;
+  for (const p of [BOB, CAROL]) { const r = { person: p, role: "member" }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const C = g.chats;
+  fail = true;
+  await assert.rejects(() => C.create(bob, { people: [CAROL] }), /killed/);
+  fail = false;
+  const chat = await C.create(bob, { people: [CAROL] });
+  fail = true;
+  await assert.rejects(() => C.change(bob, chat.id, { remove_people: [CAROL] }), /killed/);
+  fail = false;
+  assert.deepEqual([...(await C.read(bob, chat.id)).people].sort(), [BOB, CAROL].sort(), "carol was not removed: the removal was never durable");
+  const after = await C.change(bob, chat.id, { remove_people: [CAROL] });
+  assert.deepEqual(after.people, [BOB]);
+});
+
+test("a reply stops when the person it acts for or the ASSISTANT is removed from the chat: what was written stays, marked ended", async () => {
+  const { k, bob, carol, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  // the assistant is removed mid-reply
+  const chat = await C.create(bob, { people: [CAROL], assistants: ["kit"] });
+  const t = await k.surfaces.open(bob, { chat: chat.id, agent: "kit" });
+  const reply = await stream.chats.appendOpen(t.token, {});
+  await reply.write("the first part");
+  await C.change(bob, chat.id, { remove_assistants: ["kit"] });
+  await assert.rejects(() => reply.write(" and more"), { code: "not_found" }, "the assistant is no longer a participant");
+  await assert.rejects(() => reply.write("again"), { code: "closed" });
+  await assert.rejects(() => reply.close(), { code: "closed" }, "it does not finish");
+  const ended = k.log.read({}).find(e => e.type === "message.ended" && e.data.id === reply.id);
+  assert.equal(ended.data.bytes, Buffer.byteLength("the first part"));
+  assert.equal(ended.data.reason, "no_longer_allowed");
+  assert.equal(k.log.read({}).some(e => e.type === "message.added" && e.data.id === reply.id), false, "never closed as a finished message");
+  // the person it acts for is removed mid-reply
+  const chat2 = await C.create(bob, { people: [CAROL], assistants: ["kit"] });
+  const t2 = await k.surfaces.open(bob, { chat: chat2.id, agent: "kit" });
+  const r2 = await stream.chats.appendOpen(t2.token, {});
+  await r2.write("x");
+  await C.change(carol, chat2.id, { remove_people: [BOB] });
+  await assert.rejects(() => r2.write("y"), { code: "not_found" });
+  assert.ok(k.log.read({}).some(e => e.type === "message.ended" && e.data.id === r2.id));
+});
+
+test("roomFor(token): the same live room for event-driven code, only for a module that declares it and a token that verifies and names a chat", async () => {
+  const { k, bob, C } = await rig();
+  const plain = k.kernelFor({ name: "plain", needs: { kernel: { actions: [] } } });
+  const events = k.kernelFor({ name: "worker", needs: { kernel: { actions: [], room: true } } });
+  const group = await C.create(bob, { people: [CAROL] }), solo = await C.create(bob, {});
+  const tg = await k.surfaces.open(bob, { chat: group.id }), ts = await k.surfaces.open(bob, { chat: solo.id }), tn = await k.surfaces.open(bob);
+  assert.equal(plain.chats.roomFor, undefined, "a module that did not declare it has no roomFor");
+  const room = await events.chats.roomFor(tg.token);
+  assert.deepEqual(Object.keys(room).sort(), ["canRead", "group", "read"]);
+  assert.deepEqual(await events.chats.roomFor(ts.token), { group: false });
+  await assert.rejects(() => events.chats.roomFor(tn.token), { code: "no_audience" }, "a session with no chat");
+  await assert.rejects(() => events.chats.roomFor("not.a-token"), { code: "no_audience" });
+  await C.change(bob, group.id, { remove_people: [BOB] }).catch(() => {});
+  k.surfaces.revoke(tg.session);
+  await assert.rejects(() => events.chats.roomFor(tg.token), { code: "no_audience" }, "a token that has ended");
 });
 
 test("room read of a kernel task: the fields everyone may read with the same value; null when anyone cannot read it or it does not exist", async () => {
@@ -221,4 +463,119 @@ test("room read of a kernel task: the fields everyone may read with the same val
   assert.ok(got, "the task is readable by both");
   assert.equal(got.values.title, "Welcome email for Jane");
   assert.equal(await room.read(`vyre://${SPACE}/task/task_nonesuch00`), null);
+});
+
+test("X-1: the daemon's own chain for the owner is not delegated and can open a session; only a chain made from a token is delegated", async () => {
+  const { k } = await rig();
+  const daemon = await k.chains.fromFacts({ kind: "session_person", person: OWNER, session: "stages", vouched: true });
+  assert.equal(daemon.delegated, undefined);
+  const t = await k.surfaces.open(daemon, {});
+  assert.ok(t.token);
+  const fromToken = await k.surfaces.chainFor(t.token);
+  assert.equal(fromToken.delegated, true);
+  await assert.rejects(() => k.surfaces.open(fromToken, {}), { code: "chain_not_person" });
+});
+
+test("CH-10: a reply belongs to the oldest room version its data was read under, however late it is opened", async () => {
+  const { k, owner, bob, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const c = await R.create(owner, "contact", { name: "Jane" });
+  const chat = await C.create(bob, { people: [OWNER] });
+  const t = await k.surfaces.open(bob, { chat: chat.id });
+  k.bindCalls(() => ({ token: t.token }));
+  const harness = await k.surfaces.chainFor(t.token);
+  await R.get(harness, "contact", c.id);                       // read while carol is not in the room
+  await C.change(bob, chat.id, { add_people: [CAROL] });        // carol joins
+  const reply = await stream.chats.appendOpen(t.token, {});     // opened AFTER the join
+  await reply.close("built from data carol could not read");
+  const carol = await k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: CAROL, path: "direct" });
+  assert.equal(stream.chats.mayReceive(carol, reply.id), false, "carol is not in the version the data was read under");
+  const later = await stream.chats.appendOpen(t.token, {});     // no read since: the current version
+  await later.close("hello carol");
+  assert.equal(stream.chats.mayReceive(carol, later.id), true);
+});
+
+test("R4-b: when the log can be neither written nor read, the store keeps the state the call started from, never an empty one", async () => {
+  let down = false;
+  const base = createEventLog({ space: SPACE });
+  const log = { ...base, append: (c, e, ...r) => { if (down) throw new Error("killed"); return base.append(c, e, ...r); }, read: (...a) => { if (down) throw new Error("unreadable"); return base.read(...a); } };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence, log });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const g = k.gateway.grants;
+  const r = { person: BOB, role: "member" };
+  await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${BOB}`) });
+  const before = (await g.list(owner)).length;
+  const r2 = { person: BOB, role: "admin" };
+  down = true;
+  await assert.rejects(() => g.setRole(owner, r2, { presence: proof("grants.role", r2, `vyre://${SPACE}/member/${BOB}`) }), /killed/);
+  down = false;
+  assert.equal((await g.list(owner)).length, before, "the grants are still there");
+  assert.equal((await g.members.get(owner, BOB)).role, "member", "bob is still a member, as before the call");
+});
+
+test("CH-8b: a group session's tasks, listings and events are the room's view too, not the asker's", async () => {
+  const { k, owner, bob, g, C } = await rig();
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [CONTACT] });
+  const contact = await R.create(owner, "contact", { name: "Jane" });
+  const svc = k.kernelFor({ name: "work", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read"], prefixes: ["task/*", "contact/*"] } } });
+  const t = await svc.tasks.request(owner, { title: "Welcome email", doer: { kind: "agent", id: "kit", space: SPACE }, checker: { kind: "person", id: BOB, space: SPACE }, output: { kind: "sent" }, record: contact.urn });
+  await setTemp(g, owner, CAROL, ["contact"]);                         // carol reaches contacts only: no tasks, no listings
+  const group = await C.create(owner, { people: [CAROL] });
+  const solo = await C.create(owner, {});
+  const harnessG = await k.surfaces.chainFor((await k.surfaces.open(owner, { chat: group.id })).token);
+  const harnessS = await k.surfaces.chainFor((await k.surfaces.open(owner, { chat: solo.id })).token);
+  // a task carol cannot read comes back absent in the group session, present in the one-to-one
+  assert.ok(await k.gateway.ask.get(harnessS, t.id), "one-to-one: the asker's view");
+  assert.equal(await k.gateway.ask.get(harnessG, t.id), null, "group: carol cannot read it");
+  // listings: the asker is an owner who sees everyone; in a room with carol only the asker themself is listed
+  assert.ok((await k.gateway.grants.members.list(harnessS)).length >= 3);
+  assert.equal((await k.gateway.grants.members.list(harnessG)).length, 1);
+  assert.ok((await k.gateway.grants.list(harnessS)).length > (await k.gateway.grants.list(harnessG)).length);
+  // events: the record's creation is in the one-to-one session's log view and, carol reading contacts, also in the room's; a task event she cannot read is not
+  const evS = await k.gateway.events.read(harnessS, {}), evG = await k.gateway.events.read(harnessG, {});
+  assert.ok(evS.length > evG.length, "the room sees fewer events than the asker alone");
+  assert.equal(evG.some(e => String(e.subject).includes("/task/")), false);
+  void bob;
+});
+
+test("CH-10 by the kernel: beginTurn fixes the room version before the turn's first read; a join after it never receives the reply, whatever order the stream calls in", async () => {
+  const { k, bob, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const chat = await C.create(bob, { people: [OWNER] });
+  const t = await k.surfaces.open(bob, { chat: chat.id });
+  const turn = await stream.chats.beginTurn(t.token);          // the turn starts: version fixed, before any read
+  await C.change(bob, chat.id, { add_people: [CAROL] });          // carol joins before the turn reads anything
+  const reply = await stream.chats.appendOpen(t.token, {});
+  assert.equal(reply.ver, turn.ver, "the reply belongs to the version the turn began under");
+  await reply.close("said while carol was not here");
+  const carol = await k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: CAROL, path: "direct" });
+  assert.equal(stream.chats.mayReceive(carol, reply.id), false);
+  const next = await stream.chats.appendOpen(t.token, {});       // a new turn (no begin): the current version
+  await next.close("hi carol");
+  assert.equal(stream.chats.mayReceive(carol, next.id), true);
+  await assert.rejects(() => stream.chats.beginTurn("not.a-token"), { code: "not_found" });
+});
+
+test("CH-8b: every read action in the gateway's table is the room's view under a group token: allowed to the asker alone, refused once a person who may not read joins", async () => {
+  const { k, owner, g, C } = await rig();
+  await setTemp(g, owner, CAROL, ["contact"]);                   // carol reaches contacts only
+  const solo = await C.create(owner, {}), group = await C.create(owner, { people: [CAROL] });
+  const hS = await k.surfaces.chainFor((await k.surfaces.open(owner, { chat: solo.id })).token);
+  const hG = await k.surfaces.chainFor((await k.surfaces.open(owner, { chat: group.id })).token);
+  const reads = k.gateway.actions().filter(a => a.risk === "read");
+  assert.ok(reads.length >= 6, `the table has read actions (${reads.map(a => a.action).join(", ")})`);
+  let walked = 0;
+  for (const a of reads) {
+    const resource = `vyre://${SPACE}/${a.resource_type === "type" ? "definition" : a.resource_type}/x1`;
+    const alone = (await k.gateway.authorize({ chain: hS, action: a.action, resource })).effect;
+    if (alone !== "allow") continue;                              // not a door this chain has
+    const inRoom = (await k.gateway.authorize({ chain: hG, action: a.action, resource })).effect;
+    // carol's reach is contacts only: for anything else the room must refuse, never fall back to the asker's view
+    if (a.resource_type !== "contact") assert.notEqual(inRoom, "allow", `${a.action} under a group token is the room's view`);
+    walked++;
+  }
+  assert.ok(walked >= 4, `walked ${walked} read actions`);
 });

@@ -1,14 +1,11 @@
 // @ts-check
-// Stuck is a state, not a mechanism (contract 9.4). The kernel cannot read a model's mind, so this watches what can be measured, plus the assistant
-// saying so. It reports a task stuck through the kernel's own move (`kernel.tasks.move`, which checks the transition table: a guarded task can never
-// be skipped by its doer to avoid a check, R6-11) with a reason and a fix composed here from the cause, never from a model's words (R6-7):
-//  - a permission fix is a structured request built from observed denials, scoped to the task, never a model's text;
-//  - a model's own suggested fix is quoted text, labelled as the doer's, with no one-tap action;
-//  - the same request is offered once, then not again for the cool-down (7 days), so a stuck loop cannot wear a person down.
-// The seven triggers: the assistant says so; a permission refused 3 times; a budget refuses; a wait too long on a dependency or an approval;
-// silence from a live session; a session that ended with no result; the same tool failing 5 times.
+// Stuck is a state, not a mechanism (contract 9.4). The kernel owns the transitions and the one detection it can make itself: a permission refused three times in a
+// task (`ask.observeDenial`, with its own fix built from the denials and its own seven-day cool-down, `ask.declineFix`). This watch measures what only the host of a
+// session can see and reports it through the kernel's `ask.stuck`, as the task's doer (the kernel checks the transition table: a guarded task can never be skipped by
+// its doer to avoid a check, R6-11). The fix it offers is quoted text with no one-tap power; a one-tap fix comes only from what the kernel observed (R6-7).
+// The triggers here: the assistant says so; a budget refuses; a wait too long on a dependency or an approval; silence from a live session; a session that ended with no
+// result; the same tool failing 5 times. Permission denials are the kernel's: `denied` hands them to `ask.observeDenial` and does not count them itself.
 
-const DAY = 86_400_000;
 const FIFTEEN_MIN = 15 * 60_000;
 
 /** A model's words as quoted text: control characters out, capped, never a link or button (T37). @param {string} s @param {number} [n] */
@@ -16,39 +13,30 @@ const quote = (s, n = 400) => String(s ?? "").replace(/[\u0000-\u001f\u007f]/g, 
 
 /**
  * @typedef {{ id: string, doer: { id: string, kind: string }, checker?: any, output?: { kind: string }, state?: string }} WatchedTask
- * @param {{ kernel: any, chain: any, clock?: () => number, stallAfterMs?: number, denyLimit?: number, failLimit?: number, coolDownMs?: number,
- *   whoIsResponsible?: (task: WatchedTask) => string|null }} o `chain`: the kernel-built chain of the watch itself (a service hop), which may move a task to stuck
+ * @param {{ kernel: any, chainOf: (task: WatchedTask) => any, detectChain?: any, clock?: () => number, stallAfterMs?: number, failLimit?: number,
+ *   whoIsResponsible?: (task: WatchedTask) => string|null }} o `chainOf(task)`: the doer's own kernel-built chain (the session host holds it); `detectChain`: the kernel's detection chain, for `denied` (a platform gap: only the kernel's own module holds it)
  */
-export function createStuckWatch({ kernel, chain, clock = Date.now, stallAfterMs = FIFTEEN_MIN, denyLimit = 3, failLimit = 5, coolDownMs = 7 * DAY, whoIsResponsible = () => null }) {
-  /** @type {Map<string, { task: WatchedTask, last: number, denials: Map<string, number>, fails: Map<string, number>, session: boolean, waiting: { on: string, since: number }|null, moved: boolean }>} */
+export function createStuckWatch({ kernel, chainOf, detectChain = null, clock = Date.now, stallAfterMs = FIFTEEN_MIN, failLimit = 5, whoIsResponsible = () => null }) {
+  /** @type {Map<string, { task: WatchedTask, last: number, fails: Map<string, number>, session: boolean, waiting: { on: string, since: number }|null, moved: boolean }>} */
   const tasks = new Map();
-  /** @type {Map<string, number>} fix key to the time it was last offered */
-  const offered = new Map();
   /** @type {{ task: string, reason: string, at: number }[]} */ const log = [];
 
   /** @param {WatchedTask} task @param {{ session?: boolean }} [o] */
   function track(task, { session = true } = {}) {
-    tasks.set(task.id, { task, last: clock(), denials: new Map(), fails: new Map(), session, waiting: null, moved: false });
+    tasks.set(task.id, { task, last: clock(), fails: new Map(), session, waiting: null, moved: false });
   }
   const get = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw Object.assign(new Error("not a watched task"), { code: "not_found" }); return t; };
 
   /**
-   * Move the task to stuck. The fix: `action` only when the kernel built it from observation and it was not offered inside the cool-down.
-   * @param {string} id @param {string} reason @param {{ text?: string, action?: any, key?: string }} [fix]
+   * Move the task to stuck, through the kernel, as its doer. The fix is text only.
+   * @param {string} id @param {string} reason @param {{ text?: string }} [fix]
    */
   async function raise(id, reason, fix = {}) {
     const w = get(id);
     if (w.moved) return { moved: false, why: "already stuck" };
-    let action = fix.action;
-    let text = fix.text || "";
-    if (action && fix.key) {
-      const at = offered.get(fix.key);
-      if (at !== undefined && clock() - at < coolDownMs) { action = undefined; text = `${text} This was offered before and not taken up; it is not offered again for now.`.trim(); }
-      else offered.set(fix.key, clock());
-    }
-    const stuck = { reason: quote(reason, 300), since: clock(), ...(text || action ? { suggested_fix: { text: quote(text, 500), ...(action ? { action } : {}) } } : {}) };
+    const stuck = { reason: quote(reason, 300), since: clock(), ...(fix.text ? { suggested_fix: { text: quote(fix.text, 400) } } : {}) };
     try {
-      await kernel.tasks.move(chain, id, "stuck", { stuck });
+      await kernel.ask.stuck(chainOf(w.task), id, { reason: stuck.reason, ...(fix.text ? { suggested_fix: stuck.suggested_fix.text } : {}) });
       w.moved = true;
       log.push({ task: id, reason: stuck.reason, at: clock() });
       return { moved: true, stuck, responsible: whoIsResponsible(w.task) };
@@ -68,21 +56,25 @@ export function createStuckWatch({ kernel, chain, clock = Date.now, stallAfterMs
       const w = get(id);
       return raise(id, reason, suggested_fix ? { text: `From ${w.task.doer.id}: "${quote(suggested_fix)}"` } : {});
     },
-    /** 2. A permission was refused: three times for the same action and resource makes it stuck, with a grant request built here. @param {string} id @param {{ action: string, resource: string }} o */
+    /**
+     * 2. A permission was refused: the kernel counts it (three times for the same action and resource in a task makes it stuck, with a grant request it built, and a
+     * cool-down once a person declines it). Needs the kernel's detection chain.
+     * @param {string} id @param {{ action: string, resource: string }} o
+     */
     async denied(id, { action, resource }) {
       const w = touch(id);
-      const k = `${action}\u0000${resource}`;
-      const n = (w.denials.get(k) || 0) + 1;
-      w.denials.set(k, n);
-      if (n < denyLimit) return { moved: false, count: n };
-      return raise(id, `${w.task.doer.id} was refused ${action} on ${resource} ${n} times.`, {
-        text: `Allow ${action} on ${resource} for this task, or reassign it.`, key: `grant\u0000${w.task.doer.id}\u0000${k}`,
-        action: { kind: "grant_request", resource, action_name: action, scope: { task: id } } });
+      if (!detectChain) return { moved: false, why: "no detection chain" };
+      if (w.moved) return { moved: false, why: "already stuck" };
+      try {
+        const t = await kernel.ask.observeDenial(detectChain, id, { action, resource });
+        if (t && t.state === "stuck") { w.moved = true; log.push({ task: id, reason: t.stuck.reason, at: clock() }); return { moved: true, stuck: t.stuck, responsible: whoIsResponsible(w.task) }; }
+        return { moved: false };
+      } catch (e) { return { moved: false, why: /** @type {any} */ (e).message, code: /** @type {any} */ (e).code }; }
     },
     /** 3. A meter will not reserve more. @param {string} id @param {{ meter: string }} o */
     async budget(id, { meter }) {
       touch(id);
-      return raise(id, `Out of ${meter} for now.`, { text: `Raise the ${meter} limit, or wait for it to reset.`, key: `budget\u0000${meter}`, action: { kind: "raise_budget", action_name: meter, scope: { task: id } } });
+      return raise(id, `Out of ${meter} for now.`, { text: `Raise the ${meter} limit, or wait for it to reset.` });
     },
     /** 4. It waits on a dependency or an approval. Checked on tick. @param {string} id @param {{ on: string, since?: number }|null} o */
     waitingOn(id, o) { get(id).waiting = o ? { on: o.on, since: o.since ?? clock() } : null; },
@@ -109,9 +101,7 @@ export function createStuckWatch({ kernel, chain, clock = Date.now, stallAfterMs
       if (n < failLimit) return { moved: false, count: n };
       return raise(id, `${tool} failed ${n} times in a row for ${w.task.doer.id}.`, { text: `Look at why ${tool} fails, or reassign the task.` });
     },
-    /** A fix the person declined: not offered again for the cool-down. @param {string} key */
-    declined(key) { offered.set(key, clock()); },
     /** Unblocked or reassigned: the task may become stuck again later. @param {string} id */
-    cleared(id) { const w = get(id); w.moved = false; w.last = clock(); w.denials.clear(); w.fails.clear(); w.waiting = null; w.session = true; },
+    cleared(id) { const w = get(id); w.moved = false; w.last = clock(); w.fails.clear(); w.waiting = null; w.session = true; },
   };
 }
