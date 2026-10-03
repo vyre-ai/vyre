@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { createStoreFor, preflight, nameOf, REQUIRE } from "./space-store.js";
+import { createStoreFor, preflight, nameOf, REQUIRE, spacesThatFit } from "./space-store.js";
+import { MEMORY_PROFILES } from "./provision.js";
 
 const dirs = [];
 const tmp = () => { const d = fs.mkdtempSync(path.join(SCRATCH, "ss-")); dirs.push(d); return d; };
@@ -51,3 +52,28 @@ test("a Space made on Twenty never falls back to SQLite", async () => {
 });
 
 test("a Space name becomes a compose-safe name", () => { assert.equal(nameOf("spc_abcdefghijkl"), "spc-abcdefghijkl"); });
+
+test("the admission check and the container limits are the same numbers", () => {
+  const caps = Object.values(MEMORY_PROFILES.small).reduce((a, b) => a + b, 0);
+  assert.equal(REQUIRE.memoryMb, caps + 300);
+  assert.equal(spacesThatFit(REQUIRE.memoryMb), 1);
+  assert.equal(spacesThatFit(REQUIRE.memoryMb - 1), 0);
+  assert.equal(spacesThatFit(300 + 2 * caps), 2);
+});
+
+test("a new Space on a box too small for Twenty is not created until the person agrees; the plan is shown first", async () => {
+  const { planStore, SMALL_BOX_NOTE, SMALL_BOX_CHOICES } = await import("./space-store.js");
+  const small = async () => ({ ok: false, reasons: ["not enough free memory"], facts: {} });
+  const plan = await planStore({ dir: tmp(), mode: "auto", preflight: small });
+  assert.equal(plan.store, "sqlite");
+  assert.equal(plan.confirm.text, SMALL_BOX_NOTE);
+  assert.deepEqual(plan.confirm.choices, SMALL_BOX_CHOICES);
+  assert.match(SMALL_BOX_NOTE, /can't be moved to the larger store yet, so add memory first/);
+  assert.equal((await planStore({ dir: tmp(), mode: "auto", preflight: async () => ({ ok: true, reasons: [], facts: {} }) })).confirm, undefined);
+  const dir = tmp();
+  const f = createStoreFor({ mode: "auto", preflight: small });
+  await assert.rejects(() => f("spc_aaaaaaaaaaaa", dir, { requireConfirm: true }), (e) => e.code === "needs_confirmation" && e.plan.confirm.choices.includes("cancel"));
+  assert.equal(fs.existsSync(path.join(dir, "store.json")), false, "nothing was decided or written");
+  fs.writeFileSync(path.join(dir, "store.json"), JSON.stringify({ kind: "sqlite", confirmed: true }));
+  assert.equal(await f("spc_aaaaaaaaaaaa", dir, { requireConfirm: true }), undefined, "once agreed it opens on the built-in store");
+});

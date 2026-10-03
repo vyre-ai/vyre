@@ -23,7 +23,9 @@ import { CORE_TYPES } from "../../records/core-types.js";
 export const REQUIRE = Object.freeze({ memoryMb: Object.values(/** @type {any} */ (MEMORY_PROFILES.small)).reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) + 300, diskMb: 6144 });
 
 /** The one plain line the person is told when a new Space is created on a box too small for Twenty. */
-export const SMALL_BOX_NOTE = "This server is small, so this space uses the built-in store. Everything works; very large record sets will be slower.";
+export const SMALL_BOX_NOTE = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
+/** The two choices the person has when a new Space would be created on the built-in store. */
+export const SMALL_BOX_CHOICES = Object.freeze(["create", "cancel"]);
 
 /** How many more Spaces' Twenty this box can take now: what is free beyond one Space's measured need, plus headroom, divided by the need. @param {number} availableMb */
 export const spacesThatFit = (availableMb) => Math.max(0, Math.floor((availableMb - 300) / (REQUIRE.memoryMb - 300)));
@@ -54,13 +56,29 @@ export async function preflight(o) {
 }
 
 /**
+ * What a Space created here now would be stored in, to show the person BEFORE it is created. `confirm` is set when the answer is the built-in store
+ * on a box that could not run Twenty: show its `text` with its `choices` (create anyway or cancel), and only on "create" call `spaces.host` with
+ * `accept_builtin_store: true`. Never creates anything.
+ * @param {{ dir: string, mode?: string, preflight?: typeof preflight }} o
+ * @returns {Promise<{ store: "twenty" | "sqlite", reasons: string[], confirm?: { text: string, choices: readonly string[] }, facts?: any }>}
+ */
+export async function planStore(o) {
+  const mode = o.mode ?? process.env.VYRE_STORE ?? "sqlite";
+  if (mode === "sqlite") return { store: "sqlite", reasons: ["VYRE_STORE is sqlite"] };
+  const pf = await (o.preflight ?? preflight)({ dir: o.dir });
+  if (pf.ok) return { store: "twenty", reasons: [], facts: pf.facts };
+  if (mode === "twenty") return { store: "twenty", reasons: pf.reasons, facts: pf.facts };
+  return { store: "sqlite", reasons: pf.reasons, facts: pf.facts, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } };
+}
+
+/**
  * @param {{ mode?: string, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip" }} [cfg]
- * @returns {(space: string, dir: string) => Promise<any | undefined>}
+ * @returns {(space: string, dir: string, opts?: { requireConfirm?: boolean }) => Promise<any | undefined>}
  */
 export function createStoreFor(cfg = {}) {
   const mode = cfg.mode ?? process.env.VYRE_STORE ?? "sqlite";
   const log = cfg.log ?? (() => {});
-  return async function storeFor(space, dir) {
+  return async function storeFor(space, dir, opts = {}) {
     if (!["sqlite", "auto", "twenty"].includes(mode)) throw new Error(`VYRE_STORE is sqlite, auto or twenty, not ${mode}`);
     const choiceFile = path.join(dir, "store.json");
     /** @type {{ kind?: string } | null} */ let chosen = null;
@@ -70,6 +88,8 @@ export function createStoreFor(cfg = {}) {
     const pf = await (cfg.preflight ?? preflight)({ dir });
     if (!pf.ok) {
       if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Twenty store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      // a new Space the person has not agreed to put on the built-in store is not created: the answer comes first, never after
+      if (opts.requireConfirm) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "sqlite", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       fs.writeFileSync(path.join(dir, "twenty-unavailable.json"), JSON.stringify({ at: new Date().toISOString(), reasons: pf.reasons, facts: pf.facts }, null, 2), { mode: 0o600 });
       fs.writeFileSync(choiceFile, JSON.stringify({ kind: "sqlite", why: pf.reasons, note: SMALL_BOX_NOTE }), { mode: 0o600 });

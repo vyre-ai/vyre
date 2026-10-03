@@ -103,8 +103,8 @@ test("upgrade backs up first, verifies before reopening, and rolls back with the
 test("the small memory profile caps all four containers and sets a Node heap below the cap; no profile caps nothing", () => {
   const y = composeFile({ space: "harlow", memory: "small" });
   assert.equal((y.match(/mem_limit: \d+m/g) ?? []).length, 4);
-  assert.match(y, /mem_limit: 1280m\n    memswap_limit: 1280m/);
-  assert.match(y, /--max-old-space-size=896/);
+  assert.match(y, /mem_limit: 1536m\n    memswap_limit: 1536m/);
+  assert.match(y, /--max-old-space-size=1075/);
   assert.match(y, /shared_buffers=64MB/);
   assert.match(y, /--maxmemory", "72mb"/);
   assert.ok(!/mem_limit/.test(composeFile({ space: "harlow" })));
@@ -132,7 +132,7 @@ test("a backup holds the database, the files and the Space folder with checksums
     assert.equal(fs.readFileSync(r.keyFile, "utf8"), fs.readFileSync(p.keyFile, "utf8"), "the same key still works");
     assert.equal(fs.readFileSync(path.join(r.dir, ".env"), "utf8"), fs.readFileSync(path.join(p.dir, ".env"), "utf8"), "secrets kept");
     assert.match(fs.readFileSync(path.join(r.dir, "compose.yml"), "utf8"), /name: vyre-harlow-2-twenty/);
-    assert.match(fs.readFileSync(path.join(r.dir, "compose.yml"), "utf8"), /mem_limit: 1280m/, "the memory profile moves with the Space");
+    assert.match(fs.readFileSync(path.join(r.dir, "compose.yml"), "utf8"), /mem_limit: 1536m/, "the memory profile moves with the Space");
     assert.ok(fs.existsSync(path.join(r.dir, "state", "types.json")));
     // a flipped byte in a part is refused before anything starts
     const before = calls.length;

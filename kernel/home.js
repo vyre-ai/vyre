@@ -58,6 +58,7 @@ export async function bootHomeKernel(cfg) {
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
   // Where a Space's records live: SQLite unless VYRE_STORE asks for the Space's own Twenty (stores/twenty/space-store.js; sqlite is the default and costs nothing to import).
   const storeFor = cfg.storeFor || ((process.env.VYRE_STORE || "sqlite") !== "sqlite" ? (await import("../stores/twenty/space-store.js")).createStoreFor({ log }) : undefined);
+  const storePlan = storeFor ? (await import("../stores/twenty/space-store.js")).planStore : undefined;
   const personalStore = storeFor ? await storeFor(id.space, id.dir) : undefined;
   const k = await bootKernel({ db: cfg.db, space: id.space, ...(personalStore ? { store: personalStore } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
@@ -104,7 +105,7 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(storeFor ? { storeFor } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(storeFor ? { storeFor, storePlan: (/** @type {string} */ d) => storePlan({ dir: d }) } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
   await spaces.start();
   return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }
