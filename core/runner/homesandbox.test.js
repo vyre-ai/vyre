@@ -170,7 +170,7 @@ test("HS-4: the session cannot signal the daemon or read its process environment
 test("HS-4: the seatbelt profile denies signals, process info, procargs and the Mach services after the allows", () => {
   const home = tmp(); try {
     const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), workdirs: [path.join(home, "proj")] });
-    for (const rule of ["(deny signal (target others))", "(deny process-info* (target others))", 'kern.procargs2', "com.apple.pasteboard.1", "com.apple.SecurityServer", "com.apple.coreservices.appleevents"]) assert.ok(p.includes(rule), rule);
+    for (const rule of ["(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", 'kern.procargs2', "com.apple.pasteboard.1", "com.apple.SecurityServer", "com.apple.coreservices.appleevents"]) assert.ok(p.includes(rule), rule);
     assert.ok(p.lastIndexOf("(deny file* (subpath") > p.indexOf("(allow file* (subpath"), "the protected denies come after the allows");
   } finally { rm(home); }
 });

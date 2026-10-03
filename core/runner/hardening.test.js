@@ -393,3 +393,28 @@ test("Windows: lending is refused with one plain line, placement never says here
     assert.throws(() => createRunner({ platform: "win32", base: "/x", space: "s", device: "d", vault: {}, sync: {}, grants: () => ({}) }), /isn't available on Windows yet/);
   } finally { if (old !== undefined) process.env.VYRE_WINDOWS_LENDING = old; }
 });
+
+// ---- fscrypt, the kernel-native Linux workspace ------------------------------------------------------------------------
+
+import { fscryptSupported } from "./workspace.js";
+const FSDIR = process.env.VYRE_FSCRYPT_DIR || "";
+test("fscrypt workspace: opens with the leased key, locks with no key, a wrong key never opens it", { skip: process.platform !== "linux" || !FSDIR || !fscryptSupported(FSDIR), timeout: 60_000 }, async t => {
+  const base = fs.mkdtempSync(path.join(FSDIR, "fsc-")); t.after(() => rm(base));
+  const drv = driverFor("linux", { prefer: "fscrypt" });
+  assert.equal(drv.name, "fscrypt");
+  const dir = path.join(base, "w"); const key = crypto_.randomBytes(32), wrong = crypto_.randomBytes(32);
+  await drv.create(dir, key);
+  const m = await drv.mount(dir, key);
+  assert.equal(drv.isMounted(dir), true);
+  fs.writeFileSync(path.join(m, "secret-name.txt"), "FSCRYPT-PLAINTEXT-4417");
+  await drv.unmount(dir);
+  assert.equal(drv.isMounted(dir), false);
+  assert.throws(() => fs.readFileSync(path.join(m, "secret-name.txt")), /Required key|ENOKEY|EACCES|ENOENT|-126/);
+  await assert.rejects(() => drv.mount(dir, wrong), /did not take|could not open/);
+  assert.equal(drv.isMounted(dir), false);
+  await drv.mount(dir, key);
+  assert.equal(fs.readFileSync(path.join(m, "secret-name.txt"), "utf8"), "FSCRYPT-PLAINTEXT-4417");
+  await drv.destroy(dir);
+  assert.equal(fs.existsSync(dir), false);
+});
+import crypto_ from "node:crypto";

@@ -104,7 +104,7 @@ export function homeSeatbelt(o) {
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
     // The way into other processes of the same user: their arguments and environment, signals, and the services that hold the
     // pasteboard, the keychain, Apple events and the window server (the same list the lent-computer profile denies).
-    "(deny signal (target others))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
+    "(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
     '(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.DNSConfiguration") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
     `(allow network-outbound (remote unix-socket (path-literal ${q(sock)})))`,
     `(allow file-read-metadata (literal ${q(sock)}))`,

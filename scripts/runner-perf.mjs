@@ -45,14 +45,14 @@ const h = await runner.start({ session: "s1", command: process.execPath, args: [
 const lnext = lines(h.child); await lnext();   // ready
 result.start.sandbox_to_ready = performance.now() - tStart;
 result.start.lent_total = result.start.lease_and_workspace + result.start.sandbox_to_ready;
-const lent = {}, ckpt = {};
+const lent = {}, ckpt = {}, notes = {};
 for (const s of [...SCEN, "calls"]) {
   lent[s] = []; ckpt[s] = [];
   for (let i = 0; i < (s === "extract" || s === "clone" ? Math.min(reps, 3) : reps); i++) {
     const n0 = ev.length; const r = await turn(l => h.send(l), lnext, "run " + s);
     // the checkpoint after the turn: how long the session was paused while the reader and the upload ran
     const t1 = performance.now(); const c = await new Promise(res => { const tick = setInterval(() => { const e = ev.slice(n0).find(x => x.type === "checkpoint"); if (e) { clearInterval(tick); res(e); } }, 5); });
-    lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
+    notes[s] = r.note; lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
   }
 }
 // lock then reopen: the cost of getting back after the workspace was closed (a sleeping laptop wakes to this)
@@ -71,7 +71,7 @@ try {
   result.start.self_test = performance.now() - ts; result.start.self_test_ok = st.ok; srv.close();
 } catch (e) { result.start.self_test_error = e.message; }
 
-for (const s of [...SCEN, "calls"]) result.rows.push({ scenario: s, plain_median: med(plain[s]), plain_max: Math.max(...plain[s]), lent_median: med(lent[s]), lent_max: Math.max(...lent[s]), ratio: med(lent[s]) / med(plain[s]), checkpoint_pause_median: med(ckpt[s]), checkpoint_pause_max: Math.max(...ckpt[s]) });
+for (const s of [...SCEN, "calls"]) result.rows.push({ scenario: s, plain_median: med(plain[s]), plain_max: Math.max(...plain[s]), lent_median: med(lent[s]), lent_max: Math.max(...lent[s]), ratio: med(lent[s]) / med(plain[s]), note: notes[s], checkpoint_pause_median: med(ckpt[s]), checkpoint_pause_max: Math.max(...ckpt[s]) });
 console.log(JSON.stringify(result, null, 1));
 if (outFile) fs.writeFileSync(outFile, JSON.stringify(result, null, 1));
 await runner.revoke().catch(() => {}); up.close(); fs.rmSync(root, { recursive: true, force: true });
