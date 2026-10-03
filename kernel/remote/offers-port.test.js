@@ -43,3 +43,10 @@ test("offers port: no proof means no offer, a missing member is refused, the own
   await assert.rejects(port.set(SPACE, "dev1", "member", true, { ...x, meta: meta("offer", { side: "member_accepts", member: BOB, device: "dev1", device_key: "key-1" }) }), e => e.code === "not_allowed");
   assert.deepEqual(await port.get("spc_bbbbbbbbbbbb", "dev1", x).catch(e => e.code), "unavailable");
 });
+
+test("offers port: the member's own side takes the member from the proven caller, never from an argument", async () => {
+  const { port, meta } = await rig();
+  // the rig's caller is the owner: naming BOB as the member for the member side is refused, and omitting the member uses the caller
+  await assert.rejects(() => port.set(SPACE, "dev1", "member", true, { member: BOB, device_key: "key-1", meta: meta("offer", { side: "member_accepts", member: BOB, device: "dev1", device_key: "key-1" }) }), e => e.code === "not_allowed");
+  await assert.rejects(() => port.set(SPACE, "dev1", "member", true, { device_key: "key-1", meta: {} }), e => e.code === "needs_presence" || e.code === "not_allowed" || e.code === "denied");
+});
