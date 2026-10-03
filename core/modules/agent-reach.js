@@ -9,6 +9,19 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
+  ["vault.provider.remove", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
+  ["wink.server.pairing", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.server.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.server.release", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.server.fingerprint", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.server.reset", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.storage.bridge", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.storage.bridge.accept", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
   ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
   ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.resume", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
@@ -168,6 +181,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "vault.provider.status",
   "artifacts.activity.log",
   "artifacts.mention.search",
   "bridges.get",
