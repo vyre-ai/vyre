@@ -107,6 +107,16 @@ export async function createKernel(cfg) {
         try { log.append(gateway.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${cfg.space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
         return Object.freeze({ member: role !== null, role });
       } } : {}),
+      /**
+       * Sessions for a daemon (kernel/core/surfaces.js): the PERSON opens one under their own chain (`open(chain, { agent?, chat?, session?, thread?, ttl_ms? })` gives
+       * `{ token, session, expires }`; the chat is checked and written into the token), `valid(token)` says whether it is still good (so a session socket can close when it
+       * is revoked or expires), and `revoke(session, chain)` ends it. A module never mints a token for a person: `open` needs a chain that is exactly one person.
+       */
+      sessions: Object.freeze({
+        open: (/** @type {any} */ chain, /** @type {any} */ o) => surfaces.open(chain, o),
+        valid: (/** @type {string} */ token) => surfaces.verify(token).then(() => true, () => false),
+        revoke: (/** @type {string} */ session, /** @type {any} */ chain) => surfaces.revoke(session, chain),
+      }),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     };

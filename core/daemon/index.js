@@ -291,7 +291,7 @@ async function body(req) {
 }
 
 /**
- * @typedef {{ caller?: string, thread?: string, agent?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
+ * @typedef {{ caller?: string, thread?: string, agent?: string, token?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
  *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string|null,
  *   tags?: string[], caps?: Record<string, any[]>, kind?: "owner"|"guest"|"agent", agent?: string, origin?: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
@@ -807,7 +807,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
     }
-    const sessionToken = await kernelSession(req, kernelOf);
+    // A session's own socket carries that session's token from the listener; nothing the client sends on it can replace it. Anywhere else it comes from the verified header.
+    const sessionToken = policy.token ? policy.token : await kernelSession(req, kernelOf);
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

@@ -39,7 +39,8 @@ test("threadsock: the session's own processes, as the caller vyred bound, and ne
   const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
-  assert.equal(fs.statSync(sock.path).mode & 0o777, 0o660);
+  assert.equal(fs.statSync(sock.path).mode & 0o777, 0o600, "a private folder: the socket is the person's user alone");
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
 
   // A process of the session: its call is kit's, whatever it claims to be.
   const a = client(sock.path, "probe.whoami", {}, { "x-vyre-caller": "cli" });
@@ -101,4 +102,29 @@ test("threadsock: a session's call id reaches the tool; other callers' and malfo
   assert.deepEqual(bound.data, { call: "toolu_02", thread: "t9" });
   const cli = await request("POST", "/v1/tools/probe.call", {}, { root, caller: "cli", headers: { "x-vyre-call-id": "toolu_03" } });
   assert.deepEqual(cli.data, { call: null, thread: null }, "a caller with no thread never sets it");
+});
+
+test("threadsock: the session's own token rides every call from the listener, a client header never replaces it, and a revoked session's socket closes", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  d.registry.tools.set("probe.token", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, hook: false, presence: false,
+    run: async (_, meta) => ({ caller: meta.caller, token: meta.token || null }) });
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  /** @type {number[]} */ const inThread = [];
+  let live = true;
+  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, token: "own.token", valid: async () => live, pids: async () => ({ pids: inThread }) });
+  // the client says it is a CLI and sends another session's token: the caller is still kit's, the token is the session's own
+  const a = client(sock.path, "probe.token", {}, { "x-vyre-caller": "cli", "x-vyre-kernel-session": "other.token" });
+  inThread.push(a.pid);
+  assert.deepEqual((await a.done).body.data, { caller: "cli:agent:kit", token: "own.token" });
+  // revoked: the next call is refused and the socket file is gone
+  live = false;
+  const b = client(sock.path, "probe.token", {});
+  inThread.push(b.pid);
+  assert.equal((await b.done).status, 403);
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(fs.existsSync(sock.path), false, "the socket is removed once the session is revoked");
 });
