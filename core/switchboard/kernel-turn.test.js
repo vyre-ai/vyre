@@ -155,3 +155,33 @@ test("a graceful stop keeps the open turns, and the next start reopens them (a r
   const left = rows();
   assert.ok(left.length === 0 || left.every(x => JSON.parse(x.body).person === owner), JSON.stringify(left));
 });
+
+test("SS-3: two askers sending to an idle thread at the same moment: one runs now, the other queues, and the first turn keeps its own session; a chat turn behind a turn with no chat queues too", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const d = await chatDaemon(t, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const chat = await d.kernel.gateway.grants.chats.create(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" }), {});
+  const db = d.registry.deps.db;
+  const turnOf = id => { const r = db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(id); return r ? JSON.parse(r.body) : null; };
+  const fin = async (id, n) => until(async () => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events.filter(e => e.type === "thread.finished").length >= n, `turn ${n}`);
+  // an idle thread (its first turn is over), then two askers send at once
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  await fin(r.data.id, 1);
+  await until(() => !d.registry.call, "tick", 1).catch(() => {});
+  const both = await Promise.all([
+    d.registry.call("threads.send", { thread: r.data.id, text: "demo from the owner", surface: "deck", chat: chat.id, asker: owner }, "module:stream"),
+    d.registry.call("threads.send", { thread: r.data.id, text: "from the other", surface: "deck", chat: chat.id, asker: "per_other" }, "module:stream"),
+  ]);
+  assert.ok(both.every(x => x.data && !x.error), JSON.stringify(both));
+  const queued = both.filter(x => x.data.queued_id || x.data.queued);
+  assert.equal(queued.length, 1, `exactly one of the two is queued behind the other's turn: ${JSON.stringify(both.map(x => x.data))}`);
+  // a chat turn behind a turn with no chat: a person's own surface types "demo" (busy), then the stream sends
+  const mine = await d.registry.call("threads.start", { cwd: work, prompt: "demo", surface: "deck" }, "cli");
+  await until(async () => (await d.registry.call("threads.asks", { thread: mine.data.id }, "cli")).data.some(a => a.tool === "Edit"), "the turn to be busy");
+  const behind = await d.registry.call("threads.send", { thread: mine.data.id, text: "from the chat", surface: "deck", chat: chat.id, asker: owner }, "module:stream");
+  assert.ok(behind.data && (behind.data.queued_id || behind.data.queued), `queued, not swapped in: ${JSON.stringify(behind)}`);
+  assert.equal(turnOf(mine.data.id)?.chat ?? null, null, "the running turn keeps the session it has (no chat)");
+});

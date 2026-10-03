@@ -252,6 +252,8 @@ async function startLocked(opts, root, p, release) {
       // Anything else is the home owner's own thread, as before.
       const person = await personChainFor(q.asker || kernel.id.owner);
       const chat = q.chat || (q.rec && typeof q.rec.chat === "string" ? q.rec.chat : undefined);
+      // A probe asks only: is this person in this chat? (the kernel's own check: not_found when they are not). The Switchboard asks before it queues or runs a chat turn.
+      if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };

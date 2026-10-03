@@ -921,6 +921,16 @@ export class Switchboard {
   }
 
   /**
+   * Is this asker in this chat? The kernel's own answer, asked BEFORE a chat turn is queued, run or has a session opened: a person who is not in the chat is refused, whatever the timing.
+   * @param {string} id @param {any} rec @param {{ chat: string, asker: string }} turn
+   */
+  async assertAsker(id, rec, turn) {
+    if (!this.deps.kernelSession) return;
+    try { await this.deps.kernelSession({ thread: id, agent: (rec && rec.agent) || null, rec, chat: turn.chat, asker: turn.asker, probe: true }); }
+    catch { throw Object.assign(new Error("that person is not in this chat, so their message was not sent"), { code: "not_found" }); }
+  }
+
+  /**
    * Open the kernel session for this thread's current turn and make it the one the socket stamps. `turn` is `{ chat, asker }` from a first-party caller (core/stream): the person who
    * asked and the chat the reply belongs to; the kernel checks that person is in that chat. With none, the thread's own session as before. The previous one is ended.
    * @param {string} id @param {any} rec @param {{ chat?: string, asker?: string } | null} turn
@@ -1760,18 +1770,34 @@ export class Switchboard {
     }
   }
 
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
+  async send(id, text, surface, opts = {}) {
+    // A chat turn's check (whose turn is running), its kernel-session swap and its write must not interleave with another chat send to the same thread: two askers sending at once to an idle thread
+    // would both pass the check and the second would end the first's session. One promise chain per thread, for chat sends only; everything else goes straight through as before.
+    if (!opts || !opts.kernelTurn) return this.sendNow(id, text, surface, opts);
+    const prev = this.sendChain.get(id) || Promise.resolve();
+    const run = prev.then(() => this.sendNow(id, text, surface, opts), () => this.sendNow(id, text, surface, opts));
+    const tail = run.catch(() => {});
+    this.sendChain.set(id, tail);
+    tail.then(() => { if (this.sendChain.get(id) === tail) this.sendChain.delete(id); });
+    return run;
+  }
+
+  async sendNow(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session.
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
       // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
+      await this.assertAsker(id, this.record(id), kernelTurn);
       const st = this.live.get(id), askedBy = this.turnAsker.get(id);
-      if (st && st.turn && askedBy && askedBy !== kernelTurn.asker) {
-        // Another person's message mid-turn waits as the NEXT turn, under its own asker: it never steers the running one, and the running turn's kernel session is never replaced.
+      if (st && st.turn && askedBy !== kernelTurn.asker) {
+        // Another person's message mid-turn waits as the NEXT turn, under its own asker: it never steers the running one, and the running turn's kernel session is never replaced. A chat turn that
+        // arrives while a turn with no chat is running (someone typing on their own surface) waits the same way.
         return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn });
       }
       // (A dormant thread is opened by the launch below, with this turn: begun once, not twice.)
-      if (this.live.has(id) && !(st && st.turn && askedBy)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+      // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
+      if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
+      if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
     }
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
@@ -3245,6 +3271,7 @@ export default {
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
+        if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
