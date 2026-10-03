@@ -96,7 +96,7 @@ export class TwentyStore {
         if (f.isTitle) continue;
         const ex = have.get(f.twenty);
         if (!ex) {
-          const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}), ...(f.kind === "stage" ? { defaultValue: `'${f.options?.[0].value}'` } : {}) };
+          const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}), ...(f.def.unique ? { isUnique: true } : {}), ...(f.kind === "stage" ? { defaultValue: `'${f.options?.[0].value}'` } : {}) };
           await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field } });
           applied.push(`field ${p.vyre}.${f.vyre}`);
           continue;
