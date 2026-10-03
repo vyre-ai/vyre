@@ -21,7 +21,7 @@ export const RECORD_ACTIONS = Object.freeze([
   { action: "records.define", resource_type: "definition", risk: "admin", label: "change types", gloss: "Add or change the kinds of record and their fields." },
 ].map(a => Object.freeze(a)));
 
-const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
+const TYPE_NAME = /^[a-z][a-z0-9-]*$/;
 /** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
 const INTENT_MAX_AGE = 24 * 3600 * 1000;
 const checkType = (/** @type {any} */ t) => { if (typeof t !== "string" || !TYPE_NAME.test(t)) throw new KernelError("bad_input", "bad type name"); };
@@ -64,6 +64,7 @@ export function createRecords(cfg) {
   const sinks = cfg.sinks || new Set();
   const urn = (/** @type {string} */ type, /** @type {string} */ id) => `vyre://${space}/${type}/${id}`;
   /** @type {Map<string, any>} */ const intents = new Map();
+  /** @type {Map<string, Record<string, any>>} kernel attributes as the gateway wrote them (owner, created_by, project, sensitivity), never the store's */ const kattrs = new Map();
   /** @type {Map<string, { version: number, hash: string }>} the latest version hash the gateway wrote, per record */ const index = new Map();
 
   function mapError(/** @type {any} */ e) {
@@ -128,6 +129,15 @@ export function createRecords(cfg) {
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
       throw new KernelError("id_mismatch", "the store did not keep the id it was given");
     }
+    // The store is not trusted to say what it wrote: compare what it returned with what this call asked for (K2-5).
+    const got = sha256(canonical({ deleted: Boolean(rec.deleted_at), data: rec.data }));
+    const staleVersion = (op === "update" || op === "remove") && !(rec.version > base);
+    if ((expect !== null && got !== expect) || staleVersion) {
+      intent.state = "unresolved";
+      try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
+      try { log.append(chain, { type: "store.disagreed", sv: 1, subject: u, data: { operation: op, expected: expect, got, version: rec.version } }, { decision: d.decision }); } catch { /* the refusal stands */ }
+      throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
+    }
     emit(chain, intent, rec, before, d.decision, false);
     return shape(chain, rec);
   }
@@ -142,6 +152,8 @@ export function createRecords(cfg) {
       type: `${rec.type}.${verb}`, sv: 1, subject: intent.record,
       data: { changed, version: rec.version, version_hash: hash, ...(before ? { before: redactDiff(before.data, set) } : {}), after: redactDiff(rec.data, set), ...(recovered ? { recovered: true } : {}) },
       red: sealed ? "pii" : "internal",
+      // Record events carry field values: only a chain that may read the record may read them (R2-1).
+      vis: "subject",
     }, { decision });
     index.set(intent.record, { version: rec.version, hash });
     intent.state = "completed";
@@ -179,7 +191,15 @@ export function createRecords(cfg) {
         if (out.length || !next) break;
         cursor = next;
       }
-      return { rows: out, ...(next ? { next_cursor: next } : {}) };
+      // A cursor only when a row this chain may read is still ahead: otherwise its presence would count rows it cannot see (K2-10).
+      let more = false;
+      for (let ahead = 0; next && !more && ahead < 10; ahead++) {
+        let p;
+        try { p = await store.query(type, { ...spec, page: { limit: spec.page.limit, cursor: next } }); } catch (e) { throw mapError(e); }
+        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id))) { more = true; break; }
+        if (!more) next = p.next_cursor;
+      }
+      return { rows: out, ...(more ? { next_cursor: next } : {}) };
     },
 
     async aggregate(chain, type, spec) {
@@ -206,13 +226,28 @@ export function createRecords(cfg) {
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const rows = [];
       for (const h of p.rows) if (await allowed(chain, "records.read", urn(h.type, h.id))) rows.push(h);
-      return { rows, ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+      // Page after filtering: a cursor only when an allowed hit is ahead (K2-10).
+      let more = false, next = p.next_cursor;
+      for (let ahead = 0; next && !more && ahead < 10; ahead++) {
+        let q;
+        try { q = await store.search({ ...spec, page: { ...spec.page, cursor: next } }); } catch (e) { throw mapError(e); }
+        for (const h of q.rows) if (await allowed(chain, "records.read", urn(h.type, h.id))) { more = true; break; }
+        if (!more) next = q.next_cursor;
+      }
+      return { rows, ...(more ? { next_cursor: next } : {}) };
     },
 
-    async create(chain, type, data) {
+    async create(chain, type, data, opts = {}) {
       const id = mintUuid(clock());
-      return write(chain, "create", type, id, data, null, () => store.create(type, id, data), null);
+      const a = opts.attrs || {};
+      for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
+      const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null);
+      const last = chain.hops[chain.hops.length - 1].actor;
+      kattrs.set(urn(type, id), { space, created_by: `${last.kind}:${last.id}`, ...a });
+      return rec;
     },
+    /** Kernel attributes of a record, from the gateway's own index. A record it did not write has none, so a policy predicate on it never matches. */
+    attrsOf: (/** @type {string} */ u) => kattrs.get(u),
 
     async update(chain, type, id, patch, base) {
       return write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id));

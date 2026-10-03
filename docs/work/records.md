@@ -20,18 +20,21 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 - Spike scripts and results now live in `stores/twenty/spike/`.
 - After merging work/kernel 97fe2a0d8: 156 of 161 pass on the Mac; the 4 failures are the kernel golden tests that refuse to run on a Mac (they pass on testbox).
 
-## Doing
+## Doing (3 Oct, resumed after the account switch)
 
-- Nothing in flight. Waiting on the platform's gateway (replaces `records/testing/gateway-lite.js`). Coordinate in team/0.2/CHAT.md: sessions owns Flows and defineFlow (the runner and flow shape), assistant owns teammates and memory (the kit's teammate roles), windows provisions each Space's Twenty through `provisionSpace`.
+- Merged work/kernel f43c4e570 and work/flows 974d18773. Done in this session: the SDK and the store use the kernel's `link` (record link) and `url` kinds; `records/host.js` (`createRecordsHost`) assembles the real gateway, event log, chain builder and Flow runner over any store, and installs a Kit (types through `kernel.records.define`, Flows approved by the owner). `records/flows/run.js` and the stand-in gateway use are gone: the Stripe connector writes `payment.received` into the log and the Kit's Flow runs on `kernel/flows` (a failed run makes Stripe retry and the retry writes a `payment.received` retry event under a new key).
+- `records/core-types.js`: the `task`, `template`, `playbook` and `team_member` record types, defined in every Space by `host.defineCore()`.
+- Twenty store: `describe`, conformance revision 2, type names with hyphens and underscores, a Vyre type named like a standard Twenty object (task, note, person) is stored under a `vyre` prefix.
+- Provisioning: `provisionSpace({ home, space, memory })` (memory: `"small"`, `"standard"` or four numbers), `backupSpace`, `restoreSpace` (a move: same box or another, new name allowed, secrets and key kept).
+- Live run: `node stores/twenty/live/host-live.mjs <space> <small|standard>` on the test box does everything above against a real Twenty, measures memory, backup and move, and tears down. Numbers below.
 
 ## Next
 
-- Run the kernel gateway's own tests against this store (the gateway filters rows and fields itself; this store is untrusted by design).
-- Flows: the platform's step runner replaces `records/flows/run.js` (it runs only the `find` verb the Estate kit uses).
-- Native group-by for aggregate (Twenty has `<plural>GroupBy`); today aggregate scans, capped at 50,000 rows.
-- Views to Twenty views and page layouts (the store skips views: the Deck draws them).
-- Kit install as a grant card (needs platform's grant UI), kit diff on update, templated projects.
-- Conformance run after an upgrade, wired into `upgradeSpace`'s `verify` by the gateway.
+- First: read the live numbers into "Runs", set the `small` profile from them, rerun with `small`.
+- Wire `host.js` to the platform's real assembly when it lands (it replaces `createRecordsHost`; the pieces it calls are the same).
+- Stripe: fixtures only until `VYRE_STRIPE_TEST_SECRET_KEY` exists. Never a live key.
+- Stage tasks: entering a stage creates its tasks as `task` records (the kernel's tasks module owns approval truth, the record is the projection the Now view reads).
+- Native group-by for aggregate (Twenty has `<plural>GroupBy`); views to Twenty views; Kit diff on update; conformance run wired into `upgradeSpace`'s `verify`.
 
 ## Needs from others
 
@@ -43,6 +46,10 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 
 - `package.json` test script gains `records/**/*.test.js` and `stores/**/*.test.js`.
 - None to kernel/contracts. Findings the contract owners should read: Twenty has no row version, so the store keeps one (a `vyreVersion` column, created by `define` on every type); the kernel suite's `changes` expects the store's own writes too, so the store reports them and the gateway de-duplicates by (id, version); `date` fields accept `YYYY-MM-DD` only (the kernel's validator also accepts a date and time); a store must refuse a time-ordered id whose version marker is not 4 only because Twenty does (the kernel's `isUuid` already says so).
+
+- 3 Oct rulings applied: kernel files untouched (type is `team-member`, hyphens only); `payment.received` is one event per payment keyed on the payment intent, and a failed run is resumed by `runner.retry` on redelivery (test: fail, redeliver, one event, one run, one matter). Changed contract: `kernel/flows/runner.js` `retry` now also resumes a `failed` run (finished steps are not repeated); sessions owns the file, please keep it.
+- The Twenty store returns an empty list for urls, phones and emails as an empty list (the gateway compares what the store returns with what was asked and refuses a mismatch).
+- kernel/flows/e2e/estate.e2e.test.js (sessions) fails against the Kit now that `client` is a real `link`: its fixture patched the old `ref` to text. Sessions to update the fixture.
 
 ## Findings (testbox, Twenty v2.44.0)
 

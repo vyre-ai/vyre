@@ -70,7 +70,7 @@ export function createRecordsHost(o) {
     for (const t of list) types.set(t.name, t);
     return r;
   }
-  /** The types every Space has (task, template, playbook, team_member). */
+  /** The types every Space has (task, template, playbook, team-member). */
   const defineCore = () => defineTypes([...CORE_TYPES]);
 
   /** An event for the Flows and anything else subscribed. Written once per `key`: a second call with the same key returns the first event. */

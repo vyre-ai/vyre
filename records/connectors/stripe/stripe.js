@@ -97,20 +97,19 @@ export function createStripeHandler(o) {
     const pay = normalize(ev);
     if (!pay) return { status: 200, body: { ignored: `${ev.type} is not a received payment` } };
     if (pay.livemode && !o.allowLive) return { status: 200, body: { ignored: "live-mode event; this connector is in test mode" } };
-    // One Checkout payment arrives as several Stripe events (the session, the payment intent, the charge). The event is written
-    // once per payment. If its run did not finish (the store was down), the next delivery writes a retry event: the Flow only
-    // finds or creates, so running it again finishes the job and never doubles it.
+    // One Checkout payment arrives as several Stripe events (the session, the payment intent, the charge). `payment.received` is
+    // written exactly once per payment, keyed on the payment intent. If its run did not finish (the store was down), the next
+    // delivery resumes that same run rather than starting another.
     const run = async () => {
       const key = `stripe:payment:${pay.payment}`;
-      let { event, duplicate } = await o.host.emit("payment.received", pay, { source: "connector:stripe", key, subject: `vyre://${o.host.space}/payment/${pay.payment}` });
+      const { event, duplicate } = await o.host.emit("payment.received", pay, { source: "connector:stripe", key, subject: `vyre://${o.host.space}/payment/${pay.payment}` });
       await o.host.settle();
       let { runs, bad } = await runsOf(event.id);
       if (duplicate && bad.length) {
-        const n = (await o.host.flows.runner.listRuns({ limit: 1000 })).filter((/** @type {any} */ r) => r.trigger?.event?.corr === key || r.trigger?.event?.data?.payment === pay.payment).length;
-        ({ event } = await o.host.emit("payment.received", { ...pay, retry: n }, { source: "connector:stripe", key: `${key}#retry${n}`, subject: `vyre://${o.host.space}/payment/${pay.payment}` }));
+        // the same event, the same run: finished steps are not repeated
+        for (const r of bad) await o.host.flows.runner.retry(r.id);
         await o.host.settle();
         ({ runs, bad } = await runsOf(event.id));
-        duplicate = false;
       }
       if (bad.length) return { status: 500, body: { error: bad[0].error?.message ?? "the flow did not finish", event: event.id } };
       const steps = runs.flatMap((/** @type {any} */ r) => Object.entries(r.steps ?? {}).map(([id, st]) => ({ id, status: /** @type {any} */ (st).status })));
