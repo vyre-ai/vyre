@@ -13,7 +13,9 @@ import { openrouterAdapter } from "./adapter-openrouter.js";
 /** Dollars per million tokens, by model id; an unknown model uses the eval's high default so the cap errs on stopping early. */
 export const PRICES = {
   "anthropic/claude-haiku-4.5": { in: 1, out: 5 },
-  "anthropic/claude-sonnet-4.6": { in: 3, out: 15 },
+  "anthropic/claude-sonnet-5.5": { in: 2, out: 10 },
+  "openai/gpt-6-sol": { in: 2, out: 10 },
+  "google/gemini-3.8-flash": { in: 0.75, out: 3.75 },
   "claude-haiku-4-5-20251001": { in: 1, out: 5 },
 };
 

@@ -14,11 +14,13 @@ on:
         default: anthropic/claude-haiku-4.5
         options:
           - anthropic/claude-haiku-4.5
-          - anthropic/claude-sonnet-4.6
+          - anthropic/claude-sonnet-5.5
+          - openai/gpt-6-sol
+          - google/gemini-3.8-flash
       budget:
         description: Hard stop in dollars for this run (at most 5)
         type: choice
-        default: "2.5"
+        default: "1"
         options:
           - "1"
           - "2.5"

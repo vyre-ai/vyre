@@ -137,5 +137,5 @@ Gaps for platform (what `ctx.kernel` must provide for core/work, all named in co
 - Stage gates (a stage's required tasks) are not enforced by the gateway; the eval fixture stands in for them.
 - A person's own outward act: confirm `needs_presence` as the shape, or give a surface prompt for presence.
 
-Blocked: the paid eval. The `eval` environment only allows main and work/stage-0.2 and a required reviewer, and a workflow must be on main to dispatch. Needs launch/lead: land `assistant-fit-eval.yml` on main (or add this branch to the environment's branch policy), then dispatch with model anthropic/claude-haiku-4.5 and budget 2.5, then sonnet-4.6 at 2.5 (total hard stop 5).
+Blocked: the paid eval. The `eval` environment only allows main and work/stage-0.2 and a required reviewer, and a workflow must be on main to dispatch. Needs launch/lead: land `assistant-fit-eval.yml` on main (or add this branch to the environment's branch policy), then dispatch each of haiku-4.5, sonnet-5.5, gpt-6-sol and gemini-3.8-flash at budget 1 (the workflow lands on main with the 0.3 merge after reviewer-2; the user approves the run).
 Next: first thing, run the eval once the workflow is dispatchable and record the run id here; then proposals as records for the Engineer; perf numbers with scripts/perf-check.
