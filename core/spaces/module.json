@@ -182,6 +182,14 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.state",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.people",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.merge-list",
     "reach": "modules"
    },

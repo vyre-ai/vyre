@@ -512,6 +512,15 @@ export function createGrantsStore(cfg) {
       const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: { kind: "person", id: owner, space: cfg.space } }, actions: [...ROLE_ACTIONS.owner], action_set_version: version, resource: { prefix: `vyre://${cfg.space}/*/*` }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { kind: "service", id: "grants", space: cfg.space }, source: "role:owner", status: "active", created_at: clock() });
       grants.set(g.id, g);
       await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      // The default assistant: every session token carries a model hop, and a thread with no named assistant runs as this one (core/sessions/kernel-session.js). It is a member of
+      // every Space from its start. It starts with read and task-work only, and every chain it is in is also narrowed by the person it acts for, so it never has more than they do.
+      // What else an assistant may do is the assistant reach list (platform): widen this grant there, not here.
+      const dflt = freeze({ kind: "agent", id: "assistant", space: cfg.space });
+      actors.add(actorKey(dflt));
+      await note(k, "actor.added", urn("member", dflt.id), { actor: dflt });
+      const ga = freeze({ ...g, id: `gr_${mintUuid(clock())}`, subject: { kind: "actor", actor: dflt }, actions: ["records.read", "events.read", "tasks.read", "tasks.work"], conditions: {}, source: "kernel:default-assistant" });
+      grants.set(ga.id, ga);
+      await note(k, "grant.created", urn("grant", ga.id), { grant: ga });
       return membership;
     },
 

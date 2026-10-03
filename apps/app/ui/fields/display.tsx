@@ -2,7 +2,8 @@ import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
-import { Avatar, type AvatarFamily } from "../components/Avatar";
+import { Avatar, type AvatarKind } from "../components/Avatar";
+import { StageMini } from "../components/StageSteps";
 import { addrText, actorIdOf, fmtDate, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
 import type { ViewProps } from "./types";
 
@@ -10,7 +11,7 @@ const Empty = () => <Text tone="faint">Empty</Text>;
 const str = (v: any) => (typeof v === "object" && v ? String(v.name ?? v.title ?? "") : String(v ?? ""));
 const TABULAR = { fontVariant: ["tabular-nums" as const] };
 
-export const familyOf = (f?: string): AvatarFamily => (f === "assistant" ? "assistant" : f === "teammate" ? "teammate" : f === "service" ? "agent" : "person");
+export const familyOf = (f?: string): AvatarKind => (f === "assistant" ? "assistant" : f === "teammate" ? "teammate" : f === "service" ? "agent" : "person");
 
 export function TextView({ p }: ViewProps) {
   return isEmpty(p.value) ? <Empty /> : <Text numberOfLines={p.mode === "compact" ? 1 : undefined}>{str(p.value)}</Text>;
@@ -54,16 +55,11 @@ export function MultiChoiceView({ p }: ViewProps) {
   return isEmpty(p.value) ? <Empty /> : <View className="flex-row flex-wrap gap-s1">{listOf(p.value).map((x) => <Chip key={x}>{x}</Chip>)}</View>;
 }
 
-/** A strip of marks, one per stage, filled up to the current one, then the stage's name. */
+/** The stage as 6 x 3 segments, filled up to the current one, with the stage's name on one line to the right. */
 export function StageView({ p }: ViewProps) {
   if (isEmpty(p.value)) return <Empty />;
-  const st = [...(p.definition.options || [])], at = st.indexOf(p.value);
-  return (
-    <View className="gap-s1" accessibilityLabel={`${str(p.value)}, stage ${at + 1} of ${st.length}`}>
-      <View className="flex-row gap-s1">{st.map((s, j) => <View key={s} className={j <= at ? "h-s1 w-s3 rounded-full bg-accent" : "h-s1 w-s3 rounded-full bg-edge-strong"} />)}</View>
-      <Text numberOfLines={1}>{str(p.value)}</Text>
-    </View>
-  );
+  const st = [...(p.definition.options || [])];
+  return <StageMini stages={st} current={st.indexOf(p.value)} />;
 }
 
 export function RatingView({ p }: ViewProps) {
@@ -76,16 +72,22 @@ export function RatingView({ p }: ViewProps) {
   );
 }
 
-/** A link or a reference to another record: an accent chip with its title; polymorphic links show the target's type. */
+/** A link or a reference to another record: accent text at 16 with the target's small face or emblem in front, no filled chip. */
 export function LinkView({ p, env }: ViewProps) {
   if (isEmpty(p.value)) return <Empty />;
   const urn = urnOf(p.value), t = env.links?.[urn];
   const title = t ? t.title : urn.split("/").pop() || urn;
-  const chip = <Chip tone="accent">{title}</Chip>;
+  const kind = t?.type === "contact" || p.definition.to === "contact" ? "person" : "project";
+  const body = (
+    <View className="flex-row items-center gap-s2">
+      <Avatar of={{ kind, id: urn || title, name: title }} size={16} />
+      <Text tone="accent" numberOfLines={1} className="min-w-0 flex-shrink">{title}</Text>
+    </View>
+  );
   const typed = t?.type && t.type !== p.definition.to ? <Text size="caption" tone="label">{t.type}</Text> : null;
   return (
     <View className="flex-row flex-wrap items-center gap-s2">
-      {env.open ? <Pressable accessibilityRole="link" accessibilityLabel={`Open ${title}`} onPress={() => env.open?.(urn)}>{chip}</Pressable> : chip}
+      {env.open ? <Pressable accessibilityRole="link" accessibilityLabel={`Open ${title}`} onPress={() => env.open?.(urn)} hitSlop={8}>{body}</Pressable> : body}
       {typed}
     </View>
   );
@@ -97,7 +99,7 @@ export function ActorView({ p, env }: ViewProps) {
   const name = a ? a.name : p.value?.actor?.name || id;
   return (
     <View className="flex-row items-center gap-s2">
-      <Avatar name={name} family={familyOf(a?.family)} size="sm" />
+      <Avatar of={{ kind: familyOf(a?.family), id: id || name, name, seed: a?.seed }} size={24} />
       <Text numberOfLines={1} className="min-w-0 flex-shrink">{name}</Text>
     </View>
   );

@@ -89,7 +89,8 @@
           "faceIDPermission": "Vyre uses Face ID to confirm that you are the one approving."
         }
       ],
-      "expo-notifications"
+      "./plugins/strip-firebase.js",
+      "./plugins/embed-bundle.js"
     ],
     "experiments": {
       "baseUrl": "/app",

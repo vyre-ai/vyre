@@ -9,12 +9,12 @@
 //   - nothing is cached or written: the vault is asked once per request and the value lives in one header;
 //   - only the routes the space granted exist; any other path, host or method gets a plain refusal.
 //
-// A route is { prefix: "/provider", upstream: "https://models.example", credential?: { ref, header, prefix? }, allow: [{ method, path }] }.
+// A route is { prefix: "/provider", upstream: "https://models.example", credential?: { header, prefix? }, allow: [{ method, path }] }.
 // A route with a credential MUST list what the session may do with it: each entry names a method and a path ("/v1/messages",
 // or "/v1/files/*" for a prefix). Anything else is refused here, before the vault is asked (reviewer-2 R4: a read-only grant must
 // never become a refund or a delete). The vault is then asked per request with the method and path, and it classifies them the
 // way the kernel does: a read is allowed, anything that changes state is an outward act held for approval (kernel/seal/uses.js
-// leasedUse). vault.credential({ ref, session, route, lease, method, path }) returns the secret as a string, or throws.
+// leasedUse). vault.credential({ session, route, lease, method, path }) (the Space maps the request to a credential; the runner never names one) returns the secret as a string, or throws.
 
 import http from "node:http";
 import https from "node:https";
@@ -28,8 +28,8 @@ const MAX_BODY = 64 * 1024 * 1024;
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 /**
- * @param {{ routes: { prefix: string, upstream: string, credential?: { ref: string, header: string, prefix?: string }, allow?: { method: string, path: string }[] }[],
- *   vault: { credential(o: { ref: string, session: string, route: string, lease?: string, method: string, path: string }): Promise<string> },
+ * @param {{ routes: { prefix: string, upstream: string, credential?: { header: string, prefix?: string }, allow?: { method: string, path: string }[] }[],
+ *   vault: { credential(o: { session: string, route: string, lease?: string, method: string, path: string }): Promise<string> },
  *   session: string, token: string, lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
  */
@@ -61,7 +61,7 @@ export function createEgress(o) {
       }
       if (route.credential) {
         let secret;
-        try { secret = await o.vault.credential({ ref: route.credential.ref, session: o.session, route: route.prefix, lease: o.lease?.(), method: req.method, path: rest0 }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
+        try { secret = await o.vault.credential({ session: o.session, route: route.prefix, lease: o.lease?.(), method: req.method, path: rest0 }); } catch { return refuse(502, "the space's vault did not give the credential", route.prefix); }
         if (typeof secret !== "string" || !secret) return refuse(502, "the space's vault did not give the credential", route.prefix);
         headers[route.credential.header] = (route.credential.prefix || "") + secret;
         secret = "";

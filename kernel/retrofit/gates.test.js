@@ -97,3 +97,14 @@ test("K2-3: the production chain builder cannot mint a person from a string; the
   const c = createLegacyChainBuilder({ space: LEGACY_SPACE }).fromLegacy({ kind: "person", id: "owner", legacy: "cli" });
   assert.equal(c.space, LEGACY_SPACE);
 });
+
+test("person reach refuses a caller that carries an agent claim on any surface, except the tools listed with a reason in AGENT_REACH", async () => {
+  const { personRefusesAgent, AGENT_REACH } = await import("../../core/modules/index.js");
+  const person = { reach: "person" };
+  for (const c of ["cli:agent:kit", "deck:agent:kit", "cli agent:kit", "mcp:agent:", "cli:thread:x"]) assert.equal(personRefusesAgent("vault.rotate", person, c), true, c);
+  for (const c of ["cli", "local", "deck", "capsule", "mobile", "tailnet:alex"]) assert.equal(personRefusesAgent("vault.rotate", person, c), false, c);
+  assert.equal(personRefusesAgent("vault.rotate", { reach: "anyone" }, "cli:agent:kit"), false, "only person reach");
+  assert.ok(AGENT_REACH.size > 0 && [...AGENT_REACH.values()].every(r => typeof r === "string" && r.length > 10), "every exception carries its reason");
+  const open = [...AGENT_REACH.keys()][0];
+  assert.equal(personRefusesAgent(open, person, "cli:agent:kit"), false);
+});

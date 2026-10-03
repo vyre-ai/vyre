@@ -683,3 +683,21 @@ Claude Code file sharing, the terminal comparison in the harness.
 - chat: align names (mode.changed, queued_id, threads.send-now); stream.reset; jank fixes.
 - app-design: tokens + design A frames for Settings (account/project).
 - polish-cli: `vyre config` verb shape agreed with me.
+
+## Notices when the app is closed (Android)
+No Firebase and no Google Play services in the APK; scripts/check-apk-nothing-central.mjs fails the build if either appears.
+While the app is open, notices come over Vyre's own connection and the app shows them itself (modules/vyre-notify).
+When the app is closed, the next step is a small foreground service holding that connection (an ongoing "Vyre is connected" notice), or a later UnifiedPush option the person chooses; FCM does not come back.
+
+## Needs from others (vault): docs/native/permissions.json
+On origin/work/022-native-android, the release list must match apps/app/android-permissions.json (the keys of the `allowed` list; `debugOnly` is debug builds only). Exact lines to add, each with its reason:
+```
+"android.permission.CAMERA"                 Reads the code on the screen of the device you are adding. Nothing is recorded or kept.
+"android.permission.POST_NOTIFICATIONS"     Tells you when something needs you. Vyre makes each notice itself; nothing is sent through a push service.
+"android.permission.ACCESS_NETWORK_STATE"   Knows whether the phone is online, so Vyre can say so and reconnect to your box.
+"android.permission.USE_BIOMETRIC"          Asks for your fingerprint or face before the phone signs an approval or opens the vault.
+"android.permission.INTERNET"               Talks to your own box. Nothing else.
+"android.permission.VIBRATE"                A short tap when you press a control, if the phone's settings allow it.
+"{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"   Added by the system library so only Vyre can receive its own broadcasts.
+```
+Also: the release workflow should run scripts/check-apk-nothing-central.mjs --apk on the unsigned release APK.

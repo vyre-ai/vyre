@@ -16,8 +16,8 @@ const BAR = 44;
  * `onRefresh` adds pull to refresh (the system's refresh control; the page keeps its content while it runs).
  * On a wide screen there is no bar: the title is the first line of the page, as before.
  */
-export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own }: {
-  title: string; sub?: string; actions?: ReactNode; /** The page draws its own large title (a heading with its own actions); this supplies the bar, the collapse and the refresh. */ own?: boolean; onRefresh?: () => void | Promise<void>; children: ReactNode;
+export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own, wide }: {
+  title: string; /** A two-column page (Now): the content stops at the wide width (1040) with a 32 gutter on a wide screen. */ wide?: boolean; sub?: string; actions?: ReactNode; /** The page draws its own large title (a heading with its own actions); this supplies the bar, the collapse and the refresh. */ own?: boolean; onRefresh?: () => void | Promise<void>; children: ReactNode;
 }) {
   const { phone, color, map } = useUiTheme();
   const px = (k: string) => parseInt(String(map[k]), 10) || 0;
@@ -47,7 +47,10 @@ export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own
     </View>
   );
   // Plain style objects, not classes: a className on an animated ScrollView does not reach its content container.
-  const content: ViewStyle = { width: "100%", maxWidth: px("--page-max") || undefined, alignSelf: "center", gap: px("--s-4"), padding: px("--s-4"), paddingBottom: px("--s-12") };
+  const wideOn = !!wide && !phone;
+  const content: ViewStyle = wideOn
+    ? { width: "100%", maxWidth: px("--wide-max") + 2 * px("--s-8"), alignSelf: "center", gap: px("--s-4"), paddingHorizontal: px("--s-8"), paddingTop: px("--s-6"), paddingBottom: px("--s-12") }
+    : { width: "100%", maxWidth: px("--page-max") || undefined, alignSelf: "center", gap: px("--s-4"), padding: px("--s-4"), paddingBottom: px("--s-12") };
   if (!phone) {
     return (
       <Animated.ScrollView refreshControl={refresh} style={{ flex: 1 }} contentContainerStyle={content}>

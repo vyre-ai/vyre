@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
+import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadAccount } from "./data";
 import { useSettings } from "./state";
@@ -14,10 +14,10 @@ export function AccountScreen() {
   const [face, setFace] = useState<FaceAsk | null>(null);
   return (
     <Page title="Account and recovery" back="/u/settings">
-      <Card><Row lead={<Avatar name={A.name} size="lg" />} title={A.name} sub={`${A.vyreName} · ${A.line}`} className="px-0" /></Card>
+      <Card><Row lead={<Avatar of={markRef("person", A.name)} size={40} />} title={A.name} sub={`${A.vyreName} · ${A.line}`} className="px-0" /></Card>
       <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
         <Card flush>
-          {A.ways.map((w, i) => <View key={w.id}>{i ? <Divider /> : null}<Row lead={<Avatar name={w.name} family="device" />} title={w.name} sub={w.line} end={w.here ? <Chip tone="ok">This phone</Chip> : undefined} /></View>)}
+          {A.ways.map((w, i) => <View key={w.id}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("device", w.name)} />} title={w.name} sub={w.line} end={w.here ? <Chip tone="ok">This phone</Chip> : undefined} /></View>)}
         </Card>
       </Group>
       <Group title="Recovery">
@@ -31,7 +31,7 @@ export function AccountScreen() {
       </Group>
       <Group title="Recovery contacts" note="Optional. Two of them approve with Face ID to bring you back if you lose everything.">
         <Card flush>
-          {A.contacts.map((c, i) => <View key={c.id}>{i ? <Divider /> : null}<Row lead={<Avatar name={c.name} />} title={c.name} sub="Recovery contact" /></View>)}
+          {A.contacts.map((c, i) => <View key={c.id}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef("person", c.name, c.id)} />} title={c.name} sub="Recovery contact" /></View>)}
         </Card>
         <View className="flex-row"><Button size="sm" icon="plus" label="Add a contact" onPress={() => showToast("Ask them to scan your Wink card. They approve with Face ID.")} /></View>
       </Group>

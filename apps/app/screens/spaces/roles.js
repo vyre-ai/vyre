@@ -16,9 +16,13 @@ const RANK = { owner: 4, admin: 3, manager: 2, member: 1, temp: 0 };
 
 export const roleLabel = (/** @type {Role} */ r) => ROLES.find((x) => x.id === r)?.label ?? r;
 
-/** The roles `actor` may give. An owner can give any; an admin can give roles below admin; nobody else can change roles. */
+/**
+ * The roles `actor` may give from the app. An owner can give any but Owner; an admin can give roles below admin; nobody else can change roles.
+ * Owner is never given here: a server that has an owner is moved on the server itself, with the person's passkey (wink.server.adopt refuses the
+ * paired app's call with presence_required). See `ownerMoveLine`.
+ */
 export function assignable(/** @type {Role} */ actor) {
-  if (actor === "owner") return ROLES.map((r) => r.id);
+  if (actor === "owner") return ROLES.filter((r) => r.id !== "owner").map((r) => r.id);
   if (actor === "admin") return ROLES.filter((r) => RANK[r.id] < RANK.admin).map((r) => r.id);
   return [];
 }
@@ -29,6 +33,9 @@ export function canManage(/** @type {Role} */ actor, /** @type {Role} */ target,
   if (actor === "owner") return true;
   return actor === "admin" && RANK[target] < RANK.admin;
 }
+
+/** What the person is told when they ask to change a server's owner from the app. The move happens on the server, approved with their own passkey. */
+export const ownerMoveLine = (/** @type {string} */ owner) => `This server already belongs to ${owner}. To move it, do it on this server and approve with your passkey.`;
 
 export const TEMP_ENDS = [["7", "1 week"], ["30", "30 days"], ["90", "3 months"]];
 export const EXTENSIONS = [["7", "One more week"], ["30", "30 more days"], ["90", "Three more months"]];

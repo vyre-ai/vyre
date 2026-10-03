@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, EmptyState, Row, Text, showToast } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Avatar, Button, Card, Chip, Divider, EmptyState, Row, Text, showToast, markRef, spaceRef } from "@vyre/ui";
+import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { SPACE_NAMES, glyph } from "./data";
 import { lendInfo, useDevices } from "./state";
@@ -22,18 +22,18 @@ export function DeviceScreen() {
   const spaceName = SPACE_NAMES[lendInfo.spaceId];
   return (
     <Page title={d.name} sub={`Since ${d.since} · last used ${d.last}`} back="/u/settings/devices">
-      <Card><Row lead={<Avatar name={d.name} family="device" size="lg" icon={glyph(d)} />} title={d.name} sub={d.allows} className="px-0" /></Card>
+      <Card><Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={d.name} sub={d.allows} className="px-0" /></Card>
       <Group title="Spaces">
         <Card flush>
           {cur.map((k, i) => (
             <View key={k}>{i ? <Divider /> : null}
-              <Row lead={<Avatar name={SPACE_NAMES[k]} family="space" tint />} title={SPACE_NAMES[k]} sub={`Joined ${d.since}`}
+              <Row lead={<Avatar of={spaceRef(SPACE_NAMES[k])} size={40} />} title={SPACE_NAMES[k]} sub={`Joined ${d.since}`}
                 end={<Button kind="ghost" size="sm" label={`Remove from ${SPACE_NAMES[k]}`} onPress={() => setFace({ title: `Remove from ${SPACE_NAMES[k]}`, body: `${d.name} stops reaching ${SPACE_NAMES[k]} now. Its other spaces are untouched.`, onApprove: () => { removeFromSpace(d.id, k); showToast(`Removed from ${SPACE_NAMES[k]}.`); } })} />} />
             </View>
           ))}
           {missing.map((k, i) => (
             <View key={k}>{cur.length + i ? <Divider /> : null}
-              <Row lead={<Avatar name={SPACE_NAMES[k]} family="space" />} title={SPACE_NAMES[k]} sub="Not added"
+              <Row lead={<Avatar of={spaceRef(SPACE_NAMES[k])} size={40} />} title={SPACE_NAMES[k]} sub="Not added"
                 end={<Button size="sm" label="Add" onPress={() => setFace({ title: `Add to ${SPACE_NAMES[k]}`, body: `Face ID adds ${d.name} to ${SPACE_NAMES[k]}.`, onApprove: () => addToSpace(d.id, k) })} />} />
             </View>
           ))}

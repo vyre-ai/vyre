@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Segmented, Text, showToast } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Avatar, Button, Card, Chip, Divider, Segmented, Text, showToast, markRef } from "@vyre/ui";
+import { Page } from "../places/Frame";
 import { useSettings } from "./state";
 import { AUTONOMY } from "./logic.js";
 
@@ -17,7 +17,7 @@ export function AssistantsScreen() {
             {i ? <Divider /> : null}
             <View className="gap-s2 p-s3">
               <View className="flex-row items-center gap-s3">
-                <Avatar name={a.name} family={a.family} size="lg" />
+                <Avatar of={markRef(a.family, a.name, a.id)} size={40} />
                 <View className="min-w-0 flex-1"><View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{a.paused ? <Chip tone="warn">Paused</Chip> : null}</View><Text size="caption" tone="label">{`${a.role} · ${a.model}`}</Text></View>
                 <Button kind="ghost" size="sm" label={a.paused ? "Resume" : "Pause"} onPress={() => { setPaused(a.id, !a.paused); showToast(a.paused ? `${a.name} is working again.` : `Paused ${a.name}. It keeps its notes.`); }} />
               </View>
@@ -27,7 +27,7 @@ export function AssistantsScreen() {
         ))}
         <Divider />
         <View className="flex-row items-center gap-s3 p-s3">
-          <Avatar name="@Engineer" family="agent" size="lg" />
+          <Avatar of={markRef("agent", "@Engineer")} size={40} />
           <View className="min-w-0 flex-1"><View className="flex-row flex-wrap items-center gap-s2"><Text strong>@Engineer</Text><Chip>Admins only</Chip></View><Text size="caption" tone="label">Changes definitions in Harlow Legal. Cannot send, pay or read the Vault.</Text></View>
           <Button size="sm" label="Open" onPress={() => router.push("/u/engineer" as never)} />
         </View>

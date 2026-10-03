@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addsLine, asksIn, buildGraph, flowCode, paint } from "./logic.js";
+import { addsLine, asksIn, buildGraph, flowCode, paint, triggerIcon, triggerLine } from "./logic.js";
 
 const flow = {
   id: "on_payment", name: "On payment", trigger: "A payment is received", triggerCode: "on: 'event', event: 'payment.received'",
@@ -39,4 +39,12 @@ test("asks are counted through branches, and a Kit's additions read as a sentenc
   assert.equal(asksIn(flow.steps), 1);
   assert.equal(addsLine({ types: 2, flows: 3, views: 4, roles: 1 }), "2 record types, 3 Flows, 4 views, 1 role");
   assert.equal(addsLine({ flows: 1 }), "1 Flow");
+});
+
+test("a Flow row says what starts it in a few words and draws that trigger's own icon", () => {
+  const pay = { trigger: "A payment is received", triggerCode: "on: 'event', event: 'payment.received'" };
+  const stage = { trigger: "A matter enters Intake", triggerCode: "on: 'stage', type: 'matter', stage: 'Intake'" };
+  assert.equal(triggerLine(pay), "On payment received");
+  assert.equal(triggerLine(stage), "On matter entering Intake");
+  assert.deepEqual([triggerIcon(pay), triggerIcon(stage), triggerIcon({ triggerCode: "on: 'schedule'" })], ["card", "board", "clock"]);
 });

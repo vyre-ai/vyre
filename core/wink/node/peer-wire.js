@@ -255,7 +255,7 @@ export function authProof(shared, nonce, nodeKey, box) {
  * @param {Pipe} pipe
  * @param {{ id: { nodeKey: string }, box: string,
  *   shared: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null,
- *   serve: (caller: string, tool: string, input: any, proven?: { nodeKey: string }) => Promise<any>, timeoutMs?: number }} o
+ *   serve: (caller: string, tool: string, input: any) => Promise<any>, timeoutMs?: number }} o
  */
 export function admitPeer(pipe, o) {
   return new Promise((resolve, reject) => {
@@ -266,7 +266,7 @@ export function admitPeer(pipe, o) {
     const timer = setTimeout(() => fail("no proof in time"), o.timeoutMs ?? 5000);
     const session = peerSession(pipe, {
       first: 2,
-      serve: (tool, input) => { if (!caller) throw err("denied", "not proven"); return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey }); },
+      serve: (tool, input) => { if (!caller) throw err("denied", "not proven"); return o.serve(caller, tool, input); },
       onframe: f => {
         if (f.type !== T.proof || settled) return false;
         (async () => {

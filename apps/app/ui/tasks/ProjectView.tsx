@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { aid, stageFieldOf, stageNames } from "../../../../deck/ui/kernel-view.js";
 import { Avatar } from "../components/Avatar";
-import { Button } from "../components/Button";
+import { Icon } from "../components/Icon";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { EmptyState } from "../components/States";
@@ -10,7 +10,8 @@ import { Row } from "../components/Row";
 import { StageSteps } from "../components/StageSteps";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
-import { createdLine, liveLine, progressText, recordTitle, required, spaceName, stageGroups, stateTone, stateWord, teamOf, waitsFor, who, type World } from "./model";
+import { useUiTheme } from "../theme";
+import { createdLine, liveLine, progressText, recordTitle, required, stageGroups, stateTone, stateWord, teamOf, waitsFor, who, type World } from "./model";
 
 const WIDE = 1000;
 
@@ -27,7 +28,7 @@ function Stages({ world, tasks, stages, current, onOpen }: { world: World; tasks
         return (
           <View key={g.label} className={gi > 0 ? "border-t border-edge" : ""}>
             <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setToggled((s) => ({ ...s, [g.label]: !open }))} className="min-h-row flex-row items-center gap-s2 px-s4 py-s2">
-              <Text tone="label">{open ? "▾" : "▸"}</Text>
+              <Icon name={open ? "chevron-down" : "chevron"} size={16} tone="label" />
               <Text strong className="flex-1">{g.label}</Text>
               {g.current && g.stage ? <Chip tone="accent">Now</Chip> : null}
               <Text size="caption" tone="label">{g.tasks.length ? `${g.done} of ${g.total} done` : "No tasks yet"}</Text>
@@ -70,8 +71,9 @@ function filesOf(def: any, row: any, tasks: any[]): { name: string; sub: string 
  * doing now, each stage's tasks, the team with its doing-now line, linked records, chats and files. A task opens in place; when the last required task of a stage is
  * done the record moves on by itself, and this page redraws from the store.
  */
-export function ProjectView({ world, def, row, events, links, onOpenTask, onBack }: { world: World; def: any; row: any; events: any[]; links: { field: string; rec: any; def: any }[]; onOpenTask: (t: any) => void; onBack: () => void }) {
+export function ProjectView({ world, def, row, events, links, onOpenTask }: { world: World; def: any; row: any; events: any[]; links: { field: string; rec: any; def: any }[]; onOpenTask: (t: any) => void }) {
   const { width } = useWindowDimensions();
+  const { phone } = useUiTheme();
   const tasks = world.tasks.filter((t) => t.record === row.urn);
   const sf = stageFieldOf(def);
   const stages: string[] = sf ? stageNames(def, sf) : [];
@@ -82,7 +84,6 @@ export function ProjectView({ world, def, row, events, links, onOpenTask, onBack
   const live = liveLine(tasks, world.actors);
   const created = createdLine(events, world.actors, world.now);
   const files = filesOf(def, row, tasks);
-  const sp = spaceName(world, row.labels?.source_spaces?.[0]);
   const wide = width >= WIDE;
 
   const left = (
@@ -96,7 +97,7 @@ export function ProjectView({ world, def, row, events, links, onOpenTask, onBack
         {team.map((m, i) => <View key={m.id}>{i > 0 ? <Divider /> : null}<Row lead={<ActorMark who={who(world, m.id)} />} title={who(world, m.id)?.name || m.id} sub={m.doing} /></View>)}
       </Card>
       <Card title="Linked records" flush>
-        {links.length ? links.map((l, i) => <View key={l.rec.urn}>{i > 0 ? <Divider /> : null}<Row lead={<Avatar name={recordTitle(world, l.rec)} />} title={recordTitle(world, l.rec)} sub={l.def?.label || l.field} /></View>) : <EmptyState title="Nothing linked yet" />}
+        {links.length ? links.map((l, i) => <View key={l.rec.urn}>{i > 0 ? <Divider /> : null}<Row lead={<Avatar of={{ kind: l.rec.type === "contact" ? "person" : "project", id: l.rec.id, name: recordTitle(world, l.rec) }} />} title={recordTitle(world, l.rec)} sub={l.def?.label || l.field} /></View>) : <EmptyState title="Nothing linked yet" />}
       </Card>
       <Card title="Chats" flush><EmptyState title="No chats yet" body="Chats about this project will appear here." /></Card>
       <Card title="Files" flush>
@@ -106,18 +107,8 @@ export function ProjectView({ world, def, row, events, links, onOpenTask, onBack
   );
   return (
     <View className="gap-s4">
-      <View className="items-start gap-s2">
-        <Button kind="ghost" size="sm" label="Back to Projects" onPress={onBack} />
-        <View className="flex-row items-center gap-s3">
-          <Avatar name={recordTitle(world, row)} family="project" size="lg" />
-          <View className="min-w-0 flex-1 gap-s1">
-            <Text size="page" strong>{recordTitle(world, row)}</Text>
-            <View className="flex-row flex-wrap gap-s2"><Chip>{def.label}</Chip>{sp ? <Chip tone="space">{sp}</Chip> : null}</View>
-          </View>
-        </View>
-        {created ? <Text size="caption" tone="label">{created}</Text> : null}
-      </View>
-      {stages.length ? <StageSteps stages={stages} current={Math.max(0, stages.indexOf(current ?? ""))} /> : null}
+      {created ? <Text size="caption" tone="label">{created}</Text> : null}
+      {stages.length ? <StageSteps strip={phone} stages={stages} current={Math.max(0, stages.indexOf(current ?? ""))} /> : null}
       {live ? <View className="flex-row items-center gap-s2"><View className="h-s2 w-s2 rounded-full bg-ok" /><Text tone="muted">{live}</Text></View> : null}
       {wide ? <View className="flex-row items-start gap-s6"><View className="min-w-0 flex-[3]">{left}</View><View className="min-w-0 flex-[2]">{right}</View></View> : <View className="gap-s4">{left}{right}</View>}
     </View>
