@@ -570,3 +570,22 @@ test("approval under an always-ask rule that names a ROLE: it stands only when t
   assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), true);
   assert.equal(r.tasks.useApproval({ id: t.id, ...act, rule: { id: "r1", approver: { role: "owner" } } }), false, "once");
 });
+
+test("a task's answer reaches whoever asked: stored on done and carried on task.completed for decision, fields and note outputs (a Flow's ask and agent steps read it back); capped, and none for other kinds", async () => {
+  const r = rig();
+  const t = await r.tasks.request(owner(), { title: "Send the engagement letter?", doer: actor("agent", "research"), output: { kind: "decision" } });
+  await r.tasks.start(agentChain("research"), t.id);
+  const done = await r.tasks.complete(agentChain("research"), t.id, { answer: "yes", reason: "the fee was agreed" });
+  assert.equal(done.state, "done");
+  assert.deepEqual(done.answer, { answer: "yes", reason: "the fee was agreed" });
+  assert.deepEqual((await r.tasks.get(owner(), t.id)).answer, { answer: "yes", reason: "the fee was agreed" });
+  const ev = r.log.read({ type: "task.completed" }).find(e => e.subject.endsWith(`/${t.id}`));
+  assert.deepEqual(ev.data.answer, { answer: "yes", reason: "the fee was agreed" });
+  assert.ok(Object.isFrozen(done.answer));
+  const f = await r.tasks.request(owner(), { title: "Research", doer: actor("agent", "research"), output: { kind: "note" } });
+  await r.tasks.start(agentChain("research"), f.id);
+  assert.deepEqual((await r.tasks.complete(agentChain("research"), f.id, { note: "found it", sources: ["https://x"] })).answer, { note: "found it", sources: ["https://x"] });
+  const big = await r.tasks.request(owner(), { title: "Big", doer: actor("agent", "research"), output: { kind: "note" } });
+  await r.tasks.start(agentChain("research"), big.id);
+  await assert.rejects(() => r.tasks.complete(agentChain("research"), big.id, { note: "x".repeat(9000), sources: ["https://x"] }), { code: "bad_input" });
+});
