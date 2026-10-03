@@ -1,0 +1,468 @@
+// @ts-check
+// publish: put a site or app on the internet from a space (SPEC-core-contract section 13). The rules live in lib/publish
+// (createPublisher); this module wires them to the box: SQLite for the records, the spaces module for who is who, the
+// vault for secrets, a builder module for builds, the seal ledger for the sealed-value check, and an Ask for every held act.
+//
+// Held acts (approve, publish, rollback, giving a real secret) take two calls. The first answers { held: true, task, plan }
+// and files an Ask. A PERSON then decides it with publish.decide, which completes the act as that person. A model chain
+// can create, preview and request; it can never decide. Nothing here starts Docker: publish.edge writes the compose
+// project and the Caddyfile into <home>/publish/<spaceId>/ and stops.
+
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import dns from "node:dns/promises";
+import { createPublisher, PublishError } from "../../lib/publish/index.js";
+import { composeText, assertIsolated } from "../../lib/publish/edge.js";
+import { checkBuildForSealed } from "../../lib/publish/secrets.js";
+import { createRoleAuthorize } from "../../lib/spaces/authz.js";
+import { isPerson, agentName } from "../../lib/caller.js";
+import { NO_BUILDER } from "./builder-plan.js";
+
+export { buildctlArgs } from "./builder-plan.js";
+
+/** Seams for tests: the DNS resolver. Everything else a test fills is a fake module behind a tool. */
+export const seams = { dns: { resolveTxt: (/** @type {string} */ name) => dns.resolveTxt(name) } };
+
+export const MIGRATIONS = [
+  `
+  CREATE TABLE publish_deployments (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
+  CREATE TABLE publish_domains (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
+  CREATE TABLE publish_holds (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
+  CREATE TABLE publish_tasks (space TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY (space, id));
+  `,
+];
+
+const TABLES = /** @type {Record<string, string>} */ ({ deployments: "publish_deployments", domains: "publish_domains", holds: "publish_holds", tasks: "publish_tasks" });
+const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+const NO_TOOL = new Set(["no_such_tool", "not_available"]);
+const str = { type: "string" };
+const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
+const MAX_CANDIDATES = 400_000;
+
+/** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+export default {
+  async start(ctx) {
+    ctx.store.migrate(MIGRATIONS);
+    const db = ctx.store.db;
+    const home = ctx.paths.root;
+    const publishDir = (/** @type {string} */ spaceId) => path.join(home, "publish", spaceId);
+
+    /** Call another module's tool. A missing tool is { missing: true }, any other refusal throws. @param {string} tool @param {any} input */
+    async function call(tool, input) {
+      const r = await ctx.call(tool, input);
+      if (r && r.error) {
+        if (NO_TOOL.has(r.error.code)) return { missing: true, data: null };
+        throw refuse(r.error.message, r.error.code);
+      }
+      return { missing: false, data: r ? r.data : null };
+    }
+
+    // ---- the store, scoped to one space ----
+    /** @param {string} space */
+    const storeFor = space => ({
+      async get(/** @type {string} */ coll, /** @type {string} */ id) {
+        const row = /** @type {any} */ (db.prepare(`SELECT body FROM ${TABLES[coll]} WHERE space = ? AND id = ?`).get(space, id));
+        return row ? JSON.parse(row.body) : null;
+      },
+      async put(/** @type {string} */ coll, /** @type {string} */ id, /** @type {any} */ value) {
+        db.prepare(`INSERT INTO ${TABLES[coll]} (space, id, body) VALUES (?,?,?) ON CONFLICT(space, id) DO UPDATE SET body = excluded.body`).run(space, id, JSON.stringify(value));
+      },
+      async delete(/** @type {string} */ coll, /** @type {string} */ id) { db.prepare(`DELETE FROM ${TABLES[coll]} WHERE space = ? AND id = ?`).run(space, id); },
+      async list(/** @type {string} */ coll) {
+        return /** @type {any[]} */ (db.prepare(`SELECT body FROM ${TABLES[coll]} WHERE space = ? ORDER BY rowid`).all(space)).map(r => JSON.parse(r.body));
+      },
+    });
+
+    // ---- who is who: memberships come from the spaces module ----
+    /** @type {Map<string, any>} */ const members = new Map();
+    /** @param {string} space @param {string} person */
+    async function member(space, person) {
+      const r = await call("spaces.membership", { space, person });
+      if (r.missing) throw refuse("the spaces module is not running, so nobody can be checked", "no_spaces");
+      members.set(`${space}:${person}`, r.data || null);
+      return r.data || null;
+    }
+    const authorize = createRoleAuthorize({ membership: member });
+
+    /** The space and person a call is for. @param {any} input @param {any} meta */
+    async function whoIs(input, meta) {
+      const r = await call("spaces.self", { caller: String((meta && meta.caller) || ""), ...(input && input.space ? { space: input.space } : {}) });
+      if (r.missing || !r.data || !r.data.space || !r.data.person) throw refuse("no space is set up on this machine yet", "no_space");
+      return { space: /** @type {{ id: string, name: string }} */ (r.data.space), person: String(r.data.person) };
+    }
+
+    /** The chain for a call: the person, then a model or automation when that is who is acting. @param {string} spaceId @param {string} person @param {any} meta */
+    function chainOf(spaceId, person, meta) {
+      const caller = String((meta && meta.caller) || "");
+      const hops = [{ actor: { kind: "person", id: person, space: spaceId }, entered_by: "surface" }];
+      if (!isPerson(meta)) {
+        const name = agentName(meta);
+        hops.push({ actor: { kind: name ? "agent" : "automation", id: name || caller || "automation", space: spaceId }, entered_by: "registry" });
+      }
+      return { space: spaceId, hops, labels: { trust: "member", red: "internal", source_spaces: [spaceId] }, built_at: Date.now() };
+    }
+
+    // ---- Ask: module-local, and a task in the tasks module too when one exists ----
+    /** @param {string} space */
+    function askFor(space) {
+      const st = storeFor(space);
+      return {
+        async request(/** @type {any} */ chain, /** @type {any} */ t) {
+          let id = "hold_" + crypto.randomBytes(8).toString("hex");
+          try {
+            const r = await call("tasks.create", { title: t.title, source: "module:publish", kind: t.kind, priority: "medium", tags: ["publish"], payload_hash: t.payload_hash });
+            const made = r.data && (r.data.id || (r.data.task && r.data.task.id));
+            if (!r.missing && typeof made === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(made)) id = made;
+          } catch { /* a refusal from tasks leaves the module-local hold, which is complete on its own */ }
+          await st.put("tasks", id, { id, state: "needs_check", requested_by: chain.hops.map((/** @type {any} */ h) => `${h.actor.kind}:${h.actor.id}`), ...t });
+          return { id };
+        },
+        async get(/** @type {string} */ id) {
+          const t = await st.get("tasks", id);
+          return t ? { id, state: t.state, outcome: t.outcome, decided_by: t.decided_by, payload: { payload_hash: t.payload_hash } } : null;
+        },
+      };
+    }
+
+    // ---- secrets: files under the publish folder, values from the vault ----
+    /** @param {string} spaceId */
+    function secretsFor(spaceId) {
+      const dir = path.join(publishDir(spaceId), "secrets");
+      return {
+        dir,
+        classOf: (/** @type {string} */ ref) => (ref.startsWith("vault://config/") ? "config" : "secret"),
+        async read(/** @type {string} */ ref) {
+          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, "")); }
+          catch (/** @type {any} */ e) {
+            if (/not running|not_available|no_such_tool/.test(String(e && (e.code || e.message)))) throw refuse("no vault secret store available", "no_vault");
+            throw e;
+          }
+        },
+        async writeFile(/** @type {string} */ file, /** @type {string} */ value, /** @type {{ mode: number }} */ o) {
+          fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+          try { fs.unlinkSync(file); } catch { /* none yet */ }
+          fs.writeFileSync(file, value, { mode: o.mode });
+          fs.chmodSync(file, o.mode);
+        },
+        async removeFile(/** @type {string} */ file) {
+          try { fs.unlinkSync(file); } catch { /* already gone */ }
+          try { fs.rmdirSync(path.dirname(file)); } catch { /* not empty or gone */ }
+        },
+      };
+    }
+
+    // ---- the sealed-value ledger, through seal.ledger.has when a seal module exists ----
+    /** Per space: the lengths the ledger tracks and the answers for this build's windows. */
+    function ledgerFor() {
+      /** @type {{ lens: number[], hits: Map<string, any>, overflow: boolean, state: "connected" | "none" }} */
+      const s = { lens: [], hits: new Map(), overflow: false, state: "none" };
+      return {
+        s,
+        ledger: { lengths: () => s.lens, has: (/** @type {string} */ c) => (s.overflow ? "unverified" : s.hits.get(c) || false) },
+        /** Look up every window of this build's output with the ledger, in batches, before the lib checks it. @param {any} out */
+        async prime(out) {
+          s.lens = []; s.hits = new Map(); s.overflow = false;
+          const r = await call("seal.ledger.has", { lengths: true });
+          if (r.missing || !r.data || !Array.isArray(r.data.lengths)) { s.state = "none"; return; }
+          s.state = "connected";
+          s.lens = r.data.lengths.filter((/** @type {any} */ n) => Number.isInteger(n));
+          if (!s.lens.length) return;
+          /** @type {Set<string>} */ const seen = new Set();
+          const recorder = { lengths: () => s.lens, has: (/** @type {string} */ c) => { if (seen.size < MAX_CANDIDATES) seen.add(c); else s.overflow = true; return false; } };
+          checkBuildForSealed({ files: out.files || [], logs: out.logs || "" }, recorder);
+          const all = [...seen];
+          for (let i = 0; i < all.length; i += 5000) {
+            const h = await call("seal.ledger.has", { candidates: all.slice(i, i + 5000) });
+            const hits = h.data && h.data.hits && typeof h.data.hits === "object" ? h.data.hits : {};
+            for (const [c, v] of Object.entries(hits)) if (v) s.hits.set(c, v);
+          }
+        },
+      };
+    }
+
+    // ---- one publisher per space, built on first use ----
+    /** @type {Map<string, { pub: any, ledger: ReturnType<typeof ledgerFor>, lock: Promise<any> }>} */
+    const publishers = new Map();
+    /** @param {{ id: string, name: string }} space */
+    function publisherFor(space) {
+      let p = publishers.get(space.id);
+      if (p) return p;
+      const led = ledgerFor();
+      const builder = {
+        async build(/** @type {any} */ deployment, /** @type {{ secretArgs: string[] }} */ io) {
+          const r = await call("builder.build", { deployment, secretArgs: io.secretArgs });
+          if (r.missing) throw refuse(NO_BUILDER, "no_builder");
+          await led.prime(r.data);
+          return r.data;
+        },
+      };
+      const pub = createPublisher({
+        space,
+        clock: { now: () => Date.now() },
+        random: n => crypto.randomBytes(n),
+        authorize,
+        events: {
+          emit: async e => {
+            // The event carries the deployment and the plain facts the lib named; never the chain, never a value.
+            ctx.events.emit(String(e.type).replace(/_/g, "-"), { deployment: e.subject, space: space.id, ...(e.data && typeof e.data === "object" ? e.data : {}) });
+          },
+        },
+        store: storeFor(space.id),
+        dns: { resolveTxt: name => seams.dns.resolveTxt(name) },
+        ledger: led.ledger,
+        secrets: secretsFor(space.id),
+        ask: askFor(space.id),
+        roles: {
+          roleOf: id => { const m = members.get(`${space.id}:${id}`); return m ? m.role : null; },
+          managesProject: (id, project) => { const m = members.get(`${space.id}:${id}`); return !!m && Array.isArray(m.projects) && m.projects.includes(project); },
+        },
+        names: { owns: async (host, spaceId) => { const r = await call("names.owns", { host, space: spaceId }); return !r.missing && !!(r.data && (r.data === true || r.data.owns === true)); } },
+        builder,
+      });
+      p = { pub, ledger: led, lock: Promise.resolve() };
+      publishers.set(space.id, p);
+      return p;
+    }
+
+    /** Everything a tool needs: who is calling, the space, the chain and the publisher, with the right roles looked up. @param {any} input @param {any} meta @param {string[]} [extraPeople] */
+    async function begin(input, meta, extraPeople = []) {
+      const { space, person } = await whoIs(input, meta);
+      const chain = chainOf(space.id, person, meta);
+      for (const id of new Set([person, ...extraPeople])) await member(space.id, id);
+      return { space, person, chain, ...publisherFor(space) };
+    }
+    /** Warm the role of whoever decided a task, before the lib reads it. @param {string} spaceId @param {string|undefined} task */
+    async function warmDecider(spaceId, task) {
+      if (!task) return [];
+      const t = await storeFor(spaceId).get("tasks", String(task));
+      const id = t && t.decided_by && t.decided_by.hops && t.decided_by.hops[0] && t.decided_by.hops[0].actor.id;
+      return id ? [String(id)] : [];
+    }
+    /** Run builds of one space one at a time, since the ledger state is per build. @param {{ lock: Promise<any> }} p @param {() => Promise<any>} fn */
+    function serial(p, fn) {
+      const next = p.lock.then(fn, fn);
+      p.lock = next.catch(() => {});
+      return next;
+    }
+
+    /** What may leave the module about a deployment: no secret values exist on it, but the shape is fixed anyway. @param {any} d */
+    const shown = d => d && ({
+      id: d.id, name: d.name, version: d.version, stage: d.stage, url: d.url ?? null, previous: d.previous ?? null,
+      project: d.project ?? null, build_digest: d.build_digest ?? null, approved_by: d.approved_by ?? null, approved_at: d.approved_at ?? null,
+      published_at: d.published_at ?? null, created_by: d.created_by, created_at: d.created_at, updated_at: d.updated_at,
+      secrets: (d.secrets || []).map((/** @type {any} */ s) => ({ name: s.name, class: s.class, use: s.use })),
+    });
+
+    // ---- tools ----
+    ctx.tool("publish.create", {
+      description: "Start a new site or app as a draft: a name, where its source is, and how it builds. Env entries are secret references, never values.",
+      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object" }, project: str, approver: str }, ["name", "source"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const { space: _s, ...draft } = i;
+        return { deployment: shown(await b.pub.create(b.chain, draft)) };
+      },
+    });
+
+    ctx.tool("publish.preview", {
+      description: "Build a draft and put it at a private preview address. Refused if a sealed value or one of its own secrets is in the build output.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const r = await serial(b, () => b.pub.preview(b.chain, i.deployment));
+        return { deployment: shown(r.deployment), logs: r.logs };
+      },
+    });
+
+    ctx.tool("publish.plan", {
+      description: "What would change if the next step ran: what goes public, at which address, with which secrets, replacing which version.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => { const b = await begin(i, meta); return { plan: await b.pub.plan(b.chain, i.deployment) }; },
+    });
+
+    /** The three held acts share one shape. @param {"approve" | "publish" | "rollback"} act */
+    const heldTool = act => async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const b = await begin(i, meta, await warmDecider(String((await whoIs(i, meta)).space.id), i.task));
+      const r = await b.pub[act](b.chain, i.deployment, i.task ? { task: i.task } : {});
+      if (r.held) return { held: true, task: r.task, plan: r.plan };
+      return { deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
+    };
+    ctx.tool("publish.approve", {
+      description: "Approve a preview. The first call asks and holds; a person's decision (publish.decide) completes it, or call again with the task once it is decided.",
+      input: obj({ deployment: str, task: str }, ["deployment"]),
+      run: heldTool("approve"),
+    });
+    ctx.tool("publish.publish", {
+      description: "Put an approved version on the internet. Held for a person every time: the first call asks, a person decides with publish.decide.",
+      input: obj({ deployment: str, task: str }, ["deployment"]),
+      run: heldTool("publish"),
+    });
+    ctx.tool("publish.rollback", {
+      description: "Put the previous version back. Give the live deployment. Held for a person every time.",
+      input: obj({ deployment: str, task: str }, ["deployment"]),
+      run: heldTool("rollback"),
+    });
+
+    ctx.tool("publish.decide", {
+      description: "A person's decision on a held act. Approving completes the act as that person; declining ends it. A model never decides.",
+      input: obj({ task: str, approve: { type: "boolean" }, plan_hash: str }, ["task", "approve"]),
+      presence: true,
+      run: async (i, meta) => {
+        if (!isPerson(meta)) throw refuse("a person decides this, not a model", "model_cannot_approve");
+        const { space, person } = await whoIs(i, meta);
+        const m = await member(space.id, person);
+        if (!m) throw refuse("you are not a member of this space", "forbidden");
+        const st = storeFor(space.id);
+        const task = await st.get("tasks", String(i.task));
+        const hold = await st.get("holds", String(i.task));
+        if (!task || !hold) throw refuse("that request does not exist or was already handled", "not_found");
+        if (task.state !== "needs_check") throw refuse("that request was already decided", "already_decided");
+        if (i.plan_hash !== undefined && i.plan_hash !== task.payload_hash) throw refuse("what would change is different from what you saw; ask again", "approval_mismatch");
+        const chain = chainOf(space.id, person, { caller: "cli" });
+        const outcome = i.approve ? "approved" : "declined";
+        if (!i.approve) {
+          await st.put("tasks", task.id, { ...task, state: "done", outcome, decided_by: chain, decided_at: Date.now() });
+          await st.delete("holds", task.id);
+          return { task: task.id, outcome };
+        }
+        const p = publisherFor(space);
+        await st.put("tasks", task.id, { ...task, state: "done", outcome, decided_by: chain, decided_at: Date.now(), ...(meta && meta.presence ? { presence: meta.presence.method } : {}) });
+        try {
+          const out = { task: task.id, outcome };
+          if (hold.action === "grant_secret") {
+            const s = (task.plan || {}).secret || {};
+            const r = await p.pub.grantSecret(chain, hold.deployment, { ref: s.ref, name: s.name, use: s.use, task: task.id });
+            return { ...out, deployment: shown(r.deployment) };
+          }
+          const r = await serial(p, () => p.pub[hold.action](chain, hold.deployment, { task: task.id }));
+          return { ...out, deployment: shown(r.deployment), ...(r.retired !== undefined ? { retired: shown(r.retired) } : {}) };
+        } catch (e) {
+          // The act did not complete (for example this person may not approve it): the request stays open for someone who may.
+          await st.put("tasks", task.id, task);
+          throw e;
+        }
+      },
+    });
+
+    ctx.tool("publish.retire", {
+      description: "Take a version down and keep its record.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => { const b = await begin(i, meta); return { deployment: shown((await b.pub.retire(b.chain, i.deployment)).deployment) }; },
+    });
+
+    ctx.tool("publish.status", {
+      description: "One site's stage, address, secrets by name, domains and approver. Also says whether the sealed-value check has a ledger behind it. Never a secret value.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const s = await b.pub.status(b.chain, i.deployment);
+        const probe = await call("seal.ledger.has", { lengths: true });
+        return { ...s, sealed_check: probe.missing ? "no ledger: sealed values are not checked" : "ledger connected" };
+      },
+    });
+
+    ctx.tool("publish.list", {
+      description: "Every site in the space with its stage and address, newest first. Optional stage or name filter.",
+      input: obj({ stage: str, name: str }),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const rows = await storeFor(b.space.id).list("deployments");
+        /** @type {any[]} */ const out = [];
+        for (const d of rows.sort((x, y) => y.created_at - x.created_at)) {
+          if ((i.stage && d.stage !== i.stage) || (i.name && d.name !== i.name)) continue;
+          const s = await b.pub.status(b.chain, d.id);
+          out.push({ id: s.id, name: s.name, version: s.version, stage: s.stage, url: s.url, domains: s.domains });
+        }
+        return { deployments: out };
+      },
+    });
+
+    ctx.tool("publish.domain.add", {
+      description: "Start connecting a domain to a site. Returns the DNS record to add; nothing serves until it is verified and the site is published.",
+      input: obj({ host: str, deployment: str, canonical: { type: "string", enum: ["apex", "www"] }, www: { type: "boolean" } }, ["host", "deployment"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const r = await b.pub.addDomain(b.chain, { host: i.host, deployment: i.deployment, canonical: i.canonical, www: i.www });
+        return { domain: { host: r.record.host, status: r.record.status, method: r.record.method }, challenge: r.challenge };
+      },
+    });
+    ctx.tool("publish.domain.verify", {
+      description: "Check the DNS record (or the name you own) for a connected domain.",
+      input: obj({ host: str }, ["host"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const r = await b.pub.verifyDomain(b.chain, i.host);
+        return { verified: r.verified, ...(r.reason ? { reason: r.reason } : {}), ...(r.challenge ? { challenge: r.challenge } : {}), domain: { host: r.record.host, status: r.record.status } };
+      },
+    });
+    ctx.tool("publish.domain.remove", {
+      description: "Disconnect a domain from its site.",
+      input: obj({ host: str }, ["host"]),
+      run: async (i, meta) => { const b = await begin(i, meta); return b.pub.removeDomain(b.chain, i.host); },
+    });
+
+    ctx.tool("publish.secret.grant", {
+      description: "Let one deployment use one vault secret, as an environment name. A real secret is held for a person; nothing is shared with other deployments.",
+      input: obj({ deployment: str, ref: str, name: str, use: { type: "array", items: { type: "string", enum: ["build", "runtime"] } }, task: str }, ["deployment", "ref", "name"]),
+      run: async (i, meta) => {
+        const sp = (await whoIs(i, meta)).space.id;
+        const b = await begin(i, meta, await warmDecider(sp, i.task));
+        const r = await b.pub.grantSecret(b.chain, i.deployment, { ref: i.ref, name: i.name, use: i.use, task: i.task });
+        if (r.held) return { held: true, task: r.task, plan: r.plan };
+        return { deployment: shown(r.deployment) };
+      },
+    });
+    ctx.tool("publish.secret.revoke", {
+      description: "Take a secret away from a deployment and delete its file.",
+      input: obj({ deployment: str, name: str }, ["deployment", "name"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const r = await b.pub.revokeSecret(b.chain, i.deployment, i.name);
+        const files = secretsFor(b.space.id);
+        await files.removeFile(path.join(files.dir, i.deployment, i.name));
+        return { deployment: shown(r.deployment) };
+      },
+    });
+
+    ctx.tool("publish.edge", {
+      description: "Write the edge for what is live now: a compose project and a Caddyfile in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
+      input: obj({}),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const { compose, caddyfile } = await b.pub.edge(b.chain);
+        assertIsolated(compose);
+        const dir = publishDir(b.space.id);
+        fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+        const files = secretsFor(b.space.id);
+        /** @type {Array<{ path: string, mode: string }>} */ const written = [];
+        const put = async (/** @type {string} */ rel, /** @type {string} */ text, /** @type {number} */ mode) => {
+          await files.writeFile(path.join(dir, rel), text, { mode });
+          written.push({ path: rel, mode: "0" + mode.toString(8) });
+        };
+        await put("compose.yaml", composeText(compose), 0o644);
+        await put("Caddyfile", caddyfile, 0o644);
+        // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
+        for (const d of await storeFor(b.space.id).list("deployments")) {
+          if (!compose.services["w-" + d.id.replace(/^dep_/, "")]) continue;
+          for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
+        }
+        return { dir, files: written, compose, caddyfile };
+      },
+    });
+
+    ctx.tool("publish.flow", {
+      description: "The publish pipeline for a deployment as a Flow definition: build, preview, a person approves, production, rollback.",
+      input: obj({ deployment: str }, ["deployment"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        await b.pub.status(b.chain, i.deployment);
+        return { flow: await b.pub.flow(i.deployment) };
+      },
+    });
+
+    return { async stop() { publishers.clear(); members.clear(); } };
+  },
+};
+
+export { PublishError };

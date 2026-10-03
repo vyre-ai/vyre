@@ -18,7 +18,7 @@ const { newRouteKey, routeId, authMessage, signRoute, CLOSE } = wire;
 
 /** @param {any} t @param {{ hibernateEveryEvent?: boolean, limits?: object, env?: object }} [o] */
 function world(t, o = {}) {
-  const rt = createRuntime({ worker, Class: W.RouteRelay, classes: { TICKETS: W.PairTicket }, hibernateEveryEvent: o.hibernateEveryEvent,
+  const rt = createRuntime({ worker, Class: W.RouteRelay, classes: { TICKETS: W.PairTicket, CODES: W.CodeSlot }, hibernateEveryEvent: o.hibernateEveryEvent,
     env: { ...(o.limits ? { RELAY_LIMITS: JSON.stringify(o.limits) } : {}), ...(o.env || {}) } });
   t.after(async () => { await rt.settle(); assert.deepEqual(rt.errors.map(String), [], "no errors inside the Worker"); });
   return rt;
@@ -104,7 +104,7 @@ for (const hibernateEveryEvent of [false, true]) {
     const ready = await b.s.json();
     assert.equal(ready.t, "ready");
     assert.deepEqual(ready.waiting, []);
-    assert.deepEqual(ready.features, ["registered", "revoke"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
+    assert.deepEqual(ready.features, ["registered", "revoke", "code"], "the Worker says it answers ticket registrations, so a box can tell silence from an older relay");
 
     const dev = sock(rt, `/v1/device?route=${b.route}`);
     await dev.open();
@@ -705,4 +705,142 @@ test("worker: /v1/pair serves a hit and a contested ticket with no charge, charg
   // another address is unaffected by it, and a plain miss answers as a miss
   assert.equal((await resolve("h".repeat(43))).status, 404);
   assert.equal(global, 0, "a global limiter, if one is still bound, is never consulted");
+});
+
+// ---- the typed Wink code's rendezvous (spec 6.5) ----
+
+const CODE_BODY = { error: "that code did not work" };
+const SID = "A".repeat(22);
+const codeEnv = { CODE_POLL_MS: "5", CODE_WAIT_MS: "400" };
+const codeStep = (rt, body, ip = "198.51.100.1") => worker.fetch(new Request("http://relay.test/v1/wink/code", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify(body) }), rt.env);
+async function codeBox(rt, key) {
+  const b = await box(rt, key);
+  await b.s.json();
+  b.s.ws.send(JSON.stringify({ t: "code.alloc" }));
+  return { ...b, a: await b.s.json() };
+}
+
+test("worker: the Worker's typed-code constants match core/relay/wire.js", () => {
+  assert.deepEqual({ ...W.CODE }, { ...wire.CODE });
+  assert.equal(W.CODE_ALPHABET, wire.CODE_ALPHABET);
+  assert.equal(String(W.CODE_RV_RE), String(wire.CODE_RV_RE));
+  assert.ok(W.FEATURES.includes("code"));
+});
+
+for (const hibernateEveryEvent of [false, true]) {
+  const mode = hibernateEveryEvent ? " (hibernating after every event)" : "";
+  test(`worker: a box gets a free rendezvous for 5 minutes, one live code per box${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent, env: codeEnv });
+    const a = await codeBox(rt, undefined);
+    assert.equal(a.a.t, "code.allocated");
+    assert.match(a.a.rv, /^[0-9A-HJKMNP-TV-Z]{2}$/);
+    assert.ok(Math.abs(a.a.exp - (Date.now() + 5 * 60_000)) < 5000);
+    const first = a.a.rv;
+    a.s.ws.send(JSON.stringify({ t: "code.alloc" }));
+    const again = await a.s.json();
+    await rt.settle();
+    // The first rendezvous was released, so asking for it finds nothing; the second is held by this route.
+    const slot = rv => rt.object(`rv:${rv}`, "CODES").ctx.storage.get("c");
+    if (again.rv !== first) assert.equal(await slot(first), undefined, "the replaced rendezvous is free again");
+    assert.equal((await slot(again.rv)).route, a.route);
+    const b = await codeBox(rt);
+    assert.notEqual(b.a.rv, again.rv);
+  });
+
+  test(`worker: a typist's message reaches only the route that holds the rendezvous, and the answer comes back${mode}`, async t => {
+    const rt = world(t, { hibernateEveryEvent, env: codeEnv });
+    const a = await codeBox(rt), b = await codeBox(rt);
+    const p = codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+    const got = await a.s.json();
+    assert.deepEqual({ ...got, q: "q" }, { t: "code.msg", q: "q", rv: a.a.rv, s: SID, n: 1, m: "Yfirst" });
+    // Another box cannot answer for it.
+    b.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "forged" }));
+    await rt.settle();
+    assert.equal(await rt.object(b.route).ctx.storage.get(`code/a/${got.q}`), undefined);
+    a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Ysecond" }));
+    const res = await p;
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { m: "Ysecond", route: a.route }, "the typist is told the route, for the transcript");
+    await rt.settle();
+    assert.equal((await rt.object(a.route).ctx.storage.list({ prefix: "code/q/" })).size, 0, "nothing left waiting");
+    assert.equal(b.s.queued(), 0, "the other box was never told");
+  });
+}
+
+test("worker: unknown, released, expired, refused and silent all get the same answer, and a miss writes nothing", async t => {
+  const rt = world(t, { env: { ...codeEnv, CODE_WAIT_MS: "120" } });
+  const a = await codeBox(rt);
+  const free = a.a.rv === "00" ? "01" : "00";
+  const out = [];
+  out.push(await codeStep(rt, { rv: free, s: SID, n: 1, m: "Y" }));
+  await rt.settle();
+  assert.equal(rt.object(`rv:${free}`, "CODES").ctx.storage.map.size, 0, "an unknown rendezvous leaves no state");
+  let p = codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" });
+  const got = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q }));
+  out.push(await p);
+  out.push(await codeStep(rt, { rv: a.a.rv, s: SID, n: 3, m: "Y" }));
+  await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.release" }));
+  await rt.settle();
+  out.push(await codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" }));
+  const b = await codeBox(rt);
+  const real = Date.now;
+  Date.now = () => real() + 6 * 60_000;
+  try { out.push(await codeStep(rt, { rv: b.a.rv, s: SID, n: 1, m: "Y" })); } finally { Date.now = real; }
+  for (const r of out) { assert.equal(r.status, 404); assert.deepEqual(await r.json(), CODE_BODY); }
+  await rt.settle();
+  assert.equal((await rt.object(a.route).ctx.storage.list({ prefix: "code/q/" })).size, 0, "a silent box leaves no waiting request");
+});
+
+test("worker: a box that leaves frees its code, and a stale request for it is refused", async t => {
+  const rt = world(t, { env: codeEnv });
+  const a = await codeBox(rt);
+  a.s.ws.close();
+  await rt.settle();
+  assert.equal((await codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" })).status, 404);
+  assert.equal(await rt.object(`rv:${a.a.rv}`, "CODES").ctx.storage.get("c"), undefined);
+});
+
+test("worker: the preflight answers any origin and a bad request is 400 whatever is live", async t => {
+  const rt = world(t, { env: codeEnv });
+  const pre = await worker.fetch(new Request("http://relay.test/v1/wink/code", { method: "OPTIONS" }), rt.env);
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get("access-control-allow-origin"), "*");
+  const a = await codeBox(rt);
+  for (const bad of [{ rv: "UU", s: SID, n: 1, m: "Y" }, { rv: a.a.rv, s: "short", n: 1, m: "Y" }, { rv: a.a.rv, s: SID, n: 2, m: "Y" }, { rv: a.a.rv, s: SID, n: 1, m: "" }, { rv: a.a.rv, s: SID, n: 1, m: "x".repeat(300) }]) {
+    assert.equal((await codeStep(rt, bad)).status, 400);
+  }
+  assert.equal(a.s.queued(), 0, "nothing was forwarded");
+});
+
+test("worker: typed-code sessions are charged to the address that made them, a miss again, and there is no global budget", async t => {
+  const rt = world(t, { env: { ...codeEnv, CODE_WAIT_MS: "60" } });
+  const a = await codeBox(rt);
+  const sessions = [], steps = [], misses = [];
+  let global = 0;
+  rt.env.CODE_GLOBAL = { limit: async () => { global++; return { success: false }; } };
+  rt.env.CODE_LIMITER = { limit: async ({ key }) => { sessions.push(key); return { success: key !== "203.0.113.7" }; } };
+  rt.env.CODE_STEP_LIMITER = { limit: async ({ key }) => { steps.push(key); return { success: true }; } };
+  rt.env.CODE_MISS_LIMITER = { limit: async ({ key }) => { misses.push(key); return { success: key !== "203.0.113.8" }; } };
+  // A spent session budget is refused, whether or not the code is live, and the miss limiter is not asked.
+  assert.equal((await codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.7")).status, 429);
+  assert.equal((await codeStep(rt, { rv: a.a.rv === "00" ? "01" : "00", s: SID, n: 1, m: "Y" }, "203.0.113.7")).status, 429);
+  assert.deepEqual(misses, []);
+  // A later step is charged as a step, to its own address.
+  await codeStep(rt, { rv: a.a.rv, s: SID, n: 3, m: "Y" }, "203.0.113.5");
+  assert.deepEqual(steps, ["203.0.113.5"]);
+  // A miss is charged to the session limiter and the miss limiter, to this address only; a spent miss budget refuses a miss
+  // but still serves a live code.
+  const free = a.a.rv === "00" ? "01" : "00";
+  assert.equal((await codeStep(rt, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.8")).status, 429);
+  assert.deepEqual(misses, ["203.0.113.8"]);
+  const p = codeStep(rt, { rv: a.a.rv, s: SID, n: 1, m: "Y" }, "203.0.113.8");
+  await a.s.json();
+  const got = await a.s.json();
+  a.s.ws.send(JSON.stringify({ t: "code.reply", q: got.q, m: "Yb" }));
+  assert.equal((await p).status, 200, "a live code is served to an address whose miss budget is spent");
+  assert.equal((await codeStep(rt, { rv: free, s: SID, n: 1, m: "Y" }, "203.0.113.9")).status, 404, "another address still gets the plain miss");
+  assert.equal(global, 0, "a global limiter, if one is bound, is never consulted");
+  assert.ok(sessions.every(k => k.startsWith("203.0.113.")));
 });

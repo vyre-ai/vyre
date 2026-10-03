@@ -80,3 +80,67 @@ Branch: work/assistant · Worktree: ../vyre-assistant · Owner session: assistan
 - Merged with work/sessions-reach: sessions' per-event provider/model/account tags are replaced by the live stamp (speaker: provider, model, account) on every reply event, so a one-turn switch is right line by line. threads.send takes only the account chip (no provider/account input). Init carries models and plan; thread.tool done carries exit_code.
 \n- reviewer-2's two MEDIUMs on c3d4747a7 fixed: personTurn on the one-turn route; model replies quoted (`  | `) and labelled data in the return note and the handoff brief. Models are learned after sign-in (threads.providers.learn, internal).\n
 - #41 (one model per turn): the thread's truth is what the provider reports per turn (speaker: live model, then the record). Fixed: init now moves the record and says model.switched once (reported: true); a live threads.model switch sets the live model so the next reply is stamped with it; the header, each reply and the picker all use shortModel. Root cause of the live miss: core/events delivered a listener's nested event before the outer one, and the SSE id cursor dropped the outer (model.switched lost to settings.changed); events now deliver in id order. Changed contract: core/events (re-entrant emits are queued until the current delivery ends), core/switchboard (model.switched also on init). Tests: switchboard "one model per turn", events "emitted by a listener", deck session.test header/reply labels.
+
+## 0.3 (work/teammates-03, worktree vyre-assistant-03; the branch name work/teammates is the 0.2 line and is taken, so this is work/teammates-03)
+
+Scope (lead, 3 Oct): project teammates on the `team` module (ADR 0031); memory in three layers; @Engineer. Built against kernel/contracts (work/kernel 0a2545d81, merged in). The kernel has contracts only so far, so every part is a factory over a `kernel` port (kernel/contracts `Kernel`) and is tested against `test/fake-kernel.js`, which keeps the rules the parts lean on (intersection of hops, placeholders to agents, one event per write, the task table, human-only approval, the inference door ledger).
+
+Layout (no new boundary edges; shared pure helpers are in lib):
+- lib/labels.js, lib/sealed.js: label joining (7.6) and the model view of a record (8.3).
+- core/team/: roles.js (Kit role to teammate), delegate.js (grant ceiling and the adder's conditions as obligations, R6-8), context.js (project plus links minus sealed), doing.js (live "doing now" line), stuck.js (the seven triggers and the kernel-composed fix, R6-7).
+- core/memory/engine/: lines.js (line-by-line session detail), facts.js (extraction, the three outcomes of 7.9), search.js (meaning search with per-source authorization and citations), index.js (the standing service, read-only, writes under [person, service:memory]).
+- core/engineer/: propose.js (TypeScript definition via the model door, compile and simulate through ports, diff card), index.js (admin-only module).
+
+Ports I need from others (asked in team/0.2/CHAT.md):
+- platform: `tasks.move(chain, id, to, info)` and `tasks.stuck` on the kernel (the contract has only ask.request and ask.decide); `members.isAdmin(chain)`; a `memory` standing-service actor.
+- records: `language.compile(source) -> { diff, errors }` (the TypeScript text form, 5.6) and the definition authorship label.
+- sessions: `flows.simulate(diff, scenarios) -> result` and session events for "doing now".
+
+Done (3 Oct): foundation 6827df3fb; core/team 27fb4d157 (roles, delegate, context, doing, stuck); core/memory/engine 0b8d77227 (lines, facts, search, scrub, index); core/engineer 99251017c (guard, propose, card, simulate, index). 201 of 201 passing on the test box with the docs, reach and boundaries tests (1 skipped), docs:check clean.
+Doing: nothing running.
+Next: wire the factories as module tools (module.json, reach classes) the day the kernel gateway lands and ctx.kernel exists; until then they are libraries with tests. Then: proposals as records (Engineer), perf numbers with scripts/perf-check.
+Needs from others:
+- platform (kernel): `tasks.move(chain, id, to, info)` incl. stuck (assistant or detection only) and the output-check moves; `members.isAdmin(chain)` and member/limited state; a kernel-built `[person, service:memory]` chain and `[admin, agent:engineer]` chain; a task payload that binds the proposal hash; the Engineer's grant set registered as a built-in; a `policy:` source grant for memory auto-accept; grants.create with parent must itself check containment and carry the parent's presence and approval conditions.
+- records: `language.compile(source) -> { diff, canonical, hash, errors[{line,msg}], authorship, roles?, flows?, descriptions? }`; `fieldDef(type, field)` (kind, required) and `ownerOf(urn)`; reads of def.* through the gateway.
+- sessions: `flows.simulate(diff, scenarios) -> { ok, steps, failures[{scenario,msg}] }`; confirm the thread.tool event shape and subjects for the doing-now line.
+Changed contracts: none (new files only; lib/labels.js and lib/sealed.js are new).
+
+### Components for native-core (core/work/native/component-kinds.js, components.js)
+`toComponent(toolName, result, {types})` returns one plain, JSON-safe component; `assertComponent` is the closed validator (kinds closed, no functions, no sealed value or ref, no control or bidi characters, string caps). Anything unrecognised is a `text`. Every free-text field a doer or model wrote sits in a quoted block `{label, quoted:true, interactive:false, text}` with no links or buttons. Kinds and fields:
+- `record_card`: type, title, urn, stage|null, fields[{name,label,kind,display,sealed?}] (a sealed field reads "on file, sealed" or "empty", never a value), hidden (count), source{trust,red,source_spaces}.
+- `task_card`: id, title, record, doer, checker|null, state, output, tap{label,what}|null (what one tap does by state), payload_summary|null (the kernel's summary for a held act), from_doer|null (quoted block).
+- `draft`: title, body (slots stay `{{slot:name}}`), editable:true, template{name,version}|null, to|null, merge_fields[{name,value}], sealed_slots[{slot,label}], edit_voids_approval:true (tapping Edit voids the approval).
+- `flow_diff`: title, hash, authorship, changes[], simulation{ok,text}, outward[{text}], names[{name,shown,flags}], from_author|null (same shape as the Engineer's diffCard).
+- `memory_answer`: text, citations[{address,label|null}] (urn or line:<session>#<n>), labels|null. An answer with no citation becomes `text`.
+- `held_for_approval`: task|null, title, summary, approver, what ("Drafted and waiting for your approval. Nothing has left the Space.").
+- `group`: title, items[component] (several records). `text`: text.
+Needs from native-core: one renderer per kind. Needs from platform: the tool result shapes above (`held:true` with a task and summary for an outward act; records as gateway records with labels).
+
+### Fit eval (scripts/eval/assistant-fit)
+`evaluateModel({adapter, kernelFixture, budgetUsd=5, tasks, prices})`: five tasks (find, gate, seal, approval, cite), 20 points each, deterministic checkers over a fresh fake-kernel world, hard budget stop (the next call's worst case must fit under the cap, else the score is partial). Adapter shape `{name, run(messages, tools, {task,max_tokens}) -> {content, tool_calls, usage}}`; `adapter-claude.js` is the Messages API one. Real run: `node scripts/eval/assistant-fit/run.js --model <id> --yes --out <dir>` with ANTHROPIC_API_KEY set; never in tests. Needs: a per-model price table in run.js PRICES (unknown models use a high default); the model picker (native-core) reads the stored fit.
+
+## 0.3 native assistant (3 Oct)
+Done: situation, playbooks, tools-port 83dc06920; components 431ac11b5 and ec22b3f10 (contract in the "Components for native-core" section); fit eval. 224 of 224 pass (1 skipped) with boundaries, docs and reach on the test box.
+Needs: platform generates the tool list from definitions as documented in tools-port.js, plus kernel.tasks.list, members.roleOf, a team-member read and the held-result shape in kernel/contracts; records: `playbook` and `team_member` types; vault: sign-off on the "why sealed" wording; native-core: one renderer per component kind and the picker reading the stored fit; someone: the price table (PRICES) in eval/run.js. No real model call has been made; a real run needs ANTHROPIC_API_KEY and the lead's go (about 5 dollars).
+
+## 0.3 wired to the kernel (3 Oct, after the account switch)
+Done:
+- Merged origin/work/kernel (K1 to K4). Action names in my code are the registry's (`records.read`, `records.update`, `records.define`, `tasks.request`, `events.read`); the fake kernel uses them too.
+- `kernel/tools/surface.js` (my branch, platform told so it lands once): the tool surface generated from the Space's definitions and the action registry, cut by the chain's grants. `<plural>.find|create|update`, `.move_stage` for a stage field, `tasks.assign`, and one tool per outward registry action. A tool the chain cannot use is not listed and a call to it is `not_found`. An outward act returns `{ held: { task, summary, approver } }` for an agent doer (the kernel makes the `sent` task with the approver as checker); a person's own act returns `{ needs_presence: { action, summary } }` (a person cannot check their own work, the kernel says `same_actor`). Sealed fields never appear in a tool schema. Tested on the REAL gateway and tasks (`test/real-kernel.js`).
+- `core/work` module (`module.json`, reach on every tool): `work.tools|call|situation`, `work.team.context|add|doing`, `work.know.search|answer|suggestions|accept` (not `recall.*`: that name is Recall's), `work.engineer.talk|revise|approve`. Reads `ctx.kernel`; every tool answers `unavailable` until platform wires it.
+- The fit eval now runs on the real gateway and the generated surface, with the kernel-built situation as its system text. `adapter-openrouter.js` and `run.js` use OPENROUTER_EVAL_KEY when set (the protected `eval` environment has only that secret). `.github/workflows/assistant-fit-eval.yml`: manual, environment `eval`, hard stop $5, key usage printed before and after.
+
+Gaps for platform (what `ctx.kernel` must provide for core/work, all named in core/work/index.js):
+- `kernel.chainFor(extra)`: the chain built from the call's own facts (no tool builds one).
+- `kernel.definitions(chain)`: the Space's current type definitions (the store has `describe(type)` only; nothing lists types). `kernel.actions()`: the action registry.
+- `kernel.grants.list/create/revoke` (teammates), `kernel.members.roleOf/isAdmin`, `kernel.tasks.list` (situation), `kernel.model.call` (memory answers, Engineer), `kernel.serviceChain("memory")`, `kernel.chainForPerson(person)`, `kernel.compile` and `kernel.simulate` (records, sessions), `kernel.fieldDef/ownerOf`.
+- Stage gates (a stage's required tasks) are not enforced by the gateway; the eval fixture stands in for them.
+- A person's own outward act: confirm `needs_presence` as the shape, or give a surface prompt for presence.
+
+Blocked: the paid eval. The `eval` environment only allows main and work/stage-0.2 and a required reviewer, and a workflow must be on main to dispatch. Needs launch/lead: land `assistant-fit-eval.yml` on main (or add this branch to the environment's branch policy), then dispatch each of haiku-4.5, sonnet-5.5, gpt-6-sol and gemini-3.8-flash at budget 1 (the workflow lands on main with the 0.3 merge after reviewer-2; the user approves the run).
+Next: first thing, run the eval once the workflow is dispatchable and record the run id here; then proposals as records for the Engineer; perf numbers with scripts/perf-check.
+
+## 0.3 end to end with the Estate Kit (3 Oct)
+Merged work/records (Estate Kit, language). `core/work/e2e-estate.test.js` runs on the REAL gateway and tasks (test/real-kernel.js): the Kit's nouns as tools, sealed SSN a placeholder to a model, a held send completed by the agent and approved only by the owner's presence proof (assistant and no-proof refused), the situation, a teammate added from the Kit's research role through delegateGrants, memory search and a cited answer authorized per source, and the Engineer compiling with the real language and applying under the admin's own proof.
+Changed: the Engineer binds the card hash in the decision task's evidence (kernel.ask.start/complete) instead of `draft_hash`, which the kernel refuses; its grants are on `definition` and include tasks.work. Kit role grants (`{read|write|create: "type[.field]"}`) become wanted entries on `vyre://space/type/*`; a field-limited grant carries its fields on the add card, and the kernel grants by type, so field limits are NOT enforced (gap for records/platform). delegateGrants picks the parent by the kernel's selector rule; `grants.create` with `parent` must prove containment and the delegate condition.
+Still a stand-in in the e2e: the model (scripted), grants.list/create and members (real-kernel.js ports), the compile adapter from the records language to the Engineer's Compiled shape (diff, canonical, hash). Not yet on a real Twenty store: the e2e uses the in-memory store; records' live Twenty run is theirs.
