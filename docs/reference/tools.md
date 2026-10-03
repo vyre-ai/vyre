@@ -5398,6 +5398,7 @@ The publish pipeline for a deployment as a Flow definition: build, preview, a pe
 
 - Input:
   - `deployment` string, required
+  - `kernel` boolean
   - `space` string
 - Callers: any caller
 
@@ -10101,7 +10102,7 @@ Take something back: a grant (a member, a share) is revoked, or a device (give `
 
 ### `wink.server.adopt`
 
-On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel; the first caller wins, and only that caller (or the owner's own screen) may change it later. Answers { owner }.
+On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. The first caller adopts it and is recorded; after that only that caller, or the owner's own screen on this box, may change it, and only with the owner's presence. Answers { owner }.
 
 - Input:
   - `owner` object, required
@@ -10110,6 +10111,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
   - `identity` string
   - `peerSecret` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.server.code`
 

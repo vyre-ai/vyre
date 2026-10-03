@@ -189,7 +189,7 @@ export function createRecords(cfg) {
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
-    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: chains.serialize(chain) };
+    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain) };
     intents.set(intent.id, intent);
     let rec;
     try { rec = await run(); }
@@ -399,7 +399,7 @@ export function createRecords(cfg) {
           && (op === "create" || (op === "restore" ? !rec.deleted_at : rec.version > intent.base_version));
         if (exact) {
           let c;
-          try { c = chains.restore(intent.stored); } catch { intent.state = "unresolved"; result.unresolved++; continue; }
+          try { c = await chains.restore(intent.stored); } catch { intent.state = "unresolved"; result.unresolved++; continue; }
           emit(c, intent, rec, intent.before_data ? { data: intent.before_data } : null, intent.decision, true);
           result.completed++;
           continue;

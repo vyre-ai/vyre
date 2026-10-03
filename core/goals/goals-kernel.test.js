@@ -26,10 +26,10 @@ async function boot(t, { kernel, home: given } = {}) {
   t.after(() => db.close());
   return { reg, db, home };
 }
-const newKernel = () => createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4) });
+const newKernel = async () => await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4) });
 
 test("goals on the kernel: a goal is a kernel record, milestones tick, the last finishes it, and an agent's proposal needs a person", async t => {
-  const k = newKernel();
+  const k = await newKernel();
   const { reg, db } = await boot(t, { kernel: k });
   const g = (await reg.call("goals.set", { project: "harlow-legal", goal: "Ship the intake redesign", milestones: ["Draft", "Wire", "Launch"] }, "deck")).data;
   assert.equal(g.state, "active");
@@ -59,7 +59,7 @@ test("goals on the kernel: a goal made before the kernel was on stays readable a
   const first = await boot(t);
   const old = (await first.reg.call("goals.set", { project: "harlow-legal", goal: "Made before", milestones: ["A", "B"] }, "deck")).data;
   assert.match(old.id, /^g_/);
-  const k = newKernel();
+  const k = await newKernel();
   const second = await boot(t, { kernel: k, home: first.home });
   assert.equal((await second.reg.call("goals.get", { goal: old.id }, "deck")).data.goal, "Made before");
   const fresh = (await second.reg.call("goals.set", { project: "harlow-legal", goal: "Made after", milestones: ["X"] }, "deck")).data;

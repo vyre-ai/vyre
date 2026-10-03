@@ -382,3 +382,17 @@ test("redeem with vyre-core: a key file left by an earlier pairing is deleted, a
   const clean = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root: tempHome(t), name: "third", coreKeys: core });
   assert.equal(/** @type {any} */ (clean).superseded, undefined);
 });
+
+test("relay.devices.drop W-8: only the Wink module may cut a paired device off", async t => {
+  const d = await box(t);
+  for (const caller of ["module:other", "module:names"]) {
+    const r = await d.registry.call("relay.devices.drop", { id: "dev_nobody" }, caller);
+    assert.equal(r.error?.code, "denied", `${caller} is refused`);
+  }
+  for (const caller of ["cli", "device:x"]) {
+    const r = await d.registry.call("relay.devices.drop", { id: "dev_nobody" }, caller);
+    assert.ok(r.error && ["denied", "no_such_tool"].includes(r.error.code), `${caller} is refused`);
+  }
+  const ok = await d.registry.call("relay.devices.drop", { id: "dev_nobody" }, "module:wink");
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+});

@@ -8,6 +8,7 @@ import { createGateway } from "../../gateway/index.js";
 import { createMemoryStore } from "../../store/memory.js";
 import { createEventLog } from "../../core/events.js";
 import { createChainBuilder } from "../../core/chain.js";
+import { createKernelSeal } from "../../core/seal.js";
 import { canonical, hmac } from "../../core/canonical.js";
 import { mintUuid } from "../../core/ids.js";
 import { createTasks, TASK_ACTIONS } from "../../tasks/tasks.js";
@@ -192,7 +193,8 @@ export class RealKernel {
 
   #sealed(/** @type {any[]} */ hops, /** @type {any} */ labels, /** @type {string} */ job) {
     const body = canonical({ space: this.space, hops, labels, built_at: this.now(), job });
-    return this.chains.restore({ job, body, mac: hmac(KEY, body) });
+    // The stored form is sealed the way the chain builder seals it (kernel/core/seal.js), not with a bare HMAC of its own.
+    return this.chains.restore({ job, body, mac: createKernelSeal({ key: KEY }).mac("chain-seal-v1", body) });
   }
 
   /** The chain an actor works under: a person on their device, an assistant under the owner. @param {any} actor */

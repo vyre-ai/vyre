@@ -5,9 +5,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { bootKernel } from "./boot.js";
 import { startSealer } from "./seal/client.js";
-import { deriveKernelKey, fileKernelKey } from "./keys.js";
+import { fileKernelKey } from "./keys.js";
+import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
@@ -47,11 +49,13 @@ export async function bootHomeKernel(cfg) {
     catch (e) { if (sealer) await sealer.close().catch(() => {}); throw new KernelError("key_custody", "the kernel will not start here: its key must live in the sealing process, and the sealing process cannot run safely on this machine (a server with its own OS user, or the OS keystore)", String(e && /** @type {any} */ (e).code || e)); }
   }
   if (sealer) {
-    key = await deriveKernelKey(sealer, id.space);
-    // A key file from before custody moved only verifies what it already sealed; nothing new is sealed under it, and it is removed once the log is read.
+    // K-3: no key is held here. The grants store and the chain builder ask the sealing process to MAC and verify (kernel/core/seal.js). A key file from before custody
+    // moved only verifies what it already sealed; once that is read a snapshot is written under the new seal and the file is deleted.
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
-  const k = bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, key, legacyKeys, sealer, door: cfg.door });
+  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door });
+  // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
+  if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
   // (`<home>/kernel/minimums.json`, written by the updater; never taken from a file that decides the key). There is no fallback to a path rule: a checkout whose modules are
   // not signed (development) must say so with VYRE_KERNEL_PATH_RULE=1, which is loud and never the default. A production kernel without a signature check does not start.
@@ -73,5 +77,10 @@ export async function bootHomeKernel(cfg) {
   const approvalsFile = path.join(id.dir, "module-approvals.json");
   /** The hosts a person approved on a module's install card, kept by name. */
   const approvals = cfg.approvals || ((/** @type {string} */ name) => { try { return JSON.parse(fs.readFileSync(approvalsFile, "utf8"))[name] || []; } catch { return []; } });
-  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
+  // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
+  // refuses a hosted Space unless this boot is the developer file-key one.
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
+  await spaces.start();
+  return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

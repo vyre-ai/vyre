@@ -950,7 +950,8 @@ export default {
     ctx.tool("relay.devices.drop", {
       description: "Close a paired device's connections and refuse it from now on, for a module that has just removed it for the owner.",
       input: obj({ id: str }, ["id"]),
-      run: async input => {
+      run: async (input, meta = {}) => {
+        if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module closes a paired device's connections"), { code: "denied" });
         const id = String(input.id);
         return { closed: forget(id, "removed"), id };
       },
