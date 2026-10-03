@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload } from "./pairing.js";
+import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload } from "./pairing.js";
 import { FORBIDDEN, words } from "./cards.js";
 
 const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -21,8 +21,10 @@ function world(o = {}) {
   const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def) };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
+  const minted = /** @type {any[]} */ ([]);
   const directory = o.directory || { memberships: async id => id === ME ? [{ space: HARLOW, name: "Harlow Legal", role: "admin" }, { space: NORTHWIND, name: "Northwind Bakery", role: "member" }] : [] };
   const ports = {
+    mint: async seed => { minted.push(seed); return o.mintFails ? { error: "no relay" } : { data: { expiresAt: 1 } }; },
     callServer: o.callServer || (async (paired, tool, input) => ({ owner: input.owner })),
     typist: async a => { typed.push(a); return o.typistFails ? { ok: false, reason: o.typistFails } : { ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16), route: "rt" }; },
     finish: async a => { finishes.push(a); return { ok: true, paired: { route: "route-juno", name: "juno" } }; },
@@ -35,7 +37,7 @@ function world(o = {}) {
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
-  return { p, call, events, typed, finishes, db, tools, fails };
+  return { p, call, events, typed, finishes, minted, db, tools, fails };
 }
 const settle = () => new Promise(r => setTimeout(r, 10));
 
@@ -477,4 +479,60 @@ test("W-4b: a claim that no call proves lapses after a minute", async () => {
   t += 61_000;
   await w.p.peers.serve(async () => "ok")("device:srvA", "x", {}, { nodeKey: NK });
   assert.equal(w.p.devices.get("srvA").nodeKey, null);
+});
+
+// ---- the server's QR: a long secret, so no PAKE and nothing typed back ----
+
+test("a server's QR is a fresh 128-bit ticket seed: minted at the relay, drawn as text, never on the event bus", async () => {
+  const w = world();
+  const a = await w.call("wink.server.code", { qr: true });
+  assert.equal(a.code, "WINK-ZZZZ-ZZZZ", "the typed code is still offered beside it");
+  assert.equal(w.minted.length, 1);
+  assert.equal(w.minted[0].length, 16, "128 bits");
+  const q = parseServerQr(a.qr);
+  assert.ok(q);
+  assert.equal(Buffer.from(q.seed).toString("hex"), w.minted[0].toString("hex"), "the payload carries exactly the seed that was minted");
+  assert.equal(q.relay, "ws://relay.test");
+  assert.match(a.art, /\u2588|\u2580|\u2584/);
+  const b = await w.call("wink.server.code", { qr: true });
+  assert.notEqual(parseServerQr(b.qr).seed.toString(), q.seed.toString(), "a new secret every time");
+  assert.equal((await w.call("wink.server.code", {})).qr, undefined, "no qr unless asked");
+  assert.equal(w.minted.length, 2);
+  for (const [n, e] of w.events) assert.ok(!JSON.stringify(e).includes(a.qr), `${n} never carries the QR`);
+  // The relay could not take the ticket: the code is still there, the QR says null.
+  const down = world({ mintFails: true });
+  const r = await down.call("wink.server.code", { qr: true });
+  assert.equal(r.qr, null);
+  assert.equal(r.code, "WINK-ZZZZ-ZZZZ");
+});
+
+test("scanning a server's QR pairs it with no typist and no code to type back", async () => {
+  const w = world();
+  const seed = new Uint8Array(16).map((_, i) => i + 1);
+  const payload = serverQrPayload(seed, "ws://relay.test");
+  const r = await w.call("wink.pair.server", { payload, target: { kind: "space", id: HARLOW } });
+  assert.equal(r.ack, null, "nothing to type");
+  assert.equal(w.typed.length, 0, "no PAKE ran");
+  await settle();
+  assert.equal(w.finishes.length, 1);
+  assert.equal(Buffer.from(w.finishes[0].seed).toString("hex"), Buffer.from(seed).toString("hex"), "the ticket is looked up with the scanned secret");
+  assert.equal(w.finishes[0].relay, "ws://relay.test");
+  assert.equal((await w.call("wink.pair.status", { pairing: r.pairing })).state, "done");
+  const [d] = w.p.devices.list(ME);
+  assert.deepEqual(d.owner, { kind: "space", id: HARLOW });
+  // The same target rules apply: an unadministered space is refused before the relay is asked.
+  const w2 = world();
+  await assert.rejects(() => w2.call("wink.pair.server", { payload, target: { kind: "space", id: NORTHWIND } }), e => e.code === "not_admin");
+  assert.equal(w2.finishes.length, 0);
+});
+
+test("a QR payload that is not a server's (short seed, wrong version, a typed code's QR) is refused; neither a code nor a payload is refused", async () => {
+  const w = world();
+  const target = { kind: "identity", id: ME };
+  for (const payload of ["vyre://wink/2?t=AAAA&r=ws%3A%2F%2Fx", "vyre://wink/1?c=WINK-K7QM-4P2X&r=ws%3A%2F%2Fx", "hello", "vyre://wink/2?r=ws%3A%2F%2Fx"]) {
+    await assert.rejects(() => w.call("wink.pair.server", { payload, target }), e => e.code === "bad_input", payload);
+  }
+  await assert.rejects(() => w.call("wink.pair.server", { target }), e => e.code === "bad_input");
+  assert.equal(parseServerQr(serverQrPayload(new Uint8Array(15), "ws://x")), null);
+  assert.equal(w.finishes.length + w.typed.length, 0);
 });

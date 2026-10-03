@@ -9,6 +9,14 @@ helps. All ten parts of ADR 0014 are built. Each ships off, turns on with one sw
 nothing on the tailnet itself: every ACL, nodeAttr, grant, key, Lock and Funnel step is the user's,
 written out under "Steps for the user".
 
+## W-9 typed-code assurance (3 Oct 2026, work/wink)
+
+The short typed code does not guard real data until the user decides W-9 (team/0.3/PAKE-choice.md). Done and right under every outcome:
+- Independent vectors: `relay/client/code-vectors.test.js` against the CFRG SageMath reference (draft-21 commit 8fb4056e, run on the test box in the Sage 10.10 image; method in PAKE-choice.md). code.js matches on all ten sessions and the draft vector. The post-ISK values (tags, number, key, ack, seed) are checked against a second reading of code.js in Python, not a reference. Regenerate with `relay/client/code-vectors.sage`.
+- QR in the terminal: `wink.server.code { qr: true }` (answers `qr`, `art`), `wink.pair.server { payload }`, `relay/client/qr.js`, `scripts/install/i.sh`. Core change, minimal: `core/wink/pairing.js` only (a `mint` port, `serverQrPayload` / `parseServerQr`, `startTyping` takes a `seed` instead of a `code`); no new tool name, so module.json and the golden matrix are unchanged. A decoder (jsQR, scratch only) read 40 of 40 generated QR payloads back.
+- Sized, not built: a Noise PSK with a long typed code, and SPAKE2 as in Magic Wormhole, both in PAKE-choice.md.
+Needs from the user: the W-9 decision (ship the CPace glue as is with the claim "CPace from the IETF draft on audited primitives", buy an outside review of it, or move to a long PSK code).
+
 ## Done
 
 Round 1 (parts 1 to 6):

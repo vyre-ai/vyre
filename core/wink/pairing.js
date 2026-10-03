@@ -17,7 +17,8 @@
 import crypto from "node:crypto";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { typeWinkCode, finishJoin } from "../../relay/client/join.js";
-import { parseCode } from "../../relay/client/code.js";
+import { parseCode, b64url, unb64url } from "../../relay/client/code.js";
+import { qrArt } from "../../relay/client/qr.js";
 import { connect as relayConnect } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { base32 } from "./grants.js";
@@ -71,7 +72,7 @@ export const POLL_MS = 1500;
 
 /**
  * @typedef {{ kind: "identity" | "space", id: string, label: string, role?: string }} Target
- * @typedef {{ typist?: typeof typeWinkCode, finish?: typeof finishJoin, adopt?: (paired: any, target: { kind: string, id: string }) => Promise<boolean> }} Ports
+ * @typedef {{ typist?: typeof typeWinkCode, finish?: typeof finishJoin, mint?: (seed: Buffer) => Promise<any>, adopt?: (paired: any, target: { kind: string, id: string }) => Promise<boolean> }} Ports
  */
 
 /**
@@ -302,12 +303,15 @@ export function createPairing(o) {
   };
 
   // ---- the typing side: the app types a code and shows the code to type back ----
-  /** @param {{ code: string, kind: string, target: { kind: string, id: string }, label?: string, name?: string, relay?: string }} i */
+  /**
+   * `seed` instead of `code`: the pairing came from a server's QR, which carries the ticket's own 16-byte secret, so there is no PAKE and no
+   * code to type back (`ack` is null); the ticket is already at the relay, and the rest is the same.
+   * @param {{ code?: string, seed?: Uint8Array, kind: string, target: { kind: string, id: string }, label?: string, name?: string, relay?: string }} i */
   const startTyping = async i => {
-    if (!parseCode(String(i.code))) throw fail("bad_input", words("wrongCode"));
+    if (!i.seed && !parseCode(String(i.code))) throw fail("bad_input", words("wrongCode"));
     const relay = i.relay || await o.relayUrl();
     const w = watchFetch();
-    const t = await ports.typist({ relay, input: String(i.code), fetch: w.fetch });
+    const t = i.seed ? { ok: /** @type {const} */ (true), ack: null, seed: i.seed, route: "" } : await ports.typist({ relay, input: String(i.code), fetch: w.fetch });
     if (!t.ok) {
       if (w.seen.old) throw fail("relay_old", words("relayOld"));
       throw fail(t.reason === "format" ? "bad_input" : t.reason === "offline" ? "unavailable" : "refused", words(t.reason === "offline" ? "offline" : t.reason === "busy" ? "busy" : "wrongCode"));
@@ -360,6 +364,9 @@ export function createPairing(o) {
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
 
+  /** Puts a ticket from a seed at the relay (relay.ticket.mint, modules only). @param {Buffer} seed */
+  const mint = ports.mint || (async (/** @type {Buffer} */ seed) => ctx.call("relay.ticket.mint", { seed: seed.toString("base64url") }));
+
   /** Registers this box's own tools. */
   function tools() {
     const { owner } = o;
@@ -369,8 +376,8 @@ export function createPairing(o) {
       run: async (_, meta = {}) => { owner(meta, "the pair targets"); return { targets: await targets(await o.identity()) }; },
     });
     ctx.tool("wink.pair.server", {
-      description: "Pair a new server (or storage device) from this app: type the code the server printed and choose where it goes. Answers { pairing, ack, expires }: show `ack` and have the person type it on the server. The pairing then finishes by itself (wink.pair.status).",
-      input: obj({ code: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str }, ["code", "target"]),
+      description: "Pair a new server (or storage device) from this app: type the code the server printed, or give `payload`, the text of the QR it printed (a scan), and choose where it goes. Answers { pairing, ack, expires }: for a typed code show `ack` and have the person type it on the server; a scan has no ack (null) and nothing to type. The pairing then finishes by itself (wink.pair.status).",
+      input: obj({ code: str, payload: str, target: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str }, ["kind", "id"]), kind: { type: "string", enum: ["server", "storage"] }, name: str }, ["target"]),
       presence: { summary: async () => "Add a server to Vyre" },
       run: async (input, meta = {}) => {
         owner(meta, "pairing a server");
@@ -379,7 +386,11 @@ export function createPairing(o) {
         const identity = await o.identity();
         const target = await checkTarget(identity, kind, input.target);
         const label = (await targets(identity)).find(x => x.kind === target.kind && x.id === target.id)?.label;
-        return { ...(await startTyping({ code: input.code, kind, target, label, name: input.name })), target: { ...target, ...(label ? { label } : {}) } };
+        const scan = input.payload ? parseServerQr(String(input.payload)) : null;
+        if (input.payload && !scan) throw fail("bad_input", words("notACode"));
+        if (!scan && !input.code) throw fail("bad_input", words("wrongCode"));
+        const who = scan ? { seed: scan.seed, relay: scan.relay || undefined } : { code: String(input.code) };
+        return { ...(await startTyping({ ...who, kind, target, label, name: input.name })), target: { ...target, ...(label ? { label } : {}) } };
       },
     });
     ctx.tool("wink.pair.status", {
@@ -396,9 +407,20 @@ export function createPairing(o) {
 
     // The server's side: it prints a code, the app types it, the person types back the app's code here.
     ctx.tool("wink.server.code", {
-      description: "On the new server: show a code for the Vyre app to type (the install script prints it). Answers { offer, code, expires }. The app chooses where the server goes; type back the code the app shows with wink.server.confirm.",
-      input: obj(),
-      run: async (_, meta = {}) => { owner(meta, "adding this server"); return o.openCode("W3"); },
+      description: "On the new server: show a code for the Vyre app to type (the install script prints it). Answers { offer, code, expires }. The app chooses where the server goes; type back the code the app shows with wink.server.confirm. With `qr` true it also mints a 5-minute ticket from a fresh 128-bit secret and answers `qr` (the payload a phone scans, which needs no code and no typing back) and `art` (that QR drawn as text for a terminal), or qr null when the relay could not take the ticket.",
+      input: obj({ qr: { type: "boolean" } }),
+      run: async (input, meta = {}) => {
+        owner(meta, "adding this server");
+        const made = await o.openCode("W3");
+        if (!input || input.qr !== true) return made;
+        const seed = crypto.randomBytes(16);
+        try {
+          const t = /** @type {any} */ (await mint(seed));
+          if (!t || t.error) return { ...made, qr: null };
+          const qr = serverQrPayload(seed, await o.relayUrl());
+          return { ...made, qr, art: qrArt(qr) };
+        } catch { return { ...made, qr: null }; }
+      },
     });
     ctx.tool("wink.server.confirm", {
       description: "On the new server: type back the code the app is showing. One try per code. Answers { ok }. The right code adds this server for whoever typed its code; the app then says where it goes (wink.server.adopt).",
@@ -553,6 +575,21 @@ export function createPairing(o) {
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */
 export const qrPayload = (code, relay) => `vyre://wink/1?c=${encodeURIComponent(code)}&r=${encodeURIComponent(relay)}`;
+/**
+ * The QR a new server shows for a phone or app to scan: the 16-byte secret of a ticket already at the relay (128 bits, so no PAKE is needed
+ * and nothing is typed) and where to meet. Version 2 of the payload; the typed code's QR (version 1, above) carries a code instead.
+ * @param {Uint8Array} seed @param {string} relay
+ */
+export const serverQrPayload = (seed, relay) => `vyre://wink/2?t=${b64url(seed)}&r=${encodeURIComponent(relay)}`;
+/** Reads a server's QR payload: { seed, relay } or null. @param {string} s @returns {{ seed: Uint8Array, relay: string } | null} */
+export function parseServerQr(s) {
+  const m = /^vyre:\/\/wink\/2\?(.*)$/.exec(String(s).trim());
+  if (!m) return null;
+  const q = new URLSearchParams(m[1]);
+  const seed = unb64url(q.get("t") || "");
+  return seed && seed.length === 16 ? { seed, relay: q.get("r") || "" } : null;
+}
+
 /** Reads a QR payload (or a bare code). @param {string} s @returns {{ code: string, relay: string } | null} */
 export function parseQr(s) {
   const m = /^vyre:\/\/wink\/1\?(.*)$/.exec(String(s).trim());
