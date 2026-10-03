@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Field, Ring, Text, showToast, spaceRef } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 
 const CAN = [["Intake", true], ["Billing", true], ["Admin", false]] as const;
 

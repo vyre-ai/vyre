@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, Segmented, Text, showToast, markRef, IconTile } from "@vyre/ui";
-import { Page } from "../shell/Page";
+import { Page } from "../places/Frame";
 import { ACCESS_FILTERS, glyph } from "./data";
 import { useDevices } from "./state";
 import { removeText } from "./wink.js";

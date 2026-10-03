@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, EmptyState, Field, Menu, Row, Sheet, Switch, Text, showToast } from "@vyre/ui";
-import { Group, Page } from "../shell/Page";
+import { Group, Page } from "../places/Frame";
 import { useTypes } from "./state";
 import { KINDS, addField, addStage, callThemCases, fieldLine, kindLabel, moveStage, rename, renameStage, sealField } from "./logic.js";
 import type { TypeDef } from "./logic.js";
