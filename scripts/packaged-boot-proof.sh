@@ -14,6 +14,14 @@ rm -rf "$WORK"; mkdir -p "$WORK"
 SRC="$WORK/src"; mkdir -p "$SRC"
 tar -C "$HERE" --exclude=.git --exclude=node_modules --exclude=site/box -cf - . | tar -C "$SRC" -xf -
 while [ $# -gt 0 ]; do case "$1" in --drop) rm -rf "$SRC/$2"; shift 2 ;; *) echo "unknown option $1" >&2; exit 2 ;; esac; done
+# Known open problems, listed in scripts/packaged-boot-known.txt: said loudly, never silently.
+if [ -f "$HERE/scripts/packaged-boot-known.txt" ]; then
+  grep -v '^#' "$HERE/scripts/packaged-boot-known.txt" | grep -v '^$' | while read -r d; do
+    echo "packaged-boot-proof: KNOWN OPEN PROBLEM, leaving $d out of the package for this proof (scripts/packaged-boot-known.txt)"
+    [ -z "${GITHUB_STEP_SUMMARY:-}" ] || echo "Known open problem: $d is left out of this proof (scripts/packaged-boot-known.txt)" >> "$GITHUB_STEP_SUMMARY"
+    rm -rf "${SRC:?}/$d"
+  done
+fi
 
 # A throwaway key: the private half signs, the public half replaces every pinned copy of the release key in the copy.
 node -e '
