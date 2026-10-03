@@ -535,4 +535,12 @@ test("approval on authorize: an approved held-act task allows exactly that act b
   assert.equal(r.tasks.approvedAct({ id: t.id, ...act, resource: `vyre://${SPACE}/message/other` }), false, "another resource");
   assert.equal(r.tasks.approvedAct({ id: t.id, ...act, chain: agentChain("rogue") }), false, "another doer");
   assert.equal(r.tasks.approvedAct({ id: "nope", ...act }), false);
+  // A-4: the approval is spent by the decision that uses it, whoever asked, and it has a day to live
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act }), true);
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act }), false, "once");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), false);
+  const t2 = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
+  T += 25 * 3600_000;
+  assert.equal(r.tasks.useApproval({ id: t2.id, ...act }), false, "an approval older than 24 hours is no approval");
 });

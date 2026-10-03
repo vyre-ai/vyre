@@ -110,9 +110,9 @@ export function grantFromAgent(g, space) {
 export function leasedUse({ leaseOf, check, resolve, emit = () => {}, chain }) {
   return async ({ ref, session, route }) => {
     const id = leaseOf(session); if (!id) throw Object.assign(new Error("no_lease"), { code: "no_lease" });
-    const { space, device } = await check({ chain, id });
+    const { space, member, device } = await check({ chain, id });
     const value = await resolve({ space, ref, route });
-    emit({ type: "vault.used", space, device, ref, route, session });
+    emit({ type: "vault.used", space, member, device, ref, route, session });
     return value;
   };
 }

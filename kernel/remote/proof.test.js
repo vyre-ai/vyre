@@ -9,18 +9,18 @@ let T = 1_800_000_000_000;
 const clock = () => ++T;
 
 /** A verifier with the sealing process's contract: the proof must be over exactly the payload hash of (op, space, fields), once. */
-function rig() {
+async function rig() {
   const used = new Set();
   const presence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, SPACE, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
-  const k = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), clock, presence });
-  const owner = k.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), clock, presence });
+  const owner = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
   /** What a surface does: build the request, sign it, send it beside the request. */
   const signed = (call, ...args) => ({ kernel_proof: { payload_hash: proofRequest(SPACE, call, ...args).payload_hash, nonce: Math.random().toString(36) } });
   return { k, owner, signed, g: k.gateway.grants };
 }
 
 test("proof pass-through: a proof a surface signed from proofRequest is the one the kernel accepts, for every grants call", async () => {
-  const { owner, signed, g } = rig();
+  const { owner, signed, g } = await rig();
   const m = { person: BOB, role: "member" };
   await g.setRole(owner, m, proofFrom(signed("setRole", m)));
   const i = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*` }, conditions: {}, source: "t" };
@@ -41,7 +41,7 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
 });
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {
-  const { owner, signed, g } = rig();
+  const { owner, signed, g } = await rig();
   const m = { person: BOB, role: "member" };
   const p = signed("setRole", m);
   await assert.rejects(() => g.setRole(owner, { person: BOB, role: "admin" }, proofFrom(p)), { code: "needs_presence" }, "bound to the exact input");

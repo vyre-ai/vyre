@@ -45,6 +45,16 @@ function idemKey(req) {
   const k = String(req.headers["idempotency-key"] || "");
   return /^[A-Za-z0-9_.:-]{8,128}$/.test(k) ? k : undefined;
 }
+/**
+ * A kernel presence proof sent with a request (`x-vyre-kernel-proof`: base64url JSON, at most 4 KB). It reaches the module as `meta.kernel_proof` and nowhere else: the legacy
+ * `x-vyre-presence` proof (`meta.proof`) is never what a kernel act accepts, and this header is never what a legacy tool reads. Anything malformed is simply absent.
+ * @param {import("node:http").IncomingMessage} req
+ */
+function kernelProof(req) {
+  const h = String(req.headers["x-vyre-kernel-proof"] || "");
+  if (!h || h.length > 5500 || !/^[A-Za-z0-9_-]+$/.test(h)) return undefined;
+  try { const o = JSON.parse(Buffer.from(h, "base64url").toString("utf8")); return o && typeof o === "object" && !Array.isArray(o) ? o : undefined; } catch { return undefined; }
+}
 export const REPO = path.resolve(HERE, "..", "..");
 export const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version;
 
@@ -767,7 +777,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       }
     }
     const result = await registry.call(name, input, caller, { ...via, proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
-      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
+      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);

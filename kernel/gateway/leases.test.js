@@ -26,7 +26,7 @@ function fakeSealer() {
 async function rig() {
   const sealer = fakeSealer();
   const released = [];
-  const k = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async i => { released.push(i); return { secret: "v" }; } });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async i => { released.push(i); return { secret: "v" }; } });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const g = k.gateway.grants;
@@ -123,3 +123,28 @@ test("L-5: another member naming the same device id cannot revoke, refuse-and-re
   assert.ok(!r.sealer.st.live.has(lease.id));
   await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }).catch(() => {});
 });
+
+import { runnerPorts } from "./runner-ports.js";
+test("runnerPorts: the runner's lease, access answer and revocation are the kernel's, bound to this computer's key", async () => {
+  const r = await rig();
+  const ports = runnerPorts({ leases: r.k.gateway.leases, offers: r.k.gateway.grants.offers }, { chain: () => r.bob, member: BOB, deviceId: () => "dev_laptop", deviceKey: () => "KEY_LAPTOP" });
+  assert.deepEqual(ports.grants(), { spaceAllows: false, memberAccepts: false });
+  assert.deepEqual(await ports.vault.lease({ space: SPACE }), { revoked: true }, "no Offers: no key");
+  await r.mk(r.owner, { side: "space_allows", member: BOB });
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  assert.deepEqual(ports.grants(), { spaceAllows: true, memberAccepts: true });
+  const lease = await ports.vault.lease({ space: SPACE });
+  assert.ok(lease.id);
+  assert.deepEqual(await ports.vault.renew({ id: lease.id }), { ttlMs: 3600000 });
+  // told at once, only for this computer
+  const told = [];
+  ports.onRevoke(e => told.push(e.reason));
+  const acceptId = await findAccept(r);
+  await r.k.gateway.grants.offers.unoffer(r.bob, acceptId, { presence: proof("grants.offer", { revoke: acceptId }, `vyre://${SPACE}/offer/${acceptId}`) });
+  await new Promise(res => setTimeout(res, 10));
+  assert.deepEqual(told, ["withdrawn"]);
+  // the runner never says `allowed` and never builds a chain
+  assert.throws(() => runnerPorts({ leases: null, offers: r.k.gateway.grants.offers }, { chain: () => r.bob, member: BOB, deviceId: () => "d", deviceKey: () => "k" }), { code: "unavailable" });
+  assert.throws(() => runnerPorts({ leases: r.k.gateway.leases, offers: r.k.gateway.grants.offers }, { chain: () => r.bob, member: BOB, deviceId: () => "", deviceKey: () => "k" }), { code: "bad_input" });
+});
+async function findAccept(r) { const l = r.k.log.read({ type: "offer.created" }).map(e => e.data.offer).find(o => o.side === "member_accepts"); return l.id; }

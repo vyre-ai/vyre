@@ -127,8 +127,11 @@ export class Presence {
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const { st, pin } = await this.evidence(person, ops);
     for (const b of binds) { const k = this.keys.get(b?.key_id); if (k && k.person === person && !k.device && await this.bindOk(st, person, b, b.key_id, k.spki)) k.device = b.eid; }
-    // A key the list no longer vouches for goes, and so does a key nobody ever bound (it would outlive its device's removal); their devices are barred.
-    const pruned = [...this.keys].filter(([, k]) => k.person === person && !(k.device && st.entries.some(e => e.eid === k.device))).map(([id]) => id);
+    // Keys go only on chain evidence (R8 V-2): a key whose device left the list, and, when this chain removed a device the last pin had, a key nobody ever
+    // bound (it would outlive that removal). A sync that shows no removal drops nothing, so it cannot be used to force a recovery. Their devices are barred.
+    const prev = this.pins.get(person), listed = eid => st.entries.some(e => e.eid === eid && e.kind === "device");
+    const removed = !!prev?.devices && Object.keys(prev.devices).some(eid => !listed(eid));
+    const pruned = [...this.keys].filter(([, k]) => k.person === person && (k.device ? !listed(k.device) : removed)).map(([id]) => id);
     for (const id of pruned) { const k = this.keys.get(id); if (k.device) this.barred.add(k.device); this.keys.delete(id); }
     this.pins.set(person, pin); this.save();
     return { pinned: pin.seq, pruned };
@@ -143,9 +146,11 @@ export class Presence {
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };
-    if (this.have(person)) return { refused: "has_keys" };
-    if (!this.ever.has(person) && !this.recovery) return { refused: "not_in_recovery" };
+    // With keys left, only a device the chain gained since the last pin may start a newcomer key this way (the recovery code or two contacts added it, as the chain
+    // allows): the person lost their devices and has no old key to prove with. A device the pin already knew enrols the ordinary way, with a proof.
+    if (this.have(person) && (!this.pins.has(person) || this.pins.get(person).devices?.[bind?.eid])) return { refused: "has_keys" };
     if (!this.pins.has(person)) return { refused: "no_pin" };
+    if (!this.have(person) && !this.ever.has(person) && !this.recovery) return { refused: "not_in_recovery" };
     let attested = false;
     if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
