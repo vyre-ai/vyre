@@ -370,6 +370,11 @@ export function createGrantsStore(cfg) {
       const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device && keyOk(o));
       return { spaceAllows, memberAccepts };
     },
+    /** The active offer record for a side, member and computer (`device` null = the Space's any-computer offer), or null. Sync; it reads the store. */
+    find(/** @type {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} */ q) {
+      for (const o of offers.values()) if (o.status === "active" && o.side === q.side && o.member === q.member && o.device === (q.device ?? null)) return o;
+      return null;
+    },
     /** Be told when an offer is withdrawn or a member's role changes (so the runner can end work at once). Returns an unsubscribe. */
     onRevoke(/** @type {(e: any, by?: any) => void} */ f) { revokeListeners.add(f); return () => revokeListeners.delete(f); },
 

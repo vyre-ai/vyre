@@ -18,6 +18,7 @@ import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
 import { proofFrom, proofRequest } from "./remote/proof.js";
+import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 
@@ -74,7 +75,7 @@ export async function createKernel(cfg) {
     // A failure here (the sealing process went away) surfaces on the module's first call, not as an unhandled rejection nobody can catch.
     ready.catch(() => {});
     const records = new Proxy(gateway.records, { get: (t, k) => (typeof t[k] === "function" ? async (/** @type {any[]} */ ...a) => { await ready; return t[k](...a); } : t[k]) });
-    return Object.freeze({
+    /** @type {any} */ const handle = {
       space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
@@ -88,7 +89,10 @@ export async function createKernel(cfg) {
       runnerPorts: (/** @type {any} */ o) => runnerPorts({ leases: gateway.leases, offers: gateway.grants && gateway.grants.offers }, o),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
-    });
+    };
+    /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
+    handle.offersPort = () => createOffersPort(handle);
+    return Object.freeze(handle);
   };
   /** The home's registry of Spaces (kernel/spaces), set once by it: `ctx.kernel.for(id)` reaches any Space, hosted here or remote, through the same gateway. */
   /** @type {any} */ let spaces = null;

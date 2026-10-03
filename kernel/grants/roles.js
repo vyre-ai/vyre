@@ -3,7 +3,7 @@
 // Only named actions, never wildcards (a wildcard never covers admin, grant or outward actions). Per-project overrides may narrow, never widen.
 const MEMBER = ["records.read", "records.create", "records.update", "records.remove", "records.restore", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "grants.offer"];
 const MANAGER = [...MEMBER, "records.define", "grants.list"];
-const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite"];
+const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.restore"];
 export const ROLE_ACTIONS = Object.freeze({
   owner: Object.freeze([...ADMIN]),
   admin: Object.freeze([...ADMIN]),

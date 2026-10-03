@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
 import { driverFor } from "./workspace.js";
 import { plan, launch, unavailable } from "./sandbox.js";
-import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
+import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { createSessionSync, restore } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
@@ -70,6 +70,8 @@ export function createRunner(o) {
   /** @type {Map<string, any>} */ const live = new Map();
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
+  const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
+  let winPrep = null;   // what prepare() touched on Windows, for cleanup at revoke
   let pending = null;   // a retry timer while the workspace could not be closed yet
   const workOf = m => path.join(m, "work");
   const stateOf = m => path.join(m, "state");
@@ -100,6 +102,11 @@ export function createRunner(o) {
     emit({ type: "locked", why: what });
   }
   async function destroyHard() {
+    // Windows: the container's rights on the folders above the workspace are removed with the workspace.
+    if (platform === "win32") {
+      try { const prep = winPrep || JSON.parse(fs.readFileSync(winPrepFile, "utf8")); cleanupWin({ ...prep, space: o.space }); fs.rmSync(winPrepFile, { force: true }); } catch {}
+      winPrep = null;
+    }
     try { await driver.destroy(dir); } catch (e) { emit({ type: "destroy-failed", why: String(/** @type {any} */ (e).message) }); }
     if (!fs.existsSync(dir)) emit({ type: "deleted" }); else { emit({ type: "delete-pending" }); chase("revoked"); }
   }
@@ -183,6 +190,8 @@ export function createRunner(o) {
     if (platform === "win32") {
       launcher = ensureLauncher(path.join(o.base, "bin"));
       const prep = prepareWin({ launcher, space: o.space, workspace: work, readOnly: s.readOnly || [] });
+      winPrep = { launcher, workspace: work, readOnly: s.readOnly || [] };
+      try { fs.writeFileSync(winPrepFile, JSON.stringify(winPrep), { mode: 0o600 }); } catch {}
       if (!prep.exempt) throw new Error("the Windows sandbox could not allow its loopback proxy: run the Vyre helper as administrator once");
     }
     const p = plan({ platform, space: o.space, launcher, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,

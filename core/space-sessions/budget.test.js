@@ -8,10 +8,10 @@ const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 const key = Buffer.alloc(32, 7);
 const USD = 1_000_000;
 
-function rig({ perCall = 0.6 * USD, limit = 1 * USD, hoursLimit = 10 } = {}) {
+async function rig({ perCall = 0.6 * USD, limit = 1 * USD, hoursLimit = 10 } = {}) {
   let T = 1_800_000_000_000;
   const clock = () => T;
-  const k = createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, clock });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key, clock });
   const chain = k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
   // the door: a declared budget over ai_spend, a fake sealer and a fake provider that says what each call cost
   const budget = k.limits.doorBudget({ limitOf: () => limit, estimate: () => perCall, cost: (_i, u) => u.cost_micro });
@@ -25,7 +25,7 @@ function rig({ perCall = 0.6 * USD, limit = 1 * USD, hoursLimit = 10 } = {}) {
 }
 
 test("a 1 USD budget stops the session at the limit with budget_exhausted and raises a task for the person", async () => {
-  const r = rig();
+  const r = await rig();
   await r.meter.start({ chain: r.chain, session: "s1", person: OWNER });
   assert.equal((await r.meter.turn({ chain: r.chain, session: "s1", person: OWNER }, () => r.say("s1"))).content, "ok");
   assert.equal(r.k.limits.used(OWNER, "ai_spend").settled, 0.6 * USD, "the real cost was settled");
@@ -40,7 +40,7 @@ test("a 1 USD budget stops the session at the limit with budget_exhausted and ra
 });
 
 test("session hours: reserved at start, settled with the hours run, and the person is told when they do not fit", async () => {
-  const r = rig({ hoursLimit: 5 });
+  const r = await rig({ hoursLimit: 5 });
   await r.meter.start({ chain: r.chain, session: "a", person: OWNER });
   assert.equal(r.k.limits.used(OWNER, "session_hours").reserved, 4);
   r.tick(30 * 60_000);
@@ -53,7 +53,7 @@ test("session hours: reserved at start, settled with the hours run, and the pers
 });
 
 test("a failed model call gives the reservation back; no limit set means nothing is counted", async () => {
-  const r = rig();
+  const r = await rig();
   const bad = createDoor({ sealer: { detect: async ({ text }) => ({ text, found: [], ledger: [] }), endSession: async () => {} }, sinks: [], budget: r.k.limits.doorBudget({ limitOf: () => 1 * USD, estimate: () => 0.6 * USD }), drivers: { fake: { call: async () => { throw new Error("provider down"); } } } });
   await assert.rejects(() => bad.call({ chain: r.chain, purpose: "session", provider: "fake", model: "m", session: "x", messages: [{ role: "user", content: "hi" }] }));
   const none = createDoor({ sealer: { detect: async ({ text }) => ({ text, found: [], ledger: [] }), endSession: async () => {} }, sinks: [], budget: r.k.limits.doorBudget({ limitOf: () => undefined }), drivers: { fake: { call: async () => ({ content: "ok" }) } } });

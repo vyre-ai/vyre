@@ -9,7 +9,7 @@ const agentDir = path.join(base, "agent"); fs.mkdirSync(agentDir, { recursive: t
 fs.copyFileSync(new URL("./fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
 const up = http.createServer((req, res) => { res.end("ok"); }); await new Promise(r => up.listen(0, "127.0.0.1", r));
 const sp = fakeSpace();
-const r = createRunner({ base: path.join(base, "rn"), space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), watchdog: false, onEvent: e => log("event", JSON.stringify(e).slice(0, 160)) });
+const r = createRunner({ base: path.join(base, "rn"), space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), watchdog: false, onEvent: e => log("event", JSON.stringify(e).slice(0, 700)) });
 log("decide", JSON.stringify(r.decide()));
 const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.address().port}`, credential: { ref: "vault://provider", header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }] }];
 try {
