@@ -45,6 +45,7 @@ function mountedPaths() {
 export function driverFor(platform, opts = {}) {
   if (platform === "darwin") return macDriver(opts);
   if (platform === "linux") return linuxDriver();
+  if (platform === "win32") return winDriver(opts);
   throw new Error(`no encrypted workspace for ${platform} yet`);
 }
 
@@ -56,6 +57,11 @@ export function workspaceUnavailable(platform = process.platform) {
     if (!fs.existsSync("/dev/fuse")) return "FUSE is not available (/dev/fuse)";
     if (!["fusermount3", "fusermount"].some(t => run("which", [t]).code === 0)) return "fusermount is not installed (apt install fuse3)";
     return "";
+  }
+  if (platform === "win32") {
+    if (run("net", ["session"]).code !== 0) return "the runner needs administrator rights on Windows to attach the encrypted disk (the Vyre helper has them)";
+    const r = run("powershell", ["-NoProfile", "-Command", "if (Get-Command Enable-BitLocker -ErrorAction SilentlyContinue) { 'ok' }"]);
+    return /ok/.test(r.out) ? "" : "this edition of Windows has no BitLocker (Windows Home): sessions for this space run on its server";
   }
   return "no encrypted workspace for this system yet";
 }
@@ -127,6 +133,50 @@ function linuxDriver() {
       }
       const p = procs.get(dir); procs.delete(dir);
       if (p && p.exitCode === null) await new Promise(res => { const t = setTimeout(() => { p.kill("SIGKILL"); res(undefined); }, 3000); p.once("close", () => { clearTimeout(t); res(undefined); }); });
+    },
+    async destroy(dir) { await this.unmount(dir); fs.rmSync(dir, { recursive: true, force: true }); },
+  };
+}
+
+/**
+ * Windows: a BitLocker-protected VHDX (Pro and Enterprise). The disk is made and attached with diskpart (administrator), mounted
+ * as a folder, encrypted with the leased key as the BitLocker password (read from stdin into a SecureString, never an argument or
+ * a file), and locked and detached on unmount. Measured on the Windows 11 test VM (scripts/runner-win/exp3a-bitlocker.ps1).
+ */
+function winDriver({ sizeGb = 8 } = {}) {
+  const vhd = dir => path.join(dir, "vol.vhdx");
+  const mnt = dir => path.join(dir, "mnt");
+  const ps = (script, pass) => runWithPass("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")], pass || Buffer.alloc(0));
+  const dp = async (dir, lines) => {
+    const f = path.join(dir, "dp-" + process.pid + ".txt");
+    fs.writeFileSync(f, lines.join("\r\n") + "\r\n");
+    const r = run("diskpart.exe", ["/s", f]); fs.rmSync(f, { force: true }); return r;
+  };
+  const unlockScript = m => `$p = [Console]::In.ReadLine(); $s = ConvertTo-SecureString $p -AsPlainText -Force; $p = $null; Unlock-BitLocker -MountPoint '${m}' -Password $s | Out-Null`;
+  return {
+    name: "bitlocker-vhdx",
+    exists: dir => fs.existsSync(vhd(dir)),
+    isMounted: dir => { const r = run("powershell.exe", ["-NoProfile", "-Command", `try { (Get-BitLockerVolume -MountPoint '${mnt(dir)}').LockStatus } catch { '' }`]); return /Unlocked/.test(r.out); },
+    async create(dir, key) {
+      fs.mkdirSync(mnt(dir), { recursive: true });
+      const r = await dp(dir, [`create vdisk file="${vhd(dir)}" maximum=${sizeGb * 1024} type=expandable`, `select vdisk file="${vhd(dir)}"`, "attach vdisk", "create partition primary", "format fs=ntfs quick label=vyre", `assign mount="${mnt(dir)}"`]);
+      if (r.code !== 0) throw new Error("could not create the workspace: " + r.out.trim().slice(0, 200));
+      const e = await ps(`$p = [Console]::In.ReadLine(); $s = ConvertTo-SecureString $p -AsPlainText -Force; $p = $null; Enable-BitLocker -MountPoint '${mnt(dir)}' -EncryptionMethod XtsAes256 -PasswordProtector -Password $s -UsedSpaceOnly -SkipHardwareTest | Out-Null`, passphrase(key));
+      if (e.code !== 0) throw new Error("could not encrypt the workspace: " + (e.err || e.out).trim().slice(0, 200));
+      await this.unmount(dir);
+    },
+    async mount(dir, key) {
+      fs.mkdirSync(mnt(dir), { recursive: true });
+      // Attach, give the partition the mount folder if it lost it, then unlock with the password.
+      await dp(dir, [`select vdisk file="${vhd(dir)}"`, "attach vdisk"]);
+      const attach = await ps(`$d = Get-DiskImage -ImagePath '${vhd(dir)}' | Get-Disk; $pt = Get-Partition -DiskNumber $d.Number | Select-Object -First 1; try { Add-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $pt.PartitionNumber -AccessPath '${mnt(dir)}' -ErrorAction Stop } catch {}`);
+      const u = await ps(unlockScript(mnt(dir)), passphrase(key));
+      if (u.code !== 0) { await this.unmount(dir).catch(() => {}); throw new Error("could not open the workspace: " + (u.err || u.out || attach.err).trim().slice(0, 200)); }
+      return mnt(dir);
+    },
+    async unmount(dir) {
+      await ps(`try { Lock-BitLocker -MountPoint '${mnt(dir)}' -ForceDismount | Out-Null } catch {}`);
+      await dp(dir, [`select vdisk file="${vhd(dir)}"`, "detach vdisk"]);
     },
     async destroy(dir) { await this.unmount(dir); fs.rmSync(dir, { recursive: true, force: true }); },
   };

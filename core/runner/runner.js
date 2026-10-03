@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { createLease } from "./lease.js";
 import { driverFor } from "./workspace.js";
 import { plan, unavailable } from "./sandbox.js";
+import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { createSessionSync, restore } from "./sync.js";
 import { place, deviceState } from "./placement.js";
@@ -25,14 +26,14 @@ const spaceDir = (base, space) => path.join(base, "spaces", crypto.createHash("s
 const endsTurn = line => { try { const j = JSON.parse(line); return j && (j.type === "result" || j.type === "turn.end"); } catch { return false; } };
 
 /**
- * @param {{ platform?: "darwin"|"linux", base: string, space: string, device: string,
+ * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string) => Promise<void>|void,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, ttlMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout }} o
  */
 export function createRunner(o) {
-  const platform = /** @type {"darwin"|"linux"} */ (o.platform || process.platform);
+  const platform = /** @type {"darwin"|"linux"|"win32"} */ (o.platform || process.platform);
   const dir = spaceDir(o.base, o.space);
   const driver = o.driver || driverFor(platform);
   const emit = e => { try { o.onEvent?.(e); } catch {} };
@@ -93,7 +94,13 @@ export function createRunner(o) {
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const sock = platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".sock") : undefined;
     const where = await eg.listen(sock ? { socket: sock } : {});
-    const p = plan({ platform, workspace: ws, command: s.command, args: s.args, readOnly: s.readOnly,
+    let launcher;
+    if (platform === "win32") {
+      launcher = ensureLauncher(path.join(o.base, "bin"));
+      const prep = prepareWin({ launcher, space: o.space, workspace: ws, readOnly: [...(s.readOnly || []), path.dirname(s.command)] });
+      if (!prep.exempt) throw new Error("the Windows sandbox could not allow its loopback proxy: run the Vyre helper as administrator once");
+    }
+    const p = plan({ platform, space: o.space, launcher, workspace: ws, command: s.command, args: s.args, readOnly: s.readOnly,
       proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
     const child = spawn(p.argv[0], p.argv.slice(1), { env: p.env, cwd: p.cwd, stdio: ["pipe", "pipe", "pipe"], detached: true });
     const h = { session: s.session, child, eg, sock, sy, queue: Promise.resolve(), stopped: false, exit: null };

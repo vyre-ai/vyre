@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { planWin } from "./sandbox-win.js";
 
 export const SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), "shim.js");
 
@@ -33,7 +34,7 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
 
 /**
  * @typedef {object} PlanOpts
- * @property {"darwin"|"linux"} platform
+ * @property {"darwin"|"linux"|"win32"} platform
  * @property {string} workspace  the mounted, decrypted workspace folder: the only place the session may write
  * @property {string} command    absolute path of the program (the agent)
  * @property {string[]} [args]
@@ -41,6 +42,8 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {string[]} [readOnly]  extra folders the tools need to read (the node install, the agent's own folder)
  * @property {{ port?: number, socket?: string }} proxy  where the egress proxy is: a loopback port (macOS) or a unix socket (Linux)
  * @property {number} [innerPort]  Linux: the loopback port the in-sandbox shim listens on (default 18443)
+ * @property {string} [space]  Windows: the space the container is named for
+ * @property {string} [launcher]  Windows: path of vyre-sandbox.exe
  * @property {string} [node]  the node binary the Linux shim runs under (default process.execPath)
  */
 
@@ -123,6 +126,7 @@ export function plan(o) {
   if (!path.isAbsolute(o.command)) throw new Error("the sandbox runs an absolute program path");
   if (o.platform === "darwin") return planDarwin(o);
   if (o.platform === "linux") return planLinux(o);
+  if (o.platform === "win32") return planWin(/** @type {any} */ ({ ...o, cleanEnv }));
   throw new Error(`no sandbox for ${o.platform} yet`);
 }
 
@@ -135,6 +139,7 @@ export function unavailable(platform = process.platform, run = spawnProbe) {
     if (r.error) return "bubblewrap is not installed (apt install bubblewrap)";
     return /uid map|Permission denied|RTM_NEWADDR|Operation not permitted/.test(r.stderr) ? "this system blocks unprivileged user namespaces for bubblewrap (Ubuntu 24.04 needs the bwrap AppArmor profile, see docs/using/local-runner.md)" : `bubblewrap failed: ${r.stderr.trim().slice(0, 160)}`;
   }
+  if (platform === "win32") return fs.existsSync("C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe") ? "" : ".NET Framework 4 (csc.exe) is missing";
   return "no sandbox for this system yet";
 }
 

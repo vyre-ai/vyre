@@ -253,7 +253,7 @@ test("sync: when the space is unreachable the checkpoint is not claimed, and the
 
 // ---- the real thing: sandbox + encrypted workspace + proxy + sync, on this machine --------------------------------
 
-const SKIP = process.platform === "win32" ? "windows has its own runner (pending the spike)" : (unavailable() || workspaceUnavailable() || "");
+const SKIP = unavailable() || workspaceUnavailable() || "";
 
 /** Every byte under a folder, except mounted workspace views, as one string-searchable list of [file, buffer]. */
 function* diskFiles(root) {
@@ -278,7 +278,7 @@ async function rig(t, over = {}) {
   const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { ref: "vault://provider", header: "x-api-key" } },
     { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { ref: "vault://gmail", header: "authorization", prefix: "Bearer " } }];
   const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir], routes,
-    env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
+    env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || process.env.USERPROFILE || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
   t.after(async () => { try { await runner.stopAll(); await runner.lock(); } catch {} await up.close(); for (const d of [base, agentDir, outsideDir]) rm(d); });
   return { base, runner, sp, up, routes, launch, server, mk };
 }
