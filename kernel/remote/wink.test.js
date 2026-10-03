@@ -18,7 +18,7 @@ test("wink: a kernel call rides the peer wire as the proven device, mapped to a 
   const seen = [];
   const next = async (caller, tool) => { seen.push([caller, tool]); return { other: true }; };
   const people = { dev_owner: OWNER, dev_nobody: null };
-  const serve = withKernelCall(next, { serverFor: s => (s === SPACE ? server : null), personOf: async d => people[d] });
+  const serve = withKernelCall(next, { serverFor: s => (s === SPACE ? server : null), personOf: async d => people[d], pathOf: () => "wink" });
   const remote = device => { wire.device = device; return createRemoteKernel({ space: SPACE, transport: winkTransport({ sessionFor: async () => wire(serve) }), clock }); };
   const r = remote("dev_owner");
   assert.deepEqual((await r.gateway.grants.members.list({})).map(m => m.person), [OWNER]);
@@ -34,4 +34,21 @@ test("wink: a kernel call rides the peer wire as the proven device, mapped to a 
   // any other tool goes to the registry as before
   assert.deepEqual(await serve("device:dev_owner", "mail.list", {}), { other: true });
   assert.deepEqual(seen, [["device:dev_owner", "mail.list"]]);
+});
+
+test("wink: pathOf is required, anything but wink is the relay, and a removed device maps to nobody at its next call (W-1, W-2)", async () => {
+  assert.throws(() => withKernelCall(async () => 1, { serverFor: () => null, personOf: () => null }), /pathOf/);
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), clock });
+  const facts = [];
+  const server = createRemoteServer({ space: SPACE, kernel: { ...k, chains: { ...k.chains, fromFacts: f => (facts.push(f), k.chains.fromFacts(f)) } }, clock });
+  const devices = new Map([["dev_owner", OWNER]]); // the identity chain's live device list
+  const call = id => ({ v: 1, space: SPACE, id, ts: clock(), call: "grants.members.list", args: [] });
+  const via = path => withKernelCall(async () => 0, { serverFor: () => server, personOf: d => devices.get(d), pathOf: () => path });
+  await via("wink")("device:dev_owner", KERNEL_CALL_TOOL, call("rq_1"));
+  await via("relay")("device:dev_owner", KERNEL_CALL_TOOL, call("rq_2"));
+  await via("anything else")("device:dev_owner", KERNEL_CALL_TOOL, call("rq_3"));
+  assert.deepEqual(facts.map(f => f.path), ["wink", "relay", "relay"]);
+  // the device is removed from the identity chain: its very next call is refused
+  devices.delete("dev_owner");
+  assert.equal((await via("wink")("device:dev_owner", KERNEL_CALL_TOOL, call("rq_4"))).error.code, "not_a_member");
 });

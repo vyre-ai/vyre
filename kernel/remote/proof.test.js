@@ -37,7 +37,7 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
   const off = await g.offers.offer(owner, o, proofFrom(signed("offer", o)));
   await g.offers.unoffer(owner, off.id, proofFrom(signed("unoffer", off.id)));
   await g.removeMember(owner, { person: BOB }, proofFrom(signed("removeMember", { person: BOB })));
-  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "narrow", "offer", "removeMember", "revoke", "setRole", "unoffer"]);
+  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "narrow", "offer", "removeMember", "revoke", "setRole", "transferOwner", "unoffer"]);
 });
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {

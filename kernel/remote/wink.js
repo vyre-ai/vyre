@@ -26,9 +26,13 @@ export function winkTransport(o) {
  * The home's end: wrap the peer door's dispatcher so `kernel.call` goes to the Space's remote server with the proven device as peer, and every other tool is the registry's, as before.
  * @param {(caller: string, tool: string, input: any) => Promise<any>} next
  * @param {{ serverFor: (space: string) => { serve(request: any, peer: any): Promise<any> } | null | undefined,
- *   personOf: (device: string, space: string) => Promise<string | null | undefined> | string | null | undefined, pathOf?: (caller: string) => "wink" | "relay" }} o
+ *   personOf: (device: string, space: string) => Promise<string | null | undefined> | string | null | undefined, pathOf: (caller: string) => "wink" | "relay" }} o
+ *   `pathOf` is REQUIRED: the chain records how the call arrived (a Wink node, or the relay surface), and a grant pinned to a node must not be satisfiable by a relay call.
+ *   An answer other than "wink" is taken as the relay. `personOf` is read on every call and must read the identity chain's live device list, so a removed device maps to
+ *   nobody at its very next call; nothing here caches it.
  */
 export function withKernelCall(next, o) {
+  if (!o || typeof o.pathOf !== "function") throw new Error("withKernelCall needs pathOf: say which path this dispatcher serves");
   return async (caller, tool, input) => {
     if (tool !== KERNEL_CALL_TOOL) return next(caller, tool, input);
     const id = input && typeof input.id === "string" ? input.id.slice(0, 64) : null;
@@ -41,6 +45,6 @@ export function withKernelCall(next, o) {
     let person = null;
     try { person = await o.personOf(m[1], space); } catch { /* no person */ }
     if (typeof person !== "string" || !person) return refuse("not_a_member", "no chain for this connection");
-    return server.serve(input, { device_key_id: m[1], person, path: o.pathOf ? o.pathOf(String(caller)) : "wink" });
+    return server.serve(input, { device_key_id: m[1], person, path: o.pathOf(String(caller)) === "wink" ? "wink" : "relay" });
   };
 }
