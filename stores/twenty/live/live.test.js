@@ -62,7 +62,7 @@ if (!URL_ || !KEY_FILE) {
 
   conformance(fresh, { test, assert }, "twenty (live Twenty v2.44.0)");
   specific("twenty (live Twenty v2.44.0)", { test }, { assert }, {
-    waitMs: 20_000,
+    waitMs: 120_000, // a bulk test leaves Twenty's worker with a webhook backlog, so a later webhook can arrive a minute late
     async make() {
       const store = await fresh();
       const behind = async (type, id, patch) => { const p = store.plans.get(type); await client.gql("graphql", "mutation Behind($id: UUID!, $d: ContactUpdateInput!) { updateContact(id: $id, data: $d) { id } }", { id, d: toInput(p, patch) }); };
