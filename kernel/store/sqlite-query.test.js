@@ -139,17 +139,17 @@ test("search: a sealed field is never in the full-text index, and an index built
   await s1.define({ add_types: [{ name: "doc", label: "Doc", fields: [{ name: "title", kind: "text", label: "T" }, { name: "ssn", kind: "sealed", label: "S", seal: { level: "ai" } }] }] });
   await s1.create("doc", id(1), { title: "Plain Harlow", ssn: { sealed: "ssn", ref: "sv_secretword", present: true, valid_format: true, set_at: 1 } });
   for (let i = 2; i < 60; i++) await s1.create("doc", id(i), { title: `Harlow number ${i}` });
-  assert.equal(db.prepare(`SELECT count(*) n FROM kernel_fts WHERE kernel_fts MATCH '"secretword"'`).get().n, 0, "the sealed reference is not indexed");
+  assert.equal(db.prepare(`SELECT count(*) n FROM kernel_ftf WHERE kernel_ftf MATCH '"secretword"'`).get().n, 0, "the sealed reference is not indexed");
   assert.equal((await s1.search({ text: "secretword", page: { limit: 10 } })).rows.length, 0);
   // an older database: records present, no index, no flag
-  db.exec("DELETE FROM kernel_fts; DELETE FROM kernel_flags;");
+  db.exec("DELETE FROM kernel_ftf; DELETE FROM kernel_flags;");
   const s2 = createSqliteStore({ db, clock, hotRows: 10 });
   assert.equal(s2.stats().fts_built, false);
   assert.deepEqual((await s2.search({ text: "harlow", page: { limit: 100 } })).rows.length, 59, "while the index is built the scan answers");
   await s2.ftsReady;
   assert.equal(s2.stats().fts_built, true);
   assert.equal((await s2.search({ text: "harlow", page: { limit: 100 } })).rows.length, 59);
-  assert.equal(db.prepare(`SELECT count(*) n FROM kernel_fts`).get().n, 59);
+  assert.equal(db.prepare(`SELECT count(DISTINCT rowid >> 10) n FROM kernel_ftf`).get().n, 59);
 });
 
 test("search: every page of a ranked search, by cursor, equals the reference's, and a cursor whose record is gone does too", async () => {

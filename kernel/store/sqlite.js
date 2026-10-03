@@ -19,10 +19,10 @@ const MIGRATION = `
   CREATE TABLE IF NOT EXISTS kernel_attrs (urn TEXT PRIMARY KEY, attrs TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS kernel_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
-// The full-text index: one row per live record, rowid = the record's rowid, holding the lowercased text of its non-sealed text fields, one field per line. Trigram, case-sensitive
-// (the text is lowered by the same JS call the reference search uses), so a word of three or more characters is found exactly when the reference's substring test finds it.
-// A sealed field is never in it. Written in the same transaction as the record.
-const FTS = "CREATE VIRTUAL TABLE IF NOT EXISTS kernel_fts USING fts5(doc, tokenize = 'trigram case_sensitive 1')";
+// The full-text index: one row per non-sealed text field of each live record (rowid = record rowid * 1024 + the field's position), holding the field's text lowered by the same JS call
+// the reference search uses. Trigram and case-sensitive, so a word of three or more characters is found exactly when the reference's substring test finds it, and a record's score
+// (one point per field per word it holds) is a count of matching rows. A sealed field is never in it. Written in the same transaction as the record.
+const FTS = "CREATE VIRTUAL TABLE IF NOT EXISTS kernel_ftf USING fts5(doc, tokenize = 'trigram case_sensitive 1')";
 const HOT_ROWS = 5000;
 const HOT_ATTRS = 5000;
 const MAX_INDEXES = 24;
@@ -45,7 +45,7 @@ export function createSqliteStore(cfg) {
   const { db } = cfg;
   db.exec(MIGRATION);
   let ftsOk = true;
-  try { db.exec(FTS); } catch { ftsOk = false; } // a SQLite built without FTS5 keeps the LIKE narrowing
+  try { db.exec("DROP TABLE IF EXISTS kernel_fts"); db.exec(FTS); } catch { ftsOk = false; } // a SQLite built without FTS5 keeps the LIKE narrowing
   const hot = cfg.hotRows ?? HOT_ROWS;
   const types = db.prepare("SELECT def FROM kernel_types").all().map((/** @type {any} */ r) => JSON.parse(r.def));
   /** @type {Map<string, any>} the type definitions, for the query planner */ const defs = new Map(types.map((/** @type {any} */ t) => [t.name, t]));
@@ -88,42 +88,42 @@ export function createSqliteStore(cfg) {
   const getRowid = db.prepare("SELECT rowid AS r FROM kernel_records WHERE type = ? AND id = ?");
   const getFlag = db.prepare("SELECT value FROM kernel_flags WHERE name = ?");
   const setFlag = db.prepare("INSERT INTO kernel_flags (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value");
-  /** The text a record is searched by: its non-sealed text fields, lowercased, one per line. Null when it has none. */
-  const docOf = (/** @type {any} */ r) => {
+  const FIELD_SLOTS = 1024;
+  /** The text a record is searched by: one lowered string per non-sealed text field, with the field's position. A type with more fields than slots is not indexed (searched by scan). */
+  const partsOf = (/** @type {any} */ r) => {
     const def = defs.get(r.type);
-    if (!def) return null;
-    const parts = [];
-    for (const f of def.fields) {
-      if (f.kind === "sealed") continue;
+    if (!def || def.fields.length > FIELD_SLOTS) return null;
+    /** @type {[number, string][]} */ const parts = [];
+    def.fields.forEach((/** @type {any} */ f, /** @type {number} */ i) => {
+      if (f.kind === "sealed") return;
       const v = fieldOf(r, f.name);
       const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
-      if (text) parts.push(text.toLowerCase().replace(/\n/g, " "));
-    }
-    return parts.length ? parts.join("\n") : null;
+      if (text) parts.push([i, text.toLowerCase()]);
+    });
+    return parts;
   };
-  const ftsDel = ftsOk ? db.prepare("DELETE FROM kernel_fts WHERE rowid = ?") : null;
-  const ftsPut = ftsOk ? db.prepare("INSERT INTO kernel_fts (rowid, doc) VALUES (?, ?)") : null;
-  /** Bring one record's entry in step with the record. Called inside the write's transaction. */
+  const ftsDel = ftsOk ? db.prepare("DELETE FROM kernel_ftf WHERE rowid >= ? AND rowid < ?") : null;
+  const ftsPut = ftsOk ? db.prepare("INSERT INTO kernel_ftf (rowid, doc) VALUES (?, ?)") : null;
+  const ftsRead = ftsOk ? db.prepare("SELECT rowid AS i, doc FROM kernel_ftf WHERE rowid >= ? AND rowid < ?") : null;
+  const ftsWrite = (/** @type {number} */ rid, /** @type {any} */ r) => {
+    const parts = r.deleted_at ? [] : partsOf(r) || [];
+    // An edit that leaves every searched text as it was (most do) leaves the index alone.
+    const have = /** @type {any[]} */ (/** @type {any} */ (ftsRead).all(rid * FIELD_SLOTS, (rid + 1) * FIELD_SLOTS));
+    if (have.length === parts.length && have.every((h, k) => h.i === rid * FIELD_SLOTS + parts[k][0] && h.doc === parts[k][1])) return;
+    /** @type {any} */ (ftsDel).run(rid * FIELD_SLOTS, (rid + 1) * FIELD_SLOTS);
+    for (const [i, text] of parts) /** @type {any} */ (ftsPut).run(rid * FIELD_SLOTS + i, text);
+  };
+  /** Bring one record's entries in step with the record. Called inside the write's transaction. */
   const ftsSync = (/** @type {any} */ r) => {
     if (!ftsOk) return;
     const row = /** @type {any} */ (getRowid.get(r.type, r.id));
-    if (!row) return;
-    /** @type {any} */ (ftsDel).run(row.r);
-    const doc = r.deleted_at ? null : docOf(r);
-    if (doc) /** @type {any} */ (ftsPut).run(row.r, doc);
+    if (row) ftsWrite(row.r, r);
   };
-  // The reference score of a record for some words, computed from its search text (one lowered field per line): one point per field per word it holds.
-  if (ftsOk) db.function("vyre_score", { deterministic: true }, (/** @type {any} */ doc, /** @type {any} */ words) => {
-    let sc = 0;
-    const ws = String(words).split("\t");
-    for (const line of String(doc).split("\n")) for (const w of ws) if (line.includes(w)) sc++;
-    return sc;
-  });
   let ftsBuilt = false;
   /** Resolves when the index covers every record: at once on a new database, in slices (the loop is never held) on one that had records before the index. */
   const ftsReady = (async () => {
     if (!ftsOk) return;
-    if (getFlag.get("fts_built")) { ftsBuilt = true; return; }
+    if (getFlag.get("ftf_built")) { ftsBuilt = true; return; }
     const walk = db.prepare("SELECT rowid AS rid, * FROM kernel_records WHERE rowid > ? ORDER BY rowid LIMIT 400");
     let after = 0;
     for (;;) {
@@ -131,18 +131,13 @@ export function createSqliteStore(cfg) {
       if (!chunk.length) break;
       db.exec("BEGIN");
       try {
-        for (const r of chunk) {
-          /** @type {any} */ (ftsDel).run(r.rid);
-          if (r.deleted_at) continue;
-          const doc = docOf({ type: r.type, id: r.id, data: JSON.parse(r.data), version: r.version, created_at: r.created_at, updated_at: r.updated_at });
-          if (doc) /** @type {any} */ (ftsPut).run(r.rid, doc);
-        }
+        for (const r of chunk) ftsWrite(r.rid, { type: r.type, id: r.id, data: JSON.parse(r.data), version: r.version, created_at: r.created_at, updated_at: r.updated_at, deleted_at: r.deleted_at });
         db.exec("COMMIT");
       } catch (err) { db.exec("ROLLBACK"); throw err; }
       after = chunk[chunk.length - 1].rid;
       await new Promise(res => setImmediate(res));
     }
-    setFlag.run("fts_built", "1");
+    setFlag.run("ftf_built", "1");
     ftsBuilt = true;
   })();
   ftsReady.catch(() => {});
@@ -200,24 +195,23 @@ export function createSqliteStore(cfg) {
         return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = '${type}' AND ${where}`).iterate(...eq.map(([, v]) => v)));
       },
       /**
-       * The best `n` records for these words by the reference ranking (score, then id), ranked in SQL from the full-text index so a word every record holds does not mean reading every
-       * record. Null when the index cannot answer (a word under three characters, an index still being built): the caller takes `searchCandidates`.
+       * The best `n` records for these words by the reference ranking (score, then id), ranked in SQL: a record's score is the number of matching field rows, counted per word and
+       * summed, so no record is read but the winners. A word of three or more characters is found by the index, a shorter one by a scan of the field texts. Null when the index cannot
+       * answer (still being built, a type too wide to index): the caller takes `searchCandidates`.
        */
       searchTop(words, /** @type {number} */ n, /** @type {{ score: number, id: string } | undefined} */ after) {
-        if (!(ftsOk && ftsBuilt && words.length && words.every(w => !/\s/.test(w)))) return null;
-        // A word of three or more characters narrows by the index; with a shorter word the index cannot, so every document's text is scored (still without reading a record).
-        const indexed = words.every(w => [...w].length >= 3);
-        const inner = indexed ? "SELECT rowid AS rid, vyre_score(doc, ?) AS sc FROM kernel_fts WHERE kernel_fts MATCH ?" : "SELECT rowid AS rid, vyre_score(doc, ?) AS sc FROM kernel_fts";
-        const args = indexed ? [words.join("\t"), words.map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ")] : [words.join("\t")];
-        return rows(db.prepare(`SELECT k.* FROM (${inner}) h CROSS JOIN kernel_records k ON k.rowid = h.rid WHERE h.sc > 0 AND k.type = ? AND k.deleted_at IS NULL${after ? " AND (h.sc < ? OR (h.sc = ? AND k.id > ?))" : ""} ORDER BY h.sc DESC, k.id LIMIT ?`).all(...args, type, ...(after ? [after.score, after.score, after.id] : []), n));
+        if (!(ftsOk && ftsBuilt && words.length && (defs.get(type)?.fields.length ?? FIELD_SLOTS + 1) <= FIELD_SLOTS)) return null;
+        const per = words.map(w => ([...w].length >= 3 ? "SELECT rowid >> 10 AS rid FROM kernel_ftf WHERE kernel_ftf MATCH ?" : "SELECT rowid >> 10 AS rid FROM kernel_ftf WHERE instr(doc, ?) > 0"));
+        const args = words.map(w => ([...w].length >= 3 ? `"${w.replace(/"/g, '""')}"` : w));
+        return rows(db.prepare(`SELECT k.* FROM (SELECT rid, count(*) AS sc FROM (${per.join(" UNION ALL ")}) GROUP BY rid) h CROSS JOIN kernel_records k ON k.rowid = h.rid WHERE k.type = ? AND k.deleted_at IS NULL${after ? " AND (h.sc < ? OR (h.sc = ? AND k.id > ?))" : ""} ORDER BY h.sc DESC, k.id LIMIT ?`).all(...args, type, ...(after ? [after.score, after.score, after.id] : []), n));
       },
       searchCandidates(words) {
         if (!words.length) return this.values();
         // Words of three or more characters: the full-text index finds every record whose text holds one of them as a substring (the same test the exact code applies next, so this
         // narrows and never drops a match). A shorter word, or an index still being built, takes the scan.
-        if (ftsOk && ftsBuilt && words.every(w => [...w].length >= 3)) {
+        if (ftsOk && ftsBuilt && words.every(w => [...w].length >= 3) && (defs.get(type)?.fields.length ?? FIELD_SLOTS + 1) <= FIELD_SLOTS) {
           const match = words.map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ");
-          return rows(db.prepare("SELECT k.* FROM kernel_fts f CROSS JOIN kernel_records k ON k.rowid = f.rowid WHERE kernel_fts MATCH ? AND k.type = ? AND k.deleted_at IS NULL").iterate(match, type));
+          return rows(db.prepare("SELECT k.* FROM kernel_records k WHERE k.type = ? AND k.deleted_at IS NULL AND k.rowid IN (SELECT rowid >> 10 FROM kernel_ftf WHERE kernel_ftf MATCH ?)").iterate(type, match));
         }
         const any = words.map(() => "data LIKE ? ESCAPE '\\'").join(" OR ");
         return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND (${any})`).iterate(type, ...words.map(w => `%${likeEsc(w)}%`)));
