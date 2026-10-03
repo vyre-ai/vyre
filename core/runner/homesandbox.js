@@ -37,6 +37,7 @@ const SECRET_DIRS = [".ssh", ".aws", ".gnupg", ".kube", ".docker", ".netrc", ".g
  * @property {string[]} [workdirs] folders the session may read and write (the project)
  * @property {{ command: string, args?: string[], private?: { from: string, env: string, credentialFiles: string[] }, hosts?: string[], versionArgs?: string[] }} [agent]  the provider's agent. `private` is REQUIRED: each session gets its OWN config folder holding only the credential files, seeded from the person's real folder `from` (which is never bound), through the env var the provider reads (CLAUDE_CONFIG_DIR). A provider without it does not start sandboxed. `hosts` are what it needs to reach, `versionArgs` make it print its version
  * @property {string} [temp]  the session's own temp folder (read-write)
+ * @property {number[]} [daemonPorts]  the daemon's own TCP ports: refused on every address (macOS)
  * @property {string[]} [passEnv]  names of environment variables the caller deliberately passes through (a credential the agent needs); everything else not on the allow-list is dropped
  * @property {{ socket?: string, port?: number, token?: string }} [proxy] Linux: the egress proxy the provider is reached through (a CONNECT tunnel to the agent's hosts only; the token is its password)
  */
@@ -98,6 +99,7 @@ const allowed = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] :
 /** What the session may WRITE: its project, its temp folder and its private config (inside temp). Nothing else on the disk is writable. @param {HomeOpts} o */
 const writable = o => [...new Set([...(o.workdirs || []), ...(o.temp ? [o.temp] : [])].map(real))];
 /** This machine's own non-loopback addresses: a daemon port bound to all interfaces is reachable on them, and "localhost" does not cover them (reviewer-2 ES-2). */
+const ownV6 = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv6").map(a => a.address.replace(/%.*$/, ""));
 const lanAddrs = () => Object.values(os.networkInterfaces()).flat().filter(a => a && !a.internal && a.family === "IPv4").map(a => a.address);
 const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== path.dirname(d); d = path.dirname(d)) out.push(d); return out; };
 
@@ -112,13 +114,15 @@ export function homeSeatbelt(o) {
     "(version 1)", "(allow default)",
     // Nothing on the disk is writable except what is allowed back below (reviewer-2 ES-1): a user-owned /opt/homebrew, /usr/local, a bundle in
     // /Applications or /private/tmp would otherwise let a session plant a tool that later runs outside the sandbox.
-    "(deny file-write*)", '(allow file-write* (subpath "/dev"))',
+    "(deny file-write*)", '(allow file-write* (literal "/dev/null") (literal "/dev/zero") (literal "/dev/random") (literal "/dev/urandom") (literal "/dev/dtracehelper") (literal "/dev/tty") (subpath "/dev/fd"))',
     // The home folder and the places other people's and external files live are denied whole; the Vyre home and secret folders are inside them.
     ...[...new Set([h, v, "/Users", "/Volumes"])].map(d => `(deny file* (subpath ${q(d)}))`),
     ...SECRET_DIRS.map(d => `(deny file* (subpath ${q(path.join(h, d))}))`),
     // Every unix socket and every loopback connection is refused...
     "(deny network-outbound (remote unix-socket))",
     '(deny network-outbound (remote ip "localhost:*"))',
+    // The daemon's ports are denied on EVERY address directly (an address that appears later, a VPN or a Wi-Fi change, is covered too); the address list is a second layer.
+    ...(o.daemonPorts || []).map(p => `(deny network-outbound (remote ip "*:${Number(p)}"))`),
     ...lanAddrs().map(a => `(deny network-outbound (remote ip "${a}:*"))`),
     // ...then the session gets back only what it needs (these come last, so they win).
     ...writable(o).map(d => `(allow file* (subpath ${q(d)}))`),
@@ -249,6 +253,7 @@ export async function selfTest(o) {
   const old = await stale(o);
   const staleMs = Date.now() - ts;
   if (old.length) return { ok: false, failures: ["the self-test is stale: " + old.join("; ")], results: null };
+  o = { ...o, daemonPorts: o.probes.daemonPorts };
   const base = planHome({ ...o, command: node, args: [], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The session reaches its socket at the path the sandbox gives it (VYRE_SOCKET), which is not the host path on Linux.
   // Folders a session must NOT be able to write, but this user can: the probe means something only where the writer really could (checked from outside).
@@ -256,7 +261,7 @@ export async function selfTest(o) {
   const mustNotWrite = [...new Set([...(o.probes.mustNotWrite || []), ...(o.platform === "darwin" ? [path.dirname(process.execPath), "/private/tmp", "/usr/local/bin", "/opt/homebrew/bin", "/Applications"] : [])])].filter(d => fs.existsSync(d) && writableByUser(d) && !(o.workdirs || []).some(w => real(w).startsWith(real(d))) && !(o.temp && real(o.temp).startsWith(real(d))));
   // The daemon's ports on every address a machine has: loopback, ::1 and the LAN address. Only the ones the host itself can reach are probed.
   const addrPorts = [];
-  for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs()]) if (await hostConnectAddr(a, port)) addrPorts.push([a, port]);
+  for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs(), ...ownV6()]) if (await hostConnectAddr(a, port)) addrPorts.push([a, port]);
   const probes = { ...o.probes, mustNotWrite, addrPorts, ownSocket: base.socket, vyreHome: o.vyreHome || path.join(o.home, ".vyre"), writable: [...(o.temp ? [o.temp] : []), ...(o.workdirs || [])], hosts: o.agent?.hosts || [], proxyPort: o.platform === "linux" && o.proxy ? 18443 : 0, proxyToken: o.proxy?.token || "" };
   const p = planHome({ ...o, command: node, args: ["-e", PROBE, JSON.stringify(probes)], readOnly: [...(o.readOnly || []), path.dirname(node)] });
   // The agent check and the probes run at the same time; the stale check ran first because a stale probe makes the rest meaningless.

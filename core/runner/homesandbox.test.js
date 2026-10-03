@@ -64,9 +64,16 @@ test("ES-1: the seatbelt profile denies all writes first and allows them back on
     const proj = path.join(home, "proj"), tools = path.join(home, "tools"), temp = path.join(home, "t"); for (const d of [proj, tools, temp]) fs.mkdirSync(d, { recursive: true });
     const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), workdirs: [proj], temp, readOnly: [tools] });
     assert.ok(p.indexOf("(deny file-write*)") > 0 && p.indexOf("(deny file-write*)") < p.indexOf("(allow file* (subpath"), "all writes are denied before anything is allowed");
-    assert.match(p, /\(allow file-write\* \(subpath "\/dev"\)\)/);
+    assert.ok(p.includes('(literal "/dev/null")') && !p.includes('(subpath "/dev")'), "only the harmless device nodes, never the other terminals");
     assert.ok(p.includes(`(allow file* (subpath "${fs.realpathSync(proj)}"))`) && p.includes(`(allow file* (subpath "${fs.realpathSync(temp)}"))`));
     assert.ok(p.includes(`(allow file-read* (subpath "${fs.realpathSync(tools)}"))`) && !p.includes(`(allow file* (subpath "${fs.realpathSync(tools)}"))`), "a read-only folder is not writable");
+  } finally { rm(home); }
+});
+
+test("ES-5: the daemon's ports are denied on every address directly, not only on the addresses known at plan time", () => {
+  const home = tmp(); try {
+    const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), daemonPorts: [4321, 4322] });
+    assert.ok(p.includes('(deny network-outbound (remote ip "*:4321"))') && p.includes('(deny network-outbound (remote ip "*:4322"))'));
   } finally { rm(home); }
 });
 

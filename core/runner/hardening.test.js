@@ -452,6 +452,9 @@ test("FS-1: swap or a hibernation image is detected and reported with one plain 
   assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n" : "0:0") }).line, "");
   assert.equal(swapInfo({ platform: "linux", read: p => (p === "/sys/power/resume" ? "259:3\n" : "Filename\n") }).hibernation, true);
   assert.equal(swapInfo({ platform: "darwin", read }).line, "", "macOS encrypts swap by default");
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n/dev/mapper/cryptswap1 partition 1 0 -2\n" : "0:0") }).swap, false, "dm-crypt swap is not a leak");
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n/dev/dm-1 partition 1 0 -2\n" : p === "/sys/block/dm-1/dm/uuid" ? "CRYPT-LUKS2-abc\n" : "0:0") }).swap, false);
+  assert.equal(swapInfo({ platform: "linux", read: p => (p === "/proc/swaps" ? "Filename Type Size Used Priority\n/dev/dm-2 partition 1 0 -2\n" : p === "/sys/block/dm-2/dm/uuid" ? "LVM-xyz\n" : "0:0") }).swap, true, "plain LVM swap is");
 });
 
 test("FS-2: the session starts with umask 077", { skip: SKIP_UMASK() , timeout: 30_000 }, async t => {

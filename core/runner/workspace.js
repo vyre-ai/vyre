@@ -60,7 +60,9 @@ export const SIZES_LINE = "File names are encrypted but file sizes, counts and t
 export function swapInfo(o = {}) {
   const platform = o.platform || process.platform, read = o.read || (p => { try { return fs.readFileSync(p, "utf8"); } catch { return ""; } });
   if (platform !== "linux") return { swap: false, hibernation: false, line: "" };
-  const swap = read("/proc/swaps").split("\n").slice(1).some(l => l.trim());
+  // Swap on an encrypted device (dm-crypt: /dev/mapper/*crypt* or a dm device whose uuid starts CRYPT-) is not a leak: stay quiet about it.
+  const encrypted = f => { const m = /\/dev\/(?:mapper\/(\S*crypt\S*)|(dm-\d+))/.exec(f); if (!m) return false; if (m[1]) return true; return read(`/sys/block/${m[2]}/dm/uuid`).startsWith("CRYPT-"); };
+  const swap = read("/proc/swaps").split("\n").slice(1).filter(l => l.trim()).some(l => !encrypted(l.split(/\s+/)[0]));
   const resume = read("/sys/power/resume").trim();
   const hibernation = Boolean(resume) && resume !== "0:0";
   return { swap, hibernation, line: swap || hibernation ? SWAP_LINE : "" };
@@ -248,9 +250,11 @@ function fscryptDriver() {
     exists: dir => fs.existsSync(enc(dir)),
     isMounted: dir => fs.existsSync(enc(dir)) && status(dir) === "present",
     async create(dir, key) {
+      // Owner-only: only POSIX permissions protect an UNLOCKED workspace. Only the folders THIS call creates are chmodded; a folder that was
+      // already there (a home, a shared mount) is never touched.
+      const made = []; for (let d = enc(dir); !fs.existsSync(d); d = path.dirname(d)) made.push(d);
       fs.mkdirSync(enc(dir), { recursive: true, mode: 0o700 });
-      // Owner-only all the way down: only POSIX permissions protect an UNLOCKED workspace, so no folder above it is open to another user.
-      for (const d of [enc(dir), dir, path.dirname(dir), path.dirname(path.dirname(dir))]) { try { fs.chmodSync(d, 0o700); } catch {} }
+      for (const d of made) { try { fs.chmodSync(d, 0o700); } catch {} }
       const r = await helper("policy", enc(dir), key);
       if (r.code !== 0) throw new Error("could not create the workspace: " + (r.err || "fscrypt refused").trim().slice(0, 200));
     },
