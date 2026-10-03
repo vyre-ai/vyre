@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel): `acceptProofRequest` (what an invitee signs from the join card) and `proofChainHash` on ctx.kernel, and kernel/remote/run/real.mjs, the hand-run proof of the remote call between two machines (home on one, device on the other, direct and through a relay; see the kernel-remote-run review).
+
 - feat(kernel): the remote kernel call over Wink's peer wire (`kernel/remote/wink.js`). `winkTransport({ sessionFor })` is the device's transport; `withKernelCall(serve, { serverFor, personOf })` wraps the peer door's dispatcher so the `kernel.call` tool reaches the Space's remote server with the proven device as peer, mapped to a person by the identity chain. Verified against the real `peerSession` of work/wink over an in-memory pipe.
 
 - fix(kernel): reviewer-2's gate on kernel-spaces (KS-1 to KS-7). The remote server shares one answer between a call id sent twice at once (the in-flight promise is stored first), rate-limits per device (members 300 a minute, non-members 30), bounds the stored answers (8 MB, oldest first) and caps a non-member's answer; remote `surfaces.revoke` takes the chain and is held to the session's opener or an admin, and `surfaces.open` may name only an assistant the Space has; `peer.session` is read only from the transport's peer; invite ids are 128 random bits; a hosted Space's kernel key is the home's sealing process namespaced per Space (`kernel/spaces/namespace.js`), no key file unless `fileKey` (development).

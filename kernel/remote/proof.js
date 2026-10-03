@@ -9,7 +9,7 @@
 //             call(tool, input, { kernel_proof: proof })                       // beside the request, never inside the input
 //   module:   await ctx.kernel.grants.setRole(chain, input, proofFrom(meta))
 import { canonical, sha256 } from "../core/canonical.js";
-import { payloadHash } from "../seal/wire.js";
+import { payloadHash, chainCtx } from "../seal/wire.js";
 import { KernelError } from "../core/errors.js";
 
 const MAX_PROOF_BYTES = 4096;
@@ -62,3 +62,16 @@ export function proofFrom(meta) {
   if (typeof p !== "object" || Array.isArray(p) || size > MAX_PROOF_BYTES || Object.values(p).some(v => typeof v === "function")) return {};
   return { presence: p };
 }
+
+/**
+ * What a person signs to accept an invite: over the contents the join card showed (the same hash the admin approved). `card` is what `invites.get` returned.
+ * @param {string} space @param {{ id: string, role: string, scope?: string[] | null, expires?: number | null, invitee?: string | null }} card @param {string} person
+ */
+export function acceptProofRequest(space, card, person) {
+  const seen = { role: card.role, scope: card.scope ?? null, expires: card.expires ?? null, invitee: card.invitee ?? null };
+  const fields = { invite: card.id, hash: sha256(canonical(seen)), person };
+  return Object.freeze({ op: "grant.accept", space, fields, seen, payload_hash: payloadHash("grant.accept", space, fields) });
+}
+
+/** The chain hash a PresenceProof from `person`'s device must carry for a call the home mints as that person alone (the home recomputes it from the chain it minted). */
+export const proofChainHash = (/** @type {string} */ space, /** @type {string} */ person) => chainCtx({ space, hops: [{ actor: { kind: "person", id: person, space }, via: {} }] }).chain_hash;
