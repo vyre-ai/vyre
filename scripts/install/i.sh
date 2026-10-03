@@ -154,7 +154,7 @@ show_code() {
     case "$typed" in *[!A-Za-z0-9\ -]*) say "  That is not a Vyre code." ; continue ;; esac
     res=$(vyre_call wink.server.confirm "{\"offer\":\"$offer\",\"typed\":\"$typed\"}" || true)
     case "$res" in
-      *'"ok":true'*|*'"ok": true'*) say ""; say "  Done. This server is paired."; return 0 ;;
+      *'"ok":true'*|*'"ok": true'*) say ""; say "  That code matched. The app finishes the pairing and tells you when this server is added; if it says it could not, follow what it says."; return 0 ;;
       *) say "  That code did not match, so the code above stopped working. A new one is showing: run this line again."; return 1 ;;
     esac
   done
