@@ -200,7 +200,17 @@ async function startLocked(opts, root, p, release) {
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
-    const kernelSessions = createKernelSessions({ kernel });
+    // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
+    db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");
+    const turns = { durable: true,
+      get: (/** @type {string} */ t) => { const r = /** @type {any} */ (db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(t)); return r ? JSON.parse(r.body) : undefined; },
+      set: (/** @type {string} */ t, /** @type {any} */ rec) => { db.prepare("INSERT INTO kernel_turns (thread, body) VALUES (?, ?) ON CONFLICT (thread) DO UPDATE SET body = excluded.body").run(t, JSON.stringify(rec)); },
+      delete: (/** @type {string} */ t) => { db.prepare("DELETE FROM kernel_turns WHERE thread = ?").run(t); },
+      all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
+    const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
+    // A chain of exactly that person, built by the kernel: the only way vyred can act for a person with no call in flight (a restart). A person who is no longer a member gets none.
+    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "session_person", person, session: `restart:${person}`, vouched: true });
+    void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {});
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
       const person = kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
