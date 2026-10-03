@@ -119,6 +119,33 @@ export function render(frame, viewer) {
 }
 
 /**
+ * May this viewer see the frame at all? A block that names `read_roles` (a record the viewer is not cleared for) is
+ * not for a viewer who holds none of them. @param {any} frame @param {Viewer} viewer
+ */
+export function mayView(frame, viewer) {
+  const mine = viewer && Array.isArray(viewer.roles) ? viewer.roles : [];
+  for (const [, b] of blocksOf(frame)) {
+    if (!isObj(b) || !Array.isArray(b.read_roles) || b.read_roles.length === 0) continue;
+    if (!b.read_roles.some((/** @type {string} */ r) => mine.includes(r))) return false;
+  }
+  return true;
+}
+
+/**
+ * The frame a connection is sent: what `viewer` may see. A frame they may not see is replaced by a `hidden` frame that
+ * keeps its cursor (so the client's gapless check holds) and carries nothing of it: no author, no text, no block, no
+ * ref. Every other frame goes through render(): sealed and hidden fields are placeholders. Control and ephemeral frames
+ * (cur 0) hold no record and pass. The server calls this once per connection, before conn.send, for replay and live alike;
+ * a client never decides what it may see. @param {any} frame @param {Viewer} viewer
+ */
+export function forViewer(frame, viewer) {
+  if (!viewer || !isObj(frame) || !isObj(frame.data)) return frame;
+  if (!(frame.cur >= 1)) return frame;
+  if (!mayView(frame, viewer)) return { v: frame.v, id: frame.id, cur: frame.cur, session: frame.session, turn: null, type: "session.hidden", time: frame.time, corr: null, data: {} };
+  return render(frame, viewer);
+}
+
+/**
  * Throw when the frame holds a field the asker cannot read, with its value or ref in it. A reply is
  * built under the asker's authority (acts_for): call this where it is built.
  * @param {any} frame @param {Viewer} asker

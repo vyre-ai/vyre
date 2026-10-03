@@ -14,6 +14,7 @@ import * as config from "../config/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { fakeThreads } from "./fake-threads.js";
+import { connect, wsDuplex } from "./client.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CAROL = "carol@example.com", DAVE = "dave@example.com", BOB = "bob@example.com", ALEX = "alex@example.com";
@@ -46,7 +47,7 @@ async function world(t) {
     r.on("error", () => resolve(0));
     r.end();
   });
-  return { reg, w, as, status, stream: () => reg.modules.get("stream")?.handle };
+  return { reg, w, as, status, port, stream: () => reg.modules.get("stream")?.handle };
 }
 const ok = r => { assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); return r.data; };
 const codeOf = r => (r.error ? r.error.code : "ok");
@@ -132,4 +133,19 @@ test("C-1: a thread is read through threads.get AS THE CALLER, and its refusal i
   assert.equal(codeOf(await w.reg.call("stream.open", { session: "thr_9" }, "deck")), "ok");
   const calls = globalThis.__fakeThreadsCalls.filter(c => c.thread === "locked_1");
   assert.deepEqual(calls.map(c => c.caller), [`tailnet:${BOB}`, "deck"], "asked under each caller's own label, not the module's");
+});
+
+test("C-3: over the real socket the ticket's viewer is drawn for: a sealed field reaches the second person as a placeholder with no ref", async t => {
+  const w = await world(t);
+  const session = await group(w);
+  w.stream().logs.get(session).append("tool-finished", { tool_id: "t1", ok: true, result: { block: "record", title: "Matter", fields: [
+    { name: "ssn", label: "SSN", kind: "sealed", value: { sealed: "ssn", ref: "seal:abc-9f31", present: true, valid_format: true, set_at: 1 } }] } }, { author: "assistant:kit", acts_for: `person:${CAROL}` });
+  /** @type {any[]} */ const got = [];
+  const c = connect({ open: async ({ from }) => { const o = ok(await w.as(DAVE, "deck")("stream.open", { session, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
+  t.after(() => c.close());
+  const until = async p => { const end = Date.now() + 5000; while (!p() && Date.now() < end) await new Promise(r => setTimeout(r, 5)); assert.ok(p()); };
+  await until(() => got.some(f => f.type === "session.tool-finished"));
+  const rec = got.find(f => f.type === "session.tool-finished");
+  assert.equal(rec.data.result.fields[0].placeholder, true);
+  assert.ok(!JSON.stringify(got).includes("seal:abc-9f31"));
 });

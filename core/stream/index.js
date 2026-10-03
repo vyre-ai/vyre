@@ -25,7 +25,7 @@ export * from "./protocol.js";
 export { whoAnswers, mentionedIn } from "./routing.js";
 export { createDoorAdapter, pipeDoor, drainDoor } from "./door-adapter.js";
 export { createGroups } from "./group.js";
-export { render, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
+export { render, forViewer, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
 export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";
 export { createReadMarkers } from "./readmarks.js";
 
@@ -140,7 +140,7 @@ export default {
         const from = Number.isInteger(n) && n >= 0 ? n : held.from ?? undefined;
         sockets.add(socket);
         socket.on("close", () => sockets.delete(socket));
-        serveWS(logs.get(held.session), req, socket, head, { ...(from === undefined ? {} : { from }), ...(groups ? { also: send => groups.hear(held.person, f => { if (f.session === held.session) send(f); }) } : {}) });
+        serveWS(logs.get(held.session), req, socket, head, { viewer: held.viewer, ...(from === undefined ? {} : { from }), ...(groups ? { also: send => groups.hear(held.person, f => { if (f.session === held.session) send(f); }) } : {}) });
       } catch { reject(socket, 400, "Bad Request"); }
     });
 

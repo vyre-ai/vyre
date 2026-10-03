@@ -29,6 +29,8 @@ export const KINDS = Object.freeze([
   // group chat (0.3): who is in it, what people do with a message, and a set of answers to one question
   "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut",
 ]);
+/** Never logged: what the home sends a viewer in place of a frame they may not see (viewer.js forViewer). It keeps the cursor and holds nothing. */
+export const STUBS = Object.freeze(["hidden"]);
 export { EPHEMERAL, isEphemeral, HOLDBACK, settle };
 /** Control kinds: never logged, no cursor. */
 export const CONTROL = Object.freeze(["reset", "heartbeat"]);
@@ -69,6 +71,7 @@ const CHECK = {
   "read-marker": d => (isInt(d.upto) ? null : "read-marker needs upto, a cursor"),
   "fanout": d => (idStr(d.group) && idStr(d.message) && Array.isArray(d.members) && d.members.length >= 2 && d.members.length <= 8 && d.members.every((/** @type {any} */ m) => isObj(m) && isAuthor(m.who) && idStr(m.message)) ? null : "fanout needs group, message and members, two or more of { who, message }"),
   "fanout-keep": d => (idStr(d.group) && idStr(d.keep) ? null : "fanout-keep needs group and keep, a message id"),
+  "hidden": d => (Object.keys(d).length === 0 ? null : "hidden holds nothing"),
   "text-cut": d => (idStr(d.message) && isStr(d.note) ? null : "text-cut needs message and note"),
   "reset": d => (isStr(d.reason) ? null : "reset needs a reason"),
   "heartbeat": d => (isInt(d.head) ? null : "heartbeat needs head"),
@@ -103,7 +106,7 @@ export function validate(f) {
   if (!isStr(o.type) || !o.type.startsWith("session.")) return { ok: false, error: "type must be session.<kind>" };
   const kind = o.type.slice(8);
   const control = CONTROL.includes(kind) || EPHEMERAL.includes(kind);
-  if (!control && !KINDS.includes(kind)) return { ok: false, error: `unknown kind ${kind}` };
+  if (!control && !KINDS.includes(kind) && !STUBS.includes(kind)) return { ok: false, error: `unknown kind ${kind}` };
   if (!idStr(o.id)) return { ok: false, error: "id is required" };
   if (!idStr(o.session)) return { ok: false, error: "session is required" };
   if (control ? o.cur !== 0 : !(Number.isInteger(o.cur) && o.cur >= 1)) return { ok: false, error: control ? "a control frame has cur 0" : "cur must be an integer from 1" };

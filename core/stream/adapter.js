@@ -21,6 +21,7 @@
 
 import { blockFor, kindOfTool, summarize, termChunks } from "./protocol.js";
 import { describe, toUserMessage } from "../../lib/queue-state.js";
+import { redact } from "../transcripts/sanitize.js";
 
 /** The switchboard's raw thread.state word, as a person says it (lib/thread-status.js). @param {unknown} w */
 export function stateWord(w) {
@@ -112,7 +113,9 @@ export function createAdapter() {
 
   /** A shell line the person ran: what they typed, then what it printed. @param {string} term @param {string} command @param {string} output */
   const shell = (term, command, output) => {
-    /** @type {Spec[]} */ const out = [spec("term-command", { term, command })];
+    // Redacted before it is logged or sent: a shell prints whatever the session read (a key in an env dump, a token in a config).
+    /** @type {Spec[]} */ const out = [spec("term-command", { term, command: redact(command).text })];
+    output = redact(output).text;
     if (output) {
       const bytes = Buffer.from(output, "utf8");
       const at = offsets.get(term) ?? 0;

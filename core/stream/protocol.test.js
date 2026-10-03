@@ -38,6 +38,13 @@ test("protocol: every kind validates with its data and is refused without it", (
   assert.equal(KINDS.length, 20);
 });
 
+test("protocol: a hidden stub keeps a cursor and holds nothing", () => {
+  const stub = { v: 1, id: "h", cur: 4, session: "s", turn: null, type: "session.hidden", time: 1, corr: null, data: {} };
+  assert.deepEqual(validate(stub), { ok: true });
+  assert.equal(validate({ ...stub, data: { text: "x" } }).ok, false);
+  assert.equal(validate({ ...stub, cur: 0 }).ok, false);
+});
+
 test("protocol: envelope fields are checked", () => {
   const f = frame("status", good.status, ctx);
   assert.equal(validate({ ...f, v: 2 }).ok, false);

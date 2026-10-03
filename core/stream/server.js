@@ -17,6 +17,7 @@
 
 import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
 import { heartbeatFrame, resetFrame } from "./protocol.js";
+import { forViewer } from "./viewer.js";
 
 export const HEARTBEAT_MS = 25_000;
 export const MAX_BUFFERED = 1024 * 1024;
@@ -24,7 +25,7 @@ export const MAX_BUFFERED = 1024 * 1024;
 /**
  * @typedef {{ send: (f: any) => void, onClose: (cb: () => void) => void, close?: () => void,
  *   onMessage?: (cb: (m: any) => void) => void, buffered?: () => number, onDrain?: (cb: () => void) => void }} Conn
- * @typedef {{ from?: number, heartbeatMs?: number, maxBuffered?: number,
+ * @typedef {{ from?: number, heartbeatMs?: number, maxBuffered?: number, viewer?: import("./viewer.js").Viewer,
  *   also?: (send: (f: any) => void) => (() => void) | void,
  *   timers?: { setInterval: Function, clearInterval: Function } }} ServeOptions
  */
@@ -44,7 +45,9 @@ export function serve(log, conn, opts = {}) {
   /** @type {null | (() => void)} */ let alsoOff = null;
   /** @type {any} */ let hb = null;
 
-  const send = (/** @type {any} */ f) => { try { conn.send(f); } catch { shut(); } };
+  // The viewer is part of the connection: every frame, replayed or live, is drawn for them HERE, before conn.send.
+  // Nothing a connection sends has not been through forViewer; a client only draws what arrives.
+  const send = (/** @type {any} */ f) => { try { conn.send(opts.viewer ? forViewer(f, opts.viewer) : f); } catch { shut(); } };
   const shut = () => {
     if (closed) return;
     closed = true;
