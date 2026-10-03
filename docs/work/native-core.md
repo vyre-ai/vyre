@@ -8,6 +8,13 @@ back.
 
 Definition of done: the user uses Vyre chat for a full working day instead of the terminal.
 
+## 2026-10-03: the UI build (branch work/ui, worktree ../vyre-ui, off work/rc-0.2.2)
+The user approved the prototype (team/0.2.2/ux-prototype.html, sources team/0.2.2/prototype-src, reference shots team/0.3/ui-ref at 1280 and 390, dark and paper). Build the real Deck from it, studs first. Read team/0.3/ui-primitives.md, tokens-v3.json, DESIGN-tasks.md, VYRE-primitives.html.
+Order: (1) tokens v3 then ~15 base components; (2) one display and one edit renderer per field kind, sealed included; (3) list, board and record page generated from type definitions; (4) Now as a view over tasks, with the task card (Send with Face ID, Fix, Reassign); (5) the project page, stages made of tasks, the team with its "doing now" line. The "client pays" scenario runs on the mock store first, then on the real gateway when records lands.
+Rules: a feature adds definitions, never a component, a field renderer or a one-off style. Nothing outside tokens holds a colour, a size or a radius (a build check enforces it). The existing Deck keeps working: the new screens mount under /u/ (/u/now, /u/projects, /u/project/:id, /u/records/:type, /u/record/:id, /u/task/:id, /u/appearance) until cutover.
+Layout (new code only, ESM, no dependencies, h() from js/dom.js): deck/ui/tokens-v3.js (generated), theme.js (resolve and apply the space and person settings), contracts.js (the types and the Store interface), components/*.js plus css/ui.css (base components), fields.js (field renderers), views.js (list, board, record page), types.js (sample type definitions), store.js and mock-store.js, tasks.js; screens in views/ui-*.js with css/ui-*.css. lib/theme/contrast.js is the shared colour maths.
+Done so far: tokens.json v3 group, gen-tokens writes css/tokens-v3.css and ui/tokens-v3.js, contrast.js, ui/theme.js (tested), ui/contracts.js.
+
 ## 2026-10-02 (late): redesign on work/023-shell, resume here
 Worktree ../vyre-022-feel (branch work/023-shell, pushed). Deck v2 steps 1 to 5 are in. This session:
 - Rename controls (#65 follow-up): the computers.rename pencil and every Devices name field show only when the server has the tool (c84e15bc1).

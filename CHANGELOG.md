@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ui: tokens v3, the theme resolver and the UI contracts (work/ui, step 1)
+
+- `lib/theme/tokens.json` gains a `v3` group (what a space and a person may configure: the five accents with dark and paper values, density, font, corner steps, the component and field-kind lists). `scripts/gen-tokens` writes `deck/css/tokens-v3.css` (space, radii, density, font and corners as root attributes; with none set every value equals v2) and `deck/ui/tokens-v3.js`.
+- `lib/theme/contrast.js` is the colour maths a custom accent needs (contrast, mix, ink by luminance, the nearest passing colour), pure, shared by Node and the Deck (served at `/lib/theme/contrast.js`).
+- `deck/ui/theme.js` resolves defaults, then the space, then the person, and writes the result onto the root: attributes for density, font and corners, custom properties for the accent. A custom accent that fails contrast is replaced by the nearest that passes, and the result says so.
+- `deck/ui/contracts.js` holds the types (records, tasks, events, the Store interface) the generated screens read.
+
 - test(vault) #77: agent grants read the time from the vault's `clock` (default `Date.now`), and "an expired grant is out of force" moves a fake clock instead of sleeping, so it can no longer flake.
 - ci(matrix): J2b update refusals, J2c cosign refusals, J5 (the phone QR, a Needs-you push, removing a device) and J1/J6/J7/J8 as jobs of the full matrix workflow, plus matrix-j5.yml and matrix-update-refusals.yml. Harness only (e2e2).
 - test(matrix): J2 upgrade fits 0.1.1's wrapper (no --print-link, update without --yes, rollback with it) and reads the seeded fact through memory.me; J8 checks the sealed export, an uninstall that keeps and deletes with an audit, and an import into a fresh box. Harness only (e2e2).
