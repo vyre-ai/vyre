@@ -272,3 +272,23 @@ print(out)`;
   assert.match(out, /'bpf': \(-1, 1\)/, out);
   assert.doesNotMatch(out, /'getpid': \(-1/, out);
 });
+
+// ---- the real ports ---------------------------------------------------------------------------------------------------
+
+import { realPorts } from "./ports.js";
+test("ports: the lease is for this computer's device key and carries the kernel's answer; revoke callbacks are for this device", async () => {
+  const calls = []; let both = true; const subs = [];
+  const sealer = { lease: { issue: i => { calls.push(["issue", i]); return { id: "lease_1", key: "AA==", ttlMs: 1 }; }, renew: i => { calls.push(["renew", i]); return { ttlMs: 1 }; } } };
+  const offers = { active: q => { calls.push(["active", q]); return { spaceAllows: both, memberAccepts: true }; }, onRevoke: fn => { subs.push(fn); return () => {}; } };
+  const p = realPorts({ sealer, offers, use: async o => "secret-for-" + o.method, deviceId: () => "dev_kit", member: "usr_juno", spec: async () => ({}), sync: {} });
+  assert.equal(p.device, "dev_kit");
+  await p.vault.lease({ space: "spc_harlow", device: "anything the caller says" });
+  assert.deepEqual(calls.find(c => c[0] === "issue")[1], { space: "spc_harlow", device: "dev_kit", allowed: true });
+  both = false; await p.vault.renew({ id: "lease_1" });
+  assert.deepEqual(calls.find(c => c[0] === "renew")[1], { id: "lease_1", allowed: false });
+  assert.equal(await p.vault.credential({ method: "GET" }), "secret-for-GET");
+  const got = []; p.onRevoke(i => got.push(i.id));
+  subs[0]({ id: "o1", device: "dev_other" }); subs[0]({ id: "o2", device: "dev_kit" }); subs[0]({ id: "o3", device: null });
+  assert.deepEqual(got, ["o2", "o3"]);
+  assert.throws(() => realPorts({ sealer, offers, use: async () => "", deviceId: () => "", member: "m", spec: async () => ({}), sync: {} }), /device key/);
+});

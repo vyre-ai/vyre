@@ -56,7 +56,7 @@ export async function reconcile(o) {
  * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string) => Promise<void>|void,
- *   reader?: any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
+ *   reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
  */
@@ -205,7 +205,7 @@ export function createRunner(o) {
           try {
             const cur = o.labels ? mergeLabels(h.labels, o.labels(s.session)) : h.labels;
             h.labels = cur;
-            const st = { labels: cur, routes: routes.map(r => r.prefix) };
+            const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
             const ok = await sy.checkpoint(o.sealState ? o.sealState(st) : st);
             emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
           } finally { group("SIGCONT"); }
@@ -220,7 +220,7 @@ export function createRunner(o) {
       resolve({ code, signal: sig });
     }));
     emit({ type: "started", session: s.session, pid: child.pid });
-    return { pid: child.pid, child, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session), labels: () => h.labels };
+    return { pid: child.pid, child, resumed, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session), labels: () => h.labels };
   }
 
   async function finish(h) {
