@@ -13,6 +13,12 @@ export const snake = (/** @type {string} */ s) => s.replace(/[A-Z]/g, (c) => "_"
 export const pascal = (/** @type {string} */ s) => { const c = camel(s); return c[0].toUpperCase() + c.slice(1); };
 export const choiceValue = (/** @type {string} */ c) => c.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 
+/** Names Twenty refuses for objects and fields and would rename itself with a "Custom" suffix
+ * (twenty-shared, reserved-metadata-name-keywords, MIT). We apply the suffix ourselves so the name is stable. */
+export const TWENTY_RESERVED_KEYWORDS = new Set(["approvedAccessDomain", "approvedAccessDomains", "appToken", "appTokens", "billingCustomer", "billingCustomers", "billingEntitlement", "billingEntitlements", "billingMeter", "billingMeters", "billingProduct", "billingProducts", "billingSubscription", "billingSubscriptions", "billingSubscriptionItem", "billingSubscriptionItems", "featureFlag", "featureFlags", "job", "jobs", "keyValuePair", "keyValuePairs", "pageLayout", "pageLayouts", "pageLayoutTab", "pageLayoutTabs", "pageLayoutWidget", "pageLayoutWidgets", "twoFactorMethod", "twoFactorMethods", "user", "users", "userWorkspace", "userWorkspaces", "workspace", "workspaces", "role", "roles", "userWorkspaceRole", "userWorkspaceRoles", "plan", "plans", "event", "events", "field", "fields", "link", "links", "currency", "currencies", "fullNames", "address", "addresses", "type", "types", "object", "objects", "index", "relation", "relations", "aggregate", "connect", "create", "disconnect", "search", "searches"]);
+/** @param {string} n */
+const safeName = (n) => (TWENTY_RESERVED_KEYWORDS.has(n) ? n + "Custom" : n);
+
 /** Names Twenty already uses on every object, and its standard objects: a Vyre type or field may not take them. */
 export const RESERVED_FIELDS = new Set(["id", "name", "createdAt", "updatedAt", "deletedAt", "createdBy", "updatedBy", "position", "searchVector", "timelineActivities", "attachments", "favorites", "noteTargets", "taskTargets"]);
 export const RESERVED_TYPES = new Set(["person", "people", "company", "companies", "opportunity", "opportunities", "task", "tasks", "note", "notes", "attachment", "attachments", "workspaceMember", "workspaceMembers", "dashboard", "dashboards", "workflow", "workflows", "workflowRun", "workflowVersion", "favorite", "favorites", "message", "messages", "calendarEvent", "calendarEvents", "timelineActivity", "blocklist", "connectedAccount"]);
@@ -48,15 +54,15 @@ function twentyKind(f) {
 
 /** @param {any} typeDef a stored type @returns {TypePlan} */
 export function planType(typeDef) {
-  const singular = camel(typeDef.name);
-  const plural = typeDef.plural ? camel(typeDef.plural.toLowerCase().replace(/[^a-z0-9]+/g, "_")) : singular + "s";
+  const singular = safeName(camel(typeDef.name));
+  const plural = safeName(typeDef.plural ? camel(typeDef.plural.toLowerCase().replace(/[^a-z0-9]+/g, "_")) : camel(typeDef.name) + "s");
   if (RESERVED_TYPES.has(singular) || RESERVED_TYPES.has(plural)) throw new StoreError("name_reserved", `"${typeDef.name}" is a name Twenty already uses for a standard object`, { name: typeDef.name });
   if (singular === plural) throw new StoreError("invalid", `Type "${typeDef.name}" needs a plural that differs from its name`);
   const title = typeDef.title ?? typeDef.fields.find((/** @type {any} */ f) => f.kind === "text")?.name ?? null;
   /** @type {FieldPlan[]} */ const fields = [];
   for (const f of typeDef.fields) {
     const isTitle = f.name === title;
-    const tw = isTitle ? "name" : camel(f.name);
+    const tw = isTitle ? "name" : safeName(camel(f.name));
     if (!isTitle && RESERVED_FIELDS.has(tw)) throw new StoreError("name_reserved", `Field "${f.name}" of ${typeDef.name} collides with a name Twenty uses on every object`, { name: f.name });
     const k = isTitle ? { type: "TEXT" } : twentyKind(f);
     fields.push({ vyre: f.name, kind: f.kind, twenty: tw, type: k.type, settings: k.settings, options: k.options, sealed: f.kind === "sealed", nullable: true, required: !!f.required, isTitle, def: f });
@@ -78,7 +84,7 @@ export function toTwentyValue(f, v, typeName) {
   switch (f.kind) {
     case "sealed": if (v !== SEALED_PLACEHOLDER) throw new StoreError("sealed_value", `${typeName}.${f.vyre} is sealed: a store only ever holds the placeholder`, { field: f.vyre }); return SEALED_PLACEHOLDER;
     case "text": case "richtext": if (typeof v !== "string") bad("expected text"); if (f.def.maxLength && v.length > f.def.maxLength) bad(`longer than ${f.def.maxLength}`); return v;
-    case "actor": case "person": if (f.def.multiple) { if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) bad("expected a list of actors"); return v; } if (typeof v !== "string" || !/^(person|assistant|device):[a-z0-9._-]+$/.test(v)) bad('expected an actor such as "person:alex" or "assistant:juno"'); return v;
+    case "actor": case "person": if (f.def.multiple) { if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) bad("expected a list of actors"); return v; } if (typeof v !== "string" || !/^(person|assistant|device):[a-z0-9._-]+$/.test(v)) bad(`expected an actor such as "person:alex" or "assistant:juno", got ${JSON.stringify(v)}`); return v;
     case "number": if (typeof v !== "number" || !Number.isFinite(v)) bad("expected a number"); if (f.def.integer && !Number.isInteger(v)) bad("expected a whole number"); if (f.def.min !== undefined && v < f.def.min) bad(`below ${f.def.min}`); if (f.def.max !== undefined && v > f.def.max) bad(`above ${f.def.max}`); return v;
     case "money": { if (typeof v !== "object" || typeof v.amount !== "number" || !Number.isFinite(v.amount)) bad("expected { amount, currency }"); const cur = v.currency ?? f.def.currency ?? "USD"; if (!/^[A-Z]{3}$/.test(cur)) bad("bad currency"); return { amountMicros: Math.round(v.amount * 1_000_000), currencyCode: cur }; }
     case "date": if (typeof v !== "string" || !DATE_RE.test(v) || Number.isNaN(Date.parse(v))) bad("expected YYYY-MM-DD"); return v;
@@ -95,6 +101,7 @@ export function toTwentyValue(f, v, typeName) {
 /** Twenty value -> language value. @param {FieldPlan} f @param {any} v */
 export function fromTwentyValue(f, v) {
   if (v === null || v === undefined) return null;
+  if (v === "" && (f.type === "TEXT" || f.type === "UUID")) return null; // Twenty hands an unset text field back as ""
   switch (f.kind) {
     case "money": return v.amountMicros == null ? null : { amount: Number(v.amountMicros) / 1_000_000, currency: v.currencyCode ?? f.def.currency ?? "USD" };
     case "choice": { const o = f.def.options.find((/** @type {string} */ x) => choiceValue(x) === v); return o ?? null; }
@@ -167,7 +174,7 @@ function sysCond(k, c) {
 /** @param {FieldPlan} f @param {string} op @param {any} val @param {string} tn */
 function fieldCond(f, op, val, tn) {
   const one = (/** @type {any} */ x) => toTwentyValue(f, x, tn);
-  if (op === "isNull") return { is: val ? "NULL" : "NOT_NULL" };
+  if (op === "isNull") return f.type === "CURRENCY" ? { amountMicros: { is: val ? "NULL" : "NOT_NULL" } } : { is: val ? "NULL" : "NOT_NULL" };
   const map = { eq: "eq", ne: "neq", gt: "gt", gte: "gte", lt: "lt", lte: "lte", in: "in", contains: "ilike" };
   if (!(op in map)) throw new StoreError("invalid", `Unknown operator ${op}`);
   if (f.type === "CURRENCY") { if (op === "in" || op === "contains") throw new StoreError("invalid", "money supports eq ne gt gte lt lte isNull"); return { amountMicros: { [map[op]]: Math.round((typeof val === "object" ? val.amount : val) * 1_000_000) } }; }

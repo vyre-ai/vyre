@@ -49,11 +49,12 @@ export class TwentyClient {
 function mapError(e, data) {
   const msg = String(e.message ?? "error");
   const sub = e.extensions?.subCode ?? e.extensions?.code ?? "";
-  if (sub === "RECORD_NOT_FOUND" || /not found/i.test(msg)) return new StoreError("not_found", "No such record", { twenty: msg });
+  if (sub === "RECORD_NOT_FOUND" || /^Record not found/i.test(msg)) return new StoreError("not_found", "No such record", { twenty: msg });
   if (/duplicate|unique|already exists|violates/i.test(msg) || sub === "RECORD_ALREADY_EXISTS") return new StoreError("id_exists", "A record with that id or unique value already exists", { twenty: msg });
   if (/not a valid UUID|Invalid UUID/i.test(msg)) return new StoreError("invalid", "The id is not a valid id", { twenty: msg });
   if (e.extensions?.code === "BAD_USER_INPUT" || /cannot query field|unknown argument|Variable/i.test(msg)) return new StoreError("invalid", `Twenty rejected the request: ${msg.slice(0, 200)}`, { twenty: msg });
-  return new StoreError("unavailable", `Twenty error: ${msg.slice(0, 300)}`, { twenty: msg });
+  const ext = e.extensions ? JSON.stringify(e.extensions).slice(0, 700) : "";
+  return new StoreError("unavailable", `Twenty error: ${msg.slice(0, 300)} ${ext}`.trim(), { twenty: msg, extensions: e.extensions });
 }
 
 /** Plain GET for /healthz and /client-config. @param {TwentyClient} c @param {string} p */

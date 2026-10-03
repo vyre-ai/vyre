@@ -7,6 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { StoreError, SEALED_PLACEHOLDER } from "../contract.js";
 import { mintId, isRecordId } from "../../records/ids.js";
 import { TwentyClient, twentyGet } from "./client.js";
@@ -60,7 +61,7 @@ export class TwentyStore {
   async health() {
     const h = await twentyGet(this.client, "/healthz");
     if (h.status !== 200) return { ok: false, reason: `Twenty is not answering (${h.status || "no reply"})` };
-    try { await this.client.gql("metadata", "query Health { objects(paging: { first: 1 }) { totalCount } }"); } catch (e) { return { ok: false, reason: /** @type {Error} */ (e).message }; }
+    try { await this.client.gql("metadata", "query Health { objects(paging: { first: 1 }) { edges { node { id } } } }"); } catch (e) { return { ok: false, reason: /** @type {Error} */ (e).message }; }
     return { ok: true };
   }
   async version() {
@@ -136,7 +137,9 @@ export class TwentyStore {
     const p = this.plan(type);
     if (!isIdShape(id)) throw new StoreError("invalid", "The id is not a valid id");
     const filter = opts.includeDeleted ? { and: [{ id: { eq: id } }, { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] }] } : { id: { eq: id } };
-    const d = await this.client.gql("graphql", `query Get_${p.singular}($f: ${pascal(p.singular)}FilterInput) { ${p.singular}(filter: $f) { ${selection(p)} } }`, { f: filter });
+    let d;
+    try { d = await this.client.gql("graphql", `query Get_${p.singular}($f: ${pascal(p.singular)}FilterInput) { ${p.singular}(filter: $f) { ${selection(p)} } }`, { f: filter }); }
+    catch (e) { if (e instanceof StoreError && e.code === "not_found") return null; throw e; }
     const row = d[p.singular];
     return row ? this.#record(p, row, true) : null;
   }
@@ -303,13 +306,19 @@ export class TwentyStore {
     return rec.hash === expectedHash ? { ok: true, actual: rec.hash } : { ok: false, reason: "modified_outside", actual: rec.hash, version: rec.version };
   }
 
-  /** Register the signed webhook Twenty calls. Idempotent by description. @param {string} targetUrl */
+  /**
+   * Register the signed webhook Twenty calls. Idempotent: the description carries a short hash of the
+   * secret, so a webhook made with another secret is replaced, never reused (it would fail every signature).
+   * @param {string} targetUrl
+   */
   async registerWebhook(targetUrl) {
+    const tag = `vyre:${this.space}:${crypto.createHash("sha256").update(this.feed.secret).digest("hex").slice(0, 12)}`;
     const cur = await this.client.gql("metadata", "query Hooks { webhooks { id targetUrl description } }");
-    const ours = cur.webhooks.filter((/** @type {any} */ w) => w.description === `vyre:${this.space}`);
-    if (ours.some((/** @type {any} */ w) => w.targetUrl === targetUrl)) return { id: ours[0].id, created: false };
-    for (const w of ours) await this.client.gql("metadata", "mutation DelHook($id: UUID!) { deleteWebhook(id: $id) { id } }", { id: w.id });
-    const r = await this.client.gql("metadata", "mutation NewHook($i: CreateWebhookInput!) { createWebhook(input: $i) { id } }", { i: { targetUrl, operations: ["*.*"], description: `vyre:${this.space}`, secret: this.feed.secret } });
+    const mine = cur.webhooks.filter((/** @type {any} */ w) => String(w.description ?? "").startsWith(`vyre:${this.space}:`));
+    const same = mine.find((/** @type {any} */ w) => w.description === tag && w.targetUrl === targetUrl);
+    for (const w of mine) if (w !== same) await this.client.gql("metadata", "mutation DelHook($id: UUID!) { deleteWebhook(id: $id) { id } }", { id: w.id });
+    if (same) return { id: same.id, created: false };
+    const r = await this.client.gql("metadata", "mutation NewHook($i: CreateWebhookInput!) { createWebhook(input: $i) { id } }", { i: { targetUrl, operations: ["*.*"], description: tag, secret: this.feed.secret } });
     return { id: r.createWebhook.id, created: true };
   }
 
