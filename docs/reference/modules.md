@@ -67,7 +67,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
-| [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 4 | cli |
+| [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 3 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 45 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -311,6 +311,7 @@ A goal and an ordered milestone list, attached to a session or a project. An age
 - Tools: [5](tools.md#goals)
 - Emits: [5 events](events.md#goals)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["goal/*"],"types":[{"name":"goal","label":"Goal","fields":[{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"goal","kind":"text","label":"Goal","required":true},{"name":"state","kind":"choice","label":"State","options":["pending","active","done","cancelled"]},{"name":"created_by","kind":"text","label":"Created by"},{"name":"milestones","kind":"text","label":"Milestones"},{"name":"created_at","kind":"number","label":"Created"},{"name":"accepted_at","kind":"number","label":"Accepted"},{"name":"done_at","kind":"number","label":"Done"}]}]}`
 
 ## google
 
@@ -647,13 +648,13 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 
 ## space-sessions
 
-Sessions that belong to one Space (Wink design, sections 5 and 7): where a session may run, its encrypted working copy and continuous sync, a checkpoint at every turn with a lease so it can move between machines, and Continue in another space.
+The session engine for a Space (Wink design sections 5 and 7): one Space per session, the checkpoint state that carries taint and permissions, resume, Continue in another space, and the hours and spend budgets. The runner owns the sandbox, workspace, sync, lease and placement.
 
 - Folder: `core/space-sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: none
-- Emits: [4 events](events.md#space-sessions)
+- Emits: [3 events](events.md#space-sessions)
 - Shows on: cli
 
 ## spaces
