@@ -410,7 +410,7 @@ const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>}
 export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
-const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet"]);
+const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
 
 export const callerKind = caller => {
   const c = String(caller);
@@ -470,9 +470,18 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
  * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || (callers.includes(callerKind(caller)) && callerKind(caller) !== "tailnet")
+export const callerAllowed = (callers, caller) => !callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
-  || (callers.includes("tailnet") && ownerDevice(caller));
+  || (callers.includes("tailnet") && ownerDevice(caller))
+  || (callers.includes("device") && deviceLabel(caller));
+
+/**
+ * Caller classes that exist only as an entry in a tool's `callers` list, never as a caller: a socket client could send the bare word as its label. "device" opens a tool to the owner's
+ * paired devices (`device:<id>`, deviceLabel), the same devices a "tailnet" or "deck" entry already admits through ownerDevice. "space" (a visiting person, `space:<person>@<space>`) and
+ * "agent" (`agent:<id>`) are declared next to "tailnet" so a later step can drop it, but nothing admits them yet: whether a visitor or an agent reaches a tool is the core contract's
+ * to decide, not this list's.
+ */
+const CLASS_ONLY = new Set(["tailnet", "device", "space", "agent"]);
 
 /**
  * The box's owner on their own device at the box's address: the tailnet listener names only the
@@ -487,7 +496,13 @@ export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(cal
  * the relay module's listener names. A person who may ask; presence still decides every
  * human-only call. A guest, an agent's node and a socket label are never one.
  */
-export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
+export const ownerDevice = caller => ownerOverTailnet(caller) || deviceLabel(caller);
+
+/** A device paired through Wink or the relay, exactly `device:<id>` (the id is 16 base32 characters). Case, spacing, a prefix or a suffix is never one. */
+export const deviceLabel = caller => /^device:[a-z2-7]{16}$/.test(String(caller));
+
+/** A visiting person in a Space, exactly `space:<person>@<space>` (SPEC-wink-network 5.2). The caller of a Space they visit, never the owner's own device. */
+export const spaceLabel = caller => /^space:[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9._-]*$/.test(String(caller));
 
 /** Shipped in the repo (core, local, modules), not added to a home's modules folder. @param {string} dir @param {any} paths */
 const inRepo = (dir, paths) => {
