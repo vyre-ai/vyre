@@ -147,3 +147,38 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   inThread.push(b.pid);
   assert.equal((await b.done).status, 401);
 });
+
+test("R-1: on the person's own socket no thread or agent label proves anything; an assistant reaches the open tools only through its session's socket, and ask-first tools are held for it", async t => {
+  const { call } = await import("../core/daemon/client.js");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  // the label walk: whatever a client puts in its caller label, the person's socket gives it nothing it could not get as a plain model
+  for (const label of ["mcp:thread:fake", "harness:thread:fake", "cli:thread:fake", "local:thread:fake", "deck:thread:fake", "mcp:agent:kit", "harness:agent:kit", "cli:agent:kit", "cli agent:kit", "mcp:thread:", "mcp"]) {
+    const r = /** @type {any} */ (await call("mentions.kinds", {}, { root, caller: label }));
+    assert.ok(!r.data, `${label} reached an open person tool: ${JSON.stringify(r).slice(0, 120)}`);
+    for (const tool of ["files.send", "hooks.open", "bridges.kit.install", "agents.delete"]) { const k = /** @type {any} */ (await call(tool, {}, { root, caller: label })); assert.ok(!k.data, `${label} reached ask-first ${tool}`); }
+  }
+  // through a session's own socket the daemon bound the thread: open tools answer, ask-first tools are held, person-only tools are refused
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  /** @type {number[]} */ const inThread = [];
+  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
+  t.after(() => sock.close());
+  const open = client(sock.path, "mentions.kinds", {});
+  inThread.push(open.pid);
+  const o = await open.done;
+  assert.equal(o.status, 200, JSON.stringify(o).slice(0, 200));
+  const { ASK_FIRST } = await import("../core/modules/agent-reach.js");
+  const { PERSON_ONLY, HUMAN_ONLY } = await import("../core/presence/index.js");
+  const askTool = [...ASK_FIRST.keys()].find(n => !PERSON_ONLY.has(n) && !HUMAN_ONLY.has(n));
+  assert.ok(askTool, "an ask-first tool the session socket itself does not refuse");
+  const held = client(sock.path, askTool, {});
+  inThread.push(held.pid);
+  const h = await held.done;
+  assert.equal(h.body && h.body.error && h.body.error.code, "held_unavailable", "an ask-first tool is held for a proven assistant, not run");
+  const only = client(sock.path, "relay.pair.ticket", {});
+  inThread.push(only.pid);
+  assert.notEqual((await only.done).status, 200, "a person-only tool stays the person's");
+});

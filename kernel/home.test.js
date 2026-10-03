@@ -242,3 +242,19 @@ test("stages: a record entering a stage reaches the stages module in the daemon 
   await new Promise(r => setTimeout(r, 400));
   assert.ok(logs.some(m => /stages: .*"stage":"intake"/.test(m) || /stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
 });
+
+test("stages: a Space this home hosts gets the same stage hook as the home's own, over its own kernel (a firm Space is not the personal one)", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  const logs = [];
+  const d = await start({ root, log: m => logs.push(String(m)), kernel: true });
+  t.after(() => d.stop());
+  const owner = "per_" + "abcdefghijklmnopqrstuvwxyz".slice(0, 26);
+  const h = await d.kernel.spaces.host({ owner, name: "Harlow Legal" });
+  const chain = h.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-h", person: owner, path: "direct", session: "s" });
+  const type = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open"] }],
+    stages: [{ name: "intake", tasks: [{ title: "Research", doer: "teammate:ghost", output: { kind: "note" } }] }, { name: "open" }] };
+  await h.gateway.records.define(chain, { add_types: [type] });
+  await h.gateway.records.create(chain, "matter", { title: "Estate of Rivera", stage: "intake" });
+  await new Promise(r => setTimeout(r, 500));
+  assert.ok(logs.some(m => /stages: /.test(m)), `the hosted Space's stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
+});

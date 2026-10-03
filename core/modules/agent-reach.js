@@ -3,10 +3,15 @@
 // set: it needs the person's Face ID or presence, it controls the person's own machine, it widens an assistant's own authority, it is the person's stop or steer over the
 // assistant). ASK_FIRST tools are open but held for a one-tap task, like send, post and pay. A person-reach tool in none of the three lists is refused to an assistant until it
 // is classified: the test that walks every manifest (kernel/retrofit/agent-reach.test.js) fails on it, so a new tool cannot slip in open or closed by default.
+// Reviewed entries kept open on purpose: glass.take (the user's ruling that screen use is hands-free after one grant; the person's stop, hands.pause and chrome.pause, stays
+// person-only, so the person can always take it back).
 // Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["spaces.invites.confirm", "needs the person's presence: confirms an invite, which grants access"],
+  ["files.drive.access", "widens access: makes a share read-write for the paired Mac; its own code already says never an agent"],
+  ["threads.mode", "an assistant must not change its own permission mode: that widens its own authority"],
   ["bridges.accept", "would let an assistant widen its own authority: accepting a bridge approves the assistant's own proposal"],
   ["bridges.revoke", "would let an assistant widen its own authority: accepting a bridge approves the assistant's own proposal"],
   ["chrome.install", "installs software on the person's machine"],
@@ -174,7 +179,6 @@ export const OPEN = new Set([
   "computers.handback.status",
   "computers.rename",
   "computers.tailnet.status",
-  "files.drive.access",
   "files.drive.address",
   "files.drive.mount",
   "files.drive.open",
@@ -241,7 +245,6 @@ export const OPEN = new Set([
   "threads.edit",
   "threads.edit-retry",
   "threads.kill-task",
-  "threads.mode",
   "threads.remember",
   "threads.retry",
   "threads.unqueue",

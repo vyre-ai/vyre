@@ -19,6 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
+import { devSwitch } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -187,38 +188,58 @@ async function startLocked(opts, root, p, release) {
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
-      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []) });
-    {
+    // One stages module per Space, over that Space's own kernel: the home's own Space here, and every hosted Space through the Spaces registry's `stageFactory`.
+    const makeStages = async (/** @type {any} */ k, /** @type {string} */ space, /** @type {string} */ ownerId) => {
       const { createStages } = await import("../../kernel/flows/stages.js");
-      const sh = kernel.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
-      const owner = () => kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: "stages", vouched: true });
-      stages = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
-        catalog: async () => ({ space: kernel.id.space, types: Object.fromEntries((await kernel.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
-        chain: () => kernel.chains.appendService(owner(), "stages", true) });
-      kernel.log.subscribe("stages", {}, (/** @type {any} */ e) => stages.onEvent(e));
-    }
+      const sh = k.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
+      const owner = () => k.chains.fromFacts({ kind: "session_person", person: ownerId, session: "stages", vouched: true });
+      const st = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
+        catalog: async () => ({ space, types: Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
+        chain: () => k.chains.appendService(owner(), "stages", true) });
+      k.log.subscribe("stages", {}, (/** @type {any} */ e) => st.onEvent(e));
+      return st;
+    };
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
+      stageFactory: (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => makeStages(k, space, meta.owner) });
+    stages = await makeStages(kernel, kernel.id.space, kernel.id.owner);
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
-    const kernelSessions = createKernelSessions({ kernel });
+    // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
+    db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");
+    const turns = { durable: true,
+      get: (/** @type {string} */ t) => { const r = /** @type {any} */ (db.prepare("SELECT body FROM kernel_turns WHERE thread = ?").get(t)); return r ? JSON.parse(r.body) : undefined; },
+      set: (/** @type {string} */ t, /** @type {any} */ rec) => { db.prepare("INSERT INTO kernel_turns (thread, body) VALUES (?, ?) ON CONFLICT (thread) DO UPDATE SET body = excluded.body").run(t, JSON.stringify(rec)); },
+      delete: (/** @type {string} */ t) => { db.prepare("DELETE FROM kernel_turns WHERE thread = ?").run(t); },
+      all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
+    const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
+    // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
+    const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {});
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
-      const person = kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: `thread:${q.thread}`, vouched: true });
+      const person = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: kernel.id.owner, path: "direct" });
       const s = await kernelSessions.open({ chain: person, ...(q.rec && typeof q.rec.chat === "string" ? { chat: q.rec.chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
     // daemon composes it for the Switchboard, behind the kernel flag). It confines a session to its workspace, its provider's own sign-in paths and its own socket, and keeps
     // the person's socket, other sessions' sockets, the daemon's ports and Vyre's key files out of reach; the self-test runs before each session and a failure stops it with a plain
-    // reason. Linux and macOS only; VYRE_SESSION_SANDBOX=0 turns it off.
-    if (process.env.VYRE_SESSION_SANDBOX !== "0" && (process.platform === "darwin" || process.platform === "linux")) {
-      const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
-      registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
-        probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
-        temp: os.tmpdir() };
+    // reason.
+    // On macOS and Linux a Vyre-started session is always confined: a sandbox that cannot be built is a refusal to start the session (with the reason), never a silent unconfined start
+    // (reviewer-3 E-2). Only a development build can opt out (VYRE_SESSION_SANDBOX_OFF=1). Windows starts unsandboxed in 0.3, with the notice the user approved.
+    if ((process.platform === "darwin" || process.platform === "linux") && !devSwitch(process.env.VYRE_SESSION_SANDBOX_OFF)) {
+      try {
+        const [{ planHome, selfTest }, { launch }] = await Promise.all([import("../runner/homesandbox.js"), import("../runner/sandbox.js")]);
+        registry.deps.sandbox = { sandbox: { planHome, selfTest, launch }, platform: process.platform, home: os.homedir(), vyreHome: root,
+          probes: { personSocket: p.socket, otherSocket: path.join(root, "run", "sessions", "other.sock"), daemonPorts: [], keyFile: path.join(root, "kernel", "space.json") },
+          temp: os.tmpdir() };
+      } catch (e) {
+        registry.deps.sandbox = { unavailable: `Vyre could not set up the sandbox for sessions on this computer (${/** @type {Error} */ (e).message}), so it does not start them.` };
+      }
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
@@ -727,7 +748,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
-  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
+  if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name)) });
   if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
     // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
     // half of its key for a bearer session. The one call from another origin that needs none.
