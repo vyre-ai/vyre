@@ -131,10 +131,11 @@ export class FlowRunner {
     for (const f of await this.#activeFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
+      if (!this.lastFire.has(f.id) && t.at === undefined) this.lastFire.set(f.id, now);
       const last = this.lastFire.get(f.id) ?? now;
       let due = null;
       if (t.cron !== undefined) { const n = nextCron(t.cron, last); if (n !== null && n <= now) due = n; }
-      else if (t.every_ms !== undefined) { if (!this.lastFire.has(f.id)) { this.lastFire.set(f.id, now); continue; } if (last + t.every_ms <= now) due = last + t.every_ms; }
+      else if (t.every_ms !== undefined) { if (last + t.every_ms <= now) due = last + t.every_ms; }
       else if (t.at !== undefined) { if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) due = t.at; }
       if (due === null) continue;
       this.lastFire.set(f.id, t.cron !== undefined || t.every_ms !== undefined ? now : due);
