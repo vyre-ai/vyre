@@ -36,6 +36,12 @@ Worktree made, kernel and ui merged (d16c0fee4).
 - Not mapped on purpose: thread.usage, thread.limit, mode/model events, thread.unqueued (no frame kind in the fixed design). Needs a decision if the composer must show a withdrawn queued row.
 - Not done by A: a snapshot builder (client.snapshot() is the caller's: read the session state, then resume from its cur; stream.open returns head and floor to anchor it), docs pages for stream.* config keys, CHANGELOG entry, docs/reference regenerated but not committed (other teams' hunks are in those files).
 
+### Done: task B (steer, stop, edit-retry, branch; core/switchboard)
+- queue-state.js + tests; chat-steer.test.js (9 end-to-end tests with the fake claude: steer, stop, restart mid-queue, edit/unqueue, edit-retry, retry, branch, unsupported).
+- threads.edit-retry {thread, text, message?, restore?}, threads.retry {thread, message?, restore?}, threads.branch {thread, at?, prompt?}: reach person, registered in core/switchboard/module.json; docs:ref regenerated.
+- Changed contracts (core/switchboard, smallest possible): (1) events thread.queued / thread.sent{via:steer} / thread.steered gain queued_at and step (steered also text); thread.sent via turn and restored gain queued_at. (2) restoreSteers and a turn's end now emit thread.steered for steers they run as a turn (they stayed "queued" forever on a surface). (3) a resume hands over words left in the queue by a stop or restart (resumeQueued, same path as a turn's end), so a queued message is never stranded. (4) threads.stop emits thread.status {status: <current>, stopping: true} before closing; no new status word (lib/thread-status unchanged). (5) write() also returns `at`. (6) index.js imports lib/caps-flags for the unsupported check.
+- Not done here: the composer draft is client state (apps/app, task D); the server holds no draft and stop never touches one. Stop keeps its meaning (closes the process; threads.interrupt is Escape).
+
 ### Doing
 Task A: waiting for a testbox slot (load) to run the stream tests and docs tests; then record numbers. B, C, D: see their own lines.
 
