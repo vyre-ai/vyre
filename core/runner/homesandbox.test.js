@@ -66,3 +66,29 @@ test("home sandbox: the seatbelt profile denies every unix socket and loopback c
 test("home sandbox: Windows is refused with a plain reason, not run unsandboxed", () => {
   assert.throws(() => planHome({ platform: "win32", command: "C:\\x.exe", home: "C:\\Users\\x", sessionSocket: "\\\\.\\pipe\\x" }), /not sandboxed yet/);
 });
+
+import { createEgress } from "./egress.js";
+test("egress CONNECT: only the listed hosts are tunnelled, and only with the session's token", async t => {
+  const target = await listen({ port: 0, host: "127.0.0.1" }); t.after(() => target.close());
+  const tp = target.address().port;
+  const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", connect: [`127.0.0.1:${tp}`] });
+  const { port } = await eg.listen(); t.after(() => eg.close());
+  const ask = (host, auth) => new Promise(res => { const s = net.connect(port, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\n${auth ? "Proxy-Authorization: Basic " + Buffer.from("vyre:" + auth).toString("base64") + "\r\n" : ""}\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 3000); });
+  assert.match(await ask(`127.0.0.1:${tp}`, "tok"), / 200 /);
+  assert.match(await ask(`127.0.0.1:${tp}`, "wrong"), / 403 /);
+  assert.match(await ask(`127.0.0.1:${tp}`, ""), / 403 /);
+  assert.match(await ask("example.com:443", "tok"), / 403 /);
+});
+
+test("home sandbox (Linux): the agent reaches its host through the proxy's CONNECT tunnel, and nothing else", { skip: process.platform !== "linux" || SKIP, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const target = await listen({ port: 0, host: "127.0.0.1" }); t.after(() => target.close());
+  const tp = target.address().port;
+  const sock = path.join(r.home, "egress.sock");
+  const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", connect: [`127.0.0.1:${tp}`] }); await eg.listen({ socket: sock }); t.after(() => eg.close());
+  const base = { platform: "linux", command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, probes: r.probes, proxy: { socket: sock, token: "tok" } };
+  const ok = await selfTest({ ...base, agent: { ...r.agent, hosts: [`127.0.0.1:${tp}`] } });
+  assert.deepEqual(ok.failures, [], JSON.stringify(ok.results));
+  const bad = await selfTest({ ...base, agent: { ...r.agent, hosts: ["example.com:443"] } });
+  assert.ok(bad.failures.some(f => /cannot reach example\.com:443/.test(f)), bad.failures.join("; "));
+});
