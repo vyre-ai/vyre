@@ -512,16 +512,20 @@ put_wrapper() {
 # signed release shown again) is refused and nothing changes.
 publish_release() {
   src=$1
+  # A release that carries a signed module list (modules.json) must publish it: for that release every refusal below is fatal (non-zero), so the update stops
+  # and the old image and the old list stay (L-1). A release without one (0.2.x, a development source) keeps the old best-effort behaviour.
+  FATAL=0; [ -f "$src/modules.json" ] && FATAL=1
   if [ "$(id -u)" != "$ROOT_UID" ]; then
-    sudo -n "$WRAPPER" publish-release "$src" >/dev/null 2>&1 \
-      || echo "vyre: could not put the release's signature files where vyred serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
-    return 0
+    sudo -n "$WRAPPER" publish-release "$src" >/dev/null 2>&1 && return 0
+    echo "vyre: could not put the release's signature files where vyred serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
+    return "$FATAL"
   fi
-  if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return 0; fi
+  if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return "$FATAL"; fi
+  reconcile_release
   # The caller's folder is not trusted, even when root was asked by name: each file is copied WITHOUT following a link into a folder
   # only root can use, and everything after this looks only at the copies. Nothing is published unless SHA256SUMS.sig verifies
   # over the copied SHA256SUMS (so an unsigned release publishes nothing), and shell.json is the file that SHA256SUMS lists.
-  rt=$(mktemp -d) || return 0
+  rt=$(mktemp -d) || return "$FATAL"
   for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
   if [ -f "$rt/SHA256SUMS" ] && [ ! -L "$rt/SHA256SUMS" ] && [ -f "$rt/SHA256SUMS.sig" ] && [ ! -L "$rt/SHA256SUMS.sig" ] && sig_ok "$rt/SHA256SUMS" "$rt/SHA256SUMS.sig"; then
     if [ -f "$rt/shell.json" ] && [ ! -L "$rt/shell.json" ]; then
@@ -531,30 +535,65 @@ publish_release() {
     if [ -f "$rt/modules.json" ] && [ ! -L "$rt/modules.json" ]; then
       want=$(awk '$2 == "modules.json" || $2 == "*modules.json" { print $1; exit }' "$rt/SHA256SUMS")
       # Fail closed: a release whose module list is not the signed one publishes nothing, so the folder never holds a release without its list.
-      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/modules.json")" ]; then echo "vyre: modules.json is not the file the signed SHA256SUMS lists; nothing was published" >&2; rm -rf "$rt"; return 0; fi
+      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/modules.json")" ]; then echo "vyre: modules.json is not the file the signed SHA256SUMS lists; nothing was published" >&2; rm -rf "$rt"; return 1; fi
+    elif [ "$FATAL" = 1 ]; then echo "vyre: this release's modules.json is not a plain file; nothing was published" >&2; rm -rf "$rt"; return 1
     fi
-    # The counter only goes up (a signed older release must not roll the module list back).
-    newc=$(tr -d '\n' <"$rt/modules.json" 2>/dev/null | sed -n 's/.*"counter": *\([0-9][0-9]*\).*/\1/p')
-    oldc=$(tr -d '\n' <"$UPD_STATE/release/modules.json" 2>/dev/null | sed -n 's/.*"counter": *\([0-9][0-9]*\).*/\1/p')
+    # The counter only goes up (a signed older release must not roll the module list back). The list is written by scripts/modules-manifest.mjs with one space of
+    # indent, so the top-level counter is the one line `^ "counter": N,$`, and exactly one such line must be there (a module entry cannot spoof it: those sit deeper).
+    newc=$(counter_of "$rt/modules.json")
+    oldc=$(counter_of "$UPD_STATE/release/modules.json")
+    if [ -f "$rt/modules.json" ] && [ -z "$newc" ]; then echo "vyre: this release's module list has no readable counter; nothing was published" >&2; rm -rf "$rt"; return 1; fi
     if [ -n "$newc" ] && [ -n "$oldc" ] && [ "$newc" -lt "$oldc" ]; then
       echo "vyre: this release's module list is older (counter $newc) than the one already published (counter $oldc); nothing was published" >&2
-      rm -rf "$rt"; return 0
+      rm -rf "$rt"; return 1
     fi
     if mkdir -p "$UPD_STATE" && new=$(mktemp -d "$UPD_STATE/release.new.XXXXXX") && chmod 755 "$new"; then
       for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json; do
-        if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$new/$f" 0644 || echo "vyre: could not publish $f" >&2; fi
+        if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$new/$f" 0644 || { echo "vyre: could not publish $f" >&2; rm -rf "$new" "$rt"; return "$FATAL"; }; fi
       done
       # The whole folder by rename: the old one is set aside and the new one takes its name, so no reader sees half of each release.
       # The old folder is kept in root's private folder as release.prev (not under the mounted status folder), so a rollback puts back the list its image was signed with.
       [ -d "$UPD_PRIV" ] || { mkdir "$UPD_PRIV" && chmod 700 "$UPD_PRIV"; } 2>/dev/null || true
       rm -rf "$UPD_PRIV/release.prev"
-      if [ -d "$UPD_STATE/release" ]; then mv "$UPD_STATE/release" "$UPD_PRIV/release.prev" || { echo "vyre: could not replace the published release" >&2; rm -rf "$new"; rm -rf "$rt"; return 0; }; fi
-      mv "$new" "$UPD_STATE/release" || echo "vyre: could not publish the release folder" >&2
+      if [ -d "$UPD_STATE/release" ]; then mv "$UPD_STATE/release" "$UPD_PRIV/release.prev" || { echo "vyre: could not replace the published release" >&2; rm -rf "$new" "$rt"; return "$FATAL"; }; fi
+      mv "$new" "$UPD_STATE/release" || { echo "vyre: could not publish the release folder" >&2; reconcile_release; rm -rf "$rt"; return "$FATAL"; }
+      : >"$UPD_PRIV/release.swapped"
     fi
   else
-    echo "vyre: the release's SHA256SUMS.sig is missing or does not verify; nothing was published for the phone's shell check" >&2
+    echo "vyre: the release's SHA256SUMS.sig is missing or does not verify; nothing was published" >&2
+    rm -rf "$rt"; return "$FATAL"
   fi
   rm -rf "$rt"
+  return 0
+}
+# counter_of FILE: the list's top-level counter as digits, or nothing (see publish_release).
+counter_of() {
+  [ -f "$1" ] || return 0
+  [ "$(grep -c '^ "counter": [0-9][0-9]*,$' "$1" 2>/dev/null)" = 1 ] || return 0
+  sed -n 's/^ "counter": \([0-9][0-9]*\),$/\1/p' "$1"
+}
+# reconcile_release: an interrupted swap leaves no `release` folder with the old one set aside, or temp folders behind; put it right before anything reads it (L-4).
+reconcile_release() {
+  rm -rf "$UPD_STATE"/release.new.* 2>/dev/null || true
+  if [ ! -d "$UPD_STATE/release" ] && [ -d "$UPD_PRIV/release.prev" ]; then mv "$UPD_PRIV/release.prev" "$UPD_STATE/release" 2>/dev/null || true; fi
+}
+# modules_ok: after an update starts the new container, every module the published signed list names must have started (L-1). A listed module that FAILED is a
+# release that bricks the box: the update rolls back by itself. Off by default is not failed. Waits a little, since modules start after the socket answers.
+modules_ok() {
+  [ -f "$UPD_STATE/release/modules.json" ] || return 0
+  names=$(sed -n 's/^  "\([^"]*\)": {$/\1/p' "$UPD_STATE/release/modules.json")
+  i=0; bad=""
+  while [ $i -lt "${MODULES_WAIT:-30}" ]; do
+    out=$(compose exec -T vyre vyre modules 2>/dev/null || true)
+    bad=""
+    for n in $(printf '%s\n' "$out" | awk '$3 == "failed" { print $1 }'); do
+      printf '%s\n' "$names" | grep -qx "$n" && bad="$bad $n"
+    done
+    [ -z "$bad" ] && [ -n "$out" ] && return 0
+    i=$((i + 1)); sleep 1
+  done
+  echo "vyre: these signed modules did not start:${bad:- (the module list could not be read)}" >&2
+  return 1
 }
 
 android() {
@@ -582,6 +621,9 @@ android() {
 # restore_release: the folder publish_release set aside goes back (an update that did not come up healthy). After a healthy update it stays as release.prev,
 # the previous release's signed files, which `vyre update --rollback` swaps back with the previous image (and a second --rollback swaps forward again).
 restore_release() {
+  # Only a swap this very update made is undone: a release.prev left by an earlier update is not this one's to put back.
+  [ -f "$UPD_PRIV/release.swapped" ] || return 0
+  rm -f "$UPD_PRIV/release.swapped"
   [ -d "$UPD_PRIV/release.prev" ] || return 0
   rm -rf "$UPD_PRIV/release.bad"
   [ ! -d "$UPD_STATE/release" ] || mv "$UPD_STATE/release" "$UPD_PRIV/release.bad" || return 0
@@ -748,9 +790,11 @@ update() {
   # The daemon is stopped, the signed release files are replaced as a folder, and only then the new container starts: a running vyred never sees
   # the new module list against the old tree (or the reverse), and a restart verifies one consistent release.
   compose stop vyre >/dev/null 2>&1 || true
-  publish_release "$tmp"
+  rm -f "$UPD_PRIV/release.swapped"
+  publish_release "$tmp" || roll_back
   compose up -d || roll_back
   ready || roll_back
+  modules_ok || roll_back
   put_text "$VERSION" "$DIR/VERSION"
   UPD_DONE=1
   # Raise the floor (never lower it): the host's own record of the newest version this server has had.
@@ -949,6 +993,17 @@ rollback() {
       [ "$answer" = restore ] || die "left the database alone"
     fi
   fi
+  # The previous release's signed module list has a LOWER counter than the one the kernel last accepted, so its image would run no modules until the owner resets the
+  # list. Ask the still-running daemon for that reset (a presence-gated tool of the owner's: modules.list.reset) BEFORE anything is swapped, and refuse without it: a rollback
+  # never silently produces a box with no modules (L-2). A previous release with no list (an older line) needs none.
+  if [ -f "$UPD_PRIV/release.prev/modules.json" ]; then
+    curc=$(counter_of "$UPD_STATE/release/modules.json"); prevc=$(counter_of "$UPD_PRIV/release.prev/modules.json")
+    if [ -n "$curc" ] && [ -n "$prevc" ] && [ "$prevc" -lt "$curc" ]; then
+      echo "vyre: the release before has an older module list (counter $prevc, this one is $curc); the owner has to approve going back, once." >&2
+      if [ -t 0 ]; then compose exec vyre vyre call modules.list.reset '{}' >/dev/null 2>&1; else compose exec -T vyre vyre call modules.list.reset '{}' >/dev/null 2>&1; fi \
+        || die "not rolled back: the module list was not reset (it needs the owner's presence, on a terminal: run vyre update --rollback again from one). Nothing was changed."
+    fi
+  fi
   # A swap, so a second --rollback goes forward again.
   if [ -d "$SRCDIR.prev" ]; then swap_dirs "$SRCDIR" "$SRCDIR.prev"; fi
   # The signed release files go with the image: stop the daemon, swap the folder whole, and let the container below start on the pair it was signed with.
@@ -1107,7 +1162,7 @@ case "${1:-}" in
     ;;
   publish-release)
     [ -d "${2:-}" ] || die "vyre publish-release DIR"
-    publish_release "$2"
+    publish_release "$2" || exit 1
     ;;
   logs)
     shift

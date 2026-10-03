@@ -488,7 +488,11 @@ write_env() {
 # signature with the pinned release key and publishes nothing for an unsigned release). Not for an install from a checkout, which has none of them.
 publish_signed_files() {
   [ "$DRY" != 1 ] && [ -z "$FROM" ] && [ -s "$TMP/SHA256SUMS.sig" ] || return 0
-  priv env "VYRE_DIR=$DIR" "$WRAPPER" publish-release "$TMP" || say "note: could not place the release's signed files; vyre update will"
+  if ! priv env "VYRE_DIR=$DIR" "$WRAPPER" publish-release "$TMP"; then
+    # A release with a signed module list that cannot be placed would start a box whose modules the kernel refuses: stop here, plainly.
+    [ ! -f "$TMP/modules.json" ] || die "the release's signed files could not be placed, so the box would start with no modules; nothing was started. See the line above, then run this again."
+    say "note: could not place the release's signed files; vyre update will"
+  fi
 }
 install_wrapper() {
   if [ -e "$WRAPPER" ] && ! grep -q "$MARK" "$WRAPPER" 2>/dev/null; then
