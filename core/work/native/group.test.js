@@ -104,7 +104,7 @@ import mod from "../index.js";
 async function booted(room) {
   const w = await world();
   const tools = {};
-  const kernel = { ...w.rk.kernel, chainFor: () => w.manager, ...(room ? { roomOf: async () => room(w) } : {}) };
+  const kernel = { ...w.rk.kernel, chainFor: () => w.manager, ...(room ? { audienceFor: async () => room(w) } : {}) };
   await mod.start({ tool: (n, d) => { tools[n] = d; }, store: {}, kernel });
   return { ...w, call: (n, i = {}) => tools[n].run(i, { caller: "deck" }), tools };
 }
@@ -140,4 +140,20 @@ test("an address that does not parse cannot be checked per viewer: its source is
   db.prepare("INSERT INTO memory_engine_index (source, kind, resource, text, vec, trust, red, spaces) VALUES (?, 'record', ?, ?, NULL, 'member', 'internal', ?)").run("odd", "vyre://" + rk.space + "/matter", "Doe estate plan, fee 4321", JSON.stringify([rk.space]));
   const hits = await engine.search(manager, "Doe estate", 6, { audience: [manager, member] });
   assert.ok(hits.every(h => !/4321/.test(h.snippet)));
+});
+
+test("a prompt-injected call that names a room, an audience or a chat cannot widen what the model sees", async () => {
+  const w = await booted(x => ({ group: true, chains: [x.manager, x.member] }));
+  const s = await w.call("work.situation", { project: w.m.urn, chat: "dm-with-manager", audience: [], room: { group: false }, group: false });
+  assert.doesNotMatch(s.text, /4321/);
+});
+
+test("in a room an event source is withheld (its text carries values), alone it is used", async t => {
+  const { rk, manager, member } = await world();
+  const db = open(path.join(tempHome(t), "engine4.db"));
+  const engine = createMemoryEngine({ kernel: rk.kernel, db, space: rk.space, serviceChain: rk.kernel.serviceChain("memory"), chainFor: () => manager });
+  db.prepare("INSERT INTO memory_engine_index (source, kind, resource, text, vec, trust, red, spaces) VALUES (?, 'event', ?, ?, NULL, 'member', 'internal', ?)").run("event:e1", `vyre://${rk.space}/matter/e1`, "matter.updated fee 4321 Doe", JSON.stringify([rk.space]));
+  const room = await engine.search(manager, "Doe fee", 6, { audience: [manager, member] });
+  assert.ok(room.every(h => !/4321/.test(h.snippet)));
+  assert.equal(room.withheld >= 1, true);
 });

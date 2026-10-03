@@ -40,8 +40,8 @@ export default {
      */
     const audienceOf = async (/** @type {any} */ extra) => {
       const k = kernelOf();
-      if (typeof k.roomOf !== "function") throw Object.assign(new Error("the room this runs in is not known, so nothing is built for it"), { code: "unavailable" });
-      const room = await k.roomOf(extra || {});
+      if (typeof k.audienceFor !== "function") throw Object.assign(new Error("the room this runs in is not known, so nothing is built for it"), { code: "unavailable" });
+      const room = await k.audienceFor(extra || {});
       if (!room || typeof room.group !== "boolean") throw Object.assign(new Error("the room this runs in is not known, so nothing is built for it"), { code: "unavailable" });
       if (!room.group) return [];
       if (!Array.isArray(room.chains) || room.chains.length < 2) throw Object.assign(new Error("this is a group chat and its audience is not known, so nothing is built for it"), { code: "unavailable" });

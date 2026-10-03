@@ -138,6 +138,8 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
         if (!inSpace(r.resource) || r.labels.source_spaces.some(s => s !== space)) continue;
         if (!(await mayRead(chain, r.resource))) continue;
         if (!(await mayAll(r.resource))) { held.add(r.resource); continue; }
+        // Event text carries values and cannot be rebuilt per field, so in a room it is withheld (A-2); lines are prose the viewers may all read, gated above.
+        if (room.length > 1 && r.kind === "event") { held.add(r.resource); continue; }
         const snip = r.kind === "record" ? await roomText(room, r.resource, r.text) : r.text;
         if (snip === null) { held.add(r.resource); continue; }
         out.set(r.source, { source: r.source, kind: r.kind, resource: r.resource, snippet: snip.slice(0, 240), score: r.score, labels: r.labels });
