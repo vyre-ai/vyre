@@ -86,7 +86,8 @@ export function ownAddresses() { return Object.values(os.networkInterfaces()).fl
  */
 export async function resolvePublic(host, o = {}) {
   const own = o.own || ownAddresses();
-  let h = String(host).trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (/\s/.test(String(host))) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });   // whitespace anywhere, including a trailing space, is refused before anything else
+  let h = String(host).toLowerCase().replace(/^\[|\]$/g, "");
   if (h.endsWith(".") && !h.endsWith("..")) h = h.slice(0, -1);
   if (!h || h.includes("%") || /\s/.test(h)) throw Object.assign(new Error("not a public address"), { code: "NOT_PUBLIC" });
   const literal = toBytes(h);

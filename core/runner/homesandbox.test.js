@@ -290,7 +290,7 @@ test("NG-1: every non-public form is refused on its 16 bytes, hex or dotted, com
 
 test("NG-1: every form is refused as a DNS answer too, and by inet_aton-style names, zone ids and a trailing dot", async () => {
   for (const ip of NOT_PUBLIC) await assert.rejects(() => resolvePublic("any.example", { lookup: async () => [{ address: "93.184.216.34" }, { address: ip }], own: [] }), /not a public/, "a second answer " + ip);
-  for (const h of ["0177.0.0.1", "2130706433", "0x7f.0.0.1", "0x7f000001", "127.1", "[fe80::1%eth0]", "fe80::1%25eth0", "localhost.", "", "a b"]) await assert.rejects(() => resolvePublic(h, { lookup: async n => (n === "localhost" ? [{ address: "127.0.0.1" }] : []), own: [] }), /not a public|no address/, h);
+  for (const h of ["0177.0.0.1", "2130706433", "0x7f.0.0.1", "0x7f000001", "127.1", "[fe80::1%eth0]", "fe80::1%25eth0", "localhost.", "", "a b", "example.com ", " example.com", "example.com\t"]) await assert.rejects(() => resolvePublic(h, { lookup: async n => (n === "localhost" ? [{ address: "127.0.0.1" }] : []), own: [] }), /not a public|no address/, h);
 });
 
 test("NG-1 end to end: CONNECT and absolute-URL HTTP to every form of the host's own loopback and metadata address never reach a real listener", async t => {
