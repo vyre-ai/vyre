@@ -1014,8 +1014,6 @@ export class Registry {
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
       ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "sandbox", "flowsHost", "credentials"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
-      // The stream's view of the sessions' kernel credentials (lib/kernel-session.js): calls on a thread's session and the restart's reopening, never a token and never a way to open one.
-      ...(m.name === "stream" && this.deps.kernelThreads ? { kernelSession: this.deps.kernelThreads } : {}),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
