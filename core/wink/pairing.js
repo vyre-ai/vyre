@@ -7,9 +7,9 @@
 //                a member of a space.
 //   Targets      wink.pair.targets: "Pair to:" choices, the identity plus the spaces the person administers (read through the
 //                directory port below: the kernel's memberships and roles, or a fake until the real directory is merged).
-//   Pairing      two ways only: scan a code, or two-sided typed codes (each side shows a code, the other types it). A phone pairs to
-//                the identity only. wink.pair.server (the app types the server's code and shows the code to type back),
-//                wink.server.code / wink.server.confirm / wink.server.adopt (the server's side), wink.phone.open / wink.phone.scan.
+//   Pairing      two ways: scan a QR, or paste the long code; both confirmed by the same three words. A phone pairs to
+//                the identity only. wink.pair.server (the app scans the server's QR or takes its pasted long code), wink.server.code / wink.server.adopt
+//                (the server's side), wink.phone.open / wink.phone.scan (QR or paste, three words on both sides, a yes on the computer); the typed code is a development flag.
 //   Compute      wink.offer.set and computeAllowed: a computer's compute reaches a space only when the space allows it AND the member
 //                accepts (DESIGN-wink section 7).
 // The module wiring (index.js) owns the Wink code state machine and hands this file the pieces it needs.
@@ -97,6 +97,8 @@ export function createPairing(o) {
   const pairOptions = o.keyFile ? { crypto: nodeCrypto(), keyStore: fileKeyStore(o.keyFile) } : {};
   /** Pairings this device is typing for (secret seeds stay in memory). @type {Map<string, any>} */
   const pending = new Map();
+  /** The phone flow's hold, set when the tools are registered: the module's device.paired handler asks it first. @type {{ hold: (p: any) => Promise<boolean> }} */
+  const phone = { hold: async () => false };
 
   const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null } : null;
   const devices = {
@@ -404,6 +406,22 @@ export function createPairing(o) {
             return;
           }
         }
+        // A phone that scanned the computer's QR is only paired with it so far. It shows the same three words the computer shows and waits for the person's yes there; no yes pairs nothing.
+        if (i.kind === "phone" && i.seed) {
+          const pd = f.paired || {};
+          const mine = pd.box && pd.device ? await pairWords(String(pd.box), String(pd.device)).catch(() => "") : "";
+          for (let n = 0; n < 100_000; n++) {
+            let r;
+            try { r = await callServer(pd, "wink.phone.wait", {}); }
+            catch (e) { failWith("failed", /^(denied|expired)$/.test(String(/** @type {any} */ (e).remote || "")) ? String(/** @type {Error} */ (e).message) : words("phoneRefused")); return; }
+            if (mine && r && r.words && String(r.words) !== mine) { failWith("failed", words("phoneMismatch")); return; }
+            if (p.state !== "confirm" && r && r.state === "waiting") { p.state = "confirm"; p.words = mine || String(r.words || ""); ctx.events.emit("wink.pair-confirm", { pairing: id, words: p.words }); }
+            if (r && r.state === "yes") break;
+            if (r && r.state === "no") { failWith("failed", words("phoneRefused")); return; }
+            if (!r || r.state === "expired" || (Number(r.until) && now() >= Number(r.until))) { failWith("expired", words("phoneExpired")); return; }
+            await new Promise(res => setTimeout(res, o.askPollMs ?? 500));
+          }
+        }
         p.state = "done";
         ctx.events.emit("wink.pair-done", { pairing: id, kind: i.kind, target: i.target, ...(p.device ? { device: p.device } : {}) });
       } catch (e) { if (fresh) devices.remove(fresh); failWith("failed", String(/** @type {Error} */ (e).message || "pairing failed")); ctx.log(`wink: pairing failed: ${/** @type {Error} */ (e).message}`); }
@@ -449,7 +467,7 @@ export function createPairing(o) {
         const p = pending.get(String(input.pairing));
         if (!p) throw fail("not_found", "no such pairing");
         if (p.state === "waiting" && now() >= p.expires) p.state = "expired";
-        return { state: p.state, kind: p.kind, ...(p.device ? { device: p.device } : {}), ...(p.reason ? { reason: p.reason } : {}), ...(p.state === "confirm" && p.words ? { words: p.words, message: words("pairConfirm", { words: p.words }) } : {}) };
+        return { state: p.state, kind: p.kind, ...(p.device ? { device: p.device } : {}), ...(p.reason ? { reason: p.reason } : {}), ...(p.state === "confirm" && p.words ? { words: p.words, message: words(p.kind === "phone" ? "phoneConfirm" : "pairConfirm", { words: p.words }) } : {}) };
       },
     });
 
@@ -717,31 +735,113 @@ export function createPairing(o) {
       run: async input => ({ allow: peers.allow(String(input.device)) }),
     });
 
-    // A phone: a signed-in computer shows a code and a QR, the phone scans, the phone shows a code, the person types it on the computer.
+    // A phone (DESIGN-wink section 4): a signed-in computer shows a QR and a long code (a long secret, one use, 5 minutes); the phone scans or pastes it; both show the same three
+    // words made from both sides' keys; the person says yes on the computer. No yes in 5 minutes, a no, or wrong words: nothing is added and the phone is let go.
+    // The typed code stays behind the development flag only.
+    /** @type {null | { qr: string, art: string, until: number, claimed: boolean }} the QR on show */
+    let phoneTicket = null;
+    /** @type {null | { device: string, name: string, fingerprint: string, words: string, until: number, state: "waiting" | "yes" | "no" | "expired" }} the phone asking to be added */
+    let phoneAsk = null;
+    const phoneLive = () => {
+      if (phoneAsk && phoneAsk.state === "waiting" && phoneAsk.until <= now()) { phoneAsk.state = "expired"; dropLater(`device:${phoneAsk.device}`); }
+      return phoneAsk;
+    };
+    /** The wink module hands every newly paired device here first. A phone that redeemed the QR on show is held for the person's yes (true); anything else is not this file's (false). @param {any} p */
+    phone.hold = async p => {
+      if (!phoneTicket || phoneTicket.claimed || phoneTicket.until <= now()) return false;
+      phoneTicket.claimed = true;
+      const id = String(p.id);
+      const w = await wordsFor(id);
+      const until = now() + ASK_MS;
+      const mine = phoneAsk = { device: id, name: String(p.name || "a phone").replace(/[^\p{L}\p{N} ._@:'\u2019-]/gu, "").slice(0, 64) || "a phone", fingerprint: String(p.fingerprint || ""), words: w, until, state: "waiting" };
+      ctx.events.emit("wink.pair-asked", { device: id, name: mine.name, words: w, until, kind: "phone" });
+      const t = setTimeout(() => { if (phoneAsk === mine) phoneLive(); }, Math.max(0, until - now()) + 5);
+      if (t.unref) t.unref();
+      return true;
+    };
     ctx.tool("wink.phone.open", {
-      description: "Add a phone. From a computer already signed in to you: show a code and a QR payload for the phone to scan. Answers { offer, code, qr, expires }. The phone then shows a code to type here (wink.code.ack). A phone pairs to you only, never to a space.",
-      input: obj({ space: str }),
+      description: "Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. A short typed code is switched off in this release (`typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).",
+      input: obj({ space: str, typed: { type: "boolean" } }),
       presence: { summary: async () => "Show a code to add a phone" },
       run: async (input, meta = {}) => {
         owner(meta, "adding a phone");
         if (input.space) throw fail("identity_only", words("phoneIdentityOnly"));
-        const c = await o.openCode("W1");
-        return { ...c, qr: qrPayload(c.code, await o.relayUrl()) };
+        if (input.typed === true) {
+          if (!typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
+          const c = await o.openCode("W1");
+          return { ...c, qr: qrPayload(c.code, await o.relayUrl()) };
+        }
+        if (phoneTicket && !phoneTicket.claimed && phoneTicket.until > now()) return { qr: phoneTicket.qr, link: phoneTicket.qr, art: phoneTicket.art, expires: phoneTicket.until };
+        const seed = crypto.randomBytes(16);
+        const t = /** @type {any} */ (await mint(seed));
+        if (!t || t.error) throw fail("unavailable", words("offline"));
+        const qr = phoneQrPayload(seed, await o.relayUrl());
+        phoneTicket = { qr, art: qrArt(qr), until: now() + 5 * 60_000, claimed: false };
+        phoneAsk = null;
+        return { qr, link: qr, art: phoneTicket.art, expires: phoneTicket.until };
       },
     });
     ctx.tool("wink.phone.scan", {
-      description: "On the phone: read the QR the computer shows. Answers { pairing, ack, expires }: show `ack` and have the person type it on the computer. A phone only pairs to the person's own identity.",
+      description: "On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.",
       input: obj({ payload: str, target: obj({ kind: str, id: str }) }, ["payload"]),
       run: async (input, meta = {}) => {
         owner(meta, "adding this phone");
-        const q = parseQr(String(input.payload));
-        if (!q) throw fail("bad_input", words("notACode"));
+        const text = String(input.payload);
+        const scan = parsePhoneQr(text);
+        const q = scan ? null : parseQr(text);
+        if (!scan && !q) throw fail("bad_input", words("notACode"));
+        if (q && !typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
         const identity = await o.identity();
         const target = await checkTarget(identity, "phone", input.target || { kind: "identity", id: identity });
         const label = (await targets(identity)).find(x => x.kind === target.kind && x.id === target.id)?.label;
         // With no target the phone joins the identity of whoever shows the code: say whose name that is, never the phone's own local identity.
         const shown = input.target ? { ...target, ...(label ? { label } : {}) } : { kind: "identity", label: label || "you" };
-        return { ...(await startTyping({ code: q.code, kind: "phone", target, label, relay: q.relay })), target: shown };
+        const via = scan ? { seed: scan.seed, relay: scan.relay || undefined } : { code: /** @type {any} */ (q).code, relay: /** @type {any} */ (q).relay || undefined };
+        return { ...(await startTyping({ ...via, kind: "phone", target, label })), target: shown };
+      },
+    });
+    ctx.tool("wink.phone.pairing", {
+      description: "On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, words, until, line }: `words` are the three words the phone shows too, `line` the question to put to the person (answer with wink.phone.pair.answer).",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        owner(meta, "the phone question");
+        const a = phoneLive();
+        if (!a || a.state !== "waiting") return { asking: false };
+        return { asking: true, name: a.name, words: a.words, until: a.until, line: words("phoneAsk", { name: a.name, words: a.words }) };
+      },
+    });
+    ctx.tool("wink.phone.pair.answer", {
+      description: "On the computer: answer the phone question. { yes: true } adds the phone to you, { yes: false } sends it away and adds nothing. Say yes only if the words match the ones the phone shows: give `words` (the three words as read on the phone) to have them checked, and anything else is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, words: str }, ["yes"]),
+      presence: { summary: async () => "Add a phone to you" },
+      run: async (input, meta = {}) => {
+        owner(meta, "the phone answer");
+        const a = phoneLive();
+        if (!a || a.state !== "waiting") return { answered: false };
+        const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+        const wrong = input.words !== undefined && norm(input.words) !== norm(a.words);
+        if (input.yes !== true || wrong) {
+          a.state = "no";
+          dropLater(`device:${a.device}`);
+          ctx.events.emit("wink.pair-answered", { yes: false, kind: "phone" });
+          return { answered: true, yes: false, name: a.name, ...(wrong ? { reason: words("phoneWrongWords") } : {}) };
+        }
+        const identity = await o.identity();
+        const dev = devices.add({ id: a.device, identity, kind: "phone", name: a.name, fingerprint: a.fingerprint, target: { kind: "identity", id: identity } });
+        a.state = "yes";
+        ctx.events.emit("wink.pair-answered", { yes: true, kind: "phone" });
+        ctx.events.emit("wink.joined", { device: dev.id, flow: "W1", kind: "phone" });
+        return { answered: true, yes: true, name: a.name, device: dev.id };
+      },
+    });
+    ctx.tool("wink.phone.wait", {
+      description: "From the phone that scanned the QR, over its own paired connection: where the question stands. Answers { state: waiting | yes | no | expired, words, until }. Only that phone gets an answer.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        owner(meta, "the phone's wait");
+        const a = phoneLive();
+        if (!a || String((meta && meta.caller) || "") !== `device:${a.device}`) throw fail("denied", words("phoneNotYours"));
+        return { state: a.state, words: a.words, until: a.until };
       },
     });
 
@@ -776,7 +876,7 @@ export function createPairing(o) {
     });
   }
 
-  return { devices, targets, checkTarget, computeAllowed, compute, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { devices, targets, checkTarget, phone, computeAllowed, compute, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */
@@ -787,11 +887,22 @@ export const qrPayload = (code, relay) => `vyre://wink/1?c=${encodeURIComponent(
  * @param {Uint8Array} seed @param {string} relay
  */
 export const serverQrPayload = (seed, relay) => `vyre://wink/2?t=${b64url(seed)}&r=${encodeURIComponent(relay)}`;
+/** The QR a computer shows for a phone: the same long secret as a server's, marked for a phone so a server's QR is not taken for one. @param {Uint8Array} seed @param {string} relay */
+export const phoneQrPayload = (seed, relay) => `vyre://wink/2?t=${b64url(seed)}&r=${encodeURIComponent(relay)}&k=phone`;
+/** Reads a phone QR: { seed, relay } or null (a server's QR is not one). @param {string} s @returns {{ seed: Uint8Array, relay: string } | null} */
+export function parsePhoneQr(s) {
+  const m = /^vyre:\/\/wink\/2\?(.*)$/.exec(String(s).trim());
+  if (!m) return null;
+  const q = new URLSearchParams(m[1]);
+  const seed = unb64url(q.get("t") || "");
+  return q.get("k") === "phone" && seed && seed.length === 16 ? { seed, relay: q.get("r") || "" } : null;
+}
 /** Reads a server's QR payload: { seed, relay } or null. @param {string} s @returns {{ seed: Uint8Array, relay: string } | null} */
 export function parseServerQr(s) {
   const m = /^vyre:\/\/wink\/2\?(.*)$/.exec(String(s).trim());
   if (!m) return null;
   const q = new URLSearchParams(m[1]);
+  if (q.get("k") === "phone") return null;
   const seed = unb64url(q.get("t") || "");
   return seed && seed.length === 16 ? { seed, relay: q.get("r") || "" } : null;
 }

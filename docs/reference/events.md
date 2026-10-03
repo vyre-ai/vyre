@@ -754,8 +754,8 @@ Listens for: `link.unpaired`
 | `wink.joined` | `flow`; sometimes `device`, `grant`, `kind`, `offer`, `role` |
 | `wink.offer-changed` | `device`, `offer`, `on`; sometimes `side`, `space` |
 | `wink.offered` | `expires`, `flow`, `offer`, `via`; sometimes `role` |
-| `wink.pair-answered` | `yes` |
-| `wink.pair-asked` | `device`, `name`, `until`, `words` |
+| `wink.pair-answered` | `yes`; sometimes `kind` |
+| `wink.pair-asked` | `device`, `name`, `until`, `words`; sometimes `kind` |
 | `wink.pair-confirm` | `pairing`, `words` |
 | `wink.pair-done` | `kind`, `pairing`, `target`; sometimes `device` |
 | `wink.pair-failed` | `pairing`, `reason` |

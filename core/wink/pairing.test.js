@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload } from "./pairing.js";
+import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload, parsePhoneQr, phoneQrPayload } from "./pairing.js";
 import { FORBIDDEN, words, removed } from "./cards.js";
 import { pairWords } from "../../relay/client/pairwords.js";
 
@@ -110,9 +110,9 @@ test("a phone pairs only to the identity: any space target is refused", async ()
   assert.equal(r.ack, "WINK-AB12-CD34", "the phone shows a code for the person to type on the computer");
   assert.equal(w.typed[0].relay, "ws://relay.test", "the relay comes from the QR");
   assert.deepEqual(r.target, { kind: "identity", label: "alex" }, "the answer names the identity it joins, not an id of the phone's own");
-  const open = await w.call("wink.phone.open", {});
-  assert.equal(open.offer, "wo_W1");
-  assert.equal(parseQr(open.qr)?.code, "WINK-ZZZZ-ZZZZ");
+  const typed = await w.call("wink.phone.open", { typed: true });
+  assert.equal(typed.offer, "wo_W1", "the typed code is the development flag's");
+  assert.equal(parseQr(typed.qr)?.code, "WINK-ZZZZ-ZZZZ");
   await assert.rejects(() => w.call("wink.phone.scan", { payload: "hello, this is no code" }), e => e.code === "bad_input");
 });
 
@@ -906,4 +906,128 @@ test("reviewer-3 LOW: an unowned server answers `already` to a paired device onl
   assert.match(gave[1].message, /wink\.server\.reset/);
   assert.match(removed({ what: "device", name: "juno", release: "gaveup" }), /Removed juno\. The server never confirmed/);
   assert.ok(!FORBIDDEN.test(gave[1].message));
+});
+
+// ---- Add a phone by scan or paste, three words on both sides, a yes on the computer (DESIGN-wink section 4); the typed code is off ----
+const OFF = { typedCode: false, askMs: 5 * 60_000 };
+const phoneOpen = async w => { const open = await w.call("wink.phone.open", {}); return open; };
+const PHONE = { id: "phoneabcdef", name: "Alex's iPhone", fingerprint: "7KQM 4P2X" };
+
+test("Add a phone with the typed code off: a QR and a long code of 128 bits, one ticket, the same on a second open, a space refused", async () => {
+  const w = world(OFF);
+  const open = await phoneOpen(w);
+  const scan = parsePhoneQr(open.qr);
+  assert.ok(scan && scan.seed.length === 16, "a 128 bit secret");
+  assert.equal(scan.relay, "ws://relay.test");
+  assert.equal(open.link, open.qr, "the paste text is the QR's text");
+  assert.ok(open.art, "the QR is drawn for the screen");
+  assert.equal(open.code, undefined, "no short code");
+  assert.equal(w.minted.length, 1);
+  assert.equal((await phoneOpen(w)).qr, open.qr, "opening again shows the same unused QR");
+  assert.equal(w.minted.length, 1);
+  assert.equal(parseServerQr(open.qr), null, "a phone QR is not a server's");
+  assert.equal(parsePhoneQr(serverQrPayload(new Uint8Array(16).fill(1), "ws://r")), null, "a server QR is not a phone's");
+  await assert.rejects(() => w.call("wink.phone.open", { space: HARLOW }), e => e.code === "identity_only");
+  await assert.rejects(() => w.call("wink.phone.open", { typed: true }), e => e.code === "typed_code_off");
+  const mintless = world({ ...OFF, mintFails: true });
+  await assert.rejects(() => mintless.call("wink.phone.open", {}), e => e.code === "unavailable");
+});
+
+test("Add a phone: the phone that redeems the QR is held, both sides show the same words, and a yes on the computer adds it as a phone", async () => {
+  const w = world(OFF);
+  await phoneOpen(w);
+  assert.equal(await w.p.phone.hold(PHONE), true);
+  assert.equal(w.p.devices.list(ME).length, 0, "nothing is added before the yes");
+  const q = await w.call("wink.phone.pairing");
+  assert.equal(q.asking, true);
+  assert.equal(q.words, "amber coral phoneabcdef");
+  assert.equal(q.line, "Add Alex's iPhone to your identity? Words: amber coral phoneabcdef.");
+  const wait = await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" });
+  assert.deepEqual([wait.state, wait.words], ["waiting", q.words]);
+  await assert.rejects(() => w.call("wink.phone.wait", {}, { caller: "device:other" }), e => e.code === "denied");
+  const yes = await w.call("wink.phone.pair.answer", { yes: true, words: "Amber  Coral phoneabcdef" });
+  assert.equal(yes.yes, true);
+  const [d] = w.p.devices.list(ME);
+  assert.equal(d.kind, "phone");
+  assert.deepEqual(d.offers, { access: true });
+  assert.deepEqual(d.owner, { kind: "identity", id: ME });
+  assert.equal((await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" })).state, "yes");
+  assert.equal((await w.call("wink.phone.pairing")).asking, false);
+  assert.equal(w.events.some(e => e[0] === "wink.joined" && e[1].kind === "phone"), true);
+  assert.equal(await w.p.phone.hold({ id: "second", name: "Kit's phone" }), false, "the ticket was one use: a second device is not held for it");
+});
+
+test("Add a phone: a no, or the wrong words, adds nothing and lets the phone go", async () => {
+  for (const [answer, reasonSeen] of [[{ yes: false }, false], [{ yes: true, words: "amber coral wrong" }, true]]) {
+    const w = world(OFF);
+    await phoneOpen(w);
+    await w.p.phone.hold(PHONE);
+    const r = await w.call("wink.phone.pair.answer", answer);
+    assert.equal(r.yes, false);
+    assert.equal(Boolean(r.reason), reasonSeen);
+    assert.equal(w.p.devices.list(ME).length, 0);
+    assert.deepEqual(w.drops.find(d => d[0] === "relay.devices.drop")?.[1], { id: "phoneabcdef" }, "its relay device is dropped");
+    assert.equal((await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" })).state, "no");
+    assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false }, "a late yes finds nothing to answer");
+    assert.equal(w.p.devices.list(ME).length, 0);
+  }
+});
+
+test("Add a phone: no answer in 5 minutes pairs nothing, and an expired ticket holds nobody", async () => {
+  let t = 1_000_000;
+  const w = world({ ...OFF, now: () => t });
+  await phoneOpen(w);
+  await w.p.phone.hold(PHONE);
+  t += 5 * 60_000 + 1;
+  assert.equal((await w.call("wink.phone.pairing")).asking, false);
+  assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false });
+  assert.equal(w.p.devices.list(ME).length, 0);
+  assert.ok(w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === "phoneabcdef"));
+  assert.equal((await w.call("wink.phone.wait", {}, { caller: "device:phoneabcdef" })).state, "expired");
+  // a ticket that ran out before anyone used it holds nobody, and a new open makes a new one
+  const v = world({ ...OFF, now: () => t });
+  const first = await phoneOpen(v);
+  t += 5 * 60_000 + 1;
+  assert.equal(await v.p.phone.hold(PHONE), false, "an expired code is refused");
+  assert.notEqual((await phoneOpen(v)).qr, first.qr);
+});
+
+test("Add a phone, the phone's side with the typed code off: scan, show the words, wait for the yes; a no or a timeout ends it with nothing added", async () => {
+  const qr = phoneQrPayload(new Uint8Array(16).fill(7), "ws://relay.test");
+  const run = async (answers) => {
+    const seen = [];
+    const w = world({ ...OFF, callServer: async (paired, tool, input) => { seen.push(tool); const a = answers.shift(); return typeof a === "function" ? a() : a; } });
+    const r = await w.call("wink.phone.scan", { payload: qr });
+    assert.equal(r.ack, null, "nothing to type");
+    assert.equal(w.typed.length, 0, "no typed exchange");
+    assert.deepEqual(r.target, { kind: "identity", label: "alex" });
+    for (let i = 0; i < 100; i++) { await settle(); const st = await w.call("wink.pair.status", { pairing: r.pairing }); if (st.state !== "waiting" && st.state !== "confirm") return { w, st, seen }; }
+    throw new Error("still waiting");
+  };
+  let { st, seen } = await run([{ state: "waiting", words: "amber coral seven", until: 9e15 }, { state: "waiting", words: "amber coral seven", until: 9e15 }, { state: "yes", words: "amber coral seven" }]);
+  assert.equal(st.state, "done");
+  assert.deepEqual([...new Set(seen)], ["wink.phone.wait"]);
+  ({ st } = await run([{ state: "waiting", words: "amber coral seven", until: 9e15 }, { state: "no" }]));
+  assert.equal(st.state, "failed");
+  assert.match(st.reason, /not added/);
+  ({ st } = await run([{ state: "expired" }]));
+  assert.equal(st.state, "expired");
+  assert.match(st.reason, /Nobody said yes/);
+  ({ st } = await run([() => { throw Object.assign(new Error("no answer"), { remote: "" }); }]));
+  assert.equal(st.state, "failed", "a phone the computer let go hears no, never done");
+  // a typed code is refused when the flag is off; a bare code cannot be pasted in its place
+  const w = world(OFF);
+  await assert.rejects(() => w.call("wink.phone.scan", { payload: qrPayload("WINK-K7QM-4P2X", "ws://relay.test") }), e => e.code === "typed_code_off");
+  await assert.rejects(() => w.call("wink.phone.scan", { payload: "WINK-K7QM-4P2X" }), e => e.code === "typed_code_off");
+  assert.equal(w.typed.length, 0);
+  // a server's QR is not a phone's
+  await assert.rejects(() => w.call("wink.phone.scan", { payload: serverQrPayload(new Uint8Array(16).fill(1), "ws://r") }), e => e.code === "bad_input");
+});
+
+test("Add a phone: the phone words never name a network, a key or a ticket, and no typed code is mentioned", () => {
+  for (const k of ["phoneAsk", "phoneConfirm", "phoneRefused", "phoneExpired", "phoneWrongWords", "phoneMismatch", "phoneNotYours", "typedCodeOff", "notACode"]) {
+    const v = words(/** @type {any} */ (k), { name: "Alex's iPhone", words: "amber coral seven" });
+    assert.doesNotMatch(v, FORBIDDEN, k);
+    assert.doesNotMatch(v, /\btype\b|\btyped\b/i, k);
+  }
 });

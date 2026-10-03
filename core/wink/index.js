@@ -3,9 +3,10 @@
 // or a scan on one device, a card on the other, and then exactly one grant (kernel/contracts/grant.d.ts) and a handful of events. There is no
 // hidden way in. This module owns the flows on a box:
 //
-//   Add a computer or phone   wink.code.open   a typed code (two-sided: the PAKE of relay/client/code.js, then the person types back the code
-//                                              the new device shows, wink.code.ack); the ring (QR) path is the existing pairing window and
-//                                              this module writes its grant and events too (device.paired, device.removed).
+//   Add a phone               wink.phone.open  a QR and a long code; the phone scans or pastes it, both sides show the same three words, the person says yes
+//                                              on the computer (wink.phone.pair.answer); no yes pairs nothing (core/wink/pairing.js). The ring (QR) path is the
+//                                              existing pairing window; this module registers its devices too (device.paired, device.removed).
+//   Typed code (development)  wink.code.open   a short typed code, two-sided (the PAKE of relay/client/code.js, wink.code.ack): off in a release build.
 //   Invite a person           wink.invite      a Wink ticket with the offer sealed into it; the invited person's redemption becomes a membership
 //                                              grant here (a sensitive role waits for the admin's approval).
 //   Share a computer          wink.share       lend one of my computers to my own space: a node.host grant with limits.
@@ -216,10 +217,10 @@ export function createWink(inject = {}) {
     });
 
     ctx.tool("wink.code.ack", {
-      description: "Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
+      description: "Development only (the typed code is switched off in a release build; a phone, a computer and a server are added by scan or paste and three words, never this). Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       presence: { summary: async () => "Add this device to your server" },
-      run: async (input, meta = {}) => { owner(meta, "adding a device"); return ackOffer(input.offer, input.typed); },
+      run: async (input, meta = {}) => { owner(meta, "adding a device"); if (!typedCodeOn()) throw fail("typed_code_off", words("typedCodeOff")); return ackOffer(input.offer, input.typed); },
     });
 
     ctx.tool("wink.cancel", {
@@ -272,6 +273,8 @@ export function createWink(inject = {}) {
     };
     // A device that paired (a typed code, or the ring) is registered under the identity with its kind. No grant is written in any space.
     const registerDevice = async (/** @type {any} */ p) => {
+      // A phone that scanned the QR on show is held for the person's yes (wink.phone.pair.answer): nothing is registered until then.
+      if (await pairing.phone.hold(p)) return null;
       const identity = await owner1();
       const open = /** @type {any} */ (db.prepare("SELECT id FROM wink_offers WHERE via = 'code' AND state = 'joining' ORDER BY created DESC LIMIT 1").get());
       const o = open ? readOffer(open.id) : null;

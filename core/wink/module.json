@@ -123,6 +123,18 @@
         "reach": "person"
       },
       {
+        "name": "wink.phone.pairing",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.pair.answer",
+        "reach": "person"
+      },
+      {
+        "name": "wink.phone.wait",
+        "reach": "person"
+      },
+      {
         "name": "wink.offer.set",
         "reach": "person"
       },

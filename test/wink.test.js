@@ -20,7 +20,7 @@ import { tempHome } from "./helpers.js";
 import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
 import { peerDoor, composeWinkHome } from "../core/wink/index.js";
-import { parseServerQr } from "../core/wink/pairing.js";
+import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords } from "../relay/client/pairwords.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
@@ -257,7 +257,7 @@ test("wink: a ring pairing (the existing path) registers a phone under the ident
 test("wink: Add a phone shows a QR and a code, a phone never takes a space target, and the phone's typed-back code adds it as a phone", async t => {
   const w = await world(t);
   assert.equal((await w.call("wink.phone.open", { space: "spc_aaaaaaaaaaaa" })).error?.code, "identity_only");
-  const open = await w.call("wink.phone.open", {});
+  const open = await w.call("wink.phone.open", { typed: true });
   assert.ok(open.data?.code, JSON.stringify(open.error));
   assert.match(open.data.qr, /^vyre:\/\/wink\/1\?c=WINK-[0-9A-Z]{4}-[0-9A-Z]{4}&r=/);
   const { states, done } = typeCode(t, w, open.data.code);
@@ -484,4 +484,50 @@ test("composeWinkHome: sets ctx.peerDoor, builds the serve wrapper with the host
   assert.throws(() => composeWinkHome({ host, space: "harlow" }), /wink module/);
   w.stop();
   assert.equal(ctx.peerDoor, undefined);
+});
+
+test("Add a phone, real daemon, typed code OFF: the QR is scanned, both sides derive the same three words, nothing is added until yes, a second scanner is refused", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  assert.equal((await w.call("wink.phone.open", { typed: true })).error?.code, "typed_code_off");
+  assert.equal((await w.call("wink.code.ack", { offer: "wo_x", typed: "WINK-0000-0000" })).error?.code, "typed_code_off");
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.ok(open.qr && open.art && open.link === open.qr);
+  assert.equal(open.code, undefined, "no short code");
+  const scan = parsePhoneQr(open.qr);
+  assert.ok(scan && scan.seed.length === 16);
+  const paired = await pairTicket(scan.seed, { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t) });
+  const asked = await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking ? q : null; });
+  assert.equal(asked.name, "Alex's iPhone");
+  assert.equal(asked.words, await pairWords(paired.box, paired.device), "both sides derive the same words from the two keys");
+  assert.equal((await w.call("wink.access")).data.devices.length, 0, "nothing is added before the yes");
+  const wait = (await w.call("wink.phone.wait", {}, `device:${paired.device}`, {})).data;
+  assert.deepEqual([wait.state, wait.words], ["waiting", asked.words]);
+  // a second scanner of the same code is refused by the relay, and the computer is not asked about it
+  await assert.rejects(() => pairTicket(scan.seed, { relay: w.status.url, name: "Eve's phone", crypto: nodeCrypto(), keyStore: keystore(t) }));
+  assert.equal((await w.call("wink.phone.pairing")).data.words, asked.words);
+  const yes = (await w.call("wink.phone.pair.answer", { yes: true, words: asked.words })).data;
+  assert.equal(yes.yes, true, JSON.stringify(yes));
+  const devs = (await w.call("wink.access")).data.devices;
+  assert.deepEqual(devs.map(d => d.kind), ["phone"]);
+  assert.equal((await w.call("wink.phone.wait", {}, `device:${paired.device}`, {})).data.state, "yes");
+});
+
+test("Add a phone, real daemon, typed code OFF: a no, or wrong words, adds nothing and the phone is let go", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  for (const answer of [{ yes: false }, { yes: true, words: "wrong wrong wrong" }]) {
+    const open = (await w.call("wink.phone.open", {})).data;
+    const scan = parsePhoneQr(open.qr);
+    const paired = await pairTicket(scan.seed, { relay: w.status.url, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t) });
+    await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking; });
+    const r = (await w.call("wink.phone.pair.answer", answer)).data;
+    assert.equal(r.yes, false);
+    assert.equal((await w.call("wink.access")).data.devices.length, 0);
+    await until(async () => !(await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.some(d => d.id === paired.device));
+  }
 });
