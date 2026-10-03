@@ -175,6 +175,7 @@ async function startLocked(opts, root, p, release) {
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
+  /** @type {(() => void) | null} */ let reopenLater = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
@@ -218,7 +219,14 @@ async function startLocked(opts, root, p, release) {
     const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
-    void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {});
+    // What the stream is given of it (core/stream/group.js): calls on a thread's session and the restart's reopening, never a token and never a way to open a session. The stream reopens the
+    // open turns itself at its start so a turn it cannot resume says so in its chat; when no stream does (it is off), the daemon reopens them once its modules are up (below).
+    let reopenCalled = false;
+    registry.deps.kernelThreads = Object.freeze({
+      forThread: (/** @type {string} */ thread) => kernelSessions.forThread(thread),
+      reopenPending: (/** @type {{ timeoutMs?: number, onGiveUp?: (thread: string, why: string) => any }} */ o) => { reopenCalled = true; return kernelSessions.reopenPending({ personChainFor, ...o }); },
+    });
+    reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any }} */ q) => {
       const person = kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: kernel.id.owner, path: "direct" });
@@ -250,6 +258,7 @@ async function startLocked(opts, root, p, release) {
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
+  if (reopenLater) reopenLater();
   // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
   // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
   let stopped = false;
