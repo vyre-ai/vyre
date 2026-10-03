@@ -256,6 +256,9 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
     const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
     assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
   }
+  // the Capsule label with no pinned binary behind it gets no person chain (a label is not a proof)
+  const cap = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "capsule" }));
+  assert.ok(cap.data ? cap.data.hops.every(h => h[0] !== "person") : cap.error, JSON.stringify(cap));
   // a model on the socket (mcp) gets no person chain: the module's own service chain
   const m = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: "mcp" }));
   assert.ok(m.data ? m.data.hops.every(h => h[0] !== "person") : m.error, JSON.stringify(m));
@@ -310,4 +313,9 @@ test("the phone's chain: a device connection (relay device:<id>, a tailnet owner
   assert.equal(callerFacts("tailnet-guest:g", { caller: "tailnet-guest:g" }, {}, k), null, "a guest");
   assert.equal(callerFacts("mobile", { caller: "tailnet:phone" }, {}, k) && callerFacts("mobile", { caller: "evil" }, {}, k), null, "an unrecognised listener identity");
   assert.equal(callerFacts("mobile", {}, {}, null), null, "no kernel, no facts");
+  // the Capsule: its chain only with the pinned-binary proof; the label alone builds nothing
+  assert.equal(callerFacts("capsule", {}, {}, k), null, "a capsule label with no proof");
+  assert.equal(callerFacts("capsule", {}, {}, k, false), null);
+  assert.deepEqual(hops(callerFacts("capsule", {}, {}, k, true)), [["person", owner]], "the pinned Capsule is the owner");
+  assert.equal(callerFacts("capsule", { caller: "tailnet:agent:x" }, {}, k, true), null, "a listener's identity is never a Capsule");
 });

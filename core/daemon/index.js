@@ -62,10 +62,12 @@ function kernelProof(req) {
  * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
  * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
  * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
- * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel
+ * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary
  */
-export function callerFacts(caller, policy, via, k) {
+export function callerFacts(caller, policy, via, k, capsuleVerified = false) {
   if (!k || !k.id) return null;
+  // The Capsule is the person only when its own binary is the pinned one (`verifiedCapsule`: the cdhash the person pinned, checked per connection and bound to the pid's start time). An unproven one gets no chain.
+  if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false };
   if (policy.caller && ownerDevice(policy.caller)) {
     const device = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
@@ -945,7 +947,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const sessionToken = await kernelSession(req, kernelOf);
     if (sessionToken === null) return send(res, 401, { error: { code: "no_session", message: "this call carries a session credential that is not valid, so it was not made" } });
-    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null);
+    // The Capsule's chain needs its own proof (the pinned binary on this connection), asked only for a Capsule label on the socket and only when a kernel is on.
+    let capsuleOk = false;
+    if (socket && !policy.caller && caller === "capsule" && kernelOf && kernelOf() && registry.deps.presence && typeof registry.deps.presence.capsulePin === "function") {
+      try { capsuleOk = (await verifiedCapsule(req.socket, await peerPid(req.socket).catch(() => null), registry.deps.presence.capsulePin(), registry.deps.capsuleSeam)) === true; } catch { capsuleOk = false; }
+    }
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
