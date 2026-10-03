@@ -372,3 +372,50 @@ test("installModule: a first-party module becomes a service actor with exactly t
   gs.rebuild();
   assert.ok(await gw.records.get(svc(), "contact", c.id));
 });
+
+test("grants reads: members.list, members.get, invites.get and grants.list show a chain only what it may see", async () => {
+  const { g } = rig();
+  await g.setRole(owner(), { person: ALICE, role: "manager" }, P.role({ person: ALICE, role: "manager" }));
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  assert.deepEqual((await g.members.list(owner())).map(m => m.person).sort(), [ALICE, BOB, OWNER].sort(), "the owner sees everyone");
+  assert.equal((await g.members.list(personChain(ALICE))).length, 3, "a manager sees everyone");
+  assert.deepEqual((await g.members.list(personChain(BOB))).map(m => m.person), [BOB], "a member sees only themselves");
+  assert.equal((await g.members.get(personChain(BOB), BOB)).role, "member");
+  await assert.rejects(() => g.members.get(personChain(BOB), ALICE), { code: "not_found" });
+  await assert.rejects(() => g.members.get(owner(), "per_nobody"), { code: "not_found" }, "indistinguishable from a person you may not see");
+  await assert.rejects(() => g.members.list(personChain("per_stranger")), { code: "not_found" }, "a non-member sees nothing");
+  await assert.rejects(() => g.members.list(agentChain("kit")), { code: "not_found" }, "never a chain holding a model");
+  // grants.list: a manager sees all, a member only theirs
+  assert.ok((await g.list(personChain(ALICE))).length > (await g.list(personChain(BOB))).length);
+  assert.ok((await g.list(personChain(BOB))).every(x => x.subject.actor.id === BOB));
+  // the join card
+  const open = await g.invites.create(owner(), { role: "member" }, { presence: proof("grants.invite", { role: "member" }, `vyre://${SPACE}/invite/new`) });
+  const forEve = await g.invites.create(owner(), { role: "member", invitee: "per_eve" }, { presence: proof("grants.invite", { role: "member", invitee: "per_eve" }, `vyre://${SPACE}/invite/new`) });
+  const card = await g.invites.get(personChain("per_stranger"), open.id);
+  assert.deepEqual(Object.keys(card).sort(), ["confirmed", "expires", "id", "invitee", "needs_confirm", "role", "scope", "space", "status", "valid_until"]);
+  assert.equal(card.status, "pending");
+  assert.equal(card.space.id, SPACE);
+  assert.equal((await g.invites.get(personChain("per_eve"), forEve.id)).invitee, "per_eve");
+  await assert.rejects(() => g.invites.get(personChain("per_stranger"), forEve.id), { code: "not_found" }, "another person's invite");
+  await assert.rejects(() => g.invites.get(personChain("per_stranger"), "inv_nope"), { code: "not_found" });
+  await assert.rejects(() => g.invites.get(agentChain("kit"), open.id), { code: "not_found" });
+  assert.equal((await g.invites.get(owner(), forEve.id)).id, forEve.id, "the issuer reads it");
+  assert.equal((await g.invites.get(personChain(BOB), forEve.id).catch(e => e.code)), "not_found", "a plain member does not read others' invites");
+});
+
+test("member.set carries the owner op for the identity chain, visible to the Space", async () => {
+  const { g, log } = rig();
+  await g.setRole(owner(), { person: ALICE, role: "owner" }, P.role({ person: ALICE, role: "owner" }));
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  await g.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
+  await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
+  const ev = log.read({}).filter(e => e.type === "member.set");
+  const oc = ev.map(e => e.data.owner_change).filter(Boolean);
+  assert.deepEqual(oc.map(o => [o.op, o.person]), [["add", OWNER], ["add", ALICE], ["remove", ALICE]], "only ownership changes carry an op");
+  assert.equal(oc[1].by, OWNER); assert.equal(oc[1].space, SPACE);
+  assert.ok(ev.filter(e => e.data.owner_change).every(e => e.vis === "space"));
+  await g.setRole(owner(), { person: ALICE, role: "owner" }, P.role({ person: ALICE, role: "owner" }));
+  await g.removeMember(owner(), { person: ALICE }, P.role({ remove: ALICE }));
+  const gone = log.read({}).filter(e => e.type === "member.removed").pop();
+  assert.equal(gone.data.owner_change.op, "remove");
+});

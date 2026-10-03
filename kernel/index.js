@@ -15,12 +15,14 @@ import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
 import { sealerPresence } from "./core/presence.js";
 import { expr as defaultExpr } from "./expr/index.js";
+import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
+import { proofFrom, proofRequest } from "./remote/proof.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key: Uint8Array | string, clock?: () => number,
  *   store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
- *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
+ *   label?: () => { name?: string, words?: string }, expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
  *   resolveCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
@@ -30,7 +32,7 @@ export function createKernel(cfg) {
   const store = cfg.store || createMemoryStore({ clock });
   const chains = cfg.chains || createChainBuilder({ space: cfg.space, owner: cfg.owner, owner_uid: cfg.owner_uid, key: cfg.key, clock, is_person: () => true });
   const own = Boolean(cfg.grants && cfg.members);
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined) });
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ space: cfg.space, log, chains, key: cfg.key, clock, presence: cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined), label: cfg.label });
   const presence = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false;
@@ -68,9 +70,16 @@ export function createKernel(cfg) {
     return Object.freeze({
       space: cfg.space, records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
       model: surfaces.model,
+      /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
+      /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
+      for: (/** @type {string} */ id) => (id === cfg.space ? Object.freeze({ space: cfg.space, hosted: true, gateway, surfaces }) : spaces ? spaces.for(id) : (() => { throw new KernelError("unavailable", "this kernel has no Spaces registry"); })()),
+      proofFrom, proofRequest: (/** @type {string} */ call, /** @type {any[]} */ ...a) => proofRequest(cfg.space, call, ...a),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : gateway.serviceChain(m.name)),
     });
   };
-  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, fresh });
+  /** The home's registry of Spaces (kernel/spaces), set once by it: `ctx.kernel.for(id)` reaches any Space, hosted here or remote, through the same gateway. */
+  /** @type {any} */ let spaces = null;
+  const bindSpaces = (/** @type {any} */ reg) => { spaces = reg; };
+  return Object.freeze({ gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh });
 }

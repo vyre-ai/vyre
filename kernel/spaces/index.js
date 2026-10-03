@@ -1,0 +1,82 @@
+// kernel/spaces/index.js: one kernel per Space on a home, and `for(spaceId)` to reach any Space the same way. A home hosts several Spaces: the first is the personal
+// one (the home's own kernel, `kernel/space.json`), each other is its own directory under `kernel/spaces/<id>/` with its own SQLite store and log, its own kernel key
+// (so its grants MACs and tokens verify nowhere else) and its own sealing namespace (`sealerFor(spaceId)`), each booted through `bootKernel`. A Space this home does not
+// host is reached through `remote(spaceId)`: a RemoteKernel over the transport port (kernel/remote), with the same gateway API, so a caller does not care where it lives.
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { bootKernel } from "../boot.js";
+import { KernelError } from "../core/errors.js";
+
+const B32 = "abcdefghijklmnopqrstuvwxyz234567";
+const rand32 = (/** @type {number} */ n) => Array.from(crypto.randomBytes(n), b => B32[b & 31]).join("");
+const SPACE_ID = /^spc_[a-z2-7]{12}$/;
+
+/** The handle `for` returns, hosted or remote: the same gateway and Surfaces door. @param {string} space @param {any} k */
+const hostedHandle = (space, k) => Object.freeze({ space, hosted: true, gateway: k.gateway, surfaces: k.surfaces, kernel: k });
+
+/**
+ * @param {{ root: string, personal: { space: string, kernel: any }, openDb: (file: string) => import("node:sqlite").DatabaseSync, boot?: (cfg: any) => any,
+ *   sealerFor?: (space: string) => any, doorFor?: (space: string) => any, remote?: (space: string) => any, bootOptions?: Record<string, any>, clock?: () => number }} cfg
+ *   `personal` is the home's own, already booted kernel (bootHomeKernel's), so the first Space is never booted twice.
+ */
+export function createSpaceKernels(cfg) {
+  const dir = path.join(cfg.root, "kernel", "spaces");
+  const boot = cfg.boot || bootKernel;
+  /** @type {Map<string, any>} */ const live = new Map([[cfg.personal.space, cfg.personal.kernel]]);
+  /** @type {Map<string, any>} */ const remotes = new Map();
+  const ofDir = (/** @type {string} */ id) => path.join(dir, id);
+  const tell = (/** @type {any} */ k) => { if (typeof k.bindSpaces === "function") k.bindSpaces(api); return k; };
+
+  function open(/** @type {string} */ id) {
+    const d = ofDir(id), f = path.join(d, "space.json"), kf = path.join(d, "kernel.key");
+    let meta; try { meta = JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; }
+    if (!meta || meta.space !== id || !fs.existsSync(kf)) return null;
+    const key = Buffer.from(fs.readFileSync(kf, "utf8").trim(), "hex");
+    if (key.length !== 32) throw new KernelError("unavailable", "that Space's kernel key is not 32 bytes: refusing to start it");
+    return tell(boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, owner: meta.owner, owner_uid: process.getuid ? process.getuid() : 0, key, clock: cfg.clock,
+      ...(cfg.sealerFor ? { sealer: cfg.sealerFor(id) } : {}), ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
+  }
+
+  const api = {
+    /** The Space ids this home hosts, the personal one first. */
+    list() {
+      let more = []; try { more = fs.readdirSync(dir).filter(n => SPACE_ID.test(n) && !live.has(n)).sort(); } catch { /* none yet */ }
+      return [cfg.personal.space, ...[...live.keys()].filter(n => n !== cfg.personal.space), ...more];
+    },
+    hosts: (/** @type {string} */ id) => live.has(id) || (SPACE_ID.test(id) && fs.existsSync(path.join(ofDir(id), "space.json"))),
+    /**
+     * Start hosting a new Space for `owner` (a person id): its own directory, key, store, log and sealing namespace. A first start makes the first owner once.
+     * @param {{ owner: string, name?: string }} o @returns the hosted handle
+     */
+    host(o) {
+      if (!o || typeof o.owner !== "string" || !/^per_[a-z2-7]{26}$/.test(o.owner)) throw new KernelError("bad_input", "a Space is hosted for one first owner (a person id)");
+      const id = `spc_${rand32(12)}`, d = ofDir(id);
+      fs.mkdirSync(d, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 });
+      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
+      const k = open(id);
+      live.set(id, k);
+      return hostedHandle(id, k);
+    },
+    /** The kernel this home hosts for a Space, or null. */
+    hosted(/** @type {string} */ id) {
+      if (!live.has(id)) { if (!SPACE_ID.test(id)) return null; const k = open(id); if (!k) return null; live.set(id, k); }
+      return hostedHandle(id, live.get(id));
+    },
+    /** `ctx.kernel.for(spaceId)`: this home's own kernel when it hosts the Space, else a remote client over the transport port. Same gateway either way. */
+    for(/** @type {string} */ id) {
+      if (typeof id !== "string") throw new KernelError("bad_input", "name a Space");
+      const here = api.hosted(id);
+      if (here) return here;
+      let r = remotes.get(id);
+      if (!r && cfg.remote) { r = cfg.remote(id); if (r) remotes.set(id, r); }
+      if (!r) throw new KernelError("not_found", "no such Space");
+      return r;
+    },
+    /** Stop the kernels this home opened itself (never the personal one, which the daemon owns). */
+    async stop() { for (const [id, k] of live) if (id !== cfg.personal.space && k && typeof k.stop === "function") await k.stop(); },
+  };
+  tell(cfg.personal.kernel);
+  return Object.freeze(api);
+}
