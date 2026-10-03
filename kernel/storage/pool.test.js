@@ -153,3 +153,31 @@ test("devices: a paired bucket, volume or disk becomes a backend, a network driv
   const w = await pool.put(rand(1000), { class: "working" }); assert.equal(w.atRisk, true, "working needs a second copy and only the home may hold it");
   const c = await pool.put(rand(1000), { class: "cold" }); assert.equal(c.atRisk, false); assert.ok(pool.ix.chunks[pool.ix.manifests[c.id].chunks[0]].nodes.includes("nas"));
 });
+
+test("bridge: a drive only another device can reach works as a pool node, authenticated, bounded and idempotent, with ciphertext on both ends", async t => {
+  const { createBridge, serveBridge, httpSend, bridgeBackend, sign, WINDOW_MS } = await import("./bridge.js");
+  const { backendFor } = await import("./devices.js");
+  const root = tmp("bridge"); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  let clock = 5_000_000; const secret = "bridge-secret-0123456789", br = createBridge({ dir: path.join(root, "drive"), secret, capacity: 3 * MB, now: () => clock });
+  const srv = await serveBridge(br); t.after(srv.close); const url = `http://127.0.0.1:${srv.port}`;
+  const be = bridgeBackend({ secret, send: httpSend(url), now: () => clock });
+  const v = rand(1000); await be.put("c/aa", v); assert.deepEqual(await be.get("c/aa"), v); assert.equal(await be.get("c/none"), null);
+  assert.ok(await be.ping() > 0); await be.del("c/aa"); assert.equal(await be.get("c/aa"), null);
+  // Wrong secret, stale time, a body altered after signing, bad key names: all refused.
+  const bad = bridgeBackend({ secret: "another-secret-0123456789", send: httpSend(url), now: () => clock }); await assert.rejects(bad.put("c/x", v), /401/);
+  const old = bridgeBackend({ secret, send: httpSend(url), now: () => clock - WINDOW_MS - 1 }); await assert.rejects(old.get("c/x"), /401/);
+  const raw = await httpSend(url)({ op: "put", key: "c/y", body: Buffer.from("tampered"), ts: clock, sig: sign(secret, { op: "put", key: "c/y", ts: clock, body: Buffer.from("original") }) }); assert.equal(raw.status, 401);
+  for (const k of ["../x", "a//b", "/abs", "c/%2e%2e/x"]) assert.equal((await br.handle({ op: "put", key: k, body: Buffer.from("x"), ts: clock, sig: sign(secret, { op: "put", key: k, ts: clock, body: Buffer.from("x") }) })).status, 400, k);
+  // Capacity: 3 MB offered.
+  await be.put("c/big1", rand(MB + 10)); await be.put("c/big2", rand(MB + 10)); await assert.rejects(be.put("c/big3", rand(MB + 10)), /full|507/);
+  assert.equal(br.used, 2 * (MB + 10));
+  // A pool whose home is local and whose second node is the bridge: end to end, the bridge holds only ciphertext.
+  const { pool } = world(t, { home: 10 }); pool.addNode({ id: "office", backend: be, kind: "network_drive", offered: 3 * MB, site: "office" });
+  await be.del("c/big1"); await be.del("c/big2");
+  const secretText = "Harlow Legal estate plan ".repeat(2000), r = await pool.put(Buffer.from(secretText), { class: "cold" });
+  assert.equal(r.atRisk, false); assert.equal((await pool.get(r.id)).toString(), secretText);
+  for (const f of fs.readdirSync(path.join(root, "drive"), { recursive: true })) { const p = path.join(root, "drive", String(f)); if (fs.statSync(p).isFile()) assert.equal(fs.readFileSync(p).includes(Buffer.from("Harlow Legal")), false, "the bridge holds ciphertext"); }
+  // backendFor picks the bridge for a drive no local mount reaches.
+  const viaBridge = backendFor({ kind: "smb", location: { host: "nas.local", share: "office" }, seenFrom: "dev_office_mac" }, { id: "dev9" }, { bridge: { secret: () => secret, send: () => httpSend(url) } });
+  assert.equal(typeof viaBridge.put, "function"); assert.equal(backendFor({ kind: "smb", location: { host: "nas.local" } }, { id: "dev9" }, { bridge: { secret: () => secret, send: () => httpSend(url) } }), null, "no device to go through, no backend");
+});

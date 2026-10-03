@@ -25,7 +25,7 @@ export function dirBackend(root) {
     async put(k, v) { const f = at(k), t = `${f}.${crypto.randomBytes(4).toString("hex")}.tmp`; fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 }); fs.writeFileSync(t, v, { mode: 0o600 }); fs.renameSync(t, f); },
     async get(k) { try { return fs.readFileSync(at(k)); } catch (e) { if (e.code === "ENOENT") return null; throw e; } },
     async del(k) { fs.rmSync(at(k), { force: true }); },
-    async ping() { fs.accessSync(root, fs.constants.W_OK); const s = fs.statfsSync(root); return Number(s.bavail) * Number(s.bsize); },
+    async ping() { fs.mkdirSync(root, { recursive: true, mode: 0o700 }); fs.accessSync(root, fs.constants.W_OK); const s = fs.statfsSync(root); return Number(s.bavail) * Number(s.bsize); },
   };
 }
 
