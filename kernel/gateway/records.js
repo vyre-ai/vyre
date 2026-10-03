@@ -39,8 +39,8 @@ const fieldHeads = (/** @type {any} */ spec) => {
   return out;
 };
 /** A store answer that definitely means "nothing happened", so the intent can be closed as compensated. */
-const REFUSED = new Set(["invalid", "unknown_type", "unknown_field", "version_conflict", "not_found", "sealed_value_refused", "unique_violation"]);
-const STORE_CODES = new Set(["not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused", "unique_violation"]);
+const REFUSED = new Set(["invalid", "unknown_type", "unknown_field", "version_conflict", "not_found", "sealed_value_refused"]);
+const STORE_CODES = new Set(["not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused"]);
 
 /** What a version hash covers: the record as the gateway wrote it. */
 export const versionHash = (/** @type {any} */ r) => sha256(canonical({ type: r.type, id: r.id, version: r.version, deleted: Boolean(r.deleted_at), data: r.data }));

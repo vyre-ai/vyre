@@ -55,8 +55,6 @@ export interface FieldDefinition {
   /** For `link` (a reference to another record): the target record type. */
   readonly to?: string;
   readonly seal?: SealConfig;
-  /** Among the type's live records no two hold the same non-null value. Kinds text, number, url, choice, date, datetime. A store enforces it atomically (store error `unique_violation`). */
-  readonly unique?: boolean;
 }
 
 export interface TaskTemplateDef {
