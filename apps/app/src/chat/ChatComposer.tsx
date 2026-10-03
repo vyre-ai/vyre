@@ -7,7 +7,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { Avatar, Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { ChatAvatar } from "./ChatAvatar";
 import { COMMANDS } from "../../../../deck/chat/core/commands.js";
 import { pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
@@ -132,7 +133,7 @@ export function ChatComposer(p: ComposerProps) {
         <View accessibilityLabel="Suggestions" style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
           {options.map((o: any) => (
             <Pressable key={o.key} accessibilityRole="button" onPress={() => choose(o)} style={({ pressed, hovered }: any) => ({ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, borderRadius: 8, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
-              {o.avatar ? <Avatar name={o.avatar.name} family={o.avatar.family} size="sm" /> : null}
+              {o.avatar ? <ChatAvatar name={o.avatar.name} family={o.avatar.family} size="sm" /> : null}
               <Text strong>{o.label}</Text>
               <Text size="caption" tone="label" numberOfLines={1} style={{ flex: 1 }}>{o.sub}</Text>
               {o.chip ? <Chip tone="sealed" icon="shield">{o.chip}</Chip> : null}

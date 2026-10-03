@@ -4,7 +4,7 @@
 // (assets/fonts/*/OFL.txt). font-display swap: text paints at once in the fallback, then swaps.
 import { Asset } from "expo-asset";
 import { tokens } from "./tokens";
-import type { Face } from "./fonts";
+import type { Face, Faces } from "./fonts";
 
 const SANS = tokens.font.sans;
 const MONO = tokens.font.mono;
@@ -33,3 +33,13 @@ export const faces: { readonly regular: Face; readonly strong: Face; readonly mo
   strong: { fontFamily: sans, fontWeight: strong },
   mono: { fontFamily: `"${MONO}", ui-monospace, Menlo, monospace`, fontWeight: regular },
 };
+
+const system = `Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+const serif = `"Iowan Old Style", "Palatino Linotype", Georgia, serif`;
+const SYSTEM: Faces = { regular: { fontFamily: system, fontWeight: regular }, strong: { fontFamily: system, fontWeight: strong }, mono: faces.mono };
+const SERIF: Faces = { regular: { fontFamily: serif, fontWeight: regular }, strong: { fontFamily: serif, fontWeight: "700" }, mono: faces.mono };
+
+/** The faces for the font chosen: "sans" is the bundled Instrument Sans; "system" is Inter if the machine has it, else the system UI font; "serif" is the serif stack. */
+export function facesFor(font?: string | null): Faces {
+  return font === "system" ? SYSTEM : font === "serif" ? SERIF : faces;
+}
