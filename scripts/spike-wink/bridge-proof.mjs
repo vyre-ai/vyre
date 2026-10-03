@@ -21,7 +21,7 @@ import { attachPool } from "../../core/wink/storage/pool.js";
 
 const [mode, ...rest] = process.argv.slice(2);
 const opt = k => { const i = rest.indexOf(`--${k}`); return i >= 0 ? rest[i + 1] : undefined; };
-const out = o => console.log(JSON.stringify(o));
+const out = o => console.log(JSON.stringify({ at: Date.now(), ...o }));
 const b64 = b => Buffer.from(b).toString("base64url");
 const unb = s => Buffer.from(s, "base64url");
 const SPACE = "harlow", OFFER = "sto_bridgeproof1", DRIVE_DEVICE = "dev_minidrive";
@@ -82,6 +82,7 @@ if (mode === "home") {
   while (!holds.has(DRIVE_DEVICE) && performance.now() - w0 < 300_000) await new Promise(r => setTimeout(r, 200));
   if (!holds.has(DRIVE_DEVICE)) { out({ ev: "FAIL", why: "the device never connected" }); process.exit(1); }
   out({ ev: "connected", label, ms: Math.round(performance.now() - t0), waitedMs: Math.round(performance.now() - w0) });
+  if (opt("settle")) { await new Promise(r => setTimeout(r, Number(opt("settle")) * 1000)); out({ ev: "settled", label, sessions: "newest open session is used" }); }
   const secrets = createBridgeSecrets({ vault: fileVault(path.join(root, "vault.json")) });
   const linkTo = d => holds.linkTo(d);
 
