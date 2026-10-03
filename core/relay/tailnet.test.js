@@ -382,3 +382,15 @@ test("redeem with vyre-core: a key file left by an earlier pairing is deleted, a
   const clean = await redeem((await d.registry.call("relay.pair.start", {}, "cli", PROOF)).data.url, { root: tempHome(t), name: "third", coreKeys: core });
   assert.equal(/** @type {any} */ (clean).superseded, undefined);
 });
+
+test("relay.devices.drop: only the wink module may call it, and only for a paired device that is still on the box", async t => {
+  fakeApi(t, MINTED, async () => CRED);
+  const d = await box(t);
+  const desk = await desktop(t, d);
+  const id = desk.paired.device;
+  assert.equal((await d.registry.call("relay.devices.drop", { id }, "module:other")).error?.code, "denied");
+  assert.ok((await d.registry.call("relay.devices.drop", { id }, "cli")).error, "a person surface is refused too");
+  assert.equal((await d.registry.call("relay.devices.drop", { id: "nope" }, "module:wink")).error?.code, "not_found");
+  assert.deepEqual((await d.registry.call("relay.devices.drop", { id }, "module:wink")).data, { closed: true, id });
+  assert.equal((await d.registry.call("relay.devices.drop", { id }, "module:wink")).error?.code, "not_found", "already removed");
+});

@@ -35,7 +35,13 @@ const MAX_HEAD = 16 * 1024;
 // (Noise static key, checked by the box before this bridge exists); `allow()` says that device may
 // open peer streams in this space; the head's space must be this box's space; and each device is
 // held to PEER_PER_MIN new peer streams a minute and PEER_OPEN open at once, counted per device
-// across all its channels, so reconnecting does not reset the count.
+// across all its channels, so reconnecting does not reset the count (a box restart does).
+//
+// peers = { space, allow(deviceId), accept, shared? }. allow(deviceId) is SYNCHRONOUS and must return
+// exactly true (anything else, or a throw, is a refusal); the Wink module's per-device cache
+// `wink.peer.allow` has this shape. Rate and slots interplay: PEER_PER_MIN (30) bounds opens in any
+// minute, PEER_OPEN (8) bounds streams open at once; a stream that closes frees its slot at once but
+// still counts toward the minute's rate, so ten quick sequential sessions all pass.
 export const PEER_PER_MIN = 30;
 export const PEER_OPEN = 8;
 /** @type {Map<string, { stamps: number[], open: number }>} */
@@ -54,7 +60,7 @@ const fail = (s, status, code, message) => {
  * @param {import("./channel.js").Channel} channel
  * @param {{ handler: (req: any, res: any, caller: string, peer: any) => any, caller: string, peer: any,
  *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void,
- *   peers?: { space: string, allow: () => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
+ *   peers?: { space: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
  *     perMin?: number, open?: number, now?: () => number } }} o
  */
 export function bridge(channel, o) {
@@ -114,7 +120,7 @@ export function bridge(channel, o) {
     if (!device || !/^[A-Za-z0-9_-]{1,64}$/.test(device)) return fail(s, 403, "denied", "peer streams are for paired devices");
     if (h.space !== p.space) return fail(s, 403, "denied", "this device has no peer access to that space");
     let ok = false;
-    try { ok = p.allow() === true; } catch { ok = false; }
+    try { ok = p.allow(device) === true; } catch { ok = false; }
     if (!ok) return fail(s, 403, "denied", "this device has no peer access to that space");
     const now = (p.now || Date.now)();
     const u = peerUse.get(device) || { stamps: [], open: 0 };
@@ -125,11 +131,14 @@ export function bridge(channel, o) {
     u.open++;
     let released = false;
     const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (!u.open && !u.stamps.length) peerUse.delete(device); };
+    // The slot is freed in one place, whichever way the stream closes: the hook ending or resetting
+    // it itself (s.end, s.reset), or the device's end or reset arriving (onend, onreset). The hook
+    // may install any of these handlers, or none, so each is wrapped and an absent one is skipped.
+    for (const name of /** @type {const} */ (["end", "reset"])) { const f = s[name]; if (typeof f === "function") s[name] = (/** @type {any[]} */ ...a) => { release(); return f.apply(s, a); }; }
     s.respond({ status: 200, headers: { "x-vyre-peer": "wink" } });
     try { p.accept(s, { via: "relay", deviceId: device, space: p.space }); }
     catch (e) { release(); s.reset("peer door failed"); return; }
-    // the accept hook installs its own ondata/onend/onreset; free the slot when either ends
-    for (const name of /** @type {const} */ (["onend", "onreset"])) { const f = s[name]; s[name] = (/** @type {any[]} */ ...a) => { release(); return f.apply(s, a); }; }
+    for (const name of /** @type {const} */ (["onend", "onreset"])) { const f = s[name]; s[name] = (/** @type {any[]} */ ...a) => { release(); return typeof f === "function" ? f.apply(s, a) : undefined; }; }
   }
 
   /** A device's WebSocket: upgrade through the stream router, then carry whole messages. */
