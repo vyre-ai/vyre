@@ -11,12 +11,14 @@ const WORD_RE = new RegExp(`\\b(${Object.keys(WORDS).join("|")})\\b`, "g");
 /** Shortest compact value the ledger tracks: below this, a substring match would flag ordinary text, and the placeholders alone protect it. */
 export const MIN_LEDGER = 6;
 
-/** Undo the encodings a prompt may carry, then NFKC (full-width to ASCII), lower case, digit words to digits. */
+/** Any Unicode decimal digit (Arabic-Indic, Devanagari, mathematical and the rest) as its ASCII digit: they come in consecutive runs of ten from zero. */
+const asciiDigit = ch => { let n = 0, cp = ch.codePointAt(0); while (n < 60 && /\p{Nd}/u.test(String.fromCodePoint(cp - n - 1))) n++; return String(n % 10); };
+/** Undo the encodings a prompt may carry, then NFKC (full-width to ASCII), other decimal digits to ASCII, lower case, digit words to digits. */
 export function fold(text) {
   let s = String(text);
   s = s.replace(/(?:%[0-9a-f]{2})+/gi, m => { try { return decodeURIComponent(m); } catch { return m; } });
   s = s.replace(/\\u([0-9a-f]{4})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)));
-  return s.normalize("NFKC").toLowerCase().replace(WORD_RE, (_, w) => String(WORDS[w]));
+  return s.normalize("NFKC").replace(/\p{Nd}/gu, d => (/[0-9]/.test(d) ? d : asciiDigit(d))).toLowerCase().replace(WORD_RE, (_, w) => String(WORDS[w]));
 }
 /** Stream A: letters and digits only, so spacing, dots, dashes and word breaks cannot hide a value. */
 export const compact = text => fold(text).replace(/[^a-z0-9]/g, "");

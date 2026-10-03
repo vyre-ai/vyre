@@ -33,7 +33,8 @@ export class SealStore {
   read(kind, ref, space) {
     let j;
     try { j = JSON.parse(fs.readFileSync(this.file(kind, ref), "utf8")); } catch { return null; }
-    if (j.space !== space) return null;
+    // The file must be the one asked for: a swap of two files in one Space (a disk write, no key) must not make a reference open another value.
+    if (j.space !== space || j.ref !== ref) return null;
     try {
       const d = crypto.createDecipheriv("aes-256-gcm", this.key(space), Buffer.from(j.iv, "base64"));
       d.setAAD(this.aad(j)); d.setAuthTag(Buffer.from(j.tag, "base64"));
@@ -47,6 +48,8 @@ export class SealStore {
     for (const f of fs.readdirSync(path.join(this.dir, kind))) { try { const j = JSON.parse(fs.readFileSync(path.join(this.dir, kind, f), "utf8")); if (j.space === space) { const { iv, ct, tag, v, ...m } = j; out.push(m); } } catch { /* a torn file is not a value */ } }
     return out;
   }
+  /** Remove files of a kind older than `maxAgeMs`. */
+  sweep(kind, maxAgeMs) { const d = path.join(this.dir, kind), t = Date.now(); for (const f of fs.readdirSync(d)) { try { if (t - fs.statSync(path.join(d, f)).mtimeMs > maxAgeMs) fs.unlinkSync(path.join(d, f)); } catch { /* gone already */ } } }
   /** Crypto-shred of one value: the file is overwritten, then removed. */
   drop(kind, ref) { const f = this.file(kind, ref); try { fs.writeFileSync(f, crypto.randomBytes(fs.statSync(f).size)); fs.unlinkSync(f); return true; } catch { return false; } }
 }

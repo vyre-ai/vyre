@@ -11,7 +11,8 @@ import { fileURLToPath } from "node:url";
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const reg = JSON.parse(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "sinks.json"), "utf8"));
 const ROOTS = ["core", "harness", "local", "lib", "modules", "relay", "names", "apps/app/src", "apps/app/app", "box", "deck", "packages", "tools"];
-const SKIP = /(^|\/)(node_modules|testing|test|fixtures|dist|build)\//;
+// Only the repo's own test roots are skipped, so a provider call hidden in a folder that happens to be named `build` or `testing` is still seen.
+const SKIP = /(^|\/)node_modules\/|^(deck\/test|apps\/test|test)\//;
 const allowed = new Set([...reg.door_clients, ...reg.retrofit_pending, ...Object.keys(reg.not_inference)]);
 
 function* walk(d) {
@@ -20,9 +21,9 @@ function* walk(d) {
 }
 
 test("only registered files name a model provider host", () => {
-  const re = new RegExp(reg.hosts.map(h => h.replace(/\./g, "\\.")).join("|"));
+  const re = new RegExp(reg.hosts.map(h => h.replace(/\./g, "\\.")).join("|")), sdk = new RegExp(`(?:from|require\\(|import\\()\\s*["'](?:${reg.sdks.map(x => x.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")).join("|")})["'/]`);
   const loose = [];
-  for (const r of ROOTS) for (const f of walk(path.join(REPO, r))) if (re.test(fs.readFileSync(path.join(REPO, f), "utf8")) && !allowed.has(f)) loose.push(f);
+  for (const r of ROOTS) for (const f of walk(path.join(REPO, r))) { const t = fs.readFileSync(path.join(REPO, f), "utf8"); if ((re.test(t) || sdk.test(t)) && !allowed.has(f)) loose.push(f); }
   assert.deepEqual(loose, [], "these files talk to a model provider outside the door: route them through kernel/door or register them in kernel/door/sinks.json");
 });
 

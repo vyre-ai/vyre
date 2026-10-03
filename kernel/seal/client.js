@@ -12,8 +12,9 @@ const PROCESS = path.join(path.dirname(fileURLToPath(import.meta.url)), "process
 export class SealError extends Error { constructor(code) { super(code); this.code = code; } }
 
 /** @param {{ dir: string, sinks?: Record<string,string>, timeoutMs?: number, execPath?: string }} o */
-export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath }) {
-  const child = spawn(execPath, [PROCESS], { stdio: ["pipe", "pipe", "inherit"], env: { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "" } });
+export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = process.execPath, profile, dev = false, unattested = false, verifiers = null }) {
+  const env = { VYRE_SEAL_DIR: dir, VYRE_SEAL_SINKS: JSON.stringify(sinks), PATH: process.env.PATH || "", ...(profile ? { VYRE_SEAL_PROFILE: profile } : {}), ...(dev ? { VYRE_SEAL_DEV: "1" } : {}), ...(unattested ? { VYRE_SEAL_UNATTESTED: "1" } : {}), ...(verifiers ? { VYRE_SEAL_VERIFIERS: verifiers } : {}), ...(process.env.VYRE_AGENT_UIDS ? { VYRE_AGENT_UIDS: process.env.VYRE_AGENT_UIDS } : {}) };
+  const child = spawn(execPath, [PROCESS], { stdio: ["pipe", "pipe", "inherit"], env });
   const pending = new Map(); let n = 0, closed = false;
   readline.createInterface({ input: child.stdout }).on("line", line => {
     let m; try { m = JSON.parse(line); } catch { return; }
@@ -43,10 +44,13 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     revealDerived: i => withCtx("derived.read", i, { ref: i.output_ref, purpose: i.purpose, proof: i.proof, ledger_key: i.ledger_key }),
     detect: i => withCtx("detect", i, { session: i.session, text: i.text, ledger_key: i.ledger_key }),
     save: i => withCtx("save", i, { session: i.session, class: i.class, n: i.n, record: i.record, field: i.field, hint_allowed: i.hint_allowed }),
-    endSession: session => call("session.end", { session }),
+    endSession: (chain, session) => withCtx("session.end", { chain }, { session }),
     lookup: i => withCtx("lookup", i, { class: i.class, field: i.field, value: i.value }),
     drop: i => withCtx("drop", i, { ref: i.ref }),
-    enrol: d => call("presence.enrol", d), revoke: key_id => call("presence.revoke", { key_id }),
+    /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
+    begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
+    enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof }),
+    revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id }),
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
   };

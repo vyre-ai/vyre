@@ -24,13 +24,15 @@ const need = (c, m) => { if (!c) throw err(m); };
 
 export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
-  constructor({ dir, master, sinks = {}, now = Date.now }) {
-    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now);
+  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
+    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map();
   }
   ctxOf(ctx) { need(ctx && typeof ctx.space === "string" && ctx.space, "bad_input"); return ctx; }
-  session(id) {
-    need(typeof id === "string" && id, "bad_input");
+  /** A session belongs to one Space: the key is (space, session), so another Space's id is simply absent (invariants 6 and 8). */
+  session(ctx, sid) {
+    need(typeof sid === "string" && sid, "bad_input");
+    const id = `${ctx.space}\0${sid}`;
     const t = this.now();
     // Originals found in text are kept for a session only: at most a day, at most 1000 sessions, and never on disk.
     for (const [k, v] of this.sessions) if (v.at < t - 86_400_000) this.sessions.delete(k);
@@ -42,7 +44,11 @@ export class Sealer {
     const ctx = this.ctxOf(r.ctx), cls = CLASSES[r.class];
     need(cls && typeof r.record === "string" && typeof r.field === "string" && typeof r.value === "string" && r.value.length > 0 && r.value.length <= MAX_VALUE, "bad_input");
     const bi = this.store.blind(ctx.space, r.field, r.class, compact(r.value));
-    if (r.unique && this.store.metas("values", ctx.space).some(m => m.field === r.field && m.class === r.class && m.blind === bi)) throw err("duplicate");
+    // The one equality allowed at write time is a person's, rate limited with the lookup: never a model's, never free (R5-5).
+    if (r.unique) {
+      need(ctx.one_person && !ctx.model_originated, "human_only"); this.rate(ctx, r.field);
+      if (this.store.metas("values", ctx.space).some(m => m.field === r.field && m.class === r.class && m.blind === bi)) throw err("duplicate");
+    }
     const meta = { ref: this.store.newRef("seal"), space: ctx.space, record: r.record, field: r.field, class: r.class, set_at: this.now(), valid_format: cls.validate(r.value), blind: bi };
     this.store.write("values", meta, r.value);
     const hint = r.hint_allowed ? hintOf(r.value) : undefined;
@@ -66,7 +72,8 @@ export class Sealer {
     need(inBody.size === by.size && [...by.keys()].every(k => inBody.has(k)), "slot_mismatch");
     const body = r.body.replace(/\{\{sealed:([a-z][a-z0-9_]*)\}\}/g, (_, k) => by.get(k));
     const out = this.store.newRef("out");
-    this.store.write("derived", { ref: out, space: ctx.space, record: dest.record, field: "output", class: "derived", from: vals.map(v => v.meta.ref), set_at: this.now() }, body);
+    this.store.sweep("derived", 86_400_000);
+    this.store.write("derived", { ref: out, space: ctx.space, record: dest.record, field: "output", class: "derived", from: vals.map(v => v.meta.ref), dest_contact: dest.kind === "contact_point" ? dest.contact : null, set_at: this.now() }, body);
     return { merged: true, output_ref: `vyre://${ctx.space}/sealed-output/${out}`, sealed_slots: vals.map(v => ({ slot: v.slot, class: v.meta.class })) };
   }
   outRef(ctx, ref) { const m = /^vyre:\/\/([^/]+)\/sealed-output\/(out_[a-z0-9]+)$/.exec(String(ref)); need(m && m[1] === ctx.space, "not_found"); return m[2]; }
@@ -85,7 +92,10 @@ export class Sealer {
       s.end(JSON.stringify({ envelope: r.envelope, body: d.plaintext }) + "\n");
     });
     // A sink that echoes the value back is not trusted to say so politely: only its status leaves this process.
-    return { delivered: reply && reply.ok === true, status: typeof reply?.status === "number" ? reply.status : null };
+    const ok = reply && reply.ok === true;
+    // The filled text has no business lasting: a day at most, ten minutes after a delivery. A recipient other than the verified contact is said so.
+    if (ok) setTimeout(() => this.store.drop("derived", id), 600_000).unref();
+    return { delivered: ok, status: typeof reply?.status === "number" ? reply.status : null, recipient_verified: !d.meta.dest_contact || r.envelope.to === d.meta.dest_contact };
   }
 
   /** Human-only. The value goes to the person's blind reveal view, once, and `field.revealed` goes to the log without it. */
@@ -104,7 +114,7 @@ export class Sealer {
 
   /** Text on its way to a model: sealed-looking values become `[sealed: US SSN #1]`; the originals stay here, bound to the session. */
   detect(r) {
-    this.ctxOf(r.ctx); const s = this.session(r.session);
+    const ctx = this.ctxOf(r.ctx), s = this.session(ctx, r.session);
     need(typeof r.text === "string" && r.text.length <= 4 * MAX_BODY, "bad_input");
     const number = (cls, value) => {
       const k = `${cls}\0${compact(value)}`;
@@ -116,16 +126,19 @@ export class Sealer {
     return { text, found: found.map(f => ({ class: f.class, n: f.n })), ledger: key ? found.flatMap(f => ledgerEntries(f.value, f.class, key)) : [] };
   }
   /** "Save as a sealed field on this contact": the retained original becomes a sealed value; nothing is returned but the reference. */
-  save(r) { const ctx = this.ctxOf(r.ctx), v = this.session(r.session).values.get(`${r.class}#${r.n}`); need(v, "not_found"); return this.put({ ctx, record: r.record, field: r.field, class: r.class, value: v, hint_allowed: r.hint_allowed }); }
-  sessionEnd(r) { this.sessions.delete(r.session); return { ended: true }; }
+  save(r) { const ctx = this.ctxOf(r.ctx); need(ctx.one_person && !ctx.model_originated, "human_only"); const v = this.session(ctx, r.session).values.get(`${r.class}#${r.n}`); need(v, "not_found"); return this.put({ ctx, record: r.record, field: r.field, class: r.class, value: v, hint_allowed: r.hint_allowed }); }
+  sessionEnd(r) { const ctx = this.ctxOf(r.ctx); this.sessions.delete(`${ctx.space}\0${r.session}`); return { ended: true }; }
 
+  rate(ctx, field) {
+    const k = `${ctx.person}\0${field}`, t = this.now(), hits = (this.lookups.get(k) || []).filter(x => x > t - 60_000);
+    need(hits.length < LOOKUP_PER_MIN, "rate_limited");
+    hits.push(t); this.lookups.set(k, hits);
+  }
   /** The named human lookup (R5-5): one person, rate limited per person and field, never a Flow step. Returns refs, never values. */
   lookup(r) {
     const ctx = this.ctxOf(r.ctx);
     need(ctx.one_person && !ctx.model_originated && CLASSES[r.class] && typeof r.field === "string" && typeof r.value === "string", "human_only");
-    const k = `${ctx.person}\0${r.field}`, t = this.now(), hits = (this.lookups.get(k) || []).filter(x => x > t - 60_000);
-    need(hits.length < LOOKUP_PER_MIN, "rate_limited");
-    hits.push(t); this.lookups.set(k, hits);
+    this.rate(ctx, r.field);
     const bi = this.store.blind(ctx.space, r.field, r.class, compact(r.value));
     return { refs: this.store.metas("values", ctx.space).filter(m => m.field === r.field && m.class === r.class && m.blind === bi).map(m => m.ref), event: { type: "seal.lookup", field: r.field, class: r.class } };
   }
@@ -137,9 +150,10 @@ export class Sealer {
       case "reveal": return this.reveal(req); case "derived.read": return this.reveal(req, true);
       case "detect": return this.detect(req); case "save": return this.save(req); case "session.end": return this.sessionEnd(req);
       case "lookup": return this.lookup(req); case "drop": return this.drop(req);
-      case "presence.enrol": this.presence.enrol(req); return { ok: true };
-      case "presence.revoke": this.presence.revoke(req.key_id); return { ok: true };
-      case "health": return { ok: true, pid: process.pid };
+      case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
+      case "presence.enrol": { const r = this.presence.enrol({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
+      case "presence.revoke": { const ok = this.presence.revoke(req.key_id, this.ctxOf(req.ctx)); need(ok, "not_found"); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
+      case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested };
       default: throw err("bad_op");
     }
   }
@@ -150,12 +164,27 @@ export function fileMaster(dir) {
   const f = path.join(dir, "master.key");
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (!fs.existsSync(f)) fs.writeFileSync(f, crypto.randomBytes(32).toString("base64"), { mode: 0o600 });
+  const st = fs.statSync(f);
+  if (process.platform !== "win32" && ((st.mode & 0o077) !== 0 || st.uid !== process.getuid())) throw Object.assign(new Error("master key file is not private to this user"), { safe: true });
   return Buffer.from(fs.readFileSync(f, "utf8"), "base64");
 }
 
+/**
+ * Ship gate (reviewer-2, K3 item 6): a key file beside the values is safe only on a server where this process runs as its own user and no agent
+ * or Claude Code session shares that uid. Otherwise any process of that user reads the key and the values, and invariant 5 does not hold.
+ * profile "server": refuse when this uid is one of the agent uids (VYRE_AGENT_UIDS, default the box image's 2000 to 2063).
+ * profile "desktop": refuse a file master altogether until the OS keystore supplies it; VYRE_SEAL_DEV=1 allows it for development and tests.
+ */
+export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = process.env.VYRE_SEAL_DEV === "1", uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
+  if (dev) return;
+  if (profile === "desktop") throw Object.assign(new Error("sealing on a desktop needs the OS keystore for its master key: not available yet"), { safe: true });
+  const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
+  if (profile !== "server" || agents.includes(uid)) throw Object.assign(new Error("the sealing process must run as its own user, not an agent's"), { safe: true });
+}
+
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
-export function serve({ dir, master = fileMaster(dir), sinks = {}, input = process.stdin, output = process.stdout } = {}) {
-  const sealer = new Sealer({ dir, master, sinks });
+export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false } = {}) {
+  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested });
   const rl = readline.createInterface({ input });
   rl.on("line", async line => {
     let req; try { req = JSON.parse(line); } catch { return; }
@@ -169,5 +198,8 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   // A crash must not print the exception: its message or stack could hold a value.
   process.on("uncaughtException", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
   process.on("unhandledRejection", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
-  serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}") });
+  let verifiers = {};
+  if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1" }); }
+  catch (e) { process.stderr.write(`seal: ${e?.safe ? e.message : "internal error"}\n`); process.exit(70); }
 }

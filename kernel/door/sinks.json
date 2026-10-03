@@ -1,6 +1,8 @@
 {
   "note": "Every file allowed to name a model provider's host, and why. A new file is a new model sink: add it here (reviewer-2 signs off), and it must call kernel/door. Files under retrofit_pending still reach providers directly today and move behind the door in the retrofit.",
-  "hosts": ["openrouter.ai", "api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com", "api.x.ai", "api.deepgram.com", "api.elevenlabs.io"],
+  "hosts": ["openrouter.ai", "api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com", "api.x.ai", "api.deepgram.com", "api.elevenlabs.io", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.together.ai", "api.cohere.com", "api.cohere.ai", "api.perplexity.ai", "api.deepseek.com", "api.fireworks.ai", "bedrock-runtime", "openai.azure.com", "api-inference.huggingface.co", "router.huggingface.co", "api.replicate.com", "aiplatform.googleapis.com", "api.moonshot.ai", "dashscope.aliyuncs.com"],
+  "sdks": ["openai", "@anthropic-ai/sdk", "@google/generative-ai", "@google/genai", "cohere-ai", "groq-sdk", "@mistralai/mistralai", "@aws-sdk/client-bedrock-runtime", "replicate", "@huggingface/inference", "together-ai", "ai"],
+  "control": "The control is the egress firewall (K6 and the host): the box lets only the gateway reach provider hosts. This list is a smoke test that catches the honest mistake in review.",
   "door_clients": [],
   "retrofit_pending": ["core/sessions/index.js", "core/sessions/drivers/openrouter.js", "local/voice/providers.js"],
   "not_inference": { "core/vault/rotate.js": "rotates a provider API key; sends no prompt" }

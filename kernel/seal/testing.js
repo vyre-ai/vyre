@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { chainCtx, payloadHash, proofBytes, canonical } from "./wire.js";
+import { chainCtx, payloadHash, proofBytes, canonical, sha256b64 } from "./wire.js";
 
 export const SPACE = "spc_testspace0001";
 export const actor = (kind, id, space = SPACE) => ({ kind, id, space });
@@ -36,3 +36,11 @@ export function property(name, runs, fn, seed = Number(process.env.SEED) || Date
 export function randomSsn(r) { for (;;) { const a = 1 + r.int(898), g = 1 + r.int(99), s = 1 + r.int(9999); if (a !== 666) return `${String(a).padStart(3, "0")}${String(g).padStart(2, "0")}${String(s).padStart(4, "0")}`; } }
 export function luhnCard(r) { const d = [4, ...Array.from({ length: 14 }, () => r.int(10))]; let s = 0; d.slice().reverse().forEach((n, i) => { n = i % 2 === 0 ? (n * 2 > 9 ? n * 2 - 9 : n * 2) : n; s += n; }); return d.join("") + String((10 - (s % 10)) % 10); }
 export { canonical };
+
+/** Enrol a signer's key through the ceremony: a one-time token, the person's own chain, and for a further device a proof from a key already enrolled. */
+export async function enrolDevice(sealer, sg, { person: who = sg.enrolment.person, existing = null, attestation } = {}) {
+  const ch = person(who), e = sg.enrolment;
+  const { token } = await sealer.begin({ chain: ch, person: who, key_id: e.key_id, spki: e.spki });
+  const fields = { key_id: e.key_id, spki: sha256b64(e.spki), signer: e.signer };
+  return sealer.enrol({ chain: ch, person: who, key_id: e.key_id, spki: e.spki, signer: e.signer, token, attestation, proof: existing ? existing.proof(ch, "presence.enrol", fields) : undefined });
+}

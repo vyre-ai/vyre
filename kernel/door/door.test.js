@@ -7,21 +7,21 @@ import fs from "node:fs";
 import { startSealer } from "../seal/client.js";
 import { createDoor, DoorRefusal } from "./door.js";
 import { compact } from "../seal/normalise.js";
-import { chain, person, withAgent, signer, tmp, property, randomSsn, luhnCard } from "../seal/testing.js";
+import { chain, person, withAgent, signer, tmp, property, randomSsn, luhnCard, enrolDevice } from "../seal/testing.js";
 
 const REC = "vyre://spc_testspace0001/contact/c_jane";
 async function world(t, over = {}) {
-  const dir = tmp("door"), sealer = startSealer({ dir, timeoutMs: 8000 }), alex = signer("per_alex"), events = [], seen = [];
+  const dir = tmp("door"), sealer = startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true }), alex = signer("per_alex"), events = [], seen = [];
   t.after(async () => { await sealer.close(); fs.rmSync(dir, { recursive: true, force: true }); });
-  await sealer.enrol(alex.enrolment);
+  await enrolDevice(sealer, alex);
   const driver = { call: async i => { seen.push(i); return { content: over.reply ?? "ok", usage: { input_tokens: 1, output_tokens: 1 } }; } };
   const door = createDoor({ sealer, drivers: { fake: driver }, sinks: ["summaries"], emit: (type, p) => events.push({ type, p }), ...over.door });
   const call = (messages, extra = {}) => door.call({ chain: person(), purpose: "session", provider: "fake", model: "m", messages, ...extra });
   const reveal = async (value, session, cls = "us-ssn") => {
     const { ref } = await sealer.api.put({ chain: person(), record: REC, field: "f", class: cls, value });
     const ch = person(), fields = { ref: ref.ref, purpose: "read" };
-    const r = await sealer.api.reveal({ chain: ch, ref: ref.ref, purpose: "read", proof: alex.proof(ch, "seal.reveal", fields), ledger_key: door.ledgerKey(session) });
-    door.note(session, r.ledger);
+    const r = await sealer.api.reveal({ chain: ch, ref: ref.ref, purpose: "read", proof: alex.proof(ch, "seal.reveal", fields), ledger_key: door.ledgerKey(person(), session) });
+    door.note(person(), session, r.ledger);
   };
   return { door, call, seen, events, sealer, reveal, alex };
 }
@@ -53,7 +53,7 @@ test("a derived session inherits the ledger, the end of a session drops it", asy
   const w = await world(t);
   await w.reveal("Qq-5530-Rr1", "parent", "passport");
   assert.equal((await refusal(w.call([{ role: "user", content: "qq5530rr1" }], { session: "child", parent_session: "parent" }))).code, "ledger_hit");
-  await w.door.endSession("parent");
+  await w.door.endSession(person(), "parent");
   assert.equal((await w.call([{ role: "user", content: "qq5530rr1" }], { session: "fresh" })).content, "ok");
 });
 

@@ -24,15 +24,18 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
   const refuse = (r, input, extra = {}) => { emit("model.refused", { code: r.code, class: r.class, purpose: input.purpose, session: input.session, ...extra }); throw new DoorRefusal(r); };
 
   /** The session's ledger, created on first use. A derived session (a sub-agent, a forked chat) starts from its parent's. */
-  function ledger(session, parent) {
-    if (!ledgers.has(session)) ledgers.set(session, parent && ledgers.has(parent) ? ledgers.get(parent).derive() : new Ledger());
-    return ledgers.get(session);
+  function ledger(space, session, parent) {
+    const k = `${space}\0${session}`, pk = `${space}\0${parent}`;
+    if (!ledgers.has(k)) ledgers.set(k, parent && ledgers.has(pk) ? ledgers.get(pk).derive() : new Ledger());
+    return ledgers.get(k);
   }
+  const isChain = c => c && typeof c.space === "string" && Array.isArray(c.hops) && c.hops.length > 0 && c.hops.every(h => h?.actor?.kind && h.actor.id);
   const keyOf = l => l.key.toString("base64");
 
   /** Scan one text: placeholders in place of sealed-looking values, ledger entries recorded, then the ledger check. */
   async function scan(chain, session, text, input) {
-    const l = ledger(session, input.parent_session);
+    if (!isChain(chain)) throw new TypeError("not a kernel chain");
+    const l = ledger(chain.space, session, input.parent_session);
     const r = await sealer.detect({ chain, session, text, ledger_key: keyOf(l) });
     l.add(r.ledger);
     if (r.found.length) emit("model.sanitized", { session, purpose: input.purpose, found: r.found.map(f => ({ class: f.class, n: f.n })) });
@@ -43,18 +46,20 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
   }
 
   return {
-    /** The session's ledger key for the sealing process's reveal and detect calls; entries it returns are added with `note`. */
-    ledgerKey: (session, parent) => keyOf(ledger(session, parent)),
-    note: (session, entries) => { ledger(session).add(entries); },
+    /** The session's ledger key for the sealing process's reveal and detect calls; entries it returns are added with `note`. A session is (Space, id). */
+    ledgerKey: (chain, session, parent) => keyOf(ledger(chain.space, session, parent)),
+    note: (chain, session, entries) => { ledger(chain.space, session).add(entries); },
     /** Sanitised text for a transcript, a memory or a cache: the only form that may be persisted. A ledger hit is refused. */
     async sanitize({ chain, session, text, purpose = "other" }) { return scan(chain, session, text, { purpose, session }); },
     /** The tool or effect result a model is about to see (D-2): scanned for sealed shapes and ledgered values. */
     async result({ chain, session, text, purpose = "other" }) { return scan(chain, session, text, { purpose, session }); },
-    async endSession(session) { ledgers.delete(session); await sealer.endSession(session); },
+    async endSession(chain, session) { ledgers.delete(`${chain.space}\0${session}`); await sealer.endSession(chain, session); },
 
     /** @param {import("../contracts/model.d.ts").ModelCallInput & { parent_session?: string }} input */
     async call(input) {
-      const { chain } = input, last = chain.hops[chain.hops.length - 1];
+      const { chain } = input;
+      if (!isChain(chain)) throw new TypeError("not a kernel chain");
+      const last = chain.hops[chain.hops.length - 1];
       if (last.actor.kind === "service" && !sinkSet.has(last.actor.id)) refuse({ code: "not_a_sink", detail: "service is not a declared model sink" }, input);
       if (!Array.isArray(input.messages) || input.messages.length === 0 || input.messages.length > MAX_MESSAGES
         || input.messages.reduce((n, m) => n + String(m.content).length, 0) > MAX_CHARS) refuse({ code: "budget", meter: "prompt_size" }, input);
@@ -70,7 +75,7 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
       const content = await scan(chain, session, String(out.content ?? ""), { ...input, session });
       for (const t of out.tool_calls ?? []) await scan(chain, session, JSON.stringify(t.input ?? null), { ...input, session });
       budget.settle?.(input, out.usage);
-      if (!input.session) await this.endSession(session);
+      if (!input.session) await this.endSession(chain, session);
       return { ...out, id: out.id ?? crypto.randomUUID(), content };
     },
   };

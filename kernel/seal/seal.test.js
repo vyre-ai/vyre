@@ -8,7 +8,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { startSealer } from "./client.js";
-import { person, withAgent, chain, signer, tmp, property, randomSsn, luhnCard, SPACE } from "./testing.js";
+import { person, withAgent, chain, signer, tmp, property, randomSsn, luhnCard, enrolDevice, SPACE } from "./testing.js";
 
 const REC = "vyre://spc_testspace0001/contact/c_jane";
 const dest = (over = {}) => ({ kind: "contact_point", record: REC, contact: "jane@harlow.test", verified: true, ...over });
@@ -23,9 +23,9 @@ function diskHolds(dir, value) {
   return null;
 }
 async function setup(t, sinks = {}) {
-  const dir = tmp("seal"), s = startSealer({ dir, sinks, timeoutMs: 8000 }), alex = signer("per_alex");
+  const dir = tmp("seal"), s = startSealer({ dir, sinks, timeoutMs: 8000, dev: true, unattested: true }), alex = signer("per_alex");
   t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
-  await s.enrol(alex.enrolment);
+  await enrolDevice(s, alex);
   return { dir, s, alex };
 }
 const put = (s, value, over = {}) => s.api.put({ chain: person(), record: REC, field: "ssn", class: "us-ssn", value, ...over });
@@ -42,11 +42,11 @@ test("put: a placeholder comes back, nothing about the value is in the reference
 });
 
 test("a sealed file does not open under another reference, record, field, Space or after a flipped bit", async t => {
-  const { dir, s } = await setup(t);
+  const { dir, s, alex: owner } = await setup(t);
   const { ref } = await put(s, "123-45-6789");
   const f = path.join(dir, "values", `${ref.ref}.json`), j = JSON.parse(fs.readFileSync(f, "utf8"));
   const alex = person();
-  const signed = signer("per_alex"); await s.enrol(signed.enrolment);
+  const signed = signer("per_alex"); await enrolDevice(s, signed, { existing: owner });
   const reveal = (r, ch = alex) => s.api.reveal({ chain: ch, ref: r, purpose: "check", proof: signed.proof(ch, "seal.reveal", { ref: r, purpose: "check" }) });
   assert.equal((await reveal(ref.ref)).value, "123-45-6789");
   // Another record's AAD, another field, a flipped bit: the file no longer opens, and the answer is the same as for a value that never existed.
@@ -78,9 +78,9 @@ test("reveal is human only: it needs one person, a human surface, a hardware pro
   const proofFor = c => alex.proof(c, "seal.reveal", fields);
   for (const c of [withAgent(), chain([["person", "per_alex"], ["service", "mail"]]), person("per_alex", "mcp"), person("per_alex", "cli"), chain([["agent", "intake"]])]) assert.equal(await code(go(proofFor(c), c)), "human_only");
   // Someone else's key cannot sign for Alex, and a revoked key signs nothing.
-  const bob = signer("per_bob"); await s.enrol(bob.enrolment);
+  const bob = signer("per_bob"); await enrolDevice(s, bob);
   assert.equal(await code(go(bob.proof(ch, "seal.reveal", fields))), "unknown_key");
-  const k = signer("per_alex"); await s.enrol(k.enrolment); await s.revoke(k.key_id);
+  const k = signer("per_alex"); await enrolDevice(s, k, { existing: alex }); await s.revoke({ chain: ch, key_id: k.key_id });
   assert.equal(await code(go(k.proof(ch, "seal.reveal", fields))), "unknown_key");
 });
 
@@ -149,7 +149,7 @@ test("deliver: the sealing process hands the merged body to the egress sink as a
   assert.equal(await code(s.deliver({ chain: ch, output_ref: out.output_ref, sink: "mail", envelope: { ...envelope, to: "evil@x.test" }, proof: alex.proof(ch, "seal.deliver", fields) })), "wrong_payload");
   assert.equal(await code(s.deliver({ chain: ch, output_ref: out.output_ref, sink: "nowhere", envelope, proof: alex.proof(ch, "seal.deliver", { ...fields, sink: "nowhere" }) })), "not_found");
   const r = await s.deliver({ chain: ch, output_ref: out.output_ref, sink: "mail", envelope, proof: alex.proof(ch, "seal.deliver", fields) });
-  assert.deepEqual(r, { delivered: true, status: 202 });
+  assert.deepEqual(r, { delivered: true, status: 202, recipient_verified: true });
   assert.equal(k.got.length, 1); assert.equal(k.got[0].body, "SSN 123-45-6789"); assert.deepEqual(k.got[0].envelope, envelope);
 });
 
@@ -164,7 +164,7 @@ test("detect: values in text become numbered placeholders, the same value keeps 
   assert.equal(diskHolds(dir, "123-45-6789"), null, "originals are held in memory, not on disk, until saved");
   const saved = await s.save({ chain: ch, session, class: "us-ssn", n: 2, record: REC, field: "ssn" });
   assert.equal(saved.ref.sealed, "US SSN"); assert.ok(!JSON.stringify(saved).includes("321"));
-  await s.endSession(session);
+  await s.endSession(ch, session);
   assert.equal(await code(s.save({ chain: ch, session, class: "us-ssn", n: 1, record: REC, field: "ssn" })), "not_found");
 });
 
@@ -175,14 +175,14 @@ test("uniqueness at write time and the rate-limited human lookup are the only eq
   assert.equal((await put(s, "321-54-9876", { unique: true })).ref.present, true);
   const look = i => s.lookup({ chain: person(), class: "us-ssn", field: "ssn", value: "123-45-6789" });
   assert.equal((await look()).refs.length, 1);
-  for (let i = 0; i < 9; i++) await look();
+  for (let i = 0; i < 6; i++) await look();
   assert.equal(await code(look()), "rate_limited");
   assert.equal(await code(s.lookup({ chain: withAgent(), class: "us-ssn", field: "ssn", value: "123-45-6789" })), "human_only");
 });
 
 test("an error never carries input: every refusal is a stable code, and the process's output holds no value", async t => {
   const dir = tmp("seal"), out = [];
-  const s = startSealer({ dir, timeoutMs: 8000 }); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const s = startSealer({ dir, timeoutMs: 8000, dev: true }); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const secret = "QWERTY-secret-98765";
   const errs = [];
   for (const p of [s.api.put({ chain: person(), record: REC, field: "f", class: "nope", value: secret }), s.api.put({ chain: person(), record: 5, field: "f", class: "free", value: secret }),
@@ -211,7 +211,9 @@ test("property: whatever the sequence of puts, uses and detects, no plaintext is
 
 test("a proof issued before the process started is refused (the used-nonce list does not survive a restart), and a sink name is not looked up through the prototype", async t => {
   const { Presence } = await import("./proof.js");
-  let now = 1_000_000; const p = new Presence(() => now), k = signer("per_alex"); p.enrol(k.enrolment);
+  let now = 1_000_000; const p = new Presence(() => now, { allowUnattested: true }), k = signer("per_alex"), e = k.enrolment, ch0 = person();
+  const { token } = p.begin({ person: "per_alex", key_id: e.key_id, spki: e.spki });
+  assert.deepEqual(p.enrol({ person: "per_alex", key_id: e.key_id, spki: e.spki, signer: e.signer, token, ctx: (await import("./wire.js")).chainCtx(ch0) }), { attested: false });
   const ch = person(), fields = { ref: "seal_x", purpose: "p" };
   const old = k.proof(ch, "seal.reveal", fields, { issued: now - 10_000, life: 60_000 });
   assert.equal(p.refuse(old, { op: "seal.reveal", space: ch.space, fields, ctx: (await import("./wire.js")).chainCtx(ch) }), "expired");
@@ -221,4 +223,81 @@ test("a proof issued before the process started is refused (the used-nonce list 
   const { ref } = await put(s, "123-45-6789"), c = person();
   const out = await s.api.use({ chain: c, ref: ref.ref, slot: "ssn", body: "{{sealed:ssn}}", template: "t", template_version: 1, destination: dest() });
   for (const sink of ["constructor", "__proto__", "toString"]) assert.equal(await code(s.deliver({ chain: c, output_ref: out.output_ref, sink, envelope: {}, proof: alex.proof(c, "seal.deliver", { output_ref: out.output_ref, sink, envelope: {} }) })), "not_found", sink);
+});
+
+test("K3 item 1: `unique` and lookup are one person's, share one rate limit, and an agent's probe is refused", async t => {
+  const { s } = await setup(t);
+  await put(s, "123-45-6789");
+  // An agent chain (or a service) probing for an existing value is refused with the same answer whether or not it exists.
+  for (const ch of [withAgent(), chain([["person", "per_alex"], ["service", "mail"]])]) {
+    assert.equal(await code(s.api.put({ chain: ch, record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789", unique: true })), "human_only");
+    assert.equal(await code(s.api.put({ chain: ch, record: REC, field: "ssn", class: "us-ssn", value: "999-99-9999", unique: true })), "human_only");
+  }
+  // A person's probes count against the same per-field limit as the lookup.
+  let n = 0; while (n < 30 && !(await code(put(s, `1${String(n).padStart(2, "0")}-45-6789`, { unique: true })))) n++;
+  assert.ok(n >= 8 && n <= 10, `rate limit after ${n}`);
+  assert.equal(await code(s.lookup({ chain: person(), class: "us-ssn", field: "ssn", value: "123-45-6789" })), "rate_limited");
+});
+
+test("K3 item 4: a session belongs to one Space, and saving a detection is a person's act", async t => {
+  const { s } = await setup(t);
+  const a = person(), b = chain([["person", "per_alex"]], "deck", "spc_other0000001");
+  await s.detect({ chain: a, session: "shared-name", text: "ssn 123-45-6789" });
+  // The same session id from another Space is a different, empty session: the detection is not there to save.
+  assert.equal(await code(s.save({ chain: b, session: "shared-name", class: "us-ssn", n: 1, record: "vyre://spc_other0000001/contact/c", field: "ssn" })), "not_found");
+  // A model-originated chain cannot promote a detection, though the session and the number are right.
+  assert.equal(await code(s.save({ chain: withAgent(), session: "shared-name", class: "us-ssn", n: 1, record: REC, field: "ssn" })), "human_only");
+  assert.equal((await s.save({ chain: a, session: "shared-name", class: "us-ssn", n: 1, record: REC, field: "ssn" })).ref.present, true);
+  await s.endSession(b, "shared-name"); // another Space ending its own session of that name leaves this one alone
+  assert.equal((await s.save({ chain: a, session: "shared-name", class: "us-ssn", n: 1, record: REC, field: "ssn" })).ref.present, true);
+});
+
+test("K3 item 5: a device key is enrolled only through the ceremony, and a second device needs a proof from a first", async t => {
+  const dir = tmp("enrol"), s = startSealer({ dir, timeoutMs: 8000, dev: true }); // not started to allow unattested keys
+  t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const a = signer("per_alex"), e = a.enrolment, ch = person(), base = { chain: ch, person: "per_alex", key_id: e.key_id, spki: e.spki, signer: e.signer };
+  assert.equal(await code(s.enrol({ ...base, token: "nope" })), "no_ceremony");
+  assert.equal(await code(s.begin({ ...base, chain: withAgent() })), "chain_not_person");
+  assert.equal(await code(s.begin({ ...base, chain: person("per_bob") })), "chain_not_person");
+  const { token } = await s.begin(base);
+  assert.equal(await code(s.enrol({ ...base, token })), "unattested", "a key nobody attested is refused unless the process allows it");
+  assert.equal(await code(s.enrol({ ...base, token })), "no_ceremony", "the token is spent by any attempt");
+  assert.equal((await s.health()).unattested_allowed, false);
+  // A software key cannot claim to be a hardware key: the verifier decides the signer class.
+  const verifiers = path.join(dir, "verifiers.mjs");
+  fs.writeFileSync(verifiers, 'export default { fake: (att, spki) => (att.claims === "enclave" ? "secure_enclave" : null) };');
+  const s2 = startSealer({ dir: tmp("enrol2"), timeoutMs: 8000, dev: true, verifiers }); t.after(() => s2.close());
+  const tk = (await s2.begin(base)).token;
+  assert.equal(await code(s2.enrol({ ...base, token: tk, attestation: { format: "fake", claims: "software" } })), "bad_attestation");
+  assert.equal((await s2.enrol({ ...base, token: (await s2.begin(base)).token, attestation: { format: "fake", claims: "enclave" } })).attested, true);
+  // A second device for the same person needs a proof from the first; someone else's key cannot vouch.
+  const b = signer("per_alex"), eb = b.enrolment, ch2 = person();
+  const bb = { chain: ch2, person: "per_alex", key_id: eb.key_id, spki: eb.spki, signer: eb.signer, attestation: { format: "fake", claims: "enclave" } };
+  assert.equal(await code(s2.enrol({ ...bb, token: (await s2.begin(bb)).token })), "needs_presence");
+  const fields = { key_id: eb.key_id, spki: (await import("./wire.js")).sha256b64(eb.spki), signer: eb.signer };
+  assert.equal((await s2.enrol({ ...bb, token: (await s2.begin(bb)).token, proof: a.proof(ch2, "presence.enrol", fields) })).attested, true);
+  // Revoking needs the owner's chain.
+  assert.equal(await code(s2.revoke({ chain: person("per_bob"), key_id: eb.key_id })), "not_found");
+  assert.equal((await s2.revoke({ chain: person("per_alex"), key_id: eb.key_id })).revoked, true);
+});
+
+test("K3 item 10: swapping two sealed files in one Space does not make a reference open the other value", async t => {
+  const { dir, s, alex } = await setup(t);
+  const one = (await put(s, "111-22-3333")).ref.ref, two = (await put(s, "444-55-6666")).ref.ref;
+  const f1 = path.join(dir, "values", `${one}.json`), f2 = path.join(dir, "values", `${two}.json`), b1 = fs.readFileSync(f1), b2 = fs.readFileSync(f2);
+  fs.writeFileSync(f1, b2); fs.writeFileSync(f2, b1);
+  const ch = person();
+  assert.equal(await code(s.api.reveal({ chain: ch, ref: one, purpose: "p", proof: alex.proof(ch, "seal.reveal", { ref: one, purpose: "p" }) })), "not_found");
+});
+
+test("K3 item 6: the sealing process refuses to start on a desktop profile or as an agent's uid, and a loose master key file", async t => {
+  const { hostCheck, fileMaster } = await import("./process.js");
+  assert.throws(() => hostCheck({ profile: "desktop", dev: false }), /OS keystore/);
+  assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 2001 }), /own user/);
+  assert.doesNotThrow(() => hostCheck({ profile: "server", dev: false, uid: 1000 }));
+  assert.throws(() => hostCheck({ profile: "server", dev: false, uid: 5000, agentUids: "5000,5001" }), /own user/);
+  const d = tmp("master"); fileMaster(d); fs.chmodSync(path.join(d, "master.key"), 0o644);
+  assert.throws(() => fileMaster(d), /not private/);
+  const down = startSealer({ dir: tmp("seal"), timeoutMs: 3000 }); // no dev flag: a desktop profile
+  assert.equal(await code(down.health()), "sealer_down"); await down.close();
 });
