@@ -192,7 +192,7 @@ test("a REAL daemon boot hands the Switchboard (the module named in its own mani
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(realManifest.name, "threads", "the real manifest name");
-  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox"], "it declares what it needs from the daemon");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox", "credentials"], "it declares what it needs from the daemon");
   const row = d.registry.status().find(m => m.name === "threads");
   assert.equal(row && row.state, "running", JSON.stringify(row));
   const real = d.registry.context(realManifest);
@@ -252,7 +252,7 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
-  for (const label of ["cli", "local", "deck"]) {
+  for (const label of ["cli", "local", "deck", "mobile"]) {
     const r = /** @type {any} */ (await call("zz-who.me", {}, { root, caller: label }));
     assert.deepEqual(r.data && r.data.hops, [["person", owner, label]], `${label}: ${JSON.stringify(r)}`);
   }
@@ -291,4 +291,23 @@ test("an outward action with a placeholder: refused when the person the turn is 
   const noSession = await call({ body: `Hi {{field:${c.urn}#name}}` }, { thread: "t1", agent: "assistant" });
   assert.equal(noSession.error.code, "placeholder_unreadable", "no session, no resolution, nothing sent as text");
   assert.equal((await call({ body: "plain" })).error.code, "held_unavailable", "a plain outward call is held as before");
+});
+
+test("the phone's chain: a device connection (relay device:<id>, a tailnet owner node, a paired owner device) builds the owner's chain; a guest, an agent node and an unknown listener build none", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const { callerFacts } = await import("../core/daemon/index.js");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const k = d.kernel, owner = k.id.owner;
+  const hops = f => { const c = f && k.chains.fromFacts(f); return c ? c.hops.map(h => [h.actor.kind, h.actor.id]) : null; };
+  const dev = "abcdefghijklmnop";
+  assert.deepEqual(hops(callerFacts(`device:${dev}`, { caller: `device:${dev}` }, {}, k)), [["person", owner]], "a phone through the relay");
+  assert.deepEqual(hops(callerFacts("tailnet:phone", { caller: "tailnet:phone", peer: { node: "n1" } }, {}, k)), [["person", owner]], "a phone on the tailnet");
+  assert.equal(callerFacts("tailnet:agent:x", { caller: "tailnet:agent:x" }, {}, k), null, "an agent node");
+  assert.equal(callerFacts("tailnet-guest:g", { caller: "tailnet-guest:g" }, {}, k), null, "a guest");
+  assert.equal(callerFacts("mobile", { caller: "tailnet:phone" }, {}, k) && callerFacts("mobile", { caller: "evil" }, {}, k), null, "an unrecognised listener identity");
+  assert.equal(callerFacts("mobile", {}, {}, null), null, "no kernel, no facts");
 });

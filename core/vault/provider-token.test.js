@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { takeCredentialsPort } from "./index.js";
+import { provideOnce } from "../modules/index.js";
 
 const fake = l => `fixture-${l}-${crypto.randomBytes(14).toString("hex")}`;
 async function daemon(t, vaultConfig = {}) {
@@ -46,13 +46,17 @@ test("the app learns that one is stored and when, never the value; the logs, the
   for (const f of fs.readdirSync(root, { recursive: true })) { const p = path.join(root, String(f)); if (fs.statSync(p).isFile() && fs.statSync(p).size < 50_000_000) assert.equal(fs.readFileSync(p).includes(Buffer.from(tok)), false, `sealed at rest: ${f}`); }
 });
 
-test("the credentials port: the daemon took it once, the launcher gets the token for a provider item, or null, and each use leaves an audit row without the value", async t => {
+test("the credentials port: the vault provided it once, the launcher gets the token for a provider item, or null, and each use leaves an audit row without the value", async t => {
   const { d, reg, logs } = await daemon(t), tok = fake("claude"), key = fake("api");
   await reg("vault.put", { name: "claude-setup-token", kind: "secret", value: tok, grants: ["agents", "threads"] }, "module:onboard"); // as core/onboard makes it
   await reg("vault.provider.set", { provider: "anthropic", token: key }, "cli");
-  // VP-2: the DAEMON took the port right after the vault started, so nothing else can: a second take fails.
-  const port = d.registry.deps.credentialsPort; assert.ok(port, "the daemon holds the credentials port");
-  assert.throws(() => takeCredentialsPort(), /already taken/, "nothing that imports the vault later can take it");
+  // VP-2: the vault provided the port to the registry once, at its own start, and the daemon gave it to the sandbox; no import of the vault is involved, and nothing can take it later.
+  const port = d.registry.deps.credentialsPort; assert.ok(port, "the registry holds the credentials port the vault provided");
+  // VP-4: the vault may provide again after a restart and the new port replaces the old one; nobody else can provide at all.
+  const before = d.registry.deps.credentialsPort, fresh = Object.freeze({ credentials: async () => "fresh" });
+  provideOnce(d.registry.deps, "vault", "credentialsPort", fresh); assert.equal(d.registry.deps.credentialsPort, fresh, "the restarted vault's port replaced the old one");
+  provideOnce(d.registry.deps, "vault", "credentialsPort", before); assert.equal(d.registry.deps.credentialsPort, before);
+  for (const [mod, name] of [["sessions", "credentialsPort"], ["agents", "credentialsPort"], ["vault", "sandbox"], ["mcp", "credentialsPort"]]) assert.throws(() => provideOnce({}, mod, name, {}), /may not provide/, `${mod} ${name}`);
   assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key);
   assert.equal(await port.credentials("codex"), null); assert.equal(await port.credentials("../x"), null); for (const p of ["__proto__", "constructor", "toString"]) assert.equal(await port.credentials(p), null, p);
   assert.ok(Object.isFrozen(port)); assert.equal(Object.keys(port).join(), "credentials");
