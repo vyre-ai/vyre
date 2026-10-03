@@ -344,3 +344,15 @@ test("R2-1: an agent with events.read but no records.read cannot read record val
   assert.deepEqual(seen.filter(e => e.type.startsWith("contact.")), []);
   assert.ok(JSON.stringify(await gw.events.read(owner(), {})).includes("SecretName"), "a person who may read it still can");
 });
+
+test("kernel facade: definitions go through authorize, the action registry and members are readable, a service chain is the kernel's", async () => {
+  const { gw } = await withType(rig({ grants: agentGrants(["records.read"]).concat([]), members: ["agent:kit"] }));
+  assert.deepEqual((await gw.definitions(owner())).map(t => t.name), ["contact"]);
+  assert.deepEqual((await gw.definitions(agent())).map(t => t.name), ["contact"], "an assistant with records.read sees the types");
+  const rogue = chains.fromFacts({ kind: "agent_session", agent: "rogue", session: "s", thread: "t", vouched: true });
+  await assert.rejects(() => gw.definitions(rogue), { code: "not_found" });
+  assert.ok(gw.actions().some(a => a.action === "records.read" && a.risk === "read") && gw.actions().some(a => a.action === "seal.use"));
+  assert.equal(gw.members.isAdmin(actor("person", OWNER)), false, "no membership source configured");
+  const svc = gw.serviceChain("memory");
+  assert.equal(svc.hops[svc.hops.length - 1].actor.id, "memory");
+});

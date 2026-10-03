@@ -19,7 +19,7 @@ export function createGateway(cfg) {
   const attrs = (/** @type {string} */ u) => ({ ...((cfg.attrs && cfg.attrs(u)) || {}), ...((records && records.attrsOf(u)) || {}) });
   const authorizer = createAuthorizer({ ...cfg, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...(cfg.actions || [])] });
   records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
-  const { allowed } = createGate({ authorizer, log: cfg.log });
+  const { allowed, gate } = createGate({ authorizer, log: cfg.log });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
   async function canSee(/** @type {any} */ chain, /** @type {any} */ e) {
@@ -58,6 +58,22 @@ export function createGateway(cfg) {
   return Object.freeze({
     authorize: authorizer.authorize,
     ...(seal ? { seal } : {}),
+    /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
+    async definitions(chain) {
+      await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
+      try { return await cfg.store.types(); } catch (e) { throw new KernelError("unavailable", "the store could not list its types", String(e && e.message)); }
+    },
+    /** The action registry: what each action is and how risky (ActionDef). */
+    actions: () => [...authorizer.actions.values()],
+    members: Object.freeze({
+      /** The role a member holds in this Space, or null. A role is read from the membership the kernel holds, never from the caller. */
+      roleOf: (/** @type {any} */ a) => (cfg.members.has(a) && cfg.members.membership ? cfg.members.membership(a)?.role ?? null : null),
+      isAdmin: (/** @type {any} */ a) => { const r = cfg.members.has(a) && cfg.members.membership ? cfg.members.membership(a)?.role : null; return r === "owner" || r === "admin"; },
+    }),
+    /** A service chain for the kernel's own module (memory, hooks): first-party, built by the kernel, never by a caller. */
+    serviceChain: (/** @type {string} */ name) => cfg.chains.fromFacts({ kind: "module", module: String(name), first_party: true }),
+    ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: cfg.tasks } : {}),
+    ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
     records,
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
     audit: Object.freeze({
