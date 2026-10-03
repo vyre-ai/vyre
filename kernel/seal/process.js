@@ -28,6 +28,8 @@ export function recipientsVerified(meta, env) {
   if (meta.dest_kind === "contact_point") return r.length > 0 && r.every(x => x === String(meta.dest_contact).trim().toLowerCase());
   return r.length === 0;
 }
+const SERVICE_NAME = /^[a-z0-9][a-z0-9._/-]{2,100}$/;
+const serviceMeta = name => ({ ref: `seal_svc${crypto.createHash("sha256").update(name).digest("hex").slice(0, 30)}`, space: "_service", record: name, field: "service-key", class: "service" });
 const err = (code) => Object.assign(new Error(code), { code });
 const need = (c, m) => { if (!c) throw err(m); };
 
@@ -212,6 +214,12 @@ export class Sealer {
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
+      // Service credentials the kernel's own modules hold (a Space's Twenty API key): sealed here instead of in a 0600 file any same-uid process can read, read back at the
+      // point of use over the kernel's own channel. A name is `<module>.<space>.<what>`; a call that says a model started it is refused; nothing is ever returned by another op.
+      case "service.put": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name) && typeof req.value === "string" && req.value.length > 0 && req.value.length <= 16_384, "bad_input"); this.store.write("values", serviceMeta(req.name), req.value); return { stored: true, event: { type: "service.stored", name: req.name } }; }
+      case "service.get": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); const r = this.store.read("values", serviceMeta(req.name).ref, "_service"); need(r, "not_found"); return { value: r.plaintext }; }
+      case "service.delete": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name), "bad_input"); return { deleted: this.store.drop("values", serviceMeta(req.name).ref), event: { type: "service.deleted", name: req.name } }; }
+      case "service.list": { need(!req.ctx?.model_originated, "bad_input"); return { names: this.store.metas("values", "_service").map(m => m.record).sort() }; }
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested, presence: this.presence.recovery ? "recovery" : "ok", needs_recovery: [...this.presence.ever].filter(p => !this.presence.have(p)) };
       default: throw err("bad_op");
     }

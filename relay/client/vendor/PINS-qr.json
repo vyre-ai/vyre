@@ -1,0 +1,10 @@
+{
+  "file": "qrcode-generator.js",
+  "sha256": "ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0",
+  "source": { "package": "qrcode-generator", "version": "2.0.4", "file": "dist/qrcode.mjs", "author": "Kazuhiko Arase", "licence": "MIT", "integrity": "sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==", "published": "2025-08-07" },
+  "modified": "no: byte for byte dist/qrcode.mjs from the npm tarball (the file's sha256 above is the file's own)",
+  "licence-file": "LICENSE.qrcode-generator (the tarball ships no licence file; the file header says MIT, Copyright (c) 2009 Kazuhiko Arase, and package.json says MIT)",
+  "used-by": "../qr.js only, on the box, to draw the pairing QR. No network call; nothing else imports it.",
+  "audits": "none known. It draws a public payload (a pairing ticket) and makes no security decision; the safety of the QR is the 128-bit secret in it, not the encoder.",
+  "rebuild": "npm pack qrcode-generator@2.0.4, copy package/dist/qrcode.mjs here as qrcode-generator.js; compare the sha256 above"
+}

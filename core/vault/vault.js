@@ -212,6 +212,14 @@ const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } c
 
 /** A caller's kind, as the registry sees it. */
 const kindOf = callerKind;
+/**
+ * The provider sign-in tokens Vyre already stores: core/onboard makes them (from `claude setup-token`, or an Anthropic key pasted on the setup page) and sessions chooses between
+ * them per session. One mechanism: these items, handed to the session launcher through the credentials port in index.js.
+ * @type {Record<string, { item: string, kind: string }>}
+ */
+export const LAUNCHER_ITEMS = Object.freeze({ claude: { item: "claude-setup-token", kind: "secret" }, anthropic: { item: "anthropic-api-key", kind: "api-key" } });
+const LAUNCHER_NAMES = new Set(Object.values(LAUNCHER_ITEMS).map(x => x.item));
+export const launcherItem = /** @param {string} name */ name => LAUNCHER_NAMES.has(name);
 const moduleOf = c => (String(c).startsWith("module:") ? String(c).slice(7) : null);
 
 /** "30d", "12h", "90m", an ISO date or ms since epoch, to ms since epoch. */
@@ -359,6 +367,8 @@ export class Vault {
     // "require": a relayed request also needs the tailnet policy to grant the calling peer
     // vyre.run/cap/vault for the item (ADR 0014, part 7). Only whois carries caps, so under any
     // other identity every relayed request is refused. The grant narrows; it never stands in for a pass.
+    // vault.launcherOnly: once the session launcher reads the sign-in tokens through the credentials port, no module may be granted them. Off until sessions has switched over.
+    this.launcherOnly = opts.launcherOnly === true;
     this.relayGrants = opts.relay && opts.relay.grants === "require" ? "require" : "off";
     /** What each login's node carried at its last relay contact since start: { caps, node, at }. Never decides access. */
     /** @type {Map<string, { caps: Record<string, any[]>, node: string, at: number }>} */ this.seenCaps = new Map();
@@ -1080,6 +1090,26 @@ export class Vault {
   }
 
   /**
+   * A provider's session sign-in token, for the session launcher and nothing else (the credentials port in index.js is the one caller; no tool returns it). The items are the
+   * ones core/onboard already makes and sessions already chooses between (LAUNCHER_ITEMS); this reads whichever the provider has. @param {string} provider @returns {Promise<string | null>}
+   */
+  async providerToken(provider) {
+    const spec = LAUNCHER_ITEMS[String(provider)]; if (!spec) return null;
+    await this.key();
+    const row = this.row(spec.item); if (!row) return null;
+    const f = await this.fields(row);
+    const v = ["value", "api-key", "token"].map(k => f[k]).find(x => typeof x === "string" && x);
+    if (!v) return null;
+    this.audit("provider-token", row.name, "launcher", true, "handed to the session launcher");
+    return v;
+  }
+
+  /** Which launcher sign-in tokens are stored and when each was added or last changed: names and times, never a value. */
+  providerTokens() {
+    return Object.entries(LAUNCHER_ITEMS).flatMap(([provider, spec]) => { const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(spec.item)); return r && this.rowOk("vault_items", r) ? [{ provider, item: spec.item, stored: true, added: r.updated }] : []; });
+  }
+
+  /**
    * The sealed secret of an oauth api-credential, replaced: what a sign-in stores and what a refresh
    * rotates. Only the secret changes; the person-written config is carried over untouched. In-process
    * only (a tool that calls this decides who may), so it is the one write to an api-credential that
@@ -1162,6 +1192,11 @@ export class Vault {
     // An api-credential's hosts and endpoints decide what runs unasked and what holds, so only a
     // person's own surface writes or replaces one (reviewer N4), whatever it was before.
     const prior = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
+    // A provider's sign-in token (claude-setup-token, anthropic-api-key) is the person's own: only they, or the setup page that runs `claude setup-token` for them (core/onboard), add or
+    // replace one, and nothing may attach a module's read grant to it once the launcher takes it through the credentials port (config vault.launcherOnly).
+    if (launcherItem(String(name))) {
+      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, add or replace it`);
+    }
     if (kind === "api-credential" || (prior && prior.kind === "api-credential")) {
       if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
       if (kind !== "api-credential") throw new Error(`${name} is an api-credential; delete it before using the name for another kind`);
@@ -1245,6 +1280,7 @@ export class Vault {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
     if (!r) throw new Error(`no item named ${name}`);
     if (isShared(r.vault)) throw new Error(`${name} is in a shared vault; deleting from a shared vault is not built yet`);
+    if (launcherItem(String(name)) && !(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, remove it`);
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
@@ -1280,6 +1316,7 @@ export class Vault {
   async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
+    if (launcherItem(String(name)) && this.launcherOnly) throw new Error(`${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`);
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
