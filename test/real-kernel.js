@@ -63,34 +63,3 @@ export async function createRealKernel({ space = "spc_aaaaaaaaaaaa", owner = "al
   return { kernel, surface, proofFor, modelCalls, members, grants, space, person, agent, actor, log, gw, tasks, chains, define: async (/** @type {any} */ d) => { await gw.records.define(person(), { add_types: [d] }); current.push(d); } };
 }
 
-/**
- * A stand-in for the kernel's room handle (ctx.kernel.audienceFor): what the kernel computes so that no chain of another person leaves it. `read(resource)` gives
- * `{ values, restricted }` (a field is a value only when every viewer's own read holds the same value; a sealed field is its placeholder; null when a viewer
- * cannot read the record), `canRead(resource)` is every viewer's `records.read`. Tests only.
- * @param {{ kernel: any }} rk @param {any[]} chains
- */
-export function roomFor(rk, chains) {
-  const parse = (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); return m ? { type: m[1], id: m[2] } : null; };
-  const sealed = (/** @type {any} */ v) => v && typeof v === "object" && typeof v.sealed === "string";
-  return {
-    group: chains.length > 1, size: chains.length,
-    async canRead(/** @type {string} */ resource) { for (const c of chains) if ((await rk.kernel.authorize({ chain: c, action: "records.read", resource })).effect === "deny") return false; return true; },
-    async read(/** @type {string} */ resource) {
-      const p = parse(resource);
-      if (!p) return null;
-      const views = [];
-      for (const c of chains) { const v = await rk.kernel.records.get(c, p.type, p.id).catch(() => null); if (!v) return null; views.push(v); }
-      const names = new Set(views.flatMap(v => Object.keys(v.data)));
-      /** @type {Record<string, any>} */ const values = {}; /** @type {string[]} */ const restricted = [];
-      for (const k of [...names].sort()) {
-        const first = views[0].data[k];
-        const sealedIn = views.find(v => sealed(v.data[k]));
-        // A sealed field is its placeholder for everyone, the one mechanism (a viewer whose role cannot read it simply does not see the value, as before).
-        if (sealedIn) { const f = sealedIn.data[k]; values[k] = { sealed: f.sealed, present: Boolean(f.present), valid_format: Boolean(f.valid_format) }; continue; }
-        if (views.every(v => k in v.data && (sealed(v.data[k]) ? sealed(first) : JSON.stringify(v.data[k]) === JSON.stringify(first)))) values[k] = sealed(first) ? { sealed: first.sealed, present: Boolean(first.present), valid_format: Boolean(first.valid_format) } : first;
-        else restricted.push(k);
-      }
-      return { values, restricted };
-    },
-  };
-}
