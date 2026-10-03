@@ -281,6 +281,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
+- Needs kernel: `{"actions":[]}`
 
 ## gate
 
