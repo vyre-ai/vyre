@@ -81,7 +81,7 @@ export class FakeTwenty {
         for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) {
           if (v.i.update.options !== undefined) f.options = v.i.update.options;
           if (v.i.update.isUnique !== undefined) {
-            if (v.i.update.isUnique) { const seen = new Set(); for (const r of this.rows.get(o.nameSingular).values()) { if (r.deletedAt || r[f.name] == null) continue; const k = JSON.stringify(r[f.name]); if (seen.has(k)) throw new GqlError(`could not create unique index "IDX_UNIQUE_${f.name}": duplicate key value violates unique constraint`); seen.add(k); } }
+            if (v.i.update.isUnique) { const seen = new Set(); for (const r of this.rows.get(o.nameSingular).values()) { if (r[f.name] == null) continue; const k = JSON.stringify(r[f.name]); if (seen.has(k)) throw new GqlError(`could not create unique index "IDX_UNIQUE_${f.name}": duplicate key value violates unique constraint`); seen.add(k); } }
             f.isUnique = v.i.update.isUnique;
           }
           return { updateOneField: { id: f.id } };
@@ -189,11 +189,11 @@ export class FakeTwenty {
     }
     throw new GqlError(`Unknown operation ${op}`);
   }
-  /** the unique fields of an object, enforced among live rows like a partial unique index @param {any} obj @param {Map<string, any>} rows @param {any} cand @param {string | null} selfId */
+  /** the unique fields of an object, enforced among ALL rows, soft-deleted ones included, as the real unique index is (the store moves a removed record's values out: HELD_FIELD) @param {any} obj @param {Map<string, any>} rows @param {any} cand @param {string | null} selfId */
   #unique(obj, rows, cand, selfId) {
     for (const f of obj.fields.values()) {
       if (!f.isUnique || cand[f.name] == null) continue;
-      for (const r of rows.values()) if (r.id !== selfId && !r.deletedAt && JSON.stringify(r[f.name]) === JSON.stringify(cand[f.name])) throw new GqlError(`duplicate key value violates unique constraint "IDX_UNIQUE_${obj.nameSingular}_${f.name}"`, "INTERNAL_SERVER_ERROR");
+      for (const r of rows.values()) if (r.id !== selfId && JSON.stringify(r[f.name]) === JSON.stringify(cand[f.name])) throw new GqlError(`duplicate key value violates unique constraint "IDX_UNIQUE_${obj.nameSingular}_${f.name}"`, "INTERNAL_SERVER_ERROR");
     }
   }
   #vis(filter, row) { return JSON.stringify(filter ?? {}).includes("deletedAt") ? true : !row.deletedAt; }

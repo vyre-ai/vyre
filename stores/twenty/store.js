@@ -21,7 +21,7 @@ import { isUuid } from "../../kernel/core/ids.js";
 import { createAggregator } from "../../kernel/store/query.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
-import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD } from "./plan.js";
+import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
 export const CONFORMANCE_REVISION = 5;
@@ -171,18 +171,18 @@ export class TwentyStore {
         if (obj.labelSingular !== p.label || (obj.icon ?? p.icon) !== p.icon) { await this.client.gql("metadata", "mutation UpdObj($i: UpdateOneObjectInput!) { updateOneObject(input: $i) { id } }", { i: { id: obj.id, update: { labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon } } }); obj.labelSingular = p.label; obj.icon = p.icon; changes.push(`changed type ${def.name}`); }
       }
       /** @type {Map<string, any>} */ const have = new Map(obj.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node]));
-      const wanted = [...p.fields.filter((f) => !f.isTitle), { twenty: VERSION_FIELD, type: "NUMBER", vyre: VERSION_FIELD, def: { label: "Vyre version" }, settings: { dataType: "int", decimals: 0, type: "number" }, options: undefined, kind: "system" }];
+      const wanted = [...p.fields.filter((f) => !f.isTitle), { twenty: VERSION_FIELD, type: "NUMBER", vyre: VERSION_FIELD, def: { label: "Vyre version" }, settings: { dataType: "int", decimals: 0, type: "number" }, options: undefined, kind: "system" }, ...(uniqueFields(p).length ? [{ twenty: HELD_FIELD, type: "RAW_JSON", vyre: HELD_FIELD, def: { label: "Vyre held values" }, options: undefined, kind: "system" }] : [])];
       for (const f of wanted) {
         const ex = have.get(f.twenty);
         if (!ex) {
           const field = { objectMetadataId: obj.id, type: f.type, name: f.twenty, label: f.def.label ?? f.vyre, isNullable: true, ...(f.def.unique === true ? { isUnique: true } : {}), ...(f.options ? { options: f.options } : {}), ...(f.settings ? { settings: f.settings } : {}) };
           await this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field } });
-          if (f.twenty !== VERSION_FIELD) changes.push(`added field ${def.name}.${f.vyre}`);
+          if (f.twenty !== VERSION_FIELD && f.twenty !== HELD_FIELD) changes.push(`added field ${def.name}.${f.vyre}`);
           continue;
         }
         if (ex.type !== f.type) throw new StoreError("unsupported", `Field ${f.vyre} of ${def.name} changed kind: that is a migration, not a define`);
         // `unique` on or off: Twenty builds or drops the index; over existing duplicates it refuses, which the client reports as unique_violation
-        if (f.vyre !== VERSION_FIELD && Boolean(ex.isUnique) !== (f.def.unique === true)) { await this.client.gql("metadata", "mutation UpdUnique($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { isUnique: f.def.unique === true } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
+        if (f.vyre !== VERSION_FIELD && f.vyre !== HELD_FIELD && Boolean(ex.isUnique) !== (f.def.unique === true)) { await this.client.gql("metadata", "mutation UpdUnique($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { isUnique: f.def.unique === true } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         if (f.options) {
           const exVals = new Set((ex.options ?? []).map((/** @type {any} */ o) => o.value));
           for (const v of exVals) if (!f.options.some((o) => o.value === v)) throw new StoreError("unsupported", `An option of ${def.name}.${f.vyre} was removed: that is a migration, not a define`);
@@ -356,7 +356,10 @@ export class TwentyStore {
       row = await this.#settle(p, row);
       const cur = this.#rec(p, row);
       if (cur.version !== base) throw new StoreError("version_conflict", `${type} ${id} is at version ${cur.version}, not ${base}`);
-      const bumped = await this.#cas(p, id, [{ updatedAt: { eq: row.updatedAt } }, { [VERSION_FIELD]: { eq: base } }], { [VERSION_FIELD]: base + 1 });
+      const uq = uniqueFields(p).filter((f) => row[f.twenty] !== null && row[f.twenty] !== undefined);
+      // the unique values leave the index with the removal (see HELD_FIELD) and come back on restore
+      const held = uq.length ? { [HELD_FIELD]: { ...(row[HELD_FIELD] ?? {}), ...Object.fromEntries(uq.map((f) => [f.twenty, row[f.twenty]])) }, ...Object.fromEntries(uq.map((f) => [f.twenty, null])) } : {};
+      const bumped = await this.#cas(p, id, [{ updatedAt: { eq: row.updatedAt } }, { [VERSION_FIELD]: { eq: base } }], { [VERSION_FIELD]: base + 1, ...held });
       if (!bumped) throw new StoreError("version_conflict", `${type} ${id} changed while it was being removed`);
       const d = await this.client.gql("graphql", `mutation Delete_${p.singular}($id: UUID!) { delete${P}(id: $id) { ${selection(p)} } }`, { id });
       const gone = d[`delete${P}`]; this.#mine(id, gone.updatedAt);
@@ -377,7 +380,14 @@ export class TwentyStore {
       const v = row[VERSION_FIELD] == null ? 1 : Number(row[VERSION_FIELD]);
       const d = await this.client.gql("graphql", `mutation Restore_${p.singular}($id: UUID!) { restore${P}(id: $id) { ${selection(p)} } }`, { id });
       const back = d[`restore${P}`]; this.#mine(id, back.updatedAt);
-      const next = await this.#cas(p, id, [{ updatedAt: { eq: back.updatedAt } }], { [VERSION_FIELD]: v + 1 });
+      const held = row[HELD_FIELD] && typeof row[HELD_FIELD] === "object" ? row[HELD_FIELD] : null;
+      let next;
+      try { next = await this.#cas(p, id, [{ updatedAt: { eq: back.updatedAt } }], { [VERSION_FIELD]: v + 1, ...(held ? { ...held, [HELD_FIELD]: null } : {}) }); }
+      catch (e) {
+        // the value is taken by a live record now: the record goes back to being removed, still holding its value
+        if (held) { const gone = await this.client.gql("graphql", `mutation Delete_${p.singular}($id: UUID!) { delete${P}(id: $id) { updatedAt } }`, { id }).catch(() => null); if (gone) this.#mine(id, gone[`delete${P}`].updatedAt); }
+        throw e;
+      }
       const rec = this.#snap(p, next ?? back);
       this.#note({ type, id, kind: "restored", version: rec.version, at: rec.updated_at, after: rec.data, source: "gateway" });
       return rec;
