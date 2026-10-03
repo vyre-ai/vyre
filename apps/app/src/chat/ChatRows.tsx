@@ -4,7 +4,7 @@
 // Each row subscribes to its own key and is memoized on what it draws.
 
 import { memo, useEffect, useRef, useSyncExternalStore } from "react";
-import { Animated, View } from "react-native";
+import { Animated, Pressable, View } from "react-native";
 import { Avatar, Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, type BlockCtx } from "./Blocks";
@@ -48,6 +48,24 @@ function Message({ who, family, meta, children, wide }: { who: string; family: "
         <Who name={who} family={family} meta={meta} />
         {children}
       </View>
+    </View>
+  );
+}
+
+function MessageActions({ uuid, text, ctx }: { uuid: string; text: string; ctx: BlockCtx }) {
+  const { color } = useUiTheme();
+  if (!ctx.onRetryMessage && !ctx.onEditMessage && !ctx.onBranchFrom) return null;
+  const h = ctx.wide ? 28 : 44;
+  const act = (label: string, run?: () => void) => run ? (
+    <Pressable key={label} accessibilityRole="button" accessibilityLabel={`${label} this message`} onPress={run} style={({ pressed, hovered }: any) => ({ minHeight: h, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8, backgroundColor: pressed ? color.press : hovered ? color.hover : "transparent" })}>
+      <Text size="caption" tone="label">{label}</Text>
+    </Pressable>
+  ) : null;
+  return (
+    <View style={{ flexDirection: "row", gap: 4, marginTop: 2 }}>
+      {act("Edit", ctx.onEditMessage && (() => ctx.onEditMessage?.(uuid, text)))}
+      {act("Retry", ctx.onRetryMessage && (() => ctx.onRetryMessage?.(uuid)))}
+      {act("Branch", ctx.onBranchFrom && (() => ctx.onBranchFrom?.(uuid)))}
     </View>
   );
 }
@@ -112,7 +130,12 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
   const wide = ctx.wide;
   switch (it.kind) {
     case "user":
-      return <Message who={PERSON} family="person" meta={it.pickedUp ? "picked up" : undefined} wide={wide}><Text size="read" selectable>{it.text}</Text></Message>;
+      return (
+        <Message who={PERSON} family="person" meta={it.pickedUp ? "picked up" : undefined} wide={wide}>
+          <Text size="read" selectable>{it.text}</Text>
+          <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} />
+        </Message>
+      );
     case "text":
       return <Message who={ASSISTANT} family="assistant" wide={wide}><StreamText store={store} k={k} text={it.text} done={it.done} /></Message>;
     case "tool":
@@ -131,7 +154,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const block = it.task ? normalizeBlock(it.task, it.title ?? "Needs your approval") : normalizeBlock({ block: "task", id: it.ask, title: it.title ?? "Needs your approval", state: "needs-approval" });
       const task = block.block === "task" ? block : null;
       const decided = it.state === "answered" ? (it.decision === "deny" ? "deny" : "approve") : null;
-      const here: BlockCtx = { ...ctx, onApprove: () => store.answer(it.ask, "approve"), onDecline: () => store.answer(it.ask, "deny") };
+      const here: BlockCtx = { ...ctx, onApprove: () => void store.answer(it.ask, "approve"), onDecline: () => void store.answer(it.ask, "deny") };
       return <Frame wide={wide} indent>{task ? <BlockView block={task} ctx={here} decided={decided} /> : null}</Frame>;
     }
     case "notice":

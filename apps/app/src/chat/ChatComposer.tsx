@@ -5,7 +5,7 @@
 // sheet with 44 px targets when it is focused or holds text; on a desktop it is the prototype's
 // card with the bar under the input.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Avatar, Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { COMMANDS } from "../../../../deck/chat/core/commands.js";
@@ -24,6 +24,9 @@ export type ComposerProps = {
   runsOn?: "mac" | "server";
   onRunsOn?: () => void;
   onSend: (text: string) => void;
+  /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
+  editing?: { id: number; text: string } | null;
+  onCancelEdit?: () => void;
   onAttachFile?: () => void;
   onAttachPhoto?: () => void;
   onVoice?: () => void;
@@ -52,6 +55,14 @@ export function ChatComposer(p: ComposerProps) {
   const [models, setModels] = useState(false);
   const input = useRef<TextInput>(null);
   const trig = useMemo(() => triggerAt(text, caret), [text, caret]);
+  const editId = p.editing?.id;
+  useEffect(() => {
+    if (!p.editing) return;
+    setText(p.editing.text);
+    setCaret(p.editing.text.length);
+    input.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
   const intent = sendIntent({ text, state: p.state });
   const expanded = !p.phone || focused || text.length > 0 || !!trig || models;
   const big = p.phone;
@@ -98,6 +109,15 @@ export function ChatComposer(p: ComposerProps) {
 
   return (
     <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: p.phone ? 8 : 20, paddingBottom: p.phone ? 8 : 16, paddingTop: 6 }}>
+      {p.editing ? (
+        <View accessibilityLabel="Editing a message" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: big ? T : 36, paddingHorizontal: 12, marginBottom: 6, borderRadius: 12, borderWidth: 1, borderColor: color["edge-strong"], backgroundColor: color["accent-wash"] }}>
+          <Icon name="refresh" />
+          <Text size="caption" style={{ flex: 1 }}>Editing a message. Sending goes back to before it and runs this instead.</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Cancel edit" onPress={() => { setText(""); setCaret(0); p.onCancelEdit?.(); }} style={{ minHeight: big ? T : 32, justifyContent: "center", paddingHorizontal: 8 }}>
+            <Text strong size="caption">Cancel</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {options.length ? (
         <View accessibilityLabel="Suggestions" style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
           {options.map((o: any) => (

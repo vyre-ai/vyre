@@ -25,6 +25,10 @@ export type BlockCtx = {
   onFaceId?: () => Promise<boolean>;
   onApprove?: (taskId: string) => void;
   onDecline?: (taskId: string) => void;
+  /** A person's own message: edit it and run again, run it again as it was, or branch the session from before it. */
+  onEditMessage?: (uuid: string, text: string) => void;
+  onRetryMessage?: (uuid: string) => void;
+  onBranchFrom?: (uuid: string) => void;
   /** The tool is still running (live output, caret). */
   live?: boolean;
 };

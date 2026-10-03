@@ -11,7 +11,8 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
-import type { Frame, StreamSource, StreamState } from "./mock-stream";
+import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
+import { boxStream, type SessionActions } from "./box-stream";
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
 export type PerfSink = (name: "paint.delta" | "paint.first", ms: number) => void;
@@ -28,10 +29,15 @@ export type ChatStore = {
   /** Characters of a streaming reply on screen; undefined when it is not paced (show all). */
   shown(key: string): number | undefined;
   meta(): Meta;
-  send(text: string): void;
-  interrupt(): void;
-  answer(ask: string, decision: "approve" | "deny"): void;
+  /** Resolves with why the box refused it, or null. */
+  send(text: string): Promise<string | null>;
+  interrupt(): Promise<string | null>;
+  answer(ask: string, decision: "approve" | "deny"): Promise<string | null>;
+  /** Edit and retry, retry and branch: only a real session has them (the mock does not). */
+  readonly actions: Partial<Pick<SessionActions, "editRetry" | "retry" | "branch">> | null;
 };
+
+const withActions = (source: StreamSource): Partial<SessionActions> => source as unknown as Partial<SessionActions>;
 
 const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const frameSoon = (fn: (t: number) => void) =>
@@ -156,35 +162,47 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       const h = headerState({ state: s.state, stopping: s.stopping || stopping });
       return (metaSnap = { state: s.state, turn: s.turn, stopping: s.stopping || stopping, word: h.word, busy: h.busy, canStop: h.canStop, queue: folder.queue(), connection, rev: metaRev });
     },
-    send(text) { if (text.trim()) source.send(text); },
-    interrupt() {
-      if (!store.meta().canStop) return;
+    async send(text) {
+      if (!text.trim()) return null;
+      const a = withActions(source);
+      if (a.sendText) return a.sendText(text);
+      source.send(text);
+      return null;
+    },
+    async interrupt() {
+      if (!store.meta().canStop) return null;
       stopping = true;
       bumpMeta();
-      source.stop();
+      const a = withActions(source);
+      if (!a.stopSession) { source.stop(); return null; }
+      const why = await a.stopSession();
+      if (why) { stopping = false; bumpMeta(); return "Could not stop: " + why; }
+      return null;
     },
-    answer(ask, decision) { source.answer(ask, decision); },
+    async answer(ask, decision) {
+      const a = withActions(source);
+      if (a.answerAsk) return a.answerAsk(ask, decision);
+      source.answer(ask, decision);
+      return null;
+    },
+    get actions() {
+      const a = withActions(source);
+      return a.editRetry && a.retry && a.branch ? { editRetry: a.editRetry, retry: a.retry, branch: a.branch } : null;
+    },
   };
   return store;
 }
 
-/** A source for a session id: the real client when one is registered, else nothing yet. */
-export type SourceFactory = (sessionId: string) => StreamSource | null;
-let factory: SourceFactory | null = null;
-export const setStreamFactory = (f: SourceFactory | null) => { factory = f; };
-
-const offline: StreamSource = {
-  connect: ({ onState }) => { onState?.("offline"); return { close() {} }; },
-  send() {}, answer() {}, stop() {},
-};
+/** The source for a session id: the mock for `demo`, the real client against the box for every other id. */
+export const sourceFor = (sessionId: string): StreamSource => (sessionId === "demo" ? createMockStream({ session: "demo" }) : boxStream(sessionId));
 
 /**
  * The one door for a session's frames. `source` is a StreamSource (the mock, or core/stream's
- * `connect({ open, from })` wrapped to this shape); without one, the registered factory is asked.
+ * `connect({ open, from })` wrapped to this shape); without one, `demo` gets the mock and every other id the real client.
  * Returns the folded rows and the header facts; `store` serves each row its own content.
  */
 export function useSessionStream(sessionId: string, opts: { source?: StreamSource; perf?: PerfSink } = {}) {
-  const store = useMemo(() => createChatStore(sessionId, opts.source ?? factory?.(sessionId) ?? offline, { perf: opts.perf }), [sessionId, opts.source]);
+  const store = useMemo(() => createChatStore(sessionId, opts.source ?? sourceFor(sessionId), { perf: opts.perf }), [sessionId, opts.source]);
   useEffect(() => { store.start(); return () => store.stop(); }, [store]);
   const rows = useSyncExternalStore(store.subscribeLayout, store.rows, store.rows);
   const meta = useSyncExternalStore(store.subscribeMeta, store.meta, store.meta);

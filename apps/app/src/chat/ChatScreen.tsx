@@ -10,7 +10,7 @@
 // It reads the stream through useSessionStream, so the real core/stream client and the mock plug
 // in the same way.
 
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Chip, Icon, IconButton, Text, useUiTheme } from "@vyre/ui";
@@ -29,6 +29,12 @@ export type ChatScreenProps = {
   source?: StreamSource;
   perf?: PerfSink;
   onBack?: () => void;
+  /** A branch was made: the new session's id (the screen opens it). */
+  onBranched?: (thread: string) => void;
+  /** Open the session's full terminal (the header button and a terminal block's own). */
+  onOpenTerminal?: () => void;
+  /** Under the header, above the transcript (the session's computer card). */
+  belowHeader?: React.ReactNode;
   autoFocusComposer?: boolean;
   handlers?: Partial<BlockCtx>;
   composer?: Partial<ComposerProps>;
@@ -52,7 +58,44 @@ export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
   const insets = useSafeAreaInsets();
   const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf });
-  const ctx = useMemo<BlockCtx>(() => ({ wide: !phone, ...p.handlers }), [phone, p.handlers]);
+  const [note, setNote] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: number; uuid: string; text: string } | null>(null);
+  const actions = store.actions;
+  const { onBranched } = p;
+  const ctx = useMemo<BlockCtx>(
+    () => ({
+      wide: !phone,
+      ...(actions
+        ? {
+            onEditMessage: (uuid: string, text: string) => { setNote(null); setEditing((e) => ({ id: (e?.id ?? 0) + 1, uuid, text })); },
+            onRetryMessage: async (uuid: string) => { setNote(null); const r = await actions.retry!(uuid); if (!r.ok) setNote(r.reason); },
+            onBranchFrom: async (uuid: string) => {
+              setNote(null);
+              const r = await actions.branch!(uuid);
+              if (!r.ok) setNote(r.reason);
+              else if (r.thread) onBranched?.(r.thread);
+            },
+          }
+        : {}),
+      ...(p.onOpenTerminal ? { onOpenTerminal: () => p.onOpenTerminal?.() } : {}),
+      ...p.handlers,
+    }),
+    [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
+  );
+  const onSend = useCallback(
+    async (text: string) => {
+      setNote(null);
+      if (editing && actions) {
+        const r = await actions.editRetry!(editing.uuid, text);
+        if (!r.ok) setNote(r.reason);
+        else setEditing(null);
+        return;
+      }
+      const why = await store.send(text);
+      if (why) setNote(why);
+    },
+    [store, editing, actions],
+  );
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
   const base = useRef(rows.length);
   base.current = Math.min(base.current, rows.length);
@@ -67,12 +110,15 @@ export function ChatScreen(p: ChatScreenProps) {
           <Text size="caption" tone="label" numberOfLines={1}>{meta.connection === "offline" ? "Offline, showing what was saved" : meta.state === "asking" ? "Waiting for you" : meta.busy ? "Working" : "Ready"}</Text>
         </View>
         <View style={{ alignSelf: "center" }}><Chip tone={tone as never}>{meta.word}</Chip></View>
+        {p.onOpenTerminal ? <IconButton icon="terminal" label="Open full terminal" touch={phone} onPress={p.onOpenTerminal} /> : null}
         {meta.canStop ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={() => store.interrupt()} style={{ minHeight: phone ? 44 : 32, justifyContent: "center" }}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={async () => { const why = await store.interrupt(); if (why) setNote(why); }} style={{ minHeight: phone ? 44 : 32, justifyContent: "center" }}>
             <Chip icon="stop" tone="err">Stop</Chip>
           </Pressable>
         ) : meta.stopping ? <View style={{ alignSelf: "center" }}><Chip>Stopping</Chip></View> : null}
       </View>
+
+      {p.belowHeader}
 
       <View style={{ flex: 1, minHeight: 0 }}>
         {loading ? (
@@ -101,13 +147,21 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      {note ? (
+        <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+          <Text size="caption" tone="muted">{note}</Text>
+        </View>
+      ) : null}
+
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
           state={meta.state}
           phone={phone}
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
-          onSend={(t) => store.send(t)}
+          onSend={onSend}
+          editing={editing}
+          onCancelEdit={() => setEditing(null)}
           people={[{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }]}
           records={[{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }]}
           models={[{ id: "sonnet", label: "Sonnet", fit: 92 }, { id: "opus", label: "Opus", fit: 97 }, { id: "local", label: "Local model", fit: 61 }]}

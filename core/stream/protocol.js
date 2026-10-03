@@ -18,6 +18,7 @@
 
 import crypto from "node:crypto";
 import { redact } from "../transcripts/sanitize.js";
+import { kindOf, startOf } from "./frame.js";
 
 export const V = 1;
 
@@ -101,11 +102,8 @@ export function validate(f) {
   return { ok: true };
 }
 
-/** The kind of a frame ("text-delta"), or "" when it is not one. @param {any} f */
-export const kindOf = f => (f && isStr(f.type) && f.type.startsWith("session.") ? f.type.slice(8) : "");
-
-/** The first cursor a frame covers (cur, unless it was merged). @param {any} f */
-export const startOf = f => (f.span ? f.cur - f.span + 1 : f.cur);
+// kindOf and startOf live in frame.js (no imports, so the app's bundle can take the client without this file).
+export { kindOf, startOf };
 
 /**
  * Build a frame. `cur` is 0 until a log assigns it (control frames keep 0).
@@ -221,7 +219,6 @@ export function kindOfTool(/** @type {string} */ tool) {
   return "other";
 }
 
-/** @param {unknown} s */
 const hunk = (/** @type {unknown} */ del, /** @type {unknown} */ add) => ({ del: clip(del, 2000), add: clip(add, 2000) });
 
 /**
