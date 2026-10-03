@@ -1,4 +1,4 @@
-import { Text as RNText, type TextProps } from "react-native";
+import { Platform, Text as RNText, type TextProps } from "react-native";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../lib/cn";
 import { facesFor } from "../../src/theme/fonts";
@@ -28,5 +28,8 @@ export function Text({ size, tone, mono, strong, medium, className, style, ...re
   const face = mono ? faces.mono : strong ? faces.strong : medium ? faces.medium : faces.regular;
   const em = size ? TRACKING[size as keyof typeof TRACKING] : undefined;
   const fs = em ? Number.parseFloat(String(map[`--fs-${size}`])) : 0;
-  return <RNText {...rest} style={[face, em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null, style]} className={cn(text({ size, tone }), className)} />;
+  // Instrument Sans SemiBold's space is 0.17em (regular's is 0.22em), which glues words together in titles on the web; give it back the difference.
+  // (The native builds embed the ttf, which does not have the problem; React Native has no wordSpacing.)
+  const gap = Platform.OS === "web" && resolved.font === "sans" && !mono && (strong || medium) ? { wordSpacing: `${Math.max(1, Math.round(Number.parseFloat(String(map[`--fs-${size ?? "body"}`])) * 0.06 * 10) / 10)}px` } : null;
+  return <RNText {...rest} style={[face, gap as object | null, em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null, style]} className={cn(text({ size, tone }), className)} />;
 }
