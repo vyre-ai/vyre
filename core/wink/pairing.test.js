@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { createPairing, MIGRATIONS, PEER_MIGRATIONS, POLL_MS, KIND_OFFERS, parseQr, qrPayload, parseServerQr, serverQrPayload, parsePhoneQr, phoneQrPayload } from "./pairing.js";
 import { FORBIDDEN, words, removed } from "./cards.js";
-import { pairWords } from "../../relay/client/pairwords.js";
+import { pairWords, nonceCommit, ticketTag, newNonce } from "../../relay/client/pairwords.js";
 
 const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
 const HARLOW = "spc_harlowharlo";   // admin
@@ -20,7 +20,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -29,21 +29,21 @@ function world(o = {}) {
     mint: async seed => { minted.push(seed); return o.mintFails ? { error: "no relay" } : { data: { expiresAt: 1 } }; },
     callServer: o.callServer || (async (paired, tool, input) => ({ owner: input.owner })),
     typist: async a => { typed.push(a); return o.typistFails ? { ok: false, reason: o.typistFails } : { ok: true, ack: "WINK-AB12-CD34", seed: new Uint8Array(16), route: "rt" }; },
-    finish: async a => { finishes.push(a); return { ok: true, paired: o.paired || { route: "route-juno", name: "juno" } }; },
+    finish: async a => { finishes.push(a); if (o.finishResult) return o.finishResult; return { ok: true, paired: o.paired || { route: "route-juno", name: "juno" } }; },
   };
   const p = createPairing({
     ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: async () => ME, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, pairWordsFor: o.pairWordsFor || (async d => `amber coral ${d}`), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
   return { p, call, drops, events, typed, finishes, minted, db, tools, fails };
 }
-const settle = () => new Promise(r => setTimeout(r, 10));
+const settle = () => new Promise(r => setTimeout(r, 40));
 
 test("targets: you, then only the spaces you administer", async () => {
   const w = world();
@@ -822,42 +822,151 @@ test("Q-1: --pair-to names the identity up front: only that identity completes, 
   for (const bad of ["", "x".repeat(70), 'a"b']) await assert.rejects(() => atServer(world({ typedCode: false }), "wink.server.code", { pairTo: bad }), e => e.code === "bad_input");
 });
 
-test("Q-1, app side: the app shows the same three words from its own keys while the server asks, and a server that shows other words is refused", async () => {
-  const BOX = "Qm94S2V5", DEV = "app1dev";
-  const good = await pairWords(BOX, DEV);
-  assert.match(good, /^[a-z]+ [a-z]+ [a-z]+$/);
-  assert.notEqual(good, await pairWords(BOX, "app2dev"), "another device, other words");
-  assert.notEqual(good, await pairWords("T3RoZXI", DEV), "another server key, other words");
-  const run = async (serverWords, confirm) => {
+test("Q-1, app side: the app shows the same three words from its own keys and nonces while the server asks, and a server that shows other words is refused and told to let it go", async () => {
+  const BOX = "Qm94S2V5", DEV = "app1dev", NB = "b".repeat(32);
+  const seed = new Uint8Array(16).fill(7), ticket = Buffer.from(seed).toString("base64url");
+  const run = async (lie, seedBytes = seed) => {
+    const seen = [];
     let n = 0;
     const w = world({ typedCode: false, paired: { route: "route-juno", name: "juno", box: BOX, device: DEV },
-      callServer: async (paired, tool, input) => { n++; if (n < 3) return { pending: true, words: serverWords, until: 9e12 }; return { owner: input.owner }; } });
-    const payload = serverQrPayload(new Uint8Array(16).fill(7), "ws://relay.test");
-    const r = await w.call("wink.pair.server", { payload, target: { kind: "identity", id: ME } });
+      callServer: async (paired, tool, input) => {
+        seen.push(input.pairing || {});
+        if (input.pairing && input.pairing.cancel) return { cancelled: true };
+        n++;
+        if (!input.pairing.reveal) return { pending: true, nb: NB, until: 9e12 };
+        const good = await pairWords(BOX, DEV, { ticket, nonceA: input.pairing.reveal, nonceB: NB });
+        if (n < 4) return { pending: true, nb: NB, words: lie ? "wrong words here" : good, until: 9e12 };
+        return { owner: input.owner };
+      } });
+    const r = await w.call("wink.pair.server", { payload: serverQrPayload(seedBytes, "ws://relay.test"), target: { kind: "identity", id: ME } });
     assert.equal(r.ack, null);
-    return { w, r };
+    await new Promise(x => setTimeout(x, 60));
+    return { w, r, seen };
   };
-  // the server shows the same words: the app goes through `confirm` (with the words) and finishes when the server says it is owned
-  const ok = await run(good);
-  await new Promise(r => setTimeout(r, 40));
+  const ok = await run(false);
   assert.equal((await ok.w.call("wink.pair.status", { pairing: ok.r.pairing })).state, "done");
-  assert.ok(ok.w.events.some(e => e[0] === "wink.pair-confirm" && e[1].words === good), "the words were shown to the app's person");
-  // other words from the server: nothing is paired and the person is told not to say yes
-  const bad = await run("wrong words here");
-  await new Promise(r => setTimeout(r, 40));
+  assert.ok(ok.w.events.some(e => e[0] === "wink.pair-confirm" && /^[a-z]+ [a-z]+ [a-z]+$/.test(e[1].words)), "the words were shown to the app's person");
+  assert.match(ok.seen[0].commit, /^[0-9a-f]{64}$/, "the first call commits");
+  assert.equal(ok.seen[0].reveal, undefined, "and does not reveal");
+  assert.equal(ok.seen[0].tag, await ticketTag(ticket));
+  assert.equal(await nonceCommit(ok.seen[1].reveal), ok.seen[0].commit, "the reveal matches the commit");
+  const bad = await run(true);
   const st = await bad.w.call("wink.pair.status", { pairing: bad.r.pairing });
   assert.equal(st.state, "failed");
   assert.match(st.reason, /Do not say yes/);
   assert.equal(bad.w.p.devices.list(ME).filter(d => d.kind === "server").length, 0, "the half-added row is taken back");
-  // while the server is asking, the status carries the words and what to do
-  const w3 = world({ typedCode: false, paired: { route: "r", name: "juno", box: BOX, device: DEV }, callServer: (() => { let n = 0; return async (p, t, input) => { n++; if (n < 40) return { pending: true, words: good, until: 9e12 }; return { owner: input.owner }; }; })() });
-  const r3 = await w3.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(8), "ws://relay.test"), target: { kind: "identity", id: ME } });
-  await new Promise(r => setTimeout(r, 15));
-  const mid = await w3.call("wink.pair.status", { pairing: r3.pairing });
-  assert.equal(mid.state, "confirm");
-  assert.equal(mid.words, good);
-  assert.match(mid.message, /Say yes there only if they match/);
-  assert.ok(!FORBIDDEN.test(mid.message), "no forbidden word on screen");
+  assert.ok(bad.seen.some(x => x.cancel === true), "the server is told to let this device go");
+});
+
+test("pair words (break 3): the same app and box twice give different words, matching sides agree, a man in the middle shows different words on each leg", async () => {
+  const BOX = "Qm94S2V5", DEV = "app1dev", ticket = "T".repeat(22);
+  const mk = async () => { const na = newNonce(), nb = newNonce(); return { na, nb, w: await pairWords(BOX, DEV, { ticket, nonceA: na, nonceB: nb }) }; };
+  const seen = new Set();
+  for (let i = 0; i < 20; i++) seen.add((await mk()).w);
+  assert.ok(seen.size >= 19, `twenty pairings of one app and one box give ${seen.size} different word sets`);
+  const a = await mk();
+  assert.equal(a.w, await pairWords(BOX, DEV, { ticket, nonceA: a.na, nonceB: a.nb }), "both sides derive the same words");
+  assert.notEqual(a.w, await pairWords(BOX, DEV, { ticket: "U".repeat(22), nonceA: a.na, nonceB: a.nb }), "another ticket, other words");
+  assert.notEqual(a.w, await pairWords(BOX, "app2dev", { ticket, nonceA: a.na, nonceB: a.nb }), "another device, other words");
+  assert.notEqual(a.w, await pairWords("T3RoZXI", DEV, { ticket, nonceA: a.na, nonceB: a.nb }), "another box key, other words");
+  await assert.rejects(() => pairWords(BOX, DEV, {}), /own nonces/);
+  // a man in the middle: the app talks to the attacker, the attacker talks to the box; each leg has its own device id and nonces
+  const legApp = await pairWords(BOX, "mitm-as-box", { ticket, nonceA: newNonce(), nonceB: newNonce() });
+  const legBox = await pairWords(BOX, "mitm-as-app", { ticket, nonceA: newNonce(), nonceB: newNonce() });
+  assert.notEqual(legApp, legBox);
+});
+
+/** One full app side of a fresh pairing against the real words path of the server: commit, hear nb, reveal. */
+async function freshAsk(w, caller, seed, input = ASKED) {
+  const na = newNonce(), commit = await nonceCommit(na), tag = seed ? await ticketTag(Buffer.from(seed).toString("base64url")) : "";
+  const pairing = { commit, ...(tag ? { tag } : {}) };
+  const one = await adoptAs(w, caller, { ...input, pairing });
+  const two = await adoptAs(w, caller, { ...input, pairing: { ...pairing, reveal: na } });
+  return { na, nb: one.nb, first: one, words: two.words, until: two.until, pairing };
+}
+const REAL = { typedCode: false, confirm: true, pairWordsFor: null, box: "Qm94S2V5", askHoldMs: 0 };
+
+test("pair words on the server (break 3): the question shows words only after the reveal, they equal the app's, a different attempt gives different words, a bad reveal ends the ask", async () => {
+  const w = world(REAL);
+  const made = await atServer(w, "wink.server.code", {});
+  const seed = parseServerQr(made.qr).seed, ticket = Buffer.from(seed).toString("base64url");
+  const got = [];
+  for (let i = 0; i < 3; i++) {
+    const r = await freshAsk(w, "device:app1", seed);
+    assert.equal(r.first.words, undefined, "no words before the reveal");
+    assert.equal(r.words, await pairWords("Qm94S2V5", "app1", { ticket, nonceA: r.na, nonceB: r.nb }), "the server's words are the app's");
+    assert.equal((await atServer(w, "wink.server.pairing")).words, r.words);
+    got.push(r.words);
+    await atServer(w, "wink.server.pair.answer", { yes: false });
+    await assert.rejects(() => adoptAs(w, "device:app1", { ...ASKED, pairing: r.pairing }), e => e.code === "denied");
+  }
+  assert.equal(new Set(got).size, 3, "the same app and the same box three times: three different word sets");
+  // no yes before the words are on screen
+  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
+  await adoptAs(w, "device:app1", { ...ASKED, pairing: { commit, tag } });
+  assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "nothing is shown yet");
+  assert.deepEqual(await atServer(w, "wink.server.pair.answer", { yes: true }), { answered: false });
+  // a reveal that does not match the commit is refused, ends the ask and lets the device go
+  w.drops.length = 0;
+  await assert.rejects(() => adoptAs(w, "device:app1", { ...ASKED, pairing: { commit, tag, reveal: newNonce() } }), e => e.code === "denied");
+  assert.ok(w.drops.some(d => d[1].id === "app1"));
+  assert.equal((await atServer(w, "wink.server.pairing")).asking, false);
+  // no fresh material at all is refused: the static keys alone never make words
+  await assert.rejects(() => adoptAs(w, "device:app1", ASKED), e => e.code === "bad_input" && /fresh check/.test(e.message));
+  // a ticket this box never made (or that ran out) is refused
+  await assert.rejects(() => adoptAs(w, "device:app1", { ...ASKED, pairing: { commit, tag: "0".repeat(24) } }), e => e.code === "denied" && /already used|ran out/.test(e.message));
+});
+
+test("pair words, a man in the middle (break 3): a relay between two sessions shows different words on each leg", async () => {
+  const w = world(REAL);
+  const made = await atServer(w, "wink.server.code", {});
+  const seed = parseServerQr(made.qr).seed, ticket = Buffer.from(seed).toString("base64url");
+  // leg two: the attacker, as an app, opens an ask on the real box with its own nonce
+  const leg2 = await freshAsk(w, "device:mitm", seed);
+  // leg one: the real app is shown the attacker's side of it; the attacker answers with a nonce of its own, so the real app's words are
+  const appNa = newNonce(), attackerNb = newNonce();
+  const onApp = await pairWords("Qm94S2V5", "app-real", { ticket, nonceA: appNa, nonceB: attackerNb });
+  assert.notEqual(onApp, leg2.words, "the person sees different words on the two sides, says no, and the ask ends");
+  assert.equal((await atServer(w, "wink.server.pair.answer", { yes: false })).yes, false);
+  assert.ok(w.drops.some(d => d[1].id === "mitm"), "the attacker's device is let go");
+});
+
+test("every way an ask ends lets the app's relay device go and leaves no device row (break 1): no, expired, wrong pair-to, cancelled, a bad reveal, an error", async () => {
+  const gone = (w, id) => w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === id);
+  const clean = w => assert.equal(w.p.devices.list(ME).length, 0, "no device row");
+  // no
+  { const w = world(REAL); const s = parseServerQr((await atServer(w, "wink.server.code", {})).qr).seed; await freshAsk(w, "device:appno", s); await atServer(w, "wink.server.pair.answer", { yes: false }); assert.ok(gone(w, "appno"), "no"); clean(w); }
+  // expired: the ask ends by itself, with nobody calling again
+  { const w = world({ ...REAL, now: () => Date.now(), askMs: 40 }); const s = parseServerQr((await atServer(w, "wink.server.code", {})).qr).seed; await freshAsk(w, "device:appexp", s); await new Promise(r => setTimeout(r, 120)); assert.ok(gone(w, "appexp"), "expired"); assert.equal((await atServer(w, "wink.server.pairing")).asking, false); clean(w); }
+  // wrong pair-to
+  { const w = world({ ...REAL, typedCode: false }); await atServer(w, "wink.server.code", { pairTo: "per_other" }); await assert.rejects(() => adoptAs(w, "device:appwrong", { ...ASKED, pairing: { commit: "0".repeat(64) } }), e => e.code === "denied"); assert.ok(gone(w, "appwrong"), "wrong pair-to"); clean(w); }
+  // cancelled by the app
+  { const w = world(REAL); const s = parseServerQr((await atServer(w, "wink.server.code", {})).qr).seed; const r = await freshAsk(w, "device:appcan", s); await assert.rejects(() => adoptAs(w, "device:appcan", { ...ASKED, pairing: { ...r.pairing, cancel: true } }), e => e.code === "denied"); assert.ok(gone(w, "appcan"), "cancelled"); assert.equal((await atServer(w, "wink.server.pairing")).asking, false); clean(w); }
+  // an error: a reveal that does not match its commit
+  { const w = world(REAL); const s = parseServerQr((await atServer(w, "wink.server.code", {})).qr).seed; const na = newNonce(), pairing = { commit: await nonceCommit(na), tag: await ticketTag(Buffer.from(s).toString("base64url")) };
+    await adoptAs(w, "device:apperr", { ...ASKED, pairing });
+    await assert.rejects(() => adoptAs(w, "device:apperr", { ...ASKED, pairing: { ...pairing, reveal: newNonce() } }), e => e.code === "denied");
+    assert.ok(gone(w, "apperr"), "error"); clean(w); }
+});
+
+test("a second scanner is refused without ending the first one's ask (break 2), and a taken ticket is told at once", async () => {
+  const w = world(REAL);
+  const s = parseServerQr((await atServer(w, "wink.server.code", {})).qr).seed;
+  const first = await freshAsk(w, "device:first", s);
+  await assert.rejects(() => adoptAs(w, "device:second", { ...ASKED, pairing: { commit: "0".repeat(64) } }), e => e.code === "busy");
+  assert.ok(w.drops.some(d => d[1].id === "second"), "the loser is let go");
+  const q = await atServer(w, "wink.server.pairing");
+  assert.equal(q.asking, true, "the first one's ask is untouched");
+  assert.equal(q.words, first.words);
+  // the app side: the relay says the QR's ticket is gone (another scanner took it): state failed at once, with a plain reason, no wait
+  const app = world({ typedCode: false, finishResult: { ok: false, reason: "gone" } });
+  const r = await app.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(5), "ws://relay.test"), target: { kind: "identity", id: ME } });
+  await new Promise(x => setTimeout(x, 30));
+  const st = await app.call("wink.pair.status", { pairing: r.pairing });
+  assert.equal(st.state, "failed");
+  assert.match(st.reason, /already used by another device/);
+  assert.equal(app.finishes[0].once, true, "a QR's ticket is not polled for");
+  assert.equal(app.p.devices.list(ME).length, 0);
 });
 
 test("typed code OFF (ruling, 4 Oct 2026): the typed paths are refused with a plain reason unless the development flag is set; scan and paste always work", async () => {
@@ -994,20 +1103,30 @@ test("Add a phone: no answer in 5 minutes pairs nothing, and an expired ticket h
 
 test("Add a phone, the phone's side with the typed code off: scan, show the words, wait for the yes; a no or a timeout ends it with nothing added", async () => {
   const qr = phoneQrPayload(new Uint8Array(16).fill(7), "ws://relay.test");
+  const BOX = "Qm94S2V5", DEV = "phone1", NB = "c".repeat(32), ticket = Buffer.from(new Uint8Array(16).fill(7)).toString("base64url");
+  // `answers` are the states the computer gives after the words are revealed; the first call (commit) is answered with the computer's nonce
   const run = async (answers) => {
-    const seen = [];
-    const w = world({ ...OFF, callServer: async (paired, tool, input) => { seen.push(tool); const a = answers.shift(); return typeof a === "function" ? a() : a; } });
+    const seen = [], sent = [];
+    const w = world({ ...OFF, paired: { route: "route-juno", name: "juno", box: BOX, device: DEV }, callServer: async (paired, tool, input) => {
+      seen.push(tool); sent.push(input);
+      if (!input.reveal) return { state: "waiting", nb: NB, until: 9e15 };
+      const a = answers.shift();
+      if (typeof a === "function") return a();
+      return a.state === "waiting" || a.state === "yes" ? { ...a, nb: NB, words: a.words || await pairWords(BOX, DEV, { ticket, nonceA: input.reveal, nonceB: NB }) } : a;
+    } });
     const r = await w.call("wink.phone.scan", { payload: qr });
     assert.equal(r.ack, null, "nothing to type");
     assert.equal(w.typed.length, 0, "no typed exchange");
     assert.deepEqual(r.target, { kind: "identity", label: "alex" });
-    for (let i = 0; i < 100; i++) { await settle(); const st = await w.call("wink.pair.status", { pairing: r.pairing }); if (st.state !== "waiting" && st.state !== "confirm") return { w, st, seen }; }
+    for (let i = 0; i < 100; i++) { await settle(); const st = await w.call("wink.pair.status", { pairing: r.pairing }); if (st.state !== "waiting" && st.state !== "confirm") return { w, st, seen, sent }; }
     throw new Error("still waiting");
   };
-  let { st, seen } = await run([{ state: "waiting", words: "amber coral seven", until: 9e15 }, { state: "waiting", words: "amber coral seven", until: 9e15 }, { state: "yes", words: "amber coral seven" }]);
+  let { st, seen, sent } = await run([{ state: "waiting", until: 9e15 }, { state: "waiting", until: 9e15 }, { state: "yes" }]);
   assert.equal(st.state, "done");
   assert.deepEqual([...new Set(seen)], ["wink.phone.wait"]);
-  ({ st } = await run([{ state: "waiting", words: "amber coral seven", until: 9e15 }, { state: "no" }]));
+  assert.equal(await nonceCommit(sent.find(x => x.reveal).reveal), sent[0].commit, "commit, then reveal");
+  assert.equal(sent[0].name, "alex", "the phone sends its own name");
+  ({ st } = await run([{ state: "waiting", until: 9e15 }, { state: "no" }]));
   assert.equal(st.state, "failed");
   assert.match(st.reason, /not added/);
   ({ st } = await run([{ state: "expired" }]));
@@ -1015,10 +1134,17 @@ test("Add a phone, the phone's side with the typed code off: scan, show the word
   assert.match(st.reason, /Nobody said yes/);
   ({ st } = await run([() => { throw Object.assign(new Error("no answer"), { remote: "" }); }]));
   assert.equal(st.state, "failed", "a phone the computer let go hears no, never done");
+  // words the computer shows that are not this phone's own: refused
+  ({ st } = await run([{ state: "waiting", until: 9e15, words: "wrong words here" }]));
+  assert.equal(st.state, "failed");
+  assert.match(st.reason, /not the ones here/);
   // a typed code is refused when the flag is off; a bare code cannot be pasted in its place
   const w = world(OFF);
   await assert.rejects(() => w.call("wink.phone.scan", { payload: qrPayload("WINK-K7QM-4P2X", "ws://relay.test") }), e => e.code === "typed_code_off");
   await assert.rejects(() => w.call("wink.phone.scan", { payload: "WINK-K7QM-4P2X" }), e => e.code === "typed_code_off");
+  // break 5 (fifth run): a code with the flag off says typed_code_off plainly, not "payload is required"
+  await assert.rejects(() => w.call("wink.phone.scan", { code: "WINK-K7QM-4P2X" }), e => e.code === "typed_code_off" && /switched off/.test(e.message));
+  await assert.rejects(() => w.call("wink.phone.scan", {}), e => e.code === "bad_input");
   assert.equal(w.typed.length, 0);
   // a server's QR is not a phone's
   await assert.rejects(() => w.call("wink.phone.scan", { payload: serverQrPayload(new Uint8Array(16).fill(1), "ws://r") }), e => e.code === "bad_input");
@@ -1030,4 +1156,50 @@ test("Add a phone: the phone words never name a network, a key or a ticket, and 
     assert.doesNotMatch(v, FORBIDDEN, k);
     assert.doesNotMatch(v, /\btype\b|\btyped\b/i, k);
   }
+});
+
+test("Add a phone with fresh words (break 3, break 5): commit then reveal, the card names the phone by the name it sent, a generic name reads \"A phone\", a bad reveal lets it go", async () => {
+  const BOX = "Qm94S2V5";
+  const one = async (sent, relayName) => {
+    const w = world({ ...OFF, pairWordsFor: null, box: BOX });
+    const open = await phoneOpen(w);
+    const ticket = Buffer.from(parsePhoneQr(open.qr).seed).toString("base64url");
+    await w.p.phone.hold({ id: "phoneabcdef", name: relayName, fingerprint: "7KQM 4P2X" });
+    const as = { caller: "device:phoneabcdef" };
+    assert.equal((await w.call("wink.phone.pairing")).asking, false, "no words, no question");
+    assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false }, "no yes before the words");
+    const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
+    const r1 = await w.call("wink.phone.wait", { commit, tag, ...(sent ? { name: sent } : {}) }, as);
+    assert.equal(r1.words, undefined);
+    assert.match(r1.nb, /^[0-9a-f]{32}$/);
+    const r2 = await w.call("wink.phone.wait", { commit, reveal: na }, as);
+    assert.equal(r2.words, await pairWords(BOX, "phoneabcdef", { ticket, nonceA: na, nonceB: r1.nb }), "the same words the phone derives");
+    return { w, q: await w.call("wink.phone.pairing"), as, commit };
+  };
+  const named = await one("Sam's iPhone", "Device");
+  assert.equal(named.q.name, "Sam's iPhone");
+  assert.match(named.q.line, /^Add Sam's iPhone to your identity\? Words: /);
+  assert.equal((await one("", "Device")).q.name, "A phone");
+  assert.equal((await one("<b>x</b> ".repeat(40), "Device")).q.name.length <= 64, true);
+  assert.equal((await one("", "Maya's phone")).q.name, "Maya's phone", "a name the relay kept is used when the phone sent none");
+  // two pairings of the same phone and computer: other words
+  assert.notEqual((await one("a", "Device")).q.words, (await one("a", "Device")).q.words);
+  // a reveal that does not match the commit: refused and the phone is let go
+  const w = world({ ...OFF, pairWordsFor: null, box: BOX });
+  await phoneOpen(w);
+  await w.p.phone.hold({ id: "phoneabcdef", name: "Device" });
+  const as = { caller: "device:phoneabcdef" };
+  await w.call("wink.phone.wait", { commit: await nonceCommit(newNonce()) }, as);
+  await assert.rejects(() => w.call("wink.phone.wait", { reveal: newNonce() }, as), e => e.code === "denied");
+  assert.ok(w.drops.some(d => d[1].id === "phoneabcdef"));
+});
+
+test("the old ring (relay.pair.ticket) is held for the same words: nothing is registered, a second ring phone is let go", async () => {
+  const w = world({ ...OFF, pairWordsFor: null });
+  assert.equal(await w.p.phone.holdRing({ id: "ringphone1", name: "Device" }), true);
+  assert.equal(w.p.devices.list(ME).length, 0, "nothing is registered before the words are confirmed");
+  assert.equal(await w.p.phone.holdRing({ id: "ringphone2", name: "Device" }), true);
+  assert.ok(w.drops.some(d => d[1].id === "ringphone2"), "one phone at a time");
+  assert.equal((await w.call("wink.phone.pairing")).asking, false, "a ring phone that cannot show words is never asked about");
+  assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false });
 });
