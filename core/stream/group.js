@@ -570,7 +570,9 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       for (const row of q.outOpen.all()) void schedule(row);
     },
     /** Wait for every delivery in flight (tests). */
-    async idle() { await Promise.all([...groups.values()].flatMap(g => [...g.bots.values()].map(m => m.q))); },
+    async idle() {
+      for (let n = 0; n < 3; n++) await Promise.all([...groups.values()].flatMap(g => [...g.bots.values()].flatMap(m => [m.q, m.pq || Promise.resolve()])));
+    },
     stop() { stopped = true; flush(); },
   };
 }
