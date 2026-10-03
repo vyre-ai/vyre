@@ -168,6 +168,7 @@ function stubs(dir, log, site, extra = {}) {
     id: `case "$1" in -u) echo 1000 ;; -un) echo alex ;; -gn) echo alex ;; alex) echo "uid=1000(alex)" ;; *) exit 1 ;; esac`,
     docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
+  "ps -q") echo vyrecontainer ;;
   "volume ls") echo vyre_vyre-home; echo vyre_vyre-work; echo vyre_tailscale-state ;;
 esac
 # The update's signature check runs Node in the image: docker run ... --entrypoint node IMAGE -e CODE KEY SIG.
@@ -423,6 +424,7 @@ test("install-box.sh: uninstall dry run, and --purge lists the volumes and asks"
 
 const NO_IMAGE = { docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
+  "ps -q") echo vyrecontainer ;;
   "manifest inspect") exit 1 ;;
 esac
 exit 0` };
@@ -545,6 +547,7 @@ test("box/vyre: update of a checkout build leaves the source alone", t => {
 /** docker whose `compose exec ... vyre up` prints the file named by VYRE_TEST_UP. */
 const UP_PRINTS = { docker: `case "$1 $2" in
   "compose version") echo 2.29.1 ;;
+  "ps -q") echo vyrecontainer ;;
   "compose exec") for a; do last=$a; done; [ "$last" = up ] && [ -n "\${VYRE_TEST_UP:-}" ] && cat "$VYRE_TEST_UP" ;;
 esac
 exit 0` };
