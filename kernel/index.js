@@ -117,6 +117,17 @@ export async function createKernel(cfg) {
         valid: (/** @type {string} */ token) => surfaces.verify(token).then(() => true, () => false),
         revoke: (/** @type {string} */ session, /** @type {any} */ chain) => surfaces.revoke(session, chain),
       }),
+      /**
+       * The sealing process's presence calls, for the module that holds the identity chain (windows' spaces): after a recovery it hands the process the person's chain evidence so
+       * a person with no presence key left gets a new first key (`recover`, a newcomer for 24 hours), and keeps the process's copy of the chain current (`sync`). The process checks
+       * everything itself (the chain, the pin, that the device was not barred, that the chain's person is the one in the chain argument); this only carries the call. A first-party module only.
+       */
+      ...(cfg.sealer && typeof cfg.sealer.recover === "function" ? { presence: Object.freeze({
+        begin: (/** @type {any} */ i) => cfg.sealer.begin(i),
+        enrol: (/** @type {any} */ i) => cfg.sealer.enrol(i),
+        sync: (/** @type {any} */ i) => cfg.sealer.sync(i),
+        recover: (/** @type {any} */ i) => cfg.sealer.recover(i),
+      }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       chain: async (/** @type {any} */ meta) => (meta && typeof meta.token === "string" ? surfaces.chainFor(meta.token) : (await ready, gateway.serviceChain(m.name))),
     };

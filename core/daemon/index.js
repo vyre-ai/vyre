@@ -175,7 +175,19 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
+    // The record store: the home's SQLite by default; with VYRE_RECORDS_STORE=twenty each Space's records live in its own Twenty (records/space-store.js), provisioned on first use.
+    // Needs Docker on the machine (see that file for what runs as root). The reach, memory profile and gateway container are the operator's: VYRE_TWENTY_REACH (alias or ip),
+    // VYRE_TWENTY_MEMORY (small or standard), VYRE_GATEWAY_CONTAINER (the container to attach to a Space's network), VYRE_TWENTY_SUBNET (to write its firewall rules).
+    /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
+    if (process.env.VYRE_RECORDS_STORE === "twenty") {
+      const { spaceStoreFactory } = await import("../../records/space-store.js");
+      storeFor = spaceStoreFactory({ home: root, log,
+        ...(process.env.VYRE_TWENTY_REACH === "ip" ? { reach: /** @type {"ip"} */ ("ip") } : {}),
+        ...(process.env.VYRE_TWENTY_MEMORY === "standard" ? { memory: /** @type {"standard"} */ ("standard") } : {}),
+        ...(process.env.VYRE_GATEWAY_CONTAINER ? { gatewayContainer: process.env.VYRE_GATEWAY_CONTAINER } : {}),
+        ...(process.env.VYRE_TWENTY_SUBNET ? { subnet: process.env.VYRE_TWENTY_SUBNET } : {}) });
+    }
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}) });
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread

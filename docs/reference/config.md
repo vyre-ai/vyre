@@ -115,6 +115,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
+| `VYRE_GATEWAY_CONTAINER` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
@@ -138,6 +139,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PROJECTS_MOVE` | Not described yet. | `core/projects/index.js` |
+| `VYRE_RECORDS_STORE` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
@@ -161,6 +163,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_TILE_BIN` | Not described yet. | `local/sideview/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
 | `VYRE_TMUX_BIN` | Not described yet. | `core/daemon/peer.js` |
+| `VYRE_TWENTY_MEMORY` | Not described yet. | `core/daemon/index.js` |
+| `VYRE_TWENTY_REACH` | Not described yet. | `core/daemon/index.js` |
+| `VYRE_TWENTY_SUBNET` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_UPDATE_DIR` | Not described yet. | `core/update/index.js` |
 | `VYRE_UPDATE_QUIET` | Not described yet. | `core/update/index.js` |
