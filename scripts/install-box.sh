@@ -167,6 +167,8 @@ finish() {
     say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
   else
     say "  $BOLD${BONE}Your server is ready.$RESET"
+    # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
+    say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
       say "  The setup link went to stdout for the program that asked."
     else
@@ -698,6 +700,8 @@ early_one_install() {
 
 # The memory one Space's larger (Twenty) store needs on this server, in MB: the same number as stores/twenty/space-store.js REQUIRE.memoryMb
 # (test/install-box-v2.test.js keeps the two equal; records sets it). Disk is the images and one Space's volumes.
+# The sealing key's custody on a server, word for word as kernel/seal/process.js custodyNote("server") says it (test/install-box-v2.test.js keeps them equal).
+CUSTODY_NOTE="The sealing key is a file owned by the sealing process's own user. Root on this server, or a stolen disk, can read it."
 SPACE_MEM_MB=${VYRE_SPACE_MEM_MB:-3212}
 SPACE_DISK_MB=${VYRE_SPACE_DISK_MB:-6144}
 # preflight: say plainly what this server can host. A box too small for the larger store runs on the built-in one, which is a choice the person

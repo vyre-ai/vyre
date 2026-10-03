@@ -154,6 +154,20 @@ test("install-box.sh v2: the preflight says how many spaces fit, its memory numb
   assert.match(text, /^VYRE_STORE=sqlite$/m);
 });
 
+test("install-box.sh v2: the custody notice is the one the kernel says, and it is printed when the server is ready", async t => {
+  const text = fs.readFileSync(SCRIPT, "utf8");
+  const said = /^CUSTODY_NOTE="(.*)"$/m.exec(text)?.[1];
+  assert.ok(said);
+  const mod = await import("../kernel/seal/process.js").catch(() => null);
+  if (mod && mod.custodyNote) assert.equal(said, mod.custodyNote("server", "linux"));
+  const win = fs.readFileSync(path.join(REPO, "scripts", "install-windows.ps1"), "utf8");
+  assert.match(win, /About your keys: Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file\./);
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes("About your keys: " + said), r.stdout);
+});
+
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
   const b = box(t);
   const r = run({ ...b.env, VYRE_BOX_URL: site(b.base) }, ["--yes"]);
