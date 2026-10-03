@@ -80,7 +80,7 @@ test("reveal is human only: it needs one person, a human surface, a hardware pro
   // Someone else's key cannot sign for Alex, and a revoked key signs nothing.
   const bob = signer("per_bob"); await enrolDevice(s, bob);
   assert.equal(await code(go(bob.proof(ch, "seal.reveal", fields))), "unknown_key");
-  const k = signer("per_alex"); await enrolDevice(s, k, { existing: alex }); await s.revoke({ chain: ch, key_id: k.key_id });
+  const k = signer("per_alex"); await enrolDevice(s, k, { existing: alex }); await s.revoke({ chain: ch, key_id: k.key_id, proof: alex.proof(ch, "presence.revoke", { key_id: k.key_id }) });
   assert.equal(await code(go(k.proof(ch, "seal.reveal", fields))), "unknown_key");
 });
 
@@ -278,7 +278,8 @@ test("K3 item 5: a device key is enrolled only through the ceremony, and a secon
   assert.equal((await s2.enrol({ ...bb, token: (await s2.begin(bb)).token, proof: a.proof(ch2, "presence.enrol", fields) })).attested, true);
   // Revoking needs the owner's chain.
   assert.equal(await code(s2.revoke({ chain: person("per_bob"), key_id: eb.key_id })), "not_found");
-  assert.equal((await s2.revoke({ chain: person("per_alex"), key_id: eb.key_id })).revoked, true);
+  assert.equal(await code(s2.revoke({ chain: person("per_alex"), key_id: eb.key_id })), "needs_presence", "a chain alone cannot revoke");
+  assert.equal((await s2.revoke({ chain: person("per_alex"), key_id: eb.key_id, proof: a.proof(person("per_alex"), "presence.revoke", { key_id: eb.key_id }) })).revoked, true);
 });
 
 test("K3 item 10: swapping two sealed files in one Space does not make a reference open the other value", async t => {
@@ -300,4 +301,19 @@ test("K3 item 6: the sealing process refuses to start on a desktop profile or as
   assert.throws(() => fileMaster(d), /not private/);
   const down = startSealer({ dir: tmp("seal"), timeoutMs: 3000 }); // no dev flag: a desktop profile
   assert.equal(await code(down.health()), "sealer_down"); await down.close();
+});
+
+test("R-1: revoking every key leaves the person in recovery, never a first device, and enrolled keys survive a restart", async t => {
+  const dir = tmp("r1"), opts = { dir, timeoutMs: 8000, dev: true, unattested: true };
+  let s = startSealer(opts); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const a = signer("per_alex"), ch = person(); await enrolDevice(s, a);
+  // A restart keeps the key: a proof signed by it still works afterwards (and the used-nonce guard is fresh, proofs are issued after the start).
+  await s.close(); s = startSealer(opts);
+  const { ref } = await put(s, "123-45-6789");
+  assert.equal((await s.api.reveal({ chain: ch, ref: ref.ref, purpose: "p", proof: a.proof(ch, "seal.reveal", { ref: ref.ref, purpose: "p" }) })).value, "123-45-6789");
+  // The last key goes with the person's own proof; after that an attacker's phone is not a "first device".
+  assert.equal((await s.revoke({ chain: ch, key_id: a.key_id, proof: a.proof(ch, "presence.revoke", { key_id: a.key_id }) })).revoked, true);
+  const evil = signer("per_alex");
+  assert.equal(await code(enrolDevice(s, evil)), "needs_recovery");
+  const stranger = signer("per_zoe"); assert.equal((await enrolDevice(s, stranger)).enrolled, true);
 });

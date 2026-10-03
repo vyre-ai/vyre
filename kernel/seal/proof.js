@@ -1,6 +1,7 @@
 // kernel/seal/proof.js: the sealing process checks a presence proof itself (invariant 4): a signature by an enrolled, biometric-gated key of the
 // one person in the chain, over exactly this payload, fresh, used once. The process trusts the kernel only for who is in the chain.
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { proofBytes, payloadHash, sha256b64 } from "./wire.js";
 
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
@@ -8,7 +9,21 @@ export const MAX_PROOF_LIFE_MS = 120_000;
 
 export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
-  constructor(now = Date.now, { verifiers = {}, allowUnattested = false } = {}) { this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; }
+  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, file = null } = {}) {
+    this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested;
+    this.file = file; this.ever = new Set();
+    // Enrolled keys and the persons who ever enrolled one live in the sealing folder (public keys only), so a restart keeps them and "first device" is a fact, not a state.
+    if (file && fs.existsSync(file)) {
+      const j = JSON.parse(fs.readFileSync(file, "utf8"));
+      for (const [id, k] of Object.entries(j.keys)) this.keys.set(id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki, key: crypto.createPublicKey({ key: Buffer.from(k.spki, "base64"), format: "der", type: "spki" }) });
+      for (const p of j.ever) this.ever.add(p);
+    }
+  }
+  save() {
+    if (!this.file) return;
+    const keys = Object.fromEntries([...this.keys].map(([id, k]) => [id, { person: k.person, signer: k.signer, attested: k.attested, spki: k.spki }]));
+    fs.writeFileSync(`${this.file}.tmp`, JSON.stringify({ keys, ever: [...this.ever] }), { mode: 0o600 }); fs.renameSync(`${this.file}.tmp`, this.file);
+  }
   have(person) { return [...this.keys.values()].some(k => k.person === person); }
   /** Step 1 of the ceremony: a one-time token for this person and this key, minutes long. The kernel shows it through the pairing flow. */
   begin({ person, key_id, spki }) {
@@ -28,6 +43,8 @@ export class Presence {
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };
     if (this.keys.has(key_id)) return { refused: "exists" };
+    // Someone who enrolled before and has no key left has lost every device: no proof can exist, so this is a recovery, never a first device.
+    if (!this.have(person) && this.ever.has(person)) return { refused: "needs_recovery" };
     if (this.have(person)) {
       const why = this.refuse(proof, { op: "presence.enrol", space: ctx.space, fields: { key_id, spki: t.spki, signer }, ctx });
       if (why) return { refused: why === "no_proof" ? "needs_presence" : why };
@@ -37,14 +54,17 @@ export class Presence {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
     } else if (!this.allowUnattested) return { refused: "unattested" };
-    this.keys.set(key_id, { person, signer, attested, key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.keys.set(key_id, { person, signer, attested, spki, key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
+    this.ever.add(person); this.save();
     return { attested };
   }
-  /** Only the person who owns the key (or a proof from another of their keys) may take it away. */
-  revoke(key_id, ctx) {
+  /** Taking a key away needs a presence proof from a key of the same person (the one being revoked may sign): a person's chain alone is not enough. @returns {string|null} the reason it is refused */
+  revoke(key_id, ctx, proof) {
     const k = this.keys.get(key_id);
-    if (!k || !ctx?.one_person || ctx.person !== k.person) return false;
-    this.keys.delete(key_id); return true;
+    if (!k || !ctx?.one_person || ctx.person !== k.person) return "not_found";
+    const why = this.refuse(proof, { op: "presence.revoke", space: ctx.space, fields: { key_id }, ctx });
+    if (why) return why === "no_proof" ? "needs_presence" : why;
+    this.keys.delete(key_id); this.save(); return null;
   }
   /** @returns {string|null} the reason a proof is refused, or null when it stands. */
   refuse(proof, { op, space, fields, ctx }) {

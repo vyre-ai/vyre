@@ -25,7 +25,7 @@ const need = (c, m) => { if (!c) throw err(m); };
 export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
   constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
-    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested }); this.allowUnattested = allowUnattested;
+    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, file: path.join(dir, "presence.json") }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map();
   }
   ctxOf(ctx) { need(ctx && typeof ctx.space === "string" && ctx.space, "bad_input"); return ctx; }
@@ -152,7 +152,7 @@ export class Sealer {
       case "lookup": return this.lookup(req); case "drop": return this.drop(req);
       case "presence.begin": { const ctx = this.ctxOf(req.ctx); need(ctx.one_person && !ctx.model_originated && ctx.person === req.person, "chain_not_person"); return this.presence.begin(req); }
       case "presence.enrol": { const r = this.presence.enrol({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
-      case "presence.revoke": { const ok = this.presence.revoke(req.key_id, this.ctxOf(req.ctx)); need(ok, "not_found"); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
+      case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
       case "health": return { ok: true, pid: process.pid, unattested_allowed: this.allowUnattested };
       default: throw err("bad_op");
     }
