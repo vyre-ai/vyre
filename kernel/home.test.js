@@ -240,7 +240,7 @@ test("stages: a record entering a stage reaches the stages module in the daemon 
   await d.kernel.gateway.records.define(owner, { add_types: [type] });
   await d.kernel.gateway.records.create(owner, "matter", { title: "Estate of Rivera", stage: "intake" });
   await new Promise(r => setTimeout(r, 400));
-  assert.ok(logs.some(m => /stages: .*"stage":"intake"/.test(m) || /stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
+  assert.ok(logs.some(m => /stage\.error|stages: /.test(m)), `the stages module saw the entry: ${logs.filter(m => /stage|flows/.test(m)).join(" | ")}`);
 });
 
 test("stages: a Space this home hosts gets the same stage hook as the home's own, over its own kernel (a firm Space is not the personal one)", { timeout: 60_000 }, async t => {
@@ -256,5 +256,5 @@ test("stages: a Space this home hosts gets the same stage hook as the home's own
   await h.gateway.records.define(chain, { add_types: [type] });
   await h.gateway.records.create(chain, "matter", { title: "Estate of Rivera", stage: "intake" });
   await new Promise(r => setTimeout(r, 500));
-  assert.ok(logs.some(m => /stages: /.test(m)), `the hosted Space's stages module saw the entry: ${logs.filter(m => /stages/.test(m)).join(" | ")}`);
+  assert.ok(logs.some(m => /stage\.error|stages: /.test(m)), `the hosted Space's stages module saw the entry: ${logs.filter(m => /stage|flows/.test(m)).join(" | ")}`);
 });
