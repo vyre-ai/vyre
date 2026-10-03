@@ -17,6 +17,9 @@ export async function world(o = {}) {
   const store = o.store === "records" ? new RecordsFlowStore({ kernel, chain: sysChain, space: SPACE }) : new MemoryFlowStore();
   if (o.store === "records") await store.define();
   const cat = o.cat || catalog();
+  // a type defined through the kernel joins the catalog, as the live definitions would
+  const define = kernel.records.define;
+  kernel.records.define = async (c, diff) => { const r = await define(c, diff); for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) cat.types[t.name] = t; for (const n of diff.remove_types || []) delete cat.types[n]; return r; };
   const runner = new FlowRunner({
     kernel, store, catalog: () => cat, chains, clock: () => clock.t,
     emit: (type, data, x) => { emitted.push({ type, data, corr: x.corr }); },

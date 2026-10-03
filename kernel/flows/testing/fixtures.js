@@ -42,3 +42,22 @@ export const onPayment = () => ({
     { id: "ok", kind: "ask", to: "role:attorney", title: { expr: "\"Send the engagement letter to \" + trigger.client + \"?\"" } },
   ],
 });
+
+/** A Kit in stored form, at a version. v2 adds an outward Flow, a sealed template slot and a role ability, so the update has widenings to name. */
+export const estateKit = (version = 1) => ({
+  format: 1, id: "estate-planning", version, name: "Estate planning", description: "Matters, a welcome email and the payment Flow.",
+  includes: {
+    types: [{
+      name: "estate_matter", label: "Estate matter",
+      fields: [{ name: "client", kind: "text", label: "Client" }, { name: "email", kind: "text", label: "Email" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement"] }],
+      stages: [{ name: "Intake", tasks: [{ title: "Research the client", doer: "teammate:research", output: { kind: "fields", target: "practice_area" }, how: "assistant" }, { title: "Welcome email", doer: "teammate:intake", checker: "role:attorney", output: { kind: "sent" }, how: "tailor", template: "welcome", depends_on: ["Research the client"] }] }, { name: "Engagement" }],
+    }],
+    templates: [{ name: "welcome", kind: "email", body: version >= 2 ? "Dear {{client.name}}, your reference is {{sealed.ssn}}." : "Dear {{client.name}}, welcome." }],
+    roles: [{ name: "intake_lead", base: "manager", abilities: version >= 2 ? ["projects.create_run", "kits.use"] : ["projects.create_run"] }],
+    teammates: [{ name: "research", instructions: "Read about the client and write findings onto the matter." }, { name: "intake", instructions: version >= 2 ? "Draft the welcome email from the template, signing as Harlow Legal LLP." : "Draft the welcome email." }],
+    flows: [
+      { format: 1, name: "on_payment_estate", label: "On payment", authorship: "kit", trigger: { on: "event", event: "payment.received" }, steps: [{ id: "open", kind: "create", type: "estate_matter", set: { client: { expr: "trigger.client" }, stage: "Intake" } }] },
+      ...(version >= 2 ? [{ format: 1, name: "weekly_digest", label: "Weekly digest", authorship: "kit", trigger: { on: "time", cron: "0 8 * * 1" }, steps: [{ id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "owner@example.com", body: "digest" } }] }] : []),
+    ],
+  },
+});

@@ -20,6 +20,13 @@ export class FakeKernel {
     /** @type {{ match: (i: any) => boolean, effect: string, reason: string }[]} */ this.rules = [];
     this.seq = 0;
     this.denied = new Set();
+    /** @type {any[]} */ this.defines = [];
+    /** @type {any[]} */ this.grantRows = [];
+    this.grants = {
+      create: async (/** @type {any} */ _c, /** @type {any} */ g) => { const row = { id: "gr_" + uuid(), status: "active", ...g }; this.grantRows.push(row); return row; },
+      revoke: async (/** @type {any} */ _c, /** @type {string} */ id) => { const g = this.grantRows.find(x => x.id === id); if (g) g.status = "revoked"; return g; },
+      list: async () => this.grantRows,
+    };
     this.modelLabel = "normal";
 
     this.authorizeCalls = [];
@@ -34,7 +41,7 @@ export class FakeKernel {
     };
 
     this.records = {
-      define: async (/** @type {any} */ _c, /** @type {any} */ diff) => { for (const t of diff.add_types || []) if (!this.tables.has(t.name)) this.tables.set(t.name, new Map()); return { applied: true, changes: [] }; },
+      define: async (/** @type {any} */ _c, /** @type {any} */ diff) => { this.defines.push(diff); for (const t of diff.add_types || []) if (!this.tables.has(t.name)) this.tables.set(t.name, new Map()); for (const n of diff.remove_types || []) this.tables.delete(n); return { applied: true, changes: [] }; },
       get: async (/** @type {any} */ _c, /** @type {string} */ type, /** @type {string} */ id) => { this.calls.push(["get", type, id]); return this.#t(type).get(id) || null; },
       query: async (/** @type {any} */ _c, /** @type {string} */ type, /** @type {any} */ spec) => {
         this.calls.push(["query", type, spec.filter || null]);
