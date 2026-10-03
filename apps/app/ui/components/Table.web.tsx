@@ -3,6 +3,7 @@ import { getCoreRowModel, getSortedRowModel, useReactTable, type Cell, type Colu
 import { useState } from "react";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
+import { Icon } from "./Icon";
 import { useUiTheme } from "../theme";
 // The shared pieces live in TableRows.tsx: a platform file must not import its own name ("./Table" from Table.web.tsx would resolve to itself).
 import { RowsTable, EmptyTable, asNode, type Column, type TableProps } from "./TableRows";
@@ -36,8 +37,9 @@ function WideTable<T>({ columns, rows, onRow, empty, rowKey }: TableProps<T>) {
         {table.getHeaderGroups()[0].headers.map((h, i) => {
           const dir = h.column.getIsSorted();
           return (
-            <Pressable key={h.id} onPress={() => h.column.toggleSorting(dir === "asc")} style={{ flex: flexes[i] }} className="min-w-0 py-s2" accessibilityRole="button" accessibilityLabel={`Sort by ${columns[i].label}`}>
-              <Text size="caption" strong tone="label" className={columns[i].align === "right" ? "text-right" : ""}>{columns[i].label}{dir === "asc" ? " ↑" : dir === "desc" ? " ↓" : ""}</Text>
+            <Pressable key={h.id} onPress={() => h.column.toggleSorting(dir === "asc")} style={{ flex: flexes[i] }} className="min-w-0 flex-row items-center gap-s1 py-s2" accessibilityRole="button" accessibilityLabel={`Sort by ${columns[i].label}`}>
+              <Text size="caption" strong tone="label" className={columns[i].align === "right" ? "text-right" : ""}>{columns[i].label}</Text>
+              {dir ? <Icon name={dir === "asc" ? "chevron-up" : "chevron-down"} size={12} tone="label" /> : null}
             </Pressable>
           );
         })}

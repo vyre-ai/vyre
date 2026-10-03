@@ -26,7 +26,7 @@ export function TaskDetail({ world, task, onAction, onBack, onHow, onOpenRecord 
   return (
     <View className="gap-s4">
       <View className="items-start gap-s2">
-        <Button kind="ghost" size="sm" label="Back" onPress={onBack} />
+        <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={onBack} />
         <Text size="page" strong>{task.title}</Text>
         <View className="flex-row flex-wrap gap-s2">
           <Chip tone={stateTone(task.state) as never}>{STATE_LABEL[task.state]}</Chip>

@@ -7,8 +7,8 @@ import { Button } from "../components/Button";
 import { Text } from "../components/Text";
 import { sortKey, sortRows } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
-import { describeDef, fieldOf, filterRows, listColumns, optionsOf, titleOf, val, viewDefOf } from "./logic.js";
-import { HowMade, TitleCell, fieldNode } from "./shared";
+import { fieldOf, filterRows, listColumns, optionsOf, titleOf, val, viewDefOf } from "./logic.js";
+import { TitleCell, fieldNode } from "./shared";
 
 /** The list: a table with the title first, the columns the definition names, a sort, and chips for the choice and stage columns. Rows on a phone (the Table does that). */
 export function ListView({ def, rows, env, onOpen }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void }) {
@@ -49,7 +49,6 @@ export function ListView({ def, rows, env, onOpen }: { def: any; rows: any[]; en
       </View>
       <Table columns={columns} rows={shown} rowKey={(r) => r.urn} onRow={onOpen} empty={`No ${vd.plural.toLowerCase()} here yet.`} />
       {shown.length ? <Text size="caption" tone="label">{shown.length} of {rows.length}</Text> : null}
-      <HowMade text={describeDef(def, "list", vd)} />
     </View>
   );
 }

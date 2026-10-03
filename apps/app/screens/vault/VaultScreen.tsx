@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Card, Chip, Divider, EmptyState, Menu, Row, Tabs, Text, showToast, type IconName } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, EmptyState, Menu, Row, Tabs, Text, showToast, type IconName, markRef } from "@vyre/ui";
 import { Block, FaceIdSheet, IconTile, Note, Page, Section, SpaceChip, usePhone } from "../places/Page";
 import { useScope } from "../places/scope";
 import { PEOPLE, vaultRepo, type Held, type Item, type Right } from "./data";
@@ -50,12 +50,12 @@ export default function VaultScreen() {
         </Block>
         <Section title="Used by assistants, without seeing it">
           {cur.use.length ? cur.use.map((u) => (
-            <Row key={u.who + u.for} lead={<Avatar name={u.who} family="assistant" size="sm" />} title={`Used for ${u.for}, ${u.times} ${u.times === 1 ? "time" : "times"} today`} sub={`${u.who} · ${u.note}`} />
+            <Row key={u.who + u.for} lead={<Avatar of={markRef(u.who === "chris" ? "person" : "assistant", u.who)} size={24} />} title={`Used for ${u.for}, ${u.times} ${u.times === 1 ? "time" : "times"} today`} sub={`${u.who} · ${u.note}`} />
           )) : <Text tone="muted">Not used yet.</Text>}
         </Section>
         <Section title="Who has it">
           {cur.grants.length ? cur.grants.map((g) => (
-            <Row key={g.who} lead={<Avatar name={g.who} family={g.who === "chris" ? "person" : "assistant"} />} title={g.who} sub={<Text size="caption" tone="label">{`${RIGHTS[g.right].label}. ${RIGHTS[g.right].help}`}</Text>}
+            <Row key={g.who} lead={<Avatar of={markRef(g.who === "chris" ? "person" : "assistant", g.who)} />} title={g.who} sub={<Text size="caption" tone="label">{`${RIGHTS[g.right].label}. ${RIGHTS[g.right].help}`}</Text>}
               end={<Button kind="danger" size="sm" label="Remove" onPress={() => { setItems((xs) => removeGrant(xs, cur.id, g.who)); showToast(`${g.who} no longer has ${cur.name}.`); }} />} />
           )) : <Text tone="muted">Only you.</Text>}
           <View className="self-start">

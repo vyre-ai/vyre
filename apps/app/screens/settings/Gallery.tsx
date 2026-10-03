@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { AskCard, Avatar, Banner, Board, Button, Card, Chip, Divider, EmptyState, Field, IconButton, Menu, Row, Segmented, Sheet, StageSteps, Switch, Table, Tabs, Text, TimelineItem, showToast } from "@vyre/ui";
+import { AskCard, Avatar, SpaceMark, markRef, spaceRef, Banner, Board, Button, Card, Chip, Divider, EmptyState, Field, IconButton, Menu, Row, Segmented, Sheet, StageSteps, Switch, Table, Tabs, Text, TimelineItem, showToast } from "@vyre/ui";
 
 const block = (title: string, children: React.ReactNode) => (
   <View className="gap-s2"><Text size="caption" strong tone="label">{title}</Text>{children}</View>
@@ -38,17 +38,17 @@ export function ComponentGallery() {
         </View>
       ))}
       {block("Avatar", (
-        <View className="flex-row items-center gap-s3"><Avatar name="Alex" /><Avatar name="Juno" family="assistant" /><Avatar name="Kit" family="teammate" tint /><Avatar name="Harlow Legal" family="space" size="lg" /></View>
+        <View className="flex-row items-center gap-s3"><Avatar of={markRef("person", "Alex Rivera")} /><Avatar of={markRef("assistant", "juno")} /><Avatar of={markRef("teammate", "Research", "research-harlow")} space={spaceRef("Harlow Legal")} size={40} /><SpaceMark space={spaceRef("Harlow Legal")} size={40} /></View>
       ))}
       {block("Card of rows", (
         <Card title="Contacts" flush>
-          <Row lead={<Avatar name="Jane Doe" />} title="Jane Doe" sub="Harlow Legal" end={<Chip tone="accent">Intake</Chip>} onPress={() => showToast("Opened Jane Doe")} />
+          <Row lead={<Avatar of={markRef("person", "Jane Doe")} />} title="Jane Doe" sub="Harlow Legal" end={<Chip tone="accent">Intake</Chip>} onPress={() => showToast("Opened Jane Doe")} />
           <Divider />
-          <Row lead={<Avatar name="Northwind Bakery" family="project" />} title="Northwind Bakery" sub="Customer" onPress={() => {}} />
+          <Row lead={<Avatar of={markRef("project", "Northwind Bakery")} />} title="Northwind Bakery" sub="Customer" onPress={() => {}} />
         </Card>
       ))}
       {block("Ask card", (
-        <AskCard lead={<Avatar name="Intake" family="teammate" />} title="Welcome email for Jane Doe is ready" why="Intake drafted it from Welcome, using Research's notes." actions={[{ label: "Send with Face ID", kind: "primary", onPress: () => setSheet(true) }, { label: "Edit" }]} />
+        <AskCard lead={<Avatar of={markRef("teammate", "Intake", "intake-harlow")} size={40} />} title="Welcome email for Jane Doe is ready" why="Intake drafted it from Welcome, using Research's notes." actions={[{ label: "Send with Face ID", kind: "primary", onPress: () => setSheet(true) }, { label: "Edit" }]} />
       ))}
       {block("Banner", <View className="gap-s2"><Banner>Everything is up to date.</Banner><Banner tone="warn">Something to look at.</Banner><Banner tone="err">Could not reach the server.</Banner></View>)}
       {block("Stage steps", <StageSteps stages={["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]} current={2} />)}

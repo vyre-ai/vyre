@@ -2,7 +2,7 @@ import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
 import { NUMBER_CHOICES, RECOVERY_CODE, SERVER_CODE, WHERE_STEP, backOf, homeLine, nameNote, nameStatus, pickNumber, serverLines, slug, startStep } from "./flow.js";
@@ -20,7 +20,7 @@ function Page({ title, sub, children }: { title: string; sub?: string; children?
 }
 
 function Choice({ icon, title, sub, onPress }: { icon: IconName; title: string; sub: string; onPress: () => void }) {
-  return <Row lead={<Avatar name={title} family="device" icon={icon} />} title={title} sub={sub} onPress={onPress} />;
+  return <Row lead={<IconTile name={icon} />} title={title} sub={sub} onPress={onPress} />;
 }
 
 function Terminal({ lines, cursor }: { lines: string[]; cursor?: string }) {
@@ -114,7 +114,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
         {made.length ? (
           <View className="gap-s2">
             <Text size="caption" strong tone="label">Added</Text>
-            <Card flush>{made.map((m, i) => <View key={m.addr + i}>{i ? <Divider /> : null}<Row lead={<Avatar name={m.name} family="space" tint />} title={m.name} sub={m.line} /></View>)}</Card>
+            <Card flush>{made.map((m, i) => <View key={m.addr + i}>{i ? <Divider /> : null}<Row lead={<Avatar of={spaceRef(m.name)} />} title={m.name} sub={m.line} /></View>)}</Card>
             <Button kind="primary" label="Done" onPress={finish} />
           </View>
         ) : null}
@@ -130,7 +130,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
           <View className="flex-row items-center gap-s3">
             <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
           </View>
-          <Avatar name={sn} family="space" size="lg" tint />
+          <Avatar of={spaceRef(sn)} size={56} />
         </View>
         <Button kind="primary" label="Continue" disabled={spaceSt.state !== "ok"} onPress={() => setStep("where")} />
       </Page>
@@ -140,7 +140,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
     body = (
       <Page title="Where will it live?" sub="Every space runs on one machine that stays on.">
         <Card flush>
-          <Choice icon="box" title="On a server you have" sub="One command, about two minutes." onPress={go("server")} />
+          <Choice icon="server" title="On a server you have" sub="One command, about two minutes." onPress={go("server")} />
           <Divider />
           <Choice icon="cable" title="On a new server" sub="We set one up for you, about $12 a month." onPress={go("vps")} />
           <Divider />
@@ -158,7 +158,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   } else if (step === "vps") {
     body = (
       <Page title="A new server">
-        <Card><Row lead={<Avatar name="DigitalOcean" family="device" icon="cable" />} title="DigitalOcean" sub="2 GB, 2 CPUs, 60 GB disk, Frankfurt" end={<Text strong>$12 a month</Text>} /></Card>
+        <Card><Row lead={<IconTile name="cable" />} title="DigitalOcean" sub="2 GB, 2 CPUs, 60 GB disk, Frankfurt" end={<Text strong>$12 a month</Text>} /></Card>
         <Text size="caption" tone="label">Billed by DigitalOcean to your account. You can move the space to another server later.</Text>
         <Button kind="primary" icon="faceid" label="Create the server"
           onPress={() => setFace({ title: "Create a server", body: "Face ID approves creating it on your DigitalOcean account.", label: "Create with Face ID", onApprove: () => { setStep("vpsbusy"); setTimeout(() => setStep("srv1"), 1400); } })} />
@@ -207,7 +207,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   } else if (step === "done") {
     body = (
       <View className="items-center gap-s3">
-        <Avatar name={last?.name ?? sn} family="space" size="lg" tint />
+        <Avatar of={spaceRef(last?.name ?? sn)} size={56} />
         <Text size="page" strong className="text-center">{`${last?.name ?? sn} is ready`}</Text>
         <Text tone="muted" className="text-center">{last?.line}</Text>
         <Text mono size="caption" tone="label">{last?.addr}</Text>
@@ -225,7 +225,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   } else if (step === "invite") {
     body = (
       <Card className="gap-s3">
-        <Row lead={<Avatar name={inv.space} family="space" size="lg" tint />} title={inv.space} sub={inv.address} />
+        <Row lead={<Avatar of={spaceRef(inv.space)} size={56} />} title={inv.space} sub={inv.address} />
         <Text tone="muted">{`${inv.from} invited you.`}</Text>
         <Text mono size="caption" tone="label">{inv.link}</Text>
         <View className="gap-s1"><Text size="caption" strong tone="label">You join as</Text><View className="flex-row"><Chip tone="accent">{inv.role}</Chip></View><Text size="caption" tone="muted">{inv.roleLine}</Text></View>
@@ -248,7 +248,7 @@ export function InstallScreen({ start }: { start?: "create" | "join" }) {
   return (
     <View className="flex-1 bg-bg">
       <View className="flex-row items-center gap-s2 px-s4 py-s3">
-        {back ? <Button kind="ghost" size="sm" label="Back" onPress={() => { setWrong(false); setStep(back); }} /> : null}
+        {back ? <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => { setWrong(false); setStep(back); }} /> : null}
         <View className="flex-1" />
         <Button kind="ghost" size="sm" label="Close" onPress={finish} />
       </View>

@@ -3,14 +3,13 @@ import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Card, Divider } from "../components/Card";
 import { Row } from "../components/Row";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { EmptyState } from "../components/States";
 import { cn } from "../lib/cn";
 import { useUiTheme } from "../theme";
 import { fmtDate, sortRows } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
-import { MONTHS, WEEKDAYS, dayKey, describeDef, fieldOf, monthWeeks, rowsByDay, startMonth, stepMonth, titleOf, val, viewDefOf } from "./logic.js";
-import { HowMade } from "./shared";
+import { MONTHS, WEEKDAYS, dayKey, fieldOf, monthWeeks, rowsByDay, startMonth, stepMonth, titleOf, val, viewDefOf } from "./logic.js";
 
 /** The calendar: a month grid on a date field on a wide screen; a dot per day and an agenda below on a phone. */
 export function CalendarView({ def, rows, env, onOpen }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void }) {
@@ -28,9 +27,9 @@ export function CalendarView({ def, rows, env, onOpen }: { def: any; rows: any[]
   return (
     <View className="gap-s3">
       <View className="flex-row items-center gap-s2">
-        <Button size="sm" kind="secondary" label={"\u2039"} accessibilityLabel="Previous month" onPress={() => go(-1)} />
+        <IconButton kind="secondary" icon="chevron-left" label="Previous month" onPress={() => go(-1)} />
         <Text strong className="min-w-menu text-center">{`${MONTHS[ym.m]} ${ym.y}`}</Text>
-        <Button size="sm" kind="secondary" label={"\u203A"} accessibilityLabel="Next month" onPress={() => go(1)} />
+        <IconButton kind="secondary" icon="chevron" label="Next month" onPress={() => go(1)} />
         <Text size="caption" tone="label" className="flex-1 text-right">{`by ${f.label.toLowerCase()} date`}</Text>
       </View>
       <View accessibilityRole={"grid" as any} className="overflow-hidden rounded-card border border-edge bg-surface-2">
@@ -70,7 +69,6 @@ export function CalendarView({ def, rows, env, onOpen }: { def: any; rows: any[]
           </View>
         )) : <View className="p-s4"><Text tone="label">{`No ${vd.plural.toLowerCase()} ${day ? "that day" : "this month"}.`}</Text></View>}
       </Card>
-      <HowMade text={describeDef(def, "calendar", vd)} />
     </View>
   );
 }

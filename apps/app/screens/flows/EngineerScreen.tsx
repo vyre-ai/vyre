@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Field, Segmented, Text, showToast, markRef } from "@vyre/ui";
 import { Block, DiffBlock, FaceIdSheet, Page } from "../places/Page";
 import { flowsRepo } from "./data";
 import { useFlowsState } from "./store";
@@ -26,10 +26,10 @@ export default function EngineerScreen() {
       ) : (
         <Card>
           <View className="gap-s3">
-            <View className="flex-row items-start gap-s3"><Avatar name="Alex" /><View className="min-w-0 flex-1 gap-s2"><Text strong>You</Text><Field multiline lines={4} value={text} onChangeText={setText} /><View className="self-start"><Button kind="primary" size="sm" label="Send to @Engineer" onPress={() => setSent(true)} /></View></View></View>
+            <View className="flex-row items-start gap-s3"><Avatar of={markRef("person", "Alex Rivera")} /><View className="min-w-0 flex-1 gap-s2"><Text strong>You</Text><Field multiline lines={4} value={text} onChangeText={setText} /><View className="self-start"><Button kind="primary" size="sm" label="Send to @Engineer" onPress={() => setSent(true)} /></View></View></View>
             {sent ? (
               <View className="gap-s3 border-t border-edge pt-s3">
-                <View className="flex-row items-start gap-s3"><Avatar name="Engineer" family="agent" /><View className="min-w-0 flex-1 gap-s1"><Text strong>@Engineer</Text><Text>{p.reply}</Text></View></View>
+                <View className="flex-row items-start gap-s3"><Avatar of={markRef("agent", "@Engineer")} /><View className="min-w-0 flex-1 gap-s1"><Text strong>@Engineer</Text><Text>{p.reply}</Text></View></View>
                 <Card>
                   <View className="gap-s3">
                     <Text size="caption" strong tone="label">{p.title}</Text>

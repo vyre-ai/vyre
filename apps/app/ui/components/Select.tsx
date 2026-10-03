@@ -2,6 +2,7 @@ import { Pressable, View } from "react-native";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
 import { Menu } from "./Menu";
+import { Icon } from "./Icon";
 
 /** One choice from a list, in a menu. Looks like Field; the options are [value, label]. "None" is the caller's option when a blank is allowed. */
 export function Select({ value, options, onChange, placeholder = "Choose", label, disabled, className }: {
@@ -17,7 +18,7 @@ export function Select({ value, options, onChange, placeholder = "Choose", label
             className="h-control w-full min-w-0 flex-row items-center gap-s2 rounded-field border border-edge bg-surface-3 px-s3"
             style={({ hovered }: any) => (hovered ? { borderColor: "var(--edge-strong)" } : undefined)}>
             <Text numberOfLines={1} tone={current ? "default" : "label"} className="min-w-0 flex-1">{current?.[1] ?? placeholder}</Text>
-            <Text tone="label">{"▾"}</Text>
+            <Icon name="chevron-down" size={16} tone="label" />
           </Pressable>
         )}
         items={options.map(([v, l]) => ({ label: l, onPress: () => onChange(v) }))}

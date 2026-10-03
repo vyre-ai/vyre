@@ -11,6 +11,7 @@ import { Menu } from "../components/Menu";
 import { Table } from "../components/Table";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
+import { spaceRef } from "../marks/useMark";
 import { progressText, recordTitle, spaceName, who, type World } from "./model";
 
 type Item = { def: any; row: any };
@@ -34,7 +35,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
         rows={shown} rowKey={(i) => i.row.id} onRow={(i) => onOpen(i.row.id)} empty="Nothing here yet. A record of a type that holds work shows up here with its tasks and its team."
         columns={[
           { key: "name", label: "Name", sortValue: (i) => recordTitle(world, i.row), render: (i) => (
-            <View className="flex-row flex-wrap items-center gap-s2"><Avatar name={recordTitle(world, i.row)} family="project" size="sm" /><Text strong numberOfLines={1}>{recordTitle(world, i.row)}</Text><Chip tone="space">{spaceName(world, i.row.labels?.source_spaces?.[0])}</Chip></View>
+            <View className="flex-row items-center gap-s3"><Avatar of={{ kind: "project", id: i.row.id, name: recordTitle(world, i.row), seed: i.row.data?.avatar_seed }} size={32} space={i.row.labels?.source_spaces?.[0] ? spaceRef(spaceName(world, i.row.labels.source_spaces[0]), i.row.labels.source_spaces[0]) : undefined} /><Text strong numberOfLines={1} className="min-w-0 flex-shrink">{recordTitle(world, i.row)}</Text></View>
           ) },
           { key: "type", label: "Type", sortValue: (i) => i.def.label, render: (i) => i.def.label },
           { key: "stage", label: "Stage", sortValue: (i) => String(i.row.data?.stage ?? ""), render: (i) => String(i.row.data?.stage ?? "") },
