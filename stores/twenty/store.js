@@ -213,7 +213,8 @@ export class TwentyStore {
   /** @param {string} type */
   async describe(type) {
     const p = this.plans.get(type);
-    return p ? { name: type, fields: p.def.fields.map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind })) } : null;
+    return p ? { name: type, // `indexed`: a unique field is a Postgres unique index. A link is plain text in Twenty and its filter is pushed down to Postgres, but Twenty has no metadata call that adds a plain index, so it is not claimed as indexed
+    fields: p.def.fields.map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind, indexed: f.unique === true })) } : null;
   }
 
   // ---- reads -----------------------------------------------------------------------------------

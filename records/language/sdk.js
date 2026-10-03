@@ -65,7 +65,7 @@ function fieldBuilder(kind) {
     onlyKeys(opts, [...COMMON, ...(FIELD_OPTS[kind] ?? [])], `defineField.${kind}`);
     /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`) };
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
-    if (kind === "link") f.to = name(opts.to, "defineField.link.to");
+    if (kind === "link") f.to = Array.isArray(opts.to) ? (opts.to.length ? opts.to.map((/** @type {any} */ x) => name(x, "defineField.link.to")) : bad("defineField.link.to", "Give at least one type")) : name(opts.to, "defineField.link.to");
     if (kind === "sealed") {
       if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`);
       const level = opts.level ?? "ai"; if (!SEAL_LEVELS.includes(level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`);
@@ -126,7 +126,7 @@ function defineRule(r) {
 
 /** A type is the kernel's TypeDefinition: fields (a stage field among them), stages with their task templates, rules. */
 function defineType(t) {
-  onlyKeys(t, ["name", "label", "icon", "fields", "rules"], "defineType");
+  onlyKeys(t, ["name", "label", "icon", "role", "fields", "rules"], "defineType");
   const nm = name(t.name, "defineType.name");
   if (!isObj(t.fields) || !Object.keys(t.fields).length) bad(`defineType(${nm}).fields`, "A type needs at least one field");
   if (Object.keys(t.fields).length > 200) bad(`defineType(${nm}).fields`, "A type has at most 200 fields");
@@ -140,8 +140,16 @@ function defineType(t) {
       fields.push(ordered({ name: k, kind: "stage", label: v.label ?? labelOf(k), description: v.description, options: v.stages.map((/** @type {any} */ s) => s.name) }, ["name", "kind", "label", "description", "options"]));
     } else { const { $, ...rest } = v; fields.push({ name: k, ...ordered({ ...rest, label: rest.label ?? labelOf(k) }, ["kind", "label", "description", "required", "options", "to", "seal"]) }); }
   }
+  // a role: what a contact or organization is to the Space. `subject` lists the types it may point at; `field` names the required link when more than one could be it
+  let role;
+  if (t.role !== undefined) {
+    if (!isObj(t.role)) bad(`defineType(${nm}).role`, "role is { subject: [...] }");
+    onlyKeys(t.role, ["subject", "field"], `defineType(${nm}).role`);
+    if (!Array.isArray(t.role.subject) || !t.role.subject.length) bad(`defineType(${nm}).role.subject`, "Give the types a role may point at, such as [\"contact\"]");
+    role = ordered({ subject: t.role.subject.map((/** @type {any} */ x) => name(x, `defineType(${nm}).role.subject`)), field: t.role.field === undefined ? undefined : name(t.role.field, `defineType(${nm}).role.field`) }, ["subject", "field"]);
+  }
   const rules = (t.rules ?? []).map((/** @type {any} */ r, /** @type {number} */ i) => { if (!isObj(r) || r.$ !== "rule") bad(`defineType(${nm}).rules[${i}]`, "Each entry in rules must be a defineRule(...) call"); const { $, ...rest } = r; return rest; });
-  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), fields, stages: stageDef ? stageDef.stages : undefined, rules: rules.length ? rules : undefined }, ["name", "label", "icon", "fields", "stages", "rules"]) };
+  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), role, fields, stages: stageDef ? stageDef.stages : undefined, rules: rules.length ? rules : undefined }, ["name", "label", "icon", "role", "fields", "stages", "rules"]) };
 }
 
 function defineTemplate(t) {

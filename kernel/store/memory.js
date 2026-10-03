@@ -72,6 +72,44 @@ export function createMemoryStore(cfg = {}) {
       const m = uidx.get(`${type}\u0000${f.name}`); if (!m) continue;
       if (on) m.set(ukey(v), r.id); else if (m.get(ukey(v)) === r.id) m.delete(ukey(v));
     }
+    for (const f of lookupOf(type)) {
+      const v = r.data[f.name]; if (v === undefined || v === null) continue;
+      const m = lidx.get(`${type}\u0000${f.name}`); if (!m) continue;
+      const k = ukey(v);
+      if (on) { let set = m.get(k); if (!set) m.set(k, set = new Set()); set.add(r.id); } else { const set = m.get(k); if (set) { set.delete(r.id); if (!set.size) m.delete(k); } }
+    }
+  }
+
+  // Lookup index (describe().indexed): every link field and every unique field maps a value to the ids of the LIVE records holding it, so "the roles of this
+  // contact" and "the contact-point holding this address" are a lookup, not a scan. A query whose filter (alone or inside a top-level `and`) has an `eq` or
+  // `in` on such a field starts from the index and still applies the whole filter to what it finds.
+  /** @type {Map<string, Map<string, Set<string>>>} */ const lidx = new Map();
+  const lookupOf = (/** @type {string} */ type) => (types.get(type)?.fields || []).filter((/** @type {any} */ f) => f.kind === "link" || f.unique === true);
+  function rebuildLookup(/** @type {string} */ type) {
+    for (const k of [...lidx.keys()]) if (k.startsWith(`${type}\u0000`)) lidx.delete(k);
+    for (const f of lookupOf(type)) lidx.set(`${type}\u0000${f.name}`, new Map());
+    for (const r of rows.get(type)?.values() || []) if (!r.deleted_at) {
+      for (const f of lookupOf(type)) {
+        const v = r.data[f.name]; if (v === undefined || v === null) continue;
+        const m = /** @type {Map<string, Set<string>>} */ (lidx.get(`${type}\u0000${f.name}`)); const k = ukey(v);
+        let set = m.get(k); if (!set) m.set(k, set = new Set()); set.add(r.id);
+      }
+    }
+  }
+  /** The live rows an indexed `eq` or `in` in the filter points at, or null when the filter has none (then the caller scans). */
+  function candidates(/** @type {string} */ type, /** @type {any} */ spec) {
+    if (spec.include_deleted || !spec.filter) return null;
+    const leaves = spec.filter.and ? spec.filter.and : [spec.filter];
+    for (const l of leaves) {
+      if (!l || typeof l.field !== "string") continue;
+      const m = lidx.get(`${type}\u0000${l.field}`); if (!m) continue;
+      const vals = l.op === "eq" && l.value !== undefined && l.value !== null ? [l.value] : l.op === "in" && Array.isArray(l.value) ? l.value : null;
+      if (!vals) continue;
+      const out = [], seen = new Set();
+      for (const v of vals) for (const id of m.get(ukey(v)) || []) if (!seen.has(id)) { seen.add(id); out.push(rows.get(type)?.get(id)); }
+      return out.filter(Boolean);
+    }
+    return null;
   }
 
   function validate(/** @type {string} */ type, /** @type {any} */ data) {
@@ -85,9 +123,13 @@ export function createMemoryStore(cfg = {}) {
     }
   }
 
-  for (const name of types.keys()) rebuildUnique(name);
+  for (const name of types.keys()) { rebuildUnique(name); rebuildLookup(name); }
+
+  let examined = 0;
 
   return {
+    /** How many rows the last query looked at: a test's proof that a lookup on an indexed field did not scan. Not part of the Store interface. */
+    rowsExamined: () => examined,
     async define(diff) {
       touch("define", [diff]);
       const changesMade = [];
@@ -97,7 +139,7 @@ export function createMemoryStore(cfg = {}) {
         types.set(t.name, clone(t));
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         if (!rows.has(t.name)) rows.set(t.name, new Map());
-        rebuildUnique(t.name);
+        rebuildUnique(t.name); rebuildLookup(t.name);
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
       }
       for (const t of diff.change_types || []) {
@@ -106,6 +148,7 @@ export function createMemoryStore(cfg = {}) {
         const before = types.get(t.name);
         types.set(t.name, clone(t));
         try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); rebuildUnique(t.name); throw e; }
+        rebuildLookup(t.name);
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
         changesMade.push(`changed type ${t.name}`);
       }
@@ -124,7 +167,7 @@ export function createMemoryStore(cfg = {}) {
     async describe(type) {
       touch("describe", [type]);
       const t = types.get(type);
-      return t ? { name: t.name, fields: t.fields.map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind })) } : null;
+      return t ? { name: t.name, fields: t.fields.map((/** @type {any} */ f) => ({ name: f.name, kind: f.kind, indexed: f.kind === "link" || f.unique === true })) } : null;
     },
     async get(type, id, opts = {}) {
       touch("get", [type, id]);
@@ -133,7 +176,9 @@ export function createMemoryStore(cfg = {}) {
     },
     async query(type, spec) {
       touch("query", [type, spec]);
-      const all = [...table(type).values()].filter(r => spec.include_deleted || !r.deleted_at);
+      const from = candidates(type, spec) ?? [...table(type).values()];
+      examined = from.length;
+      const all = from.filter(r => spec.include_deleted || !r.deleted_at);
       const p = page(all, spec);
       if (p.error) throw fail("invalid", p.error);
       return clone(p);

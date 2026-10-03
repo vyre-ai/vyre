@@ -1,9 +1,11 @@
 // @ts-check
-// The business record types every Space has before any Kit is installed: events, templates, playbooks and team members
+// The business record types every Space has before any Kit is installed: events, templates, playbooks, team members and the people types (contact, organization, contact-point, communication)
 // (team/0.3/DESIGN-tasks.md and DESIGN-native-assistant.md). They are plain kernel TypeDefinitions, stored in the
 // Space's Twenty like any other type, so a Kit can link to them and a view can list them.
 //
 // Tasks are not here: tasks, goals, Flows, runs, grants and the log live in the kernel store (one `task.created`, the kernel's), and Twenty holds business records.
+
+import { CONTACT_TYPES } from "./contacts/types.js";
 
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
 const choice = (/** @type {string} */ name, /** @type {string} */ label, /** @type {string[]} */ options, /** @type {object} */ more = {}) => ({ name, kind: "choice", label, options, ...more });
@@ -69,4 +71,4 @@ export const EVENT = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, ...CONTACT_TYPES].map((t) => Object.freeze(t)));

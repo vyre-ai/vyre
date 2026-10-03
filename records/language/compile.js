@@ -8,9 +8,13 @@ import { LanguageError } from "./errors.js";
 import { parseExpr, exprNames } from "./expr.js";
 import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
+import { CORE_TYPES as CORE_DEFS } from "../core-types.js";
+import { extendType } from "../contacts/merge.js";
+import { checkRoleType } from "../contacts/roles.js";
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member"]);
+export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "event", "contact", "organization", "contact-point", "communication", "communication-party"]);
+const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 /** Roles every Space has. */
 export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
 
@@ -86,8 +90,12 @@ export function checkKit(kit) {
     for (const f of t.fields) {
       if (fieldNames.has(f.name)) err(`type ${t.name}`, `Field "${f.name}" appears twice`);
       fieldNames.add(f.name);
-      if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
+      for (const to of f.kind === "link" ? [].concat(f.to) : []) if (!typeNames.has(to) && !CORE_TYPES.includes(to)) err(`type ${t.name}.${f.name}`, `Refers to "${to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
     }
+    // a type named like a core type extends it: it may add fields but not retype or drop a core field
+    const core = CORE_BY_NAME.get(t.name);
+    if (core) { try { extendType(core, t); } catch (e) { err(`type ${t.name}`, /** @type {any} */ (e).message); } }
+    if (t.role) { try { checkRoleType(t); } catch (e) { err(`type ${t.name}`, /** @type {any} */ (e).message); } for (const s of t.role.subject) if (!typeNames.has(s) && !CORE_TYPES.includes(s)) err(`type ${t.name}.role`, `A role may point at "${s}", which is neither defined in this kit nor a core type`); }
     for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
     const stageField = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
     if (stageField && JSON.stringify((t.stages ?? []).map((/** @type {any} */ s) => s.name)) !== JSON.stringify(stageField.options)) err(`type ${t.name}`, "The stage field's options and the stages must be the same list");

@@ -1,5 +1,7 @@
 // kernel/store/values.js: the value kinds (contract 5.2) as validators. A store translates our kinds, so the reference
 // store, the conformance suite and the gateway agree on what a valid value is. A sealed field never holds a value.
+import { isNormalAddress } from "./normal.js";
+
 const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const strArr = (/** @type {any} */ v) => Array.isArray(v) && v.every(x => typeof x === "string");
 export const isSealedRef = (/** @type {any} */ v) => isObj(v) && typeof v.sealed === "string" && typeof v.ref === "string" && typeof v.present === "boolean";
@@ -10,7 +12,9 @@ const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})
 export function checkValue(def, v) {
   if (v === null || v === undefined) return def.required ? `${def.name} is required` : null;
   switch (def.kind) {
-    case "text": case "rich_text": return typeof v === "string" ? null : `${def.name} must be text`;
+    case "text": case "rich_text":
+      if (typeof v !== "string") return `${def.name} must be text`;
+      return def.normal === "address" && !isNormalAddress(v) ? `${def.name} must be a lower-cased email address or an E.164 phone number (+15551234567)` : null;
     case "number": return typeof v === "number" && Number.isFinite(v) ? null : `${def.name} must be a number`;
     case "money": return isObj(v) && Number.isFinite(v.amount) && typeof v.currency === "string" && /^[A-Z]{3}$/.test(v.currency) ? null : `${def.name} must be { amount, currency }`;
     case "boolean": return typeof v === "boolean" ? null : `${def.name} must be true or false`;
@@ -19,7 +23,12 @@ export function checkValue(def, v) {
     case "multi_choice": return strArr(v) && (!def.options || v.every((/** @type {string} */ x) => def.options.includes(x))) ? null : `${def.name} must be a list of its options`;
     case "rating": return Number.isInteger(v) && v >= 1 && v <= 5 ? null : `${def.name} must be 1 to 5`;
     case "url": return typeof v === "string" && /^https?:\/\//.test(v) ? null : `${def.name} must be a web address`;
-    case "link": return isObj(v) && typeof v.urn === "string" && v.urn.startsWith("vyre://") ? null : `${def.name} must be a reference`;
+    case "link": {
+      if (!(isObj(v) && typeof v.urn === "string" && v.urn.startsWith("vyre://"))) return `${def.name} must be a reference`;
+      // vyre://<space>/<type>/<id>: when the definition names the types a link may point at, the type segment must be one of them
+      const to = def.to === undefined ? null : [].concat(def.to);
+      return to && !to.includes(v.urn.split("/")[3]) ? `${def.name} must point at ${to.join(" or ")}` : null;
+    }
     case "actor": return isObj(v) && isObj(v.actor) && typeof v.actor.id === "string" ? null : `${def.name} must be an actor`;
     case "file": return isObj(v) && typeof v.file === "string" && typeof v.name === "string" && Number.isFinite(v.bytes) ? null : `${def.name} must be a file`;
     case "address": return isObj(v) && Object.values(v).every(x => typeof x === "string") ? null : `${def.name} must be an address`;

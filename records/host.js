@@ -16,6 +16,7 @@ import { createFlows } from "../kernel/flows/index.js";
 import { CORE_TYPES } from "./core-types.js";
 import { toKernelKit } from "./kit-adapter.js";
 import { parseExpr, evalExpr } from "./language/expr.js";
+import { createContacts, mergeKitTypes, checkRoleType } from "./contacts/index.js";
 
 const RECORD_GRANT_ACTIONS = ["records.*", "records.define", "events.read"];
 
@@ -68,13 +69,17 @@ export function createRecordsHost(o) {
   // the kernel's own event stream feeds the runner, as the platform's assembly does
   log.subscribe("flows:runner", {}, (/** @type {any} */ e) => flows.onEvent(e));
 
-  async function defineTypes(/** @type {any[]} */ list) {
-    const r = await kernel.records.define(ownerChain(), { add_types: list });
-    for (const t of list) types.set(t.name, t);
+  async function defineTypes(/** @type {any[]} */ list, /** @type {any[]} */ change = []) {
+    for (const t of [...list, ...change]) checkRoleType(t); // a role type must have its required link to its subject before it exists
+    const r = await kernel.records.define(ownerChain(), { add_types: list, ...(change.length ? { change_types: change } : {}) });
+    for (const t of [...list, ...change]) types.set(t.name, t);
     return r;
   }
-  /** The types every Space has (task, template, playbook, team-member). */
+  /** The types every Space has (event, template, playbook, team-member, contact, organization, contact-point, communication). */
   const defineCore = () => defineTypes([...CORE_TYPES]);
+
+  /** Contacts, roles and communications over this Space's gateway: addPoint, matchParticipants, rolesOf, holders, attachContact, communicationsOf. */
+  const contacts = createContacts({ space, records: kernel.records, types: () => o.store.types() });
 
   /** An event for the Flows and anything else subscribed. Written once per `key`: a second call with the same key returns the first event. */
   /** @type {Map<string, Promise<any>>} */ const keyed = new Map();
@@ -95,7 +100,12 @@ export function createRecordsHost(o) {
   /** Install a Kit in the records language's compiled form: its types go through the gateway, then its Flows are approved by the owner. */
   async function installKit(/** @type {any} */ kit) {
     const k = toKernelKit(kit);
-    await defineTypes(k.includes.types);
+    // A Kit type named like a core type extends it (it adds fields, it cannot retype or drop one): the Space's own definition is the base.
+    const held = new Map((await o.store.types()).filter((/** @type {any} */ t) => CORE_TYPES.some((c) => c.name === t.name)).map((/** @type {any} */ t) => [t.name, t]));
+    const missing = CORE_TYPES.filter((c) => !held.has(c.name) && k.includes.types.some((/** @type {any} */ t) => t.name === c.name));
+    if (missing.length) { await defineTypes([...missing]); for (const c of missing) held.set(c.name, c); } // the core type is the base, even in a Space that has not defined its core yet
+    const { add, change } = mergeKitTypes(k.includes.types, held);
+    await defineTypes(add, change);
     const ids = [];
     for (const fl of k.includes.flows) {
       const d = await flows.runner.define(null, fl, person);
@@ -109,5 +119,5 @@ export function createRecordsHost(o) {
   /** Let the runs started by events settle (tests and connectors that answer after the work is done). */
   async function settle() { await new Promise((r) => setImmediate(r)); await flows.runner.drain(); await new Promise((r) => setImmediate(r)); await flows.runner.drain(); }
 
-  return { space, kernel, log, chains, flows, person, ownerChain, forFlow, catalog, defineTypes, defineCore, emit, installKit, settle };
+  return { space, kernel, log, chains, flows, person, ownerChain, forFlow, catalog, defineTypes, defineCore, contacts, emit, installKit, settle };
 }
