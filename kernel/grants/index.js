@@ -29,6 +29,7 @@ export const GRANT_ACTIONS = Object.freeze([
 
 const SUBJECT_KINDS = new Set(["actor", "role", "group"]);
 const MAX_DEPTH = 3;
+const HISTORY = 1000;
 const freeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
 const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
@@ -530,7 +531,7 @@ export function createGrantsStore(cfg) {
       if (people.length > 100 || assistants.length > 20) throw new KernelError("bad_input", "too many in one chat");
       const id = o.id === undefined ? `chat_${mintUuid(clock())}` : String(o.id);
       if (!/^chat_[A-Za-z0-9_-]{4,64}$/.test(id) || chats.has(id)) throw new KernelError("bad_input", "a chat id is new and shaped chat_...");
-      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock(), ver: 1, grew: 1 });
+      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock(), ver: 1, h: [{ ver: 1, people: [...people] }] });
       chats.set(id, rec);
       await note(chain, "chat.created", urn("chat", id), { chat: rec }, null);
       return rec;
@@ -547,11 +548,13 @@ export function createGrantsStore(cfg) {
       for (const x of change.add_assistants || []) { if (!memberOk({ kind: "agent", id: String(x), space: cfg.space })) throw new KernelError("bad_input", "an assistant in a chat belongs to the Space"); assistants.add(String(x)); }
       for (const x of change.remove_assistants || []) assistants.delete(String(x));
       if (!people.size || people.size > 100 || assistants.size > 20) throw new KernelError("bad_input", "a chat keeps at least one person");
-      // The room's version moves on every change; `grew` is the version at which someone was last ADDED, which is what a reply written for the smaller room must not outlive.
-      const ver = (c.ver || 1) + 1, grew = [...people].some(x => !c.people.includes(x)) ? ver : (c.grew || 1);
-      const n = freeze({ ...c, people: [...people], assistants: [...assistants], ver, grew });
+      // The room's version moves on every change, and the people at each version are kept: a message belongs to the version it was written under and is delivered only to the
+      // people who were in the room then (the kernel answers "may this person receive it"; the stream never decides).
+      const ver = (c.ver || 1) + 1;
+      const joined = [...people].filter(x => !c.people.includes(x)), left = c.people.filter(x => !people.has(x));
+      const n = freeze({ ...c, people: [...people], assistants: [...assistants], ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY) });
       chats.set(c.id, n);
-      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, grew }, null);
+      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined, left }, null);
       return n;
     },
     /**
@@ -578,8 +581,17 @@ export function createGrantsStore(cfg) {
       const c = chats.get(String(id));
       return c ? c.people.filter((/** @type {string} */ x) => memberOk({ kind: "person", id: x, space: cfg.space })) : null;
     },
-    /** The room's version and the version at which someone was last added: a reply written under a version older than `grew` was written for a smaller room. @param {string} id @returns {{ ver: number, grew: number } | null} */
-    chatVersion(id) { const c = chats.get(String(id)); return c ? { ver: c.ver || 1, grew: c.grew || 1 } : null; },
+    /** The room's current membership version. @param {string} id @returns {{ ver: number } | null} */
+    chatVersion(id) { const c = chats.get(String(id)); return c ? { ver: c.ver || 1 } : null; },
+    /** Who was in the room at a version (the latest recorded version at or before it), or null when that version is older than the history kept. Kernel-internal. @param {string} id @param {number} ver @returns {string[] | null} */
+    chatPeopleAt(id, ver) {
+      const c = chats.get(String(id));
+      const h = c && (c.h || [{ ver: c.ver || 1, people: c.people }]);
+      if (!h || !h.length || !(ver >= h[0].ver)) return null;
+      let at = h[0];
+      for (const x of h) if (x.ver <= ver) at = x;
+      return [...at.people];
+    },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
     /**
@@ -630,7 +642,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
-        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, grew: d.grew ?? c.grew ?? 1 })); }
+        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY) })); }
       };
       if (snap) {
         const st = snap.core.state;

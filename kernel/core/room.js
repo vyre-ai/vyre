@@ -6,7 +6,9 @@
 //   append(token, message): the only way a reply lands in a chat: the destination is the chat in the token, so a session opened one-to-one cannot write into a group and
 //     a write to any other chat is refused. The kernel records who wrote what where (an owner-visible event with a hash, never the text); the stream keeps the text.
 //   An opener who has left the chat (or the Space) has no room and cannot append.
+import crypto from "node:crypto";
 import { KernelError } from "./errors.js";
+import { isChain } from "./chain.js";
 import { mintId } from "./ids.js";
 import { canonical, sha256 } from "./canonical.js";
 import { segments } from "./urn.js";
@@ -17,12 +19,11 @@ const RATE = Object.freeze({ max: 120, window_ms: 60_000, sessions: 5000 });
 
 /**
  * The room as the gateway sees it, for a chain made from a session token that names a chat (kernel/core/chain.js `room`): the chat's LIVE participants at every call (never a
- * list taken earlier), and a note of the room's version under which a read was made, so a reply written for a smaller room is refused once the room has grown.
+ * list taken earlier). A READ always sees the room as it is now; a REPLY belongs to the version it was opened under (see `appendOpen`).
  * @param {{ grantsStore: any }} cfg
  */
 export function createRoomPort(cfg) {
   const gs = cfg.grantsStore;
-  /** @type {Map<string, number>} session -> the lowest room version any read since its last reply was made under */ const reads = new Map();
   return Object.freeze({
     /** The people of the chain's room when it is a group (more than one), null when it is not; `not_found` when the person the session is for is no longer in the chat. @param {any} chain @returns {string[] | null} */
     peopleOf(chain) {
@@ -32,20 +33,6 @@ export function createRoomPort(cfg) {
       const asker = chain.hops[0].actor.id;
       if (!people || !people.includes(asker)) throw new KernelError("not_found", "no such chat");
       return people.length > 1 ? people : null;
-    },
-    /** A read under a group session happened now: remember the room's version it was made under. @param {any} chain */
-    noteRead(chain) {
-      const v = gs.chatVersion(chain.room.chat);
-      if (!v) return;
-      const sid = chain.room.session, was = reads.get(sid);
-      reads.set(sid, was === undefined ? v.ver : Math.min(was, v.ver));
-      if (reads.size > RATE.sessions) reads.delete(reads.keys().next().value);
-    },
-    /** The reply is about to be written: refuse it when the room has grown since this session's reads (the turn must be run again for the new room). @param {string} session @param {string} chat */
-    beforeReply(session, chat) {
-      const was = reads.get(session), v = gs.chatVersion(chat);
-      reads.delete(session);
-      if (was !== undefined && v && was < v.grew) throw new KernelError("room_changed", "someone joined the chat after this reply was prepared: run the turn again for the whole room");
     },
   });
 }
@@ -75,6 +62,14 @@ export function createRoom(cfg) {
     return t;
   }
 
+  /** @type {Map<string, { chat: string, ver: number }> | null} message id -> the chat and membership version it was written under, read back from the log on first use */ let seen = null;
+  const messages = () => {
+    if (!seen) {
+      seen = new Map();
+      for (const e of cfg.log.read({})) if ((e.type === "message.opened" || e.type === "message.added") && e.data && typeof e.data.id === "string" && typeof e.data.chat === "string" && Number.isInteger(e.data.ver)) seen.set(e.data.id, { chat: e.data.chat, ver: e.data.ver });
+    }
+    return seen;
+  };
   /** @type {Map<string, number[]>} session -> times of its recent room questions */ const asked = new Map();
   /** One session may ask the room only so often: the answers are one bit about everyone else, and a loop of them is a probe. @param {string} session */
   function limited(session) {
@@ -99,14 +94,12 @@ export function createRoom(cfg) {
       return people.map(person => cfg.chains.fromFacts({ kind: "viewer", person, vouched: true }));
     };
     const everyone = async (/** @type {any[]} */ vs, /** @type {(v: any) => Promise<boolean>} */ f) => { let all = true; for (const v of vs) if (!(await f(v))) all = false; return all; }; // asks every viewer: its time does not say who failed
-    const note = () => cfg.port.noteRead({ room: { chat: t.chat, session: t.session }, hops: [{ actor: { kind: "person", id: t.person } }] });
     return Object.freeze({
       group: true,
       /** True only when every person in the room may read it: a record, a task, a team member or a playbook, by its urn. Row predicates apply (no type-level probe). */
       canRead: async (/** @type {string} */ resource) => {
         limited(t.session);
         if (typeof resource !== "string" || !segments(resource)) return false;
-        note();
         // A task lives in the kernel's task store or as a record, so a task counts as readable only when BOTH reads allow it (the narrower of the two); team members, playbooks and
         // every other record are `records.read` on their urn.
         const type = segments(resource)[1];
@@ -122,7 +115,6 @@ export function createRoom(cfg) {
         limited(t.session);
         const s = typeof resource === "string" ? segments(resource) : null;
         if (!s || s.length !== 3 || s[0] !== cfg.space) return null;
-        note();
         const vs = viewers();
         let rows;
         try { rows = await Promise.all(vs.map(v => cfg.gateway.records.get(v, s[1], s[2]))); } catch { return null; }
@@ -142,7 +134,7 @@ export function createRoom(cfg) {
     });
   }
 
-  return Object.freeze({
+  /** @type {any} */ const api = Object.freeze({
     bindCalls(/** @type {() => any} */ fn) { currentCall = fn; },
     /** The room the running turn answers in: `{ group: false }`, or the handle. Never from an argument; throws `no_audience` when it cannot be built. */
     async audienceFor() {
@@ -153,23 +145,78 @@ export function createRoom(cfg) {
       return handle({ chat: t.chat, session: t.session, person: t.person });
     },
     /**
-     * Write a message into the chat the session was opened for. `message` is `{ kind?, body, chat? }`; naming a chat other than the token's is refused. Returns the id the
-     * stream stores the text under, with its hash.
+     * Open a reply in the chat the session was opened for. The reply is stamped with the chat's membership VERSION now and belongs to it: it is delivered only to the people who
+     * were in the room at that version (`mayReceive`), so someone who joins while it streams, or afterwards, never receives it, and a reply never has to be refused or run again
+     * because the room grew. Returns a handle `{ id, chat, ver, write(delta), close(final?) }`. Each write checks the session's token is still good and its person is still in the
+     * chat; a handle is dead after `close`. The kernel keeps no text: it counts bytes, hashes what was written and records who wrote what where, in which version.
+     * @param {string} token @param {{ kind?: string, chat?: string }} [message]
+     */
+    async appendOpen(token, message = {}) {
+      const t = await ofToken(token, "not_found");
+      if (!message || typeof message !== "object" || (message.chat !== undefined && message.chat !== t.chat)) throw new KernelError("not_found", "no such chat");
+      if (t.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(t.agent)) throw new KernelError("not_found", "no such chat"); }
+      const v = gs.chatVersion(t.chat);
+      if (!v) throw new KernelError("not_found", "no such chat");
+      const id = mintId("msg", clock());
+      const kind = String(message.kind || "text").slice(0, 32);
+      const by = { person: t.person, ...(t.agent ? { agent: t.agent } : {}) };
+      const subject = `vyre://${cfg.space}/chat/${t.chat}`;
+      const chain = await cfg.surfaces.chainFor(token);
+      cfg.log.append(chain, { type: "message.opened", sv: 1, subject, data: { id, chat: t.chat, ver: v.ver, session: t.session, by, kind }, vis: "owner", red: "internal" });
+      messages().set(id, { chat: t.chat, ver: v.ver });
+      let open = true, bytes = 0;
+      const hash = crypto.createHash("sha256");
+      /** The token must still be good and the person still in the chat at every write. */
+      const live = async () => { if (!open) throw new KernelError("closed", "this reply is closed"); await ofToken(token, "not_found"); };
+      return Object.freeze({
+        id, chat: t.chat, ver: v.ver,
+        /** @param {any} delta text (or a JSON value) of the reply so far, in order */
+        async write(delta) {
+          await live();
+          const text = typeof delta === "string" ? delta : canonical(delta ?? null);
+          bytes += Buffer.byteLength(text);
+          if (bytes > MAX_BODY) { open = false; throw new KernelError("bad_input", "a message is at most 64 KB"); }
+          hash.update(text);
+          return { bytes };
+        },
+        /** End the reply; `final` (optional) is the whole text, whose hash is the one recorded, else the hash of the deltas. @param {any} [final] */
+        async close(final) {
+          await live();
+          open = false;
+          let h;
+          if (final !== undefined) { const text = typeof final === "string" ? final : canonical(final ?? null); if (Buffer.byteLength(text) > MAX_BODY) throw new KernelError("bad_input", "a message is at most 64 KB"); h = sha256(text); bytes = Buffer.byteLength(text); } else h = hash.digest("hex");
+          cfg.log.append(chain, { type: "message.added", sv: 1, subject, data: { id, chat: t.chat, ver: v.ver, session: t.session, by, kind, hash: h, bytes }, vis: "owner", red: "internal" });
+          return Object.freeze({ id, chat: t.chat, ver: v.ver, at: clock(), hash: h });
+        },
+      });
+    },
+    /**
+     * Write a whole message (a person's send, or a reply that is already complete): `appendOpen` and `close` in one step, stamped with the version the same way.
      * @param {string} token @param {{ kind?: string, body: any, chat?: string }} message
      */
     async append(token, message) {
-      const t = await ofToken(token, "not_found");
-      if (!message || typeof message !== "object" || (message.chat !== undefined && message.chat !== t.chat)) throw new KernelError("not_found", "no such chat");
+      if (!message || typeof message !== "object") throw new KernelError("not_found", "no such chat");
       const text = canonical(message.body ?? null);
       if (Buffer.byteLength(text) > MAX_BODY) throw new KernelError("bad_input", "a message is at most 64 KB");
-      if (t.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(t.agent)) throw new KernelError("not_found", "no such chat"); }
-      // A reply written for a smaller room than the one now in the chat is refused (R3): the turn must be run again, reading the room as it is.
-      cfg.port.beforeReply(t.session, t.chat);
-      const chain = await cfg.surfaces.chainFor(token);
-      const id = mintId("msg", clock());
-      const hash = sha256(text);
-      cfg.log.append(chain, { type: "message.added", sv: 1, subject: `vyre://${cfg.space}/chat/${t.chat}`, data: { id, chat: t.chat, session: t.session, by: { person: t.person, ...(t.agent ? { agent: t.agent } : {}) }, kind: String(message.kind || "text").slice(0, 32), hash, bytes: Buffer.byteLength(text) }, vis: "owner", red: "internal" });
-      return Object.freeze({ id, chat: t.chat, at: clock(), hash });
+      const h = await api.appendOpen(token, { kind: message.kind, chat: message.chat });
+      return h.close(text);
+    },
+    /**
+     * May this person receive this message? True when they were in the room at the message's version AND are in it now (someone removed stops receiving at once; someone who joined
+     * later never receives what was said before). Asked with the viewer's OWN chain (a person, or an assistant acting for one who is listed), so it answers only for the person
+     * asking and says nothing about anyone else; unknown messages and anything else are false. The stream's per-viewer filter asks this and does not decide for itself.
+     * @param {any} chain @param {string} messageId
+     */
+    mayReceive(chain, messageId) {
+      const m = messages().get(String(messageId));
+      if (!m || !isChain(chain) || chain.viewer === true) return false;
+      const hops = chain.hops, who = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
+      const agent = hops.length === 2 && hops[1].actor.kind === "agent" ? hops[1].actor : null;
+      if (!who || !(hops.length === 1 || agent)) return false;
+      if (agent && !(gs.chatAssistants(m.chat) || []).includes(agent.id)) return false;
+      const then = gs.chatPeopleAt(m.chat, m.ver), now = gs.chatPeople(m.chat);
+      return Boolean(then && now && then.includes(who.id) && now.includes(who.id));
     },
   });
+  return api;
 }
