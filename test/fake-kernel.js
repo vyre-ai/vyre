@@ -244,6 +244,10 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
   const taskPayloadHash = t => JSON.stringify([t.id, t.title, t.output, t.draft_hash || null]);
   /** The kernel's moves of a task (contract 9.4 transitions): the module asks, the kernel checks the table. Fake-only names, proposed to platform. */
   const task_moves = {
+    /** Tasks the chain may see, newest last; filter by record urn and state. Fake-only name, proposed to platform. */
+    async list(/** @type {any} */ c, /** @type {any} */ filter = {}) {
+      return [...tasks.values()].filter(t => (!filter.record || t.record === filter.record) && (!filter.state || t.state === filter.state));
+    },
     async move(/** @type {any} */ c, /** @type {string} */ id, /** @type {string} */ to, /** @type {any} */ info = {}) {
       const t = tasks.get(id);
       const rule = TASK_TRANSITIONS.find(r => r.from === t.state && r.to === to && (r.guarded === undefined || r.guarded === guardedTask(t)));
@@ -285,7 +289,7 @@ export function createFakeKernel({ space = "spc_test", now = () => Date.now() } 
     /** Extensions the contract does not have yet; the modules treat them as a port (see docs/work/assistant.md, Needs). */
     tasks: task_moves,
     /** Is this chain's person an admin of the Space (role.admin or owner)? The real kernel answers from memberships. */
-    members: { isAdmin: (/** @type {any} */ c) => c.hops.length >= 1 && c.hops[0].actor.kind === "person" && admins.has(c.hops[0].actor.id) },
+    members: { roleOf: (/** @type {any} */ c) => (c.hops[0] && c.hops[0].actor.kind === "person" ? (admins.has(c.hops[0].actor.id) ? "admin" : "member") : null), isAdmin: (/** @type {any} */ c) => c.hops.length >= 1 && c.hops[0].actor.kind === "person" && admins.has(c.hops[0].actor.id) },
   };
 
   return {
