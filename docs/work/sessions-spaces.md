@@ -1,32 +1,30 @@
-# sessions-spaces (sessions teammate, Vyre 0.3): sessions under Wink
+# sessions under Wink (core/space-sessions): the session engine
 
-Branch work/flows, worktree vyre-sessions-03. Code in core/space-sessions/ (not registered in today's registry until the gateway lands).
+Branch work/flows. Ruled by the lead on 4 Oct: this module owns the session engine only. It does not own files, keys or placement.
 
-## Scope
-Wink design sections 5 and 7: a session belongs to one Space; it may run on a member's own computer when both grants exist; its working copy is encrypted and syncs back continuously; a checkpoint at every turn lets it move between machines; "Continue in another space" starts a new session from an approved, stripped summary.
+## Who owns what
+- **runner** (core/runner): the sandbox, the encrypted workspace on a member's computer, continuous sync to and from the Space, per-turn checkpoint writes, the key lease, and where a session runs (`decide`).
+- **vault** (kernel/seal/leases.js): key leases.
+- **kernel grants** (`gateway.grants.offers`): the two-grant check (the Space allows, the member accepts).
+- **this module**: one Space per session, the state a checkpoint carries (taint and permissions), resume from a checkpoint, "Continue in another space", the stage tasks (kernel/flows/stages.js), the door retrofit, and the budgets (budget.js).
 
-## Done (3 Oct)
-- place.js: `placeSession({space, person, device, session_owner})` returns `{where, reason, grants}`. The Space's offer (action `sessions.run-on-member-device`, issued by an admin) and the member's accept (`sessions.host-for-space`, issued by the person, for that one device) are kernel grants; `offerGrant` and `acceptGrant` build them. Missing, expired, revoked, another space's, a non-admin offer, another person's device or session all mean the server.
-- workcopy.js: AES-256-GCM blobs named by keyed hash, key from HKDF over a key the vault releases at use (memory only), path confinement, debounced push per path, clash keeps the Space's version and stores ours as a sibling, a machine that lost the lease cannot write, a handed-out credential cannot be written into the copy, hydrate with hash check, manifest hash, wipe on close.
-- spacestore.js: reference Space side: file versions, lease with fencing token and expiry, checkpoints.
-- checkpoint.js: `turnDone` (push files, then checkpoint with transcript delta, manifest hash, tasks, meta, fenced by the token), `resume` (lease, hash checks, hydrate, manifest match, gives the lease back on failure).
-- continue.js: propose (summarize, strip source-only facts, door sanitize, continue_in_space task), edit (new hash voids approval), deliver (only after done and approved for the exact hash, once; old session unread-only).
-- index.js: `createSpaceSessions` registry enforcing space on every call.
-- 17 tests on fakes (temp dirs).
+## Pieces
+- `index.js` createSpaceSessions: create (placement from `runner.decide`, hours reserved), get, list, end, `stateFor` (the state the runner stores with a checkpoint), `resume` (reads the Space's last acknowledged checkpoint through the runner's sync port).
+- `state.js` snapshot and restore. Taint is carried and never improved by a cleaner resuming chain. A permission is carried only if the resuming chain still holds it; the rest are reported as dropped. A state of another session or Space, or an altered one (hash), is refused.
+- `continue.js` Continue in another space: the summary is stripped of source-only facts and passed through the door's sanitize, raised as a `continue_in_space` task, delivered once and only if a checker approved those exact bytes. An edit changes the hash.
+- `budget.js` `session_hours` and `ai_spend`: a refusal stops the session with `budget_exhausted` and raises a task for the person.
 
-## Doing
-Nothing in flight.
+## Interface agreed with runner (proposed in team/0.2/CHAT.md)
+- runner option `sessionState(session) -> state`, called at every checkpoint and stored in `putCheckpoint({ turn, seq, manifest, state })`; we supply it from `sessions.stateFor`.
+- `runner.start({ resume: true })` returns `resumed.state`; we call `sessions.resume` for the labels and permissions to put on the resumed session's chain.
 
-## Next
-1. Register the module and its tools (sessions.create, sessions.checkpoint, sessions.resume, sessions.continue.*) when the gateway lands; actions `sessions.create`, `sessions.read`, `sessions.continue` go into the registry.
-2. Replace spacestore.js with the Space's Drive and records over Wink transport; real timers and a lease renewal loop in the runner.
-3. Wire `summarize` and `sanitize` to the inference door (fork C) and `ask` to kernel tasks.
+## Decision (lead, 4 Oct)
+Working-copy sync is confirmed as intended. Wink encrypts the transport. The Space is the source of truth and keeps its own data in its Drive. Vault's pool encrypts anything that leaves the home. So the Space holds plaintext at rest inside the home, never ciphertext only.
 
 ## Needs from others
-- platform: actions `sessions.create`, `sessions.read`, `sessions.continue`, `sessions.run-on-member-device`, `sessions.host-for-space` in the registry; `ask.request` accepting source `continue_in_space` from a service chain (kernel SOURCES today allows only manual, assistant_request, flow_step).
-- vault: `release({purpose:"workcopy"})` and a per-use credential door.
-- wink: the transport (push, pull, manifest, lease) between a member's computer and the Space.
-- tailnet/wink: `deviceOwner(device)` and `isAdmin`.
+- runner: the `sessionState` option and `resumed.state` above.
+- platform: allow `continue_in_space` as a task source from a service chain; `ctx.model` and `ctx.chainFor` for the live core/sessions module.
+- live core/sessions has no `ctx.limits` yet, so only this module meters hours.
 
 ## Changed contracts
 None.
