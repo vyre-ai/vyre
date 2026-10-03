@@ -1,8 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { generateKeyPairSync } from "node:crypto";
 import { createPresence, signProof } from "./presence.js";
 import { createTasks, TASK_ACTIONS, checkOutput } from "./tasks.js";
@@ -11,8 +8,9 @@ import { createAuthorizer } from "../core/authorize.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder, chainHash } from "../core/chain.js";
 import { canonical, sha256 } from "../core/canonical.js";
-import { createSealClient } from "../seal/client.js";
-import { createSeal, SEAL_ACTIONS, sealUsePayloadHash } from "../seal/index.js";
+import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
+import { createApprovals } from "./approvals.js";
+import { createSealing } from "../gateway/sealing.js";
 
 const SPACE = "spc_aaaaaaaaaaaa";
 let T = 1_800_000_000_000;
@@ -63,7 +61,7 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
   const agents = ["research", "intake", "rogue"];
-  const grants = [...people.map(p => G(actor("person", p), ["tasks.*", "seal.*"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.*"]))];
+  const grants = [...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   const presence = createPresence({ clock });
@@ -365,33 +363,34 @@ test("approved(): true only for the approved payload, or for a sealed use that p
   assert.equal(r.tasks.approved("nope", "x"), false);
 });
 
-test("end to end: Intake drafts the welcome email with a sealed slot, Alice approves with her signer, and only then does the kernel merge the SSN", async () => {
+test("end to end: Intake drafts the welcome email with a sealed slot, Alice approves, and only then does seal.use run, from the approval's own facts", async () => {
   const r = rig();
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "k4-seal-"));
-  const client = createSealClient({ vault_key: Buffer.alloc(32, 8), dir: path.join(dir, "v"), egress_dir: path.join(dir, "out"), clock });
-  const REC = `vyre://${SPACE}/contact/c1`;
-  const seal = createSeal({
-    space: SPACE, client, authorizer: r.authorizer, log: r.log, clock,
-    templates: async (u, v) => ({ id: u, version: v, body: "Hello Jane. SSN on file: {{ssn}}.", slots: ["ssn"], headers: { subject: "Welcome" } }),
-    approvedTask: (task, hash) => r.tasks.approved(task, hash),
-    verifyPresence: p => Boolean(p),
+  const REC = `vyre://${SPACE}/contact/c1`, TPL = `vyre://${SPACE}/template/welcome`;
+  const calls = [];
+  const sealer = { api: { use: async i => { calls.push(i); return { merged: true, output_ref: "out_1" }; } }, deliver: async i => { calls.push(i); return { delivered: true }; } };
+  const sealing = createSealing({
+    space: SPACE, sealer, authorizer: r.authorizer, log: r.log,
+    approvals: createApprovals({ tasks: r.tasks }),
+    templates: { get: async (u, v) => (u === TPL && v === 1 ? { body: "Hello Jane. SSN on file: {{sealed:ssn}}." } : null) },
+    destinations: { resolve: async record => ({ kind: "contact_point", record, contact: "jane@example.com", verified: true }) },
   });
-  const { ref } = await seal.put({ chain: owner(), record: REC, field: "ssn", class: "us-ssn", value: "123-45-6789" });
-  const use = { ref: ref.ref, template: `vyre://${SPACE}/template/welcome`, template_version: 1, slot: "ssn", destination: { kind: "contact_point", record: REC, contact: "jane@example.com", verified: false } };
-  const useHash = sealUsePayloadHash(use);
-  const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ sealed_slots: [{ class: "US SSN", slot: "ssn", recipient: "jane@example.com", record: REC, use_hash: useHash }] }) }));
-  // before approval, the model's plan cannot use the sealed value, even naming its own task
-  await assert.rejects(() => seal.use({ chain: asIntake(), ...use, task: t.id }), { code: "needs_approval" });
-  assert.equal(fs.existsSync(path.join(dir, "out")) ? fs.readdirSync(path.join(dir, "out")).length : 0, 0);
-  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
-  // after approval of exactly this payload, the kernel merges at the egress boundary and nothing returns the value
-  const res = await seal.use({ chain: asIntake(), ...use, task: t.id });
+  const sealed = { class: "us-ssn", slot: "ssn", ref: "sv_1", recipient: "jane@example.com", record: REC };
+  const t = await toNeedsCheck(r, draftTask(), evidenceSent({ payload: payload({ template: { id: TPL, version: 1 }, sealed_slots: [sealed] }) }));
+  // before approval the plan cannot use the sealed value, even naming its own task
+  await assert.rejects(() => sealing.use(asIntake(), { record: REC, approval: t.id }), { code: "not_found" });
+  assert.equal(calls.length, 0);
+  const alice_ = alice();
+  const useProof = { signature: "signed-over-seal.use-by-alices-key" };
+  await r.tasks.decide(alice_, t.id, { outcome: "approved", proof: r.proof(alice_, ALICE, t), proofs: { use: useProof } });
+  const res = await sealing.use(asIntake(), { record: REC, approval: t.id });
   assert.equal(res.merged, true);
-  assert.ok(!JSON.stringify(res).includes("6789"));
-  assert.equal(fs.readFileSync(path.join(dir, "out", fs.readdirSync(path.join(dir, "out"))[0]), "utf8"), "Hello Jane. SSN on file: 123-45-6789.");
-  // a different destination was never approved
-  await assert.rejects(() => seal.use({ chain: asIntake(), ...use, destination: { ...use.destination, contact: "evil@example.com" }, task: t.id }), { code: "needs_approval" });
-  assert.ok(!JSON.stringify(r.log.read()).includes("6789"));
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].bindings, [{ slot: "ssn", ref: "sv_1" }]);
+  assert.equal(calls[0].body, "Hello Jane. SSN on file: {{sealed:ssn}}.");
+  assert.equal(calls[0].proof, useProof);
+  assert.equal(calls[0].approver_chain, alice_, "the approver is the person who approved, not the assistant");
+  assert.equal(calls[0].destination.contact, "jane@example.com");
+  // an approval for one record does not open another
+  await assert.rejects(() => sealing.use(asIntake(), { record: `vyre://${SPACE}/contact/c2`, approval: t.id }), { code: "not_found" });
   assert.ok(!JSON.stringify(r.log.read()).includes("123-45"));
-  await client.close();
 });

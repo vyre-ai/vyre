@@ -478,3 +478,14 @@ test("urn: dot segments and encoded or control forms are refused at parse", () =
   assert.equal(covers(`vyre://${SPACE}/file/proj`, `vyre://${SPACE}/file/proj/../../credential/x`), false);
   assert.ok(segments(`vyre://${SPACE}/file/proj/a.pdf`));
 });
+
+test("K1-8a and 9: non-plain data is refused by canonical, via comes from the chain, subject_prefix matches whole segments", () => {
+  assert.throws(() => canonical({ d: new Date(0) }), TypeError);
+  assert.throws(() => canonical({ m: new Map() }), TypeError);
+  const log = createEventLog({ space: SPACE, clock });
+  const c = person();
+  log.append(c, { type: "crm.created", sv: 1, subject: R(1), data: {} }, { via: { surface: "relay" } });
+  assert.equal(log.read()[0].via.surface, "deck", "a caller cannot override the chain's via");
+  log.append(c, { type: "crm.created", sv: 1, subject: R(10), data: {} });
+  assert.equal(log.read({ subject_prefix: R(1) }).length, 1, ".../1 does not match .../10");
+});

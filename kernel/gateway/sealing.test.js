@@ -47,7 +47,7 @@ test("sealing wiring: put goes through authorize; reveal needs the grant, which 
 
 test("sealing wiring: use takes destination, approver, proof and template body from the kernel's records, not the call", async () => {
   const approver = owner();
-  const approvals = { get: async id => (id === "ap1" ? { approver_chain: approver, proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 3, record: REC, slot: "ssn", ref: "sv_1" } : null) };
+  const approvals = { get: async id => (id === "ap1" ? { approver_chain: approver, proof: { sig: "p" }, template: `vyre://${SPACE}/template/t`, template_version: 3, record: REC, bindings: [{ slot: "ssn", ref: "sv_1" }] } : null) };
   const templates = { get: async (u, v) => (v === 3 ? { body: "SSN {{sealed:ssn}}" } : null) };
   const destinations = { resolve: async (record) => ({ kind: "contact_point", record, contact: "jane@harlow.test", verified: true }) };
   const { gw, calls } = rig({ approvals, templates, destinations });
@@ -68,4 +68,10 @@ test("sealing wiring: without approvals, templates and destinations wired, use s
 test("sealing wiring: the door takes the kernel's own isChain", async () => {
   const door = createDoor({ sealer: { detect: async () => ({ text: "", found: [], ledger: [] }), endSession: async () => {} }, drivers: {}, sinks: [], isChain: c => c === "kernel-chain" });
   await assert.rejects(() => door.call({ chain: { space: SPACE, hops: [{ actor: { kind: "agent", id: "a" } }] }, messages: [{ role: "user", content: "x" }] }), TypeError);
+});
+
+test("sealing wiring: given tasks, the gateway's approvals are approved tasks, so use stays closed for an unapproved one", async () => {
+  const tasks = { approvalFor: () => null };
+  const { gw } = rig({ tasks, templates: { get: async () => ({ body: "x" }) }, destinations: { resolve: async () => null } });
+  await assert.rejects(() => gw.seal.use(agent(), { record: REC, approval: "t1" }), { code: "not_found" });
 });

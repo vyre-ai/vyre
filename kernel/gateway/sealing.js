@@ -13,7 +13,7 @@ import { segments } from "../core/urn.js";
 
 /**
  * @param {{ space: string, sealer: any, authorizer: any, log: any, door?: any,
- *   approvals?: { get(id: string): Promise<{ approver_chain: any, proof: any, template: string, template_version: number, record: string, slot: string, ref: string } | null> },
+ *   approvals?: { get(id: string): Promise<{ approver_chain: any, proof: any, template: string, template_version: number, record: string, bindings: { slot: string, ref: string }[] } | null> },
  *   templates?: { get(urn: string, version: number): Promise<{ body: string } | null> },
  *   destinations?: { resolve(record: string, destination: any): Promise<{ kind: "contact_point", record: string, contact: string, verified: true } | { kind: "document", record: string, document: string } | null> } }} cfg
  */
@@ -53,17 +53,21 @@ export function createSealing(cfg) {
       if (!tpl) throw new KernelError("not_found", "no such template version");
       const destination = await need(cfg.destinations, "destinations").resolve(i.record, i.destination);
       if (!destination) throw new KernelError("not_found", "no verified destination");
-      return run(() => sealer.api.use({ chain, approver_chain: ap.approver_chain, ref: ap.ref, slot: ap.slot, body: tpl.body, template: ap.template, template_version: ap.template_version, destination, proof: ap.proof }));
+      return run(() => sealer.api.use({ chain, approver_chain: ap.approver_chain, bindings: ap.bindings, body: tpl.body, template: ap.template, template_version: ap.template_version, destination, proof: ap.proof }));
     },
 
-    /** Send what was merged. Outward: authorize asks for the person; the proof and approver are the recorded approval's. */
+    /**
+     * Send what was merged. Outward: authorize asks for the person. The approver is the recorded approval's; the proof is the approver's
+     * own signature over this envelope and output, made after the merge (its reference did not exist at approval) and verified by the
+     * sealing process against the approver's chain, so a caller cannot make one.
+     */
     async deliver(chain, i) {
       mustChain(chain); mustRecord(i.record);
       await gate(chain, "seal.deliver", i.record);
       const ap = await need(cfg.approvals, "approvals").get(i.approval);
       if (!ap || ap.record !== i.record) throw new KernelError("not_found", "no such approval");
       mustChain(ap.approver_chain);
-      return run(() => sealer.deliver({ chain, approver_chain: ap.approver_chain, output_ref: i.output_ref, sink: i.sink, envelope: i.envelope, proof: ap.proof }));
+      return run(() => sealer.deliver({ chain, approver_chain: ap.approver_chain, output_ref: i.output_ref, sink: i.sink, envelope: i.envelope, proof: i.proof }));
     },
   });
 }

@@ -3,16 +3,18 @@ import { createAuthorizer } from "../core/authorize.js";
 import { createRecords, RECORD_ACTIONS } from "./records.js";
 import { createSealing } from "./sealing.js";
 import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
+import { TASK_ACTIONS } from "../tasks/tasks.js";
+import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 
 /**
- * @param {{ sealer?: any, door?: any, approvals?: any, templates?: any, destinations?: any, owner?: string, space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
+ * @param {{ tasks?: any, sealer?: any, door?: any, approvals?: any, templates?: any, destinations?: any, owner?: string, space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
  *   sinks?: Set<string>, standing?: any, verifyPresence?: any, hasPresenceSession?: any, clock?: () => number, policy_version?: number }} cfg
  */
 export function createGateway(cfg) {
-  const authorizer = createAuthorizer({ ...cfg, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...(cfg.actions || [])] });
+  const authorizer = createAuthorizer({ ...cfg, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...(cfg.actions || [])] });
   const records = createRecords({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
   const { allowed } = createGate({ authorizer, log: cfg.log });
 
@@ -48,7 +50,7 @@ export function createGateway(cfg) {
     return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if (await canSee(chain, e)) await onEvent(e); });
   }
 
-  const seal = cfg.sealer ? createSealing({ space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals, templates: cfg.templates, destinations: cfg.destinations }) : undefined;
+  const seal = cfg.sealer ? createSealing({ space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
 
   return Object.freeze({
     authorize: authorizer.authorize,

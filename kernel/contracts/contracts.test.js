@@ -54,3 +54,16 @@ test("roles: five fixed bundles, each a subset of the one above, temp needs a sc
   assert.ok(!ROLE_BUNDLES.admin.abilities.includes("space.delete"));
   assert.ok(Object.isFrozen(ROLE_BUNDLES.owner) && Object.isFrozen(ROLE_BUNDLES.owner.abilities));
 });
+
+test("identity: kinds, who is named, who has keys, and what each device kind may offer", async () => {
+  const k = await import("./index.js");
+  assert.deepEqual([...k.IDENTITY_KINDS], ["user", "space", "device", "agent", "project", "session", "task"]);
+  for (const n of k.NAMED_IDENTITY_KINDS) assert.ok(["user", "space"].includes(n));
+  for (const x of k.KEYED_IDENTITY_KINDS) assert.ok(k.IDENTITY_KINDS.includes(x));
+  assert.ok(!k.KEYED_IDENTITY_KINDS.includes("project") && !k.KEYED_IDENTITY_KINDS.includes("session") && !k.KEYED_IDENTITY_KINDS.includes("task"));
+  assert.deepEqual([...k.DEVICE_OFFERS.phone], ["access", "approval"]);
+  assert.deepEqual([...k.DEVICE_OFFERS.storage_device], ["storage"]);
+  assert.ok(k.DEVICE_OFFERS.computer.includes("compute") && !k.DEVICE_OFFERS.phone.includes("compute"));
+  for (const d of k.DEVICE_KINDS) for (const o of k.DEVICE_OFFERS[d]) assert.ok(k.OFFER_KINDS.includes(o));
+  assert.ok(Object.isFrozen(k.DEVICE_OFFERS.server));
+});
