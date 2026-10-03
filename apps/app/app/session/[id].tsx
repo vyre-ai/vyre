@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Queued } from "@vyre/chat-core/session-state.js";
 import { modeLabel } from "@vyre/chat-core/composer-state.js";
 import { NEEDS_UPDATE } from "@vyre/chat-core/caps.js";
+import ChatDemo from "../chat-demo";
 import { Composer } from "../../src/session/Composer";
 import { Frame } from "../../src/session/Frame";
 import { busy, stateWords, type TranscriptRow } from "../../src/session/model";
@@ -39,7 +40,13 @@ function useHead(store: SessionStore) {
   );
 }
 
+/** /session/demo is the 0.3 chat screen on the mock stream (src/chat); every other id is a box session. */
 export default function SessionScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return String(id) === "demo" ? <ChatDemo /> : <BoxSession />;
+}
+
+function BoxSession() {
   const { id } = useLocalSearchParams<{ id: string; ask?: string }>();
   const thread = String(id);
   const store = useMemo(() => sessionStore(thread), [thread]);
