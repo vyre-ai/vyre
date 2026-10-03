@@ -97,3 +97,27 @@ test("setup --name: a name this box already holds says there is no new recovery 
   assert.match(r.out, /already held that name, so there is no new recovery code/);
   assert.ok(polls >= 2);
 });
+
+test("setup with no name: where setup stands, the same ten steps, and the one place to continue; --new-link makes a fresh link", async t => {
+  const root = tempHome(t);
+  const steps = (current, done) => ["install:Install", "words:Check the words", "address:Choose your address", "tailscale:Connect Tailscale", "ai:Sign in to your AI", "phone:Add your phone", "passkey:Create your passkey", "assistant:You and your assistant", "computers:Your computers", "history:Your history"]
+    .map((x, i) => { const [id, title] = x.split(":"); return { id, title, where: i < 2 ? "On your server" : i < 6 ? "In your browser" : "At your address", optional: ["phone", "computers", "history"].includes(id), n: i + 1, status: done.includes(id) ? "done" : id === current ? "current" : "todo" }; });
+  let list = { steps: steps("ai", ["install", "words", "address", "tailscale"]), current: "ai", finished: false, skipped: [], address: "https://alex.vyre.run" };
+  const calls = await fakeVyred(t, root, { "onboard.setup": async () => ({ data: list }), "onboard.link": async () => ({ data: { url: "http://127.0.0.1:7301/onboard?t=abc", port: 7301, expires: Date.now() + 600000 } }) });
+  const a = await run(root, ["setup"]);
+  assert.equal(a.code, 0, a.out);
+  assert.match(a.out, /Vyre setup: step 5 of 10, Sign in to your AI/);
+  assert.match(a.out, /✓ Choose your address {5}alex\.vyre\.run/);
+  assert.match(a.out, /○ Add your phone \(optional\)/);
+  assert.match(a.out, /sudo vyre setup --new-link/);
+  assert.deepEqual(calls.map(c => c.tool), ["onboard.setup"], "reading changes nothing and makes no link");
+  const n = await run(root, ["setup", "--new-link"]);
+  assert.equal(n.code, 0, n.out);
+  assert.match(n.out, /New link: http:\/\/127\.0\.0\.1:7301\/onboard\?t=abc/);
+  assert.ok(calls.some(c => c.tool === "onboard.link"));
+  list = { steps: steps(null, ["install", "words", "address", "tailscale", "ai", "passkey", "assistant", "computers"]).map(s => s.id === "phone" || s.id === "history" ? { ...s, status: "skipped" } : s), current: null, finished: true, skipped: ["phone", "history"], address: "https://alex.vyre.run" };
+  const f = await run(root, ["setup"]);
+  assert.match(f.out, /Setup is finished\. Vyre is running at https:\/\/alex\.vyre\.run/);
+  assert.match(f.out, /Skipped: Add your phone, Your history\. Open Settings, Setup to do them\./);
+  assert.equal((await run(root, ["setup", "--bogus"])).code, 2);
+});

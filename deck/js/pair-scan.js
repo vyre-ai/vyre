@@ -24,7 +24,6 @@ import { startScan } from "./scan.js";
 import { resolveTicket, pairOffer, crypto, classifyError } from "./pair-ticket.js";
 import { enrollUrl } from "./enroll-grant.js";
 import { renderPersonAvatar } from "./pair-avatar.js";
-import { attempt } from "./api.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
 import { initial, step } from "../views/pair-scan.js";
 
@@ -37,11 +36,14 @@ function style() {
 
 const reducedMotion = () => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
 
-/** The device name sent with the pairing: the person's first name (system.info owner.name) plus
- * the model (User-Agent Client Hints - Android usually gives it, e.g. "Pixel 8"; iOS Safari
- * doesn't support UA-CH at all and falls back to a plain "iPhone"/"iPad") - "Alex's iPhone"
- * (team-lead, 2026-09-28). */
-async function deviceName() {
+/**
+ * The phone's model for a device name: User-Agent Client Hints where there are (Android usually gives
+ * "Pixel 8"); iOS Safari has none and falls back to a plain "iPhone" or "iPad". Needs no box, so the
+ * hosted page (relay/wink, no Vyre yet) can use it as it is; the Deck adds the owner's first name
+ * (views/wink.js: "Alex's iPhone") because it can ask system.info.
+ * @returns {Promise<string>}
+ */
+export async function deviceModel() {
   let model = null;
   try {
     const uaData = /** @type {any} */ (navigator).userAgentData;
@@ -50,28 +52,26 @@ async function deviceName() {
       if (info?.model) model = String(info.model).trim();
     }
   } catch {}
-  const kind = model || (/iPhone|iPod/.test(navigator.userAgent) ? "iPhone" : /iPad/.test(navigator.userAgent) ? "iPad" : /Android/.test(navigator.userAgent) ? "Android phone" : "This phone");
-  const r = await attempt("system.info");
-  const first = r.data?.owner?.name ? String(r.data.owner.name).trim().split(/\s+/)[0] : null;
-  return first ? `${first}'s ${kind}` : kind;
+  return model || (/iPhone|iPod/.test(navigator.userAgent) ? "iPhone" : /iPad/.test(navigator.userAgent) ? "iPad" : /Android/.test(navigator.userAgent) ? "Android phone" : "This phone");
 }
 
 /**
  * The scan-to-pair sheet. Mount it, call open() when the person taps "Scan", close() to tear
  * down the camera (always call close() when the sheet is dismissed, not just on success/error -
  * a live camera stream left open is exactly what "Light by default" (SPEC 8) rules out).
- * @param {{ relay: string }} opts the box's relay address (nothing in the 72-bit code carries
- *   this - PENDING launch: where its "Add your phone" screen gets it from, to pass in here)
+ * @param {{ relay: string, deviceName?: () => Promise<string>, styles?: boolean }} opts the relay address, and how this phone is named at pairing
+ *   (default: its model; the Deck adds the owner's first name); `styles: false` when the page brings its own CSS (relay/wink)
  * @returns {{ el: HTMLElement, open: () => void, close: () => void }}
  */
 export function pairScanSheet(opts) {
-  style();
+  if (opts.styles !== false) style();
   let state = initial();
   /** @type {{ stop: () => void } | null} */ let scan = null;
   /** @type {{ relay: string, route: string, box: Uint8Array, secret: string } | null} */ let pendingOffer = null;
   /** Where to go after pairing when the box handed over an enrolment grant. @type {string | null} */ let enrollTo = null;
   /** @type {string | null} */ let pendingIdentity = null; // resolveTicket's identity, base64url - the owner's own fingerprint, for the avatar (ADR 0043 2d); null until tailnet's config side lands owner.id
   /** @type {string | null} */ let cameraAvatarUrl = null; // scan.js's crop, kept as a fallback only
+  /** This phone's own key fingerprint, handed over before the handshake waits for the screen's Confirm. @type {string} */ let phoneCode = "";
   let slow = false; // scan.js's onSlow fired: show the "hold straight on" hint under the status
   const video = /** @type {HTMLVideoElement} */ (h("video", { class: "scan-video", playsinline: true, muted: true, "aria-hidden": "true" }));
   const status = h("div", { class: "scan-status", role: "status" });
@@ -105,8 +105,8 @@ export function pairScanSheet(opts) {
     const offer = pendingOffer;
     dispatch({ type: "confirm" });
     try {
-      const name = await deviceName();
-      const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto, enroll: true });
+      const name = await (opts.deviceName ? opts.deviceName() : deviceModel());
+      const result = await pairOffer(offer, { name, about: { kind: "web" }, crypto, enroll: true, onFingerprint: fp => { phoneCode = String(fp).replace(/[^A-Za-z0-9 ]/g, "").slice(0, 20); render(); } });
       enrollTo = enrollUrl(result.enroll || /** @type {any} */ (null));
       pendingOffer = null;
       dispatch({ type: "paired", box: result.name, deviceName: name });
@@ -189,7 +189,7 @@ export function pairScanSheet(opts) {
 
   function render() {
     if (state.kind === "scanning") {
-      put(status, "Point your camera at the code on your Mac or your box.",
+      put(status, "Point your camera at the code on your Mac or your server.",
         slow ? h("div", { class: "small faint" }, "Hold your phone straight on to the screen.") : null);
       put(actions);
     } else if (state.kind === "resolving") {
@@ -201,7 +201,7 @@ export function pairScanSheet(opts) {
         h("button", { type: "button", class: "btn btn-primary", onclick: onConfirm }, "Pair"),
         h("button", { type: "button", class: "btn btn-ghost", onclick: onNotThisOne }, "Not this one"));
     } else if (state.kind === "pairing") {
-      put(status, "Pairing…");
+      put(status, "Pairing…", phoneCode ? h("div", { class: "small muted mono" }, "This phone: ", phoneCode) : null);
       put(actions);
     } else if (state.kind === "done") {
       const avatar = cameraAvatarUrl
@@ -218,7 +218,7 @@ export function pairScanSheet(opts) {
 
   return {
     el,
-    open() { state = initial(); pendingOffer = null; pendingIdentity = null; cameraAvatarUrl = null; render(); startCamera(); },
+    open() { state = initial(); phoneCode = ""; pendingOffer = null; pendingIdentity = null; cameraAvatarUrl = null; render(); startCamera(); },
     close() { scan?.stop(); scan = null; pendingOffer = null; pendingIdentity = null; },
   };
 }

@@ -63,7 +63,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, connectors: argv.includes("--strict-mcp-config") ? [] : ["claude.ai Gmail", "claude.ai Google Drive", "claude.ai Claude Docs"], git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
@@ -72,7 +72,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;
 /** @type {Map<string, (r: any) => void>} */
 const waiting = new Map();
-let MODEL = flag("--model") || "fake-model";
+// FAKE_CLAUDE_REPORT_MODEL: the model it says it runs whatever was asked for (an account default that differs from the alias a thread was started with, #41).
+let MODEL = process.env.FAKE_CLAUDE_REPORT_MODEL || flag("--model") || "fake-model";
 /** The slash commands it offers, as Claude Code lists them in init and in the initialize answer. */
 const COMMANDS = [{ name: "compact", description: "Clear the conversation but keep a summary", argumentHint: "<instructions>" },
   { name: "review", description: "Review a pull request", argumentHint: "" }];
@@ -455,6 +456,13 @@ async function turn(prompt, uuid = null) {
     return result(true, text);
   }
   // "media <json array>": a finished tool call that returned generated media (vyre_media, as the ACP drivers put it on a tool_result), then a reply.
+  // "tooluse <name>": a finished tool call with that name (a connector's, the web's, Vyre's own), then a reply.
+  const tooluse = /^tooluse (\S+)$/.exec(p);
+  if (tooluse) {
+    out({ type: "assistant", message: { id: "m-tool", role: "assistant", content: [{ type: "tool_use", id: "tu-x", name: tooluse[1], input: {} }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
+    await say("done"); return result(true, "done");
+  }
   const media = /^media (\[.*\])$/s.exec(p);
   if (media) {
     out({ type: "assistant", message: { id: "m-media", role: "assistant", content: [{ type: "tool_use", id: "tu-media", name: "image_gen", input: {} }] } });

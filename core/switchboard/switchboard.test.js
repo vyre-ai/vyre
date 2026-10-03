@@ -124,6 +124,18 @@ test("describe: a sending tool names where it goes", () => {
   assert.ok(describe("Bash", { command: "x".repeat(900) }).summary.length <= 200);
 });
 
+test("argsFor: every session loads only Vyre's own MCP server, never the account's claude.ai connectors or any other server", () => {
+  const cfg = a => JSON.parse(a[a.indexOf("--mcp-config") + 1]);
+  const withPlugin = argsFor({ id: "u1", plugin: "/p" });
+  assert.ok(withPlugin.includes("--strict-mcp-config"), "strict: nothing but --mcp-config is loaded (connectors, user and project servers, other plugins' servers)");
+  assert.deepEqual(cfg(withPlugin), { mcpServers: { vyre: { command: "node", args: ["/p/mcp/run.js"] } } });
+  for (const o of [{ id: "u2" }, { id: "u3", tools: "none" }, { id: "u4", plugin: null, resume: true }, { id: "u5", plugin: "/p", plugins: ["/learned"], settings: false }]) {
+    const a = argsFor(o);
+    assert.ok(a.includes("--strict-mcp-config"), JSON.stringify(o));
+    assert.deepEqual(Object.keys(cfg(a).mcpServers), o.plugin ? ["vyre"] : [], JSON.stringify(o));
+  }
+});
+
 test("argsFor: the flags a headless session needs, new and resumed", () => {
   const a = argsFor({ id: "u1", plugin: "/p", model: "haiku", name: "Site copy" });
   for (const f of ["-p", "--input-format", "--output-format", "--include-partial-messages", "--verbose", "--permission-prompt-tool"]) assert.ok(a.includes(f), f);
@@ -1554,4 +1566,34 @@ test("surfaceFor: identity comes from the verified caller, never from the surfac
   assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:computers", owner), "glass:laptop");
   assert.equal(surfaceFor({ surface: "cli:123" }, "module:computers", owner), "via:module:computers");
   assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:planner", owner), "via:module:planner");
+});
+
+test("one model per turn (#41): the thread follows what the provider reports, says so once, and a switch labels old and new replies apart", async t => {
+  const { root, work, tool } = await boot(t);
+  // The account's default is not the alias the thread asked for: the provider says what it really runs.
+  const had = process.env.FAKE_CLAUDE_REPORT_MODEL;
+  process.env.FAKE_CLAUDE_REPORT_MODEL = "claude-opus-5-5";
+  t.after(() => { if (had === undefined) delete process.env.FAKE_CLAUDE_REPORT_MODEL; else process.env.FAKE_CLAUDE_REPORT_MODEL = had; });
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, name: "model truth", prompt: "first", model: "sonnet", surface: "deck:1" })).data.id;
+  await until(() => of(s.got, id, "thread.finished").length >= 1, "the first turn");
+  const textOf = (n) => of(s.got, id, "thread.text").filter(e => e.payload.done && !e.payload.notice && e.payload.kind !== "reasoning")[n];
+
+  const said = of(s.got, id, "model.switched");
+  assert.equal(said.length, 1, "the changed answer is said once, so the header and the picker move with it");
+  assert.equal(said[0].payload.model, "claude-opus-5-5");
+  assert.equal((await tool("threads.get", { thread: id })).data.thread.model, "claude-opus-5-5", "the record agrees with the header, the picker and the reply");
+  assert.equal(textOf(0).payload.model, "claude-opus-5-5", "the first reply is stamped with the model that answered it");
+
+  // Switching mid-thread: the next reply carries the new model, the earlier one keeps its own.
+  delete process.env.FAKE_CLAUDE_REPORT_MODEL;
+  assert.equal((await tool("threads.model", { thread: id, model: "haiku" })).error, undefined);
+  await until(() => of(s.got, id, "model.switched").length >= 2, "the switch event");
+  assert.equal(of(s.got, id, "model.switched")[1].payload.model, "haiku");
+  await tool("threads.send", { thread: id, text: "second", surface: "deck:1" });
+  await until(() => of(s.got, id, "thread.finished").length >= 2, "the second turn");
+  assert.equal(textOf(0).payload.model, "claude-opus-5-5", "the old reply is not relabelled");
+  assert.match(textOf(1).payload.model, /haiku/, "the new reply says the new model");
+  assert.equal(of(s.got, id, "model.switched").length, 2, "an answer that matches the switch says nothing more");
 });

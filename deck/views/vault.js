@@ -11,6 +11,7 @@
 // on a phone). Places: model.js. Keys: vault/keys.js. Parts: vault-item.js, vault-edit.js,
 // vault-places.js.
 
+import { pageHeader } from "../js/page-header.js";
 import { h, put, empty } from "../js/dom.js";
 import { action } from "../js/empty-actions.js";
 import { attempt, modules } from "../js/api.js";
@@ -83,16 +84,16 @@ export default async function vault(ctx) {
   }));
 
   // ---- data ----
-  const info = await attempt("system.info");
-  if (!ctx.alive()) return;
-  st.host = String(info.data?.host || "") || location.hostname;
-  await vc.loadTools();
-  if (!ctx.alive()) return;
+  // The host name, the tool list and the vault's own reads are asked for together (one round trip, not three); only the pending list
+  // needs the tool list, so it follows (see the end of this block).
+  st.host = st.host || location.hostname;
+  const infoP = attempt("system.info");
+  const toolsP = vc.loadTools();
 
-  async function load() {
+  async function load(early = false) {
     const [l, p, caps, audit, pend] = await Promise.all([
       attempt("vault.list"), attempt("vault.pass.list"), attempt("vault.caps"),
-      attempt("vault.audit", { limit: 1000 }), vc.has("vault.pending") ? attempt("vault.pending") : Promise.resolve({ data: null })]);
+      attempt("vault.audit", { limit: 1000 }), !early && vc.has("vault.pending") ? attempt("vault.pending") : Promise.resolve({ data: null })]);
     if (!ctx.alive()) return;
     st.listErr = l.error || null;
     st.locked = Boolean(l.data?.locked);
@@ -199,9 +200,7 @@ export default async function vault(ctx) {
       : vc.has("vault.session.open") ? [h("button", { type: "button", class: "btn", onclick: unlockNow }, icon("lock", 14), "Unlock")] : [];
     const add = !p.view ? h("button", { type: "button", class: "btn btn-primary", onclick: () => open({ mode: "add", kind: p.kind }), disabled: !!st.listErr?.missing }, icon("plus", 14), "Add item") : null;
     put(head,
-      h("div", { class: "vt-head-text" }, h("h1", { class: "h2" }, title), h("p", { class: "vt-lede" }, lede)),
-      h("div", { style: { flexGrow: "1" } }),
-      h("div", { class: "vt-head-acts" }, lockBits, add));
+      pageHeader({ title, meta: lede, actions: [...lockBits, add] }));
     if (s) sessionStop = everySecond(now => {
       const left = s.expires - now;
       if (left <= 0) { vc.current(); return; }
@@ -300,7 +299,7 @@ export default async function vault(ctx) {
 
   async function copy(it, field, label = field) {
     if (!it) return;
-    if (!vc.has("vault.copy")) { toast({ text: "This box cannot copy yet." }); return; }
+    if (!vc.has("vault.copy")) { toast({ text: "Your server cannot copy yet." }); return; }
     const r = await vc.call("vault.copy", { name: it.name, field });
     if (!ctx.alive()) return;
     if (r.error) { toast({ text: r.error.code === "presence_refused" || r.error.code === "cancelled" ? "Not copied." : errText({ ...r.error, tool: "vault.copy" }) }); return; }
@@ -365,7 +364,13 @@ export default async function vault(ctx) {
   };
 
   drawAll();
-  await load();
+  const first = load(true);
+  const [info] = await Promise.all([infoP, toolsP, first]);
+  if (!ctx.alive()) return;
+  if (st.host === location.hostname && info.data?.host) st.host = String(info.data.host);
+  // The pending list, now that the tool list says whether this box has one.
+  if (vc.has("vault.pending")) await load();
+  else drawAll();
 }
 
 function lastWord(t) {
@@ -378,7 +383,7 @@ function lastWord(t) {
 }
 
 /** The words a person sees before proving presence: the item and the destination, never a value. */
-export function summaryFor(tool, input = {}, host = "this box") {
+export function summaryFor(tool, input = {}, host = "your server") {
   const n = input.name ? `“${input.name}”` : "";
   const f = input.field === "totp" ? "one-time code" : input.field || "value";
   switch (tool) {

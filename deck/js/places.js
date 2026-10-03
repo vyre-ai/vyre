@@ -10,16 +10,15 @@
 
 import { h, put } from "./dom.js";
 import { icon } from "./icons.js";
-import { PLACES } from "./rail.js";
 import { closeGlyph } from "./sheet.js";
+import { ALL } from "./place-list.js";
 
-/** The three pages; every other rail place is a tile, in rail order. */
-const PAGES = new Set(["/now", "/chat", "/agents"]);
+/** The phone's tiles, in order: every place in js/place-list.js that is not one of the phone's four tabs (More takes the same list). */
 /** @type {readonly { href: string, label: string, icon: string }[]} */
-export const TILES = Object.freeze(PLACES.filter(p => !PAGES.has(p.href)).map(p => ({ href: p.href, label: p.label, icon: p.icon })));
+export const TILES = Object.freeze(ALL.filter(p => !["/now", "/chat", "/agents"].includes(p.href)).map(p => ({ href: p.href, label: p.label, icon: p.icon })));
 
 export const PIN_KEY = "vyre.pin";
-export const HOLD_HINT = "Long-press a tile to pin it as a fourth page.";
+export const HOLD_HINT = "Long-press a tile to pin it as a page.";
 const HOLD = "Long-press to pin as a page";
 const KEPT = "Pinned as a page";
 
@@ -74,7 +73,7 @@ function holdMs() {
  * @param {{ head: HTMLElement, sheet: HTMLElement }} parts
  * @param {{ name?: string | null, letter?: string, host?: string, open: (tile: typeof TILES[number]) => void,
  *   pinned?: (tile: typeof TILES[number] | null) => void, store?: any, hold?: number,
- *   health?: (fn: (x: any | null) => void) => () => void, line?: (x: any) => string }} o
+ *   health?: (fn: (x: any | null) => void) => () => void, line?: (x: any) => string, tiles?: readonly typeof TILES[number][] }} o  tiles: the places to show (default all of TILES; the phone's More sheet leaves out its tabs)
  * @returns {{ tiles: HTMLElement[], stop: () => void }}
  */
 export function fillPlaces(body, close, parts, o) {
@@ -92,7 +91,10 @@ export function fillPlaces(body, close, parts, o) {
   }) : () => {};
 
   const hold = o.hold ?? holdMs();
-  const tiles = TILES.map(t => {
+  // A kept place leads the grid: it is a page now, and this is where to find it again.
+  const kept0 = readPin(o.store);
+  const list = [...(o.tiles || TILES)].sort((a, b) => (kept0 && b.href === kept0.href ? 1 : 0) - (kept0 && a.href === kept0.href ? 1 : 0));
+  const tiles = list.map(t => {
     // heldAt: when a hold last toggled; swallow: the click that ends that press opens nothing.
     let timer = 0, heldAt = 0, swallow = false, x0 = 0, y0 = 0;
     const a = h("a", { href: t.href, class: "plc-tile", "data-place": t.label, "aria-keyshortcuts": "Shift+F10 ContextMenu" },

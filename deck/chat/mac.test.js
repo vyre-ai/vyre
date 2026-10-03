@@ -71,6 +71,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     if (a && a.$error) return { status: 409, statusText: "", json: async () => ({ error: a.$error }) };
     return ok(a);
   }
+  if (tool === "threads.continue-here") return ok({ thread: "box-copy-1" });
   if (tool === "system.info") return ok({ assistant: { name: "juno" }, owner: { name: "alex" } });
   if (tool === "threads.asks") return ok([]);
   if (tool === "threads.answer" && answerErr) return { status: 409, statusText: "", json: async () => ({ error: answerErr }) };
@@ -95,7 +96,7 @@ test("a Mac session opens with a composer, the machine chip, 'On alex-mac' and n
   assert.equal(count("It is open."), 1);
   const read = calls.find(c => c.tool === "recall.transcript");
   assert.ok(read && read.input.source === "mac" && read.input.limit === 80, "blocks from the Mac, in small pages");
-  assert.ok(!calls.some(c => c.tool === "recall.thread" || c.tool === "threads.get"), "no older turn view, no thread on the box");
+  assert.ok(!calls.some(c => c.tool === "recall.thread" || c.tool === "threads.get"), "no older turn view, no thread on your server");
 });
 
 test("a send carries the machine; the reply's live rows give way to the Mac's turns, once each", async () => {
@@ -151,6 +152,24 @@ test("an offline Mac keeps the words, says so, offers Try again and chips the he
   assert.doesNotMatch(text($(box, ".session-head")), /offline/, "a send that went through clears the chip");
 });
 
+test("the Mac goes to sleep: the line says so, 'Continue on the server' appears and opens your server's copy; waking brings the line back", async () => {
+  const went = /** @type {string[]} */ ([]);
+  Object.defineProperty(globalThis, "history", { value: { state: null, pushState: (/** @type {any} */ _s, /** @type {any} */ _t, /** @type {string} */ u) => went.push(u), replaceState() {} }, configurable: true, writable: true });
+  assert.equal($$(box, "[data-act=continue-here]").length, 0, "nothing while the Mac is awake");
+  hear(/** @type {any} */ ({ id: ++evId, type: "link.mac-offline", thread: null, project: null, at: Date.now(), payload: { mac: "m1", name: "alex-mac", why: "sleep" } }));
+  await wait();
+  assert.match(text($(box, ".lease-bar")), /alex-mac is asleep or offline/);
+  const btn = $(box, "[data-act=continue-here]");
+  assert.ok(btn, "the way out");
+  await btn.click(); await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.continue-here").map(c => c.input), [{ thread: MAC, machine: "alex-mac" }]);
+  assert.deepEqual(went, ["/chat/thread/box-copy-1"]);
+  hear(/** @type {any} */ ({ id: ++evId, type: "link.mac-online", thread: null, project: null, at: Date.now(), payload: { mac: "m1", name: "alex-mac" } }));
+  await wait();
+  assert.match(text($(box, ".lease-bar")).trim(), /^On alex-mac$/);
+  assert.equal($$(box, "[data-act=continue-here]").length, 0);
+});
+
 test("cards on a Mac session: the usual buttons, 'on alex-mac', and the answer carries the machine", async () => {
   emit("ask.raised", { ask: "ask_m1", kind: "permission", tool: "Bash", summary: "npm run deploy", node: "nMacStable1" });
   emit("ask.raised", { ask: "ask_m2", kind: "question", tool: "AskUserQuestion", node: "nMacStable1", questions: [{ question: "Which slots?", header: "Slots", options: [{ label: "Mornings" }, { label: "All day" }] }] });
@@ -170,7 +189,7 @@ test("cards on a Mac session: the usual buttons, 'on alex-mac', and the answer c
 });
 
 // Last: the fallback is remembered for the page.
-test("a box that cannot forward the answer: the card falls back to 'Answer it on alex-mac', and so do later ones", async () => {
+test("a server that cannot forward the answer: the card falls back to 'Answer it on alex-mac', and so do later ones", async () => {
   answerErr = { code: "bad_input", message: "machine: not allowed" };
   const q = $(box, ".cv-q");
   await $$(q, "button").find(b => text(b) === "Decline").click();

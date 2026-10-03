@@ -86,7 +86,7 @@ export function healthDot() {
     const line = linkLine(x);
     el.className = `${pathMark(linkDot(x)).className} health-dot`;
     el.title = line;
-    el.setAttribute("aria-label", `Connection to the box: ${line}`);
+    el.setAttribute("aria-label", `Connection to your server: ${line}`);
     el.hidden = false;
   });
   return { el, stop };

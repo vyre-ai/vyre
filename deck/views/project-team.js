@@ -16,7 +16,7 @@ import { watcherCard } from "../chat/cards/watcher.js";
 
 export const EVENTS = ["teammate.added", "teammate.retired", "teammate.charter-changed", "teammate.default-changed", "team.state", "team.request", "team.done", "team.failed", "team.cancelled"];
 const ROLE = /^[a-z][a-z0-9-]{0,30}$/;
-const errWords = (/** @type {any} */ e) => (e?.missing ? "Teammates are not available on this box yet." : String(e?.message || e || "That did not go through."));
+const errWords = (/** @type {any} */ e) => (e?.missing ? "Teammates are not available on your server yet." : String(e?.message || e || "That did not go through."));
 const STATE_WORDS = { idle: "Idle", working: "Working", running: "Working", waiting: "Waiting", queued: "Queued", failed: "Failed", done: "Done" };
 /** A teammate's state as a word; an unknown one is shown as sent. @param {any} s */
 export const stateWord = s => STATE_WORDS[String(s)] || String(s || "Idle");
@@ -142,7 +142,7 @@ export async function drawTeam(el, ctx, project, deps = {}) {
   }
 
   function draw() {
-    if (st.error) { put(el, empty(st.error?.missing ? "Teammates are not on this box yet." : "Teammates could not be read.", st.error)); return; }
+    if (st.error) { put(el, empty(st.error?.missing ? "Teammates are not on your server yet." : "Teammates could not be read.", st.error)); return; }
     const role = /** @type {HTMLInputElement} */ (h("input", { class: "input", "aria-label": "Role", placeholder: "A role, like design or backend", autocomplete: "off" }));
     const brief = /** @type {HTMLInputElement} */ (h("input", { class: "input", "aria-label": "What goes to it", placeholder: "What work goes to it (optional)", autocomplete: "off" }));
     put(el, h("div", { class: "ml ml-pad tm" },

@@ -172,7 +172,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           NAMES_ADMIN_SECRET: ${{ secrets.NAMES_ADMIN_SECRET }}
         run: |
-          [ "${#NAMES_ADMIN_SECRET}" -ge 32 ] || { echo "::error::NAMES_ADMIN_SECRET must be an environment secret of at least 32 characters"; exit 1; }
+          [ "${#NAMES_ADMIN_SECRET}" -ge 32 ] || { echo "::error::NAMES_ADMIN_SECRET must be an environment secret of at least 32 characters (make one with: openssl rand -hex 32)"; exit 1; }
           printf %s "$NAMES_ADMIN_SECRET" | "$W" secret put ADMIN_SECRET
       - name: relay/app, the signed build (checked again here)
         if: ${{ inputs.app }}

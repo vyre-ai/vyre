@@ -52,12 +52,12 @@ test("waiting.list is the one list: only what it names, from the owners' reads, 
   assert.equal(items[2].gate?.draft?.subject, "Q3 report", "the draft's words from gate.get");
   assert.equal(items[3].title, "row threads:a9");
   assert.equal(needs.count(), 5, "waiting's count, not the rows drawn");
-  assert.equal(elsewhere(/** @type {any} */ (items[1])), "alex's MacBook Pro", "the box cannot answer it: Answer it on the Mac");
+  assert.equal(elsewhere(/** @type {any} */ (items[1])), "alex's MacBook Pro", "your server cannot answer it: Answer it on the Mac");
   await assert.rejects(needs.answer(items[1], { label: "Allow once", decision: "allow" }), /Answer it on alex's MacBook Pro\./);
   assert.ok(!calls.includes("threads.answer"), "nothing was sent for it");
 });
 
-test("waiting.changed moves the count at once; an answer takes one off before the box says so", async () => {
+test("waiting.changed moves the count at once; an answer takes one off before your server says so", async () => {
   needs.heardWaiting({ payload: { count: 2, by_kind: { ask: 2 } } });
   assert.equal(needs.count(), 2);
   needs.heardWaiting({ payload: { count: -1 } });

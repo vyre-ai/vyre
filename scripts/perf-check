@@ -6,7 +6,7 @@
 //   scripts/perf-check --first-run [--real-model] [--seconds N]
 //                                          the first index of a whole history (lib/first-run.mjs)
 //
-//   vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
+//   vyred idle: under 0.9% of one core (p95, exact 10 ms ticks from /proc; 1.8% sustained; the idle mean is about 0.3%, see issue 71) and under 150 MB resident, with no polling faster than
 //   once a minute when nothing is happening; work is driven by events and file-system notice.
 //   The 150 MB is the SETTLED size: after the startup indexing pass V8 keeps its heap for a
 //   while (about 160 MB for ~20 s on the synthetic corpus) and gives it back once idle, so the
@@ -65,7 +65,9 @@ const QUIET_PCT = 0.3, QUIET_SAMPLES = 3, QUIET_MAX_SECONDS = 45;
 // Node major the box image ships (box/Dockerfile's FROM node:N): on Node 22 an idle vyred gives its
 // startup heap back (RSS about 85 MB), while Node 24 keeps it (186 to 260 MB, depending on the
 // run) with a heap V8 simply hasn't collected yet, so there RSS is informational.
-const BUDGET = { cpuPct: 0.5, rssMB: 150, startupRssMB: 200, heapMB: 50, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
+// CPU budgets: three idle runs per Node on a quiet hosted runner (perf-idle.yml, 3 Oct, run 37142372546) gave p95 0 to 0.66%, sustained 0.13 to 1.33%
+// (one 100 ms blip in a 1.5 s sample is 6.6%, and 1.3% over five); each budget is the worst run plus a third.
+const BUDGET = { cpuPct: 0.9, rssMB: 150, startupRssMB: 200, heapMB: 50, minTimerMs: 60_000, cpuSustainedPct: 1.8, cpuSustainedWindow: 5 };
 
 /** The Node major the box image runs, from box/Dockerfile, or null. */
 function shippedNodeMajor() {
@@ -323,10 +325,21 @@ function psSample(pid) {
   const line = r.stdout.trim().split("\n")[0];
   const m = /^(\S+)\s+(\d+)$/.exec(line.trim());
   if (!m) return null;
-  const cpuSec = parseCpuTime(m[1]);
+  const cpuSec = procCpuSec(pid) ?? parseCpuTime(m[1]);
   const rssKB = Number(m[2]);
   if (!Number.isFinite(cpuSec) || !Number.isFinite(rssKB)) return null;
   return { cpuSec, rssKB };
+}
+
+/** The process's CPU seconds from /proc/<pid>/stat (utime + stime, 10 ms ticks), or null off Linux. `ps -o time=` has 1 s resolution on Linux, so any
+ *  small blip reads as 66% of a 1.5 s sample (issue #71). */
+function procCpuSec(pid) {
+  try {
+    const f = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    const rest = f.slice(f.lastIndexOf(")") + 2).split(" "); // fields from 3 on: utime is field 14, stime 15
+    const ticks = Number(rest[11]) + Number(rest[12]);
+    return Number.isFinite(ticks) ? ticks / 100 : null;
+  } catch { return null; }
 }
 
 /** "[[HH:]MM:]SS[.cc]" (both BSD and GNU ps use colon-separated time, seconds may be fractional). */

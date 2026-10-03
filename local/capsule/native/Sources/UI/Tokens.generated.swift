@@ -142,4 +142,255 @@ public enum Tokens {
 
     public static let fontSans = "Instrument Sans"
     public static let fontMono = "JetBrains Mono"
+
+    /// Deck v2 (design-system.md): the tokens the redesigned Deck, the phone app and the Capsule share.
+    public enum V2 {
+        public struct Colors: Sendable {
+            public let bg: Color
+            public let surface1: Color
+            public let surface2: Color
+            public let surface3: Color
+            public let edge: Color
+            public let edgeStrong: Color
+            public let edgeTop: Color
+            public let text: Color
+            public let text2: Color
+            public let label: Color
+            public let faint: Color
+            public let primary: Color
+            public let primaryHover: Color
+            public let primaryInk: Color
+            public let accent: Color
+            public let accentWash: Color
+            public let accentInk: Color
+            public let ok: Color
+            public let okWash: Color
+            public let warn: Color
+            public let warnWash: Color
+            public let err: Color
+            public let errWash: Color
+            public let hover: Color
+            public let press: Color
+            public let selected: Color
+            public let codeBg: Color
+            public let scrim: Color
+        }
+
+        public static let dark = Colors(
+            bg: Color(.sRGB, red: 14 / 255, green: 13 / 255, blue: 12 / 255, opacity: 1),
+            surface1: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 1),
+            surface2: Color(.sRGB, red: 26 / 255, green: 24 / 255, blue: 22 / 255, opacity: 1),
+            surface3: Color(.sRGB, red: 33 / 255, green: 31 / 255, blue: 28 / 255, opacity: 1),
+            edge: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.075),
+            edgeStrong: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.14),
+            edgeTop: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.05),
+            text: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1),
+            text2: Color(.sRGB, red: 179 / 255, green: 174 / 255, blue: 164 / 255, opacity: 1),
+            label: Color(.sRGB, red: 140 / 255, green: 135 / 255, blue: 125 / 255, opacity: 1),
+            faint: Color(.sRGB, red: 95 / 255, green: 91 / 255, blue: 84 / 255, opacity: 1),
+            primary: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 1),
+            primaryHover: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 1),
+            primaryInk: Color(.sRGB, red: 14 / 255, green: 13 / 255, blue: 12 / 255, opacity: 1),
+            accent: Color(.sRGB, red: 184 / 255, green: 164 / 255, blue: 255 / 255, opacity: 1),
+            accentWash: Color(.sRGB, red: 184 / 255, green: 164 / 255, blue: 255 / 255, opacity: 0.12),
+            accentInk: Color(.sRGB, red: 14 / 255, green: 13 / 255, blue: 12 / 255, opacity: 1),
+            ok: Color(.sRGB, red: 111 / 255, green: 211 / 255, blue: 160 / 255, opacity: 1),
+            okWash: Color(.sRGB, red: 111 / 255, green: 211 / 255, blue: 160 / 255, opacity: 0.12),
+            warn: Color(.sRGB, red: 230 / 255, green: 180 / 255, blue: 80 / 255, opacity: 1),
+            warnWash: Color(.sRGB, red: 230 / 255, green: 180 / 255, blue: 80 / 255, opacity: 0.12),
+            err: Color(.sRGB, red: 240 / 255, green: 138 / 255, blue: 122 / 255, opacity: 1),
+            errWash: Color(.sRGB, red: 240 / 255, green: 138 / 255, blue: 122 / 255, opacity: 0.12),
+            hover: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.05),
+            press: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.08),
+            selected: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.09),
+            codeBg: Color(.sRGB, red: 16 / 255, green: 15 / 255, blue: 14 / 255, opacity: 1),
+            scrim: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.6)
+        )
+
+        public static let paper = Colors(
+            bg: Color(.sRGB, red: 236 / 255, green: 232 / 255, blue: 222 / 255, opacity: 1),
+            surface1: Color(.sRGB, red: 244 / 255, green: 241 / 255, blue: 234 / 255, opacity: 1),
+            surface2: Color(.sRGB, red: 251 / 255, green: 250 / 255, blue: 246 / 255, opacity: 1),
+            surface3: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 1),
+            edge: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.09),
+            edgeStrong: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.18),
+            edgeTop: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7),
+            text: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 1),
+            text2: Color(.sRGB, red: 74 / 255, green: 70 / 255, blue: 63 / 255, opacity: 1),
+            label: Color(.sRGB, red: 107 / 255, green: 102 / 255, blue: 93 / 255, opacity: 1),
+            faint: Color(.sRGB, red: 163 / 255, green: 157 / 255, blue: 145 / 255, opacity: 1),
+            primary: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 1),
+            primaryHover: Color(.sRGB, red: 58 / 255, green: 55 / 255, blue: 50 / 255, opacity: 1),
+            primaryInk: Color(.sRGB, red: 244 / 255, green: 241 / 255, blue: 234 / 255, opacity: 1),
+            accent: Color(.sRGB, red: 91 / 255, green: 63 / 255, blue: 196 / 255, opacity: 1),
+            accentWash: Color(.sRGB, red: 91 / 255, green: 63 / 255, blue: 196 / 255, opacity: 0.1),
+            accentInk: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 1),
+            ok: Color(.sRGB, red: 31 / 255, green: 122 / 255, blue: 77 / 255, opacity: 1),
+            okWash: Color(.sRGB, red: 31 / 255, green: 122 / 255, blue: 77 / 255, opacity: 0.1),
+            warn: Color(.sRGB, red: 154 / 255, green: 91 / 255, blue: 0 / 255, opacity: 1),
+            warnWash: Color(.sRGB, red: 154 / 255, green: 91 / 255, blue: 0 / 255, opacity: 0.1),
+            err: Color(.sRGB, red: 179 / 255, green: 57 / 255, blue: 43 / 255, opacity: 1),
+            errWash: Color(.sRGB, red: 179 / 255, green: 57 / 255, blue: 43 / 255, opacity: 0.09),
+            hover: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.045),
+            press: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.075),
+            selected: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.08),
+            codeBg: Color(.sRGB, red: 239 / 255, green: 235 / 255, blue: 226 / 255, opacity: 1),
+            scrim: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.32)
+        )
+
+        public enum Radius {
+            public static let chip: CGFloat = 6
+            public static let field: CGFloat = 10
+            public static let button: CGFloat = 10
+            public static let buttonTouch: CGFloat = 12
+            public static let row: CGFloat = 10
+            public static let card: CGFloat = 14
+            public static let cardPhone: CGFloat = 14
+            public static let sheet: CGFloat = 20
+            public static let full: CGFloat = 999
+        }
+
+        public enum Control {
+            public static let sm: CGFloat = 30
+            public static let md: CGFloat = 36
+            public static let touchSm: CGFloat = 36
+            public static let touch: CGFloat = 44
+            public static let touchLg: CGFloat = 54
+            public static let row: CGFloat = 56
+            public static let rowPhone: CGFloat = 64
+        }
+
+        public enum Layout {
+            public static let rail: CGFloat = 64
+            public static let list: CGFloat = 320
+            public static let side: CGFloat = 340
+            public static let pageMax: CGFloat = 980
+            public static let readMax: CGFloat = 720
+            public static let gutter: CGFloat = 32
+            public static let gutterPhone: CGFloat = 16
+        }
+
+        public static let space: [CGFloat] = [0, 4, 8, 12, 16, 20, 24, 32, 40, 48, 64]
+
+        /// [size, line height] in points: desktop and the Capsule, then a phone.
+        public enum TypeScale {
+            public static let caption: (size: CGFloat, line: CGFloat) = (12, 16)
+            public static let body: (size: CGFloat, line: CGFloat) = (14, 20)
+            public static let read: (size: CGFloat, line: CGFloat) = (15, 23)
+            public static let title: (size: CGFloat, line: CGFloat) = (18, 24)
+            public static let page: (size: CGFloat, line: CGFloat) = (24, 30)
+            public static let display: (size: CGFloat, line: CGFloat) = (32, 38)
+            public static let label: CGFloat = 11
+        }
+
+        public enum PhoneTypeScale {
+            public static let caption: (size: CGFloat, line: CGFloat) = (12, 16)
+            public static let body: (size: CGFloat, line: CGFloat) = (16, 22)
+            public static let read: (size: CGFloat, line: CGFloat) = (17, 25)
+            public static let title: (size: CGFloat, line: CGFloat) = (20, 26)
+            public static let page: (size: CGFloat, line: CGFloat) = (28, 34)
+            public static let display: (size: CGFloat, line: CGFloat) = (32, 38)
+            public static let label: CGFloat = 11
+        }
+
+        /// Letter spacing in em.
+        public enum Tracking {
+            public static let title: CGFloat = -0.012
+            public static let page: CGFloat = -0.02
+            public static let display: CGFloat = -0.025
+            public static let label: CGFloat = 0.08
+        }
+
+        public static let weights: [Int] = [400, 500, 600]
+
+        public struct Spring: Equatable, Sendable { public let damping: Double, stiffness: Double }
+
+        public struct Layer: Sendable { public let x: CGFloat, y: CGFloat, blur: CGFloat, spread: CGFloat, color: Color, inset: Bool }
+
+        /// Durations in milliseconds, easing control points, springs and the row stagger.
+        public enum Motion {
+            public static let press: Double = 90
+            public static let state: Double = 160
+            public static let panel: Double = 240
+            public static let sheet: Double = 360
+            public static let nod: Double = 460
+            public static let hold: Double = 600
+            public static let undo: Double = 4000
+            public static let standardEase: [Double] = [0.2, 0.7, 0.2, 1]
+            public static let inOutEase: [Double] = [0.4, 0, 0.2, 1]
+            public static let springEase: [Double] = [0.34, 1.4, 0.64, 1]
+            public static let staggerStep: Double = 24
+            public static let staggerMax: Int = 8
+            public enum Spatial {
+                public static let fast = Spring(damping: 0.6, stiffness: 800)
+                public static let `default` = Spring(damping: 0.8, stiffness: 380)
+                public static let slow = Spring(damping: 0.8, stiffness: 200)
+            }
+            public enum Effects {
+                public static let fast = Spring(damping: 1, stiffness: 3800)
+                public static let `default` = Spring(damping: 1, stiffness: 1600)
+                public static let slow = Spring(damping: 1, stiffness: 800)
+            }
+        }
+
+        /// Three shadow levels, each a list of layers, per scheme.
+        public enum Elevation {
+            public enum Dark {
+                public static let e1: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.05), inset: true), Layer(x: 0, y: 1, blur: 2, spread: 0, color: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.35), inset: false)]
+                public static let e2: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.05), inset: true), Layer(x: 0, y: 8, blur: 24, spread: -8, color: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.6), inset: false), Layer(x: 0, y: 2, blur: 6, spread: 0, color: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.35), inset: false)]
+                public static let e3: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 241 / 255, green: 238 / 255, blue: 230 / 255, opacity: 0.05), inset: true), Layer(x: 0, y: 28, blur: 64, spread: -20, color: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.75), inset: false), Layer(x: 0, y: 6, blur: 18, spread: 0, color: Color(.sRGB, red: 0 / 255, green: 0 / 255, blue: 0 / 255, opacity: 0.4), inset: false)]
+            }
+            public enum Paper {
+                public static let e1: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 1, blur: 2, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.08), inset: false)]
+                public static let e2: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 8, blur: 24, spread: -8, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.22), inset: false), Layer(x: 0, y: 2, blur: 6, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.1), inset: false)]
+                public static let e3: [Layer] = [Layer(x: 0, y: 1, blur: 0, spread: 0, color: Color(.sRGB, red: 255 / 255, green: 255 / 255, blue: 255 / 255, opacity: 0.7), inset: true), Layer(x: 0, y: 28, blur: 64, spread: -20, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.3), inset: false), Layer(x: 0, y: 6, blur: 18, spread: 0, color: Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 0.12), inset: false)]
+            }
+        }
+
+        public enum Icon {
+            public static let grid: CGFloat = 24
+            public static let size: CGFloat = 20
+            public static let stroke: CGFloat = 1.6
+        }
+
+        /// The project emblem: draw it from the project's eight seed bytes (see the rules below). Coordinates are in a 120 unit canvas.
+        public enum Emblem {
+            public enum Op: Equatable, Sendable {
+                case move(CGFloat, CGFloat), line(CGFloat, CGFloat), close
+                case arc(rx: CGFloat, ry: CGFloat, rotation: CGFloat, large: Bool, sweep: Bool, x: CGFloat, y: CGFloat)
+            }
+            public enum Shape: Equatable, Sendable {
+                case circle(cx: CGFloat, cy: CGFloat, r: CGFloat)
+                case rect(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat, rx: CGFloat)
+                case ring(cx: CGFloat, cy: CGFloat, r: CGFloat, stroke: CGFloat)
+                case path([Op], rotates: Bool)
+            }
+            public static let canvas: CGFloat = 120
+            public static let cell: CGFloat = 60
+            public static let corner: CGFloat = 30
+            public static let inset: CGFloat = 2
+            public static let cells: [(x: CGFloat, y: CGFloat)] = [(0, 0), (60, 0), (0, 60), (60, 60)]
+            public static let palette: [Color] = [Color(.sRGB, red: 163 / 255, green: 79 / 255, blue: 62 / 255, opacity: 1), Color(.sRGB, red: 218 / 255, green: 147 / 255, blue: 47 / 255, opacity: 1), Color(.sRGB, red: 47 / 255, green: 218 / 255, blue: 75 / 255, opacity: 1), Color(.sRGB, red: 47 / 255, green: 218 / 255, blue: 147 / 255, opacity: 1), Color(.sRGB, red: 47 / 255, green: 218 / 255, blue: 218 / 255, opacity: 1), Color(.sRGB, red: 47 / 255, green: 147 / 255, blue: 218 / 255, opacity: 1), Color(.sRGB, red: 182 / 255, green: 32 / 255, blue: 170 / 255, opacity: 1), Color(.sRGB, red: 188 / 255, green: 47 / 255, blue: 106 / 255, opacity: 1)]
+            public static let inkDark = Color(.sRGB, red: 20 / 255, green: 19 / 255, blue: 17 / 255, opacity: 1)
+            public static let inkPaper = Color(.sRGB, red: 244 / 255, green: 241 / 255, blue: 234 / 255, opacity: 1)
+            public static let draftDash: [CGFloat] = [9, 7]
+            public static let draftStroke: CGFloat = 5
+            public static let draftFrame: CGFloat = 3
+            public static let draftCellOpacity: Double = 0.55
+            /// Shape i is chosen by b[2 + cell] % 8.
+            public static let shapes: [Shape] = [
+                .circle(cx: 30, cy: 30, r: 22),
+                .path([.move(8, 52), .line(8, 8), .arc(rx: 44, ry: 44, rotation: 0, large: false, sweep: true, x: 52, y: 52), .close], rotates: true),
+                .path([.move(8, 30), .arc(rx: 22, ry: 22, rotation: 0, large: false, sweep: true, x: 52, y: 30), .close], rotates: true),
+                .rect(x: 10, y: 10, w: 40, h: 40, rx: 7),
+                .path([.move(30, 6), .line(54, 30), .line(30, 54), .line(6, 30), .close], rotates: false),
+                .ring(cx: 30, cy: 30, r: 18, stroke: 9),
+                .path([.move(8, 52), .line(52, 52), .line(8, 8), .close], rotates: true),
+                .rect(x: 20, y: 20, w: 20, h: 20, rx: 10)
+            ]
+            // ground = palette[b0 % n]; second = palette[(b0 + 2 + b1 % (n - 2)) % n]
+            // cell i (0 to 3): shape = b[2 + i] % 8; rotation = (b[2 + i] >> 3) % 4 quarter turns about the cell centre, applied only to shapes marked rotates
+            // cell i is filled with second when bit i of b6 is set, otherwise with ink; in a draft the unset cells use ground
+        }
+    }
 }

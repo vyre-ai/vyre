@@ -1,0 +1,117 @@
+#!/bin/sh
+# vyre-firstboot: the first-boot install on a DigitalOcean 1-Click droplet. cloud-init runs it once, on the
+# droplet's first boot (per-instance), and `sudo vyre-firstboot` runs it again if the first try could not.
+#
+# It installs the LATEST Vyre release, and only after checking it:
+#   1. download SHA256SUMS and SHA256SUMS.sig from the release site;
+#   2. check the signature: Ed25519, by the release key baked into this image, over "vyre-release-sums\n"
+#      followed by the exact bytes of SHA256SUMS (the same one signature the Mac installer and the box updater check);
+#   3. download each file the installer needs and check it against its line in that signed list;
+#   4. run the installer from those checked copies (it reads them from disk, so nothing is fetched again
+#      after the check), non-interactively.
+# A bad signature, a missing file or a hash that does not match stops here with a plain message and runs
+# nothing. Nothing in this script asks for or stores a password; the droplet has no Vyre login to set.
+#
+# Modes: no argument = download, check, install the latest release (the default image).
+#   --stage-only  download and check the latest release into the state folder, then stop (an image build does this to
+#                 bake a release in).
+#   --from-baked  use a release already staged in the image: its signature and every hash are checked AGAIN, offline,
+#                 then the installer runs. (The image variant that bakes a release in uses this; it is only as new as the
+#                 build, and `vyre update` brings it forward.)
+#
+# Environment (tests only): VYRE_BOX_URL, VYRE_RELEASE_KEY_PEM, VYRE_STATE_DIR, VYRE_FIRSTBOOT_RETRIES,
+# VYRE_FIRSTBOOT_WAIT (seconds between tries).
+
+set -eu
+
+BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
+KEY=${VYRE_RELEASE_KEY_PEM:-/usr/local/share/vyre/release-key.pem}
+STATE=${VYRE_STATE_DIR:-/var/lib/vyre}
+TRIES=${VYRE_FIRSTBOOT_RETRIES:-6}
+WAIT=${VYRE_FIRSTBOOT_WAIT:-15}
+# What the installer reads. install-box.sh and vyre are required; the rest are taken when the release lists them.
+NEED="install-box.sh vyre"
+WANT="compose.yml compose.build.yml vyre.env.example Dockerfile dockerignore release.json VERSION"
+
+MODE=latest
+case "${1:-}" in
+  "") ;;
+  --stage-only) MODE=stage ;;
+  --from-baked) MODE=baked ;;
+  *) echo "usage: vyre-firstboot [--stage-only | --from-baked]" >&2; exit 2 ;;
+esac
+
+mkdir -p "$STATE"
+TMP=$(mktemp -d "$STATE/.fb.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+status() { printf '%s\n' "$1" >"$STATE/firstboot.status"; }
+say() { printf '%s vyre-firstboot: %s\n' "$(date -u +%H:%M:%S)" "$*"; }
+fail() { say "$*"; status "failed: $*"; exit 1; }
+
+# check_signature DIR: DIR/SHA256SUMS against DIR/SHA256SUMS.sig, with the release key in this image.
+check_signature() {
+  if [ ! -s "$1/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$1/SHA256SUMS"; then fail "the release's SHA256SUMS is not a checksum list"; fi
+  tr -d ' \n\r' <"$1/SHA256SUMS.sig" | openssl base64 -d -A >"$TMP/sig.bin" 2>/dev/null || fail "the release signature is not base64"
+  { printf 'vyre-release-sums\n'; cat "$1/SHA256SUMS"; } >"$TMP/msg"
+  openssl pkeyutl -verify -pubin -inkey "$KEY" -rawin -in "$TMP/msg" -sigfile "$TMP/sig.bin" >/dev/null 2>&1 \
+    || fail "the release signature does not verify against the Vyre release key in this image; nothing was installed"
+  say "the release signature verifies"
+}
+
+# check_files DIR: every file the installer needs is in DIR and matches its line in the signed list.
+check_files() {
+  for f in $NEED $WANT; do
+    want=$(awk -v p="$f" '$2 == p || $2 == "*" p { print $1; exit }' "$1/SHA256SUMS")
+    if [ -z "$want" ]; then
+      case " $NEED " in *" $f "*) fail "the signed release lists no $f; nothing was installed" ;; esac
+      continue
+    fi
+    [ -f "$1/$f" ] || fail "$f is missing; nothing was installed"
+    got=$(sha256sum "$1/$f" | awk '{print $1}')
+    [ "$got" = "$want" ] || fail "$f does not match the signed release (wanted $want, got $got); nothing was installed"
+  done
+  say "all files match the signed release"
+}
+
+if [ "$MODE" = baked ]; then
+  [ -d "$STATE/release" ] || fail "no baked release in this image; run: sudo vyre-firstboot"
+  status "installing"
+  say "installing the release baked into this image"
+  check_signature "$STATE/release"
+  check_files "$STATE/release"
+else
+  BASE=${BASE%/}/
+  status "installing"
+  say "installing the latest Vyre from $BASE"
+  # The signed list. The network may not be up the first second: a few tries, then a plain message.
+  mkdir -p "$TMP/release"
+  i=1
+  until curl -fsSL --max-time 30 "${BASE}SHA256SUMS" -o "$TMP/release/SHA256SUMS" && curl -fsSL --max-time 30 "${BASE}SHA256SUMS.sig" -o "$TMP/release/SHA256SUMS.sig"; do
+    [ "$i" -lt "$TRIES" ] || fail "could not reach $BASE after $TRIES tries; check the droplet's network, then run: sudo vyre-firstboot"
+    i=$((i + 1)); sleep "$WAIT"
+  done
+  check_signature "$TMP/release"
+  # Each file, downloaded and then checked against its line in the signed list.
+  for f in $NEED $WANT; do
+    want=$(awk -v p="$f" '$2 == p || $2 == "*" p { print $1; exit }' "$TMP/release/SHA256SUMS")
+    if [ -z "$want" ]; then
+      case " $NEED " in *" $f "*) fail "the signed release lists no $f; nothing was installed" ;; esac
+      continue
+    fi
+    curl -fsSL --max-time 120 "${BASE}$f" -o "$TMP/release/$f" || fail "could not download $f"
+  done
+  check_files "$TMP/release"
+  rm -rf "$STATE/release"
+  mv "$TMP/release" "$STATE/release"
+  if [ "$MODE" = stage ]; then status "staged $(cat "$STATE/release/VERSION" 2>/dev/null || echo unknown)"; say "staged; not installing"; exit 0; fi
+fi
+
+# Install from the checked copies. The installer reads them with file:// so it fetches nothing again.
+VER=$(cat "$STATE/release/VERSION" 2>/dev/null || echo unknown)
+say "running the installer for Vyre $VER"
+if VYRE_BOX_URL="file://$STATE/release/" sh "$STATE/release/install-box.sh" --yes; then
+  status "ok $VER"
+  say "Vyre $VER is installed"
+else
+  fail "the installer stopped; its output is in /var/log/vyre-firstboot.log. Run: sudo vyre-firstboot"
+fi

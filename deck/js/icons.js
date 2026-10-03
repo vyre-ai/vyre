@@ -5,6 +5,7 @@
 const P = {
   now: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/>',
   drive: '<path d="M3.8 7.2V11L8 13.5 12.2 11V7.2"/><path d="M8 8.9v4.6"/><path d="M8 2.7L12.2 5 8 7.4 3.8 5z"/>',
+  more: '<circle cx="3.5" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none"/><circle cx="12.5" cy="8" r="1.1" fill="currentColor" stroke="none"/>',
   projects: '<path d="M2 4.5h4.2l1.4 1.5H14v6.5H2z"/>',
   memory: '<circle cx="4" cy="11.5" r="1.9"/><circle cx="12" cy="4.5" r="1.9"/><circle cx="12.5" cy="12" r="1.3"/><path d="M5.5 10.3l5-4.6M5.9 11.7h5.3"/>',
   agents: '<rect x="2" y="2.5" width="12" height="8.5" rx="1.2"/><path d="M5.5 14h5M8 11v3"/>',
@@ -15,6 +16,7 @@ const P = {
   watch: '<rect x="1.5" y="2.5" width="13" height="9" rx="1.2"/><path d="M1.5 5h13M5 14h6"/>',
   pin: '<path d="M6 2.5h4M7 2.5v4L4.5 9h7L9 6.5v-4M8 9v4.5"/>',
   mute: '<path d="M3 6v4h2.5L9 13V3L5.5 6z"/><path d="M11.5 6.5l3 3M14.5 6.5l-3 3"/>',
+  star: '<path d="M8 2l1.8 3.9 4.2.5-3.1 2.9.8 4.2L8 11.4l-3.7 2.1.8-4.2L2 6.4l4.2-.5z"/>',
   plus: '<path d="M8 3.5v9M3.5 8h9"/>',
   minus: '<path d="M3.5 8h9"/>',
   mic: '<rect x="6" y="2" width="4" height="7.5" rx="2"/><path d="M3.8 8a4.2 4.2 0 008.4 0M8 12.2V14"/>',

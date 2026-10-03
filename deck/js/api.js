@@ -21,6 +21,7 @@ import { follow } from "../../core/resilience/stream.js";
 import { open, cursorStore, cacheStore, lifecycle, idbStore } from "../../core/resilience/web.js";
 import { outbox } from "../../core/resilience/outbox.js";
 import { backoff } from "../../core/resilience/backoff.js";
+import { callStart, lagMs } from "./trace.js";
 
 const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const q = new URLSearchParams(location.search);
@@ -62,7 +63,7 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean }} [opts] presence: true proves a
+ * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean, share?: boolean, ifPresent?: boolean }} [opts] ifPresent: skip the call when the box lists no such tool. share: true lets identical calls in flight at once share one request (the rail, the view and the avatars all read projects.list). presence: true proves a
  *   person is here with a passkey first (ADR 0004), for what goes outside as the person (sending a
  *   held draft) and the vault. The proof is bound to this exact tool and input. "asked" is the
  *   owner's own action (answers, approvals, agents): it goes without a proof, and asks for the
@@ -75,7 +76,44 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  *   the box keeps every keyed answer for a day, and a read has nothing to repeat.
  */
 export async function call(name, input = {}, opts = {}) {
+  // `ifPresent`: a tool this box may not have is asked about once (GET /v1/tools) and never called when it is absent, so a missing module is a quiet
+  // answer, not a failed request in the console on every page (#56).
+  if (opts.ifPresent && !(await hasTool(name))) throw new ApiError("no_such_tool", `your server has no ${name}`, name);
   if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
+  // The same read asked for twice at once (the rail, the view and the avatars all want projects.list) is one request: they share its answer.
+  // Only a caller that says `share: true` joins one (a read whose answer may be a moment old for the other), and a write clears them all, so a
+  // read asked for after a change never gets an answer from before it.
+  if (opts.write || opts.key) inflight.clear();
+  if (opts.share && !opts.write && !opts.key && !opts.presence && !opts.keepalive) {
+    const k = name + "\n" + JSON.stringify(input);
+    let p = inflight.get(k);
+    if (!p) { p = callOnce(name, input, opts).finally(() => inflight.delete(k)); inflight.set(k, p); }
+    return p;
+  }
+  return callOnce(name, input, opts);
+}
+
+/** @type {Map<string, Promise<any>>} */
+const inflight = new Map();
+
+/** @type {Promise<Set<string>|null>|null} */
+let toolsAsked = null;
+/** Whether this box lists the tool. One GET /v1/tools for the page's life; an answer that cannot be read counts as "yes", so a call is still tried. @param {string} name */
+export async function hasTool(name) {
+  toolsAsked ||= (async () => {
+    try {
+      const res = await fetch("/v1/tools", { headers: { "x-vyre-caller": "deck", ...headers } });
+      const body = await res.json().catch(() => null);
+      const list = Array.isArray(body?.data) ? body.data : null;
+      return list ? new Set(list.map((/** @type {any} */ t) => String(t?.name ?? t))) : null;
+    } catch { return null; }
+  })();
+  const set = await toolsAsked;
+  return !set || set.has(name);
+}
+
+/** @param {string} name @param {Record<string, any>} input @param {any} opts */
+async function callOnce(name, input, opts) {
   // The person session (tailnet): a box that wants one answers person_session_required. With a
   // handler set (js/person.js, from app.js), it asks the person to sign in on this device, and
   // the call is retried exactly once after that; a refused sign-in rejects as before. No handler:
@@ -130,17 +168,21 @@ async function once(name, input, opts) {
 /** One POST to a tool, with any presence headers; resolves to the data or rejects with an ApiError.
  * @param {string} name @param {Record<string, any>} input @param {Record<string, string>} extra @param {boolean} [keepalive] */
 async function post(name, input, extra, keepalive) {
+  const done = callStart(name);
   let res, body;
   try {
+    if (lagMs) await new Promise(r => setTimeout(r, lagMs)); // ?trace=1&lag=<ms>: a far-away server, for measuring
     res = await fetch("/v1/tools/" + encodeURIComponent(name), {
       method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...extra, ...headers },
       body: JSON.stringify(input), ...(keepalive ? { keepalive: true } : {}),
     });
     body = await res.json().catch(() => null);
   } catch {
+    done(false);
     reach(false);
-    return fallback(name, input, new ApiError("offline", "The box did not answer", name));
+    return fallback(name, input, new ApiError("offline", "Your server did not answer", name));
   }
+  done(!!body && "data" in body && !body.error);
   // The service worker answers a read it kept with offline: true; the box itself was not reached.
   reach(!body?.offline);
   // The box answered while the stream is still backing off (its sockets were cut, the network
@@ -258,7 +300,7 @@ export async function callWithCode(name, input, code, method = "code") {
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer", name); }
+  } catch { throw new ApiError("offline", "Your server did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
@@ -277,7 +319,7 @@ export async function callWithGrant(name, input, grant) {
       body: JSON.stringify(input),
     });
     body = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer", name); }
+  } catch { throw new ApiError("offline", "Your server did not answer", name); }
   if (body && "data" in body && !body.error) return body.data;
   throw new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
 }
@@ -324,8 +366,8 @@ async function presenceProof(tool, input) {
     const res = await fetch("/v1/presence/challenge", { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...headers },
       body: JSON.stringify({ tool, input, method: "passkey" }) });
     ch = await res.json().catch(() => null);
-  } catch { throw new ApiError("offline", "The box did not answer.", tool); }
-  if (!ch || ch.error || !ch.data?.webauthn) throw new ApiError(ch?.error?.code || "denied", ch?.error?.message || "The box did not offer a passkey challenge.", tool, ch?.error);
+  } catch { throw new ApiError("offline", "Your server did not answer.", tool); }
+  if (!ch || ch.error || !ch.data?.webauthn) throw new ApiError(ch?.error?.code || "denied", ch?.error?.message || "Your server did not offer a passkey challenge.", tool, ch?.error);
   const w = ch.data.webauthn;
   /** @type {any} */ let cred;
   try {
@@ -395,7 +437,7 @@ function getOutbox() {
  */
 export async function queue(name, input = {}, { presence, onWait } = {}) {
   if (presence === true) {
-    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "The box did not answer", name);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) throw new ApiError("offline", "Your server did not answer", name);
     return call(name, input, { presence: true, write: true });
   }
   const box = await getOutbox();
@@ -432,7 +474,7 @@ export async function attempt(name, input = {}, opts = {}) {
 export function upload(path, body, progress) {
   const x = new XMLHttpRequest();
   const done = new Promise((resolve, reject) => {
-    if (!path.startsWith("/")) { reject(Object.assign(new Error("the upload path is not on this box"), { code: "bad_path" })); return; }
+    if (!path.startsWith("/")) { reject(Object.assign(new Error("the upload path is not on your server"), { code: "bad_path" })); return; }
     x.open("PUT", path);
     x.setRequestHeader("content-type", "application/octet-stream");
     x.setRequestHeader("x-vyre-caller", "deck");
@@ -441,9 +483,9 @@ export function upload(path, body, progress) {
       let b = null;
       try { b = JSON.parse(x.responseText); } catch {}
       if (x.status >= 200 && x.status < 300 && !b?.error) resolve(b?.data ?? b);
-      else reject(Object.assign(new Error(b?.error?.message || x.statusText || `the box answered ${x.status}`), { code: b?.error?.code || `http_${x.status}` }));
+      else reject(Object.assign(new Error(b?.error?.message || x.statusText || `your server answered ${x.status}`), { code: b?.error?.code || `http_${x.status}` }));
     };
-    x.onerror = () => reject(Object.assign(new Error("the upload did not reach the box"), { code: "offline" }));
+    x.onerror = () => reject(Object.assign(new Error("the upload did not reach your server"), { code: "offline" }));
     x.onabort = () => reject(Object.assign(new Error("upload cancelled"), { code: "aborted" }));
     x.send(body);
   });

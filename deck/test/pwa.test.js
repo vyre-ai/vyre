@@ -74,30 +74,38 @@ test("pwa: the service worker caches no tool call but its two offline reads", ()
 /** The rules inside deck.css's phone block (PHONE_QUERY), the one that starts the shell. */
 function phoneCss() {
   const css = read("css/deck.css");
-  const at = css.indexOf("@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {\n  .top { display: none; }");
+  const at = css.indexOf("@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {\n");
   assert.ok(at > 0, "the phone block in deck.css");
   let depth = 0, i = css.indexOf("{", at);
   for (let j = i; j < css.length; j++) { if (css[j] === "{") depth++; else if (css[j] === "}" && --depth === 0) return css.slice(i, j); }
   return "";
 }
 
-test("pwa shell: no tab bar and no Projects tab on the phone; /projects still routes", () => {
-  const app = read("js/app.js"), css = read("css/deck.css");
-  assert.doesNotMatch(app, /tabbar|const TABS\b/, "app.js draws no tab bar");
-  assert.doesNotMatch(css, /\.tabbar/, "deck.css styles no tab bar");
+test("pwa shell v2: a glass tab bar of five (Now, Chat, Projects, Agents, More); /projects is a page", () => {
+  const app = read("js/app.js"), bar = read("css/tabbar.css");
+  assert.match(app, /const tabBar = h\("nav", \{ class: "tabbar", "aria-label": "Pages" \}, phLabels, moreTab\)/, "the bar is the four pages and More");
+  assert.match(app, /icon\("more", 24\), h\("span", \{ class: "tb-label" \}, "More"\)/);
   assert.match(app, /\["\/projects", "projects"\]/, "the /projects route stays");
   assert.match(app, /\["\/projects\/:slug\/:thread", "projects"\]/);
+  assert.match(bar, /\.tabbar \{[^}]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\)/);
+  assert.match(bar, /backdrop-filter: blur\(16px\)/, "glass, lighter than the system's 24 to 40");
+  assert.match(bar, /@media \(prefers-reduced-transparency: reduce\), \(prefers-contrast: more\) \{\s*\.tabbar \{ background: var\(--bg\); -webkit-backdrop-filter: none; backdrop-filter: none; \}/, "opaque under Reduce Transparency");
+  assert.match(bar, /#deck:not\(\[data-at="page"\]\):not\(\[data-at="pushed"\]\) \.tabbar, #deck\[data-own-back\] \.tabbar \{ display: none; \}/, "find and a screen with its own Back cover it; a screen pushed from More keeps it");
+  assert.match(bar, /\.tb-item \{[^}]*min-height: 44px/, "44 px targets");
+  assert.match(bar, /--cap-bottom: calc\(var\(--tb-h\) \+ 8px\)/, "Lumen floats above the bar");
+  assert.match(read("index.html"), /css\/tabbar\.css/);
+  assert.match(read("sw.js"), /"\/css\/tabbar\.css"/, "kept at install");
 });
 
-test("pwa shell: three pages, Now Chats Agents, in pager order, and nothing else is a page", () => {
+test("pwa shell v2: four pages, Now Chat Projects Agents, in pager order, and nothing else is a page", () => {
   const app = read("js/app.js");
   const m = /const PAGER = \[([\s\S]*?)\];/.exec(app);
   assert.ok(m, "PAGER in app.js");
   const pages = [...m[1].matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map(x => [x[1], x[2]]);
-  assert.deepEqual(pages, [["/now", "Now"], ["/chat", "Chats"], ["/agents", "Agents"]]);
+  assert.deepEqual(pages, [["/now", "Now"], ["/chat", "Chat"], ["/projects", "Projects"], ["/agents", "Agents"]]);
   // A swipe swaps the address in place; pages are not history.
   assert.match(app, /history\.replaceState\(history\.state, "", strip\[i\]\.href\)/);
-  // The pager's pages are the three, then the place kept from the Places sheet, if any.
+  // The pager's pages are the four; there is no kept place any more (More is a sheet).
   assert.match(app, /const strip = \[\.\.\.PAGER\];/);
   // Rows that swipe on their own are left alone by the pager.
   assert.match(app, /\[data-swipe\]/);
@@ -105,10 +113,10 @@ test("pwa shell: three pages, Now Chats Agents, in pager order, and nothing else
   assert.match(phoneCss(), /\.pager \{[^}]*scroll-snap-type: x mandatory/);
 });
 
-test("pwa shell: the header is 48 tall with the labels in Page type, and Lumen floats 56 tall", () => {
+test("pwa shell v2: the header is 48 tall with the page title in Page type, and Lumen floats 56 tall", () => {
   const css = phoneCss();
   assert.match(css, /\.ph-head \{[^}]*height: 48px/);
-  assert.match(css, /\.ph-tab \{[^}]*font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0\.015em/);
+  assert.match(css, /\.ph-title \{[^}]*font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -0\.02em/);
   assert.match(css, /\.ph-initial \{[^}]*width: 34px; height: 34px/);
   assert.match(css, /\.capsule \{[^}]*position: fixed/);
   assert.match(css, /\.capsule \{[^}]*background: var\(--panel\); border: 1px solid var\(--rule-strong\); border-radius: 999px; box-shadow: var\(--light-top\)/);

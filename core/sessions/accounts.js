@@ -14,6 +14,7 @@
 // unchanged until a person adds a second account.
 
 import crypto from "node:crypto";
+import { addressRefused, metadataName, loopbackRefused, isLoopbackHost } from "../../lib/api-endpoint.js";
 
 // kind: what the credential is. "api-key" and "setup-token" name a vault item; "login" names none:
 // the provider's own sign-in (codex login, grok login) wrote its token into this account's own
@@ -32,6 +33,29 @@ export const ACCOUNTS_PENDING_MIGRATION = `ALTER TABLE sessions_accounts ADD COL
 
 /** Whether the provider keeps and may train on this account's sessions (1: privacy mode on, it does not; 0: off). Only Grok has such a setting, held by xAI for the account; this is Vyre's record of the person's choice. */
 export const ACCOUNTS_PRIVACY_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN privacy INTEGER NOT NULL DEFAULT 1`;
+
+/** An API-key account's own endpoint and default model (the setup screen's OpenAI-compatible and Anthropic-compatible keys). Both are plain text, never a secret. */
+export const ACCOUNTS_ENDPOINT_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN base_url TEXT;
+ALTER TABLE sessions_accounts ADD COLUMN model TEXT`;
+
+/**
+ * An endpoint a key may be sent to: https, or plain http to this machine only; no login in the address, no query or fragment, nothing that names the cloud's
+ * metadata service. Returns the address without a trailing slash, or throws bad_input saying why.
+ * @param {any} u @returns {string}
+ */
+export function endpointOk(u) {
+  const text = String(u || "").trim();
+  let x;
+  try { x = new URL(text); } catch { throw bad("that is not a web address"); }
+  const loop = isLoopbackHost(x.hostname);
+  if (!(x.protocol === "https:" || (x.protocol === "http:" && loop))) throw bad("the address must be https (plain http only to this machine)");
+  if (x.username || x.password) throw bad("the address must not carry a login");
+  if (x.search || x.hash) throw bad("the address must not have a query or a fragment");
+  if (loopbackRefused(x)) throw bad("a key may not be sent to a service on this machine here (on a server these are Vyre's own; Vyre's own ports are never allowed)");
+  if (addressRefused(x.hostname) || metadataName(x.hostname)) throw bad("that address is not a place a key may be sent");
+  if (text.length > 300) throw bad("the address is too long");
+  return `${x.protocol}//${x.host}${x.pathname}`.replace(/\/+$/, "");
+}
 
 /** The box image's account uids (integrator's Wave A0 image): 2000-2063, gid = uid. */
 export const UID_MIN = 2000;
@@ -78,7 +102,7 @@ export class Accounts {
   fromRow(r) {
     return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
-      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
+      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), model: r.model == null ? null : String(r.model), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
   }
 
   /** Every account for a provider (or every account, provider omitted), plus a synthesized
@@ -146,8 +170,9 @@ export class Accounts {
     // A provider's first account is its default: with only one, there is nothing to choose, and a start must never find "no account".
     const first = !this.db.prepare("SELECT 1 FROM sessions_accounts WHERE provider = ?").get(provider);
     if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(provider);
-    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0);
+    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
+      i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100));
     return this.row(id);
   }
 

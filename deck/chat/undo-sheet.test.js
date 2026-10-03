@@ -43,7 +43,7 @@ test("pick a commit: undo goes back past it, Put back restores with that undo's 
   assert.equal($(s.el, "[data-act=redo]"), null);
 });
 
-test("Everything sends no commit and a box without the tool says there is nothing of its own to undo", async () => {
+test("Everything sends no commit and a server without the tool says there is nothing of its own to undo", async () => {
   const calls = [];
   const s = undoSheet({ load: async () => ({ data: H }), onClose() {}, undo: async to => { calls.push(to); return { data: { undone: 3, n: 1 } }; }, redo: async () => ({ data: {} }) });
   await s.load();

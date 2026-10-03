@@ -17,7 +17,11 @@ export async function connect(base, browserName = "safari") {
     async open(url) {
       await s("POST", "/url", { url });
       // WebDriver has no status code; a page that loaded with its own title stands in for 200.
-      return String(await evaluate("document.readyState")) === "complete" ? 200 : 0;
+      for (let i = 0; i < 80; i++) {
+        if (String(await evaluate("document.readyState")) === "complete") return 200;
+        await new Promise(r => setTimeout(r, 250));
+      }
+      return 0;
     },
     async waitText(re, timeoutMs = 20000) {
       const until = Date.now() + timeoutMs;

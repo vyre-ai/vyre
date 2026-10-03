@@ -87,7 +87,7 @@ test("person: a 401 opens the sheet, the passkey signs in, and the call goes aga
   assert.equal(sheets().length, 0, "the sheet closed");
 });
 
-test("person: a box that still refuses after sign-in fails the call after one retry", async () => {
+test("person: a server that still refuses after sign-in fails the call after one retry", async () => {
   reset();
   always = true;
   const p = api.call("threads.list");

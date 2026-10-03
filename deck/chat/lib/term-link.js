@@ -132,7 +132,7 @@ export function onClose(code, reason = "") {
       exited: "The shell exited.",
       closed: "The terminal was closed.",
       detached: "The terminal ended: nobody was attached for too long.",
-      stopped: "The box stopped, and this terminal could not outlive it.",
+      stopped: "Your server stopped, and this terminal could not outlive it.",
     }[reason] || "The terminal ended.";
     return { act: "end", why };
   }

@@ -1,0 +1,6 @@
+#!/bin/sh
+# askpass: sudo's password question, asked in a macOS dialog, for Lumen's one-time system setup (sudo -A).
+# The answer goes to sudo on stdout and nowhere else.
+exec /usr/bin/osascript \
+  -e 'display dialog "Vyre needs your Mac password once, to set up its system service." default answer "" with hidden answer with title "Vyre Lumen" buttons {"Cancel", "OK"} default button "OK" with icon note' \
+  -e 'text returned of result'

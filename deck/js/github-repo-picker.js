@@ -70,7 +70,7 @@ export function openGithubRepoPicker(o) {
 
       const acctErrText = err => (err.missing ? "GitHub isn't connected here yet." : (err.message || "Could not load GitHub accounts."));
       (async () => {
-        const r = await call("github.accounts");
+        const r = await call("github.accounts", {}, { ifPresent: true });
         if (r.error) { put(list, h("div", { class: "empty" }, acctErrText(r.error))); return; }
         state.accounts = Array.isArray(r.data) ? r.data : [];
         if (!state.accounts.length) {

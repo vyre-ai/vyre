@@ -170,6 +170,20 @@ function enrollOf(e) {
 }
 
 /**
+ * Whether a relay URL named inside a record is exactly the relay that served it: a ws or wss origin with the same scheme and host as
+ * the one asked, and nothing else in it.
+ * @param {string} named @param {string} asked
+ */
+export function sameRelay(named, asked) {
+  try {
+    const a = new URL(String(named)), b = new URL(String(asked).replace(/\/+$/, ""));
+    if (a.protocol !== "wss:" && a.protocol !== "ws:") return false;
+    if (a.username || a.password || a.search || a.hash || (a.pathname !== "/" && a.pathname !== "")) return false;
+    return a.protocol === b.protocol && a.host === b.host;
+  } catch { return false; }
+}
+
+/**
  * Pair with a box from its QR offer: the fragment carries the whole offer, so it never reaches a
  * server (ADR 0026 section 6).
  * @param {string} offerUrl
@@ -259,6 +273,9 @@ export async function resolveTicket(ticket, o) {
     record = JSON.parse(fromUtf8(await cryptoP.aesGcmDecrypt(key, sealed.subarray(0, 12), utf8(TICKET_SEAL_AD), sealed.subarray(12))));
   } catch { throw fail("bad_record", "the relay's answer for this pairing code is not valid"); }
   if (record.v !== 1 || typeof record.relay !== "string" || !ROUTE_RE.test(record.route) || typeof record.box !== "string") throw fail("bad_record", "the relay's answer for this pairing code is not shaped like an offer");
+  // The record names the relay the phone will connect to after it is confirmed. It comes from the box, so it is held to the relay that
+  // actually answered: the same host and scheme, no path, credentials, query or fragment. A box cannot send a phone to another server.
+  if (!sameRelay(record.relay, o.relay)) throw fail("bad_record", "this pairing code names a different relay than the one that holds it; refusing to pair");
   // The MAC only proves the relay's answer is unmodified from whatever the box minted; an expiry
   // in the past is still a legitimate, unmodified record for a ticket that should have been gone.
   if (typeof record.exp !== "number" || record.exp < Date.now()) throw fail("ticket_gone", "this pairing code has expired or was already used");

@@ -36,7 +36,7 @@ test("pill: shown from attempt 4 (after the quick retries), says since when at 6
   assert.deepEqual(seen, ["Reconnecting"]);
   assert.equal(pill.shown, true);
   at(SINCE_AFTER - 2_001);
-  assert.deepEqual(seen, ["Reconnecting"], "not before 60 s from the box's last answer");
+  assert.deepEqual(seen, ["Reconnecting"], "not before 60 s from your server's last answer");
   at(1);
   assert.deepEqual(seen, ["Reconnecting", `Reconnecting since h${down}`], "once, by the one timer");
   at(600_000);

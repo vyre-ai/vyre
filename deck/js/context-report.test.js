@@ -56,7 +56,7 @@ test("reportContext: once per place, again on a return (focus and visibility cou
   stop();
 });
 
-test("reportContext: a box without context is asked once", async () => {
+test("reportContext: a server without context is asked once", async () => {
   let asked = 0, path = "/now";
   const W = world();
   reportContext({ attempt: async () => { asked++; return { error: { code: "no_such_tool" } }; }, surface: () => "deck", path: () => path, win: W.win, doc: W.doc });

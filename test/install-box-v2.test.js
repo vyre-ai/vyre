@@ -107,10 +107,25 @@ test("install-box.sh v2: the code lands in vyre.env at 0600, keeps the person's 
 });
 
 test("install-box.sh v2: with a code the terminal ends on the plain line", t => {
-  const b = box(t);
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /Done\. Back to your browser\./);
+});
+
+test("install-box.sh v2: when the box is not running after the start, the installer fails and says so (it never exits 0 without a running box)", t => {
+  const b = box(t); // the stub docker lists no running container
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.notEqual(r.status, 0, r.stdout);
+  assert.match(r.stderr, /Vyre is not running/);
+  assert.doesNotMatch(r.stdout, /Your server is ready|Back to your browser/);
+});
+
+test("install-box.sh v2: when the box is running after the start, the installer is done", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(b.calls().includes("--filter name=vyre-vyre-1 --filter status=running"), b.calls());
 });
 
 test("install-box.sh v2: a release with digests is cosign-checked against the workflow identity, then pulled by digest", t => {
@@ -366,7 +381,7 @@ test("install-box.sh v2: a code another server already used stops with the plain
 });
 
 test("install-box.sh v2: the check words come from the box, show on the terminal, and never go through the mailbox", t => {
-  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /Check words: lantern quiet river oak/);

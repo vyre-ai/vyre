@@ -12,7 +12,7 @@ export async function connect(base, view = {}) {
   const ws = new WebSocket(version.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let id = 0;
-  const wait = new Map(), logs = [], listeners = new Set();
+  const wait = new Map(), logs = [], listeners = new Set(), requests = [];
   ws.onmessage = m => {
     const d = JSON.parse(String(m.data));
     if (d.id && wait.has(d.id)) {
@@ -21,6 +21,8 @@ export async function connect(base, view = {}) {
       return;
     }
     if (d.method === "Runtime.exceptionThrown") logs.push("exception: " + (d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text));
+    else if (d.method === "Network.requestWillBeSent") requests.push(d.params.request.url);
+    else if (d.method === "Network.webSocketCreated") requests.push(d.params.url);
     else if (d.method === "Log.entryAdded") logs.push(`${d.params.entry.level}: ${d.params.entry.text} ${d.params.entry.url || ""}`.trim());
     else if (d.method === "Runtime.consoleAPICalled" && ["error", "warning"].includes(d.params.type)) logs.push(`console.${d.params.type}: ` + d.params.args.map(a => a.value ?? a.description).join(" "));
     for (const l of listeners) l(d);
@@ -34,7 +36,7 @@ export async function connect(base, view = {}) {
   const { targetId } = pages.length ? pages[0] : await send("Target.createTarget", { url: "about:blank" });
   const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
   const s = (method, params) => send(method, params, sessionId);
-  await s("Page.enable"); await s("Runtime.enable"); await s("Log.enable");
+  await s("Page.enable"); await s("Runtime.enable"); await s("Log.enable"); await s("Network.enable");
   if (view.width) await s("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height || 900, deviceScaleFactor: view.scale || 1, mobile: Boolean(view.mobile) });
 
   const evaluate = async expr => {
@@ -44,6 +46,7 @@ export async function connect(base, view = {}) {
   };
   return {
     logs,
+    requests,
     send: s,
     evaluate,
     /** Open a URL; resolve with the main document's HTTP status once it has loaded. */

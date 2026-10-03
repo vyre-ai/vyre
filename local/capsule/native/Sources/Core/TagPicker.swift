@@ -98,6 +98,9 @@ public enum TagResults {
         case "project": return "folder"
         case "session": return "bubble.left"
         case "teammate": return "person"
+        // A connected app or "Connect <app>": the server names its icon "plug", which is not a symbol; the one that means it is powerplug.
+        case "connector": return "powerplug"
+        case "account": return "person.crop.circle"
         default: return icon.flatMap { ViewIcon.spec($0) }.flatMap { if case .symbol(let n, _) = $0 { return n }; return nil } ?? "number"
         }
     }

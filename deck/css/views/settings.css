@@ -124,3 +124,10 @@
 
 /* Your own avatar, large, with its Vyre code ring (js/avatars.js). */
 .set-you-av { display: flex; margin: 4px 0 20px; }
+
+/* Rename in place (js/rename-field.js). */
+.rn { display: inline-flex; align-items: center; gap: var(--s-2, 8px); flex-wrap: wrap; min-width: 0; }
+.rn-name { min-width: 0; overflow-wrap: anywhere; }
+.rn-edit { opacity: .6; }
+.rn:hover .rn-edit, .rn-edit:focus-visible { opacity: 1; }
+.rn-in { width: min(260px, 60vw); }

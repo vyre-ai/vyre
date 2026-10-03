@@ -77,9 +77,17 @@
    "module": "artifacts",
    "reason": "own-scope check: reach() with the read option (own project or a # tag) on the artifact, and the file is copied only into the caller's own registered artifacts folder (the folder must still be the registered one); it never writes anywhere else and never changes the artifact"
   },
+  "artifacts.media.gallery": {
+   "module": "artifacts",
+   "reason": "read-only, scoped by the module itself: the same scope as artifacts.list (an agent sees its own project, the person everything), no bytes, only a prompt's first 140 characters"
+  },
   "artifacts.media.read": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag), and the tool refuses any caller that is not the person or a first-party module"
+  },
+  "artifacts.media.usage": {
+   "module": "artifacts",
+   "reason": "read-only, and the tool refuses any caller that is not the person's surface or a first-party module"
   },
   "artifacts.move": {
    "module": "artifacts",
@@ -204,6 +212,10 @@
   "chrome.open": {
    "module": "chrome",
    "reason": "an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+  },
+  "chrome.parallel": {
+   "module": "chrome",
+   "reason": "read-only: only reading ops (a snapshot, a screenshot, net list, api route) run, one per tab, each through the same floor and stop as a single call, so nothing is changed in a page; an agent caller needs the person's grant (requireGrant) first, and a step that writes is refused outright (use chrome.batch, which holds writes at the Gate). test: local/hands-chrome-mac/ext-batch.test.js"
   },
   "chrome.plan": {
    "module": "chrome",
@@ -669,6 +681,14 @@
    "module": "link",
    "reason": "read-only, scoped by the module itself"
   },
+  "link.companion.hello": {
+   "module": "link",
+   "reason": "callers limited in code to tailnet, and the call is signed by the companion core key, checked against a live companion row and its parent device on every call"
+  },
+  "link.companion.pair": {
+   "module": "link",
+   "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"
+  },
   "link.events": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
@@ -1004,6 +1024,10 @@
   "sessions.accounts.bind": {
    "module": "sessions",
    "reason": "askedOnly(): a non-person (the verified assistant, or on meta.asked) binds only to the project the request came from, never an agent, a default or '*', and never finishes a pending account; the person's surface sets anything wider and confirms any pending account"
+  },
+  "sessions.accounts.key": {
+   "module": "sessions",
+   "reason": "askedOnly(): runs for a person's own surface (the setup page's channel is one), or on meta.asked; an agent, the assistant or a module is refused with not_asked (no assistant allowance: a key is a credential). The key is checked with one cheap call, stored in the Vault by the sessions module and never returned; the account is bound to its address, which must be https or this machine and carry no login."
   },
   "sessions.accounts.list": {
    "module": "sessions",

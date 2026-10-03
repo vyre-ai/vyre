@@ -46,14 +46,14 @@ test("Trust calls relay.devices.trust {id, trusted: true} with the person's pres
   assert.deepEqual(calls.find(c => c.tool === "relay.devices.trust"), { tool: "relay.devices.trust", input: { id: "d1", trusted: true } });
 });
 
-test("waitingOf reads the browsers the box lists as waiting (web, not trusted, trustAsked), name as its claim", () => {
+test("waitingOf reads the browsers your server lists as waiting (web, not trusted, trustAsked), name as its claim", () => {
   const list = { devices: [{ id: "w1", kind: "web", name: "Kit\u202e's Chrome", trusted: false, trustAsked: 1700000000000, fingerprint: "ab12 cd34" },
     { id: "w2", kind: "web", name: "Trusted", trusted: true, trustAsked: 5 }, { id: "w3", kind: "web", name: "Never asked", trusted: false }, { id: "p1", kind: "app", name: "Phone", trustAsked: 5 }] };
   assert.deepEqual(waitingOf(list), [{ id: "w1", name: "Kit 's Chrome", fingerprint: "ab12 cd34", asked: 1700000000000 }]);
   assert.deepEqual(waitingOf(null), []);
 });
 
-test("an ask the box lists after a reload still shows; with no key on the row Trust is off and the card says why", async () => {
+test("an ask your server lists after a reload still shows; with no key on the row Trust is off and the card says why", async () => {
   globalThis.fetch = /** @type {any} */ (async (url, o) => {
     const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
     calls.push({ tool, input: JSON.parse(o.body) });

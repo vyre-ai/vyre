@@ -194,10 +194,28 @@ sha256() {
 # every capability dropped, so it could not write under /home/vyre. Paths go in as arguments.
 csh() { s=$1; shift; compose exec -T -u vyre vyre sh -c "$s" sh "$@"; }
 
-# older A B: true when version A is below B (x.y.z, a -beta.N suffix ignored).
+# older A B: true when version A is below B, by semver: the x.y.z first, then a release is above its own prereleases
+# (0.2.0-rc.2 < 0.2.0), and two prereleases compare identifier by identifier (numbers by value, and below words).
 older() {
-  awk -v a="$1" -v b="$2" 'BEGIN { sub(/-.*/, "", a); sub(/-.*/, "", b); split(a, x, "."); split(b, y, ".")
-    for (i = 1; i <= 3; i++) { if (x[i] + 0 < y[i] + 0) exit 0; if (x[i] + 0 > y[i] + 0) exit 1 } exit 1 }'
+  awk -v a="$1" -v b="$2" '
+    function core(v) { i = index(v, "-"); return i ? substr(v, 1, i - 1) : v }
+    function pre(v) { i = index(v, "-"); return i ? substr(v, i + 1) : "" }
+    BEGIN {
+      split(core(a), x, "."); split(core(b), y, ".")
+      for (i = 1; i <= 3; i++) { if (x[i] + 0 < y[i] + 0) exit 0; if (x[i] + 0 > y[i] + 0) exit 1 }
+      pa = pre(a); pb = pre(b)
+      if (pa == pb || pa == "") exit 1
+      if (pb == "") exit 0
+      n = split(pa, p, "."); m = split(pb, q, ".")
+      for (i = 1; i <= n && i <= m; i++) {
+        pn = (p[i] ~ /^[0-9]+$/); qn = (q[i] ~ /^[0-9]+$/)
+        if (pn && qn) { if (p[i] + 0 < q[i] + 0) exit 0; if (p[i] + 0 > q[i] + 0) exit 1 }
+        else if (pn) exit 0
+        else if (qn) exit 1
+        else { if (p[i] < q[i]) exit 0; if (p[i] > q[i]) exit 1 }
+      }
+      exit (n < m) ? 0 : 1
+    }'
 }
 
 # pick_release: set BASE to the release's download folder and TAG to its tag, from the GitHub
@@ -377,8 +395,10 @@ restore_db() {
   [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $BK/last" >&2; return 1; }
   compose stop vyre
   k="$BK/$(basename "$f" .tar.gz).key"
-  [ -f "$k" ] || { echo "vyre: no passphrase is kept for $f ($k)" >&2; return 1; }
-  compose run --rm --no-deps -T vyre vyre restore "$f" --force <"$k" || { echo "vyre: could not restore $f" >&2; return 1; }
+  # A backup this wrapper made has its passphrase beside it. One made by an older release's updater (0.1.x) has none: it is plain, and
+  # the release rolled back to is the one that made it, so its own restore reads it without a passphrase.
+  if [ -f "$k" ]; then kin=$k; else kin=/dev/null; fi
+  compose run --rm --no-deps -T vyre vyre restore "$f" --force <"$kin" || { echo "vyre: could not restore $f" >&2; return 1; }
   say "restored the database from $f"
 }
 

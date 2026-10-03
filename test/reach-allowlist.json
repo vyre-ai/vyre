@@ -429,6 +429,10 @@
    "module": "memory",
    "default": "callers admit a model"
   },
+  "onboard.assistant": {
+   "module": "onboard",
+   "default": "open to any caller"
+  },
   "onboard.claude": {
    "module": "onboard",
    "default": "open to any caller"
@@ -458,6 +462,10 @@
    "default": "open to any caller"
   },
   "onboard.passkey": {
+   "module": "onboard",
+   "default": "open to any caller"
+  },
+  "onboard.setup": {
    "module": "onboard",
    "default": "open to any caller"
   },

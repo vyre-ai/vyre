@@ -54,12 +54,91 @@ public enum VyreCLI {
     }
 }
 
+/// What the app carries to set Vyre up on a Mac with no terminal and no Node (Contents/Resources/setup, put there by
+/// scripts/mac-app-package.sh): the installer script, the pinned Node tarball for this architecture, and the sudo helper that asks
+/// for the Mac password in a dialog. setup.json can name extra installer arguments ("args"), so the flags change without the app.
+public struct BundledSetup: Equatable {
+    public let dir: String
+    public var script: String { dir + "/install-mac-server.sh" }
+    public var sudo: String { dir + "/vyre-sudo" }
+    /// The Node tarball, or nil when the app was built without one.
+    public let nodeTgz: String?
+    public let args: [String]
+
+    /// The environment the installer runs with: the dialog sudo, and the bundled Node instead of a download. The installer still
+    /// checks the tarball against the checksum pinned inside itself.
+    public var environment: [String: String] {
+        var e = ["VYRE_SUDO": sudo]
+        if let nodeTgz { e["VYRE_NODE_URL"] = "file://" + nodeTgz }
+        return e
+    }
+
+    /// The whole environment the installer runs with, and nothing inherited: a same-user process can `launchctl setenv` VYRE_BOX_URL,
+    /// VYRE_CORE_BASE, VYRE_NODE_SHA256, VYRE_INSTALL_MAIN, PATH and the like before Lumen starts, and the installer honours them.
+    public func scrubbedEnvironment(_ from: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
+        var e = environment
+        e["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+        for k in ["HOME", "USER", "LANG"] { if let v = from[k], !v.isEmpty { e[k] = v } }
+        return e
+    }
+
+    /// Nil when this setup is safe to run as the person's install (it ends with one sudo), else the reason it is not. The files must be
+    /// ordinary (no links) and writable by nobody but the person. Inside the app, the app's own signature must still verify, so a file
+    /// changed after the build refuses to run. This catches a damaged or half-changed app, not a deliberate swap: 0.2.x is self-signed, and an
+    /// ad hoc signature can be redone by whoever changed the file. Nothing inside a bundle the person's own user can write can anchor trust;
+    /// a root-owned copy or a Developer ID requirement (0.2.5) would. vyre-sudo's pins limit what that file can ask sudo to run.
+    public func problem(bundle: String? = Bundle.main.bundlePath, runner: (String) -> Bool = BundledSetup.codesignOK) -> String? {
+        let fm = FileManager.default
+        for name in ["install-mac-server.sh", "vyre-sudo", "vyre-sudo-check", "askpass"] + (nodeTgz.map { [($0 as NSString).lastPathComponent] } ?? []) {
+            let path = dir + "/" + name
+            guard let a = try? fm.attributesOfItem(atPath: path) else { return "\(name) is missing from the setup" }
+            if a[.type] as? FileAttributeType != .typeRegular { return "\(name) is not an ordinary file" }
+            if let perm = a[.posixPermissions] as? NSNumber, perm.intValue & 0o022 != 0 { return "\(name) can be changed by others" }
+        }
+        if let bundle, dir.hasPrefix(bundle + "/"), !runner(bundle) { return "this app's signature no longer verifies, so the setup inside it will not run. Download Lumen again." }
+        return nil
+    }
+
+    /// `codesign --verify --deep --strict` on the app: true when it passes.
+    public static func codesignOK(_ bundle: String) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        p.arguments = ["--verify", "--deep", "--strict", bundle]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
+    /// The setup folder inside this app, or VYRE_CAPSULE_SETUP_DIR (tests, and a hand-run check). Nil when there is none.
+    public static func locate(env: [String: String] = ProcessInfo.processInfo.environment, resources: String? = Bundle.main.resourcePath) -> BundledSetup? {
+        let dir = env["VYRE_CAPSULE_SETUP_DIR"].flatMap { $0.isEmpty ? nil : $0 } ?? resources.map { $0 + "/setup" }
+        guard let dir, dir.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: dir + "/install-mac-server.sh") else { return nil }
+        var tgz: String?
+        var args = ["--yes"]
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: dir) {
+            tgz = names.first { $0.hasPrefix("node-") && $0.hasSuffix(".tar.gz") }.map { dir + "/" + $0 }
+        }
+        if let d = try? Data(contentsOf: URL(fileURLWithPath: dir + "/setup.json")), let o = VJ.decode(d) as? [String: Any],
+           let a = o["args"] as? [String], a.allSatisfy({ !$0.isEmpty }) { args = a }
+        return BundledSetup(dir: dir, nodeTgz: tgz, args: args)
+    }
+}
+
 extension CapsuleModel {
     /// `vyre up`, run from here: the argv is fixed. --no-capsule, since this is the Capsule.
     static let startArgv = ["up", "--no-capsule"]
 
     /// vyred is being started from this Capsule.
     var startingVyre: Bool { commandRun.map { $0.argv == Self.startArgv && $0.running } ?? false }
+
+    /// This Mac has no vyre to start but the app carries the setup: the button says "Set up Vyre on this Mac", not "Start Vyre".
+    var setupNeeded: Bool {
+        (cliOverride ?? VyreCLI.locate(home: home)) == nil && (setupOverride ?? BundledSetup.locate()) != nil
+    }
+    /// The button's words: setting up the first time, starting when Vyre is already set up and just not running.
+    var startWords: String { setupNeeded ? "Set up Vyre on this Mac" : "Start Vyre" }
+    var startingWords: String { setupNeeded ? "Setting up Vyre on this Mac…" : "Starting Vyre on this Mac…" }
 
     /// Return on an empty box while offline starts Vyre.
     func returnStartsVyre() -> Bool {
@@ -77,7 +156,21 @@ extension CapsuleModel {
         commandRun = run
         autoTask?.cancel()
         guard let cli = cliOverride ?? VyreCLI.locate(home: home) else {
-            run.finish(nil, failure: "Lumen could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
+            // No vyre on this Mac: the app's own setup, with its own Node. Its lines are drawn as they come, and it asks for the
+            // Mac password in a dialog (not a terminal). Only when the app was built with it; otherwise the old words.
+            guard let setup = setupOverride ?? BundledSetup.locate() else {
+                run.finish(nil, failure: "Lumen could not find the vyre command. Run vyre capsule once in Terminal, so it knows where Vyre is.")
+                return
+            }
+            if let why = setupOverride == nil ? setup.problem() : nil {
+                run.finish(nil, failure: "Lumen will not run its setup: \(why)")
+                return
+            }
+            Task { @MainActor in
+                let code = await self.exec(run, cli: ["/bin/sh", setup.script], args: setup.args, frames: false, errorsAlways: true, environment: setup.scrubbedEnvironment(), replaceEnvironment: true)
+                run.finish(code)
+                if code == 0 { self.vyred.follower.lookNow() }
+            }
             return
         }
         Task { @MainActor in
@@ -91,10 +184,12 @@ extension CapsuleModel {
     /// The row a `vyre ...` line gets while vyred is down: start it, since nothing else can run.
     func startFirstItem(_ argv: [String]) -> ResultItem {
         let up = argv.first == "up"
-        return ResultItem(id: "cli:start", kind: "cli", title: up ? "Start Vyre" : "Start Vyre first",
-                          subtitle: up ? "Vyre is not running on this Mac. Return starts it." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not running. Return starts it.",
+        let setup = setupNeeded
+        return ResultItem(id: "cli:start", kind: "cli", title: setup ? (up ? "Set up Vyre on this Mac" : "Set up Vyre first") : (up ? "Start Vyre" : "Start Vyre first"),
+                          subtitle: setup ? (up ? "Vyre is not set up on this Mac. Return sets it up, with your Mac password once." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not set up here. Return sets it up, with your Mac password once.")
+                                          : (up ? "Vyre is not running on this Mac. Return starts it." : "vyre \(argv.joined(separator: " ")) needs Vyre, which is not running. Return starts it."),
                           icon: .symbol("power", .stone), section: .top, score: 2,
-                          actions: [ResultAction(id: "start", title: "Start Vyre", symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
+                          actions: [ResultAction(id: "start", title: setup ? "Set up Vyre" : "Start Vyre", symbol: "return", shortcut: KeyShortcut("return")) { [weak self] _, _ in
                               await MainActor.run { self?.startVyre() }
                               return .said("")
                           }])

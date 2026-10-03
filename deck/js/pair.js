@@ -34,7 +34,7 @@ export function pairRequests(opts = {}) {
   let seq = 0;
   async function load() {
     const n = ++seq;
-    const r = await attempt("link.pending");
+    const r = await attempt("link.pending", {}, { ifPresent: true });
     if (n !== seq || r.error || !Array.isArray(r.data)) return;
     const ids = new Set(r.data.map((/** @type {any} */ p) => p.id));
     for (const [id, c] of cards) if (!ids.has(id) && !done.has(id)) { c.remove(); cards.delete(id); }
@@ -119,6 +119,6 @@ function why(/** @type {any} */ e) {
   if (/no pairing request has that code/.test(m)) return "That code does not match. Check the code on the Mac and try again.";
   if (/too many wrong codes/.test(m)) return "Too many wrong codes, so every request was cancelled. Start again on the Mac.";
   if (e.code === "no_passkey" || e.code === "cancelled" || e.code === "presence_required") return `${m} Approving needs a passkey on this device: Settings, Security.`;
-  if (e.missing) return "Pairing is answered on the box, and this machine is not one.";
+  if (e.missing) return "Pairing is answered on your server, and this machine is not one.";
   return m;
 }

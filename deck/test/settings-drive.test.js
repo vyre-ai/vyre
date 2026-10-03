@@ -38,8 +38,8 @@ test("drive rows: a share with secrets inside gets a line; one too big to check 
   assert.deepEqual(unsafeLines({ unsafe: [{ found: [".env"] }, null] }), [], "a row without a share is dropped");
 });
 
-test("drive rows: the remount line only when the box's mount has to change", () => {
-  const step = "Set VYRE_DRIVE_ACCESS=rw in the box's .env, then run docker compose up -d";
+test("drive rows: the remount line only when your server's mount has to change", () => {
+  const step = "Set VYRE_DRIVE_ACCESS=rw in your server's .env, then run docker compose up -d";
   assert.deepEqual(mountHint({ name: "projects", access: "rw", mount: { want: "rw", now: "ro", change: true, step } }), { line: "Remount on your Mac", step });
   assert.deepEqual(mountHint({ mount: { want: "rw", now: "unknown", change: true } }), { line: "Remount on your Mac", step: null });
   assert.equal(mountHint({ name: "projects", access: "ro", mount: { want: "ro", now: "ro", change: false } }), null);

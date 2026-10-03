@@ -26,6 +26,8 @@ import { attempt, on } from "./api.js";
 import { mountGlassMini } from "./glass-mini.js";
 import * as needs from "./needs.js";
 import { initial, base, since } from "./fmt.js";
+import { whoAvatar, unknownActorAvatar } from "./avatars.js";
+import { haptic } from "./haptics.js";
 import { pushState, setupCard } from "./phone-setup.js";
 import { standalone } from "./pwa.js";
 import { openSheet } from "./sheet.js";
@@ -98,7 +100,7 @@ export function phoneNow(ctx) {
   /** Macs asking to pair, from link.pending. Empty where this machine is not a box. */
   let pairs = /** @type {any[]} */ ([]);
   const loadPairs = async () => {
-    const r = await attempt("link.pending");
+    const r = await attempt("link.pending", {}, { ifPresent: true });
     if (!ctx.alive()) return;
     pairs = Array.isArray(r.data) ? r.data.map((/** @type {any} */ p) => ({ kind: "pair", id: "pair:" + p.id, at: Number(p.expires || Date.now()) - 600_000, pair: p })) : [];
     drawNeeds();
@@ -209,7 +211,8 @@ export function phoneNow(ctx) {
 
   const markSwiped = () => { if (!getLocal(SWIPED_KEY)) { setLocal(SWIPED_KEY, "1"); hint.remove(); } };
   const haptic = () => { try { if (/Android/.test(navigator.userAgent)) navigator.vibrate?.(10); } catch {} };
-  const fail = (/** @type {any} */ n, /** @type {any} */ e) => { hidden.delete(n.id); failed.set(n.id, problem(e)); drawNeeds(); };
+  // A refusal (the box said no, or could not) is a warning tap; an approval that went through is a success.
+  const fail = (/** @type {any} */ n, /** @type {any} */ e) => { hidden.delete(n.id); failed.set(n.id, problem(e)); drawNeeds(); haptic("warning"); };
 
   /** Approve an ask at once (the owner's own act); the toast only says so. */
   function approve(/** @type {any} */ n) {
@@ -217,7 +220,7 @@ export function phoneNow(ctx) {
     hidden.add(n.id);
     drawNeeds();
     say(toastFor("approve").text, null);
-    needs.answer(n, { label: "Approve", decision: "allow" }).then(() => { hidden.delete(n.id); }, e => fail(n, e));
+    needs.answer(n, { label: "Approve", decision: "allow" }).then(() => { hidden.delete(n.id); haptic("success"); }, e => fail(n, e));
   }
 
   /** Deny, Discard or a pair's Deny: collapsed now, sent when the toast ends, unless Undo. */
@@ -285,7 +288,8 @@ export function phoneNow(ctx) {
     let cur = n;
     const update = (/** @type {any} */ x) => {
       cur = x;
-      put(tile, x.kind === "pair" ? "m" : x.agent ? initial(x.agent) : glyph("terminal", 18));
+      // The acting agent's own face; a neutral one when the record names no agent (never the assistant's). A Mac asking to pair is a Mac.
+      put(tile, x.kind === "pair" ? "m" : x.agent ? whoAvatar(x.agent, { size: 32 }) : unknownActorAvatar({ size: 32 }));
       put(t1, titleOf(x));
       put(time, ago(x.at));
       const l2 = secondLine(x);

@@ -21,7 +21,7 @@ export function mountFiles(o) {
   const { target, name } = o;
   let dead = false;
   let path = "";
-  const rootLabel = target === "box" ? "The box" : `${name}'s home`;
+  const rootLabel = target === "box" ? "Your server" : `${name}'s home`;
   /** @type {any[]} */ let entries = [];
   /** @type {any} */ let listErr = null;
   /** @type {any} */ let sel = null;
@@ -173,7 +173,7 @@ export function mountFiles(o) {
     // Dragging the button to Finder saves the file (Chromium's DownloadURL); the ticket was fetched
     // when the pointer arrived, since dragstart cannot wait for the network.
     a.addEventListener("dragstart", e => {
-      if (!ticket || ticket.for !== full || !e.dataTransfer) { e.preventDefault(); say("Hold on a moment and drag again: Glass is asking the box for the file.", "err"); fetchTicket(); return; }
+      if (!ticket || ticket.for !== full || !e.dataTransfer) { e.preventDefault(); say("Hold on a moment and drag again: Glass is asking your server for the file.", "err"); fetchTicket(); return; }
       e.dataTransfer.setData("DownloadURL", `application/octet-stream:${ticket.name}:${location.origin}${ticket.path}`);
       e.dataTransfer.setData("text/uri-list", location.origin + ticket.path);
       e.dataTransfer.effectAllowed = "copy";
@@ -213,7 +213,7 @@ export function mountFiles(o) {
   function trashBtn(full, kind) {
     return h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => {
       put(slot(), h("div", { class: "gl-inline gl-inline-warn", role: "alertdialog", "aria-label": "Move to trash" },
-        h("p", { class: "small" }, `Move ${leaf(full)} to the trash? ${kind === "dir" ? "Everything in it goes too. " : ""}It stays in the trash folder on ${target === "box" ? "the box" : `${name}'s computer`}, so you can take it back out.`),
+        h("p", { class: "small" }, `Move ${leaf(full)} to the trash? ${kind === "dir" ? "Everything in it goes too. " : ""}It stays in the trash folder on ${target === "box" ? "your server" : `${name}'s computer`}, so you can take it back out.`),
         h("div", { class: "gl-inline-acts" },
           h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => put(slot()) }, "Cancel"),
           h("button", { type: "button", class: "btn btn-sm gl-danger", onclick: async () => {

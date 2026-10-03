@@ -1,0 +1,27 @@
+# Idle CPU of vyred on a quiet hosted runner, three runs per Node major, for setting scripts/perf-check's budgets (#71). Dispatch only.
+name: perf-idle
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/launch-perf-idle"]
+permissions:
+  contents: read
+jobs:
+  idle:
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}" }
+      - run: npm ci --no-audit --no-fund
+      - name: three idle runs
+        run: |
+          for i in 1 2 3; do
+            echo "== run $i (node ${{ matrix.node }}, load $(cut -d' ' -f1-3 /proc/loadavg))"
+            node scripts/perf-check 2>&1 | grep -E "CPU \(|FAIL|host load" || true
+          done

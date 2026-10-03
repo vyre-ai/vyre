@@ -63,7 +63,7 @@ test("/goal, then Enter for the title, Enter per milestone, Cmd+Enter sends one 
   c.stop();
 });
 
-test("Esc cancels a goal in progress and clears the box", async () => {
+test("Esc cancels a goal in progress and clears your server", async () => {
   const c = mountComposer({ thread: thread() });
   type(c, "/goal Something");
   enter(c);

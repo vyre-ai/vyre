@@ -57,7 +57,7 @@ public enum Glass {
     }
 
     private static func row(_ target: String, _ sub: String, _ score: Double) -> GlassRow {
-        GlassRow(id: "glass:\(target)", target: target, label: target == box ? "Open the box's files in Glass" : "Open Glass · \(target)", sub: sub, score: score)
+        GlassRow(id: "glass:\(target)", target: target, label: target == box ? "Open your server's files in Glass" : "Open Glass · \(target)", sub: sub, score: score)
     }
 
     /// "Open Glass" rows for a bare query. Typed as a command (`glass`, `glass <agent>`, `glass
@@ -75,7 +75,7 @@ public enum Glass {
                 if who.isEmpty || name.lowercased() == who { out.append(row(name, "watch its computer in the browser", 3)) }
                 else if name.lowercased().hasPrefix(who) { out.append(row(name, "watch its computer in the browser", 2.5)) }
             }
-            if who.isEmpty || box.hasPrefix(who) { out.append(row(box, "the box's files in the browser", who == box ? 3 : 2.4)) }
+            if who.isEmpty || box.hasPrefix(who) { out.append(row(box, "your server's files in the browser", who == box ? 3 : 2.4)) }
             return out
         }
         if agents.isEmpty { return [] }
@@ -102,7 +102,7 @@ public enum Glass {
     /// target, never taken from a row, and it is https, so nothing can read it as a flag.
     public static func open(box: String?, target: String, opener: (URL) -> Bool = { NSWorkspace.shared.open($0) }) -> ActionOutcome {
         guard let u = url(box: box, target: target), let link = URL(string: u) else {
-            return .failed("No box is paired with this Mac (vyre link pair <address>).")
+            return .failed("No server is paired with this Mac (vyre link pair <address>).")
         }
         return opener(link) ? .close(nil) : .failed("The browser did not open \(u).")
     }

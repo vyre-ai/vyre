@@ -49,7 +49,7 @@ export function countsLine(c) {
   return bits.length ? bits.join(", ") : "Nothing kept yet";
 }
 
-const errWords = (/** @type {any} */ e) => (e?.missing ? "Vyre Memory is not running on this box." : String(e?.message || e || "That did not go through."));
+const errWords = (/** @type {any} */ e) => (e?.missing ? "Vyre Memory is not running on your server." : String(e?.message || e || "That did not go through."));
 const pct = (/** @type {any} */ n) => (typeof n === "number" ? `${Math.round(n * 100)}%` : "");
 
 /** The box's own list of what can still be brought back: [{ kind: "site" | "row", key, name, part?, id?, label?, at, expires_at }], newest first, last 24 hours. @param {any} d */
@@ -228,7 +228,7 @@ export default async function sites(root, ctx, deps = {}) {
   }
 
   function draw() {
-    if (st.error) { put(body, empty(st.error?.missing ? "Sites are not on this box yet." : "Sites could not be read.", st.error)); return; }
+    if (st.error) { put(body, empty(st.error?.missing ? "Sites are not on your server yet." : "Sites could not be read.", st.error)); return; }
     // What the box can still bring back (from any device, any reload), apart from what this screen shows in place.
     const earlier = st.box.filter(f => !st.dismissed.has(tokenOf(f)) && (f.part ? !st.justItem.has(tokenOf(f)) : !st.just.has(f.key)));
     put(body,

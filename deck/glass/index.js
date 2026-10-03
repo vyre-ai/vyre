@@ -53,9 +53,9 @@ export default async function glass(ctx) {
   let tab = ctx.query.get("tab");
   if (!tabs.some(x => x.id === tab && !x.off)) tab = tabs[0].id;
 
-  const title = box ? "The box" : `${name}'s computer`;
+  const title = box ? "Your server" : `${name}'s computer`;
   const state = info ? (STATE[info.state] || info.state) : null;
-  const sub = box ? "Files in the folders you chose for Glass. The box has no screen."
+  const sub = box ? "Files in the folders you chose for Glass. Your server has no screen."
     : t.error ? errText(t.error) : !info ? `Glass does not know a computer for ${name}.` : null;
   const stateEl = state ? h("span", { class: "small faint" }, state) : null;
   // The state in the title follows the computer: watching thaws it, and it rests when nobody does.
@@ -123,9 +123,9 @@ function noBox(name, box, phone, offline) {
       link(box ? "/now" : `/agents/${encodeURIComponent(name)}`, { class: "gl-back", "aria-label": box ? "Back to Now" : `Back to ${name}` }, gicon("left", 22), h("span", null, box ? "Now" : "Back"))) : null,
     h("section", { class: "gl-nobox", "aria-labelledby": "gl-nobox-h" },
       h("div", { class: "lbl" }, "Glass"),
-      h("h1", { class: "h3", id: "gl-nobox-h" }, offline ? "The box is not answering." : box ? "No box is paired yet." : `${name}'s computer runs on your box.`),
+      h("h1", { class: "h3", id: "gl-nobox-h" }, offline ? "Your server is not answering." : box ? "No box is paired yet." : `${name}'s computer runs on your server.`),
       offline
-        ? h("p", { class: "muted" }, "Glass opens once the box answers again. Check it with ", h("code", { class: "code" }, "vyre status"), ".")
+        ? h("p", { class: "muted" }, "Glass opens once your server answers again. Check it with ", h("code", { class: "code" }, "vyre status"), ".")
         : h("p", { class: "muted" }, box ? "Pair a server and its files show here." : `No box is paired with this machine, so there is no screen to watch.`,
           " Pair one from a terminal:"),
       offline ? null : h("pre", { class: "gl-nobox-cmd code" }, "vyre box add you@your-server"),

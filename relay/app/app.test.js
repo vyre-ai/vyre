@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import { buildManifest, verifyManifest, signManifest, canonical, newer, folderOf, sha256Hex, MANIFEST, SIGNATURE } from "./manifest.js";
 import { keygen, build, loader, verify, loadKey, entriesOf } from "./release.js";
@@ -278,4 +279,102 @@ test("service worker: /app/<path> is answered from the build the loader named, h
   await w2.fire("install"); await w2.fire("activate");
   await w2.fire("message", { data: { type: "vyre-build", sha, manifest } });
   assert.equal((await w2.fire("fetch", { request: new Request("https://app.vyre.run/app/app.css") })).status, 404);
+});
+
+import { pairTicketFrom, HOSTED_RELAY, cardWords, phoneCodeWords } from "./loader/fragment.js";
+import nodeCrypto from "node:crypto";
+
+test("loader: the camera page's #pair=<ticket> hand-off is read exactly, and nothing else is taken for one", () => {
+  const ticket = nodeCrypto.randomBytes(8);
+  const got = pairTicketFrom(`#pair=${ticket.toString("base64url")}`);
+  assert.ok(got);
+  assert.deepEqual(Buffer.from(/** @type {Uint8Array} */ (got)), ticket);
+  assert.equal(HOSTED_RELAY, "wss://relay.vyre.run");
+  assert.equal(pairTicketFrom("#pair=short"), null, "too short");
+  assert.equal(pairTicketFrom(`#pair=${nodeCrypto.randomBytes(40).toString("base64url")}`), null, "too long");
+  assert.equal(pairTicketFrom(`#pair=${ticket.toString("base64url")}&x=1`), null, "extra fields are not a hand-off");
+  assert.equal(pairTicketFrom(`#enroll=${ticket.toString("base64url")}`), null);
+  assert.equal(pairTicketFrom(""), null);
+  assert.equal(pairTicketFrom("#pair=!!!!!!!!!!!!"), null);
+});
+
+// ---- the installed app scans inside itself (loader/pairing.js and the scanner it ships), and tailnet's one card pairs ----
+
+test("release: the sealed loader ships the scanner and the in-app scan, and every import in that tree resolves", async t => {
+  const dir = scratch(t);
+  const key = path.join(dir, "release.key");
+  keygen(key);
+  const out = path.join(dir, "out");
+  await loader({ release: "1.0.0", key, out });
+  const m = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
+  for (const f of ["pairing.js", "fragment.js", "relay/wink/page.js", "relay/wink/flow.js", "relay/wink/wink.css", "deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/haptics.js"]) assert.ok(m.files[f], `${f} is sealed in the loader`);
+  assert.ok(!m.files["deck/js/api.js"] && !m.files["deck/js/app.js"], "no Deck API client or shell in the app loader");
+  const { specifiers } = await import("../wink/closure.js");
+  for (const f of Object.keys(m.files).filter(f => /\.js$/.test(f))) {
+    const dirOf = path.posix.dirname(f);
+    for (const s of specifiers(fs.readFileSync(path.join(out, f), "utf8"))) {
+      const next = path.posix.normalize(path.posix.join(dirOf, s));
+      assert.ok(m.files[next], `${f} imports ${s}, which is not in the sealed loader`);
+    }
+  }
+  assert.doesNotMatch(fs.readFileSync(path.join(out, "pairing.js"), "utf8"), /"\.\.\/\.\.\//, "the repo-relative scanner paths were rewritten");
+});
+
+test("pairing.js, from the sealed tree: the in-app scanner hands back the decoded ticket and looks nothing up", async t => {
+  const dir = scratch(t);
+  const key = path.join(dir, "release.key");
+  keygen(key);
+  const out = path.join(dir, "out");
+  await loader({ release: "1.0.0", key, out });
+  const { install } = await import("../../deck/test/fake-dom.js");
+  install();
+  /** @type {any} */ (globalThis).matchMedia = () => ({ matches: true });
+  /** @type {any} */ (document).visibilityState = "visible";
+  /** @type {any} */ (document).getElementById = () => null;
+  const TICKET = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+  const timers = /** @type {(() => void)[]} */ ([]);
+  const realSet = globalThis.setTimeout;
+  /** @type {any} */ (globalThis).setTimeout = (/** @type {() => void} */ fn, /** @type {number} */ ms) => (ms === 450 ? (timers.push(fn), 0) : realSet(fn, ms));
+  t.after(() => { globalThis.setTimeout = realSet; });
+  const { scanTicket } = await import(pathToFileURL(path.join(out, "pairing.js")).href);
+  const tick = () => new Promise(r => realSet(r, 0));
+  /** @type {any} */ let cam = null;
+  const done = scanTicket({ relay: "wss://relay.test", crypto: {}, nav: { userAgent: "Mozilla/5.0 (Linux; Android 14)" }, startScan: (/** @type {any} */ o) => { cam = o; return { stop() {} }; } });
+  for (let i = 0; i < 4; i++) await tick();
+  cam.onFound(TICKET);
+  for (let i = 0; i < 8; i++) { await tick(); while (timers.length) timers.shift()?.(); }
+  assert.deepEqual([...await done], [...TICKET]);
+  assert.equal(/** @type {any} */ (document.body).querySelectorAll("#vyre-wink").length, 0, "the screen is gone when the ticket is handed over");
+});
+
+test("scan, one lookup, the card, the tap and the pairing, against a relay that deletes a ticket on its first lookup", async () => {
+  const { pairWithCard } = await import("./loader/fragment.js");
+  const live = new Set(["1,2,3,4,5,6,7,8"]);
+  const record = { name: "Alex's Mac", fingerprint: "AB12", handle: "alex", offer: { box: "k" } };
+  const resolve = async (/** @type {Uint8Array} */ tk) => { const k = [...tk].join(","); if (!live.delete(k)) throw new Error("expired or already used"); return record; };
+  /** @type {any[]} */ const cards = [];
+  const paired = await pairWithCard(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]), { resolve, confirm: async f => { cards.push(f); return true; }, pair: async f => ({ box: f.offer.box }) });
+  assert.deepEqual(paired, { box: "k" });
+  assert.equal(cards.length, 1);
+  assert.equal(live.size, 0, "the single lookup used the ticket up, and the pairing still worked from the held record");
+  // Not now pairs nothing.
+  live.add("9,9,9,9,9,9,9,9");
+  let pairs = 0;
+  assert.equal(await pairWithCard(new Uint8Array([9, 9, 9, 9, 9, 9, 9, 9]), { resolve, confirm: async () => false, pair: async () => { pairs++; return {}; } }), null);
+  assert.equal(pairs, 0);
+});
+
+test("loader: the confirm card says who the code claims to be, as short plain text", () => {
+  assert.deepEqual(cardWords({ name: "Harlow's box", handle: "harlow", fingerprint: "abcd efgh" }), { says: "harlow.vyre.run", fingerprint: "abcd efgh" });
+  assert.equal(cardWords({ name: "Harlow's box", handle: null, fingerprint: "abcd efgh" }).says, "Harlow's box");
+  const hostile = cardWords({ name: "<img src=x onerror=alert(1)>" + "x".repeat(200), handle: null, fingerprint: "f".repeat(100) });
+  assert.ok(hostile.says.length <= 80 && hostile.fingerprint.length <= 20, "capped; the loader writes it with textContent, never as markup");
+});
+
+test("loader: the phone shows its own key's fingerprint while it waits for Confirm, as plain capped text", () => {
+  assert.equal(phoneCodeWords("abcd efgh"), "This phone: abcd efgh");
+  assert.equal(phoneCodeWords(""), "");
+  assert.equal(phoneCodeWords(null), "");
+  assert.ok(!/[<>]/.test(phoneCodeWords("<b>abcd</b>")), "markup characters are dropped");
+  assert.ok(phoneCodeWords("f".repeat(100)).length <= "This phone: ".length + 20);
 });

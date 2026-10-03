@@ -78,7 +78,7 @@ async function setSession(session, expires) {
 async function api(method, route, body, { session = false } = {}) {
   const s = await settings();
   const base = allowedUrl(s.url);
-  if (!base) return { error: { code: "bad_url", message: "the vyred address is not one this extension may reach" } };
+  if (!base) return { error: { code: "bad_url", message: "that server address is not one this extension may reach" } };
   /** @type {Record<string,string>} */
   const headers = {};
   if (body) headers["content-type"] = "application/json";
@@ -89,10 +89,10 @@ async function api(method, route, body, { session = false } = {}) {
     res = await fetch(`${base}/v1/fill/${route}`, { method, headers, body: body ? JSON.stringify(body) : undefined,
       credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer" });
   } catch {
-    return { error: { code: "unreachable", message: `vyred did not answer at ${base}` } };
+    return { error: { code: "unreachable", message: `Your server did not answer at ${base}` } };
   }
   let out;
-  try { out = await res.json(); } catch { return { error: { code: "bad_response", message: "vyred answered with something that is not JSON" } }; }
+  try { out = await res.json(); } catch { return { error: { code: "bad_response", message: "Your server answered with something this extension cannot read" } }; }
   if (out && out.error) {
     if (out.error.code === "session_expired" || out.error.code === "session_required") await setSession(null);
     if (out.error.code === "revoked" || out.error.code === "unauthorized") { await setSession(null); await ext.storage.local.remove(["device", "token", "deviceName"]); await syncPasskeys(); }

@@ -97,7 +97,7 @@ test("term-link: the first at ends the replay and its count is adopted", () => {
   assert.equal(zero.state.offset, 0);
 });
 
-test("term-link: a screen ahead of the box adopts the box's count", () => {
+test("term-link: a screen ahead of your server adopts your server's count", () => {
   // vyred restarted before it wrote its count down: no replay, and a smaller count.
   const ahead = { offset: 5000, drawn: true, caughtUp: false };
   const r = step(ahead, { t: "at", offset: 4200 });
@@ -120,14 +120,14 @@ test("term-link: a cut keeps what was drawn, marks the gap, and moves to the old
   assert.equal(cold.state.offset, 9000);
 });
 
-test("term-link: nonsense from the box moves nothing", () => {
+test("term-link: nonsense from your server moves nothing", () => {
   const s = { offset: 10, drawn: true, caughtUp: true };
   for (const m of [{ t: "cut", from: -1 }, { t: "cut", from: "5" }, { t: "at", offset: 1.5 }, { t: "at" }, { t: "size", cols: 80 }, null]) {
     assert.deepEqual(step(s, /** @type {any} */ (m)), { state: s, mark: null, live: false });
   }
 });
 
-test("term-link: a new socket keeps the offset and waits for the box to catch up", () => {
+test("term-link: a new socket keeps the offset and waits for your server to catch up", () => {
   assert.deepEqual(reopened({ offset: 77, drawn: true, caughtUp: true }), { offset: 77, drawn: true, caughtUp: false });
 });
 
@@ -141,7 +141,7 @@ test("term-link: 1000 is an end, 1012 a reattach, anything else a drop", () => {
   assert.deepEqual(onClose(1001, "going away"), { act: "retry" });
 });
 
-test("term-link: term.attach refusals: terminal_closed is a box update, not_found an end", () => {
+test("term-link: term.attach refusals: terminal_closed is a server update, not_found an end", () => {
   assert.equal(onAttachError({ code: "terminal_closed" }), "gone");
   assert.equal(onAttachError({ code: "not_found" }), "ended");
   assert.equal(onAttachError({ code: "offline" }), "retry");
@@ -171,7 +171,7 @@ test("term-link: byte counts in plain words", () => {
   assert.equal(bytes(3 * 1024 * 1024), "3.0 MB");
 });
 
-test("term-link: a box without size frames: fit and send as before, no Take size", () => {
+test("term-link: a server without size frames: fit and send as before, no Take size", () => {
   let r = onFit(unsized, { cols: 100, rows: 30 });
   assert.deepEqual(r.send, { t: "size", cols: 100, rows: 30 });
   assert.equal(watching(r.state), false);
@@ -191,13 +191,13 @@ test("term-link: owner:false watches at the owner's size, and a fit still says w
   assert.equal(watchLabel(r.state), "This screen is watching. Size is owned by another screen");
   assert.deepEqual(drawAt(r.state, phone), { cols: 120, rows: 40 }, "drawn at the owner's size, not reflowed");
   const f = onFit(r.state, phone);
-  assert.deepEqual(f.send, { t: "size", cols: 50, rows: 20 }, "kept by the box as this screen's wanted size");
+  assert.deepEqual(f.send, { t: "size", cols: 50, rows: 20 }, "kept by your server as this screen's wanted size");
   assert.equal(watching(f.state), true);
   // The box answers that size with owner:false: nothing goes back.
   assert.equal(onSizeFrame(f.state, { t: "size", cols: 120, rows: 40, owner: false }, phone).send, null);
 });
 
-test("term-link: owner:true fits this screen; it resends only when the box's size is not its own", () => {
+test("term-link: owner:true fits this screen; it resends only when your server's size is not its own", () => {
   const mine = { cols: 100, rows: 30 };
   let r = onSizeFrame(unsized, { t: "size", cols: 100, rows: 30, owner: true }, mine);
   assert.equal(r.send, null);
@@ -210,21 +210,21 @@ test("term-link: owner:true fits this screen; it resends only when the box's siz
   assert.equal(onSizeFrame(w.state, { t: "size", cols: 99, rows: 30, owner: true }, mine).send, null);
 });
 
-test("term-link: Take size sends take with this screen's fitted size; the box's owner:true settles it", () => {
+test("term-link: Take size sends take with this screen's fitted size; your server's owner:true settles it", () => {
   const phone = { cols: 50, rows: 20 };
   const watch = onSizeFrame(unsized, { t: "size", cols: 120, rows: 40, owner: false }, phone).state;
   const t = takeSize(watch, phone);
   assert.deepEqual(t.send, { t: "take", cols: 50, rows: 20 });
-  assert.equal(watching(t.state), true, "still watching until the box says otherwise");
+  assert.equal(watching(t.state), true, "still watching until your server says otherwise");
   const r = onSizeFrame(t.state, { t: "size", cols: 50, rows: 20, owner: true }, phone);
   assert.equal(r.send, null);
   assert.equal(watching(r.state), false);
-  assert.deepEqual(takeSize(watch, null).send, { t: "take" }, "not measured: the box uses the size last asked for");
+  assert.deepEqual(takeSize(watch, null).send, { t: "take" }, "not measured: your server uses the size last asked for");
   // Another screen takes it back: watching again, at its size.
   assert.equal(watching(onSizeFrame(r.state, { t: "size", cols: 120, rows: 40, owner: false }, phone).state), true);
 });
 
-test("term-link: size frames the box never sends change nothing", () => {
+test("term-link: size frames your server never sends change nothing", () => {
   for (const m of [null, { t: "size", cols: 80, rows: 24 }, { t: "size", cols: 0, rows: 24, owner: true }, { t: "size", cols: "80", rows: 24, owner: false }, { t: "at", offset: 3 }]) {
     assert.deepEqual(onSizeFrame(unsized, m, { cols: 80, rows: 24 }), { state: unsized, send: null });
   }
@@ -236,7 +236,7 @@ test("term-link: letterbox scales a larger terminal down, centred, and never up"
   assert.deepEqual(letterbox({ w: 0, h: 0 }, { w: 500, h: 300 }), { scale: 1, x: 0, y: 0 });
 });
 
-test("term-link: the watch line names the owner device when the box gives one, else another screen", () => {
+test("term-link: the watch line names the owner device when your server gives one, else another screen", () => {
   const phone = { cols: 50, rows: 20 };
   const named = onSizeFrame(unsized, { t: "size", cols: 120, rows: 40, owner: false, device: "alex's MacBook Pro" }, phone).state;
   assert.equal(watchLabel(named, "phone"), "This phone is watching. Size is owned by alex's MacBook Pro");

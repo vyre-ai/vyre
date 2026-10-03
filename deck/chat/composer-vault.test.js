@@ -289,7 +289,7 @@ test("an edit of a queued message always sends pasted, [] when nothing was paste
 });
 
 // Last: a box with no mentions provider is remembered by the capability cache for the rest of this file.
-test("no mentions provider on the box: no picker, nothing offered", async () => {
+test("no mentions provider on your server: no picker, nothing offered", async () => {
   const keep = globalThis.fetch;
   globalThis.fetch = /** @type {any} */ (async () => ({ status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool: mentions.search" } }) }));
   const c = mountComposer({ thread: thread() });

@@ -116,7 +116,7 @@ test("Up: edits the newest queued message in an empty composer, else recalls", (
   assert.equal(upAction({ text: "typing", firstLine: true, recalling: false, queued: 2 }), "none");
 });
 
-test("Enter: a message with images is never queued (the box keeps a queued message's words only)", () => {
+test("Enter: a message with images is never queued (your server keeps a queued message's words only)", () => {
   const msg = "Use this photo of the shop front";
   assert.deepEqual(enterAction({ text: msg, running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" });
   assert.deepEqual(enterAction({ text: msg, running: true, queueToggle: true, images: 2 }), { do: "refuse", why: "images-queue" });
@@ -223,7 +223,7 @@ test("pasted images: types, a count cap and a size cap; the list is never change
   assert.equal(removeImage(list, 0).length, 4);
   const MB5 = 5 * 1024 * 1024;
   assert.equal(addImage([], { ...png, size: MB5 - 2 }).error, undefined, "a multiple of 3 under 5 MB");
-  assert.match(String(addImage([], { ...png, size: MB5 - 1 }).error), /over 5 MB/, "base64 rounds it up past 5 MB: the box would refuse it");
+  assert.match(String(addImage([], { ...png, size: MB5 - 1 }).error), /over 5 MB/, "base64 rounds it up past 5 MB: your server would refuse it");
   assert.deepEqual(sendImages(one), [{ media_type: "image/png", data: "iVBORw0KGgo=" }]);
   assert.equal(b64Bytes("iVBORw0KGgo="), 8);
   assert.equal(b64Bytes("TWFu"), 3);
@@ -237,7 +237,7 @@ test("uuids are v4 shaped, with or without crypto", () => {
   try { assert.match(newUuid(), re); } finally { if (c) Object.defineProperty(globalThis, "crypto", c); }
 });
 
-test("the model picker: the box's aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
+test("the model picker: your server's aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
   // The box's list (sessions.models.get aliases); the Deck keeps none of its own.
   const aliases = [{ id: "opus", label: "Opus", description: "The most capable" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "<b>", label: "x" }];
   const plain = modelChoices({ current: "opus", aliases });

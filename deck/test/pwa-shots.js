@@ -34,7 +34,7 @@ if (process.env.PHONES === "0") DEVICES.splice(0, 2);
 // shell must show there (docs/design/phone.md section 3): "page" (the header with Now, Chats and
 // Agents, and Lumen), "pushed" (no Lumen; the header only as a back row, or not at all when
 // the view draws its own back) or "find" (Lumen opened: neither).
-/** @type {{ name: string, path: string, script?: string | ((dev: { name: string }) => string), wait?: number, theme?: string, drag?: boolean, swipe?: boolean, reduce?: boolean, edge?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
+/** @type {{ name: string, path: string, script?: string | ((dev: { name: string }) => string), wait?: number, theme?: string, drag?: boolean, swipe?: boolean, reduce?: boolean, edge?: boolean, offline?: boolean, last?: string, expect?: string, swipes?: number, pin?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
 const SCREENS = [
   { name: "now", path: "/now" },
   { name: "now-paper", path: "/now", theme: "paper" },
@@ -51,22 +51,18 @@ const SCREENS = [
   // The edge swipe back on a pushed screen (opened cold, so Back lands on Now).
   { name: "edge-back", path: "/agents/kit", edge: true, expect: "/now" },
   // A tap on a label jumps there.
-  { name: "label-to-agents", path: "/now", script: `await click('.ph-tab[data-view=agents]'); await wait(900);`, expect: "/agents" },
+  { name: "label-to-agents", path: "/now", script: `await click('.tb-item[data-view=agents]'); await wait(900);`, expect: "/agents" },
   // Lumen, tapped: Find as a full-height sheet.
   { name: "capsule-find", path: "/now", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
   { name: "capsule-find-paper", path: "/now", theme: "paper", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
-  // The avatar: the Places sheet over Now, and its Settings tile opens Settings pushed.
+  // The avatar: the More sheet over Now, and its Settings tile opens Settings pushed.
   { name: "places-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(600);
-      if (document.querySelectorAll('.sheet-places .plc-tile').length !== 6) throw new Error('the Places sheet has not six tiles');` },
-  // Shift+F10 on the Planner tile keeps it as a fourth page: its label joins the header, and a
-  // tap on the label lands on the page, not pushed.
-  { name: "places-kept", path: "/now", expect: "/planner", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
-      const t = document.querySelector('.plc-tile[data-place=Planner]'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
-      if (t.getAttribute('aria-description') !== 'Pinned as a page') throw new Error('the tile does not say it is pinned');
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(600);
-      const labels = [...document.querySelectorAll('.ph-tab')].map(a => a.textContent).join(',');
-      if (labels !== 'Now,Chats,Agents,Planner') throw new Error('labels: ' + labels);
-      await click('.ph-tab[data-view=planner]'); await wait(1200);` },
+      if (document.querySelectorAll('.sheet-places .plc-tile').length !== 6) throw new Error('the More sheet has not six tiles');` },
+  // The tab bar's More: the same sheet, from the bar.
+  { name: "more-tab", path: "/now", script: `await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(600);
+      if (document.querySelectorAll('.sheet-more .plc-tile').length !== 6) throw new Error('More has not six tiles');` },
+  // Projects is a page now: its tab lands on the page, not pushed.
+  { name: "tab-to-projects", path: "/now", script: `await click('.tb-item[data-view=projects]'); await wait(900);`, expect: "/projects" },
   { name: "settings-sheet", path: "/now", shell: "pushed", expect: "/settings", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
       await click('.plc-tile[data-place=Settings]'); await waitFor('.page:not(.away) .set-sec', 6000); await wait(600);` },
   { name: "find", path: "/find", shell: "find" },
@@ -140,10 +136,46 @@ const SCREENS = [
   { name: "no-assistant-agents", path: "/agents", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   // A cold launch from the home screen opens where the user left off, not at start_url, when
   // nothing needs them; with something waiting, it opens on Now.
-  { name: "reopen", path: "/now", last: "/agents", expect: "/agents", stub: { "gate.held": [], "threads.asks": [] } },
+  { name: "reopen", path: "/now", last: "/agents", expect: "/agents", stub: { "gate.held": [], "threads.asks": [], "waiting.list": { count: 0, rows: [] } } },
   { name: "reopen-needs", path: "/now", last: "/agents", expect: "/now",
     stub: { "threads.asks": [{ id: "ask-1", kind: "permission", thread: "t-1", agent: "kit", tool: "Bash", at: 1, input: { command: "git push origin q3-report" } }] } },
+  // Hold-to-pin on the phone: a held tile in More becomes a swipe page after Agents (no sixth tab) and More's first tile.
+  { name: "pin-more", path: "/now", script: `await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
+      const hold = async name => { const a = document.querySelector('.sheet-more .plc-tile[data-place=' + name + ']'); const r = a.getBoundingClientRect();
+        const ev = t => a.dispatchEvent(new PointerEvent(t, { pointerId: 5, clientX: r.left + 10, clientY: r.top + 10, button: 0, bubbles: true, pointerType: "touch" }));
+        ev("pointerdown"); await wait(750); ev("pointerup"); await wait(300); };
+      await hold('Vault');
+      if (localStorage.getItem('vyre.pin') !== '/vault') throw new Error('the hold did not keep Vault');
+      if (document.querySelectorAll('.tabbar .tb-item').length !== 5) throw new Error('a tab was added: the bar is four tabs and More');
+      document.querySelector('.sheet-more .sheet-close').click(); await wait(700);
+      await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
+      const first = document.querySelector('.sheet-more .plc-tile'); if (first.getAttribute('data-place') !== 'Vault' || !first.hasAttribute('data-kept')) throw new Error('the kept place is not the first tile, marked');` },
+  // The pinned page is reached by swiping past Agents; More says where you are.
+  { name: "pin-swipe", path: "/now", swipe: true, swipes: 5, expect: "/vault", pin: "Vault" },
+  // A second hold lets it go: the page and the mark are gone, the bar never changed.
+  { name: "pin-unpin", path: "/now", script: `await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
+      const hold = async name => { const a = document.querySelector('.sheet-more .plc-tile[data-place=' + name + ']'); const r = a.getBoundingClientRect();
+        const ev = t => a.dispatchEvent(new PointerEvent(t, { pointerId: 5, clientX: r.left + 10, clientY: r.top + 10, button: 0, bubbles: true, pointerType: "touch" }));
+        ev("pointerdown"); await wait(750); ev("pointerup"); await wait(300); };
+      await hold('Vault'); if (localStorage.getItem('vyre.pin') !== '/vault') throw new Error('not pinned');
+      await hold('Vault'); if (localStorage.getItem('vyre.pin') !== null) throw new Error('the second hold did not let it go');
+      if (document.querySelector('.sheet-more .plc-tile[data-kept]')) throw new Error('the tile is still marked');
+      if (document.querySelectorAll('.pager .pager-slot').length !== 4) throw new Error('the pager still has a fifth page');` },
 ];
+
+// The Deck v2 passes, for showing the user the real thing (the sample world's data): Now, Chat, a thread, Projects, a project, Planner, Settings > Devices, in both
+// themes. Run with ONLY="^v2-" and DESKTOP=1440x900 for the laptop and the phone together.
+for (const [theme, suffix] of [[undefined, ""], ["paper", "-paper"]]) {
+  const t = theme ? { theme } : {};
+  SCREENS.push(
+    { name: "v2-now" + suffix, path: "/now", wait: 3500, ...t },
+    { name: "v2-chat" + suffix, path: "/chat", wait: 3000, ...t },
+    { name: "v2-thread" + suffix, path: "/chat", shell: "pushed", ...t, script: `await waitFor('.chat-recent a.thread-row', 8000); await click('.chat-recent a.thread-row'); await wait(3000);` },
+    { name: "v2-projects" + suffix, path: "/projects", wait: 3000, ...t },
+    { name: "v2-project" + suffix, path: "/projects/harlow-legal", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-planner" + suffix, path: "/planner", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-devices" + suffix, path: "/settings#devices", shell: "pushed", wait: 3500, ...t });
+}
 
 let failed = 0;
 for (const dev of DEVICES) {
@@ -174,14 +206,25 @@ for (const dev of DEVICES) {
         await tab.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
         await tab.run(`window.dispatchEvent(new Event("offline")); await wait(800);`);
       }
-      if (s.swipe) {
+      if (s.pin) await tab.run(`await click('.tb-more'); await waitFor('.sheet-more .plc-tile', 6000); await wait(500);
+        const a = document.querySelector('.sheet-more .plc-tile[data-place=${s.pin}]'); const r = a.getBoundingClientRect();
+        const ev = t => a.dispatchEvent(new PointerEvent(t, { pointerId: 5, clientX: r.left + 10, clientY: r.top + 10, button: 0, bubbles: true, pointerType: "touch" }));
+        ev("pointerdown"); await wait(750); ev("pointerup"); await wait(300);
+        document.querySelector('.sheet-more .sheet-close').click(); await wait(800);`);
+      for (let n = 0; s.swipe && n < (s.swipes || 1); n++) {
         // A finger swiping from right to left low on the page, just above Lumen and clear of
         // the Needs rows (which swipe on their own and hold the pager still).
-        const y = dev.height - dev.insets.bottom - 110;
+        // The Lumen bar sits higher or lower with the shell, so measure it rather than guess.
+        const top = await tab.run(`return Math.round(document.querySelector('.capsule')?.getBoundingClientRect().top || 0)`);
+        const y = top > 200 ? top - 24 : dev.height - dev.insets.bottom - 160;
         await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: dev.width - 40, y }] });
         for (let i = 1; i <= 10; i++) await tab.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: dev.width - 40 - i * 30, y }] });
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
         await new Promise(r => setTimeout(r, 1200));
+      }
+      if (s.pin) {
+        const more = await tab.run(`return document.querySelector('.tb-more')?.getAttribute('aria-current') || ''`);
+        if (more !== "page") throw new Error("More does not say where you are on the kept page");
       }
       if (s.edge) {
         // A finger from the left edge across most of the screen.
@@ -201,9 +244,10 @@ for (const dev of DEVICES) {
       fs.writeFileSync(path.join(out, `${label}.png`), await tab.shot());
       const check = await tab.run(`return { sideways: document.documentElement.scrollWidth > innerWidth + 1, path: location.pathname,
         head: document.querySelector('.ph-head') ? getComputedStyle(document.querySelector('.ph-head')).display : "none",
-        labels: document.querySelector('.ph-tabs') ? getComputedStyle(document.querySelector('.ph-tabs')).display : "none",
+        title: document.querySelector('.ph-title') ? getComputedStyle(document.querySelector('.ph-title')).display : "none",
+        tabs: document.querySelector('.tabbar') ? getComputedStyle(document.querySelector('.tabbar')).display : "none",
         capsule: document.querySelector('.capsule') ? getComputedStyle(document.querySelector('.capsule')).display : "none",
-        tabbar: !!document.querySelector('.tabbar'), at: document.getElementById('deck')?.dataset.at || "",
+        tabbar: !!document.querySelector('.tabbar'), ownBack: !!document.getElementById('deck')?.hasAttribute('data-own-back'), at: document.getElementById('deck')?.dataset.at || "",
         standalone: document.documentElement.dataset.display || "" }`);
       if (s.drag) {
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -214,9 +258,12 @@ for (const dev of DEVICES) {
       const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|fonts\.g/.test(e));
       const want = s.shell || "page", phoneShell = !dev.desktop && !s.noShell;
       const bad = [s.expect && check.path !== s.expect && `opened ${check.path}, not ${s.expect}`, check.sideways && "scrolls sideways",
-        phoneShell && check.tabbar && "a tab bar is drawn",
         phoneShell && check.at !== want && `the shell is in ${check.at || "no"} mode, not ${want}`,
-        phoneShell && want === "page" && (check.head !== "flex" || check.labels !== "flex") && "no header with the page labels",
+        phoneShell && want === "page" && (check.head !== "flex" || check.title === "none") && "no header with the page title",
+        phoneShell && want === "page" && check.tabs !== "grid" && "no tab bar",
+        // Find and a screen with its own Back (a thread, a project) cover the bar; a screen pushed from More (Planner, Devices) keeps it.
+        phoneShell && (want === "find" || check.ownBack) && check.tabs !== "none" && "the tab bar shows over Find or a screen with its own Back",
+        phoneShell && want === "pushed" && !check.ownBack && check.tabs !== "grid" && "no tab bar on a screen pushed from More",
         phoneShell && want === "page" && check.capsule !== "flex" && "no Lumen",
         phoneShell && want !== "page" && check.capsule !== "none" && "Lumen shows on a pushed screen",
         phoneShell && want === "find" && check.head !== "none" && "the header shows over Find",

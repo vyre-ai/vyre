@@ -6,14 +6,14 @@ import assert from "node:assert/strict";
 import { buildIdOf, stale, checkBuild } from "./build-check.js";
 import { buildId } from "../../core/daemon/build.js";
 
-test("the page and the box compute the same id (core/daemon/build.js buildId)", () => {
+test("the page and your server compute the same id (core/daemon/build.js buildId)", () => {
   for (const b of [{ version: "0.2.0", commit: "1a2b3c4d5e6f7a8b", dirty: false }, { version: "0.2.0", commit: "1a2b3c4d5e6f7a8b", dirty: true },
     { version: "0.2.0", commit: null, dirty: null }]) {
     assert.equal(buildIdOf(b), buildId(/** @type {any} */ ({ ...b, stamped: true })));
   }
 });
 
-test("stale only on a real mismatch: never for dev, never when the box doesn't say", () => {
+test("stale only on a real mismatch: never for dev, never when your server doesn't say", () => {
   const info = { version: "0.2.0", commit: "abcdefabcdef0000" };
   assert.equal(stale("abcdefabcdef", info), false);
   assert.equal(stale("111111111111", info), true);

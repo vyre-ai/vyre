@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { normalCode, showCode, pairSteps } from "../js/pair-steps.js";
 
-test("pair: the code with or without its dash, in any case, is the one the box compares", () => {
+test("pair: the code with or without its dash, in any case, is the one your server compares", () => {
   assert.equal(normalCode("7KQM-P4XD"), "7KQMP4XD");
   assert.equal(normalCode("7KQMP4XD"), "7KQMP4XD");
   assert.equal(normalCode("7kqm-p4xd"), "7KQMP4XD");

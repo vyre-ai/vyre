@@ -200,6 +200,16 @@ note in that project's memory, marked as from outside so it is never treated as 
 sends and changes nothing. It starts off: you see its card, run the one grant command it shows, and
 turn it on.
 
+## A watcher that wakes a session
+
+A watcher made for one session (a PR's review comments, say) can post what it finds into that session.
+Its `watcher.json` names the session (`about`), is owned by it (`owner`), says `act: true`, and may set
+`wake.maxPerDay` (default 5, at most 20). Each run that files something new posts one note to the
+session, and the note is quoted data: Vyre says so in its own words first, then puts the items inside a
+marked block the item cannot close, so a comment from outside can be read but never obeyed. It posts only
+to its own session, only in its own project, and never more than the day's limit. The card shows this
+before you turn it on.
+
 ## Presets for common sources
 
 `watchers.preset` writes a ready watcher from a few fields. Each starts off with its card, reads
