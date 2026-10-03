@@ -451,3 +451,24 @@ test("found against the real chains: a member on a paired device reveals with a 
   const sp = createChainBuilder({ space: SPACE, owner: "per_alex", owner_uid: 501, seal: createKernelSeal({ key: Buffer.alloc(32, 3) }), clock: Date.now, is_person: () => true }).fromFacts({ kind: "session_person", person: "per_bob", session: "x", vouched: true });
   assert.equal(await code(s.api.reveal({ chain: sp, ref: ref.ref, purpose: "p", proof: bob.proof(sp, "seal.reveal", { ref: ref.ref, purpose: "p" }) })), "human_only");
 });
+
+const FIRST = { module: "memory", first_party: true };
+test("seal.detect: yes or no for one candidate, first-party modules only, rate limited, nothing returned but the answer", async t => {
+  const { s } = await setup(t);
+  await put(s, "123-45-6789");
+  const ask = (value, over = {}) => s.detectValue({ chain: person(), caller: FIRST, value, ...over });
+  const yes = await ask("123 45 6789");
+  assert.deepEqual(Object.keys(yes).sort(), ["event", "match"]);
+  assert.equal(yes.match, true);
+  assert.deepEqual(yes.event, { type: "seal.detect", module: "memory", count: 1 });
+  assert.equal((await ask("321-54-9876")).match, false);
+  assert.ok(!JSON.stringify(yes).includes("6789"));
+  // Not a first-party module, a model in the chain, a value too short to mean anything.
+  assert.equal(await code(ask("123-45-6789", { caller: { module: "memory" } })), "first_party_only");
+  assert.equal(await code(ask("123-45-6789", { caller: undefined })), "first_party_only");
+  assert.equal(await code(ask("123-45-6789", { chain: withAgent() })), "human_only");
+  assert.equal(await code(ask("12")), "bad_input");
+  // Five a minute per module: two answered above, three more, then refused (refusals before the bucket do not spend it).
+  await ask("111-22-3333"); await ask("111-22-3334"); await ask("111-22-3335");
+  assert.equal(await code(ask("111-22-3336")), "rate_limited");
+});

@@ -48,6 +48,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     save: i => withCtx("save", i, { session: i.session, class: i.class, n: i.n, record: i.record, field: i.field, hint_allowed: i.hint_allowed }),
     endSession: (chain, session) => withCtx("session.end", { chain }, { session }),
     lookup: i => withCtx("lookup", i, { class: i.class, field: i.field, value: i.value }),
+    /** `seal.detect`: yes or no, is this candidate a sealed field's current value in this Space. `caller` is the kernel's word for which first-party module asked. */
+    detectValue: i => withCtx("match", i, { caller: i.caller, value: i.value }),
     drop: i => withCtx("drop", i, { ref: i.ref }),
     /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
