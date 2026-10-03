@@ -63,8 +63,8 @@ export function createSurfaces(cfg) {
     async chainFor(token) {
       const t = await api.verify(token);
       return t.agent
-        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, chat: t.chat || undefined, vouched: true })
-        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, chat: t.chat || undefined, vouched: true });
+        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, chat: t.chat || undefined, from_token: true, vouched: true })
+        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, chat: t.chat || undefined, from_token: true, vouched: true });
     },
     /** The model door for a session: `call(token, input)` and, when the door has one, `stream(token, input)`. The chain is the session's, never the caller's. */
     model: Object.freeze({

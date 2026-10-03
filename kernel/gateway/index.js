@@ -6,6 +6,7 @@ import { ACTIONS as SEAL_ACTIONS } from "../seal/uses.js";
 import { TASK_ACTIONS } from "../tasks/tasks.js";
 import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
+import { roomedAuthorizer } from "../core/room.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
 import { verifyLog } from "../audit/index.js";
@@ -29,7 +30,9 @@ export function createGateway(cfg) {
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
   const gs = cfg.grantsStore;
   const wiring = gs ? { grants: gs.provider, members: gs.members, ...(cfg.presence ? { verifyPresence: grantProofVerifier(cfg.presence) } : {}) } : {};
-  const authorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...(cfg.actions || [])] });
+  const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...(cfg.actions || [])] });
+  // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
+  const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
   records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
@@ -51,12 +54,21 @@ export function createGateway(cfg) {
     return false;
   }
 
+  /** A group session sees an event only when every person in its room may (the asker's own `canSee` has already passed). */
+  async function roomSees(/** @type {any} */ chain, /** @type {any} */ e) {
+    let people = null;
+    try { people = cfg.room ? cfg.room.peopleOf(chain) : null; } catch { return false; }
+    if (!people) return true;
+    for (const person of people) if (!(await canSee(await cfg.chains.fromFacts({ kind: "viewer", person, vouched: true }), e))) return false;
+    return true;
+  }
+
   /** The log through `authorize`: events the chain may not read are absent, never marked. */
   async function read(/** @type {any} */ chain, /** @type {any} */ filter = {}) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     const { limit, ...rest } = filter;
     const out = [];
-    for (const e of cfg.log.read(rest)) { if (await canSee(chain, e)) out.push(await records.viewEvent(chain, e)); if (limit && out.length >= limit) break; }
+    for (const e of cfg.log.read(rest)) { if ((await canSee(chain, e)) && (await roomSees(chain, e))) out.push(await records.viewEvent(chain, e)); if (limit && out.length >= limit) break; }
     return out;
   }
 
@@ -64,7 +76,22 @@ export function createGateway(cfg) {
   function subscribe(/** @type {any} */ chain, /** @type {string} */ consumer, /** @type {any} */ filter, /** @type {(e: any) => any} */ onEvent) {
     if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
     const name = `${actorString(chain.hops[chain.hops.length - 1].actor)}:${consumer}`;
-    return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if (await canSee(chain, e)) await onEvent(await records.viewEvent(chain, e)); });
+    return cfg.log.subscribe(name, filter, async (/** @type {any} */ e) => { if ((await canSee(chain, e)) && (await roomSees(chain, e))) await onEvent(await records.viewEvent(chain, e)); });
+  }
+
+  /** The tasks as the room sees them: `get` and `card` are gated reads (the roomed authorizer), and a listing of the asker's own tasks keeps only those every person in the room may read. */
+  function groupTasks(/** @type {any} */ t) {
+    if (!cfg.room || !t) return t;
+    return { ...t, needsYou: async (/** @type {any} */ chain) => {
+      const mine = await t.needsYou(chain);
+      let people = null;
+      try { people = cfg.room.peopleOf(chain); } catch { return []; }
+      if (!people || !Array.isArray(mine)) return mine;
+      const vs = await Promise.all(people.map(async (/** @type {string} */ person) => cfg.chains.fromFacts({ kind: "viewer", person, vouched: true })));
+      const out = [];
+      for (const x of mine) { let ok = true; for (const v of vs) { try { if (!(await t.get(v, x.id))) ok = false; } catch { ok = false; } } if (ok) out.push(x); }
+      return out;
+    } };
   }
 
   const seal = cfg.sealer ? createSealing({ enforce, clock: cfg.clock, approval_max_age: cfg.approval_max_age, space: cfg.space, sealer: cfg.sealer, authorizer, log: cfg.log, door: cfg.door, approvals: cfg.approvals || (cfg.tasks ? createApprovals({ tasks: cfg.tasks }) : undefined), templates: cfg.templates, destinations: cfg.destinations }) : undefined;
@@ -96,7 +123,7 @@ export function createGateway(cfg) {
     }),
     /** A service chain for the kernel's own module (memory, hooks): first-party, built by the kernel, never by a caller. */
     serviceChain: (/** @type {string} */ name) => cfg.chains.fromFacts({ kind: "module", module: String(name), first_party: true }),
-    ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: cfg.tasks } : {}),
+    ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
     ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
     records,
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
