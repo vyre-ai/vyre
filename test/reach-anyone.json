@@ -677,18 +677,6 @@
    "module": "hooks",
    "reason": "read-only: the listener and what Funnel publishes; reader() refuses guests and the internet"
   },
-  "know.answer": {
-   "module": "work",
-   "reason": "own-scope check: every citation is a source the caller may read, authorized per source for the caller's chain at the Gate; it writes nothing; the kernel builds the chain and a tool with no kernel wired answers unavailable"
-  },
-  "know.search": {
-   "module": "work",
-   "reason": "read-only: each hit is authorized per source for the caller's chain, a source the caller may not read is dropped; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
-  },
-  "know.suggestions": {
-   "module": "work",
-   "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
-  },
   "link.call": {
    "module": "link",
    "reason": "read-only, scoped by the module itself"
@@ -812,18 +800,6 @@
   "names.status": {
    "module": "names",
    "reason": "read-only; no secret, no side effect"
-  },
-  "native.call": {
-   "module": "work",
-   "reason": "held at the Gate: the call goes through the generated tool surface, so the caller's own grants decide and an outward act is held as a task for a person or asks for presence; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
-  },
-  "native.situation": {
-   "module": "work",
-   "reason": "read-only: built from records the caller may read; sealed fields appear as placeholders; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
-  },
-  "native.tools": {
-   "module": "work",
-   "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   },
   "network.tailscale.login": {
    "module": "network",
@@ -1032,6 +1008,14 @@
   "releases.sign": {
    "module": "releases",
    "reason": "callers limited in code to cli, local, module"
+  },
+  "runner.place": {
+   "module": "runner",
+   "reason": "read-only: answers where a session would run from the grants and this computer's state; starts nothing"
+  },
+  "runner.status": {
+   "module": "runner",
+   "reason": "read-only: reports whether this computer can run a space's sessions and what is running"
   },
   "screen.context": {
    "module": "screen",
@@ -1244,14 +1228,6 @@
   "team.status": {
    "module": "team",
    "reason": "read-only; owner check in code: the requester, the teammate or the person"
-  },
-  "teammates.context": {
-   "module": "work",
-   "reason": "read-only: records read under the caller's chain, sealed fields as placeholders; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
-  },
-  "teammates.doing": {
-   "module": "work",
-   "reason": "read-only: one plain line per teammate from events the caller may read; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   },
   "threads.answer": {
    "module": "threads",
@@ -1740,6 +1716,38 @@
   "watchers.test": {
    "module": "watchers",
    "reason": "guard: a dry run files nothing and runs inside the wall (no sockets of its own; GET and HEAD only, to hosts the watcher declared; a credential only through the person's per-watcher grant; ask() capped per day); an agent may not dry-run on a real event (refused in code), and watchers.create still needs the person's words and the card's hash"
+  },
+  "work.call": {
+   "module": "work",
+   "reason": "held at the Gate: the call goes through the generated tool surface, so the caller's own grants decide and an outward act is held as a task for a person or asks for presence; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.know.answer": {
+   "module": "work",
+   "reason": "own-scope check: every citation is a source the caller may read, authorized per source for the caller's chain at the Gate; it writes nothing; the kernel builds the chain and a tool with no kernel wired answers unavailable"
+  },
+  "work.know.search": {
+   "module": "work",
+   "reason": "read-only: each hit is authorized per source for the caller's chain, a source the caller may not read is dropped; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.know.suggestions": {
+   "module": "work",
+   "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.situation": {
+   "module": "work",
+   "reason": "read-only: built from records the caller may read; sealed fields appear as placeholders; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.team.context": {
+   "module": "work",
+   "reason": "read-only: records read under the caller's chain, sealed fields as placeholders; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.team.doing": {
+   "module": "work",
+   "reason": "read-only: one plain line per teammate from events the caller may read; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.tools": {
+   "module": "work",
+   "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   }
  }
 }

@@ -946,6 +946,16 @@ export default {
       },
     });
 
+    // The same removal for another module (wink: one removal of a device closes its connections). It needs no person: the module already holds the owner's say.
+    ctx.tool("relay.devices.drop", {
+      description: "Close a paired device's connections and refuse it from now on, for a module that has just removed it for the owner.",
+      input: obj({ id: str }, ["id"]),
+      run: async input => {
+        const id = String(input.id);
+        return { closed: forget(id, "removed"), id };
+      },
+    });
+
     // The hosted app's loader asks which build to load (ADR 0026 section 10, ADR 0027 section 4):
     // the owner's pin, or the newest release this box ships knowing. Open to any paired device,
     // web ones included, since the loader must ask before it can load anything else.

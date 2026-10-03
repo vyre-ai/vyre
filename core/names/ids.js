@@ -125,6 +125,22 @@ export function idDirectory({ base = DEFAULT_BASE, fetch = globalThis.fetch, now
     return { by: signer.by, ...(signer.via ? { via: signer.via } : {}), ts, sig: b64u(await signer.sign(actMessage({ action, name, domain, ts }))) };
   }
 
+  /** @param {any[]} ops @param {((id: string, ts: number) => Promise<C.State|null>)|undefined} local */
+  function owners(ops, local) {
+    /** @type {Map<string, any[]|null>} */ const seen = new Map();
+    return async (/** @type {string} */ id, /** @type {number} */ ts) => {
+      if (local) { const mine = await local(id, ts); if (mine) return mine; }
+      const e = (Array.isArray(ops) ? ops : []).map(o => o && o.entry).filter(Boolean).find(x => x.subject === id && x.label);
+      if (!e) return null;
+      if (!seen.has(id)) {
+        try { const q = await call("GET", `/v1/ids/resolve?name=${encodeURIComponent(String(e.label))}`); seen.set(id, q.id === id && q.kind === "person" ? q.ops : null); } catch { seen.set(id, null); }
+      }
+      const theirs = seen.get(id);
+      if (!theirs) return null;
+      try { return await C.stateAt(theirs, ts, { now: now() + C.SKEW_MS }); } catch { return null; }
+    };
+  }
+
   return {
     base: root,
     check: name => call("GET", `/v1/names/check?name=${encodeURIComponent(name)}`),
@@ -134,8 +150,10 @@ export function idDirectory({ base = DEFAULT_BASE, fetch = globalThis.fetch, now
     async resolve(nameOrAlias, { pin, alias = false, resolve } = /** @type {any} */ ({})) {
       const q = alias ? `alias=${encodeURIComponent(nameOrAlias)}` : `name=${encodeURIComponent(nameOrAlias)}`;
       const r = await call("GET", `/v1/ids/resolve?${q}`);
-      return verifyResolved(r.name, r, pin, { now: now(), resolve });
+      return verifyResolved(r.name, r, pin, { now: now(), resolve: owners(r.ops, resolve) });
     },
+    /** The resolver a space's chain needs: its owners' own chains, found by the name each owner entry carries and verified like any other. `local` answers first (this person's own copy). @param {any[]} ops @param {((id: string, ts: number) => Promise<C.State|null>)|undefined} [local] */
+    ownersResolver: (ops, local) => owners(ops, local),
     /** Send new ops. The directory verifies each against the list before it; a repeat of an op it has is fine. */
     append: (name, ops) => call("POST", "/v1/ids/append", { name, ops }),
     update: async (name, state, signer, payload) => call("POST", "/v1/ids/update", { name, ...await recordFor(name, state, signer, payload) }),

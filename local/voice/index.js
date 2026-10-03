@@ -19,7 +19,7 @@ import { callerKind } from "../../core/modules/index.js";
 import { listener, LOCAL, isAgentCaller } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
 import { spoken } from "./spoken.js";
-import { route, doorMessage } from "../../core/sessions/door-bridge.js";
+import { route, doorMessage } from "../../lib/door-bridge.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
 
 /** A spoken reply is a sentence or two, not a document. */

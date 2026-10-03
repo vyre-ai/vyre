@@ -41,15 +41,24 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) 
   const signer = () => { const s = me(); return { by: /** @type {string} */ (s.eid), sign: (/** @type {Uint8Array} */ m) => store.sign(Buffer.from(m)) }; };
   const nameOf = () => { const s = me(); if (!s.name) throw refuse("Choose your Vyre name first.", "no_identity"); return /** @type {string} */ (s.name); };
 
+  /** Take any newer list the directory has before building on it (another device may have changed it), refusing a stale or different one. */
+  async function refresh() {
+    const r = await dir.resolve(nameOf(), { pin: store.pin() }).catch(e => { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); });
+    if (!r.ok) throw refuse(`The directory's answer for your name could not be trusted: ${r.why}`, r.code || "bad_answer");
+    if (r.advanced) store.setChain(r.ops, r.pin);
+  }
+
   /** Make an op, check it here, send it, keep it. `by` is another signer when the code or a contact signs. */
   async function change(body, by = signer()) {
+    await refresh();
     const state = await stateNow();
     const op = await C.makeOp(state, body, { by: by.by, ts: Math.max(now(), state.ts), sign: by.sign });
     let next;
     try { next = await C.applyOp(state, op, ctx()); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
     try { await dir.append(nameOf(), [op]); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
     store.setChain([...store.ops(), op], C.pinOf(next));
-    store.setAlerted(next.seq);
+    // Alerts about what other devices did stay pending (sync() shows them); only our own op is marked seen.
+    if (store.alerted() === state.seq) store.setAlerted(next.seq);
     return { op, state: next };
   }
 
@@ -85,6 +94,7 @@ export function createIdentityOps({ store, dir, now, emit = () => {}, scrypt }) 
       return { eid, seq: r.state.seq };
     },
     async removeEntry(eid) {
+      await refresh();
       const state = await stateNow();
       const target = state.entries.find(e => e.eid === eid);
       if (!target) throw refuse(chainWords.not_on_list, "not_on_list");

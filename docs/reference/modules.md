@@ -59,15 +59,16 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 38 | 21 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 39 | 21 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`runner`](#runner) | `core/runner` | `local` | 7 | 5 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`space-sessions`](#space-sessions) | `core/space-sessions` | `box`, `local` | 0 | 4 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 31 | 19 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 45 | 29 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
@@ -84,8 +85,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 21 | 22 | capsule, cli, deck |
-| [`wink-storage`](#wink-storage) | `core/wink-storage` | `box` | 7 | 5 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 28 | 25 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 13 | 0 | cli |
 
 ## about
@@ -558,7 +558,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [38](tools.md#relay), 13 of them only for other modules
+- Tools: [39](tools.md#relay), 13 of them only for other modules
 - Emits: [21 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs vault: `tailscale-mint-oauth`
@@ -575,6 +575,17 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`
+
+## runner
+
+Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspace opened by a leased key, with credentials fetched at the moment of use and a checkpoint at every turn.
+
+- Folder: `core/runner`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [7](tools.md#runner)
+- Emits: [5 events](events.md#runner)
+- Shows on: capsule, cli, deck
 
 ## screen
 
@@ -652,8 +663,8 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [31](tools.md#spaces)
-- Emits: [19 events](events.md#spaces)
+- Tools: [45](tools.md#spaces)
+- Emits: [29 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 
 ## spend
@@ -847,20 +858,9 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [21](tools.md#wink)
-- Emits: [22 events](events.md#wink)
+- Tools: [28](tools.md#wink)
+- Emits: [25 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
-- Shows on: capsule, cli, deck
-
-## wink-storage
-
-Storage devices for Wink: find a network drive or a plugged-in disk from a device on the same network, or add a cloud volume or S3-compatible bucket by its access details (kept in the vault). A paired drive is a storage device under its owner that offers room for encrypted copies.
-
-- Folder: `core/wink-storage`, version 0.1.0
-- Runs on: `box`
-- Requires: `relay`
-- Tools: [7](tools.md#wink-storage)
-- Emits: [5 events](events.md#wink-storage)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-storage`
 

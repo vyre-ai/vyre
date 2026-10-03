@@ -7,12 +7,9 @@ import { normalize } from "../../../records/connectors/stripe/stripe.js";
 export const SPACE = "spc_harlow000001";
 const KIT_TS = new URL("../../../records/kits/estate-planning/kit.ts", import.meta.url);
 
-/**
- * The Kit's stored form. GAP (records): the shipped kit.ts uses defineField.ref, which the merged kernel studs renamed (a record link is now
- * `link`, and records' SDK has no `ref`). Until records updates the Kit, this reads the same source with its one record link as plain text.
- */
+/** The Kit's stored form, compiled from records' own kit.ts. */
 export function estateKit() {
-  const src = fs.readFileSync(KIT_TS, "utf8").replace('defineField.ref({ to: "contact", label: "Client" })', 'defineField.text({ label: "Client" })');
+  const src = fs.readFileSync(KIT_TS, "utf8");
   return compile(src);
 }
 
@@ -35,7 +32,7 @@ export const onPaymentFlow = () => ({
   steps: [
     { id: "client", kind: "upsert", type: "contact", match: { stripe_customer: { expr: "trigger.customer" } }, set: { full_name: { expr: "trigger.name" }, email: { expr: "trigger.email" } } },
     { id: "matter", kind: "upsert", type: "matter", match: { stripe_payment: { expr: "trigger.payment" } },
-      set: { title: { expr: "\"Estate plan for \" + trigger.name" }, client: { expr: "steps.client.record.urn" }, fee: { expr: "trigger.amount" }, stage: "Intake" } },
+      set: { title: { expr: "\"Estate plan for \" + trigger.name" }, client: { urn: { expr: "steps.client.record.urn" } }, fee: { expr: "trigger.amount" }, stage: "Intake" } },
   ],
 });
 

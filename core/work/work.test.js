@@ -5,7 +5,6 @@ import mod from "./index.js";
 import manifest from "./module.json" with { type: "json" };
 import { createGateway } from "../../kernel/gateway/index.js";
 import { createTasks, TASK_ACTIONS } from "../../kernel/tasks/tasks.js";
-import { createPresence } from "../../kernel/tasks/presence.js";
 import { createMemoryStore } from "../../kernel/store/memory.js";
 import { createEventLog } from "../../kernel/core/events.js";
 import { createChainBuilder } from "../../kernel/core/chain.js";
@@ -25,7 +24,7 @@ async function boot({ wired = true } = {}) {
   const members = new Set([`person:${OWNER}`, "service:tasks"]);
   const log = createEventLog({ space: SPACE, clock });
   const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, actions: [SEND, ...TASK_ACTIONS], grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: () => undefined }, members: { has: a => members.has(`${a.kind}:${a.id}`) }, hasPresenceSession: () => true });
-  const tasks = createTasks({ space: SPACE, authorizer: { authorize: gw.authorize }, log, presence: createPresence({ clock }), chains, clock, members: { has: a => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", OWNER) });
+  const tasks = createTasks({ space: SPACE, authorizer: { authorize: gw.authorize }, log, presence: { check: async () => "no_proof" }, chains, clock, members: { has: a => members.has(`${a.kind}:${a.id}`) }, approver: () => actor("person", OWNER) });
   const owner = chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct" });
   await gw.records.define(owner, { add_types: [MATTER] });
   const kernel = { space: SPACE, authorize: gw.authorize, records: gw.records, ask: tasks, events: gw.events, definitions: async () => [MATTER], actions: () => [SEND], chainFor: () => owner };
@@ -45,21 +44,21 @@ test("with no kernel wired, every tool answers unavailable and nothing is built"
   for (const name of Object.keys(tools)) await assert.rejects(() => call(name, { project: "vyre://x/y/z", question: "q", query: "q", record: "vyre://x/y/z", text: "t", id: "1", source: "s", proof: {}, tool: "t", role: { name: "r" } }), { code: "unavailable" }, name);
 });
 
-test("native.tools lists the Space's own nouns and the outward act; native.call returns a component, never raw JSON", async () => {
+test("work.tools lists the Space's own nouns and the outward act; work.call returns a component, never raw JSON", async () => {
   const { call } = await boot();
-  const { tools } = await call("native.tools");
+  const { tools } = await call("work.tools");
   const names = tools.map(t => t.name);
   assert.ok(names.includes("matters.find") && names.includes("matters.move_stage") && names.includes("email.send") && names.includes("tasks.assign"));
-  const made = await call("native.call", { tool: "matters.create", input: { data: { title: "Jane Doe", stage: "intake" } } });
+  const made = await call("work.call", { tool: "matters.create", input: { data: { title: "Jane Doe", stage: "intake" } } });
   assert.equal(made.result.ok, true);
   assert.ok(made.component && made.component.kind, JSON.stringify(made.component));
-  const found = await call("native.call", { tool: "matters.find", input: { where: { title: "Jane Doe" } } });
+  const found = await call("work.call", { tool: "matters.find", input: { where: { title: "Jane Doe" } } });
   assert.equal(found.result.records.length, 1);
 });
 
 test("a person's own outward act asks for their presence, never runs, and an unknown tool is not_found", async () => {
   const { call } = await boot();
-  const out = await call("native.call", { tool: "email.send", input: { summary: "Welcome email for Jane Doe" } });
+  const out = await call("work.call", { tool: "email.send", input: { summary: "Welcome email for Jane Doe" } });
   assert.equal(out.result.needs_presence.action, "email.send");
-  assert.equal((await call("native.call", { tool: "matters.nope", input: {} })).result.error.code, "not_found");
+  assert.equal((await call("work.call", { tool: "matters.nope", input: {} })).result.error.code, "not_found");
 });
