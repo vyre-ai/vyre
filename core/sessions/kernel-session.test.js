@@ -169,3 +169,17 @@ test("KS-4: when renewal fails and the old token has run out, the socket's funct
   T += 5 * 60_000;
   assert.equal(await tok(), undefined, "past its life with no renewal: nothing");
 });
+
+test("a brand-new Space needs no setup: an unnamed thread runs as the default assistant and reads a record under its person's grants", async () => {
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const T = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  await k.gateway.records.define(owner, { add_types: [T] }, { presence: proof("records.define", { add_types: [T] }, `vyre://${SPACE}/definition/types`) });
+  const rec = await k.gateway.records.create(owner, "note", { title: "hello" });
+  const ks = createKernelSessions({ kernel: k });
+  const s = await ks.open({ chain: owner, thread: "t-new" });
+  const chain = await k.surfaces.chainFor(await ks.tokenFor(s.id)());
+  assert.deepEqual(chain.hops.map(h => `${h.actor.kind}:${h.actor.id}`), [`person:${OWNER}`, "agent:assistant"]);
+  assert.equal((await k.gateway.records.get(chain, "note", rec.id)).data.title, "hello", "reads what its person may read");
+  await ks.end(s.id);
+});
