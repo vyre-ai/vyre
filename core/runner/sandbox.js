@@ -66,6 +66,7 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {string} [space]  Windows: the space the container is named for
  * @property {string} [launcher]  Windows: path of vyre-sandbox.exe
  * @property {string} [home]  the person's home folder, for the bind check (default: this process's)
+ * @property {{ token: string }} [internet]  the Space allows the internet for this session: git, npm and pip reach it through the runner's proxy (HTTPS_PROXY), public addresses only
  * @property {string} [node]  the node binary the Linux shim runs under (default process.execPath)
  */
 
@@ -120,7 +121,7 @@ function planDarwin(o) {
   const tmp = path.join(ws, "tmp");
   const base = proxyUrl(o.proxy.port);
   const dd = developerDir();
-  const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base) };
+  const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet) };
   return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 
@@ -140,7 +141,7 @@ function planLinux(o) {
   needTool(o.command, ro, ["/usr"]);
   const home = "/work/home";
   const base = proxyUrl(inner);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base) };
+  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet) };
   const argv = [
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -173,7 +174,7 @@ export function launch(p, opts = {}) {
 
 const proxyUrl = port => `http://127.0.0.1:${port}`;
 /** The session talks to the provider and the space through the proxy; the key it is given is a worthless session token. */
-const proxyEnv = base => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space` });
+const proxyEnv = (base, internet) => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`, ...(internet ? { HTTPS_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, HTTP_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, NO_PROXY: "" } : {}) });
 
 /**
  * @param {PlanOpts} o
