@@ -44,9 +44,19 @@ function owner(meta, what) {
     throw fail("denied", `${what} is the owner's`);
 }
 
-/** @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any }} [inject] @returns {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/**
+ * The Wink module. `inject` is the composition root's side (the platform's createKernel passes these; every one is optional and a box without one says so plainly):
+ *   directory   { memberships(identity) -> [{ space, name?, role }], label?(identity) }   who holds which role (kernelDirectory over ctx.kernel when absent)
+ *   offers      the kernel gateway's grants: { offer(chain, o, opt), unoffer(chain, id, opt), active(q) }   the ONLY store of compute offers (W-5)
+ *   chainFor    (meta, person) -> the kernel chain for the calling owner (passed to offers.offer and offers.unoffer)
+ *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
+ *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
+ * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, offers?: any, chainFor?: (meta: any, person: string) => any }} [inject]
+ * @returns {{ start(ctx: any): Promise<{ stop(): Promise<void>, peers: any, homeServe(inner: any): any }>, readonly peers: any, homeServe(inner: any): any }} */
 export function createWink(inject = {}) {
-  return {
+  /** @type {any} */
+  let live = null;
+  const mod = {
   async start(ctx) {
     if (ctx.config.role !== "box") return { async stop() {} };
     const now = () => Date.now();
@@ -219,12 +229,13 @@ export function createWink(inject = {}) {
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner,
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
-      ports: inject.ports,
+      ports: inject.ports, offers: inject.offers, chainFor: inject.chainFor,
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
     });
     pairing.tools();
+    live = pairing.peers;
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
@@ -266,6 +277,66 @@ export function createWink(inject = {}) {
       try {
         if (pairing.devices.get(String(p.id))) { pairing.devices.remove(String(p.id)); ctx.events.emit("wink.removed", { device: p.id }); }
       } catch (err) { ctx.log(`wink: device removal failed: ${/** @type {Error} */ (err).message}`); }
+    });
+
+    // ---- a signed instruction to a headless box (lead ruling, 3 Oct): changing the relay is done from the owner's app WITH presence, and the box only
+    // receives and checks the SIGNED instruction. There is no headless presence path. Format (v1):
+    //   { v: 1, action: "relay.enable", url?, box, device, ts, nonce, sig }
+    //   sig = signature by the owner device's signing key over "vyre-wink-instruction-v1\n<box>\n<action>\n<url>\n<ts>\n<nonce>"
+    //         (Ed25519, or ECDSA P-256 with SHA-256 in the raw r||s form WebCrypto produces); `box` is this box's route id; `ts` within two minutes; a nonce is used once.
+    // The key is the SPKI the owner's device registered with wink.device.key (presence, the owner's own screen). MISSING: the app side that signs (it must
+    // enrol its key at pairing and sign after its own Touch ID), and a signing key bound to the identity chain; today the key is whatever the owner registered.
+    const INSTRUCTION_SKEW = 2 * 60_000;
+    const verifyInstruction = (/** @type {any} */ i, /** @type {any} */ dev, /** @type {string} */ box) => {
+      if (!dev || !dev.signKey) return false;
+      const msg = Buffer.from(`vyre-wink-instruction-v1\n${box}\n${i.action}\n${i.url || ""}\n${i.ts}\n${i.nonce}`);
+      let key;
+      try { key = crypto.createPublicKey({ key: Buffer.from(dev.signKey, "base64url"), format: "der", type: "spki" }); } catch { return false; }
+      const sig = Buffer.from(String(i.sig || ""), "base64url");
+      try {
+        if (key.asymmetricKeyType === "ed25519") return crypto.verify(null, msg, key, sig);
+        if (key.asymmetricKeyType === "ec") return crypto.verify("sha256", msg, { key, dsaEncoding: "ieee-p1363" }, sig);
+      } catch { /* a malformed signature is a no */ }
+      return false;
+    };
+    ctx.tool("wink.device.key", {
+      description: "Register the key an owner's device signs instructions with (SPKI, base64url: Ed25519 or P-256), so a headless box can take a signed instruction from it (wink.relay.apply). Needs the owner's presence. Answers { device }.",
+      input: obj({ device: str, key: str }, ["device", "key"]),
+      presence: { summary: async () => "Let this device send signed instructions to your server" },
+      run: async (input, meta = {}) => {
+        owner(meta, "registering a signing key");
+        const d = pairing.devices.get(String(input.device));
+        if (!d || d.removed || d.identity !== await owner1() || (d.kind !== "phone" && d.kind !== "computer")) throw fail("not_found", "no such device of yours");
+        let k;
+        try { k = crypto.createPublicKey({ key: Buffer.from(String(input.key), "base64url"), format: "der", type: "spki" }); } catch { throw fail("bad_input", "the key is not a public key (SPKI, base64url)"); }
+        if (k.asymmetricKeyType !== "ed25519" && k.asymmetricKeyType !== "ec") throw fail("bad_input", "the key is Ed25519 or P-256");
+        pairing.devices.setSignKey(d.id, String(input.key));
+        return { device: d.id };
+      },
+    });
+    ctx.tool("wink.relay.apply", {
+      description: "Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see docs/work/tailnet.md). Answers { applied, url }.",
+      input: obj({ v: { type: "number" }, action: { type: "string", enum: ["relay.enable"] }, url: str, box: str, device: str, ts: { type: "number" }, nonce: str, sig: str }, ["v", "action", "box", "device", "ts", "nonce", "sig"]),
+      run: async (input, meta = {}) => {
+        owner(meta, "changing the relay");
+        const deny = (/** @type {string} */ why) => fail("denied", `the instruction was refused: ${why}`);
+        if (input.v !== 1 || input.action !== "relay.enable") throw deny("not an instruction this box takes");
+        const url = input.url ? String(input.url) : "";
+        if (url && !/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
+        if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(input.nonce))) throw deny("bad nonce");
+        if (Math.abs(now() - Number(input.ts)) > INSTRUCTION_SKEW) throw deny("too old or from the future");
+        if (String(input.box) !== await ensureRoute()) throw deny("meant for another box");
+        const dev = pairing.devices.get(String(input.device));
+        if (!dev || dev.removed || dev.identity !== await owner1() || (dev.kind !== "phone" && dev.kind !== "computer")) throw deny("not a device of the owner");
+        if (!verifyInstruction({ ...input, url }, dev, String(input.box))) throw deny("the signature does not check out");
+        const used = (pairing.meta.get("instr_nonces") || []).filter((/** @type {any} */ n) => n.exp > now());
+        if (used.some((/** @type {any} */ n) => n.n === input.nonce)) throw deny("already used");
+        pairing.meta.set("instr_nonces", [...used.slice(-199), { n: String(input.nonce), exp: now() + 2 * INSTRUCTION_SKEW + 1000 }]);
+        const r = /** @type {any} */ (await ctx.call("relay.enable", url ? { url } : {}));
+        if (r && r.error) throw fail(r.error.code || "unavailable", String(r.error.message || "the relay did not change"));
+        ctx.events.emit("wink.relay-applied", { device: dev.id, ...(url ? { url } : {}) });
+        return { applied: true, url: (r && r.data && r.data.url) || url || null };
+      },
     });
 
     // ---- invite a person (W5) ----
@@ -475,7 +546,10 @@ export function createWink(inject = {}) {
     const timer = setInterval(sweep, 60_000);
     timer.unref();
     return {
+      peers: pairing.peers,
+      homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
       async stop() {
+        live = null;
         clearInterval(timer);
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
@@ -486,6 +560,22 @@ export function createWink(inject = {}) {
     };
   },
   };
+  // Non-enumerable, so the module loader sees only `start`: the home's peer admission (set after start) and its door dispatcher (see `homeServe` below).
+  Object.defineProperty(mod, "peers", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live; } });
+  Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
+  return mod;
 }
+
+/**
+ * The home's peer door dispatcher (kernel-2's ask, withKernelCall). `inner(caller, tool, input)` is the registry's dispatcher: one call as that caller, where `caller`
+ * is `device:<id>` of a device that has just proved itself (a direct peer proved the device secret over the node, a relay peer is authenticated by the relay
+ * channel). The result is `serve(caller, tool, input, proof?)`: the same call, plus, for a direct peer, `proof = { nodeKey, stableId }` (the connection's proven
+ * node key) which Wink binds to the device row once. Compose with the kernel's wrapper INSIDE, so the proof reaches Wink first:
+ *
+ *     const serve = homeServe(peers, withKernelCall(registryServe, { serverFor, personOf }));
+ *     host.serveHome(spaceId, { peers, serve: withKernelCall(registryServe, { serverFor, personOf }) });   // same thing: the host wraps with peers.serve
+ *
+ * @param {{ serve(inner: any): any }} peers @param {(caller: string, tool: string, input: any) => Promise<any>} inner */
+export function homeServe(peers, inner) { return peers.serve(inner); }
 
 export default createWink();

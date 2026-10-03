@@ -9990,7 +9990,7 @@ Take something back: a grant (a member, a share) is revoked, or a device (give `
 
 ### `wink.server.adopt`
 
-On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel; the first caller wins, and only that caller (or the owner's own screen) may change it later. Answers { owner }.
+On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel, once: the first caller wins and is recorded (whatever kind of caller it was). After that, repeating the same owner is a no-op and any change is refused unless the target space's admin claim holds; the owner's own screen changes it with wink.server.retarget (presence). Answers { owner }.
 
 - Input:
   - `owner` object, required

@@ -134,19 +134,28 @@ export function createHost(deps) {
    * The home side: answer peers for this space. Direct peers come through the forwarder's door and
    * must prove the device key; relay peers come from the bridge's peer stream (acceptRelay) already
    * authenticated by the channel. `serve(caller, tool, input)` is the registry (ctx.call as that caller).
+   *
+   * With `peers` (the Wink module's `peers`, core/wink/pairing.js) the host uses the module's own admission: `peers.shared(device, nodeKey, stableId)` answers
+   * the secret, and `peers.serve(serve)` wraps the dispatcher. A direct call reaches the wrapper with `{ nodeKey, stableId }` of the connection that
+   * just proved the device secret, and that is the only thing the module ever binds to the device; a relay call carries no node key and binds nothing.
    * @param {string} id
-   * @param {{ shared: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null, serve: (caller: string, tool: string, input: any) => Promise<any> }} o
+   * @param {{ shared?: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null, serve: (caller: string, tool: string, input: any) => Promise<any>,
+   *   peers?: { shared: (deviceId: string, nodeKey: string, stableId?: string) => Buffer | null, serve: (inner: any) => (caller: string, tool: string, input: any, proof?: { nodeKey?: string, stableId?: string }) => Promise<any> } }} o
    */
   async function serveHome(id, o) {
     const sp = spaces.get(id);
     if (!sp) throw err("not_found", `no space ${id}`);
-    sp.serve = o;
+    const wrapped = o.peers ? o.peers.serve(o.serve) : null;
+    sp.serve = { serve: wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => wrapped(c, t, i) : o.serve };
     if (sp.door || !sp.spec.peerPort) return;
     sp.door = await listenPeers({ path: peerSock(id),
       onRefuse: why => log(`wink ${id}: refused a peer: ${why}`),
       onPeer: (conn, who) => {
         if (who.via !== "direct") { conn.destroy(); log(`wink ${id}: a relay-form header on the node door was refused`); return; }
-        admitPeer(socketPipe(conn), { id: { nodeKey: who.nodeKey }, box: sp.spec.box, shared: o.shared, serve: o.serve })
+        const shared = o.peers ? (/** @type {string} */ d, /** @type {string} */ k) => /** @type {any} */ (o.peers).shared(d, k, who.stableId) : o.shared;
+        const serve = wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => wrapped(c, t, i, { nodeKey: who.nodeKey, stableId: who.stableId }) : o.serve;
+        if (!shared) { conn.destroy(); return; }
+        admitPeer(socketPipe(conn), { id: { nodeKey: who.nodeKey }, box: sp.spec.box, shared, serve })
           .catch(e => log(`wink ${id}: peer not admitted: ${e.message}`));
         conn.resume();
       } });

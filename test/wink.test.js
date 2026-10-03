@@ -303,3 +303,45 @@ test("wink: the code on screen is never derivable from the typed-back code, and 
   assert.equal(ackCode(key), ackCode(key));
   assert.notEqual(ackCode(key), ackCode(crypto.randomBytes(32)));
 });
+
+/** Pairs one computer the typed-code way and returns its device id. */
+async function pairComputer(t, w) {
+  const open = await w.call("wink.code.open", { flow: "W2" });
+  const { states, done } = typeCode(t, w, open.data.code);
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code })).data?.ok, true);
+  const r = await done;
+  assert.equal(r.ok, true);
+  return r.paired.device;
+}
+
+test("wink.relay.apply: the owner's app signs the instruction, the box checks it; no presence is asked on the box (lead ruling 3 Oct)", async t => {
+  const w = await world(t);
+  const device = await pairComputer(t, w);
+  const box = (await w.d.registry.call("relay.route.id", {}, "module:wink", {})).data.route;
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const sign = (i, key = privateKey) => crypto.sign(null, Buffer.from(`vyre-wink-instruction-v1\n${i.box}\n${i.action}\n${i.url || ""}\n${i.ts}\n${i.nonce}`), key).toString("base64url");
+  const make = (o = {}) => { const i = { v: 1, action: "relay.enable", url: w.url, box, device, ts: Date.now(), nonce: crypto.randomBytes(12).toString("base64url"), ...o }; return { ...i, sig: o.sig || sign(i) }; };
+  const apply = i => w.call("wink.relay.apply", i, "cli", {});
+  // no key registered yet: refused, whoever signed
+  assert.match((await apply(make())).error?.message || "", /refused/);
+  // registering the key is the owner's own act and needs presence
+  const spki = publicKey.export({ type: "spki", format: "der" }).toString("base64url");
+  assert.equal((await w.call("wink.device.key", { device, key: spki }, SCREEN, {})).error?.code, "presence_required");
+  assert.equal((await w.call("wink.device.key", { device, key: spki })).data?.device, device);
+  const good = make();
+  const r = await apply(good);
+  assert.equal(r.data?.applied, true, JSON.stringify(r.error));
+  assert.match((await apply(good)).error?.message || "", /already used/);
+  for (const [why, i, re] of [
+    ["another box", make({ box: "someone-else" }), /another box/],
+    ["a stale time", make({ ts: Date.now() - 5 * 60_000 }), /too old/],
+    ["a bad url", make({ url: "http://x" }), /ws:\/\/|wss:\/\//],
+    ["an unknown device", make({ device: "ghost" }), /not a device of the owner/],
+    ["a tampered url", { ...make(), url: "wss://evil.test" }, /signature/],
+    ["another key", make({ sig: sign({ box, action: "relay.enable", url: w.url, ts: 1, nonce: "x" }, crypto.generateKeyPairSync("ed25519").privateKey) }), /signature/],
+  ]) assert.match((await apply(i)).error?.message || "", re, why);
+  // an agent never applies one, even with a good signature
+  assert.equal((await w.call("wink.relay.apply", make(), "tailnet:agent:juno", {})).error?.code, "denied");
+});

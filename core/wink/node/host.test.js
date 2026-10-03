@@ -16,7 +16,7 @@ const HOME_NK = "nodekey:" + "11".repeat(32), SRV_NK = "nodekey:" + "22".repeat(
 function scratch(name) { return fs.mkdtempSync(path.join(SCRATCH, `h-${name}-`)); }
 
 /** A home host and a server host wired through the fake forwarder, the way two machines would be. */
-async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000 } = {}) {
+async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000, peers = null } = {}) {
   const homeRoot = scratch("home"), srvRoot = scratch("srv");
   const calls = /** @type {any[]} */ ([]);
   const home = createHost({ root: homeRoot, forwarderBin: FWD, spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: HOME_NK }) });
@@ -25,7 +25,7 @@ async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000 } =
   const relayHooks = { opened: 0, fail: false };
   const server = createHost({ root: srvRoot, forwarderBin: FWD, graceMs, retryMs,
     spawn: (bin, args, o) => spawnFake(bin, args, { ...o.env, FAKE_NODEKEY: SRV_NK, FAKE_ROUTES: JSON.stringify(routes), ...(blackhole ? { FAKE_BLACKHOLE: "1" } : {}) }),
-    device: { id: "srv1", shared: () => shared },
+    device: { id: "srv1", shared: () => (peers ? Buffer.from(peers.secretFor("srv1"), "base64url") : shared) },
     relayPeer: async () => {
       relayHooks.opened++;
       if (relayHooks.fail) throw new Error("relay is down");
@@ -39,7 +39,8 @@ async function world(t, { blackhole = false, graceMs = 150, retryMs = 60_000 } =
   server.addSpace({ id: "harlow", controlUrl: "http://127.0.0.1:1", hostname: "srv", box: "box1", peerAddr: "100.64.0.1:8443" });
   await home.start("harlow");
   await server.start("harlow");
-  await home.serveHome("harlow", { shared: (d, nk) => (d === "srv1" && nk === SRV_NK ? shared : null), serve: async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; } });
+  const serveFn = async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; };
+  await home.serveHome("harlow", peers ? { peers, serve: serveFn } : { shared: (d, nk) => (d === "srv1" && nk === SRV_NK ? shared : null), serve: async (caller, tool, input) => { calls.push({ caller, tool, input }); return { tool, input, caller }; } });
   t.after(async () => { await server.stopAll(); await home.stopAll(); });
   return { home, server, calls, relayHooks };
 }
@@ -140,4 +141,42 @@ test("host: the dial socket is private (0600 in a 0700 directory)", async t => {
   const sock = w.server.dialSock("harlow");
   assert.equal(fs.statSync(sock).mode & 0o777, 0o600);
   assert.equal(fs.statSync(path.dirname(sock)).mode & 0o777, 0o700);
+});
+
+test("host: with the Wink module's peers, the home binds the node key the connection proved, and an unproven claim cannot take its place", async t => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createPairing, MIGRATIONS, PEER_MIGRATIONS } = await import("../pairing.js");
+  const db = new DatabaseSync(":memory:");
+  for (const m of [...MIGRATIONS, ...PEER_MIGRATIONS]) db.exec(m);
+  const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const pairing = createPairing({ ctx: { store: { db }, config: {}, log() {}, events: { emit() {} }, tool() {} }, now: Date.now, identity: async () => ME, space: async () => "harlow", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "", spaceNow: () => "harlow" });
+  pairing.devices.add({ id: "srv1", identity: ME, kind: "server", name: "juno", target: { kind: "identity", id: ME } });
+  // an attacker's unproven claim lands first
+  pairing.peers.shared("srv1", "nodekey:" + "99".repeat(32), "attacker");
+  const w = await world(t, { peers: pairing.peers });
+  const link = w.server.connect("harlow");
+  const r = await link.call("about.text", { q: 1 });
+  assert.equal(r.caller, "device:srv1");
+  const row = pairing.devices.get("srv1");
+  assert.equal(row.nodeKey, SRV_NK, "the key the home saw on the proven connection is the one bound");
+  assert.notEqual(row.stableId, "attacker");
+  assert.ok(pairing.peers.shared("srv1", SRV_NK), "the real server is not locked out");
+  assert.equal(pairing.peers.shared("srv1", "nodekey:" + "99".repeat(32)), null);
+  link.close();
+});
+
+test("host: a call over the relay peer stream is served as the device and binds no node key", async t => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const { createPairing, MIGRATIONS, PEER_MIGRATIONS } = await import("../pairing.js");
+  const db = new DatabaseSync(":memory:");
+  for (const m of [...MIGRATIONS, ...PEER_MIGRATIONS]) db.exec(m);
+  const ME = "per_aaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const pairing = createPairing({ ctx: { store: { db }, config: {}, log() {}, events: { emit() {} }, tool() {} }, now: Date.now, identity: async () => ME, space: async () => "harlow", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "", spaceNow: () => "harlow" });
+  pairing.devices.add({ id: "srv1", identity: ME, kind: "server", name: "juno", target: { kind: "identity", id: ME } });
+  const w = await world(t, { peers: pairing.peers, blackhole: true, graceMs: 100 });
+  const link = w.server.connect("harlow");
+  assert.equal((await link.call("about.text", {})).caller, "device:srv1");
+  assert.equal(link.status().path, "relay");
+  assert.equal(pairing.devices.get("srv1").nodeKey, null, "the relay path carries no node key");
+  link.close();
 });
