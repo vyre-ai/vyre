@@ -14,7 +14,7 @@ const reps = Number(process.argv[process.argv.indexOf("--reps") + 1]) || 5;
 const baseArg = process.argv.includes("--base") ? process.argv[process.argv.indexOf("--base") + 1] : null;
 const driverArg = process.argv.includes("--driver") ? process.argv[process.argv.indexOf("--driver") + 1] : null;
 const outFile = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : null;
-const why = unavailable() || workspaceUnavailable(process.platform, { base: root }); if (why) { console.error("cannot run here: " + why); process.exit(2); }
+const why = unavailable() || workspaceUnavailable(process.platform, { base: baseArg || os.tmpdir() }); if (why) { console.error("cannot run here: " + why); process.exit(2); }
 const med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const root = fs.mkdtempSync(path.join(baseArg || os.tmpdir(), "rperf-"));
 const worker = path.join(root, "agent"); fs.mkdirSync(worker); fs.copyFileSync(new URL("../core/runner/testing/perf-worker.mjs", import.meta.url), path.join(worker, "worker.mjs"));
@@ -56,7 +56,7 @@ for (const s of [...SCEN, "calls"]) {
     const n0 = ev.length; const r = await turn(l => h.send(l), lnext, "run " + s);
     // the checkpoint after the turn: how long the session was paused while the reader and the upload ran
     const t1 = performance.now(); const c = await new Promise(res => { const tick = setInterval(() => { const e = ev.slice(n0).find(x => x.type === "checkpoint"); if (e) { clearInterval(tick); res(e); } }, 5); });
-    notes[s] = r.note; lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
+    notes[s] = r.note; notes[s] = r.note; lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
   }
 }
 // a second session while the workspace stays mounted (the lease is still valid): what a person sees after the first
@@ -83,36 +83,7 @@ try {
   socks.forEach(x => x.close()); dsv.close();
 } catch (e) { result.start.self_test_error = e.message; }
 
-for (const s of [...SCEN, "calls"]) {
-  lent[s] = []; ckpt[s] = [];
-  for (let i = 0; i < (s === "extract" || s === "clone" ? Math.min(reps, 3) : reps); i++) {
-    const n0 = ev.length; const r = await turn(l => h.send(l), lnext, "run " + s);
-    // the checkpoint after the turn: how long the session was paused while the reader and the upload ran
-    const t1 = performance.now(); const c = await new Promise(res => { const tick = setInterval(() => { const e = ev.slice(n0).find(x => x.type === "checkpoint"); if (e) { clearInterval(tick); res(e); } }, 5); });
-    notes[s] = r.note; lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
-  }
-}
-// a second session while the workspace stays mounted (the lease is still valid): what a person sees after the first
-await h.stop();
-const tSecond = performance.now();
-const hb = await runner.start({ session: "s2", command: process.execPath, args: [path.join(worker, "worker.mjs")], readOnly: [worker, path.dirname(process.execPath)], routes });
-await lines(hb.child)(); result.start.second_session_ready = performance.now() - tSecond; await hb.stop();
-// lock then reopen: the cost of getting back after the workspace was closed (a sleeping laptop wakes to this)
-const tl = performance.now(); await runner.lock(); result.start.lock = performance.now() - tl;
-const to = performance.now(); await runner.contact(); result.start.reopen_after_lock = performance.now() - to;
-const tr = performance.now(); const h2 = await runner.start({ session: "s1", resume: true, command: process.execPath, args: [path.join(worker, "worker.mjs")], readOnly: [worker, path.dirname(process.execPath)], routes }).catch(e => ({ error: e.message }));
-result.start.resume_from_checkpoint = performance.now() - tr; if (h2.child) { await lines(h2.child)(); await h2.stop(); }
-await runner.lock();
-// the home-session self-test, which runs before each session
-try {
-  const home = path.join(root, "home"); fs.mkdirSync(path.join(home, ".vyre/run"), { recursive: true }); const own = path.join(home, ".vyre/run/s.sock");
-  const net = await import("node:net"); const srv = net.createServer(c => c.end()); await new Promise(r => srv.listen(own, r));
-  const ts = performance.now();
-  const st = await selfTest({ platform: process.platform, command: process.execPath, home, vyreHome: path.join(home, ".vyre"), sessionSocket: own, workdirs: [], temp: path.join(root, "t"), agent: { command: process.execPath, versionArgs: ["-v"], settingsPaths: [], hosts: [] }, probes: { personSocket: path.join(home, ".vyre/p.sock"), otherSocket: path.join(home, ".vyre/o.sock"), daemonPorts: [1], keyFile: path.join(home, ".vyre/k") } });
-  result.start.self_test = performance.now() - ts; result.start.self_test_ok = st.ok; srv.close();
-} catch (e) { result.start.self_test_error = e.message; }
-
-for (const s of [...SCEN, "calls"]) result.rows.push({ scenario: s, plain_median: med(plain[s]), plain_max: Math.max(...plain[s]), lent_median: med(lent[s]), lent_max: Math.max(...lent[s]), ratio: med(lent[s]) / med(plain[s]), note: notes[s], checkpoint_pause_median: med(ckpt[s]), checkpoint_pause_max: Math.max(...ckpt[s]) });
+for (const s of [...SCEN, "calls"]) result.rows.push({ scenario: s, plain_median: med(plain[s]), plain_max: Math.max(...plain[s]), lent_median: med(lent[s]), lent_max: Math.max(...lent[s]), ratio: med(lent[s]) / med(plain[s]), note: notes[s], note: notes[s], checkpoint_pause_median: med(ckpt[s]), checkpoint_pause_max: Math.max(...ckpt[s]) });
 console.log(JSON.stringify(result, null, 1));
 if (outFile) fs.writeFileSync(outFile, JSON.stringify(result, null, 1));
 await runner.revoke().catch(() => {}); up.close(); fs.rmSync(root, { recursive: true, force: true });
