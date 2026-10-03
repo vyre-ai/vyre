@@ -165,3 +165,11 @@ Site (vyre.run/i):
 3. main already carries the v2 pages, so nothing is merged for the site itself.
 
 Open on my side: install-box.sh `--from` fix is on work/launch-from-start dac87d5bc (not on the rc until you say).
+
+## The 0.3 end-to-end run needs a relay that has /v1/wink/code (launch, 4 Oct)
+
+relay.vyre.run runs the 0.2 Worker and answers 426 on /v1/wink/code, so claim and typed-code pairing cannot run against it. Two ways to run the walk:
+1. Deploy the 0.3 Worker to relay.vyre.run (the list above). Real, but it changes what every 0.2 box talks to, needs the lead's approval and the deploy environment's reviewer, and the 0.3 line must be on work/stage-0.2 first.
+2. A stand-in relay on a test box: scripts/standin-relay.mjs (branch work/launch-standin-relay, the 0.3 node relay, same protocol and the same CodeSlot rendezvous as the Worker). Nothing live changes.
+Recommendation: the stand-in for the walk, the deploy only when the Wink merge is green and the user has said go. The stand-in is plain ws/http, so only the walk's CLI and boxes use it; a browser on https (the hosted app) cannot reach a ws:// address, so steps that need the hosted app wait for the real deploy or an https front (a tunnel) later.
+Stand-in: run `node scripts/standin-relay.mjs 8787` on the test box (its address goes to the integrator in chat, not in a repo file) and open the port only to the boxes that need it. Point a box at it with config `{ "relay": { "enabled": true, "url": "ws://<test box>:8787" } }`. Health: GET /health answers 200; POST /v1/wink/code answers 400 on an empty body (served), not 426.
