@@ -76,7 +76,7 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });
   assert.ok(made.data && made.data.id, JSON.stringify(made));
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
-  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "chain", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "space", "tasks"]);
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "chain", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "presence", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "sessions", "space", "tasks"]);
 });
 
 test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {
@@ -219,7 +219,10 @@ test("R1/R2: the daemon sets meta.token only from a session token the kernel's o
   assert.equal(got.inside, ses.token, "the running call sees it");
   assert.equal((await call("zz-tok.peek", { token: ses.token }, { root })).data.meta, null, "never from the input");
   const [body] = ses.token.split(".");
-  for (const bad of [`${body}.AAAA`, "x.y", "a".repeat(3000), `${body}.${"b".repeat(60)}`]) assert.equal((await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": bad } })).data.meta, null, "an invalid token is absent");
+  // KS-4: a credential that is present and not valid refuses the call; it is never run as if it carried none
+  for (const bad of [`${body}.AAAA`, "x.y", "a".repeat(3000), `${body}.${"b".repeat(60)}`, ""]) { const r = await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": bad } }); assert.equal(r.data, undefined, JSON.stringify(bad).slice(0, 20)); assert.equal(r.error && r.error.code, "no_session"); }
+  d.kernel.surfaces.revoke(ses.session);
+  assert.equal((await call("zz-tok.peek", {}, { root, headers: { "x-vyre-kernel-session": ses.token } })).error?.code, "no_session", "a revoked session's token refuses the call");
   assert.equal((await call("zz-tok.peek", {}, { root, headers: { authorization: `Bearer ${ses.token}` } })).data.meta, null, "no other header");
   await new Promise(r => setTimeout(r, 100));
   assert.ok(globalThis.__vyreLate.length >= 1 && globalThis.__vyreLate.every(x => x === null), "work started in a turn no longer sees its token once the turn is over");

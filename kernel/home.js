@@ -37,7 +37,7 @@ export function homeIdentity(root) {
 
 /**
  * @param {{ releaseKey?: any, pathRule?: boolean, fileKey?: boolean, db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
- *   approvals?: (name: string) => string[], sealer?: any, door?: any, storeFor?: (space: string, dir: string) => Promise<any | undefined> }} cfg
+ *   approvals?: (name: string) => string[], sealer?: any, door?: any, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
  */
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);
@@ -56,11 +56,8 @@ export async function bootHomeKernel(cfg) {
     // moved only verifies what it already sealed; once that is read a snapshot is written under the new seal and the file is deleted.
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
-  // Where a Space's records live: SQLite unless VYRE_STORE asks for the Space's own Twenty (stores/twenty/space-store.js; sqlite is the default and costs nothing to import).
-  const storeFor = cfg.storeFor || ((process.env.VYRE_STORE || "sqlite") !== "sqlite" ? (await import("../stores/twenty/space-store.js")).createStoreFor({ log }) : undefined);
-  const storePlan = storeFor ? (await import("../stores/twenty/space-store.js")).planStore : undefined;
-  const personalStore = storeFor ? await storeFor(id.space, id.dir) : undefined;
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(personalStore ? { store: personalStore } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door });
+  const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
+  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(personalStore ? { store: personalStore } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
@@ -105,7 +102,7 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(storeFor ? { storeFor, storePlan: (/** @type {string} */ d) => storePlan({ dir: d }) } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
   await spaces.start();
   return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

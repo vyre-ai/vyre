@@ -2987,6 +2987,7 @@ export default {
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome,
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
+      kernelSession: ctx.kernelSession || null,
       threadSocket: cfg.thread_socket === "off" ? null
         : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
           ? openThreadSocket({ handler: ctx.handler, log: ctx.log, ...o,

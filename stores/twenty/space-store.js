@@ -72,13 +72,20 @@ export async function planStore(o) {
 }
 
 /**
- * @param {{ mode?: string, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip" }} [cfg]
- * @returns {(space: string, dir: string, opts?: { requireConfirm?: boolean }) => Promise<any | undefined>}
+ * The kernel's `storeFor(spaceId, meta)` seam (kernel/boot.js, kernel/home.js, kernel/spaces): `meta` is the Space's own record (`personal: true` for the home's first
+ * Space; for a hosted one its space.json, which carries `accept_builtin_store` when the person agreed to the built-in store). Returns a store, or undefined for SQLite.
+ * Options, all with defaults: `home` (the daemon's root; a Space's state lives under <home>/kernel), `reach` ("ip", or "alias" with `gatewayContainer` attached to the
+ * Space's network), `memory` ("small"), `runner` (docker through the box's proxy), `mode` (VYRE_STORE).
+ * @param {{ home: string, mode?: string, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null }} cfg
+ * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
-export function createStoreFor(cfg = {}) {
+export function createStoreFor(cfg) {
   const mode = cfg.mode ?? process.env.VYRE_STORE ?? "sqlite";
   const log = cfg.log ?? (() => {});
-  return async function storeFor(space, dir, opts = {}) {
+  /** @type {any} */
+  const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
+    const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
+    const opts = { requireConfirm: !meta.personal && meta.accept_builtin_store !== true };
     if (!["sqlite", "auto", "twenty"].includes(mode)) throw new Error(`VYRE_STORE is sqlite, auto or twenty, not ${mode}`);
     const choiceFile = path.join(dir, "store.json");
     /** @type {{ kind?: string } | null} */ let chosen = null;
@@ -98,7 +105,7 @@ export function createStoreFor(cfg = {}) {
     }
     const name = nameOf(space), twentyHome = path.join(dir, "twenty-home");
     log(`store for ${space}: provisioning Twenty`);
-    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner: cfg.runner ?? realRunner(), reach: cfg.reach ?? "ip", memory: cfg.memory ?? "small", log });
+    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner: cfg.runner ?? realRunner(), reach: cfg.reach ?? (cfg.gatewayContainer ? "alias" : "ip"), memory: cfg.memory ?? "small", gatewayContainer: cfg.gatewayContainer ?? null, log });
     const sdir = path.join(spaceDir(twentyHome, name), "state");
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
     const store = createTwentyStore({ space: name, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
@@ -109,4 +116,6 @@ export function createStoreFor(cfg = {}) {
     log(`store for ${space}: Twenty ready`);
     return store;
   };
+  storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
+  return storeFor;
 }
