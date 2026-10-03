@@ -24,7 +24,7 @@ export class Pool {
   /** @param {{ dir: string, key: Buffer, now?: () => number, graceMs?: number, chunk?: number, policy?: { ownedOnly?: boolean, regions?: string[] }, quotas?: Record<string, number> }} o */
   constructor({ dir, key, now = Date.now, graceMs = GRACE_MS, chunk = CHUNK, policy = {}, quotas = {} }) {
     if (!Buffer.isBuffer(key) || key.length !== 32) throw err("bad_key", "the pool key is 32 bytes");
-    this.dir = dir; this.locks = new Map(); this.cursor = 0; this.now = now; this.graceMs = graceMs; this.chunk = chunk; this.policy = policy; this.quotas = quotas; this.nodes = new Map();
+    this.dir = dir; this.dirty = 0; this.locks = new Map(); this.cursor = 0; this.now = now; this.graceMs = graceMs; this.chunk = chunk; this.policy = policy; this.quotas = quotas; this.nodes = new Map();
     this.enc = Buffer.from(crypto.hkdfSync("sha256", key, "vyre-pool", "chunk-enc", 32)); this.mac = Buffer.from(crypto.hkdfSync("sha256", key, "vyre-pool", "chunk-id", 32));
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     this.file = path.join(dir, "index.json");
@@ -143,7 +143,7 @@ export class Pool {
     }
     this.ix.manifests[id] = { size: buf.length, chunks: ids, class: cls, meter, at: this.now() };
     if (meter) this.ix.meters[meter] = (this.ix.meters[meter] ?? 0) + buf.length;
-    this.ix.log.push([this.now(), buf.length]); this.ix.log = this.ix.log.filter(([t]) => t > this.now() - 14 * 86_400_000); this.save();
+    this.dirty += buf.length; this.ix.log.push([this.now(), buf.length]); this.ix.log = this.ix.log.filter(([t]) => t > this.now() - 14 * 86_400_000); this.save();
     return { id, size: buf.length, atRisk };
   }
   async get(id) {

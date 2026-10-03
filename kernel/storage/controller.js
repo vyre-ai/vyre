@@ -4,11 +4,15 @@
 export const MIN_TICK_MS = 60_000;
 
 /** @param {{ pool: import("./pool.js").Pool, tickMs?: number, emit?: (e: any) => void, setTimer?: typeof setInterval, clearTimer?: typeof clearInterval }} o */
-export function createController({ pool, tickMs = MIN_TICK_MS, emit = () => {}, setTimer = setInterval, clearTimer = clearInterval }) {
+export const BACKUP_EVERY_MS = 3_600_000, BACKUP_DIRTY_BYTES = 32 * 1024 * 1024;
+
+export function createController({ pool, tickMs = MIN_TICK_MS, emit = () => {}, setTimer = setInterval, clearTimer = clearInterval, backup = null, backupEveryMs = BACKUP_EVERY_MS, dirtyBytes = BACKUP_DIRTY_BYTES }) {
   let timer = null, busy = null;
   const run = async () => {
     const changed = await pool.probe(); const sc = await pool.scrub({ limit: 5 });
     const r = changed.length || sc.dropped || pool.report().nudges.some(n => /fewer copies/.test(n)) ? await pool.heal() : { copied: 0, atRisk: 0, unreachable: 0 };
+    // The index backup (indexbackup.js): hourly, and sooner after a large change. `backup()` writes it and returns the head, which the kernel records where the owner's devices hold checkpoints.
+    if (backup && (pool.dirty >= dirtyBytes || (pool.dirty > 0 && pool.now() - (pool.ix.index_at ?? 0) >= backupEveryMs))) { try { const h = await backup(); emit({ type: "storage.index", seq: h.seq, hash: h.hash, copies: h.copies, at_risk: h.atRisk }); } catch { /* tried again next tick */ } }
     const rep = pool.report();
     if (sc.dropped) emit({ type: "storage.scrub", dropped: sc.dropped, checked: sc.checked });
     if (changed.length || r.copied) emit({ type: "storage.tick", changed, copied: r.copied, at_risk: r.atRisk, unreachable: r.unreachable, nudges: rep.nudges });
