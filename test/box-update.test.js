@@ -1025,6 +1025,12 @@ test("L-1: an update that ends with a signed module not running rolls back by it
   assert.match(r.out, /these signed modules did not start: work/);
   assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004100, "the list before is back");
   assert.equal(b.read(path.join(b.FAKE, "running")), "orig");
+  // A listed module the daemon does not report at all is a box with fewer modules than the list: the same rollback.
+  fs.writeFileSync(path.join(b.FAKE, "modules-out"), "  about                0.1.0    running\n");
+  r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /these signed modules did not start: work/);
+  assert.equal(b.read(path.join(b.FAKE, "running")), "orig");
   // Healthy: both run, the update stands, the old list is kept whole beside it for a rollback.
   fs.rmSync(path.join(b.FAKE, "modules-out"));
   r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));

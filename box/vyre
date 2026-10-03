@@ -586,8 +586,10 @@ modules_ok() {
   while [ $i -lt "${MODULES_WAIT:-30}" ]; do
     out=$(compose exec -T vyre vyre modules 2>/dev/null || true)
     bad=""
-    for n in $(printf '%s\n' "$out" | awk '$3 == "failed" { print $1 }'); do
-      printf '%s\n' "$names" | grep -qx "$n" && bad="$bad $n"
+    # Every listed module must be reported running or off (off by default is a choice, not a failure); one reported failed, or not reported at all, is a box with fewer modules than the list.
+    for n in $names; do
+      st=$(printf '%s\n' "$out" | awk -v n="$n" '$1 == n { print $3; exit }')
+      case "$st" in running|off) ;; *) bad="$bad $n" ;; esac
     done
     [ -z "$bad" ] && [ -n "$out" ] && return 0
     i=$((i + 1)); sleep 1
