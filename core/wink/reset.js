@@ -110,6 +110,8 @@ export function registerReset(o) {
       const adopter = String(meta.get("adopter") || "");
       pairing.clearOwner(); // drops the adopter's relay device
       for (const d of devs) { pairing.devices.remove(d.id); if (`device:${d.id}` !== adopter) dropDevice(d.id); }
+      // every paired person session and grant ends with the owner (ADR 0032 2d): a reset is a recovery reset
+      if (typeof ctx.call === "function") Promise.resolve(ctx.call("presence.person.end-paired", {})).catch(() => null);
       return { reset: true, had };
     },
   });

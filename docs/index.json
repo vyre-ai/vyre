@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":337,"tool":1090,"event":445,"config":254,"env":212,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1091,"event":445,"config":254,"env":212,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2330,6 +2330,7 @@
     {"kind":"tool","name":"wink.decline","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdecline","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.declined","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.key","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdevicekey","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.device.record","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicerecord","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.expired","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.found","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.invite","definedIn":"core/wink/index.js","page":"reference/tools.md#winkinvite","module":"wink","mentions":[]},
