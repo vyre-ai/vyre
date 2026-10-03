@@ -540,11 +540,13 @@ export class Shared {
     if (m.members.some(x => x.sign === p.sign)) throw new Error(`${person} is already in ${v.name}`);
     const member = { name: String(person), sign: p.sign, box: p.box, role };
     const next = this.next(m, me, { members: [...m.members, member] });
-    await this.submitAdmin(v, { manifest: next, wraps: [this.wrapFor(v.id, m.kv, await this.vk(v.id, m.kv), member)] }, me);
-    this.vault.audit("member-add", null, caller, true, `${v.name}: ${person} as ${role}`);
-    this.vault.emit("vault.member-added", { vault: v.name, member: String(person), role });
+    // Everything that can fail is made before the member is added, so no one is added without an invite.
+    const wrap = this.wrapFor(v.id, m.kv, await this.vk(v.id, m.kv), member);
     const invite = encodeInvite({ v: 1, vault: v.id, name: v.name, home: v.home, owner: v.owner_sign, inviterCard: (await this.vault.share.myCard()).card,
       member: { name: String(person), sign: p.sign }, seq: next.seq }, me.id.sign.private);
+    await this.submitAdmin(v, { manifest: next, wraps: [wrap] }, me);
+    this.vault.audit("member-add", null, caller, true, `${v.name}: ${person} as ${role}`);
+    this.vault.emit("vault.member-added", { vault: v.name, member: String(person), role });
     return { invite, vault: v.name, member: String(person), role };
   }
 
