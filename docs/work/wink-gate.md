@@ -23,3 +23,6 @@ W-9 waits for team-lead (see Needs).
 
 ## Changing a server's owner (W-4 consequence)
 Once a server has an owner, `wink.server.adopt` cannot be repeated over the paired channel: that call carries no presence proof. To change who a server belongs to, the person works on the box itself (a local screen or the CLI, `vyre call wink.server.adopt` with the new owner) and approves with their own presence (passkey or Touch ID). A paired device other than the one that first adopted it is refused even with presence. The screen and the CLI should say: "This server already belongs to <owner>. To move it, do it on this server and approve with your passkey."
+
+## Retired
+work/wink-merged (c0cae209c) is retired: reviewer-3 passed tailnet's origin/work/wink at 0b317fe15, which holds these fixes. The N-1 and N-2 tests go in through work/wink-fix 57df6b52b. Nothing more is pushed from this team.
