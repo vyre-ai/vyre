@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":336,"tool":1036,"event":440,"config":249,"env":208,"screen":20,"concept":43},
+  "counts": {"command":336,"tool":1039,"event":440,"config":249,"env":208,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1220,7 +1220,9 @@
     {"kind":"tool","name":"spaces.identity.code.replace","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycodereplace","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.contact.key","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycontactkey","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.create","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycreate","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.identity.enrol","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityenrol","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.entries","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentries","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.identity.entry","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentry","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.entry.add","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentryadd","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.entry.remove","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityentryremove","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.recover.approve","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityrecoverapprove","module":"spaces","mentions":[]},
@@ -1228,6 +1230,7 @@
     {"kind":"tool","name":"spaces.identity.recover.code","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityrecovercode","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.recover.finish","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityrecoverfinish","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.resolve","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityresolve","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.identity.sign","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitysign","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.state","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitystate","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.status","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitystatus","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.sync","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitysync","module":"spaces","mentions":[]},
