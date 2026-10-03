@@ -10538,7 +10538,8 @@ On the computer showing the QR: is a phone asking to be added right now? Answers
 On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.
 
 - Input:
-  - `payload` string, required
+  - `code` string
+  - `payload` string
   - `target` object
     - `id` string
     - `kind` string
@@ -10546,9 +10547,13 @@ On the phone: read the QR the computer shows, or the long code pasted (`payload`
 
 ### `wink.phone.wait`
 
-From the phone that scanned the QR, over its own paired connection: where the question stands. Answers { state: waiting | yes | no | expired, words, until }. Only that phone gets an answer.
+From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.
 
-- Input: none
+- Input:
+  - `commit` string
+  - `name` string
+  - `reveal` string
+  - `tag` string
 - Callers: any caller
 
 ### `wink.relay.apply`
@@ -10594,6 +10599,11 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `relay` string
     - `space` string
   - `identity` string
+  - `pairing` object
+    - `cancel` boolean
+    - `commit` string
+    - `reveal` string
+    - `tag` string
   - `peerSecret` string
 - Callers: any caller
 
@@ -10679,6 +10689,11 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `relay` string
     - `space` string
   - `identity` string
+  - `pairing` object
+    - `cancel` boolean
+    - `commit` string
+    - `reveal` string
+    - `tag` string
   - `peerSecret` string
 - Callers: any caller
 - Needs a person present.

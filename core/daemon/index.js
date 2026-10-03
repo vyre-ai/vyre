@@ -99,7 +99,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, kernelPresence?: any, kernelForWrap?: (kernelFor: any) => any,
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
  *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
@@ -191,7 +191,6 @@ async function startLocked(opts, root, p, release) {
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
-  /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
@@ -219,7 +218,7 @@ async function startLocked(opts, root, p, release) {
       return resolveFields({ input: q.input, read: async (/** @type {string} */ urn) => { const [, type, id] = urn.replace("vyre://", "").split("/"); return kernel.gateway.records.get(asker, type, id); } });
     };
     closeFlowsHost = () => flowsHost.stop();
-    kernel = await bootHomeKernel({ db, root, log, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
@@ -246,14 +245,7 @@ async function startLocked(opts, root, p, release) {
     const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
-    // What the stream is given of it (core/stream/group.js): calls on a thread's session and the restart's reopening, never a token and never a way to open a session. The stream reopens the
-    // open turns itself at its start so a turn it cannot resume says so in its chat; when no stream does (it is off), the daemon reopens them once its modules are up (below).
-    let reopenCalled = false;
-    registry.deps.kernelThreads = Object.freeze({
-      forThread: (/** @type {string} */ thread) => kernelSessions.forThread(thread),
-      reopenPending: (/** @type {{ timeoutMs?: number, onGiveUp?: (thread: string, why: string) => any }} */ o) => { reopenCalled = true; return kernelSessions.reopenPending({ personChainFor, ...o }); },
-    });
-    reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {}); };
+    void kernelSessions.reopenPending({ personChainFor, timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {});
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
@@ -293,7 +285,7 @@ async function startLocked(opts, root, p, release) {
       }
     }
     registry.deps.moduleHost = kernel.moduleHost;
-    registry.deps.kernelFor = typeof opts.kernelForWrap === "function" ? opts.kernelForWrap(kernel.kernelFor) : kernel.kernelFor; // kernelForWrap: a test seam (core/stream/e2e-step7-vyred.js), never passed by main.js
+    registry.deps.kernelFor = kernel.kernelFor;
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
     log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
@@ -304,15 +296,10 @@ async function startLocked(opts, root, p, release) {
   // items. Late-bound, because the port is taken after the vault starts; until then it answers undefined and the caller keeps its old grant-based read.
   registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
-  if (reopenLater) reopenLater();
-  // The session launcher's way to a provider sign-in token (core/vault/index.js `takeCredentialsPort`): taken ONCE, here, right after the vault starts, and handed to the sandbox the Switchboard
-  // reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). A second take throws, so nothing else can ever hold it. Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
-  try {
-    const { takeCredentialsPort } = await import("../vault/index.js");
-    const credentialsPort = takeCredentialsPort();
-    registry.deps.credentialsPort = credentialsPort;
-    if (registry.deps.sandbox) registry.deps.sandbox.credentials = credentialsPort.credentials;
-  } catch (e) { log(`credentials port not taken: ${/** @type {Error} */ (e).message}`); }
+  // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
+  // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
+  // Late-bound: if the vault restarts it provides a fresh port, and the sandbox must ask that one, never the port of a stopped vault.
+  if (registry.deps.credentialsPort && registry.deps.sandbox) registry.deps.sandbox.credentials = (/** @type {string} */ p) => registry.deps.credentialsPort.credentials(p);
   // The join card shows the Space's name and fingerprint words. The module that holds the Space's identity (spaces) answers them through `spaces.label` once it has the Space's
   // root key; until then the card has none. Asked at start, then every 30 s until it answers, then every 10 minutes (a rename shows up), never keeping the daemon alive.
   let stopped = false;

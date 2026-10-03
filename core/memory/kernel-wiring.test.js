@@ -13,9 +13,12 @@ import { createRig } from "../../test/kernel-rig.js";
 import { MIGRATIONS } from "./schema.js";
 import { scrubIn, scanRows } from "./sealed.js";
 import memory from "./index.js";
+import { CAPSULE_EXCEPTION } from "./kernel-gate.js";
 
 const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }];
 const SSN = "123-45-6789";
+/** What the daemon proves for a person's own surface on the socket (core/daemon callerFacts): set by the daemon only. */
+const surface = (label, uid = 501) => ({ kernelFacts: { kind: "socket", surface: label, uid, pid: 1, inside_model_process: false, capsule_verified: true } });
 
 async function world(t) {
   const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit"] });
@@ -37,9 +40,9 @@ async function world(t) {
   const h = await memory.start(ctx);
   t.after(() => h.stop());
   /** A tool's answer or its refusal, with the running call's session token bound the way the registry does it. */
-  const call = async (name, input, caller, token) => {
+  const call = async (name, input, caller, token, meta = {}) => {
     rig.k.bindCalls(() => (token ? { token } : null));
-    try { return { data: await tools.get(name).run(input, { caller, ...(token ? { token } : {}) }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
+    try { return { data: await tools.get(name).run(input, { caller, ...(token ? { token } : {}), ...meta }) }; } catch (e) { return { error: /** @type {Error} */ (e).message, code: /** @type {any} */ (e).code || "failed" }; }
   };
   const session = async (person, o = {}) => (await rig.k.surfaces.open(rig.person(person), o)).token;
   return { rig, call, db, tools, session, calls, prompts, space };
@@ -57,7 +60,7 @@ test("a. a group chat is refused personal memory, a one to one chat is not, and 
     assert.match(r.error, /not shared in a group chat/);
   }
   assert.ok(!(await w.call("memory.stats", {}, "deck", ts)).error, "alone with the owner it answers");
-  assert.ok(!(await w.call("memory.stats", {}, "deck")).error, "a call with no session is not in a chat");
+  assert.ok(!(await w.call("memory.stats", {}, "deck", undefined, surface("deck"))).error, "a person's own surface with no chat session is not in a chat");
   void G;
 });
 
@@ -84,6 +87,24 @@ test("c. personal memory is read only by its person and that person's own assist
       assert.match(r.error, /only by its person and that person's own assistant/);
     }
   }
+});
+
+test("c. a call with no kernel chain is refused: the caller label decides nothing, and only the two named exceptions get past", async t => {
+  const w = await world(t);
+  // no chain at all: a model on the socket, a client's claim, an unproven caller, whatever label it wears
+  for (const label of ["deck", "cli", "local", "mcp", "tailnet:alex@example.com", "harness", "hook"]) {
+    const r = await w.call("memory.stats", {}, label);
+    assert.equal(r.code, "denied", label);
+    assert.match(r.error, /no kernel chain/);
+  }
+  // facts that do not hold (a uid that is not the owner's) build no person chain either
+  assert.equal((await w.call("memory.stats", {}, "cli", undefined, surface("cli", 0))).code, "denied");
+  // a person's own surface, proven by the daemon, is the owner
+  for (const label of ["cli", "local", "deck"]) assert.ok(!(await w.call("memory.stats", {}, label, undefined, surface(label))).error, label);
+  // the named exceptions: a first-party module's own call (the registry's flag), and the Capsule until platform wires it
+  assert.ok(!(await w.call("memory.stats", {}, "module:assistant", undefined, { firstParty: true })).error);
+  assert.equal((await w.call("memory.stats", {}, "module:assistant")).code, "denied", "a module that is not flagged first-party is no exception");
+  assert.ok(!(await w.call("memory.stats", {}, CAPSULE_EXCEPTION)).error, "the Capsule exception");
 });
 
 test("c. with no kernel on the daemon nothing changes: the 0.2 rules stand alone", async t => {

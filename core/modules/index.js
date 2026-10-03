@@ -280,6 +280,16 @@ function checkCredentials(list) {
   return out;
 }
 
+/**
+ * A module hands something UP to the daemon by a fixed name: only the vault, only `credentialsPort`. The vault may provide again (a crash restart, a disable and enable) and the new port replaces
+ * the old, so the registry never holds a port that closes over a stopped vault; no one else can provide at all. (Exported for the test that proves the refusals.)
+ * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
+ */
+export function provideOnce(deps, module, name, value) {
+  if (!(name === "credentialsPort" && module === "vault")) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  deps[name] = value;
+}
+
 /** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
 export const credentialItems = m => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
   .filter(c => !(c && c.multiple === true)).map(c => (c && c.item) || `${m.name}-${c && c.id}`);
@@ -997,12 +1007,13 @@ export class Registry {
         list: () => [...this.providers.keys()],
       },
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
+      // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
+      // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.
+      provide: (/** @type {string} */ name, /** @type {any} */ value) => provideOnce(this.deps, m.name, name, value),
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
       ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "sandbox", "flowsHost", "credentials"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
-      // The stream's view of the sessions' kernel credentials (lib/kernel-session.js): calls on a thread's session and the restart's reopening, never a token and never a way to open one.
-      ...(m.name === "stream" && this.deps.kernelThreads ? { kernelSession: this.deps.kernelThreads } : {}),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);

@@ -64,7 +64,7 @@ const KEEP_HEADERS = ["content-type", "content-length", "etag", "last-modified",
  * @param {any} h the program's headers @param {string[]} [named] the route's own exact names
  */
 const FORWARD_DEFAULT = new Set(["accept", "accept-language", "content-type", "content-language", "if-match", "if-none-match"]);
-const FORWARD_NEVER = /^(authorization|proxy-authorization|cookie|set-cookie|host|connection|keep-alive|content-length|transfer-encoding|te|trailer|upgrade|expect|forwarded|via|origin|referer|sec-.*|proxy-.*|x-forwarded-.*|x-real-ip|x-client-ip|x-cluster-client-ip|true-client-ip|x-original-url|x-original-uri|x-rewrite-url|x-host|x-http-method.*|x-method-override|x-vyre-.*|x-api-key|x-auth.*|x-token.*|x-csrf.*|x-xsrf.*|x-goog-iam-.*|x-goog-authenticated-user.*|x-amz-security-token|x-amz-.*authorization.*|x-ms-authorization.*|.*authorization.*)$/;
+const FORWARD_NEVER = /^(authorization|proxy-authorization|cookie|set-cookie|host|connection|keep-alive|content-length|transfer-encoding|te|trailer|upgrade|expect|forwarded|via|origin|referer|sec-.*|proxy-.*|x-forwarded-.*|x-real-ip|x-client-ip|x-cluster-client-ip|true-client-ip|x-original-url|x-original-uri|x-rewrite-url|x-host|x-http-method.*|x-method-override|x-vyre-.*|x-api-key|x-auth.*|x-token.*|x-access-token.*|x-oauth.*|x-session.*|x-goog-api-key|x-csrf.*|x-xsrf.*|x-goog-iam-.*|x-goog-authenticated-user.*|x-amz-security-token|x-amz-.*authorization.*|x-ms-authorization.*|.*authorization.*)$/;
 export function forwardHeaders(h, named = []) {
   if (!isObj(h)) return {};
   const ok = new Set([...FORWARD_DEFAULT, ...(Array.isArray(named) ? named.map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9-]{1,64}$/.test(x)) : [])]);
