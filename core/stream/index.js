@@ -111,9 +111,10 @@ export default {
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
         const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
-        tickets.set(ticket, { session, expires: now() + ticketMs, from, person: groups ? groups.person(meta, i) : "person:owner" });
+        const viewer = groups ? groups.person(meta, i) : "person:owner";
+        tickets.set(ticket, { session, expires: now() + ticketMs, from, person: viewer });
         const log = logs.get(session);
-        return { session, ticket, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
+        return { session, ticket, viewer, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
       },
     });
 

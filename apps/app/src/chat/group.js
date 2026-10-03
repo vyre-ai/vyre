@@ -147,6 +147,7 @@ function member(m) {
 
 /** @param {string} viewer */
 export function createGroup(viewer) {
+  // The box says who the viewer is (stream.open's `viewer`); until then it is what the screen was told.
   /** @type {Map<string, Participant>} */ const people = new Map();
   /** @type {Map<string, { state: string, doing?: string }>} */ const presence = new Map();
   /** @type {Map<string, Map<string, Set<string>>>} message -> emoji -> who */ const reactions = new Map();
@@ -317,7 +318,8 @@ export function createGroup(viewer) {
     get rev() { return rev; },
     get last() { return last; },
     get readUpto() { return readUpto; },
-    viewer,
+    get viewer() { return viewer; },
+    /** @param {string} v */ setViewer(v) { if (v && v !== viewer) { viewer = v; rev++; } },
     /** @returns {Participant[]} */ participants: () => [...people.values()],
     names,
     presence: () => presence,

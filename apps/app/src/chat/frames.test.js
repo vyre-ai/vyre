@@ -270,3 +270,22 @@ test("join notices carry display names, never the raw id", () => {
   assert.ok(!texts.join(" ").includes("person:"));
   assert.equal(f.name("assistant:juno"), "Juno");
 });
+
+test("a group chat has no status frames: it is working while any reply is open, ready otherwise", () => {
+  cur = 0;
+  const f = createFolder();
+  assert.equal(f.status.state, "starting");
+  f.apply(gf("participant-joined", { who: "assistant:kit" }));
+  assert.equal(f.status.state, "waiting", "joined, nothing said: ready, not working");
+  f.apply(gf("text-delta", { message: "a1", index: 0, text: "A" }, { author: "assistant:kit", message: "a1" }));
+  f.apply(gf("text-delta", { message: "a2", index: 0, text: "B" }, { author: "assistant:juno", message: "a2" }));
+  assert.equal(f.status.state, "working");
+  f.apply(gf("text-done", { message: "a1" }, { author: "assistant:kit", message: "a1" }));
+  assert.equal(f.status.state, "working", "juno is still answering");
+  f.apply(gf("text-cut", { message: "a2", note: "x" }, { author: "assistant:juno", message: "a2" }));
+  assert.equal(f.status.state, "waiting");
+  // A thread's own status frames still win.
+  f.apply(gf("status", { state: "asking", turn: "t" }));
+  f.apply(gf("text-done", { message: "zz" }));
+  assert.equal(f.status.state, "asking");
+});

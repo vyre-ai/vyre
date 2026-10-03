@@ -50,11 +50,15 @@ async function write(tool: string, input: Record<string, unknown>) {
 }
 
 export function boxStream(session: string): BoxStream {
+  let viewer: string | undefined;
+  let head = 0;
   const source = streamSource({
     connect: connectStream,
     open: async ({ from }) => {
-      const r = await call<{ path: string }>("stream.open", { session, from });
+      const r = await call<{ path: string; viewer?: string; head?: number }>("stream.open", { session, from });
       if (r.error) throw new Error(reason(r.error));
+      if (typeof r.data.head === "number") head = r.data.head;
+      if (r.data.viewer) viewer = r.data.viewer;
       const ws = await socket(r.data.path);
       // wsDuplex builds `new WS(url)`; a constructor that returns the socket already made adopts it.
       return wsDuplex(r.data.path, function Adopt() { return ws; } as unknown as typeof WebSocket);
@@ -81,6 +85,8 @@ export function boxStream(session: string): BoxStream {
 
   return {
     ...source,
+    viewer: () => viewer,
+    head: () => head,
     sendText: (text) => note("threads.send", { thread: session, text, surface: SURFACE, uuid: newUuid() }),
     stopSession: () => note("threads.stop", { thread: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.

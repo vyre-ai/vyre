@@ -56,6 +56,15 @@ export function createFolder() {
   let layoutRev = 0;
   let queueSnap = /** @type {Item[]} */ ([]);
   const status = { state: "starting", turn: /** @type {string|null} */ (null), stopping: false };
+  // A group chat's log carries no status frames (the stream drops them): its state is read from the
+  // replies instead, working while any assistant's message is open and ready otherwise.
+  let sawStatus = false;
+  /** @type {Set<string>} */ const open = new Set();
+  const groupState = () => {
+    if (sawStatus || !participants.size) return;
+    const next = open.size ? "working" : "waiting";
+    if (status.state !== next) { status.state = next; bump("@status"); }
+  };
   /** @type {Map<string, { role?: string }>} */ const participants = new Map();
   /** @type {Map<string, string>} who -> the name its participant frame gave */ const names = new Map();
   const nameOf = (/** @type {string} */ id) => names.get(id) ?? plainName(id);
@@ -139,6 +148,7 @@ export function createFolder() {
         // One row per message: two assistants streaming at once never share text. A finished or cut row takes no more.
         if (prev && prev.done) break;
         const text = (prev?.text ?? "") + String(d.text ?? "");
+        open.add(String(mid));
         const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}) };
         if (put(key, "text", it)) out.layout = true;
         else items.set(key, it);
@@ -149,6 +159,7 @@ export function createFolder() {
       case "text-done": {
         const key = "a:" + (f.message ?? d.message);
         const it = items.get(key);
+        open.delete(String(f.message ?? d.message));
         if (it && patch(key, { done: true, settled: it.text.length })) touch(key);
         break;
       }
@@ -156,6 +167,7 @@ export function createFolder() {
         // The door caught a sealed value: the held-back tail was never final, so it goes.
         const key = "a:" + (f.message ?? d.message);
         const it = items.get(key);
+        open.delete(String(f.message ?? d.message));
         if (it) {
           const text = it.text.slice(0, it.settled ?? Math.max(0, it.text.length - HOLDBACK));
           patch(key, { done: true, text, settled: text.length, cut: String(d.note ?? "") });
@@ -282,6 +294,7 @@ export function createFolder() {
       }
       case "status": {
         const state = STATES.includes(d.state) ? d.state : status.state;
+        sawStatus = true;
         status.state = state;
         status.turn = d.turn ?? status.turn;
         status.stopping = Boolean(d.stopping);
@@ -297,7 +310,7 @@ export function createFolder() {
       }
       case "reset": {
         rows = []; items.clear(); queued.clear(); queueSnap = []; layoutRev++;
-        participants.clear(); names.clear(); presence.clear(); reactions.clear(); pins.clear(); mentions.clear(); groups.clear(); groupOf.clear();
+        open.clear(); participants.clear(); names.clear(); presence.clear(); reactions.clear(); pins.clear(); mentions.clear(); groups.clear(); groupOf.clear();
         last = typeof d.head === "number" ? d.head : f.cur;
         bump("@status");
         return { ...out, layout: true, reset: true };
@@ -305,6 +318,7 @@ export function createFolder() {
       default:
         break;
     }
+    groupState();
     return out;
   }
 

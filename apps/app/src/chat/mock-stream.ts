@@ -25,6 +25,10 @@ export type StreamSource = {
   stop(): void;
   /** Group chats: send to chosen assistants (two or more make a fan-out), keep a fan-out answer, react, pin, mark read. */
   sendGroup?(text: string, o: { to: string[]; fanout: boolean; parent?: string }): void;
+  /** The log's head when the box last opened the stream: frames up to it are history, shown at once. */
+  head?(): number;
+  /** Who the box says is looking ("person:owner"), once it has said. */
+  viewer?(): string | undefined;
   keep?(group: string, message: string): void;
   react?(message: string, emoji: string, remove?: boolean): void;
   pin?(message: string, pinned: boolean): void;

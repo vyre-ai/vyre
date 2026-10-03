@@ -12,7 +12,7 @@ import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
-import { boxStream, type SessionActions } from "./box-stream";
+import { boxStream, type GroupActions, type SessionActions } from "./box-stream";
 import { createGroup } from "./group.js";
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
@@ -45,7 +45,7 @@ export type ChatStore = {
   readonly actions: Partial<Pick<SessionActions, "editRetry" | "retry" | "branch">> | null;
 };
 
-const withActions = (source: StreamSource): Partial<SessionActions> => source as unknown as Partial<SessionActions>;
+const withActions = (source: StreamSource): Partial<SessionActions & GroupActions> => source as unknown as Partial<SessionActions & GroupActions>;
 
 const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const frameSoon = (fn: (t: number) => void) =>
@@ -105,7 +105,9 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     const frames = buffer;
     buffer = [];
     if (!frames.length) return;
-    const wasReplay = replay;
+    // History shows at once: the first batch, and any batch that only holds frames up to the head the box said at open (a long reply replayed in many messages is not typed out again).
+    const head = source.head?.() ?? 0;
+    const wasReplay = replay || (head > 0 && frames.every((f) => !((f.cur ?? 0) > head)));
     replay = false;
     const touched = new Set<string>();
     const appended = new Map<string, number>();
@@ -114,11 +116,15 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     let meta = false;
     let reset = false;
     let groupChanged = false;
+    const v = source.viewer?.();
+    if (v && v !== group.viewer) { group.setViewer(v); groupChanged = true; }
     for (const f of frames) {
       const g = group.apply(f as never);
       if (g.meta || g.touched.length) groupChanged = true;
       for (const k of g.touched) touched.add(k);
+      const before = folder.status.state;
       const r = folder.apply(f as FoldFrame);
+      if (folder.status.state !== before) meta = true;
       if (r.dup) continue;
       if (r.reset) { reset = true; layout = true; meta = true; continue; }
       if (r.layout) layout = true;
@@ -134,7 +140,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     if (reset) { for (const k of seenFirst) reveal.drop(k); seenFirst.clear(); pending.length = 0; }
     const now = nowMs();
     for (const [key, len] of appended) {
-      if (wasReplay) reveal.seed(key, len);
+      if (wasReplay) { reveal.drop(key); reveal.seed(key, len); } // history shows whole, even a reply that was being typed when the link dropped
       else reveal.push(key, len, now);
     }
     for (const key of finished) if (!wasReplay) reveal.finish(key);
@@ -180,6 +186,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     async send(text) {
       if (!text.trim()) return null;
       const a = withActions(source);
+      // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
+      if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
+        const r = await a.sendGroupText(text);
+        return r.ok ? null : r.reason;
+      }
       if (a.sendText) return a.sendText(text);
       source.send(text);
       return null;
@@ -204,6 +215,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
     subscribeGroup(f) { groupSubs.add(f); return () => void groupSubs.delete(f); },
     async sendTo(text, o) {
       if (!text.trim()) return null;
+      const a = withActions(source);
+      if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
+        const r = await a.sendGroupText(text, { to: o.to });
+        return r.ok ? null : r.reason;
+      }
       if (source.sendGroup && (o.to.length || o.fanout || o.parent)) { source.sendGroup(text, o); return null; }
       return store.send(text);
     },
@@ -229,8 +245,8 @@ export const sourceFor = (sessionId: string): StreamSource => (sessionId === "de
  * `connect({ open, from })` wrapped to this shape); without one, `demo` gets the mock and every other id the real client.
  * Returns the folded rows and the header facts; `store` serves each row its own content.
  */
-export function useSessionStream(sessionId: string, opts: { source?: StreamSource; perf?: PerfSink } = {}) {
-  const store = useMemo(() => createChatStore(sessionId, opts.source ?? sourceFor(sessionId), { perf: opts.perf }), [sessionId, opts.source]);
+export function useSessionStream(sessionId: string, opts: { source?: StreamSource; perf?: PerfSink; viewer?: string } = {}) {
+  const store = useMemo(() => createChatStore(sessionId, opts.source ?? sourceFor(sessionId), { perf: opts.perf, viewer: opts.viewer }), [sessionId, opts.source]);
   useEffect(() => { store.start(); return () => store.stop(); }, [store]);
   const rows = useSyncExternalStore(store.subscribeLayout, store.rows, store.rows);
   useSyncExternalStore(store.subscribeGroup, () => store.group.rev, () => store.group.rev);

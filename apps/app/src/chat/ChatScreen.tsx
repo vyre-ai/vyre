@@ -75,8 +75,8 @@ function JumpPill({ go, count, base, bottom }: { go: () => void; count: number; 
 export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
   const insets = useSafeAreaInsets();
-  const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf });
-  const viewer = p.viewer ?? "person:alex";
+  const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
+  const viewer = store.group.viewer;
   const [note, setNote] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
   const [muted, setMuted] = useState(false);
