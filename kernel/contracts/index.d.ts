@@ -3,6 +3,7 @@ export * from './common.js';
 export * from './chain.js';
 export * from './authorize.js';
 export * from './grant.js';
+export * from './roles.js';
 export * from './event.js';
 export * from './store.js';
 export * from './task.js';
@@ -18,6 +19,7 @@ import type { TaskState, TaskOutputKind, TaskHow, TaskSource, TransitionRule } f
 import type { FieldKind } from './fields.js';
 import type { SealClass } from './seal.js';
 import type { StoreErrorCode } from './store.js';
+import type { RoleId, RoleBundle } from './roles.js';
 
 export const ACTOR_KINDS: readonly ActorKind[];
 export const SURFACES: readonly Surface[];
@@ -40,3 +42,7 @@ export const FIELD_KINDS: readonly FieldKind[];
 export const SEAL_CLASSES: readonly SealClass[];
 export const STORE_ERROR_CODES: readonly StoreErrorCode[];
 export const CONTRACTS_VERSION: string;
+
+/** Strongest first. */
+export const ROLE_IDS: readonly RoleId[];
+export const ROLE_BUNDLES: Readonly<Record<RoleId, RoleBundle>>;

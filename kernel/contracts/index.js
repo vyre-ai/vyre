@@ -57,3 +57,17 @@ export const SEAL_CLASSES = f(["us-ssn", "us-itin", "us-ein", "card", "bank-acco
 export const STORE_ERROR_CODES = f([
   "not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused",
 ]);
+
+export const ROLE_IDS = Object.freeze(["owner", "admin", "manager", "member", "temp"]);
+const bundle = (role, abilities, never, requires_scope, assistants_act_for_holder) =>
+  Object.freeze({ role, abilities: Object.freeze(abilities), never: Object.freeze(never), requires_scope, assistants_act_for_holder });
+const OWNER = ["space.delete", "space.move", "space.transfer", "space.root_key", "space.policy", "members.manage_all", "members.manage_below_admin", "devices.manage", "customize.definitions", "connectors.manage", "assistants.manage", "projects.create_run", "projects.set_team_tasks_checkers", "projects.approve_inside", "kits.use", "projects.work_member_of", "space.shared_by_policy"];
+const ADMIN = OWNER.filter(a => !["space.delete", "space.move", "space.transfer", "space.root_key", "members.manage_all"].includes(a));
+const MANAGER = ["projects.create_run", "projects.set_team_tasks_checkers", "projects.approve_inside", "kits.use", "projects.work_member_of", "space.shared_by_policy"];
+export const ROLE_BUNDLES = Object.freeze({
+  owner: bundle("owner", OWNER, [], false, true),
+  admin: bundle("admin", ADMIN, ["space.delete", "space.move", "space.transfer", "space.root_key"], false, true),
+  manager: bundle("manager", MANAGER, ["customize.definitions", "members.manage_all", "members.manage_below_admin"], false, true),
+  member: bundle("member", ["projects.work_member_of", "space.shared_by_policy"], ["customize.definitions", "members.manage_all", "members.manage_below_admin"], false, true),
+  temp: bundle("temp", ["scoped.work"], ["space.shared_by_policy", "customize.definitions"], true, false),
+});

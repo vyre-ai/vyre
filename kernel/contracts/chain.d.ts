@@ -13,6 +13,8 @@ export interface Actor {
   readonly id: string;
   /** The Space whose authority is evaluating, and so where this actor holds a membership. */
   readonly space: SpaceId;
+  /** A person's Vyre name (`alex.vyre.run`), the signed claim of their person key. Set only on `person`; display and lookup, never authority: roles and grants refer to `id`. */
+  readonly name?: import('./roles.js').VyreName;
 }
 
 /** The surface a verified request arrived on. Derived by the Surfaces door, never read from a header string. */

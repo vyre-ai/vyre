@@ -40,3 +40,17 @@ test("trust and redaction orders match the contract", () => {
 test("every outward risk is a risk", () => {
   for (const r of c.OUTWARD_RISKS) assert.ok(c.RISKS.includes(r));
 });
+
+test("roles: five fixed bundles, each a subset of the one above, temp needs a scope", async () => {
+  const { ROLE_IDS, ROLE_BUNDLES } = await import("./index.js");
+  assert.deepEqual([...ROLE_IDS], ["owner", "admin", "manager", "member", "temp"]);
+  for (const id of ROLE_IDS) assert.equal(ROLE_BUNDLES[id].role, id);
+  for (const [hi, lo] of [["owner", "admin"], ["admin", "manager"], ["manager", "member"]]) {
+    for (const a of ROLE_BUNDLES[lo].abilities) assert.ok(ROLE_BUNDLES[hi].abilities.includes(a), `${lo} has ${a} that ${hi} lacks`);
+  }
+  for (const id of ROLE_IDS) for (const a of ROLE_BUNDLES[id].never) assert.ok(!ROLE_BUNDLES[id].abilities.includes(a), `${id} both has and never has ${a}`);
+  assert.equal(ROLE_BUNDLES.temp.requires_scope, true);
+  assert.equal(ROLE_BUNDLES.temp.assistants_act_for_holder, false);
+  assert.ok(!ROLE_BUNDLES.admin.abilities.includes("space.delete"));
+  assert.ok(Object.isFrozen(ROLE_BUNDLES.owner) && Object.isFrozen(ROLE_BUNDLES.owner.abilities));
+});

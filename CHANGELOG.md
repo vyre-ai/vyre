@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel): kernel/contracts/roles.d.ts: the five fixed roles (owner, admin, manager, member, temp) as grant bundles (`ROLE_BUNDLES`), `Membership` (temp needs a scope and an expiry), `VyreName`, `SpaceIdentity` (a Space is an identity with a vyre.run name and a root key) and the optional person name on `Actor`. Types and frozen tables only.
 - site: the version text on every page comes from the release tag (assemble-site.sh passes VYRE_SITE_VERSION), with a per-version "out now" line in gen-site.mjs; vyre.run says 0.2.2, and the roadmap reads Sessions 0.2.3, Scale 0.2.4, Spaces 0.2.5.
 - fix(site): scripts/gen-og.sh launches Chrome with --use-mock-keychain and --password-store=basic, so it never raises a Keychain dialog on a Mac (test/chrome-flags).
 - feat(kernel): K0, the golden-decision recorder (kernel/golden). Boots today's registry (box and local) in a throwaway home with every tool body stubbed, asks Registry.call about every tool for 20 caller shapes in 5 worlds (person session, presence proof, asked-for match, named project) and stores the answers as golden.json (one letter per cell). `node kernel/golden/index.js --write` re-records; the K2 retrofit must reproduce it cell for cell. It runs only on a runner or the test box (the daemon host guard refuses the Mac).
