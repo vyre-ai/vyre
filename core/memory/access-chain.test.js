@@ -43,9 +43,9 @@ async function boot(t, { kernel = null } = {}) {
 }
 
 const YES = { graph: "yes", corrections: "yes", me: "yes", correct: "yes", pin: "yes", write: "yes", site: "yes" };
-// A relay device (the phone app's path) never read the graph, the corrections list or personal facts as the owner: only `tailnet:` logins did. Kept exactly.
-const RELAY = { ...YES, graph: "denied", corrections: "denied", me: "denied" };
-const UNSIGNED = { ...YES, correct: "person_session_required", write: "person_session_required" };
+// RULING 6 Oct (second deliberate change): an owner device reads as the owner only when signed in, over Wink or the relay alike. Unsigned: nothing personal, and no correct or write.
+const NO_READS = { graph: "denied", corrections: "denied", me: "denied" };
+const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required" };
 
 test("each caller class does exactly what its label did: the table's rows, by the chain and by the label", async t => {
   const rig = await createRig({ agents: ["kit", "assistant"] });
@@ -60,9 +60,9 @@ test("each caller class does exactly what its label did: the table's rows, by th
     ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), await off.can("cli"), YES],
     ["the Capsule (named exception)", await on.can("capsule"), await off.can("capsule"), YES],
     ["the person on another device over Wink (was tailnet:), signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device("s1") }), await off.can("tailnet:alex@example.com", { person: { id: "s1" } }), YES],
-    ["the same device, not signed in", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), await off.can("tailnet:alex@example.com"), UNSIGNED],
-    ["the person's device over the relay (was device:<id>), signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), await off.can("device:abcdefghijklmnop", { person: { id: "s1" } }), RELAY],
-    ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), await off.can("device:abcdefghijklmnop"), { ...RELAY, correct: "person_session_required", write: "person_session_required" }],
+    ["the same device, not signed in (CHANGED by the ruling: no personal reads)", await on.can("tailnet:alex@example.com", { kernelFacts: device() }), null, UNSIGNED],
+    ["the person's device over the relay, signed in (CHANGED by the ruling: it reads as the owner)", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), null, YES],
+    ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), null, UNSIGNED],
     ["the person's own session or thread", await on.can("mcp:thread:t1", { token: own }, bind(own)), await off.can("mcp:thread:t1"), null],
     ["a named agent (kit)", await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*" }, bind(agent)), await off.can("mcp:agent:kit", { agent: "kit", granted: "*" }), null],
     // The person's own Claude: the kernel's token chain is [person, agent:assistant] (no fact tells a thread from the assistant), and the label forms it replaces were mcp:thread:<id> and mcp:agent:assistant
@@ -70,7 +70,7 @@ test("each caller class does exactly what its label did: the table's rows, by th
     ["the person's own Claude (assistant token) against the assistant label", await on.can("mcp:agent:assistant", { token: assistant, agent: "assistant", granted: "*" }, bind(assistant)), await off.can("mcp:agent:assistant", { agent: "assistant", granted: "*" }), null],
   ];
   for (const [name, after, before, expected] of rows) {
-    assert.deepEqual(after, before, `${name}: the chain and the label disagree`);
+    if (before) assert.deepEqual(after, before, `${name}: the chain and the label disagree`);
     if (expected) assert.deepEqual(after, expected, name);
   }
   // spot-check the rows with no declared expectation: an own session may not steer the main graph, read corrections, correct or use the site store
@@ -139,4 +139,28 @@ test("MA-4: a session whose token names a chat of more than one person gets noth
     const r = await on.can("deck", { token: tok, kernelFacts: socket("deck"), ...(o.agent ? { agent: o.agent, granted: "*" } : {}) }, () => rig.k.bindCalls(() => ({ token: tok })));
     assert.ok(Object.values(r).every(v => v === "denied"), `${JSON.stringify(o)}: ${JSON.stringify(r)}`);
   }
+});
+
+test("RULING 6 Oct: an owner's own device reads personal memory as the owner when signed in, over Wink or the relay; unsigned, not the owner's, or with an agent hop it reads nothing personal", async t => {
+  const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const on = await boot(t, { kernel: handle });
+  const PERSONAL = ["graph", "corrections", "me"];
+  const reads = async (label, meta) => { const r = await on.can(label, meta); return PERSONAL.map(k => r[k]); };
+  // 1. signed in, either path: reads
+  assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), ["yes", "yes", "yes"], "relay, signed in");
+  assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device("s1", "wink") }), ["yes", "yes", "yes"], "Wink, signed in");
+  // 2. unsigned, either path: nothing personal
+  assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), ["denied", "denied", "denied"], "relay, unsigned");
+  assert.deepEqual(await reads("tailnet:alex@example.com", { kernelFacts: device(undefined, "wink") }), ["denied", "denied", "denied"], "Wink, unsigned");
+  // 3. a device that is not the owner's: the kernel builds a chain for that member and the gate refuses it
+  const bobs = { kind: "device", device_key_id: "dk2", person: "per_bob", path: "relay", session: "s2" };
+  assert.deepEqual(await reads("device:abcdefghijklmnop", { kernelFacts: bobs }), ["denied", "denied", "denied"], "another person's device, signed in");
+  // 4. any agent hop: nothing personal, whatever device facts ride beside it
+  const kit = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
+  const r = await on.can("mcp:agent:kit", { token: kit, agent: "kit", granted: "*", kernelFacts: device("s1", "relay") }, () => rig.k.bindCalls(() => ({ token: kit })));
+  assert.deepEqual([r.corrections, r.correct], ["denied", "denied"], "an agent hop beside signed-in device facts");
+  // and the person-only writes still need the sign-in, as before
+  const un = await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") });
+  assert.deepEqual([un.correct, un.write], ["person_session_required", "person_session_required"]);
 });

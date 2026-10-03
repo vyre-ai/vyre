@@ -345,7 +345,7 @@ export default {
      * why, stats, corrections) but never corrects, merges or splits.
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
-    const viaTailnet = caller => { const w = whoNow(); return w ? w.nodeDevice : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path
+    const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * Throws unless the caller may read these folders' graph or this room (none: the main

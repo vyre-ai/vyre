@@ -12,7 +12,8 @@ export const OWNER_SURFACES = PERSON_SURFACES;
 /**
  * @typedef {{ ownerSurface: boolean, device: boolean, nodeDevice: boolean, signedIn: boolean, ownSession: boolean, agent: string|null, module: { name: string, firstParty: boolean }|null, capsule?: boolean }} Who
  * ownerSurface: the person (the home's owner) at cli, local, deck or the Capsule. device: the owner on another paired or signed-in device; nodeDevice: one that arrived over the Wink node
- * path (what `tailnet:<login>` was), which reads memory as the owner does; a device over the relay (`device:<id>`) never did, and does not now. signedIn: their passkey session on it.
+ * path (what `tailnet:<login>` was). signedIn: their passkey session on it. RULING (6 Oct): an owner's own device reads memory as the owner only when signed in, over Wink or the relay
+ * alike (`nodeDevice` is kept as a fact, but no longer decides); an unsigned device, a device that is not the owner's and any agent hop read nothing personal.
  * ownSession: the person's own Claude Code session or Vyre thread (a session token, no agent beside them). agent: the agent hop's name. module: a module's own call.
  */
 
