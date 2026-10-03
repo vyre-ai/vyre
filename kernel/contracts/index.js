@@ -50,7 +50,7 @@ export const TASK_TRANSITIONS = Object.freeze([
 ].map(r => Object.freeze(r)));
 
 export const FIELD_KINDS = f([
-  "text", "rich_text", "number", "money", "boolean", "date", "datetime", "choice", "multi_choice", "rating", "link", "ref", "actor",
+  "text", "rich_text", "number", "money", "boolean", "date", "datetime", "choice", "multi_choice", "rating", "url", "link", "actor",
   "file", "address", "phones", "emails", "urls", "stage", "sealed",
 ]);
 export const SEAL_CLASSES = f(["us-ssn", "us-itin", "us-ein", "card", "bank-account", "routing-number", "iban", "passport", "tax-id", "medical", "free"]);

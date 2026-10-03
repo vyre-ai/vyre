@@ -5,7 +5,7 @@ import { canonical, sha256 } from "./canonical.js";
 import { createChainBuilder, isChain, isExactlyPerson, chainHash, mergeLabels } from "./chain.js";
 import { createAuthorizer, contains, patternCovers } from "./authorize.js";
 import { createEventLog, verifyEvents, genesis } from "./events.js";
-import { covers, containedPrefix } from "./urn.js";
+import { covers, containedPrefix, segments } from "./urn.js";
 
 const SPACE = "spc_aaaaaaaaaaaa";
 const OWNER = "per_owner";
@@ -207,7 +207,7 @@ test("authorize: a wildcard covers only actions that existed when the grant was 
 
 test("authorize: kernel-attribute predicates and selectors decide the resource", async () => {
   const g = grant({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "project", op: "in", value: ["p1", "p2"] }, { attr: "sensitivity", op: "ne", value: "privileged" }] } });
-  const attrs = urn => (urn === R(1) ? { project: "p1" } : urn === R(2) ? { project: "p9" } : { project: "p2", sensitivity: "privileged" });
+  const attrs = urn => (urn === R(1) ? { project: "p1", sensitivity: "internal" } : urn === R(2) ? { project: "p9", sensitivity: "internal" } : { project: "p2", sensitivity: "privileged" });
   const az = world({ grants: [g], attrs });
   assert.equal((await ask(az, person(), "crm.read", R(1))).effect, "allow");
   assert.equal((await ask(az, person(), "crm.read", R(2))).effect, "deny");
@@ -409,4 +409,72 @@ test("events: a consumer gets every event at least once, in order, and a failing
   assert.equal(l.cursor("search"), 4);
   const off = l.subscribe("late", { type: "*" }, () => {});
   off();
+});
+
+// ---- K1 gate fixes (reviewer-2 probes) ----
+test("K1-1: a child grant dies when its adder is no longer a member, or is an expired temp member", async () => {
+  const kit = actorOf("agent", "kit"), alice = actorOf("person", "per_alice");
+  const parent = grant({ subject: { kind: "actor", actor: alice }, actions: ["crm.read"], conditions: { delegate: { allowed: true, max_depth: 2 } } });
+  const child = grant({ subject: { kind: "actor", actor: kit }, parent: parent.id, actions: ["crm.read"], conditions: { delegate: { allowed: true, max_depth: 1 } } });
+  const chain = builder().fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
+  const own = grant({ actions: ["crm.read"] });
+  const gone = world({ grants: [own, parent, child], members: ["agent:kit"] });
+  assert.deepEqual([(await ask(gone, chain, "crm.read")).effect, (await ask(gone, chain, "crm.read")).reason], ["deny", "revoked"]);
+  const here = world({ grants: [own, parent, child], members: ["agent:kit", "person:per_alice"] });
+  assert.equal((await ask(here, chain, "crm.read")).effect, "allow");
+  const temp = world({ grants: [own, parent, child], members: ["agent:kit", "person:per_alice"], memberships: { "person:per_alice": { role: "temp", expires: T - 1, scope: [`vyre://${SPACE}/contact/*`] } } });
+  assert.equal((await ask(temp, chain, "crm.read")).effect, "deny");
+});
+
+test("K1-2: unknown trust or class labels are refused or most restrictive", async () => {
+  const b = builder();
+  const ext = b.appendService(b.fromFacts(sock("deck")), "zz", false);
+  assert.throws(() => b.weaken(ext, { trust: "bogus", red: "public", source_spaces: [SPACE] }), { code: "bad_input" });
+  assert.throws(() => mergeLabels(ext.labels, { trust: "member", red: "bogus", source_spaces: [] }), { code: "bad_input" });
+  const stored = b.serialize(person());
+  const o = JSON.parse(stored.body); o.labels.trust = "bogus";
+  assert.throws(() => b.restore({ ...stored, body: JSON.stringify(o) }), { code: "not_a_member" }, "a tampered label fails the seal first");
+});
+
+test("K1-3: an event with an unknown class or visibility is refused, never lowered", () => {
+  const log = createEventLog({ space: SPACE, clock });
+  const c = person();
+  const ev = over => ({ type: "crm.created", sv: 1, subject: R(1), data: {}, ...over });
+  assert.throws(() => log.append(c, ev({ red: "bogus" })), { code: "bad_input" });
+  assert.throws(() => log.append(c, ev({ vis: "everyone" })), { code: "bad_input" });
+  assert.equal(log.append(c, ev({ red: "pii", vis: "members:x" })).red, "pii");
+});
+
+test("K1-4: wildcards never cover admin, grant or outward actions; a missing action_set_version covers no wildcard", async () => {
+  const wild = grant({ actions: ["*"], action_set_version: 9 });
+  assert.equal((await ask(world({ grants: [wild] }), person(), "email.send")).effect, "deny");
+  assert.equal((await ask(world({ grants: [wild] }), person(), "space.set", `vyre://${SPACE}/space/x`)).effect, "deny");
+  assert.equal((await ask(world({ grants: [wild] }), person(), "grants.create")).effect, "deny");
+  const x = grant({ actions: ["crm.*"], action_set_version: undefined });
+  assert.equal((await ask(world({ grants: [x] }), person(), "crm.read")).reason, "pattern_not_covered");
+  const named = grant({ actions: ["email.send"], action_set_version: undefined });
+  assert.notEqual((await ask(world({ grants: [named] }), person(), "email.send")).effect, "deny", "a named action needs no version");
+  assert.equal(patternCovers("crm.*", "crm.read", 0, undefined, "read"), "pattern_not_covered");
+  assert.equal(patternCovers("crm.*", "crm.read", 0, 9, "outward.send"), "pattern_not_covered");
+  assert.equal(contains(grant({ actions: ["*"], conditions: { delegate: { allowed: true, max_depth: 2 } } }), grant({ actions: ["email.send"], conditions: {} }), () => 0, () => "outward.send"), false);
+});
+
+test("K1-5: a predicate on a missing attribute never matches, for any op; an unknown op denies", async () => {
+  for (const op of ["eq", "ne", "in"]) {
+    const g = grant({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "sensitivity", op, value: op === "in" ? ["a"] : "privileged" }] } });
+    assert.equal((await ask(world({ grants: [g] }), person(), "crm.read")).effect, "deny", op);
+    assert.equal((await ask(world({ grants: [g], attrs: () => ({}) }), person(), "crm.read")).effect, "deny", op);
+  }
+  const ne = grant({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "sensitivity", op: "ne", value: "privileged" }] } });
+  assert.equal((await ask(world({ grants: [ne], attrs: () => ({ sensitivity: "internal" }) }), person(), "crm.read")).effect, "allow");
+  const odd = grant({ resource: { prefix: `vyre://${SPACE}/contact/*`, where: [{ attr: "sensitivity", op: "like", value: "x" }] } });
+  assert.equal((await ask(world({ grants: [odd], attrs: () => ({ sensitivity: "x" }) }), person(), "crm.read")).effect, "deny");
+});
+
+test("urn: dot segments and encoded or control forms are refused at parse", () => {
+  for (const bad of ["..", ".", "%2e%2e", "%2E", "a%2fb", "a\\b", "a\u0000b", "a\nb", "a."]) {
+    assert.equal(segments(`vyre://${SPACE}/file/proj/${bad}/x`), null, JSON.stringify(bad));
+  }
+  assert.equal(covers(`vyre://${SPACE}/file/proj`, `vyre://${SPACE}/file/proj/../../credential/x`), false);
+  assert.ok(segments(`vyre://${SPACE}/file/proj/a.pdf`));
 });

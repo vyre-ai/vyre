@@ -76,3 +76,24 @@ test("gates: an added module reaches only declared tools, and a door call skips 
   assert.equal(await t("added.own"), "pass");
   assert.equal(await t("a.undeclared", true), "pass");
 });
+
+test("K2-2: presence and asked fail closed: only an allow means no requirement", async () => {
+  const boom = { required: () => { throw new Error("compile blew up"); } };
+  const reg = fake({ "a.plain": def() }, { presence: boom });
+  const g = createLegacyGates({ registry: reg });
+  const q = { tool: "a.plain", def: reg.tools.get("a.plain"), caller: "deck", meta: {}, input: {} };
+  assert.equal(await g.needsPresence(q), true, "a throwing compile needs a proof");
+  const reg2 = fake({ "a.plain": def() });
+  const g2 = createLegacyGates({ registry: reg2 });
+  assert.equal(await g2.needsAsk({ tool: "a.missing", def: undefined, caller: "mcp", meta: {}, input: {} }), true, "an unknown tool needs the person's words");
+  assert.equal(await g2.needsAsk({ tool: "a.plain", def: reg2.tools.get("a.plain"), caller: "deck", meta: {}, input: {} }), false);
+});
+
+test("K2-3: the production chain builder cannot mint a person from a string; the legacy builder serves only the legacy Space", async () => {
+  const { createChainBuilder, createLegacyChainBuilder, LEGACY_SPACE } = await import("../core/chain.js");
+  const prod = createChainBuilder({ space: "spc_aaaaaaaaaaaa", owner: "o", owner_uid: 1, key: Buffer.alloc(32, 1) });
+  assert.equal("fromLegacy" in prod, false);
+  assert.throws(() => createLegacyChainBuilder({ space: "spc_aaaaaaaaaaaa" }), { code: "bad_input" });
+  const c = createLegacyChainBuilder({ space: LEGACY_SPACE }).fromLegacy({ kind: "person", id: "owner", legacy: "cli" });
+  assert.equal(c.space, LEGACY_SPACE);
+});

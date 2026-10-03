@@ -8,8 +8,10 @@ import { canonical, sha256 } from "./canonical.js";
 import { mintUuid } from "./ids.js";
 import { isChain, actorString, mergeLabels } from "./chain.js";
 import { segments, spaceOf } from "./urn.js";
+import { REDACTION_ORDER } from "../contracts/index.js";
 import { KernelError } from "./errors.js";
 
+const okVis = (/** @type {any} */ v) => ["space", "actor", "subject", "owner"].includes(v) || (typeof v === "string" && /^members:.+/.test(v));
 const TYPE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 export const genesis = (/** @type {string} */ space) => sha256(`vyre-genesis:${space}`);
 
@@ -55,6 +57,9 @@ export function createEventLog(cfg) {
     if (!ev || typeof ev.type !== "string" || !TYPE.test(ev.type)) throw new KernelError("bad_input", "event type must be noun.past-verb");
     if (!segments(ev.subject) || spaceOf(ev.subject) !== cfg.space) throw new KernelError("wrong_space", "subject is not in this space");
     if (!Number.isInteger(ev.sv) || ev.sv < 1) throw new KernelError("bad_input", "event needs a schema version");
+    // A class or visibility outside the registries is refused, never read as the lowest (invariants 5, 7).
+    if (ev.red !== undefined && !REDACTION_ORDER.includes(ev.red)) throw new KernelError("bad_input", "unknown event class");
+    if (ev.vis !== undefined && !okVis(ev.vis)) throw new KernelError("bad_input", "unknown event visibility");
     const labels = mergeLabels(chain.labels, { trust: chain.labels.trust, red: ev.red || "internal", source_spaces: [] });
     // A secret is never stored: the write is refused, not redacted (7.5).
     if (labels.red === "secret") throw new KernelError("secret_refused", "a secret is never written to the log");
