@@ -200,7 +200,7 @@ const fail = e => reply(e.status, { error: { code: e.code, message: e.message } 
 
 // ---- the Worker ----
 
-import { idOps, ID_ROUTES } from "./ids.js";
+import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 
 const ROUTES = {
   "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
@@ -248,7 +248,7 @@ export default {
       if (!env.ADMIN_SECRET || String(env.ADMIN_SECRET).length < 32) return fail(err(404, "not_found", "not available"));
       if (!given || !same(await sha256(given), await sha256(String(env.ADMIN_SECRET)))) return fail(err(401, "unauthorized", "not authorised"));
       auth = { admin: true };
-    } else if ((op !== "check" && op !== "idResolve") || request.headers.has("x-vyre-sig")) {
+    } else if (!SELF_PROVEN.has(op) && (op !== "check" || request.headers.has("x-vyre-sig"))) {
       auth = await authenticate(request, url, text, Number(env.NOW ? env.NOW() : Date.now()));
       if (!auth) return fail(err(401, "unauthorized", "sign the request with the route key"));
     }
@@ -475,7 +475,7 @@ export class Directory {
       // One namespace: a name an identity holds is taken here too.
       const id = await this.idLoad(v.name);
       if (!id) return { name: v.name, status: "ok", why: null };
-      if (auth && id.route === auth.route) return { name: v.name, status: "mine", why: null };
+      if (auth && Array.isArray(id.eids) && id.eids.includes(auth.route)) return { name: v.name, status: "mine", why: null };
       return { name: v.name, status: "taken", why: "someone else has that name" };
     }
     if (auth && rec.route === auth.route) return { name: v.name, status: "mine", why: null };

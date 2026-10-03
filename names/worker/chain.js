@@ -220,6 +220,28 @@ async function verifyOwnerSig(op, subject, owner, msg, ts, ctx) {
   return youngAt(dev, ts);
 }
 
+/**
+ * The public key that signs for `by` (and `via`, for a space owner's device) at a time, and whether it was young. For anything that
+ * is not an op: a sealed record, an alias proof, a release.
+ * @param {State} state @param {string} by @param {string|undefined} via @param {number} ts @param {Ctx} ctx
+ * @returns {Promise<{ pub: string, young: boolean, entry: Entry }>}
+ */
+export async function signerKey(state, by, via, ts, ctx = {}) {
+  const e = find(state, String(by));
+  if (!e) throw chainError("not_on_list", "the signer is not on the list");
+  if (state.kind === "space") {
+    const theirs = ctx.resolve ? await ctx.resolve(e.eid, ts) : null;
+    const dev = theirs && typeof via === "string" ? find(theirs, via) : undefined;
+    if (!dev || (dev.kind !== "device" && dev.kind !== "code")) throw chainError("not_on_list", "that device is not on the owner's list");
+    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e };
+  }
+  if (e.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
+  return { pub: /** @type {string} */ (e.pub), young: youngAt(e, ts), entry: e };
+}
+
+/** Does `sig` over `message` check out under the key `signerKey` names? @param {string} pub @param {Uint8Array} message @param {string} sig */
+export const verifyWith = (pub, message, sig) => verifySig(pub, message, sig);
+
 /** Verify a whole chain from its genesis and return its state. @param {any[]} ops @param {Ctx} [ctx] */
 export async function verifyChain(ops, ctx = {}) {
   if (!Array.isArray(ops) || !ops.length) throw chainError("bad_chain", "an empty chain");
