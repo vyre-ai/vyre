@@ -10,14 +10,19 @@
 import { createMemoryStore } from "./memory.js";
 import { planPage, planAggregate, fieldInfo } from "./sqlite-query.js";
 import { canonical } from "../core/canonical.js";
-import { encodeCursor } from "./query.js";
+import { encodeCursor, fieldOf } from "./query.js";
 
 const MIGRATION = `
   CREATE TABLE IF NOT EXISTS kernel_types (name TEXT PRIMARY KEY, def TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS kernel_records (type TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL, data TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, deleted_at INTEGER, PRIMARY KEY (type, id));
   CREATE TABLE IF NOT EXISTS kernel_changes (seq INTEGER PRIMARY KEY, entry TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS kernel_attrs (urn TEXT PRIMARY KEY, attrs TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS kernel_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
+// The full-text index: one row per live record, rowid = the record's rowid, holding the lowercased text of its non-sealed text fields, one field per line. Trigram, case-sensitive
+// (the text is lowered by the same JS call the reference search uses), so a word of three or more characters is found exactly when the reference's substring test finds it.
+// A sealed field is never in it. Written in the same transaction as the record.
+const FTS = "CREATE VIRTUAL TABLE IF NOT EXISTS kernel_fts USING fts5(doc, tokenize = 'trigram case_sensitive 1')";
 const HOT_ROWS = 5000;
 const HOT_ATTRS = 5000;
 const MAX_INDEXES = 24;
@@ -39,6 +44,8 @@ function equalities(f) {
 export function createSqliteStore(cfg) {
   const { db } = cfg;
   db.exec(MIGRATION);
+  let ftsOk = true;
+  try { db.exec(FTS); } catch { ftsOk = false; } // a SQLite built without FTS5 keeps the LIKE narrowing
   const hot = cfg.hotRows ?? HOT_ROWS;
   const types = db.prepare("SELECT def FROM kernel_types").all().map((/** @type {any} */ r) => JSON.parse(r.def));
   /** @type {Map<string, any>} the type definitions, for the query planner */ const defs = new Map(types.map((/** @type {any} */ t) => [t.name, t]));
@@ -77,6 +84,62 @@ export function createSqliteStore(cfg) {
       if (typeof v === "string" && /[^\x20-\x7e]/.test(v)) asciiOf.set(key, false);
     }
   };
+  // ---- full-text index (kernel_fts) ----
+  const getRowid = db.prepare("SELECT rowid AS r FROM kernel_records WHERE type = ? AND id = ?");
+  const getFlag = db.prepare("SELECT value FROM kernel_flags WHERE name = ?");
+  const setFlag = db.prepare("INSERT INTO kernel_flags (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value");
+  /** The text a record is searched by: its non-sealed text fields, lowercased, one per line. Null when it has none. */
+  const docOf = (/** @type {any} */ r) => {
+    const def = defs.get(r.type);
+    if (!def) return null;
+    const parts = [];
+    for (const f of def.fields) {
+      if (f.kind === "sealed") continue;
+      const v = fieldOf(r, f.name);
+      const text = typeof v === "string" ? v : Array.isArray(v) && v.every(x => typeof x === "string") ? v.join(" ") : "";
+      if (text) parts.push(text.toLowerCase().replace(/\n/g, " "));
+    }
+    return parts.length ? parts.join("\n") : null;
+  };
+  const ftsDel = ftsOk ? db.prepare("DELETE FROM kernel_fts WHERE rowid = ?") : null;
+  const ftsPut = ftsOk ? db.prepare("INSERT INTO kernel_fts (rowid, doc) VALUES (?, ?)") : null;
+  /** Bring one record's entry in step with the record. Called inside the write's transaction. */
+  const ftsSync = (/** @type {any} */ r) => {
+    if (!ftsOk) return;
+    const row = /** @type {any} */ (getRowid.get(r.type, r.id));
+    if (!row) return;
+    /** @type {any} */ (ftsDel).run(row.r);
+    const doc = r.deleted_at ? null : docOf(r);
+    if (doc) /** @type {any} */ (ftsPut).run(row.r, doc);
+  };
+  let ftsBuilt = false;
+  /** Resolves when the index covers every record: at once on a new database, in slices (the loop is never held) on one that had records before the index. */
+  const ftsReady = (async () => {
+    if (!ftsOk) return;
+    if (getFlag.get("fts_built")) { ftsBuilt = true; return; }
+    const walk = db.prepare("SELECT rowid AS rid, * FROM kernel_records WHERE rowid > ? ORDER BY rowid LIMIT 400");
+    let after = 0;
+    for (;;) {
+      const chunk = /** @type {any[]} */ (walk.all(after));
+      if (!chunk.length) break;
+      db.exec("BEGIN");
+      try {
+        for (const r of chunk) {
+          /** @type {any} */ (ftsDel).run(r.rid);
+          if (r.deleted_at) continue;
+          const doc = docOf({ type: r.type, id: r.id, data: JSON.parse(r.data), version: r.version, created_at: r.created_at, updated_at: r.updated_at });
+          if (doc) /** @type {any} */ (ftsPut).run(r.rid, doc);
+        }
+        db.exec("COMMIT");
+      } catch (err) { db.exec("ROLLBACK"); throw err; }
+      after = chunk[chunk.length - 1].rid;
+      await new Promise(res => setImmediate(res));
+    }
+    setFlag.run("fts_built", "1");
+    ftsBuilt = true;
+  })();
+  ftsReady.catch(() => {});
+
   const table = type => {
     /** @type {Map<string, any>} the hot rows, least recently used first */ const cache = new Map();
     caches.push(cache);
@@ -131,6 +194,12 @@ export function createSqliteStore(cfg) {
       },
       searchCandidates(words) {
         if (!words.length) return this.values();
+        // Words of three or more characters: the full-text index finds every record whose text holds one of them as a substring (the same test the exact code applies next, so this
+        // narrows and never drops a match). A shorter word, or an index still being built, takes the scan.
+        if (ftsOk && ftsBuilt && words.every(w => [...w].length >= 3)) {
+          const match = words.map(w => `"${w.replace(/"/g, '""')}"`).join(" OR ");
+          return rows(db.prepare("SELECT k.* FROM kernel_fts f JOIN kernel_records k ON k.rowid = f.rowid WHERE kernel_fts MATCH ? AND k.type = ? AND k.deleted_at IS NULL").iterate(match, type));
+        }
         const any = words.map(() => "data LIKE ? ESCAPE '\\'").join(" OR ");
         return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = ? AND deleted_at IS NULL AND (${any})`).iterate(type, ...words.map(w => `%${likeEsc(w)}%`)));
       },
@@ -155,6 +224,7 @@ export function createSqliteStore(cfg) {
           const r = /** @type {any} */ (pending);
           noteWrite(r);
           putRec.run(r.type, r.id, r.version, JSON.stringify(r.data), r.created_at, r.updated_at, r.deleted_at ?? null);
+          ftsSync(r);
           putChange.run(Number(e.cursor.slice(1)), JSON.stringify(e));
           db.exec("COMMIT");
         } catch (err) { db.exec("ROLLBACK"); throw err; }
@@ -177,5 +247,5 @@ export function createSqliteStore(cfg) {
     },
     set(/** @type {string} */ u, /** @type {any} */ v) { putAttrs.run(u, JSON.stringify(v)); attrCache.set(u, v); if (attrCache.size > HOT_ATTRS) attrCache.delete(/** @type {string} */ (attrCache.keys().next().value)); },
   };
-  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ stats: () => ({ aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
+  return { ...store, meta, /** What is held in memory: for the bound's tests and the load measurements. */ ftsReady, stats: () => ({ fts_built: ftsBuilt, aggregate_pushed: counts.agg, query_pushed: counts.pushed, query_streamed: counts.fell, hot_rows: caches.reduce((n, c) => n + c.size, 0), hot_attrs: attrCache.size, changes_in_memory: 0 }), async version() { return { store: "sqlite", version: "1", conformance: (await store.version()).conformance }; } };
 }
