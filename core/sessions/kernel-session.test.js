@@ -37,7 +37,7 @@ async function rig(t) {
     seen.push({ header: h || null, token: token || null });
     k.bindCalls(() => (token ? { token } : null));
     let out;
-    try { const room = await stream.audienceFor({}); out = { data: { group: room.group, size: room.size ?? null } }; } catch (e) { out = { error: { code: e.code } }; }
+    try { const room = await stream.audienceFor({}); out = { data: { group: room.group } }; } catch (e) { out = { error: { code: e.code } }; }
     k.bindCalls(() => null);
     res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(out));
   };
@@ -62,7 +62,7 @@ test("a session's calls arrive with its own token, and the harness only ever get
   assert.deepEqual(Object.keys(s).sort(), ["expires", "id"], "no token in what opening a session returns");
   const sock = await sessionSocket(s);
   const r = await get(sock);
-  assert.deepEqual(r, { data: { group: true, size: 2 } }, "the session's own chat is the room");
+  assert.deepEqual(r, { data: { group: true } }, "the session's own chat is the room");
   const t1 = await k.surfaces.verify(seen.at(-1).header);
   assert.equal(t1.session, s.id, "the header the daemon saw is this session's token");
   assert.equal(t1.chat, group.id, "with its chat written in by the kernel");
@@ -76,7 +76,7 @@ test("a header the client sends is dropped: another session's token through this
   const sa = await sessionSocket(a, "ta"), so = await sessionSocket(other, "to");
   await get(so);
   const otherToken = seen.at(-1).header;
-  assert.deepEqual(await get(sa, { [KERNEL_SESSION_HEADER]: otherToken }), { data: { group: true, size: 2 } });
+  assert.deepEqual(await get(sa, { [KERNEL_SESSION_HEADER]: otherToken }), { data: { group: true } });
   assert.equal((await k.surfaces.verify(seen.at(-1).header)).session, a.id);
   assert.notEqual(seen.at(-1).header, otherToken);
 });
@@ -88,7 +88,7 @@ test("no header, or a session that is not in the group, gets no_audience", async
   const noChat = await k.surfaces.open(bob);
   assert.deepEqual(await get(dsock, { [KERNEL_SESSION_HEADER]: noChat.token }), { error: { code: "no_audience" } }, "another session, one with no chat, is not a chat session");
   const s = await ks.open({ chain: bob, chat: solo.id });
-  assert.deepEqual(await get(await sessionSocket(s)), { data: { group: false, size: null } }, "a one-to-one chat is not a group");
+  assert.deepEqual(await get(await sessionSocket(s)), { data: { group: false } }, "a one-to-one chat is not a group");
 });
 
 test("a token cannot be reused after the turn ends", async t => {

@@ -34,6 +34,14 @@ export function createRoomPort(cfg) {
       reads.set(sid, was === undefined ? v.ver : Math.min(was, v.ver));
       if (reads.size > RATE.sessions) reads.delete(reads.keys().next().value);
     },
+    /** The session's turn begins now: the room's version is fixed here, before the turn's first read. A reply for this turn belongs to this version or an older one. @param {string} session @param {string} chat */
+    begin(session, chat) {
+      const v = gs.chatVersion(chat);
+      if (!v) return null;
+      reads.set(session, v.ver);
+      if (reads.size > RATE.sessions) reads.delete(reads.keys().next().value);
+      return v.ver;
+    },
     /** The version a reply opened now belongs to: the oldest version any read since the last reply was made under, else the current one; the notes start again. @param {string} session @param {number} current */
     takeVersion(session, current) { const was = reads.get(session); reads.delete(session); return was === undefined ? current : Math.min(current, was); },
     /** The people of the chain's room when it is a group (more than one), null when it is not; `not_found` when the person the session is for is no longer in the chat. @param {any} chain @returns {string[] | null} */
@@ -170,6 +178,17 @@ export function createRoom(cfg) {
      * @param {string} token
      */
     async roomFor(token) { return roomOf(await ofToken(token, "no_audience")); },
+    /**
+     * Begin the session's turn (CH-10): fix the room's membership version NOW, before the turn reads anything. Everything the turn reads and the reply it opens belong to this
+     * version or an older one, so the kernel does not depend on the stream calling in a particular order. Returns `{ ver }`.
+     * @param {string} token
+     */
+    async beginTurn(token) {
+      const t = await ofToken(token, "not_found");
+      const ver = cfg.port.begin(t.session, t.chat);
+      if (ver === null) throw new KernelError("not_found", "no such chat");
+      return Object.freeze({ chat: t.chat, ver });
+    },
     /**
      * Open a reply in the chat the session was opened for. The reply is stamped with the chat's membership VERSION now and belongs to it: it is delivered only to the people who
      * were in the room at that version (`mayReceive`), so someone who joins while it streams, or afterwards, never receives it, and a reply never has to be refused or run again

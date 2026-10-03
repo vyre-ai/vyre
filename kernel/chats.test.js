@@ -540,3 +540,42 @@ test("CH-8b: a group session's tasks, listings and events are the room's view to
   assert.equal(evG.some(e => String(e.subject).includes("/task/")), false);
   void bob;
 });
+
+test("CH-10 by the kernel: beginTurn fixes the room version before the turn's first read; a join after it never receives the reply, whatever order the stream calls in", async () => {
+  const { k, bob, C } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const chat = await C.create(bob, { people: [OWNER] });
+  const t = await k.surfaces.open(bob, { chat: chat.id });
+  const turn = await stream.chats.beginTurn(t.token);          // the turn starts: version fixed, before any read
+  await C.change(bob, chat.id, { add_people: [CAROL] });          // carol joins before the turn reads anything
+  const reply = await stream.chats.appendOpen(t.token, {});
+  assert.equal(reply.ver, turn.ver, "the reply belongs to the version the turn began under");
+  await reply.close("said while carol was not here");
+  const carol = await k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: CAROL, path: "direct" });
+  assert.equal(stream.chats.mayReceive(carol, reply.id), false);
+  const next = await stream.chats.appendOpen(t.token, {});       // a new turn (no begin): the current version
+  await next.close("hi carol");
+  assert.equal(stream.chats.mayReceive(carol, next.id), true);
+  await assert.rejects(() => stream.chats.beginTurn("not.a-token"), { code: "not_found" });
+});
+
+test("CH-8b: every read action in the gateway's table is the room's view under a group token: allowed to the asker alone, refused once a person who may not read joins", async () => {
+  const { k, owner, g, C } = await rig();
+  await setTemp(g, owner, CAROL, ["contact"]);                   // carol reaches contacts only
+  const solo = await C.create(owner, {}), group = await C.create(owner, { people: [CAROL] });
+  const hS = await k.surfaces.chainFor((await k.surfaces.open(owner, { chat: solo.id })).token);
+  const hG = await k.surfaces.chainFor((await k.surfaces.open(owner, { chat: group.id })).token);
+  const reads = k.gateway.actions().filter(a => a.risk === "read");
+  assert.ok(reads.length >= 6, `the table has read actions (${reads.map(a => a.action).join(", ")})`);
+  let walked = 0;
+  for (const a of reads) {
+    const resource = `vyre://${SPACE}/${a.resource_type === "type" ? "definition" : a.resource_type}/x1`;
+    const alone = (await k.gateway.authorize({ chain: hS, action: a.action, resource })).effect;
+    if (alone !== "allow") continue;                              // not a door this chain has
+    const inRoom = (await k.gateway.authorize({ chain: hG, action: a.action, resource })).effect;
+    // carol's reach is contacts only: for anything else the room must refuse, never fall back to the asker's view
+    if (a.resource_type !== "contact") assert.notEqual(inRoom, "allow", `${a.action} under a group token is the room's view`);
+    walked++;
+  }
+  assert.ok(walked >= 4, `walked ${walked} read actions`);
+});
