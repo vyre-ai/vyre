@@ -64,7 +64,7 @@ export function takeCredentialsPort() {
   portHolder.taken = true;
   const vault = portHolder.vault;
   return Object.freeze({
-    /** The token for this provider, or null. @param {string} provider @returns {Promise<string | null>} */
+    /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. This is the shape sessions reads (the sandbox launcher accepts the string too). @param {string} provider @returns {Promise<string | null>} */
     credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
   });
 }
@@ -211,7 +211,7 @@ export default {
     // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
     // The person sets, replaces or removes one here with presence; the app learns only that one is stored and when. Nothing returns the value: the session launcher gets it through the
     // credentials port above and sets it in the session's own process.
-    const provider = p => { const spec = LAUNCHER_ITEMS[String(p)]; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
+    const provider = p => { const spec = Object.hasOwn(LAUNCHER_ITEMS, String(p)) ? LAUNCHER_ITEMS[String(p)] : null; if (!spec) throw new Error(`provider is one of ${Object.keys(LAUNCHER_ITEMS).join(", ")}`); return spec; };
     tool("vault.provider.set", SURFACES, "Store or replace a provider's session sign-in token (for Claude, the one `claude setup-token` makes). Sealed, yours, never shown again; the session launcher is the only thing that receives it.",
       obj({ provider: str, token: str }, ["provider", "token"]),
       async ({ provider: p, token }, { caller }) => {

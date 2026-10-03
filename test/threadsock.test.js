@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { start } from "../core/daemon/index.js";
 import { openThreadSocket, belongs } from "../core/daemon/threadsock.js";
 import { tempHome } from "./helpers.js";
+const realManifest = JSON.parse(fs.readFileSync(new URL("../core/switchboard/module.json", import.meta.url), "utf8"));
 import { SCRATCH } from "./scratch.mjs";
 
 /** A client process that makes one call on the socket and prints the answer. */
@@ -36,7 +37,7 @@ test("threadsock: the session's own processes, as the caller vyred bound, and ne
     run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
   assert.equal(fs.statSync(sock.path).mode & 0o777, 0o600, "a private folder: the socket is the person's user alone");
@@ -86,7 +87,7 @@ test("threadsock: a session's call id reaches the tool; other callers' and malfo
   d.registry.tools.set("threads.vouch", { ...tool, internal: true, run: async ({ session, key }) => (session === "s1" && key === "k1" ? { thread: "t9" } : {}) });
   const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context({ name: "switchboard", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   /** @type {number[]} */ const inThread = [];
   const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", dir, pids: async () => ({ pids: inThread }) });
   t.after(() => sock.close());
@@ -116,13 +117,13 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
     export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
-  const ctx = d.registry.context({ name: "threads", version: "0.1.0", does: { tools: [] } });
+  const ctx = d.registry.context(realManifest);
   assert.equal(typeof ctx.kernelSession, "function", "the Switchboard is handed the session credential maker");
   assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).kernelSession, "undefined", "and nobody else");
   // the confined spawner for its sessions is composed here too, for the Switchboard alone
   const sbx = ctx.sandbox;
   assert.ok(sbx && typeof sbx.sandbox.planHome === "function" && typeof sbx.sandbox.selfTest === "function" && typeof sbx.sandbox.launch === "function", "the runner's home sandbox");
-  assert.equal(sbx.probes.personSocket.length > 0, true);
+  assert.equal(typeof sbx.probes, "function");
   assert.equal(typeof d.registry.context({ name: "other", version: "0.1.0", does: { tools: [] } }).sandbox, "undefined");
   const owner = d.kernel.id.owner;
   const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct" });
@@ -146,4 +147,90 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   const b = client(sock.path, "zz-room.peek", {});
   inThread.push(b.pid);
   assert.equal((await b.done).status, 401);
+});
+
+test("R-1: on the person's own socket no thread or agent label proves anything; an assistant reaches the open tools only through its session's socket, and ask-first tools are held for it", async t => {
+  const { call } = await import("../core/daemon/client.js");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  // the label walk: whatever a client puts in its caller label, the person's socket gives it nothing it could not get as a plain model
+  for (const label of ["mcp:thread:fake", "harness:thread:fake", "cli:thread:fake", "local:thread:fake", "deck:thread:fake", "mcp:agent:kit", "harness:agent:kit", "cli:agent:kit", "cli agent:kit", "mcp:thread:", "mcp"]) {
+    const r = /** @type {any} */ (await call("mentions.kinds", {}, { root, caller: label }));
+    assert.ok(!r.data, `${label} reached an open person tool: ${JSON.stringify(r).slice(0, 120)}`);
+    for (const tool of ["files.send", "hooks.open", "bridges.kit.install", "agents.delete"]) { const k = /** @type {any} */ (await call(tool, {}, { root, caller: label })); assert.ok(!k.data, `${label} reached ask-first ${tool}`); }
+  }
+  // through a session's own socket the daemon bound the thread: open tools answer, ask-first tools are held, person-only tools are refused
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const ctx = d.registry.context(realManifest);
+  /** @type {number[]} */ const inThread = [];
+  const sock = await openThreadSocket({ handler: ctx.handler, thread: "t1", agent: "kit", dir, pids: async () => ({ pids: inThread }) });
+  t.after(() => sock.close());
+  const open = client(sock.path, "mentions.kinds", {});
+  inThread.push(open.pid);
+  const o = await open.done;
+  assert.equal(o.status, 200, JSON.stringify(o).slice(0, 200));
+  const { ASK_FIRST } = await import("../core/modules/agent-reach.js");
+  const { PERSON_ONLY, HUMAN_ONLY } = await import("../core/presence/index.js");
+  const askTool = [...ASK_FIRST.keys()].find(n => !PERSON_ONLY.has(n) && !HUMAN_ONLY.has(n));
+  assert.ok(askTool, "an ask-first tool the session socket itself does not refuse");
+  const held = client(sock.path, askTool, {});
+  inThread.push(held.pid);
+  const h = await held.done;
+  assert.equal(h.body && h.body.error && h.body.error.code, "held_unavailable", "an ask-first tool is held for a proven assistant, not run");
+  const only = client(sock.path, "relay.pair.ticket", {});
+  inThread.push(only.pid);
+  assert.notEqual((await only.done).status, 200, "a person-only tool stays the person's");
+});
+
+test("a REAL daemon boot hands the Switchboard (the module named in its own manifest, `threads`) its kernel session maker and its sandbox by declaration, nobody else, and a missing sandbox is a refusal", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  assert.equal(realManifest.name, "threads", "the real manifest name");
+  assert.deepEqual(realManifest.needs.daemon, ["kernelSession", "sandbox"], "it declares what it needs from the daemon");
+  const row = d.registry.status().find(m => m.name === "threads");
+  assert.equal(row && row.state, "running", JSON.stringify(row));
+  const real = d.registry.context(realManifest);
+  assert.equal(typeof real.kernelSession, "function");
+  assert.equal(typeof real.sandbox.sandbox.selfTest, "function");
+  // E-5: the probe targets are REAL, made for each self-test and torn down after it
+  assert.equal(typeof real.sandbox.probes, "function");
+  const probes = await real.sandbox.probes();
+  const net = await import("node:net");
+  const reach = (/** @type {any} */ o) => new Promise(r => { const c = net.connect(o); c.once("connect", () => { c.destroy(); r("connected"); }); c.once("error", () => r("refused")); });
+  assert.equal(await reach({ path: probes.otherSocket }), "connected", "another session's socket stand-in is a real listening socket");
+  assert.equal(await reach({ port: probes.daemonPorts[0], host: "127.0.0.1" }), "connected", "the loopback port is a real listener");
+  await probes.release();
+  assert.equal(await reach({ path: probes.otherSocket }), "refused", "torn down afterwards");
+  assert.equal(await reach({ port: probes.daemonPorts[0], host: "127.0.0.1" }), "refused");
+  // a module that does not declare it gets neither, whatever its name
+  for (const name of ["switchboard", "other"]) { const c = d.registry.context({ name, version: "0.1.0", does: { tools: [] } }); assert.equal(c.kernelSession, undefined, name); assert.equal(c.sandbox, undefined, name); }
+  // the Switchboard itself: with no sandbox dep and a session credential maker on macOS or Linux, a session is refused, not started unconfined
+  const { Switchboard } = await import("../core/switchboard/index.js");
+  const sb = Object.create(Switchboard.prototype);
+  sb.deps = { kernelSession: async () => null, sandbox: null };
+  sb.socks = new Map();
+  if (process.platform !== "win32") await assert.rejects(() => sb.sandboxFor("t1", { cwd: root }, {}), { code: "sandbox_failed" });
+  sb.deps = { sandbox: null };
+  assert.equal(await sb.sandboxFor("t1", { cwd: root }, {}), undefined, "with the kernel off nothing changes");
+  sb.deps = { kernelSession: async () => null, sandbox: { off: true } };
+  assert.equal(await sb.sandboxFor("t1", { cwd: root }, {}), undefined, "a development opt-out is explicit");
+});
+
+test("helpers: `absent` presence stops a tool that declares presence, and leaves the rest alone", async t => {
+  const { absent } = await import("./helpers.js");
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, presence: absent });
+  t.after(() => d.stop());
+  // flows.approve declares presence: with no person present the call is refused and nothing is approved
+  const r = await d.registry.call("flows.approve", { id: "fl_x", version: 1, hash: "h" }, "cli");
+  assert.ok(r.error, JSON.stringify(r));
+  assert.ok(["presence_required", "unavailable", "not_found", "denied"].includes(r.error.code), r.error.code);
+  const ok = await d.registry.call("mentions.kinds", {}, "cli");
+  assert.ok(ok.data, "a tool with no presence declared still runs");
 });

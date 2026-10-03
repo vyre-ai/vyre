@@ -935,7 +935,14 @@ export class Switchboard {
   /** The confined spawner for this session (deps.sandbox: { sandbox, platform, home, vyreHome, probes, temp, binFor }), or null when sandboxing is not on. Throws one plain reason when the check fails. */
   async sandboxFor(id, rec, o) {
     const cfg = this.deps.sandbox;
-    if (!cfg) return undefined;
+    // With the kernel on (the daemon handed a session credential maker) a session on macOS or Linux is never started unconfined by accident: a missing sandbox is a refusal with the
+    // reason, and only an explicit development opt-out (`{ off: true }`) lets it through. Without the kernel nothing changes; Windows starts unsandboxed in 0.3.
+    if (!cfg) {
+      if (this.deps.kernelSession && process.platform !== "win32") throw Object.assign(new Error("Vyre did not start this session because this computer has no sandbox for it."), { code: "sandbox_failed" });
+      return undefined;
+    }
+    if (cfg.off) return undefined;
+    if (cfg.unavailable) throw Object.assign(new Error(String(cfg.unavailable)), { code: "sandbox_failed" });
     const sock = this.socks.get(id);
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";

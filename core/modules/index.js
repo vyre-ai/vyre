@@ -437,11 +437,17 @@ export const agentClaim = caller => {
  * Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
  */
 const claimsAgent = (/** @type {any} */ caller) => agentClaim(caller) !== null || /(?:^|[\s:])thread:/.test(String(caller ?? ""));
-const AGENT_SURFACES = new Set(["cli", "local", "mcp", "harness"]);
-export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && claimsAgent(caller) && !AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool);
-/** A person-reach tool that is open to this assistant caller even though the surface label is not one of the person's own. */
-export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller) => d.reach === "person" && claimsAgent(caller) && AGENT_SURFACES.has(callerKind(caller)) && (AGENT_OPEN.has(tool) || AGENT_ASK_FIRST.has(tool));
-/** An open-but-ask-first tool called by an assistant: held for a one-tap task, like an outward one. */
+const AGENT_SURFACES = new Set(["mcp", "harness", "cli", "local"]);
+/**
+ * The assistant claim is PROVEN only when the daemon bound the call to a session: `meta.thread` is set by a session's own socket, or by a vouched agent key or session, and by
+ * nothing a client can say. A label such as `mcp:thread:fake` or `cli:agent:kit` sent on the person's own socket proves nothing, so an unproven claim reaches no person-reach
+ * tool at all (reviewer-2 R-1), while the open and ask-first lists apply to a proven one.
+ */
+const proven = (/** @type {any} */ meta) => Boolean(meta && typeof meta.thread === "string" && meta.thread);
+export const personRefusesAgent = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && (!proven(meta) || (!AGENT_OPEN.has(tool) && !AGENT_ASK_FIRST.has(tool)));
+/** A person-reach tool that is open to this PROVEN assistant even though the surface label is not one of the person's own. */
+export const agentOpensPerson = (/** @type {string} */ tool, /** @type {any} */ d, /** @type {any} */ caller, /** @type {any} */ meta) => d.reach === "person" && claimsAgent(caller) && proven(meta) && AGENT_SURFACES.has(callerKind(caller)) && (AGENT_OPEN.has(tool) || AGENT_ASK_FIRST.has(tool));
+/** An open-but-ask-first tool called by an assistant (proven or not): held for a one-tap task, like an outward one, and never run unproven. */
 export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ caller) => AGENT_ASK_FIRST.has(tool) && claimsAgent(caller);
 
 /**
@@ -990,14 +996,10 @@ export class Registry {
         list: () => [...this.providers.keys()],
       },
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
-      // The session credential maker is the Switchboard's alone (vyred's own sessions): no other module is handed the way to open a kernel session for a thread.
-      ...(m.name === "threads" && this.deps.kernelSession ? { kernelSession: (/** @type {any} */ q) => this.deps.kernelSession(q) } : {}),
-      // A provider's sign-in token (claude: the setup token, anthropic: the API key) comes from the credentials port the daemon took once at start, for the launcher modules only (threads, agents):
-      // never from a module grant on the vault items, so no other module can be given it. Late-bound: the port exists once the vault has started; until then it answers undefined (and the
-      // caller keeps its old grant-based read, which `vault.launcherOnly` switches off).
-      ...((m.name === "threads" || m.name === "agents") ? { credentials: (/** @type {string} */ provider) => (this.deps.credentialsPort ? this.deps.credentialsPort.credentials(provider) : Promise.resolve(null)) } : {}),
-      // The confined spawner for the sessions it starts (the runner's home sandbox, composed by the daemon because core/sessions cannot import core/runner): the Switchboard's alone.
-      ...(m.name === "threads" && this.deps.sandbox ? { sandbox: this.deps.sandbox } : {}),
+      // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
+      // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
+      // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "sandbox", "flowsHost"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1103,7 +1105,7 @@ export class Registry {
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-      if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller)) || personRefusesAgent(tool, def, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+      if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller, meta)) || personRefusesAgent(tool, def, caller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1338,9 +1340,9 @@ export class Registry {
   }
 
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
-  listTools(caller) {
+  listTools(caller, meta) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller) || agentOpensPerson(name, d, caller)) && !personRefusesAgent(name, d, caller))))
+    return [...this.tools.entries()].filter(([name, d]) => !d.internal && !d.hook && (!caller || ((callerAllowed(d.callers, caller) || agentOpensPerson(name, d, caller, meta)) && !personRefusesAgent(name, d, caller, meta))))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}),
         // Module API 1: what an object entry declared, for the capability manifest.
         ...(d.declaredReach ? { reach: d.reach } : {}), ...(d.outward ? { outward: d.outward } : {}) }));

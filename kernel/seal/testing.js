@@ -7,10 +7,31 @@ import { chainCtx, payloadHash, proofBytes, canonical, sha256b64 } from "./wire.
 
 export const SPACE = "spc_testspace0001";
 export const actor = (kind, id, space = SPACE) => ({ kind, id, space });
-/** A chain as the kernel would build it. @param {Array<[string,string]>} hops [kind, id] pairs @param {string} [surface] */
-export const chain = (hops, surface = "deck", space = SPACE) => ({ space, hops: hops.map(([k, i], n) => ({ actor: actor(k, i, space), via: n === 0 ? { surface } : undefined, entered_by: "surface" })), labels: { trust: "member", red: "internal", source_spaces: [space] }, built_at: Date.now() });
-export const person = (id = "per_alex", surface = "deck") => chain([["person", id]], surface);
-export const withAgent = (id = "per_alex") => chain([["person", id], ["agent", "intake"]]);
+
+// Chains are the kernel's own (kernel/core/chain.js, the real builder with a development seal key), not hand-made lookalikes: the sealing process and the door are tested against what the
+// kernel really builds, so a change in the kernel's chain shape fails here. The owner is per_alex; anyone else is a member who signed in on a device.
+import { createChainBuilder } from "../core/chain.js";
+import { createKernelSeal } from "../core/seal.js";
+const OWNER = "per_alex", builders = new Map();
+const builderFor = space => { if (!builders.has(space)) builders.set(space, createChainBuilder({ space, owner: OWNER, owner_uid: 501, seal: createKernelSeal({ key: Buffer.alloc(32, 3) }), clock: Date.now, is_person: () => true })); return builders.get(space); };
+/** A person in a Space: the owner on a surface (deck, capsule, cli ...), or a member on a device. */
+export const person = (id = OWNER, surface = "deck", space = SPACE) => id === OWNER
+  ? builderFor(space).fromFacts({ kind: "socket", surface, uid: 501, ...(surface === "capsule" ? { capsule_verified: true } : {}) })
+  : builderFor(space).fromFacts({ kind: "device", device_key_id: `d_${id}`, person: id, path: "direct" });
+/** A person's session with an agent in it. */
+export const withAgent = (id = OWNER, agent = "intake", space = SPACE) => builderFor(space).fromFacts({ kind: "agent_session", agent, session: "s1", thread: "t1", vouched: true, person: id });
+/**
+ * A chain as the kernel builds it, from [kind, id] pairs. Shapes the builder has a door for are built by it: a person, a person with an agent, a person through a module (service), and a model's own call.
+ * SHIM(chain-shapes): any other shape (a service first, three hops) is hand-made like the old helper, because no door builds it.
+ */
+export const chain = (hops, surface = "deck", space = SPACE) => {
+  const kinds = hops.map(h => h[0]).join(">");
+  if (kinds === "person") return person(hops[0][1], surface, space);
+  if (kinds === "person>agent") return withAgent(hops[0][1], hops[1][1], space);
+  if (kinds === "person>service") return builderFor(space).fromFacts({ kind: "module", inbound: person(hops[0][1], surface, space), module: hops[1][1], first_party: true });
+  if (kinds === "agent") return builderFor(space).fromFacts({ kind: "socket", surface: "mcp", inside_model_process: true });
+  return { space, hops: hops.map(([k, i], n) => ({ actor: actor(k, i, space), via: n === 0 ? { surface } : undefined, entered_by: "surface" })), labels: { trust: "member", red: "internal", source_spaces: [space] }, built_at: Date.now() };
+};
 export const tmp = name => fs.mkdtempSync(path.join(SCRATCH, `vyre-${name}-`));
 
 /** A device key that signs presence proofs the way the person's hardware signer does. */

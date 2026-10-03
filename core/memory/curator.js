@@ -25,6 +25,7 @@ import { lesson, within, ENDS } from "./teach.js";
 import { MIGRATIONS } from "./schema.js";
 import { migrate } from "../store/index.js";
 import { OPENERS, HEADINGS, TOOL_WORDS, ORG_WORDS, FREE_MAIL, NO_PERSON, registrable, letters, stemOf } from "./lexicon.js";
+import { scrubbed } from "./sealed.js";
 
 /** Tunables. Each is a count or share, and each says why it is what it is. */
 export const T = {
@@ -139,9 +140,9 @@ export class Curator {
       return { key: l.key, changed: r.changes > 0 };
     }
     const had = db.prepare("SELECT fact FROM memory_taught WHERE module = ? AND kind = ? AND key = ?").get(module, kind, l.key);
-    if (had && had.fact === l.stored) return { key: l.key, changed: false };
+    if (had && had.fact === scrubbed(l.stored)) return { key: l.key, changed: false };
     db.prepare(`INSERT INTO memory_taught (module, kind, key, fact, at) VALUES (?,?,?,?,?)
-      ON CONFLICT DO UPDATE SET fact = excluded.fact, at = excluded.at`).run(module, kind, l.key, l.stored, this.now());
+      ON CONFLICT DO UPDATE SET fact = excluded.fact, at = excluded.at`).run(module, kind, l.key, scrubbed(l.stored), this.now());
     this.dirty = true;
     return { key: l.key, changed: true };
   }
@@ -276,8 +277,8 @@ export class Curator {
   correct(c) {
     if (!ACTIONS.has(c.action)) throw new Error(`action must be one of ${[...ACTIONS].join(", ")}`);
     const r = this.db.prepare(`INSERT INTO memory_corrections (action, src, rel, dst, object, at, scope, note, who, created, source)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(c.action, c.src, c.rel ?? null, c.dst ?? null, c.object ?? null, c.at ?? null, c.scope || "*",
-      c.note == null ? null : String(c.note).slice(0, 160), c.who ?? null, this.now(), sourceOf(c.who));
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(c.action, c.src, c.rel ?? null, c.dst ?? null, c.object == null ? null : scrubbed(c.object), c.at ?? null, c.scope || "*",
+      c.note == null ? null : scrubbed(String(c.note).slice(0, 160)), c.who ?? null, this.now(), sourceOf(c.who));
     this.dirty = true;
     return this.correction(Number(r.lastInsertRowid));
   }
