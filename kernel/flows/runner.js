@@ -44,7 +44,7 @@ class PauseFlow extends Error {
  *   emit?: (type: string, data: any, o: { chain: any, subject: string, corr: string }) => void,
  *   ports?: {
  *     call?: (chain: any, action: string, resource: string, input: any, o: { idem: string }) => Promise<any>,
- *     http?: (chain: any, req: { method: string, url: string, headers?: any, body?: any }, o: { idem: string }) => Promise<{ status: number, body?: any }>,
+ *     service?: (q: { chain: any, connector: string, request: { method: string, path: string, query?: any, headers?: any, body?: any, upload?: { drive: { path: string, version?: string, contentType?: string } }, saveTo?: string }, idem: string, approval?: string }) => Promise<{ status: number, ok?: boolean, headers?: Record<string, string>, body?: string } | { saved: { path: string, version: string|number, size: number, sha256: string } } | { held: boolean, kind?: string, summary?: string }>,
  *     sandbox?: (req: { language: string, source: string, hash: string, inputs: any, outputs: string[], needs: string[] }) => Promise<{ outputs: Record<string, any> }>,
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
  *     model?: { provider: string, model: string },
@@ -406,13 +406,7 @@ export class FlowRunner {
         return this.ports.call(this.#chain(ctx), s.action, s.resource, val(s.input), { idem });
       }, { input: val(s.input) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
-      case "http": out = await this.#effect(ctx, s, key, needOf(s, ctx.cat), async idem => {
-        if (ctx.dry) return { dry: true, status: 0 };
-        if (!this.ports.http) throw new StepFail("unavailable", "this Space has no outbound web access yet");
-        const r = await this.ports.http(this.#chain(ctx), { method: s.method, url: s.url, headers: s.headers === undefined ? undefined : val(s.headers), body: s.body === undefined ? undefined : val(s.body) }, { idem });
-        run.tainted = true; // what came back is external content
-        return r;
-      }, { input: s.body === undefined ? null : val(s.body) }); break;
+      case "service": out = await this.#service(ctx, s, key, val); break;
       case "fn": out = await this.#fn(ctx, s, key, val); break;
       default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
     }
@@ -432,12 +426,12 @@ export class FlowRunner {
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
    * the act and the caller records "done" after, so a crash in between replays the act with the same idempotency key.
    * @param {any} ctx @param {any} s @param {string} key @param {{ action: string, resource: string }} need
-   * @param {(idem: string) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
+   * @param {(idem: string, approval?: string) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
    */
   async #effect(ctx, s, key, need, act, info = {}) {
     const run = ctx.run;
     if (!ctx.caps.some((/** @type {any} */ c) => (c.action === need.action || c.action === "*.*") && urnCovers(c.resource, need.resource))) throw new StepFail("outside_caps", `step ${s.id} is outside the Flow's declared powers (${need.action})`);
-    const risk = (ctx.cat.actions[need.action] || {}).risk || (need.action === "http.request" ? "outward.send" : need.action.startsWith("records.") ? "write" : "write");
+    const risk = (ctx.cat.actions[need.action] || {}).risk || (need.action === "service.call" ? "outward.send" : need.action === "service.read" ? "read" : "write");
     const chain = this.#chain(ctx);
     const askKey = key + "?ask";
     const asked = run.steps[askKey];
@@ -473,11 +467,46 @@ export class FlowRunner {
     }
     if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
-    return act(`${run.id}:${key}`);
+    return act(`${run.id}:${key}`, approvedTask);
   }
 
   /** @param {any} ctx @param {any} s @param {string} text */
   #note(ctx, s, text) { ctx.run.error = { step: s.id, code: "note", message: text }; }
+
+  // ------------------------------------------------------------------ outside services
+
+  /**
+   * Call a service: the Flow names a connector (a vault credential and its route) and a request; the vault at the home makes the call. The credential is never seen here. A read (GET or
+   * HEAD) runs at once; anything else is outward and held for the ask-first task by `#effect`, then runs once with that approval. A file goes by Drive reference, never as bytes. The
+   * response is data from outside: the run is tainted, headers that carry credentials are dropped, and the stored body is capped.
+   * @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val
+   */
+  async #service(ctx, s, key, val) {
+    const need = needOf(s, ctx.cat);
+    const request = {
+      method: s.method, path: s.path,
+      ...(s.query === undefined ? {} : { query: val(s.query) }),
+      ...(s.headers === undefined ? {} : { headers: val(s.headers) }),
+      ...(s.body === undefined ? {} : { body: val(s.body) }),
+      ...(s.drive && s.drive.upload ? { upload: { drive: { path: s.drive.upload.path, ...(s.drive.upload.version ? { version: s.drive.upload.version } : {}), ...(s.drive.upload.contentType ? { contentType: s.drive.upload.contentType } : {}) } } } : {}),
+      ...(s.drive && s.drive.saveTo ? { saveTo: s.drive.saveTo } : {}),
+    };
+    const files = [...(request.upload ? [{ way: "send", path: request.upload.drive.path }] : []), ...(request.saveTo ? [{ way: "save", path: request.saveTo }] : [])];
+    return this.#effect(ctx, s, key, need, async (idem, approval) => {
+      if (ctx.dry) return { dry: true, response: { status: 0 } };
+      if (!this.ports.service) throw new StepFail("unavailable", "this Space has no connectors yet");
+      const r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request, idem, ...(approval ? { approval } : {}) }));
+      if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
+      ctx.run.tainted = true; // what came back is content from outside
+      if (r && r.saved) return { saved: { path: String(r.saved.path), version: r.saved.version, size: r.saved.size, sha256: r.saved.sha256 } };
+      const headers = Object.fromEntries(Object.entries((r && r.headers) || {}).filter(([k]) => !/^(set-cookie|authorization|proxy-authenticate|www-authenticate|x-api-key)$/i.test(k)).map(([k, v]) => [k.toLowerCase(), String(v)]));
+      const raw = r && typeof r.body === "string" ? Buffer.from(r.body, "base64").toString("utf8") : "";
+      const text = raw.length > SERVICE_BODY_CAP ? raw.slice(0, SERVICE_BODY_CAP) : raw;
+      let json = null;
+      if (/json/i.test(headers["content-type"] || "") && raw.length <= SERVICE_BODY_CAP) { try { json = JSON.parse(raw); } catch { json = null; } }
+      return { response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(files.length ? { files } : {}) };
+    }, { input: request.body === undefined ? null : request.body });
+  }
 
   // ------------------------------------------------------------------ record steps
 
@@ -801,6 +830,9 @@ const plain = r => (r ? { id: r.id, type: r.type, version: r.version, data: r.da
 
 /** A trimmed event kept in the run (the body is not copied wholesale). @param {any} e */
 const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });
+
+/** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
+const SERVICE_BODY_CAP = 64 * 1024;
 
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 function needOf(step, cat) { return flowNeeds({ steps: [step] }, cat)[0]; }

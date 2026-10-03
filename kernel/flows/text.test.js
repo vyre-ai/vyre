@@ -58,7 +58,7 @@ test("text: a stored Flow with every step kind survives stored to code to stored
       { id: "s12", kind: "call", action: "email.send", resource: "vyre://spc_a/mail/*", input: { to: "a@example.com", "x-odd key": [1, 2, { z: null }] } },
       { id: "s13", kind: "agent", assistant: "teammate:intake", title: "Draft", instructions: "Write it", output: { kind: "draft", target: "welcome" } },
       { id: "s14", kind: "classify", input: { expr: "trigger.text" }, labels: ["urgent", "normal"] },
-      { id: "s15", kind: "http", method: "POST", url: "https://example.com/hook", headers: { a: "b" }, body: { n: { expr: "trigger.n" } } },
+      { id: "s15", kind: "service", connector: "practice", method: "POST", path: "/matters", headers: { a: "b" }, query: { v: "1" }, body: { n: { expr: "trigger.n" } } },
       { id: "s16", kind: "fn", language: "js", source: src, inputs: { a: 1, b: { expr: "trigger.n" } }, outputs: ["total"], needs: [] },
     ],
   });
@@ -80,7 +80,7 @@ test("text: a stored Flow property test, random valid definitions survive stored
   let counter = 0;
   const id = () => "s" + (counter++);
   const step = d => {
-    const k = pick(["create", "update", "remove", "find", "decide", "repeat", "wait", "ask", "call", "http", "fn", "classify"]);
+    const k = pick(["create", "update", "remove", "find", "decide", "repeat", "wait", "ask", "call", "service", "fn", "classify"]);
     const base = { id: id(), kind: k };
     switch (k) {
       case "create": return { ...base, type: "matter", set: { [word()]: val(0) } };
@@ -92,7 +92,7 @@ test("text: a stored Flow property test, random valid definitions survive stored
       case "wait": return rnd(2) ? { ...base, for_ms: rnd(100000) } : { ...base, event: "document.signed", timeout_ms: 1000 + rnd(1000) };
       case "ask": return { ...base, to: "role:attorney", title: val(0) };
       case "call": return { ...base, action: "email.send", resource: "vyre://spc_a/mail/*", input: val(0) };
-      case "http": return { ...base, method: "POST", url: "https://example.com/" + word(), body: val(0) };
+      case "service": return { ...base, connector: "practice", method: "POST", path: "/" + word(), body: val(0) };
       case "fn": { const source = str() + "\n*/ import x from 'y'; require('z') /// @ts-ignore `"; return { ...base, language: "js", source, hash: sourceHash(source), inputs: { a: val(1) }, outputs: ["out"] }; }
       default: return { ...base, input: val(0), labels: ["a", "b"] };
     }
