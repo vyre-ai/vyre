@@ -21,6 +21,7 @@ import { plan, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
 import { createSessionSync, restore } from "./sync.js";
+import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
@@ -55,7 +56,7 @@ export async function reconcile(o) {
  * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string) => Promise<void>|void,
- *   labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
+ *   reader?: any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
  */
@@ -168,7 +169,8 @@ export function createRunner(o) {
         if (Array.isArray(had)) routes = routes.filter(r => had.includes(r.prefix));
       }
     }
-    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, log: m => emit({ type: "sync", session: s.session, m }) });
+    const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
+    const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
     const eg = createEgress({ routes, vault: o.vault, session: s.session, token, lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
@@ -197,7 +199,8 @@ export function createRunner(o) {
         h.queue = h.queue.then(async () => {
           await sy.line(line);
           if (!endsTurn(line)) return;
-          // Read the workspace only while the session is paused, so nothing changes under the reader (reviewer-2 R1).
+          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file. Pausing the group as well
+          // just keeps the files steady for a consistent checkpoint.
           group("SIGSTOP");
           try {
             const cur = o.labels ? mergeLabels(h.labels, o.labels(s.session)) : h.labels;

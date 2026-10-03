@@ -10,7 +10,7 @@ import { createLease } from "./lease.js";
 import { createEgress } from "./egress.js";
 import { plan, seatbeltProfile, cleanEnv, unavailable } from "./sandbox.js";
 import { workspaceUnavailable, driverFor } from "./workspace.js";
-import { createSessionSync, restore } from "./sync.js";
+import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
@@ -219,7 +219,7 @@ test("sync: a checkpoint records the transcript and changed files as versions, a
   const sp = fakeSpace(); const a = tmp(), b = tmp();
   try {
     for (const d of ["work/files", "work/home/.claude", "state"]) fs.mkdirSync(path.join(a, d), { recursive: true });
-    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state") });
+    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")) });
     fs.writeFileSync(path.join(a, "work", "files", "doc.txt"), "v1");
     await sy.line('{"type":"assistant"}'); await sy.line('{"type":"result"}');
     assert.equal(await sy.checkpoint({ note: 1 }), true);
@@ -241,7 +241,7 @@ test("sync: when the space is unreachable the checkpoint is not claimed, and the
   const sp = fakeSpace(); const a = tmp();
   try {
     fs.mkdirSync(path.join(a, "work", "files"), { recursive: true });
-    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state") });
+    const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(a, "work"), state: path.join(a, "state"), reader: localReaderFor(path.join(a, "work")) });
     sp.state.offline = true;
     await sy.line('{"type":"assistant"}');
     assert.equal(await sy.checkpoint(), false);

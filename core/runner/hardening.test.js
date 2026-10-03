@@ -7,7 +7,8 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { readInside, listInside, writeInside } from "./safefs.js";
-import { createSessionSync, restore } from "./sync.js";
+import { createSessionSync, restore, localReaderFor } from "./sync.js";
+import { sandboxReader } from "./readerhost.js";
 import { createLease } from "./lease.js";
 import { createRunner, reconcile, weakest } from "./runner.js";
 import { createEgress } from "./egress.js";
@@ -28,7 +29,7 @@ test("Z1: restore never writes through a symlink the session planted", { skip: !
   // The space holds a checkpoint with a file under files/real/.
   const src = path.join(a, "src"); fs.mkdirSync(path.join(src, "work", "files", "real"), { recursive: true }); fs.mkdirSync(path.join(src, "state"));
   fs.writeFileSync(path.join(src, "work", "files", "real", "pwned.txt"), "SESSION-CHOSEN");
-  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(src, "work"), state: path.join(src, "state") });
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(src, "work"), state: path.join(src, "state"), reader: localReaderFor(path.join(src, "work")) });
   await sy.line('{"type":"result"}'); assert.equal(await sy.checkpoint(), true);
   // The destination workspace has files/real replaced by a link to a host folder.
   const dst = path.join(a, "dst"); fs.mkdirSync(path.join(dst, "work", "files"), { recursive: true });
@@ -47,7 +48,7 @@ test("Z2: a file swapped for a symlink to a host file is not uploaded, and links
   assert.equal(readInside(work, "files/b.txt", 1e6), null);
   assert.equal(readInside(work, "files/dir/secret", 1e6), null);
   assert.deepEqual(listInside(work, "files"), ["files/ok.txt"]);
-  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state") });
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state"), reader: localReaderFor(work) });
   await sy.line('{"type":"result"}'); await sy.checkpoint();
   const uploaded = [...sp.state.files.keys()].map(k => k.split("|")[1]);
   assert.deepEqual(uploaded, ["files/ok.txt"]);
@@ -211,20 +212,38 @@ test("resume: the checkpoint carries the session's trust and routes, and a resum
   assert.equal(weakest("untrusted", "system"), "untrusted");
 });
 
-// ---- S-1: a worker outside the session's process group races the read ------------------------------------------------
+// ---- S-1: the reader runs inside the sandbox, so a racing worker cannot make it read a host file ---------------------------
 
-test("S-1: a racing worker swapping a folder for a link never gets the host file read", { skip: process.platform !== "linux", timeout: 60_000 }, async t => {
+const SANDBOX = unavailable() === "" && process.platform !== "win32";
+test("S-1: a racing worker swapping a folder for a link gets 0 host reads over 10,000 tries (the reader runs in the sandbox)", { skip: !SANDBOX, timeout: 120_000 }, async t => {
   const a = tmp(), host = tmp(); let racer;
   t.after(async () => { racer?.kill("SIGKILL"); await sleep(200); rm(a); rm(host); });
   fs.writeFileSync(path.join(host, "f.txt"), "HOST-FILE-CONTENT");
-  const work = path.join(a, "work"); fs.mkdirSync(path.join(work, "files", "d"), { recursive: true });
-  fs.writeFileSync(path.join(work, "files", "d", "f.txt"), "OWN-CONTENT");
+  const work = path.join(a, "work"); fs.mkdirSync(path.join(work, "files", "d"), { recursive: true }); fs.mkdirSync(path.join(work, "home"), { recursive: true });
+  for (let i = 0; i < 10000; i++) fs.writeFileSync(path.join(work, "files", "d", `f${i}.txt`), "OWN-CONTENT");
+  fs.writeFileSync(path.join(host, "f0.txt"), "HOST-FILE-CONTENT");
   racer = spawn(process.execPath, ["-e", `
     const fs=require("fs"),p=${JSON.stringify(path.join(work, "files", "d"))},real=p+"-real",host=${JSON.stringify(host)};
     fs.renameSync(p,real);
     for(;;){ try{fs.symlinkSync(host,p);}catch{} try{fs.unlinkSync(p);}catch{} try{fs.symlinkSync(real,p);}catch{} try{fs.unlinkSync(p);}catch{} }`], { stdio: "ignore" });
   await sleep(300);
-  let bad = 0;
-  for (let i = 0; i < 4000; i++) { const b = readInside(work, "files/d/f.txt", 1e6); if (b && b.includes("HOST-FILE")) bad++; }
-  assert.equal(bad, 0);
+  const read = sandboxReader({ platform: process.platform, space: "harlow", work, base: a });
+  const got = await read({ roots: [{ dir: "files", remote: "files" }], have: {}, maxBytes: 1e6 });
+  assert.equal(got.filter(f => f.bytes && f.bytes.includes("HOST-FILE")).length, 0);
+  assert.ok(got.length >= 0);
+});
+
+test("S-1b: the sandboxed reader returns plain files, skips links, and sends only what changed", { skip: !SANDBOX, timeout: 60_000 }, async t => {
+  const a = tmp(), host = tmp(); t.after(() => { rm(a); rm(host); });
+  fs.writeFileSync(path.join(host, "secret"), "HOST-SECRET-KEY");
+  const work = path.join(a, "work"); fs.mkdirSync(path.join(work, "files", "sub"), { recursive: true });
+  fs.writeFileSync(path.join(work, "files", "a.txt"), "alpha"); fs.writeFileSync(path.join(work, "files", "sub", "b.txt"), "beta");
+  fs.symlinkSync(path.join(host, "secret"), path.join(work, "files", "link.txt")); fs.symlinkSync(host, path.join(work, "files", "linkdir"));
+  const read = sandboxReader({ platform: process.platform, space: "harlow", work, base: a });
+  const first = await read({ roots: [{ dir: "files", remote: "files" }], have: {}, maxBytes: 1e6 });
+  assert.deepEqual(first.map(f => f.rel).sort(), ["files/a.txt", "files/sub/b.txt"]);
+  assert.equal(first.find(f => f.rel === "files/a.txt").bytes.toString(), "alpha");
+  const again = await read({ roots: [{ dir: "files", remote: "files" }], have: { "files/a.txt": first.find(f => f.rel === "files/a.txt").hash }, maxBytes: 1e6 });
+  assert.equal(again.find(f => f.rel === "files/a.txt").bytes, null);
+  assert.equal(again.find(f => f.rel === "files/sub/b.txt").bytes.toString(), "beta");
 });
