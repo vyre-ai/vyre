@@ -230,8 +230,8 @@ test("tailnet: a desktop whose pairing asked to join gets one key over its own c
   assert.equal(refused.status, 403, "a pairing that did not ask (a phone) never gets a key");
 
   // Minting is not a tool: no registry name reaches it, from any caller.
-  // (presence.grant.mint is the first owner passkey's five-minute grant, not a tailnet key.)
-  const tools = [...d.registry.tools.keys()].filter(n => n !== "presence.grant.mint");
+  // (presence.grant.mint is the first owner passkey's five-minute grant, not a tailnet key.) relay.ticket.mint seals a pairing ticket for the Wink flows, also not a tailnet key.
+  const tools = [...d.registry.tools.keys()].filter(n => n !== "presence.grant.mint" && n !== "relay.ticket.mint");
   assert.ok(tools.length > 20, "the registry lists its tools");
   assert.ok(!tools.some(n => /tailnet\.key|mint/i.test(n)), tools.join(","));
   const viaRouter = await desk.conn.fetch("/v1/tools/relay.tailnet.key", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
