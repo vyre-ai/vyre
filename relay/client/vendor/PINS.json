@@ -1,0 +1,10 @@
+{
+  "file": "noble-ristretto255.js",
+  "sha256": "ffd526ce892077b6727f2f48c77cba5fa437f6bae50a4fd0337077c72f444669",
+  "sources": [
+    { "package": "@noble/curves", "version": "2.4.0", "integrity": "sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==", "modules": ["ed25519.js (ristretto255, ristretto255_hasher)"] },
+    { "package": "@noble/hashes", "version": "2.4.0", "integrity": "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==", "modules": ["sha2.js (sha512)"] }
+  ],
+  "audits": "Trail of Bits at 2.3.0 (Aug 2026, scope everything); Cure53 at 1.6.0 (Sep 2024); see team/0.3/PAKE-choice.md",
+  "rebuild": "see the header of noble-ristretto255.js; after a rebuild, update sha256 here and in code-pin.test.js"
+}
