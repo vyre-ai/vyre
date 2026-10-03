@@ -17,3 +17,7 @@ Branch: work/kernel · Worktree: ../vyre-kernel · Owner session: platform
 
 ## Changed contracts
 - none yet (new package kernel/contracts)
+
+## K0 done
+
+- kernel/golden: recorder (dump.mjs, matrix.js, index.js), golden.json, golden.test.js. Decisions only; no tool body runs. The schema check is recorded apart (`emptyBad`) so it does not mask the gates after it.
