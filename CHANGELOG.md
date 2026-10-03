@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel): `personOfChains` (kernel/remote/person-of.js), the product `personOf` for the Wink adapter: a proven device id is a device entry on a member's identity chain, read live on every call, so a removed device maps to nobody at its next call (tested with the real chain and the real server). fix(kernel): `transferOwner` checks every argument before its first step (a `temp` demotion no longer fails after the new owner is made).
+
 - feat(kernel): `grants.transferOwner(chain, { to, demote_to }, { presence })`, ownership handed on under one proof (the new owner is made first, then the caller steps down; a failure between leaves two owners and a repeat finishes it, the store restored from the log). fix(kernel): reviewer-2's W-1 and W-2 on the Wink adapter: `withKernelCall` requires `pathOf` (no default; anything but "wink" is recorded as the relay), the two-machine run passes it on each leg, and a removed device maps to nobody at its next call.
 
 - feat(kernel): `acceptProofRequest` (what an invitee signs from the join card) and `proofChainHash` on ctx.kernel, and kernel/remote/run/real.mjs, the hand-run proof of the remote call between two machines (home on one, device on the other, direct and through a relay; see the kernel-remote-run review).
