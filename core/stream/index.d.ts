@@ -90,7 +90,7 @@ export interface Participant { id: Author; name?: string }
 export function whoAnswers(a: { participants: readonly Participant[]; defaultAssistant?: string | null; text?: string; mentions?: readonly string[]; assigned?: string | readonly string[] | null; author: string; previous?: string | null }): string[];
 
 export interface FieldSpec { label?: string; kind?: string; value?: unknown; read_roles?: readonly string[]; seal?: unknown; present?: boolean }
-export interface Viewer { id?: string; roles?: readonly string[]; resolve?: (record: string, field: string) => Promise<FieldSpec | null> }
+export interface Viewer { id?: string; roles?: readonly string[]; resolve?: (record: string, field: string) => Promise<FieldSpec | null>; resolveMs?: number }
 export function render<F>(frame: F, viewer: Viewer): F;
 export function forViewer<F>(frame: F, viewer: Viewer): F;
 export function forViewerAsync<F>(frame: F, viewer: Viewer): Promise<F>;

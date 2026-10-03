@@ -24,7 +24,7 @@ export const FIELD_BLOCKS = Object.freeze(["record", "draft", "answer"]);
 /**
  * A viewer is { id, roles }. `resolve(record, field)` (server side only, never from a client) answers a cited field with the
  * spec the viewer's own authority yields: { label?, kind?, value, read_roles?, seal?, present? }, or null when it cannot be read or does not exist.
- * @typedef {{ id?: string, roles?: readonly string[], resolve?: (record: string, field: string) => Promise<any> }} Viewer
+ * @typedef {{ id?: string, roles?: readonly string[], resolve?: (record: string, field: string) => Promise<any>, resolveMs?: number }} Viewer
  */
 
 const isObj = (/** @type {unknown} */ v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -111,6 +111,8 @@ function blocksOf(f) {
 }
 
 const REF_MAX = 120;
+/** How long a viewer's resolver may take for one cited field before the chip is sent instead (reviewer F-1). */
+export const RESOLVE_MS = 3000;
 /** @param {any} b */
 const refOk = b => isObj(b) && b.block === "field-ref" && typeof b.record === "string" && b.record.length > 0 && b.record.length <= 400 && typeof b.field === "string" && b.field.length > 0 && b.field.length <= REF_MAX;
 
@@ -130,8 +132,12 @@ export async function resolveRefs(frame, viewer) {
   const one = async (/** @type {any} */ b) => {
     if (!isObj(b) || b.block !== "field-ref") return b;
     if (!refOk(b) || !viewer || typeof viewer.resolve !== "function") return unreadable(b);
+    // F-1: a resolver that never answers must not stall the frames behind this one: after the deadline the cited field is the chip.
     let spec = null;
-    try { spec = await viewer.resolve(b.record, b.field); } catch { spec = null; }
+    const ms = Number.isFinite(viewer.resolveMs) && /** @type {number} */ (viewer.resolveMs) > 0 ? /** @type {number} */ (viewer.resolveMs) : RESOLVE_MS;
+    /** @type {any} */ let timer;
+    try { spec = await Promise.race([viewer.resolve(b.record, b.field), new Promise(res => { timer = setTimeout(() => res(null), ms); timer.unref?.(); })]); } catch { spec = null; }
+    finally { clearTimeout(timer); }
     if (!isObj(spec) || spec.placeholder === true) return unreadable(b);
     const f = { ...spec, name: b.field, label: typeof b.label === "string" ? b.label : typeof spec.label === "string" ? spec.label : b.field };
     if (!canRead(f, viewer)) return { block: "field", ...placeholder(f, viewer) };
