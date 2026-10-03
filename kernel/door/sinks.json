@@ -1,0 +1,7 @@
+{
+  "note": "Every file allowed to name a model provider's host, and why. A new file is a new model sink: add it here (reviewer-2 signs off), and it must call kernel/door. Files under retrofit_pending still reach providers directly today and move behind the door in the retrofit.",
+  "hosts": ["openrouter.ai", "api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com", "api.x.ai", "api.deepgram.com", "api.elevenlabs.io"],
+  "door_clients": [],
+  "retrofit_pending": ["core/sessions/index.js", "core/sessions/drivers/openrouter.js", "local/voice/providers.js"],
+  "not_inference": { "core/vault/rotate.js": "rotates a provider API key; sends no prompt" }
+}
