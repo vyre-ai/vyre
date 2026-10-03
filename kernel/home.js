@@ -117,7 +117,11 @@ export async function bootHomeKernel(cfg) {
           if (!accepted || cur.counter > accepted.counter) {
             const t = verifyTrees(root, cur);
             if (t.ok) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
-            else log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
+            else {
+              log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
+              // SG-5: when the kernel's own code or the shared libraries differ from what the release signed, the list this build carries cannot be trusted to name first party: only the last accepted list (if any) stays.
+              if (t.bad.some((/** @type {string} */ n) => n === "kernel" || n === "lib")) { log(`kernel: the kernel or lib tree differs from the release's signed hashes; this build's module list is not used`); active = accepted; }
+            }
           }
         } else log(`kernel: this build's module list (counter ${cur.counter}) is older than one already accepted (${accepted.counter}); the accepted one stays in force`);
       } else if (accepted) log(`kernel: ${cur.why}; the last accepted module list stays in force`);

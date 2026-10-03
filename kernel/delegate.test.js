@@ -97,3 +97,17 @@ test("service.read and service.call: a connector read is a read, a connector cal
   assert.equal((await decide(forBob, "service.call", svc)).effect, "ask", "and a change asks first");
   assert.equal((await decide(forBob, "service.call", `vyre://${SPACE}/other/stripe`)).effect, "deny");
 });
+
+test("FL-1: a Flow run is built only on a person's OWN chain; a viewer, a session's delegated chain and a room chain are refused as approver", async () => {
+  const { k, owner, bob } = await rig();
+  const ok = k.chains.forFlow({ flow: "fl_a", approver: bob, run: "run_1" });
+  assert.equal(ok.job, "run_1");
+  const viewer = k.chains.fromFacts({ kind: "viewer", vouched: true, person: BOB });
+  const delegated = k.chains.fromFacts({ kind: "session_person", vouched: true, person: BOB, session: "s9", from_token: true });
+  const room = k.chains.fromFacts({ kind: "session_person", vouched: true, person: BOB, session: "s9", from_token: true, chat: "chat_1" });
+  for (const [name, approver] of [["viewer", viewer], ["delegated", delegated], ["room", room]]) {
+    assert.ok(approver && approver.hops.length === 1, `${name} chain was built`);
+    assert.throws(() => k.chains.forFlow({ flow: "fl_a", approver, run: "run_2" }), { code: "not_a_member" }, name);
+  }
+  assert.ok(k.chains.forFlow({ flow: "fl_a", approver: owner, run: "run_3" }), "the owner's own device chain still works");
+});
