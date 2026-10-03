@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(kernel): SG-5-1 and SG-5-2. The kernel and lib tree check runs at EVERY boot, not only when the counter advances, and a mismatch leaves no first-party list at all (not even the last accepted one); only a module with its own signature is first party, and the boot log says why.
 - fix(kernel): RF-2 and RF-3. The held answer to a model carries no `resolved` or `slots` (one refusal for every unreadable-placeholder reason); they reach the approver through the registry's `held` hook (the held card), with a hash of the exact values resolved (`bound`). `checkBound` re-resolves before the send and refuses a record changed since approval (`changed_since_approval`). A malformed `{{field:` is refused, not sent as text.
 - fix(daemon): RF-1, a `{{field:...}}` placeholder in an outward action resolves under the turn token's own chain (its agent and its grants, the chat left out: `surfaces.chainFor(token, { noChat: true })`), not a full person chain for the device `vyred`, so an agent granted one project cannot have a field of another substituted into an action; a field its chain cannot read refuses the whole action (`placeholder_unreadable`). Also the Switchboard's `probe` (is this person in this chat?) no longer opens a session or begins a turn.
 - feat(kernel): two modules may share a name for different machines (disjoint `roles`); the signed list carries one entry per folder (`also`), and a build with two folders of one name and overlapping roles fails.
