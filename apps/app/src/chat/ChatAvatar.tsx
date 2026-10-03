@@ -4,7 +4,7 @@
 
 import { View } from "react-native";
 import { SvgXml } from "react-native-svg";
-import { Avatar, useUiTheme } from "@vyre/ui";
+import { Avatar, kindOf, useUiTheme } from "@vyre/ui";
 import { AVATAR_ART } from "./avatar-art.generated";
 
 export type ChatAvatarFamily = "person" | "assistant" | "agent" | "teammate";
@@ -22,8 +22,8 @@ export function artKey(name: string, family: string, scheme: "dark" | "paper"): 
 export function ChatAvatar({ name, family = "person", size = "md" }: { name: string; family?: ChatAvatarFamily; size?: keyof typeof SIZES }) {
   const scheme = useUiTheme().resolved.scheme;
   const key = artKey(name, family, scheme);
-  if (!key) return <Avatar name={name} family={family} size={size} />;
   const px = SIZES[size];
+  if (!key) return <Avatar of={{ kind: kindOf(family), id: name, name }} size={px} />;
   return (
     <View accessibilityLabel={name} style={{ width: px, height: px }}>
       <SvgXml xml={AVATAR_ART[key]} width={px} height={px} />

@@ -108,6 +108,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Tools: [13](tools.md#agents), 2 of them only for other modules
 - Emits: no events
 - Shows on: cli
+- Needs daemon: `credentials`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -769,7 +770,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Tools: [56](tools.md#threads), 19 of them only for other modules
 - Emits: [36 events](events.md#threads)
 - Shows on: cli
-- Needs daemon: `kernelSession`, `sandbox`
+- Needs daemon: `kernelSession`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

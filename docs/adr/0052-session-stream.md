@@ -115,6 +115,21 @@ additively (old frames stay valid):
   adjacent deltas of the same message and author. Door holdback: the client treats the last 40 characters of a
   streaming reply as provisional until `text-done`; `text-cut` drops them and shows the note.
 
+### Honest limits of a group chat (task Q)
+
+- **A terminal or tool block shown in a chat with more than one person is visible to everyone in this chat.** The server sets a
+  `note` on a `terminal`, `diff` or `files` block ("visible to everyone in this chat", from the kernel's room people count as the stream
+  mirrors it; never in a chat of one) and the app draws it as a quiet line under the block. Output of a command is not filtered per viewer.
+  A `files` block's own note (what a search found) moves to `detail`.
+- **Everything an assistant puts into a room goes through the kernel's reply handle** (`appendOpen`): words, thinking that goes with a reply,
+  tool progress, tool and terminal blocks, asks and files. Each is written to the handle first, then shown with the handle's `rid` and `ver`,
+  and a viewer receives it only if `mayReceive` says they were in the room at that version and still are. There is no side path: tools that
+  run between replies use a handle of the turn's own, closed when the turn ends. A turn of thinking only writes nothing to the room. A field
+  value is dropped from any of these in a room of more than one person (cite it as a field-ref). The one frame shown without a handle is the
+  plain `status { state: "failed", note: "couldn't resume, ask again" }`.
+- **A reply that waits for an assistant session after a restart waits at most `stream.resumeWaitSeconds` (60 by default).** Then the pending reply
+  is dropped (a late session does not bring it back), the room gets that status, and the app says "Couldn't resume. Ask again."
+
 ## Authority (the reviewer's gate, 3 Oct 2026)
 
 - **Who may open a session.** `stream.open` decides before it makes a ticket, a log or a set entry. A chat's readers are
