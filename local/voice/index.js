@@ -19,6 +19,7 @@ import { callerKind } from "../../core/modules/index.js";
 import { listener, LOCAL, isAgentCaller } from "./listen.js";
 import { MIC_BIN } from "./talk.js";
 import { spoken } from "./spoken.js";
+import { route, doorMessage } from "../../core/sessions/door-bridge.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
 
 /** A spoken reply is a sentence or two, not a document. */
@@ -39,6 +40,21 @@ export default {
     /** @type {Map<string, { body: ReadableStream<Uint8Array>, type: string, timer: ReturnType<typeof setTimeout> }>} */
     const tickets = new Map();
     const drop = t => { const x = tickets.get(t); if (!x) return; tickets.delete(t); clearTimeout(x.timer); x.body.cancel().catch(() => {}); };
+
+    /**
+     * Text leaves the machine for the speech provider: it goes through the door's sanitiser first, so a sealed value is spoken as its
+     * placeholder, never aloud and never to the provider (invariant 6). No door and no legacyDirect: nothing is sent. The audio side
+     * (listen, transcribe) carries no text and cannot be routed; kernel/door/sinks.json says so.
+     * @param {string} text @param {any} meta
+     */
+    const speakable = async (text, meta) => {
+      const via = route({ door: ctx.model, legacyDirect: process.env.VYRE_LEGACY_DIRECT_MODEL === "1", warn: m => { try { ctx.log(m); } catch {} } }, "voice");
+      if ("direct" in via) return text;
+      if ("refused" in via) throw new VoiceError("no_door", "spoken replies go through Vyre's inference door and none is connected, so nothing was sent");
+      if (typeof via.door.sanitize !== "function") throw new VoiceError("no_door", "the inference door cannot check text for speech, so nothing was sent");
+      try { return await via.door.sanitize({ chain: ctx.chainFor ? ctx.chainFor(meta) : meta && meta.chain, session: `voice_${crypto.randomBytes(6).toString("hex")}`, text, purpose: "other" }); }
+      catch (e) { throw new VoiceError("refused", doorMessage(e) || "Vyre could not check this text before speaking it"); }
+    };
 
     /** Whether a key is saved and granted, from the Vault's listing: no value is released to tell. */
     const keyState = async p => {
@@ -132,7 +148,7 @@ export default {
         let key = "";
         try { key = String((await ctx.vault.fetch(DEFAULTS[s.provider].item)) || ""); } catch { key = ""; }
         if (!key) throw new VoiceError("no_key", `no ${DEFAULTS[s.provider].name} key is saved for voice; add one in Settings`);
-        const audio = await speak(s.provider, base, key, said, s.voice);
+        const audio = await speak(s.provider, base, key, await speakable(said, meta), s.voice);
         key = "";
         const ticket = crypto.randomBytes(24).toString("base64url");
         tickets.set(ticket, { ...audio, timer: setTimeout(() => drop(ticket), TICKET_MS) });

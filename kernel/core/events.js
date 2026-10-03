@@ -8,8 +8,10 @@ import { canonical, sha256 } from "./canonical.js";
 import { mintUuid } from "./ids.js";
 import { isChain, actorString, mergeLabels } from "./chain.js";
 import { segments, spaceOf } from "./urn.js";
+import { REDACTION_ORDER } from "../contracts/index.js";
 import { KernelError } from "./errors.js";
 
+const okVis = (/** @type {any} */ v) => ["space", "actor", "subject", "owner"].includes(v) || (typeof v === "string" && /^members:.+/.test(v));
 const TYPE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 export const genesis = (/** @type {string} */ space) => sha256(`vyre-genesis:${space}`);
 
@@ -43,7 +45,7 @@ export function createEventLog(cfg) {
   const rand = cfg.rand || (n => randomBytes(n));
   /** @type {any[]} */ const log = [];
   /** @type {Map<number, string>} the salt kept beside the data, erased with it */ const salts = new Map();
-  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean }>} */ const consumers = new Map();
+  /** @type {Map<string, { filter: any, cursor: number, onEvent: any, busy: boolean, fails?: { seq: number, n: number } }>} */ const consumers = new Map();
 
   /**
    * Append one event. `chain` must be kernel-built; `ev` is a NewEvent. Throws a KernelError for a refusal.
@@ -55,6 +57,9 @@ export function createEventLog(cfg) {
     if (!ev || typeof ev.type !== "string" || !TYPE.test(ev.type)) throw new KernelError("bad_input", "event type must be noun.past-verb");
     if (!segments(ev.subject) || spaceOf(ev.subject) !== cfg.space) throw new KernelError("wrong_space", "subject is not in this space");
     if (!Number.isInteger(ev.sv) || ev.sv < 1) throw new KernelError("bad_input", "event needs a schema version");
+    // A class or visibility outside the registries is refused, never read as the lowest (invariants 5, 7).
+    if (ev.red !== undefined && !REDACTION_ORDER.includes(ev.red)) throw new KernelError("bad_input", "unknown event class");
+    if (ev.vis !== undefined && !okVis(ev.vis)) throw new KernelError("bad_input", "unknown event visibility");
     const labels = mergeLabels(chain.labels, { trust: chain.labels.trust, red: ev.red || "internal", source_spaces: [] });
     // A secret is never stored: the write is refused, not redacted (7.5).
     if (labels.red === "secret") throw new KernelError("secret_refused", "a secret is never written to the log");
@@ -67,7 +72,7 @@ export function createEventLog(cfg) {
       v: 1, id: mintUuid(now, rand), seq, space: cfg.space, type: ev.type, sv: ev.sv,
       time: opts.time ?? now, received_at: now,
       actor: actorString(last.actor), chain: chain.hops,
-      ...(opts.via || last.via ? { via: opts.via || last.via } : {}),
+      ...(last.via ? { via: last.via } : {}),
       subject: ev.subject,
       ...(ev.cause ? { cause: ev.cause } : opts.decision ? { cause: opts.decision } : {}),
       ...(ev.corr ? { corr: ev.corr } : {}),
@@ -94,7 +99,7 @@ export function createEventLog(cfg) {
     for (const e of log) {
       if (filter.since !== undefined && e.seq <= filter.since) continue;
       if (!typeMatches(filter.type, e.type)) continue;
-      if (filter.subject_prefix && !e.subject.startsWith(filter.subject_prefix)) continue;
+      if (filter.subject_prefix && !(e.subject === filter.subject_prefix || e.subject.startsWith(filter.subject_prefix.replace(/\/$/, "") + "/"))) continue;
       if (filter.corr && e.corr !== filter.corr) continue;
       if (filter.actor && e.actor !== filter.actor) continue;
       out.push(e);
@@ -130,6 +135,8 @@ export function createEventLog(cfg) {
   }
 
   const cursors = new Map();
+  /** @type {{ consumer: string, seq: number, at: number }[]} */ const dead = [];
+  const MAX_ATTEMPTS = 8;
   async function pump() {
     for (const [name, c] of consumers) {
       if (c.busy) continue;
@@ -143,7 +150,16 @@ export function createEventLog(cfg) {
           c.cursor = next.seq;
           cursors.set(name, c.cursor);
         }
-      } catch { /* the cursor did not move: the next pump retries the same event */ }
+      } catch {
+        // The cursor did not move: retry the same event with a growing delay, and after MAX_ATTEMPTS set it aside (dead letter) so one
+        // poison event cannot stall the consumer for ever (K1 item 9f).
+        const next = log.find(e => e.seq > c.cursor && typeMatches(c.filter && c.filter.type, e.type));
+        if (next) {
+          c.fails = c.fails && c.fails.seq === next.seq ? { seq: next.seq, n: c.fails.n + 1 } : { seq: next.seq, n: 1 };
+          if (c.fails.n >= MAX_ATTEMPTS) { dead.push({ consumer: name, seq: next.seq, at: clock() }); c.cursor = next.seq; cursors.set(name, c.cursor); c.fails = undefined; queueMicrotask(pump); }
+          else setTimeout(pump, Math.min(100 * 2 ** c.fails.n, 30_000)).unref();
+        }
+      }
       finally { c.busy = false; }
     }
   }
@@ -152,6 +168,7 @@ export function createEventLog(cfg) {
     append, read, verify, proves, erase, subscribe, pump,
     cursor: (/** @type {string} */ n) => (consumers.get(n) ? /** @type {any} */ (consumers.get(n)).cursor : cursors.get(n) ?? 0),
     latestSeq: () => log.length,
+    deadLetters: () => [...dead],
     head: () => (log.length ? log[log.length - 1].hash : genesis(cfg.space)),
   });
 }

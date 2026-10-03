@@ -1,0 +1,102 @@
+{
+  "name": "publish",
+  "version": "0.1.0",
+  "description": "Put a site or app on the internet from your space: build a private preview, approve it, publish it, go back to the last version, connect your own domain. Each site runs on its own, apart from your space's data.",
+  "roles": [
+    "box"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      {
+        "name": "publish.create",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.preview",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.plan",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.approve",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.publish",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.rollback",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.domain.add",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.domain.verify",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.secret.grant",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.secret.revoke",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.edge",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.flow",
+        "reach": "anyone"
+      },
+      {
+        "name": "publish.decide",
+        "reach": "person"
+      },
+      {
+        "name": "publish.retire",
+        "reach": "person"
+      },
+      {
+        "name": "publish.domain.remove",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "deployment.built",
+      "deployment.previewed",
+      "deployment.approved",
+      "deployment.published",
+      "deployment.rolled-back",
+      "deployment.retired"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {
+    "vault": [
+      "per-deployment"
+    ]
+  },
+  "teaches": {}
+}

@@ -6,7 +6,7 @@ import { CALLERS, WORLDS } from "./matrix.js";
 let fresh = null;
 const now = () => (fresh ||= record());
 
-test("the recorder reproduces the stored golden set cell for cell", () => {
+test("the recorder reproduces the stored golden set cell for cell", { timeout: 900_000 }, () => {
   const d = diff(load(), now());
   assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions changed; if on purpose, run: node kernel/golden/index.js --write`);
 });
@@ -44,4 +44,11 @@ test("the matrix lists are unique and the world ids are stable", () => {
 test("K2b: with the kernel retrofit deciding the gates, every decision is the same as today's, cell for cell", () => {
   const d = diff(load(), record({ gates: true }));
   assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions changed under the kernel gates`);
+});
+
+test("K2-9: generated callers outside the matrix get the same decisions from the gates as from the registry's own rules", { timeout: 900_000 }, () => {
+  const was = record({ generated: true }), now_ = record({ gates: true, generated: true });
+  assert.ok(was.callers.length > 100);
+  const d = diff(was, now_);
+  assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions differ for generated callers`);
 });

@@ -8,12 +8,12 @@
 // This module imports today's caller helpers on purpose: it must read a caller string exactly as the registry does.
 // It goes away at K6, when surfaces hand the kernel SurfaceFacts and nothing parses strings.
 import { createAuthorizer } from "../core/authorize.js";
-import { createChainBuilder } from "../core/chain.js";
+import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
 import { callerKind, agentClaim, callerAllowed, ownerDevice } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
-const SPACE = "spc_legacy000000";
+const SPACE = LEGACY_SPACE;
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
 const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
 const urn = (/** @type {string} */ tool) => `vyre://${SPACE}/tool/${tool}`;
@@ -43,7 +43,7 @@ export function parseCaller(caller, person) {
  */
 export function createLegacyGates(cfg) {
   const reg = cfg.registry;
-  const chains = createChainBuilder({ space: SPACE, owner: "owner", owner_uid: 0, key: Buffer.alloc(32, 1) });
+  const chains = createLegacyChainBuilder({ space: SPACE });
   const flags = (/** @type {string} */ tool, /** @type {any} */ def, /** @type {any} */ input) => {
     const pr = reg.deps.presence ? Boolean(reg.deps.presence.required(tool, def, input)) : Boolean(def.presence);
     return `pr=${pr ? 1 : 0};ms=${machineSelf(tool, input) ? 1 : 0}`;
@@ -117,13 +117,12 @@ export function createLegacyGates(cfg) {
     },
     /** Does this call need a presence proof checked by the registry? (Never for a module.) */
     async needsPresence(/** @type {{ tool: string, def: any, caller: string, meta: any, input: any }} */ q) {
-      const d = await ask("presence", chainOf(q.caller, q.meta), q.tool, flags(q.tool, q.def, q.input));
-      return d.effect === "ask" && d.reason === "needs_presence";
+      // Fail closed: the only answer that asks for no proof is an allow. A deny, a throw or a new reason means "needs one".
+      try { return (await ask("presence", chainOf(q.caller, q.meta), q.tool, flags(q.tool, q.def, q.input))).effect !== "allow"; } catch { return true; }
     },
     /** Does this call run only when the person's own words asked for it (the registry then checks the match)? */
     async needsAsk(/** @type {{ tool: string, def: any, caller: string, meta: any, input: any }} */ q) {
-      const d = await ask("asked", chainOf(q.caller, q.meta), q.tool, flags(q.tool, q.def, q.input));
-      return d.effect === "ask";
+      try { return (await ask("asked", chainOf(q.caller, q.meta), q.tool, flags(q.tool, q.def, q.input))).effect !== "allow"; } catch { return true; }
     },
   });
 }

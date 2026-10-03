@@ -11,6 +11,9 @@ export function canonical(v) {
   }
   if (Array.isArray(v)) return "[" + v.map(x => (x === undefined ? "null" : canonical(x))).join(",") + "]";
   if (typeof v === "object") {
+    // Date, Map, Set and class instances would encode as {} and let different data share a hash: refuse them.
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) throw new TypeError("canonical: only plain objects and arrays");
     const o = /** @type {Record<string, unknown>} */ (v);
     return "{" + Object.keys(o).filter(k => o[k] !== undefined).sort().map(k => JSON.stringify(k) + ":" + canonical(o[k])).join(",") + "}";
   }

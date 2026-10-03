@@ -18,8 +18,8 @@ export function checkValue(def, v) {
     case "choice": case "stage": return typeof v === "string" && (!def.options || def.options.includes(v)) ? null : `${def.name} must be one of its options`;
     case "multi_choice": return strArr(v) && (!def.options || v.every((/** @type {string} */ x) => def.options.includes(x))) ? null : `${def.name} must be a list of its options`;
     case "rating": return Number.isInteger(v) && v >= 1 && v <= 5 ? null : `${def.name} must be 1 to 5`;
-    case "link": return typeof v === "string" && /^https?:\/\//.test(v) ? null : `${def.name} must be a link`;
-    case "ref": return isObj(v) && typeof v.urn === "string" && v.urn.startsWith("vyre://") ? null : `${def.name} must be a reference`;
+    case "url": return typeof v === "string" && /^https?:\/\//.test(v) ? null : `${def.name} must be a web address`;
+    case "link": return isObj(v) && typeof v.urn === "string" && v.urn.startsWith("vyre://") ? null : `${def.name} must be a reference`;
     case "actor": return isObj(v) && isObj(v.actor) && typeof v.actor.id === "string" ? null : `${def.name} must be an actor`;
     case "file": return isObj(v) && typeof v.file === "string" && typeof v.name === "string" && Number.isFinite(v.bytes) ? null : `${def.name} must be a file`;
     case "address": return isObj(v) && Object.values(v).every(x => typeof x === "string") ? null : `${def.name} must be an address`;

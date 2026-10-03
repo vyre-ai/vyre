@@ -4,6 +4,7 @@ export * from './chain.js';
 export * from './authorize.js';
 export * from './grant.js';
 export * from './roles.js';
+export * from './identity.js';
 export * from './event.js';
 export * from './store.js';
 export * from './task.js';
@@ -20,6 +21,15 @@ import type { FieldKind } from './fields.js';
 import type { SealClass } from './seal.js';
 import type { StoreErrorCode } from './store.js';
 import type { RoleId, RoleBundle } from './roles.js';
+import type { IdentityKind, NamedIdentityKind, KeyedIdentityKind, DeviceKind, OfferKind } from './identity.js';
+
+export const IDENTITY_KINDS: readonly IdentityKind[];
+export const NAMED_IDENTITY_KINDS: readonly NamedIdentityKind[];
+export const KEYED_IDENTITY_KINDS: readonly KeyedIdentityKind[];
+export const DEVICE_KINDS: readonly DeviceKind[];
+export const OFFER_KINDS: readonly OfferKind[];
+/** Which offers each device kind may carry. */
+export const DEVICE_OFFERS: Readonly<Record<DeviceKind, readonly OfferKind[]>>;
 
 export const ACTOR_KINDS: readonly ActorKind[];
 export const SURFACES: readonly Surface[];

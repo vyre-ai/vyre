@@ -1,11 +1,15 @@
 // kernel/core/urn.js: `vyre://<space>/<type>/<id>[/<path>]` and the selector match (contract 3.3, 6.2).
 // A selector is a prefix with `*` standing for exactly one segment; it covers the resource at that depth and below.
 
+// A segment is a name, never a path step: no `.`, `..`, percent-encoding, backslash, NUL or control characters, and no
+// trailing dot or space (a Windows path resolves those away). A grant on a folder must not cover a path outside it.
+const okSegment = (/** @type {string} */ x) => x.length > 0 && x !== "." && x !== ".." && !/[%\\\u0000-\u001f\u007f]/.test(x) && !/[. ]$/.test(x);
+
 /** @param {string} urn @returns {string[] | null} the segments after `vyre://`, or null when it is not a URN */
 export function segments(urn) {
   if (typeof urn !== "string" || !urn.startsWith("vyre://")) return null;
   const s = urn.slice(7).split("/");
-  return s.length >= 1 && s.every(x => x.length > 0) ? s : null;
+  return s.length >= 1 && s.every(okSegment) ? s : null;
 }
 
 export const spaceOf = (/** @type {string} */ urn) => { const s = segments(urn); return s ? s[0] : null; };

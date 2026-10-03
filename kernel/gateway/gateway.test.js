@@ -15,7 +15,7 @@ const owner = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 501
 const agent = () => chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s", thread: "t", vouched: true });
 const actor = (kind, id) => ({ kind, id, space: SPACE });
 let n = 0;
-const G = (over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor("person", OWNER) }, actions: ["records.*"], action_set_version: 9, resource: { prefix: `vyre://${SPACE}/*/*` }, conditions: {}, issuer: actor("person", OWNER), source: "test", status: "active", created_at: 0, ...over });
+const G = (over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor("person", OWNER) }, actions: ["records.*", "records.define", "events.read"], action_set_version: 9, resource: { prefix: `vyre://${SPACE}/*/*` }, conditions: {}, issuer: actor("person", OWNER), source: "test", status: "active", created_at: 0, ...over });
 
 function rig({ grants = [G()], store = createMemoryStore({ clock }), attrs, members = [], ...cfg } = {}) {
   const log = createEventLog({ space: SPACE, clock });
@@ -145,7 +145,7 @@ test("gateway: a lost answer leaves an intent open; recovery writes the missing 
   assert.equal(r.openIntents(), 2);
   assert.equal((await gw.audit.verify()).open_intents, 2);
   assert.equal(log.read({ type: "contact.created" }).length, 0, "nothing is claimed until the truth is known");
-  assert.deepEqual(await r.recover(), { completed: 1, compensated: 1, still_open: 0 });
+  assert.deepEqual(await r.recover(), { completed: 1, compensated: 1, still_open: 0, unresolved: 0 });
   assert.equal(r.openIntents(), 0);
   const ev = log.read({ type: "contact.created" });
   assert.equal(ev.length, 1);
@@ -203,4 +203,144 @@ test("gateway: the log verifies after a mixed run and health reports the store",
   for (let i = 0; i < 10; i++) { const c = await r.create(owner(), "contact", { name: `n${i}` }); await r.update(owner(), "contact", c.id, { age: i }, 1); }
   assert.deepEqual(await gw.audit.verify(), { ok: true, events: 21, open_intents: 0 });
   assert.deepEqual(await gw.health(), { ok: true, versions: { memory: "1" } });
+});
+
+// ---- K2 gate fixes (reviewer-2 probes) ----
+const agentGrants = actions => [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions })];
+
+test("K2-1: a chain holding a model cannot filter, sort, group or measure on a sealed field or its sub-fields", async () => {
+  const { r } = await withType(rig({ grants: agentGrants(["records.read"]), members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "Jane", ssn: { ...ref, hint: "last4 6789" } });
+  const probes = [
+    { filter: { field: "ssn.hint", op: "eq", value: "last4 6789" } },
+    { filter: { field: "ssn.hint", op: "contains", value: "6789" } },
+    { filter: { and: [{ field: "name", op: "eq", value: "Jane" }, { not: { field: "ssn", op: "is_null" } }] } },
+    { sort: [{ field: "ssn.hint", dir: "asc" }] },
+  ];
+  for (const p of probes) await assert.rejects(() => r.query(agent(), "contact", { ...p, page: { limit: 5 } }), { code: "bad_input" }, JSON.stringify(p));
+  await assert.rejects(() => r.aggregate(agent(), "contact", { group_by: ["ssn.hint"], measures: [{ fn: "count" }] }), { code: "bad_input" });
+  await assert.rejects(() => r.aggregate(agent(), "contact", { measures: [{ fn: "count", field: "ssn" }] }), { code: "bad_input" });
+  assert.equal((await r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1, "an ordinary field still works");
+  assert.equal((await r.query(owner(), "contact", { filter: { field: "ssn.hint", op: "eq", value: "last4 6789" }, page: { limit: 5 } })).rows.length, 1, "a person's own chain may");
+});
+
+test("K2-1: a store that cannot describe its types gets no model queries by field", async () => {
+  const inner = createMemoryStore({ clock });
+  const blind = new Proxy(inner, { get: (t, k) => (k === "describe" ? undefined : t[k]) });
+  const { r } = await withType(rig({ store: blind, grants: agentGrants(["records.read"]), members: ["agent:kit"] }));
+  await assert.rejects(() => r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "x" }, page: { limit: 5 } }), { code: "unsupported" });
+  assert.equal((await r.query(agent(), "contact", { page: { limit: 5 } })).rows.length, 0, "no field named, nothing to guard");
+});
+
+test("K2-4: recovery completes only on an exact match, and never writes another person's change as the lost one", async () => {
+  const inner = createMemoryStore({ clock });
+  let lose = false;
+  const flaky = new Proxy(inner, { get: (t, k) => (k === "update" ? async (...a) => { if (lose) throw Object.assign(new Error("lost"), { code: "unavailable" }); return t.update(...a); } : t[k]) });
+  const { r, log } = await withType(rig({ store: flaky }));
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  lose = true;
+  await assert.rejects(() => r.update(owner(), "contact", c.id, { age: 1 }, 1), { code: "unavailable" });
+  lose = false;
+  await inner.update("contact", c.id, { age: 99 }, 1);
+  assert.deepEqual(await r.recover(), { completed: 0, compensated: 0, still_open: 0, unresolved: 1 });
+  assert.equal(log.read({ type: "contact.updated" }).length, 0, "someone else's change is not claimed");
+  assert.equal(r.openIntents(), 0);
+  // The exact change did land: it completes, attributed from the intent's own chain.
+  lose = true;
+  await assert.rejects(() => r.update(owner(), "contact", c.id, { age: 5 }, 2), { code: "unavailable" });
+  lose = false;
+  await inner.update("contact", c.id, { age: 5 }, 2);
+  assert.equal((await r.recover()).completed, 1);
+  assert.equal(log.read({ type: "contact.updated" })[0].data.recovered, true);
+});
+
+test("K2-6: events.read and subscribe go through authorize and vis", async () => {
+  const { gw, r, log } = await withType(rig({ owner: OWNER, grants: [...agentGrants(["records.read", "events.read"]).slice(0, 1), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["events.read", "records.read"], resource: { prefix: `vyre://${SPACE}/contact/*` } })], members: ["agent:kit"] }));
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  log.append(owner(), { type: "note.added", sv: 1, subject: `vyre://${SPACE}/contact/${c.id}`, vis: "owner", data: {} });
+  log.append(owner(), { type: "note.added", sv: 1, subject: `vyre://${SPACE}/matter/m1`, data: {} });
+  const mine = await gw.events.read(owner(), {});
+  assert.ok(mine.length >= 4);
+  const theirs = await gw.events.read(agent(), {});
+  assert.deepEqual(theirs.map(e => e.type), ["contact.created"], "no read on the matter, and the owner-only note stays hidden");
+  const seen = [];
+  gw.events.subscribe(agent(), "watch", {}, e => { seen.push(e.type); });
+  await new Promise(res => setTimeout(res, 20));
+  assert.deepEqual([...new Set(seen)], ["contact.created"]);
+  await assert.rejects(() => gw.events.read({ hops: [] }, {}), { code: "bad_input" });
+});
+
+test("K2-8: odd types and ids are refused on every call", async () => {
+  const { r } = await withType(rig());
+  for (const t of ["Contact", "../x", "a b", "", 5]) {
+    await assert.rejects(() => r.get(owner(), t, "0190c3f2-1111-4abc-8def-000000000000"), { code: "bad_input" });
+    await assert.rejects(() => r.query(owner(), t, { page: { limit: 1 } }), { code: "bad_input" });
+    await assert.rejects(() => r.aggregate(owner(), t, { measures: [{ fn: "count" }] }), { code: "bad_input" });
+  }
+  for (const i of ["../x", "1", "", "%2e%2e", 7]) await assert.rejects(() => r.get(owner(), "contact", i), { code: "bad_input" });
+  await assert.rejects(() => r.search(owner(), { text: "x", types: ["Bad"], page: { limit: 1 } }), { code: "bad_input" });
+});
+
+test("K2-5: a store that alters a field, or returns a stale version, is caught and nothing is recorded as done", async () => {
+  const inner = createMemoryStore({ clock });
+  let bad = null;
+  const liar = new Proxy(inner, { get: (t, k) => (k === "create" ? async (...a) => { const r = await t.create(...a); return bad === "drop" ? { ...r, data: { ...r.data, name: "Changed" } } : r; } : k === "update" ? async (...a) => { const r = await t.update(...a); return bad === "stale" ? { ...r, version: a[3] } : r; } : t[k]) });
+  const { r, log } = await withType(rig({ store: liar }));
+  bad = "drop";
+  await assert.rejects(() => r.create(owner(), "contact", { name: "Jane" }), { code: "store_disagreed" });
+  assert.equal(log.read({ type: "contact.created" }).length, 0);
+  assert.equal(log.read({ type: "store.disagreed" }).length, 1);
+  bad = null;
+  const c = await r.create(owner(), "contact", { name: "Jane" });
+  bad = "stale";
+  await assert.rejects(() => r.update(owner(), "contact", c.id, { age: 3 }, 1), { code: "store_disagreed" });
+  assert.equal(r.openIntents(), 0);
+});
+
+test("K2-7: row policy reads kernel attributes the gateway wrote; a record it did not write has none and never matches", async () => {
+  const where = [{ attr: "sensitivity", op: "ne", value: "privileged" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
+  const store = createMemoryStore({ clock });
+  const { r } = await withType(rig({ grants, members: ["agent:kit"], store }));
+  const open = await r.create(owner(), "contact", { name: "Open" }, { attrs: { sensitivity: "internal" } });
+  const secret = await r.create(owner(), "contact", { name: "Secret" }, { attrs: { sensitivity: "privileged" } });
+  const foreign = await store.create("contact", "0190c3f2-1111-4abc-8def-0000000000ff", { name: "Foreign" });
+  assert.equal((await r.get(agent(), "contact", open.id)).data.name, "Open");
+  assert.equal(await r.get(agent(), "contact", secret.id), null);
+  assert.equal(await r.get(agent(), "contact", foreign.id), null, "no kernel attributes, so a predicate does not match (not ne)");
+  await assert.rejects(() => r.create(owner(), "contact", { name: "x" }, { attrs: { created_by: "forged" } }), { code: "bad_input" });
+});
+
+test("K2-10: no cursor when only rows the chain cannot read remain", async () => {
+  const where = [{ attr: "sensitivity", op: "eq", value: "internal" }];
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, where } })];
+  const { r } = await withType(rig({ grants, members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "a" }, { attrs: { sensitivity: "internal" } });
+  for (let i = 0; i < 3; i++) await r.create(owner(), "contact", { name: `hidden${i}` }, { attrs: { sensitivity: "privileged" } });
+  const q = await r.query(agent(), "contact", { sort: [{ field: "name", dir: "asc" }], page: { limit: 1 } });
+  assert.equal(q.rows.length, 1);
+  assert.equal(q.next_cursor, undefined, "the hidden rows after it do not make a cursor");
+  assert.equal((await r.query(owner(), "contact", { page: { limit: 1 } })).next_cursor !== undefined, true);
+});
+
+test("K1-9b: audit.verify also checks each kept event against its commitment", async () => {
+  const { r, gw, log } = await withType(rig());
+  await r.create(owner(), "contact", { name: "Jane" });
+  assert.equal((await gw.audit.verify()).ok, true);
+  assert.equal(log.proves(log.read({ type: "contact.created" })[0].seq), true);
+  log.erase(log.read({ type: "contact.created" })[0].seq);
+  assert.equal((await gw.audit.verify()).ok, true, "an erased event keeps only its envelope and still verifies");
+});
+
+test("R2-1: an agent with events.read but no records.read cannot read record values from the log, by read or subscribe", async () => {
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["events.read"] })];
+  const { gw, r } = await withType(rig({ grants, members: ["agent:kit"], owner: OWNER }));
+  await r.create(owner(), "contact", { name: "SecretName" });
+  assert.ok(!JSON.stringify(await gw.events.read(agent(), {})).includes("SecretName"));
+  assert.deepEqual((await gw.events.read(agent(), {})).filter(e => e.type.startsWith("contact.")), []);
+  const seen = [];
+  gw.events.subscribe(agent(), "w", {}, e => { seen.push(e); });
+  await new Promise(res => setTimeout(res, 20));
+  assert.deepEqual(seen.filter(e => e.type.startsWith("contact.")), []);
+  assert.ok(JSON.stringify(await gw.events.read(owner(), {})).includes("SecretName"), "a person who may read it still can");
 });
