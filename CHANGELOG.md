@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel): `kernel.setLabel(fn)`: the Space's name and fingerprint words for the join card (`invites.get`) can be given after the kernel starts, by whoever holds the Space's identity; `label` at start still works. Both are read on every `invites.get`.
+
 - fix(kernel): the room's `canRead` judges a task by both `records.read` and `tasks.read` (the narrower of the two), and team members, playbooks and records by `records.read` on their urn, for every person in the room; a test covers all four kinds and that the handle names no one.
 
 - fix(kernel): the offers port takes the member for the member's own side from the proven caller's chain, never from an argument (reviewer-2, low): a call naming another member is refused.
