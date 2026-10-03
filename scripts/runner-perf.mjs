@@ -8,12 +8,15 @@ import { fakeSpace } from "../core/runner/testing/fake-space.js";
 import { unavailable } from "../core/runner/sandbox.js";
 import { workspaceUnavailable } from "../core/runner/workspace.js";
 import { selfTest } from "../core/runner/homesandbox.js";
+import { driverFor } from "../core/runner/workspace.js";
 
 const reps = Number(process.argv[process.argv.indexOf("--reps") + 1]) || 5;
+const baseArg = process.argv.includes("--base") ? process.argv[process.argv.indexOf("--base") + 1] : null;
+const driverArg = process.argv.includes("--driver") ? process.argv[process.argv.indexOf("--driver") + 1] : null;
 const outFile = process.argv.includes("--out") ? process.argv[process.argv.indexOf("--out") + 1] : null;
-const why = unavailable() || workspaceUnavailable(); if (why) { console.error("cannot run here: " + why); process.exit(2); }
+const why = unavailable() || workspaceUnavailable(process.platform, { base: root }); if (why) { console.error("cannot run here: " + why); process.exit(2); }
 const med = a => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "rperf-"));
+const root = fs.mkdtempSync(path.join(baseArg || os.tmpdir(), "rperf-"));
 const worker = path.join(root, "agent"); fs.mkdirSync(worker); fs.copyFileSync(new URL("../core/runner/testing/perf-worker.mjs", import.meta.url), path.join(worker, "worker.mjs"));
 const up = http.createServer((req, res) => res.end("ok")); await new Promise(r => up.listen(0, "127.0.0.1", r));
 const sp = fakeSpace();
@@ -37,7 +40,8 @@ pc.kill();
 
 // ---- lent: the runner (lease, encrypted workspace, sandbox, proxy, checkpoint at every turn) ---------------------------
 const ev = []; const stamp = (e) => ev.push({ ...e, at: performance.now() });
-const runner = createRunner({ base: path.join(root, "rn"), space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), watchdog: false, onEvent: stamp });
+const runner = createRunner({ base: path.join(root, "rn"), space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), watchdog: false, onEvent: stamp, ...(driverArg === "gocryptfs" ? { driver: driverFor("linux", { prefer: "gocryptfs" }) } : {}) });
+result.workspace_driver = runner.status().workspace;
 const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.address().port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }] }];
 const tLease = performance.now(); await runner.open(); result.start.lease_and_workspace = performance.now() - tLease;   // lease + create + mount
 const tStart = performance.now();
@@ -55,8 +59,45 @@ for (const s of [...SCEN, "calls"]) {
     notes[s] = r.note; lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
   }
 }
-// lock then reopen: the cost of getting back after the workspace was closed (a sleeping laptop wakes to this)
+// a second session while the workspace stays mounted (the lease is still valid): what a person sees after the first
 await h.stop();
+const tSecond = performance.now();
+const hb = await runner.start({ session: "s2", command: process.execPath, args: [path.join(worker, "worker.mjs")], readOnly: [worker, path.dirname(process.execPath)], routes });
+await lines(hb.child)(); result.start.second_session_ready = performance.now() - tSecond; await hb.stop();
+// lock then reopen: the cost of getting back after the workspace was closed (a sleeping laptop wakes to this)
+const tl = performance.now(); await runner.lock(); result.start.lock = performance.now() - tl;
+const to = performance.now(); await runner.contact(); result.start.reopen_after_lock = performance.now() - to;
+const tr = performance.now(); const h2 = await runner.start({ session: "s1", resume: true, command: process.execPath, args: [path.join(worker, "worker.mjs")], readOnly: [worker, path.dirname(process.execPath)], routes }).catch(e => ({ error: e.message }));
+result.start.resume_from_checkpoint = performance.now() - tr; if (h2.child) { await lines(h2.child)(); await h2.stop(); }
+await runner.lock();
+// the home-session self-test, which runs before each session: real targets, so the proof is not stale
+try {
+  const net = await import("node:net");
+  const home = path.join(root, "home"); const run = path.join(home, ".vyre/run"); fs.mkdirSync(run, { recursive: true }); fs.mkdirSync(path.join(home, ".vyre/keys"), { recursive: true });
+  fs.writeFileSync(path.join(home, ".vyre/keys/k"), "KEY"); fs.mkdirSync(path.join(home, "proj"), { recursive: true });
+  const socks = []; for (const n of ["own", "other", "person"]) { const sv = net.createServer(c => { c.on("error", () => {}); c.end(); }); await new Promise(r => sv.listen(path.join(run, n + ".sock"), r)); socks.push(sv); }
+  const dsv = net.createServer(c => { c.on("error", () => {}); c.end(); }); await new Promise(r => dsv.listen(0, "127.0.0.1", r));
+  const ts = performance.now();
+  const st = await selfTest({ platform: process.platform, command: process.execPath, home, vyreHome: path.join(home, ".vyre"), sessionSocket: path.join(run, "own.sock"), workdirs: [path.join(home, "proj")], temp: path.join(home, "tmp"), agent: { command: process.execPath, versionArgs: ["-v"], settingsPaths: [], hosts: [] }, probes: { personSocket: path.join(run, "person.sock"), otherSocket: path.join(run, "other.sock"), daemonPorts: [dsv.address().port], keyFile: path.join(home, ".vyre/keys/k") } });
+  result.start.self_test = performance.now() - ts; result.start.self_test_ok = st.ok; result.start.self_test_failures = st.failures; result.start.self_test_parts = st.timings;
+  socks.forEach(x => x.close()); dsv.close();
+} catch (e) { result.start.self_test_error = e.message; }
+
+for (const s of [...SCEN, "calls"]) {
+  lent[s] = []; ckpt[s] = [];
+  for (let i = 0; i < (s === "extract" || s === "clone" ? Math.min(reps, 3) : reps); i++) {
+    const n0 = ev.length; const r = await turn(l => h.send(l), lnext, "run " + s);
+    // the checkpoint after the turn: how long the session was paused while the reader and the upload ran
+    const t1 = performance.now(); const c = await new Promise(res => { const tick = setInterval(() => { const e = ev.slice(n0).find(x => x.type === "checkpoint"); if (e) { clearInterval(tick); res(e); } }, 5); });
+    notes[s] = r.note; lent[s].push(r.ms); ckpt[s].push(c.at - t1 < 0 ? 0 : c.at - t1);
+  }
+}
+// a second session while the workspace stays mounted (the lease is still valid): what a person sees after the first
+await h.stop();
+const tSecond = performance.now();
+const hb = await runner.start({ session: "s2", command: process.execPath, args: [path.join(worker, "worker.mjs")], readOnly: [worker, path.dirname(process.execPath)], routes });
+await lines(hb.child)(); result.start.second_session_ready = performance.now() - tSecond; await hb.stop();
+// lock then reopen: the cost of getting back after the workspace was closed (a sleeping laptop wakes to this)
 const tl = performance.now(); await runner.lock(); result.start.lock = performance.now() - tl;
 const to = performance.now(); await runner.contact(); result.start.reopen_after_lock = performance.now() - to;
 const tr = performance.now(); const h2 = await runner.start({ session: "s1", resume: true, command: process.execPath, args: [path.join(worker, "worker.mjs")], readOnly: [worker, path.dirname(process.execPath)], routes }).catch(e => ({ error: e.message }));
