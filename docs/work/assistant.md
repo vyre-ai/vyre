@@ -96,6 +96,11 @@ Ports I need from others (asked in team/0.2/CHAT.md):
 - records: `language.compile(source) -> { diff, errors }` (the TypeScript text form, 5.6) and the definition authorship label.
 - sessions: `flows.simulate(diff, scenarios) -> result` and session events for "doing now".
 
-Done: foundation (lib/labels.js, lib/sealed.js, test/fake-kernel.js with tests).
-Doing: the three parts in parallel.
-Next: tool wiring (module.json reach), docs, CHANGELOG, perf numbers.
+Done (3 Oct): foundation 6827df3fb; core/team 27fb4d157 (roles, delegate, context, doing, stuck); core/memory/engine 0b8d77227 (lines, facts, search, scrub, index); core/engineer 99251017c (guard, propose, card, simulate, index). 201 of 201 passing on the test box with the docs, reach and boundaries tests (1 skipped), docs:check clean.
+Doing: nothing running.
+Next: wire the factories as module tools (module.json, reach classes) the day the kernel gateway lands and ctx.kernel exists; until then they are libraries with tests. Then: proposals as records (Engineer), perf numbers with scripts/perf-check.
+Needs from others:
+- platform (kernel): `tasks.move(chain, id, to, info)` incl. stuck (assistant or detection only) and the output-check moves; `members.isAdmin(chain)` and member/limited state; a kernel-built `[person, service:memory]` chain and `[admin, agent:engineer]` chain; a task payload that binds the proposal hash; the Engineer's grant set registered as a built-in; a `policy:` source grant for memory auto-accept; grants.create with parent must itself check containment and carry the parent's presence and approval conditions.
+- records: `language.compile(source) -> { diff, canonical, hash, errors[{line,msg}], authorship, roles?, flows?, descriptions? }`; `fieldDef(type, field)` (kind, required) and `ownerOf(urn)`; reads of def.* through the gateway.
+- sessions: `flows.simulate(diff, scenarios) -> { ok, steps, failures[{scenario,msg}] }`; confirm the thread.tool event shape and subjects for the doing-now line.
+Changed contracts: none (new files only; lib/labels.js and lib/sealed.js are new).
