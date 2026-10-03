@@ -239,7 +239,7 @@ export function relevantLines(store, text, scope, limit = 2) {
 export function register(ctx, { store, reach, personWrites, ownSession, reader, projects, denied, plain }) {
   const bad = m => Object.assign(new Error(m), { code: "bad_input" });
   /** An agent is calling: the kernel chain has an agent hop (a label naming one only when the kernel is off, SHIM(legacy labels)). */
-  const claims = c => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(c || "")); };
+  const claims = c => { const w = whoNow(); return w ? w.agent !== null && !w.ownSession : /(?:^|[\s:])agent:/.test(String(c || "")); }; // the assistant is the person's own session in a kernel chain, so it writes as the session, not as a claimed agent
   /** The kind an agent is: the assistant, a teammate, or an agent. */
   const kindOf = async (name, r) => {
     if (r.assistant) return "assistant";

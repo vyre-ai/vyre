@@ -12,7 +12,7 @@ import { createRig } from "../../test/kernel-rig.js";
 import { whoOfChain } from "./who.js";
 import memory from "./index.js";
 
-const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }];
+const AGENTS = [{ name: "kit", kind: "assistant", projects: "*" }, { name: "assistant", kind: "assistant", projects: "*" }];
 const BLOCKED = new Set(["denied", "person_session_required"]);
 const socket = (surface, uid = 501) => ({ kind: "socket", surface, uid, pid: 1, inside_model_process: false, capsule_verified: surface === "capsule" });
 const device = (session, path = "wink") => ({ kind: "device", device_key_id: "dk1", person: "per_alex", path, ...(session ? { session } : {}) });
@@ -48,12 +48,13 @@ const RELAY = { ...YES, graph: "denied", corrections: "denied", me: "denied" };
 const UNSIGNED = { ...YES, correct: "person_session_required", write: "person_session_required" };
 
 test("each caller class does exactly what its label did: the table's rows, by the chain and by the label", async t => {
-  const rig = await createRig({ agents: ["kit"] });
+  const rig = await createRig({ agents: ["kit", "assistant"] });
   const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
   const on = await boot(t, { kernel: handle }), off = await boot(t);
   const bind = token => () => rig.k.bindCalls(() => (token ? { token } : null));
   const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token;
   const agent = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
+  const assistant = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "assistant" })).token;
   const rows = [
     ["the person at this machine (deck)", await on.can("deck", { kernelFacts: socket("deck") }), await off.can("deck"), YES],
     ["the person at this machine (cli)", await on.can("cli", { kernelFacts: socket("cli") }), await off.can("cli"), YES],
@@ -63,7 +64,10 @@ test("each caller class does exactly what its label did: the table's rows, by th
     ["the person's device over the relay (was device:<id>), signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device("s1", "relay") }), await off.can("device:abcdefghijklmnop", { person: { id: "s1" } }), RELAY],
     ["the same relay device, not signed in", await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") }), await off.can("device:abcdefghijklmnop"), { ...RELAY, correct: "person_session_required", write: "person_session_required" }],
     ["the person's own session or thread", await on.can("mcp:thread:t1", { token: own }, bind(own)), await off.can("mcp:thread:t1"), null],
-    ["an agent (the assistant)", await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*" }, bind(agent)), await off.can("mcp:agent:kit", { agent: "kit", granted: "*" }), null],
+    ["a named agent (kit)", await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*" }, bind(agent)), await off.can("mcp:agent:kit", { agent: "kit", granted: "*" }), null],
+    // The person's own Claude: the kernel's token chain is [person, agent:assistant] (no fact tells a thread from the assistant), and the label forms it replaces were mcp:thread:<id> and mcp:agent:assistant
+    ["the person's own Claude (assistant token) against the thread label", await on.can("mcp:thread:t1", { token: assistant }, bind(assistant)), await off.can("mcp:thread:t1"), null],
+    ["the person's own Claude (assistant token) against the assistant label", await on.can("mcp:agent:assistant", { token: assistant, agent: "assistant", granted: "*" }, bind(assistant)), await off.can("mcp:agent:assistant", { agent: "assistant", granted: "*" }), null],
   ];
   for (const [name, after, before, expected] of rows) {
     assert.deepEqual(after, before, `${name}: the chain and the label disagree`);
@@ -101,4 +105,38 @@ test("who.js reads the chain's facts and nothing else", async () => {
   const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token, ag = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
   assert.equal((await w({ token: own })).ownSession, true);
   assert.deepEqual([(await w({ token: ag })).agent, (await w({ token: ag })).ownSession], ["kit", false]);
+});
+
+test("MA-2: a chain with an agent hop is never the person at a surface, whatever facts ride beside it", async t => {
+  const rig = await createRig({ agents: ["kit", "assistant"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const on = await boot(t, { kernel: handle });
+  const agent = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
+  const chain = await handle.chain({ token: agent });
+  const w = whoOfChain(chain, await handle.chain({ kernelFacts: socket("deck") }));
+  assert.deepEqual([w.ownerSurface, w.device, w.signedIn, w.agent], [false, false, false, "kit"], "agent first: the deck facts beside it make it no surface");
+  // end to end: an agent token with deck facts beside it gets none of the person-only rows
+  const r = await on.can("mcp:agent:kit", { token: agent, agent: "kit", granted: "*", kernelFacts: socket("deck") }, () => rig.k.bindCalls(() => ({ token: agent })));
+  assert.deepEqual([r.corrections, r.correct, r.site], ["denied", "denied", "denied"], JSON.stringify(r));
+});
+
+test("MA-3: the person's own session is the kernel's token, never a label: mcp:thread:<id> with no proof is the bare mcp row", async t => {
+  const rig = await createRig({ agents: ["kit"] });
+  const on = await boot(t, { kernel: rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } }) });
+  for (const caller of ["mcp:thread:fake", "mcp:thread:abc123", "mcp", "mcp:agent:assistant"]) {
+    const r = await on.can(caller);
+    assert.ok(Object.values(r).every(v => v === "denied"), `${caller}: ${JSON.stringify(r)}`);
+  }
+});
+
+test("MA-4: a session whose token names a chat of more than one person gets nothing personal, whatever surface it came from", async t => {
+  const rig = await createRig({ people: { per_bob: "member" }, agents: ["kit", "assistant"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const on = await boot(t, { kernel: handle });
+  const chat = await rig.k.gateway.grants.chats.create(rig.person("per_alex"), { people: ["per_bob"] });
+  for (const o of [{}, { agent: "assistant" }, { agent: "kit" }]) {
+    const tok = (await rig.k.surfaces.open(rig.person("per_alex"), { ...o, chat: chat.id })).token;
+    const r = await on.can("deck", { token: tok, kernelFacts: socket("deck"), ...(o.agent ? { agent: o.agent, granted: "*" } : {}) }, () => rig.k.bindCalls(() => ({ token: tok })));
+    assert.ok(Object.values(r).every(v => v === "denied"), `${JSON.stringify(o)}: ${JSON.stringify(r)}`);
+  }
 });

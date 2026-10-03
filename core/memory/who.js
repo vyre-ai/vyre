@@ -29,19 +29,23 @@ export const current = () => whoStore.getStore();
  */
 export function whoOfChain(chain, surface = null) {
   const hops = chain.hops;
-  const first = hops[0], via = first.via || {};
-  const agent = hops.slice(1).find((/** @type {any} */ h) => h.actor.kind === "agent");
-  const entered = first.entered_by;
-  const sf = surface && surface.hops && surface.hops[0] ? surface.hops[0] : (entered === "surface" ? first : null);
+  const first = hops[0];
+  // ANY agent hop first (MA-2): a chain with an agent in it is never the person at a surface, whatever its first hop or any facts beside it say.
+  const agentHop = hops.slice(1).find((/** @type {any} */ h) => h.actor.kind === "agent");
+  const agent = agentHop ? String(agentHop.actor.id) : null;
+  const sf = !agent && surface && surface.hops && surface.hops[0] ? surface.hops[0] : (!agent && first.entered_by === "surface" ? first : null);
   const sv = sf ? sf.via || {} : {};
   const onSurface = Boolean(sf) && sf.entered_by === "surface";
+  // The person's own session: a session token with no agent beside them, or with the assistant (the person's own Claude, which the kernel's token chain shows as
+  // [person, agent:assistant]; no chain fact tells a thread from a named agent, so `assistant` is the one name that stands for it). Never read off a label.
+  const ownSession = first.entered_by === "session" && (hops.length === 1 || (hops.length === 2 && agent === "assistant"));
   return {
     ownerSurface: onSurface && !sv.device && OWNER_SURFACES.has(String(sv.surface)),
     device: onSurface && Boolean(sv.device),
     nodeDevice: onSurface && Boolean(sv.device) && Boolean(sv.node),
     signedIn: onSurface && Boolean(sv.device) && Boolean(sv.session),
-    ownSession: entered === "session" && hops.length === 1,
-    agent: agent ? String(agent.actor.id) : null,
+    ownSession,
+    agent,
     module: null,
   };
 }
