@@ -19,7 +19,7 @@ export const LIMITS = Object.freeze({ steps: 200, depth: 6, name: 120, codeSourc
 const ID_RE = /^[a-z][a-z0-9_]{0,39}$/;
 const NAME_RE = /^[a-z][a-z0-9_]{0,63}$/;
 const ACTION_RE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
-const EVENT_RE = /^[a-z][a-z0-9-]*\.(?:[a-z][a-z0-9-]*|\*)$/;
+const EVENT_RE = /^[a-z][a-z0-9_-]*\.(?:[a-z][a-z0-9_-]*|\*)$/;
 const URN_RE = /^vyre:\/\/[^/\s]+\/[^\s]*$/;
 
 /** @typedef {{ path: string, message: string }} Problem */

@@ -9,6 +9,10 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
+  ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
+  ["flows.resume", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
+  ["flows.kit.remove", "changes the Space's shape and revokes grants"],
   ["spaces.invites.confirm", "needs the person's presence: confirms an invite, which grants access"],
   ["files.drive.access", "widens access: makes a share read-write for the paired Mac; its own code already says never an agent"],
   ["threads.mode", "an assistant must not change its own permission mode: that widens its own authority"],

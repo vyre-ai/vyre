@@ -175,26 +175,23 @@ async function startLocked(opts, root, p, release) {
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
+  /** @type {(() => void) | null} */ let closeFlowsHost = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
     /** @type {any} */ let stages = null;
-    // One stages module per Space, over that Space's own kernel: the home's own Space here, and every hosted Space through the Spaces registry's `stageFactory`.
-    const makeStages = async (/** @type {any} */ k, /** @type {string} */ space, /** @type {string} */ ownerId) => {
-      const { createStages } = await import("../../kernel/flows/stages.js");
-      const sh = k.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
-      const owner = () => k.chains.fromFacts({ kind: "session_person", person: ownerId, session: "stages", vouched: true });
-      const st = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
-        catalog: async () => ({ space, types: Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
-        chain: () => k.chains.appendService(owner(), "stages", true) });
-      k.log.subscribe("stages", {}, (/** @type {any} */ e) => st.onEvent(e));
-      return st;
-    };
+    // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
+    // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
+    const { createFlowsHost } = await import("./flows-host.js");
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      service: async (/** @type {any} */ q) => { const r = await registry.call("vault.forward", { connector: q.connector, ...q.request, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), space: q.space }, "module:flows"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
+    registry.deps.flowsHost = flowsHost;
+    closeFlowsHost = () => flowsHost.stop();
     kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
-      stageFactory: (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => makeStages(k, space, meta.owner) });
-    stages = await makeStages(kernel, kernel.id.space, kernel.id.owner);
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
+    stages = (await flowsHost.attach(kernel.id.space, kernel, kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
@@ -285,6 +282,7 @@ async function startLocked(opts, root, p, release) {
     if (stopped) return; stopped = true;
     if (labelTimer) clearTimeout(labelTimer);
     if (closeKernelSessions) await closeKernelSessions().catch(() => {});
+    if (closeFlowsHost) closeFlowsHost();
     // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
     // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
     drain.on = true;
