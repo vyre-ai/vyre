@@ -73,9 +73,9 @@ test("a rule can't widen: with no grant a rule changes nothing, and a rule never
   const remove = chain => k.gateway.authorize({ chain, action: "records.remove", resource: c.urn });
   assert.equal((await remove(asst())).effect, "deny", "kit has no grant");
   const before = (await remove(asst())).reason;
-  for (const rule of [{ kind: "draft_only", binds: ["assistants"], covers: { actions: ["records.remove"] }, label: "drafts" }, { kind: "always_ask", binds: ["assistants"], covers: { actions: ["records.remove"] }, approver: { role: "owner" }, label: "ask" }]) {
+  for (const [rule, action, resource] of [[{ kind: "draft_only", binds: ["assistants"], covers: { actions: ["seal.deliver"] }, label: "drafts" }, "seal.deliver", c.urn], [{ kind: "always_ask", binds: ["assistants"], covers: { actions: ["records.remove"] }, approver: { role: "owner" }, label: "ask" }, "records.remove", c.urn]]) {
     await setRule(rule);
-    const d = await remove(asst());
+    const d = await k.gateway.authorize({ chain: asst(), action, resource });
     assert.notEqual(d.effect, "allow", `${rule.kind} cannot give what no grant gives`);
   }
   assert.equal(before, "no_grant");
