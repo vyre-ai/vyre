@@ -8,7 +8,7 @@
 // The honest limit stays: whoever holds the code, and the password if one is set, can read as the person until an older device removes them.
 
 import crypto from "node:crypto";
-import { keyId } from "../names/ids.js";
+import { keyId } from "../../lib/identity/directory.js";
 import { argon2id, STRETCH, STRETCH_SALT } from "../../kernel/identity/stretch.js";
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";

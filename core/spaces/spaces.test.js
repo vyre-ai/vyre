@@ -19,7 +19,7 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import spacesModule, { hooks } from "./index.js";
 import { newKeyPair, personIdOf, fileIdentityStore } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
-import { idDirectory } from "../names/ids.js";
+import { idDirectory } from "../../lib/identity/directory.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const T0 = Date.UTC(2026, 9, 3, 12, 0, 0);

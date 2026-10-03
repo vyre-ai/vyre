@@ -6,10 +6,10 @@
 // A device that is added learns of it at once (the entry that added it gave it the chain); every OTHER device learns on its next sync(),
 // which returns the alerts (a new sign-in, a removal) and says whether this device itself was removed.
 
-import * as C from "../../names/worker/chain.js";
+import * as C from "../../kernel/identity/chain.js";
 import { newCode, codeKey, normalizeCode } from "./recovery.js";
 import crypto from "node:crypto";
-import { keyId } from "../names/ids.js";
+import { keyId } from "../../lib/identity/directory.js";
 import { privateKeyOf } from "./identity.js";
 
 const refuse = (message, code) => Object.assign(new Error(message), { code });
@@ -26,7 +26,7 @@ const chainWords = {
 const plain = e => chainWords[e && e.code] || (e && e.message) || "That did not work.";
 
 /**
- * @param {{ store: ReturnType<typeof import("./identity.js").fileIdentityStore>, dir: ReturnType<typeof import("../names/ids.js").idDirectory>,
+ * @param {{ store: ReturnType<typeof import("./identity.js").fileIdentityStore>, dir: ReturnType<typeof import("../../lib/identity/directory.js").idDirectory>,
  *   now: () => number, emit?: (type: string, payload: any) => void, stretch?: any }} d
  */
 export function createIdentityOps({ store, dir, now, emit = () => {}, stretch }) {

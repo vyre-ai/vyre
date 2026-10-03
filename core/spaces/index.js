@@ -20,8 +20,8 @@ import {
   createSpaceFlow, assessThisComputer, planMoveHome, PAIRING_DEFAULTS, INSTALL_COMMAND, PAIR_PROMPT,
 } from "../../lib/spaces/homes.js";
 import { SPACE_ID_RE } from "../../lib/spaces/home-unit.js";
-import { idDirectory, DEFAULT_BASE } from "../names/ids.js";
-import * as C from "../../names/worker/chain.js";
+import { idDirectory, DEFAULT_BASE } from "../../lib/identity/directory.js";
+import * as C from "../../kernel/identity/chain.js";
 import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
 import { createCompute } from "../../lib/spaces/compute.js";
@@ -724,6 +724,18 @@ export default {
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
         return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
       });
+
+    // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
+    tool("spaces.self", "The person acting on this device and the space a call is for (the one named, or the only one this person is in). For modules.", obj({ caller: str, space: str }), async i => {
+      const s = me();
+      const mine = spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, /** @type {string} */ (s.id)) || r.createdBy === s.id));
+      const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;
+      return row ? { person: s.id, space: { id: row.id, name: row.name } } : { person: s.id, space: null };
+    }, { internal: true });
+    tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
+      const p = String(i.person);
+      return { spaces: spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, p) || r.createdBy === p)).map(r => ({ space: r.id, name: r.name, color: null, link: `https://${r.name}` })) };
+    }, { internal: true });
 
     // 5b. the compute grant pair: the space allows its work on members' computers, the member accepts, and it covers only their own sessions on their own machine
     /** @type {Map<string, any>} */ const computeSvc = new Map();
