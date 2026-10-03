@@ -50,6 +50,9 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     /** The enrolment ceremony: `begin` gives a one-time token, `enrol` needs it, the person's chain, a platform attestation (or an unattested-allowed process) and, for a second device, a proof from the first. */
     begin: i => withCtx("presence.begin", i, { person: i.person, key_id: i.key_id, spki: i.spki }),
     enrol: i => withCtx("presence.enrol", i, { person: i.person, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation, proof: i.proof }),
+    /** R-8: `sync` hands the process the person's identity chain (ops) and device-to-key binds; `recover` gives a person with no key left a new first key from chain evidence. */
+    sync: i => withCtx("presence.sync", i, { person: i.person, ops: i.ops, binds: i.binds }),
+    recover: i => withCtx("presence.recover", i, { person: i.person, ops: i.ops, bind: i.bind, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
     health: () => call("health"),
     close: () => new Promise(res => { if (closed) return res(); child.once("exit", () => res()); child.stdin.end(); setTimeout(() => child.kill(), 2000).unref(); }),
