@@ -30,16 +30,15 @@ export type SessionActions = {
   stopSession(): Promise<string | null>;
   answerAsk(ask: string, decision: "approve" | "deny"): Promise<string | null>;
 };
-/** What the screen can do in a group chat (a session with several people and assistants): every call is a server tool through the outbox. */
+/** What the screen can do in a group chat (a session with several people and assistants): every call is a server tool through the outbox. The StreamSource methods (sendGroup, keep, react, pin, markRead) fire and forget; these return what the box answered. */
 export type GroupActions = {
   /** One message to several assistants at once (a fan-out set), or to whoever routing picks when `to` is empty. Resolves with the answer message ids and the fan-out group id. */
-  sendGroup(text: string, opts?: { to?: string[]; mentions?: string[]; message?: string }): Promise<{ ok: true; message: string; group?: string; answers: { who: string; message: string }[] } | { ok: false; reason: string }>;
-  /** Keep one answer of a fan-out set. */
-  keep(group: string, message: string): Promise<string | null>;
-  react(message: string, emoji: string, on?: boolean): Promise<string | null>;
-  pin(message: string, on?: boolean): Promise<string | null>;
+  sendGroupText(text: string, opts?: { to?: string[]; mentions?: string[]; message?: string }): Promise<{ ok: true; message: string; group?: string; answers: { who: string; message: string }[] } | { ok: false; reason: string }>;
+  keepAnswer(group: string, message: string): Promise<string | null>;
+  reactTo(message: string, emoji: string, on?: boolean): Promise<string | null>;
+  pinMessage(message: string, on?: boolean): Promise<string | null>;
   /** Move this person's read marker forward; their other open connections hear it. */
-  markRead(upto: number): Promise<string | null>;
+  markReadTo(upto: number): Promise<string | null>;
 };
 export type BoxStream = StreamSource & SessionActions & GroupActions;
 
@@ -86,17 +85,17 @@ export function boxStream(session: string): BoxStream {
     stopSession: () => note("threads.stop", { thread: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
-    sendGroup: async (text, opts = {}) => {
+    sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
       const r = await write("stream.send", { session, text, message, surface: SURFACE, ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };
       return { ok: true, message: d.message ?? message, ...(d.group ? { group: d.group } : {}), answers: d.answers ?? [] };
     },
-    keep: (group, message) => note("stream.keep", { session, group, keep: message }),
-    react: (message, emoji, on = true) => note("stream.react", { session, message, emoji, on }),
-    pin: (message, on = true) => note("stream.pin", { session, message, on }),
-    markRead: (upto) => note("stream.mark-read", { session, upto }),
+    keepAnswer: (group, message) => note("stream.keep", { session, group, keep: message }),
+    reactTo: (message, emoji, on = true) => note("stream.react", { session, message, emoji, on }),
+    pinMessage: (message, on = true) => note("stream.pin", { session, message, on }),
+    markReadTo: (upto) => note("stream.mark-read", { session, upto }),
     editRetry: (message, text) => done("threads.edit-retry", { thread: session, message, text, surface: SURFACE }),
     retry: (message) => done("threads.retry", { thread: session, message, surface: SURFACE }),
     branch: (at) => done("threads.branch", { thread: session, at, surface: SURFACE }),
@@ -104,5 +103,10 @@ export function boxStream(session: string): BoxStream {
     send(text) { void this.sendText(text); },
     answer(ask, decision) { void this.answerAsk(ask, decision); },
     stop() { void this.stopSession(); },
+    sendGroup(text, o) { void this.sendGroupText(text, { to: o.to }); },
+    keep(group, message) { void this.keepAnswer(group, message); },
+    react(message, emoji, remove) { void this.reactTo(message, emoji, !remove); },
+    pin(message, pinned) { void this.pinMessage(message, pinned); },
+    markRead(upto) { void this.markReadTo(upto); },
   };
 }

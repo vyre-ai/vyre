@@ -129,6 +129,7 @@ test("group: a fan-out to two assistants returns two answer blocks, and keep mar
   const r = (await say(ALEX, "compare the bakery menus", { ...members(w), to: [KIT, JUNO] })).data;
   assert.equal(r.answers.length, 2);
   assert.ok(r.group);
+  await until(() => view.frames.some(f => f.type === "session.fanout"), "the fan-out frame");
   const fo = view.frames.find(f => f.type === "session.fanout");
   assert.deepEqual(fo.data.members.map(m => m.who), [KIT, JUNO]);
   await until(() => r.answers.every(a => done(view.frames).has(a.message)), "both answers", 20000);

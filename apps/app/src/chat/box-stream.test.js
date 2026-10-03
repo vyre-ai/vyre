@@ -7,7 +7,7 @@ const src = fs.readFileSync(new URL("./box-stream.ts", import.meta.url), "utf8")
 
 test("box-stream has sendGroup, keep, react, pin and markRead, each a stream.* tool through write()", () => {
   for (const [fn, tool] of [["sendGroup", "stream.send"], ["keep", "stream.keep"], ["react", "stream.react"], ["pin", "stream.pin"], ["markRead", "stream.mark-read"]]) {
-    assert.match(src, new RegExp(`${fn}:[^\\n]*|${fn}: async`), fn);
+    assert.match(src, new RegExp(`${fn}(Text|To|Answer|Message)?[(:]`), fn);
     assert.ok(src.includes(`"${tool}"`), tool);
   }
   assert.ok(!/fetch\(|XMLHttpRequest/.test(src), "writes never bypass the outbox");
