@@ -3,7 +3,7 @@
 // other local user can reach it. Request { id, op, ctx, ... } gets { id, ok, result } or { id, ok: false, error: { code } }. An error carries a
 // stable code and nothing from the input, so no value reaches a log or a stack trace. The language is Node for now: the protocol in this file
 // (ops, fields, codes) is the interface a Rust process can implement later.
-//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, drop, presence.enrol, presence.revoke, health
+//   ops: init, put, use, deliver, reveal, derived.read, detect, save, session.end, lookup, drop, presence.enrol, presence.revoke, presence.check, spacekey.pub, spacekey.sign, health
 // ctx is the kernel's summary of the chain (wire.chainCtx). This process trusts the kernel for who is in the chain and checks the rest itself.
 // `approver` (use and deliver) is the chain of the person who approved: the act may run under an assistant's or a Flow's chain, but the proof
 // must come from exactly one person, and the process verifies it against that chain.
@@ -156,6 +156,24 @@ export class Sealer {
   }
   drop(r) { const ctx = this.ctxOf(r.ctx); this.open(ctx, r.ref); return { dropped: this.store.drop("values", r.ref) }; }
 
+  /**
+   * The Space's checkpoint key (K5, DESIGN-wink 2): an Ed25519 key made here, held here and never returned. It signs one thing, a checkpoint of this
+   * Space's log; the public half is endorsed in the Space's identity chain by an owner, and the owners' devices hold the checkpoints it signs.
+   * @returns {{ priv: crypto.KeyObject, pub: string, key_id: string }}
+   */
+  spaceKey(ctx) {
+    const ref = `seal_sk${crypto.createHash("sha256").update(ctx.space).digest("hex").slice(0, 30)}`;
+    let rec = this.store.read("values", ref, "_system");
+    if (!rec) {
+      const { privateKey } = crypto.generateKeyPairSync("ed25519");
+      this.store.write("values", { ref, space: "_system", record: ctx.space, field: "spacekey", class: "spacekey" }, privateKey.export({ type: "pkcs8", format: "pem" }).toString());
+      rec = this.store.read("values", ref, "_system");
+    }
+    const priv = crypto.createPrivateKey(/** @type {any} */ (rec).plaintext);
+    const spki = crypto.createPublicKey(priv).export({ type: "spki", format: "der" }).toString("base64");
+    return { priv, pub: spki, key_id: crypto.createHash("sha256").update(Buffer.from(spki, "base64")).digest("hex").slice(0, 16) };
+  }
+
   async handle(req) {
     switch (req.op) {
       case "put": return this.put(req); case "use": return this.use(req); case "deliver": return this.deliver(req);
@@ -169,6 +187,20 @@ export class Sealer {
         if (this.presence.pins.has(req.person)) { need(Array.isArray(req.ops), "needs_chain"); const s = await this.presence.sync({ person: req.person, ops: req.ops, ctx }); if (s.refused) throw err(s.refused); }
         const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
+      // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
+      // and the proof is used up. The kernel supplies who is in the chain; only task and grant ops are accepted, so this is not a path to a seal op.
+      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^(task|grant)\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true }; }
+      // The Space's checkpoint key: its public half on request, and signatures over checkpoints of this Space only.
+      case "spacekey.pub": { const ctx = this.ctxOf(req.ctx); const k = this.spaceKey(ctx); return { key_id: k.key_id, pub: k.pub }; }
+      case "spacekey.sign": {
+        const ctx = this.ctxOf(req.ctx); need(typeof req.bytes === "string", "bad_input");
+        const bytes = Buffer.from(req.bytes, "base64"), tag = "vyre-checkpoint-v1\n";
+        need(bytes.length < 4096 && bytes.subarray(0, tag.length).toString() === tag, "bad_input");
+        let body; try { body = JSON.parse(bytes.subarray(tag.length).toString()); } catch { body = null; }
+        need(body && body.space === ctx.space, "wrong_space");
+        const k = this.spaceKey(ctx);
+        return { key_id: k.key_id, signature: crypto.sign(null, bytes, k.priv).toString("base64url") };
+      }
       case "presence.sync": { const r = await this.presence.sync({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { ...r, events: r.pruned.map(key_id => ({ type: "presence.revoked", key_id, why: "device_removed" })) }; }
       case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, event: { type: "presence.recovered", person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
       case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); need(c.person, "bad_input"); return this.leases.issue({ space: c.space, member: c.person, device: req.device, allowed: req.allowed }); }
@@ -224,6 +256,8 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   // A crash must not print the exception: its message or stack could hold a value.
   process.on("uncaughtException", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
   process.on("unhandledRejection", () => { process.stderr.write("seal: internal error\n"); process.exit(70); });
+  // The pipe is the only way in: when the kernel closes it or dies, this process ends, so no test or crash leaves one running.
+  process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
   try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1" }); }

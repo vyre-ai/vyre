@@ -13,16 +13,50 @@
 // The key comes from o.env.OPENROUTER_API_KEY (an account of kind api-key), read here and nowhere else.
 
 import { resolveSafe, pinnedFetch } from "../../../lib/api-endpoint.js";
+import { route, doorMessage, isRefusal } from "../../../lib/door-bridge.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
 const MAX_STREAM = 1_000_000;         // bytes of one answer, then it is cut
+const DONE = Symbol("done");
 const IDLE_MS = 60_000;                // no data for this long ends the turn
 
 /** https, or plain http to this machine only (a test double). @param {string} u */
 const okBase = u => { try { const x = new URL(u); return x.protocol === "https:" || (x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname)); } catch { return false; } };
 
-/** @param {{ id?: string, keyEnv?: string, baseUrl?: string, idleMs?: number, model?: string, fetch?: typeof fetch, store?: { get(id: string): any[]|undefined, set(id: string, messages: any[]): void } }} [entry] */
+/**
+ * The provider side of the inference door for this driver: register it as `drivers[id]` in the door. The door has already scanned the
+ * messages; this only makes the HTTP call (not streamed: the door answers whole, see docs/work/door-retrofit.md) with the key the caller
+ * passes in `credential`, which the door never logs. The key is never in an error it raises.
+ * @param {{ baseUrl?: string, fetch?: typeof fetch, lookup?: any, idleMs?: number }} [entry]
+ */
+export function openrouterDoorDriver(entry = {}) {
+  return {
+    /** @param {{ model: string, messages: any[], max_output_tokens?: number, credential?: { key?: string, base?: string } }} input */
+    async call(input) {
+      const key = String((input.credential && input.credential.key) || "");
+      const base = String((input.credential && input.credential.base) || entry.baseUrl || BASE).replace(/\/+$/, "");
+      const fail = (/** @type {string} */ m) => new Error(key ? m.split(key).join("[key]") : m);
+      if (!okBase(base)) throw fail("the OpenRouter address must be https");
+      const pin = entry.fetch && !entry.lookup ? null : await resolveSafe(base, entry.lookup);
+      if (!(entry.fetch && !entry.lookup) && !pin) throw fail("that address is not a place a key may be sent");
+      if (!key) throw fail("no OpenRouter key on this account");
+      if (!input.model) throw fail("choose a model for OpenRouter (in the routing list, or when the session starts)");
+      const doFetch = entry.fetch || globalThis.fetch;
+      const res = await (pin && !entry.fetch ? (/** @type {any} */ u, /** @type {any} */ i) => pinnedFetch(u, i, pin) : doFetch)(`${base}/chat/completions`, { method: "POST", signal: AbortSignal.timeout((Number(entry.idleMs) || IDLE_MS) * 4),
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-title": "Vyre" },
+        body: JSON.stringify({ model: input.model, messages: input.messages, stream: false, usage: { include: true }, provider: { data_collection: "deny" }, ...(input.max_output_tokens ? { max_tokens: input.max_output_tokens } : {}) }) });
+      if (!res.ok) throw fail(`OpenRouter answered ${res.status}: ${String(await res.text().catch(() => "")).slice(0, 200)}`);
+      const j = /** @type {any} */ (await res.json());
+      if (j.error) throw fail(String(j.error.message || "the model refused"));
+      const content = String((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || "");
+      const u = j.usage;
+      return { content, ...(u ? { usage: { input_tokens: u.prompt_tokens || 0, output_tokens: u.completion_tokens || 0, cost_usd: Number(u.cost) || 0 } } : {}) };
+    },
+  };
+}
+
+/** @param {{ id?: string, keyEnv?: string, baseUrl?: string, idleMs?: number, model?: string, fetch?: typeof fetch, door?: any, legacyDirect?: boolean, chainFor?: (o: any) => any, warn?: (m: string) => void, store?: { get(id: string): any[]|undefined, set(id: string, messages: any[]): void } }} [entry] */
 export function openrouterProvider(entry = {}) {
   const memory = new Map();
   const store = entry.store || { get: id => memory.get(id), set: (id, m) => { memory.set(id, m); } };
@@ -72,6 +106,18 @@ function runChat(entry, store, o) {
       if (!(entry.fetch && !entry.lookup) && !pin) throw new Error("that address is not a place a key may be sent");
       if (!key) throw new Error("no OpenRouter key on this account");
       if (!model) throw new Error("choose a model for OpenRouter (in the routing list, or when the session starts)");
+      const via = route({ door: entry.door, legacyDirect: entry.legacyDirect, warn: entry.warn }, entry.id || "openrouter");
+      if ("refused" in via) throw new Error(via.refused);
+      if ("door" in via) {
+        // Through the door: scanned, ledgered, residency and budget checked. The door answers whole, so the text arrives as one chunk (a known gap).
+        let out;
+        try { out = await via.door.call({ chain: entry.chainFor ? entry.chainFor(o) : o.chain, purpose: "session", provider: entry.id || "openrouter", model, session: String(o.id), messages, credential: { key, base } }); }
+        catch (e) { if (isRefusal(e)) throw new Error(doorMessage(e) || "the inference door refused this"); throw e; }
+        text = String(out.content || "");
+        if (text) say({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text } } });
+        if (out.usage) { usage = { prompt_tokens: out.usage.input_tokens, completion_tokens: out.usage.output_tokens }; cost = Number(out.usage.cost_usd) || 0; }
+        throw DONE;
+      }
       const res = await (pin && !entry.fetch ? (u, i) => pinnedFetch(u, i, pin) : doFetch)(`${base}/chat/completions`, { method: "POST", signal: ac.signal,
         headers: { "content-type": "application/json", authorization: `Bearer ${key}`, "x-title": "Vyre" },
         body: JSON.stringify({ model, messages, stream: true, usage: { include: true }, provider: { data_collection: "deny" } }) });
@@ -103,7 +149,8 @@ function runChat(entry, store, o) {
         }
       }
     } catch (e) {
-      if (asked && ac.signal.aborted) cancelled = true; else failed = /** @type {Error} */ (e);
+      if (e === DONE) { /* answered through the door */ }
+      else if (asked && ac.signal.aborted) cancelled = true; else failed = /** @type {Error} */ (e);
       // Whatever an error carries, the key is never in it.
       if (failed && key) failed = new Error(String(failed.message).split(key).join("[key]"));
     }

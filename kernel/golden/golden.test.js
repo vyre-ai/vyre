@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { record, load, diff } from "./index.js";
+import { record, load, diff, added } from "./index.js";
 import { CALLERS, WORLDS } from "./matrix.js";
 
 let fresh = null;
 const now = () => (fresh ||= record());
 
-test("the recorder reproduces the stored golden set cell for cell", () => {
+test("the recorder reproduces the stored golden set cell for cell", { timeout: 900_000 }, () => {
   const d = diff(load(), now());
   assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions changed; if on purpose, run: node kernel/golden/index.js --write`);
 });
@@ -39,4 +39,27 @@ test("golden sanity: the facts the kernel brief relies on hold today", () => {
 test("the matrix lists are unique and the world ids are stable", () => {
   assert.equal(new Set(CALLERS.map(c => c.id)).size, CALLERS.length);
   assert.deepEqual(WORLDS.map(w => w.id), ["bare", "person", "person+proof", "person+proof+said", "named"]);
+});
+
+test("K2b: with the kernel retrofit deciding the gates, every decision is the same as today's, cell for cell", () => {
+  const d = diff(load(), record({ gates: true }));
+  assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions changed under the kernel gates`);
+});
+
+test("K2-9: generated callers outside the matrix get the same decisions from the gates as from the registry's own rules", { timeout: 900_000 }, () => {
+  const was = record({ generated: true }), now_ = record({ gates: true, generated: true });
+  assert.ok(was.callers.length > 100);
+  const d = diff(was, now_);
+  assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions differ for generated callers`);
+});
+
+test("diff: a new tool is recorded, not judged; a changed cell or a vanished tool is a difference", () => {
+  const base = { callers: ["c"], worlds: ["w"], legend: { R: "would run", a: "denied" }, roles: { box: { rows: { "a.x": "R" }, emptyBad: {} } } };
+  const withNew = { ...base, roles: { box: { rows: { "a.x": "R", "b.new": "a" }, emptyBad: {} } } };
+  assert.deepEqual(diff(base, withNew), []);
+  assert.deepEqual(added(base, withNew), { box: ["b.new"] });
+  const changed = { ...base, roles: { box: { rows: { "a.x": "a" }, emptyBad: {} } } };
+  assert.equal(diff(base, changed).length, 1);
+  const gone = { ...base, roles: { box: { rows: {}, emptyBad: {} } } };
+  assert.equal(diff(base, gone)[0].now, "absent");
 });

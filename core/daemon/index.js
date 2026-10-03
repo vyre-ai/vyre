@@ -56,7 +56,7 @@ export function moduleRoots(root) {
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
  * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
- *   coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
+ *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -143,6 +143,18 @@ async function startLocked(opts, root, p, release) {
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
   registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
+  // The kernel is off unless asked for (VYRE_KERNEL=1, or opts.kernel): nothing below runs and nothing about this daemon changes. When on, it gives the home a
+  // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
+  /** @type {any} */ let kernel = null;
+  if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
+    const { bootHomeKernel } = await import("../../kernel/home.js");
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir) });
+    registry.deps.moduleHost = kernel.moduleHost;
+    registry.deps.kernelFor = kernel.kernelFor;
+    if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
+    registry.deps.moduleApprovals = kernel.moduleApprovals;
+    log(`kernel on · space ${kernel.id.space}${kernel.fresh ? " (new)" : ""}`);
+  }
   // The eight box-only modules gate on cfg.machine (ADR 0039: solo/server/device), not the
   // legacy cfg.role -- that's what lets a Mac chosen as the server run them.
   await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
@@ -182,13 +194,14 @@ async function startLocked(opts, root, p, release) {
     server.closeAllConnections();
     await new Promise(r => server.close(() => r(undefined)));
     await registry.stop();
+    if (kernel) await kernel.stop();
     db.close();
     fs.rmSync(p.socket, { force: true });
     try { if (fs.readFileSync(p.pid, "utf8") === String(process.pid)) fs.rmSync(p.pid, { force: true }); } catch {}
     release();
     log("vyred down");
   };
-  return { registry, events, config: cfg, paths: p, stop };
+  return { registry, events, config: cfg, paths: p, stop, kernel };
 }
 
 /** Any label that names an agent, in whatever form: "mcp:agent:kit", "cli agent:kit", "deck:agent:kit". */

@@ -9,7 +9,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CALLERS, WORLDS } from "./matrix.js";
+import { CALLERS as GOLDEN_CALLERS, GENERATED_CALLERS, WORLDS } from "./matrix.js";
+const CALLERS = process.argv.includes("--generated") ? GENERATED_CALLERS : GOLDEN_CALLERS;
 
 const root0 = fs.mkdtempSync(path.join(os.tmpdir(), "kernel-golden-"));
 process.env.VYRE_NO_DIALOGS = "1";
@@ -36,6 +37,8 @@ for (const role of ["box", "local"]) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role, transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: [] } }));
   const d = await start({ root, log: () => {} });
   const reg = d.registry;
+  // --gates: decide the static gates, presence and asked requirements through the kernel retrofit instead of the inline rules.
+  if (process.argv.includes("--gates")) { const { createLegacyGates } = await import(path.join(here, "..", "retrofit", "gates.js")); reg.deps.gates = createLegacyGates({ registry: reg }); }
   const world = { proof: false, said: false };
   const realSchemas = new Map();
   // Nothing runs: every body is the sentinel, the said-match door answers from the world, and the

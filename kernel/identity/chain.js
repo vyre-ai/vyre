@@ -80,7 +80,9 @@ async function verifySig(pubText, message, sigText) {
 /**
  * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
- * @typedef {{ resolve?: (id: string, ts: number) => Promise<State|null>, now?: number, skewMs?: number }} Ctx
+ * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, now?: number, skewMs?: number }} Ctx
+ * `ownerOps(id)` gives a person's whole chain (the verifier checks it itself). `live` says every op here is being ACCEPTED now, so its device must be on the owner's
+ * current list; `liveFrom` is the same for ops from that sequence on (a client that pinned a head treats what is newer than its pin as live).
  */
 
 /** Does one entry's own shape hold? @param {any} e @param {"person"|"space"} kind */
@@ -159,6 +161,8 @@ export async function applyOp(state, op, ctx = {}) {
       if (signer.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
       if (!await verifySig(signer.pub, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
       young = youngAt(signer, op.ts);
+      // The recovery code is a way BACK IN, not a way to take over: it can only add a device. That device is a newcomer, and the owner's own devices stay and can remove it.
+      if (signer.kind === "code" && !(op.type === "add" && op.entry && op.entry.kind === "device")) throw chainError("code_limited", "the recovery code can only add a device; sign in with a device to change the list");
     }
   }
 
@@ -215,38 +219,68 @@ export async function applyOp(state, op, ctx = {}) {
 }
 
 /**
- * A space op is signed by one of its owners' devices. Check the signature against that person's own chain as it stood at the op's
- * time, and say whether the device was young.
+ * The owner's chain state at a position the op names, after checking that the position is real (its hash is the one named). A device's
+ * standing comes from where it sits in the chain, never from a time the signer claims, so a removed key cannot be backdated into validity.
+ * @param {Ctx} ctx @param {string} subject @param {unknown} seq @param {unknown} head
+ * @returns {Promise<{ at: State, ops: any[] }>}
+ */
+async function ownerAt(ctx, subject, seq, head) {
+  const ops = ctx.ownerOps ? await ctx.ownerOps(subject) : null;
+  if (!ops) throw chainError("unknown_owner", "the owner's own identity cannot be found");
+  if (!Number.isInteger(seq) || /** @type {number} */ (seq) < 0 || /** @type {number} */ (seq) >= ops.length || typeof head !== "string") throw chainError("bad_via", "a space op names the position of the owner's list it relied on");
+  if (await hashOf(ops[/** @type {number} */ (seq)]) !== head) throw chainError("bad_via", "that is not the owner's list at that position");
+  const now = (ctx.now ?? Date.now()) + (ctx.skewMs ?? SKEW_MS);
+  return { at: await verifyChain(ops.slice(0, /** @type {number} */ (seq) + 1), { now }), ops };
+}
+
+/** The device must also be on the owner's CURRENT list (acceptance time): removing a device ends its signing at once. @param {Ctx} ctx @param {any[]} ops @param {Entry} dev */
+async function stillOnList(ctx, ops, dev) {
+  const now = (ctx.now ?? Date.now()) + (ctx.skewMs ?? SKEW_MS);
+  const head = await verifyChain(ops, { now });
+  const cur = find(head, dev.eid);
+  if (!cur || cur.pub !== dev.pub) throw chainError("removed", "that device has been removed from the owner's list");
+}
+
+/**
+ * A space op is signed by one of its owners' devices (never by a recovery code). The device must be on the owner's list at the position the
+ * op names, and, when the op is being accepted now (`ctx.live`, or `liveFrom`), on the owner's current list. Says whether the device was young.
  * @param {any} op @param {string} subject @param {Entry} owner @param {Uint8Array} msg @param {number} ts @param {Ctx} ctx @returns {Promise<boolean>}
  */
 async function verifyOwnerSig(op, subject, owner, msg, ts, ctx) {
   if (op.by !== subject || typeof op.via !== "string" || !EID.test(op.via)) throw chainError("bad_signature", "a space op names its owner and the device that signed");
-  const theirs = ctx.resolve ? await ctx.resolve(subject, ts) : null;
-  if (!theirs) throw chainError("unknown_owner", "the owner's own identity cannot be found");
-  const dev = find(theirs, op.via);
-  if (!dev || (dev.kind !== "device" && dev.kind !== "code")) throw chainError("not_on_list", "that device is not on the owner's list");
+  const { at, ops } = await ownerAt(ctx, subject, op.via_seq, op.via_head);
+  const dev = find(at, op.via);
+  if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
   if (!await verifySig(dev.pub, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
+  if (ctx.live || (ctx.liveFrom !== undefined && op.seq >= ctx.liveFrom)) await stillOnList(ctx, ops, dev);
   return youngAt(dev, ts);
 }
 
 /**
- * The public key that signs for `by` (and `via`, for a space owner's device) at a time, and whether it was young. For anything that
- * is not an op: a sealed record, an alias proof, a release.
- * @param {State} state @param {string} by @param {string|undefined} via @param {number} ts @param {Ctx} ctx
+ * The public key that signs for `by` (and `via`, for a space owner's device), and whether it was young. For anything that is not an op: a
+ * sealed record, an alias proof, a release. For a space, `pos` is the position of the owner's list the signer named; with `ctx.live` the
+ * device must also be on that list now. A recovery code is never young-exempt: it counts as a newcomer here.
+ * @param {State} state @param {string} by @param {string|undefined} via @param {number} ts @param {Ctx} ctx @param {{ seq?: number, head?: string }} [pos]
  * @returns {Promise<{ pub: string, young: boolean, entry: Entry }>}
  */
-export async function signerKey(state, by, via, ts, ctx = {}) {
+export async function signerKey(state, by, via, ts, ctx = {}, pos = {}) {
   const e = find(state, String(by));
   if (!e) throw chainError("not_on_list", "the signer is not on the list");
   if (state.kind === "space") {
-    const theirs = ctx.resolve ? await ctx.resolve(e.eid, ts) : null;
-    const dev = theirs && typeof via === "string" ? find(theirs, via) : undefined;
-    if (!dev || (dev.kind !== "device" && dev.kind !== "code")) throw chainError("not_on_list", "that device is not on the owner's list");
+    let { seq, head } = pos;
+    if (seq === undefined && ctx.live) { const all = ctx.ownerOps ? await ctx.ownerOps(e.eid) : null; if (!all) throw chainError("unknown_owner", "the owner's own identity cannot be found"); ({ via_seq: seq, via_head: head } = await viaOf(all)); }
+    const { at, ops } = await ownerAt(ctx, e.eid, seq, head);
+    const dev = typeof via === "string" ? find(at, via) : undefined;
+    if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
+    if (ctx.live) await stillOnList(ctx, ops, dev);
     return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e };
   }
   if (e.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
-  return { pub: /** @type {string} */ (e.pub), young: youngAt(e, ts), entry: e };
+  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e };
 }
+
+/** The position of a person's chain a space op relies on: its head. @param {any[]} ownerOps */
+export async function viaOf(ownerOps) { return { via_seq: ownerOps.length - 1, via_head: await hashOf(ownerOps[ownerOps.length - 1]) }; }
 
 /** Does `sig` over `message` check out under the key `signerKey` names? @param {string} pub @param {Uint8Array} message @param {string} sig */
 export const verifyWith = (pub, message, sig) => verifySig(pub, message, sig);
@@ -267,17 +301,17 @@ export async function stateAt(ops, ts, ctx = {}) {
   return upto.length ? verifyChain(upto, ctx) : null;
 }
 
-/** Build and sign the genesis. `sign(bytes)` is the first entry's key (a person), or an owner's device (a space, with `via`). @param {{ kind: "person"|"space", entry: any, code?: any, nonce: string, ts: number, via?: string, sign: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
-export async function makeGenesis({ kind, entry, code, nonce, ts, via, sign }) {
-  const op = { v: 1, type: "genesis", kind, seq: 0, prev: null, ts, nonce, entry, ...(code ? { code } : {}), by: entry.eid, ...(via ? { via } : {}) };
+/** Build and sign the genesis. `sign(bytes)` is the first entry's key (a person), or an owner's device (a space, with `via`). @param {{ kind: "person"|"space", entry: any, code?: any, viaPos?: { via_seq: number, via_head: string }, nonce: string, ts: number, via?: string, sign: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
+export async function makeGenesis({ kind, entry, code, nonce, ts, via, viaPos, sign }) {
+  const op = { v: 1, type: "genesis", kind, seq: 0, prev: null, ts, nonce, entry, ...(code ? { code } : {}), by: entry.eid, ...(via ? { via } : {}), ...(viaPos || {}) };
   /** @type {any} */ (op).id = await idOfGenesis(op);
   /** @type {any} */ (op).sig = b64u(await sign(messageOf(op)));
   return op;
 }
 
-/** Build and sign the next op on a state. `body` is {type, entry|target, ...}; contacts' approvals come in `approvals` already signed. @param {State} state @param {any} body @param {{ by?: string, via?: string, ts: number, sign?: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
-export async function makeOp(state, body, { by, via, ts, sign }) {
-  const op = { v: 1, id: state.id, seq: state.seq + 1, prev: state.head, ts, ...body, ...(by ? { by } : {}), ...(via ? { via } : {}) };
+/** Build and sign the next op on a state. `body` is {type, entry|target, ...}; contacts' approvals come in `approvals` already signed. @param {State} state @param {any} body @param {{ by?: string, via?: string, viaPos?: { via_seq: number, via_head: string }, ts: number, sign?: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
+export async function makeOp(state, body, { by, via, viaPos, ts, sign }) {
+  const op = { v: 1, id: state.id, seq: state.seq + 1, prev: state.head, ts, ...body, ...(by ? { by } : {}), ...(via ? { via } : {}), ...(viaPos || {}) };
   if (sign) /** @type {any} */ (op).sig = b64u(await sign(messageOf(op)));
   return op;
 }

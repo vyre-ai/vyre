@@ -23,7 +23,8 @@ export class Leases {
   issue({ space, member, device, allowed }) {
     if (typeof device !== "string" || !device || typeof member !== "string" || !member) throw err("bad_input");
     const s = this.slot(space, member, device);
-    if (!allowed) { this.revoke({ space, member, device }); return { revoked: true }; }
+    // A refused issue refuses and nothing more: it never revokes (a revoke is an act of its own, by the member or an admin; renew with `allowed: false` is how a lost grant ends a lease).
+    if (!allowed) return { revoked: true };
     if (this.st.revoked[s]) return { revoked: true };
     const id = `lease_${crypto.randomBytes(12).toString("hex")}`;
     this.live.set(id, { space, member, device, exp: this.now() + LEASE_MS });

@@ -162,3 +162,38 @@ test("stream: latency added per chunk is a few milliseconds and the first text i
   console.log(`stream latency: no number ${plain.per.toFixed(2)} ms/chunk first ${plain.first.toFixed(1)} ms; ledger ${ledgered.per.toFixed(2)} ms/chunk first ${ledgered.first.toFixed(1)} ms; numbers ${numbers.per.toFixed(2)} ms/chunk first ${numbers.first.toFixed(1)} ms`);
   assert.ok(plain.first < 50 && plain.per < 5, "plain text"); assert.ok(numbers.per < 10 && ledgered.per < 10);
 });
+
+test("budget: a call that failed before the provider answered gives its reservation back; one the provider answered and a scan refused is charged its usage", async () => {
+  const { createLimits } = await import("../core/limits.js");
+  const { createEventLog } = await import("../core/events.js");
+  const { createChainBuilder } = await import("../core/chain.js");
+  const { createDoor } = await import("./door.js");
+  const SPACE = "spc_testspace0001";
+  const log = createEventLog({ space: SPACE });
+  const L = createLimits({ space: SPACE, log });
+  const budget = L.doorBudget({ limitOf: () => 1000, estimate: () => 600, cost: (i, u) => u.cost_micro });
+  const sealer = { detect: async ({ text }) => ({ text, found: [], ledger: [] }), endSession: async () => {} };
+  const chain = person();
+  const call = d => createDoor({ sealer, sinks: [], budget, drivers: { fake: d } }).call({ chain, purpose: "t", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }] });
+  await assert.rejects(() => call({ call: async () => { throw new Error("provider down"); } }), /provider down/);
+  assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 0, reserved: 0 }, "nothing spent, nothing held");
+  assert.equal((await call({ call: async () => ({ content: "ok", usage: { cost_micro: 250 } }) })).content, "ok");
+  assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 250, reserved: 0 });
+  // a refused scan after the provider answered: the money was spent
+  const hostile = createDoor({ sealer: { detect: async ({ text }) => ({ text, found: [], ledger: [] }), endSession: async () => {} }, sinks: [], budget, drivers: { fake: { call: async () => ({ content: "x", usage: { cost_micro: 100 }, tool_calls: [{ input: 10n }] }) } } });
+  await assert.rejects(() => hostile.call({ chain, purpose: "t", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }] }));
+  assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 350, reserved: 0 }, "charged the 100 the provider reported");
+});
+
+test("D-1: a provider that reports no usage is charged what was reserved", async () => {
+  const { createLimits } = await import("../core/limits.js");
+  const { createEventLog } = await import("../core/events.js");
+  const { createDoor } = await import("./door.js");
+  const SPACE = "spc_testspace0001";
+  const L = createLimits({ space: SPACE, log: createEventLog({ space: SPACE }) });
+  const budget = L.doorBudget({ limitOf: () => 10_000, estimate: () => 600 });
+  const chain = person();
+  const door = createDoor({ sealer: { detect: async ({ text }) => ({ text, found: [], ledger: [] }), endSession: async () => {} }, sinks: [], budget, drivers: { fake: { call: async () => ({ content: "no usage reported" }) } } });
+  await door.call({ chain, purpose: "t", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }] });
+  assert.deepEqual(L.used(chain.hops[0].actor.id, "ai_spend"), { settled: 600, reserved: 0 });
+});

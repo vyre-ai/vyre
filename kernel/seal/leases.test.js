@@ -26,7 +26,8 @@ test("renewal needs access to hold; losing it revokes at once, and nothing is is
   assert.deepEqual(L.issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), { revoked: true }, "never issued after a revoke, even if the kernel now says yes");
   assert.deepEqual(reopen().issue({ space: SP, member: "per_a", device: "dev_mac", allowed: true }), { revoked: true }, "the revoke survives a restart");
   assert.equal(L.issue({ space: SP, member: "per_a", device: "dev_pc", allowed: true }).id.startsWith("lease_"), true, "another device is unaffected");
-  assert.deepEqual(L.issue({ space: SP, member: "per_a", device: "dev_new", allowed: false }), { revoked: true }, "no grant, no key, and it counts as revoked");
+  assert.deepEqual(L.issue({ space: SP, member: "per_a", device: "dev_new", allowed: false }), { revoked: true }, "no grant, no key");
+  assert.equal(L.issue({ space: SP, member: "per_a", device: "dev_new", allowed: true }).id.startsWith("lease_"), true, "a refused issue revokes nothing (L-5)");
 });
 
 test("a lease that runs out is not renewed, and the key after a reinstatement is not the old one", () => {

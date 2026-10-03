@@ -114,6 +114,10 @@ export interface StoreError { readonly code: StoreErrorCode; readonly message: s
  */
 export interface Store {
   define(diff: DefineDiff): Promise<DefineResult>;
+  /** Every type definition the store holds (the tool surface and Customize list from here). */
+  types(): Promise<readonly TypeDefinition[]>;
+  /** The field names and kinds of a type, or null: the gateway reads which fields are sealed from here and refuses model queries on them. */
+  describe(type: string): Promise<{ readonly name: string; readonly fields: readonly { readonly name: string; readonly kind: FieldKind }[] } | null>;
   get(type: string, id: RecordId, opts?: { readonly include_deleted?: boolean }): Promise<StoredRecord | null>;
   query(type: string, spec: QuerySpec): Promise<Page<StoredRecord>>;
   aggregate(type: string, spec: AggregateSpec): Promise<readonly AggregateRow[]>;

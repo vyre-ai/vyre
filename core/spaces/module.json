@@ -1,0 +1,234 @@
+{
+ "name": "spaces",
+ "version": "0.1.0",
+ "description": "Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.",
+ "roles": [
+  "box",
+  "local"
+ ],
+ "requires": [],
+ "does": {
+  "tools": [
+   {
+    "name": "spaces.identity.status",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.create",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.resolve",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.alias",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.alias.add",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.entries",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.entry.add",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.entry.remove",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.code.replace",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.sync",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.code",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.contact.key",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.begin",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.approve",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.recover.finish",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.create",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.list",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.get",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.status",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.resume",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.cancel",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.code.submit",
+    "reach": "anyone"
+   },
+   {
+    "name": "spaces.server.install",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.move.plan",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.assess-computer",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.list",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.add",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.set-role",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.remove",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.extend",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.transfer",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.roles.names",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.membership",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.abilities",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.invites.create",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.invites.revoke",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.invites.list",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.invites.preview",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.invites.accept",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.invites.redeem",
+    "reach": "anyone"
+   },
+   {
+    "name": "spaces.compute.allow",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.compute.accept",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.compute.status",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.compute.may-run",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.sweep",
+    "reach": "modules"
+   }
+  ]
+ },
+ "watches": {
+  "emits": [
+   "identity.created",
+   "identity.alias-added",
+   "identity.entry-added",
+   "identity.entry-removed",
+   "identity.code-replaced",
+   "identity.device-removed",
+   "identity.recovered",
+   "identity.warning",
+   "space.create-step",
+   "space.pairing-state",
+   "space.create-done",
+   "space.create-cancelled",
+   "space.vps-created",
+   "space.vps-destroyed",
+   "space.warning",
+   "member.added",
+   "member.role-changed",
+   "member.removed",
+   "member.extended",
+   "member.expired",
+   "ownership.transferred",
+   "invite.created",
+   "invite.accepted",
+   "invite.revoked",
+   "invite.expired",
+   "compute.space-allowed",
+   "compute.space-stopped",
+   "compute.member-accepted",
+   "compute.member-declined"
+  ]
+ },
+ "shows": {
+  "deck": [],
+  "capsule": [],
+  "cli": []
+ },
+ "needs": {},
+ "teaches": {}
+}
