@@ -130,7 +130,7 @@ function planDarwin(o) {
   const cfg = seedConfig(o);
   o = { ...o, workdirs: [...(o.workdirs || []), ...(cfg ? [cfg.dir] : [])] };
   const env = { ...homeEnv(o.env, o.passEnv), ...(cfg ? cfg.env : {}), VYRE_SOCKET: o.sessionSocket };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: undefined, cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 
 /** @param {HomeOpts} o */
@@ -151,6 +151,7 @@ function planLinux(o) {
     "--tmpfs", h,
     ...ro.flatMap(d => ["--ro-bind", d, d]),
     ...rw.flatMap(d => ["--bind", d, d]),
+    ...(o.workdirs?.[0] ? ["--chdir", real(o.workdirs[0])] : []),
     ...(fs.existsSync(o.sessionSocket) ? ["--bind", real(o.sessionSocket), sock] : []),
     ...(o.proxy?.socket ? ["--ro-bind", o.proxy.socket, "/run/egress.sock", "--ro-bind", SHIM, "/opt/vyre-shim.js"] : []),
     ...Object.entries(env).flatMap(([k, val]) => ["--setenv", k, val]),
@@ -223,6 +224,8 @@ async function stale(o) {
 
 export async function selfTest(o) {
   const node = o.node || process.execPath;
+  // The folders the session is given exist before the proof (a missing one cannot be created inside a denied home).
+  for (const d of [...(o.workdirs || []), ...(o.temp ? [o.temp] : [])]) { try { fs.mkdirSync(d, { recursive: true }); } catch {} }
   const ts = Date.now();
   const old = await stale(o);
   const staleMs = Date.now() - ts;
