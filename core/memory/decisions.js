@@ -14,6 +14,7 @@
 // kept beside it as a note. Replaced decisions are history, never deleted.
 
 import { userWords, devTalk, sessionTrust } from "./personal/trust.js";
+import { scrubbed } from "./sealed.js";
 
 /** Bumped when the reader's rules change: every session is read again. */
 export const VERSION = 1;
@@ -267,7 +268,8 @@ export function decisionStore(db, { projects = async () => [], trust = () => ({}
   const cursor = db.prepare("SELECT upto FROM memory_decisions_cursor WHERE session = ?");
   const setCursor = db.prepare("INSERT INTO memory_decisions_cursor (session, upto, v) VALUES (?,?,?) ON CONFLICT (session) DO UPDATE SET upto = excluded.upto, v = excluded.v");
   const drop = db.prepare("DELETE FROM memory_decisions WHERE session = ?");
-  const ins = db.prepare("INSERT OR REPLACE INTO memory_decisions (id, session, seq, project, cwd, topic, label, value, display, statement, revert, decided_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
+  const ins = { run: (...a) => ins0.run(...a) };
+  const ins0 = db.prepare("INSERT OR REPLACE INTO memory_decisions (id, session, seq, project, cwd, topic, label, value, display, statement, revert, decided_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)");
   const within = (f, cwd) => cwd === f || cwd.startsWith(f.endsWith("/") ? f : f + "/");
   return {
     /** Read the turns not read yet. Returns how many decisions were added. */
@@ -292,7 +294,7 @@ export function decisionStore(db, { projects = async () => [], trust = () => ({}
         const turns = /** @type {any[]} */ (db.prepare("SELECT seq, ts, text FROM recall_turns WHERE session = ? AND seq >= ? AND role = 'user' ORDER BY seq").all(s.id, start));
         for (const t of turns) {
           for (const [i, d] of readDecisions(String(t.text)).entries()) {
-            ins.run(`${s.id}:${t.seq}:${i}`, s.id, t.seq, project || "", String(s.cwd || ""), d.topic, d.label, d.value, d.display, userWords(String(t.text)).replace(/\s+/g, " ").slice(0, 400), d.revert ? 1 : 0, Number(t.ts) || 0);
+            ins.run(`${s.id}:${t.seq}:${i}`, s.id, t.seq, project || "", String(s.cwd || ""), d.topic, d.label, scrubbed(d.value), scrubbed(d.display), scrubbed(userWords(String(t.text)).replace(/\s+/g, " ").slice(0, 400)), d.revert ? 1 : 0, Number(t.ts) || 0);
             added++;
           }
         }

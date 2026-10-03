@@ -27,6 +27,8 @@ import { heard, contentWords } from "./iq/heard.js";
 import { catchCorrection, groundedAnswer } from "./iq/chatfix.js";
 import { userWords, devTalk, vyreFolder, sessionTrust } from "./personal/trust.js";
 import { register as registerSite } from "./site.js";
+import { createKernelGate } from "./kernel-gate.js";
+import { scanRows } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -45,10 +47,13 @@ export default {
     // so a tool never scopes by a filter the agent supplies. A via.agent with no granted is granted
     // nothing. The person's own surfaces (no via.agent) keep input.agent as a convenience.
     const callMeta = new AsyncLocalStorage();
+    // 0.3 minimum (CUTOVER section G): the kernel decides the room and whose memory this is, before the 0.2 rules below, which only narrow. No kernel, no change.
+    const kernelGate = createKernelGate(rawCtx, { denied: message => Object.assign(new Error(message), { code: "denied" }) });
     const ctx = Object.assign(Object.create(rawCtx), {
       tool: (name, def) => rawCtx.tool(name, {
         ...def,
-        run: (input = {}, extra = {}) => {
+        run: async (input = {}, extra = {}) => {
+          await kernelGate(name, extra);
           if (!extra || !extra.agent) return def.run(input, extra);
           const { agent: _a, project_cwds: _p, ...rest } = input || {};
           const granted = extra.granted === "*" ? "*" : Array.isArray(extra.granted) ? extra.granted.map(String) : [];
@@ -1466,6 +1471,11 @@ export default {
         return { machine: m, sessions: ids.length, turns: one("SELECT COUNT(*) n FROM recall_turns WHERE session IN (SELECT value FROM json_each(?))"),
           facts: Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) n FROM (${only})`).get(list))?.n || 0), people: nodes("person"), orgs: nodes("org") };
       }, "memory.device"),
+    });
+    ctx.tool("memory.sealscan", {
+      description: "One look at what memory already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, never a value. It changes nothing; the person decides what to do. From now on such values are scrubbed on the way in.",
+      input: { type: "object", properties: {} },
+      run: async () => ({ found: scanRows(ctx.store.db), note: "Counts only. Nothing was changed. Matching a value that is sealed in a record today needs the sealing process's ledger, which memory does not hold." }),
     });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
