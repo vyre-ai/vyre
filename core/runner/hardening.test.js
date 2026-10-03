@@ -29,12 +29,12 @@ test("Z1: restore never writes through a symlink the session planted", { skip: !
   // The space holds a checkpoint with a file under files/real/.
   const src = path.join(a, "src"); fs.mkdirSync(path.join(src, "work", "files", "real"), { recursive: true }); fs.mkdirSync(path.join(src, "state"));
   fs.writeFileSync(path.join(src, "work", "files", "real", "pwned.txt"), "SESSION-CHOSEN");
-  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(src, "work"), state: path.join(src, "state"), reader: localReaderFor(path.join(src, "work")) });
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(src, "work"), state: path.join(src, "state"), reader: localReaderFor(path.join(src, "work")), seal: s => s });
   await sy.line('{"type":"result"}'); assert.equal(await sy.checkpoint(), true);
   // The destination workspace has files/real replaced by a link to a host folder.
   const dst = path.join(a, "dst"); fs.mkdirSync(path.join(dst, "work", "files"), { recursive: true });
   fs.symlinkSync(host, path.join(dst, "work", "files", "real"));
-  await restore({ space: sp.sync, session: "s1", work: path.join(dst, "work"), state: path.join(dst, "state") });
+  await restore({ space: sp.sync, session: "s1", work: path.join(dst, "work"), state: path.join(dst, "state"), verify: () => true });
   assert.deepEqual(fs.readdirSync(host), [], "nothing was written in the host folder");
 });
 
@@ -48,7 +48,7 @@ test("Z2: a file swapped for a symlink to a host file is not uploaded, and links
   assert.equal(readInside(work, "files/b.txt", 1e6), null);
   assert.equal(readInside(work, "files/dir/secret", 1e6), null);
   assert.deepEqual(listInside(work, "files"), ["files/ok.txt"]);
-  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state"), reader: localReaderFor(work) });
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state"), reader: localReaderFor(work), seal: s => s });
   await sy.line('{"type":"result"}'); await sy.checkpoint();
   const uploaded = [...sp.state.files.keys()].map(k => k.split("|")[1]);
   assert.deepEqual(uploaded, ["files/ok.txt"]);
@@ -132,10 +132,14 @@ test("Z4b: revoke with an unmount that fails does not say deleted", async t => {
 test("Z5: the watchdog closes a workspace whose runner is gone, and one whose deadline has passed", async t => {
   const d = tmp(); t.after(() => rm(d));
   const drv = fakeDriver(); drv.st.mounted = true;
-  const f = path.join(d, "deadline"); fs.writeFileSync(f, String(Date.now() + 3_600_000));
-  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => false, pollMs: 5 }), "unmounted");
-  drv.st.mounted = true; fs.writeFileSync(f, String(Date.now() - 1));
-  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => true, pollMs: 5 }), "unmounted");
+  const f = path.join(d, "deadline"); fs.writeFileSync(f, JSON.stringify({ gen: "g1", at: Date.now() + 3_600_000 }));
+  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => false, pollMs: 5, gen: "g1" }), "unmounted");
+  drv.st.mounted = true; fs.writeFileSync(f, JSON.stringify({ gen: "g1", at: Date.now() - 1 }));
+  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => true, pollMs: 5, gen: "g1" }), "unmounted");
+  // a newer opening of the workspace: the old watchdog leaves its mount alone
+  drv.st.mounted = true; fs.writeFileSync(f, JSON.stringify({ gen: "g2", at: Date.now() - 1 }));
+  assert.equal(await watch({ driver: drv, dir: "x", pid: 1, deadlineFile: f, isAlive: () => false, pollMs: 5, gen: "g1" }), "superseded");
+  assert.equal(drv.st.mounted, true);
 });
 
 test("Z5b: start-up reconcile closes every workspace nobody holds a lease for", async t => {
@@ -312,8 +316,56 @@ test("R-14: too many files or bytes refuses the checkpoint, and a slow reader is
   let n = 0; assert.deepEqual(await ok({ roots, have: {} }, async () => { n++; }), { truncated: false }); assert.equal(n, 30);
   // a checkpoint over the limits is refused, not recorded with files missing
   const sp = fakeSpace(); fs.mkdirSync(path.join(a, "state"), { recursive: true });
-  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state"), reader: few });
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work, state: path.join(a, "state"), reader: few, seal: s => s });
   await sy.line('{"type":"result"}');
   assert.equal(await sy.checkpoint(), false);
   assert.equal(sp.state.checkpoints.has("s1"), false);
+});
+
+// ---- reviewer-3: X-1 to X-5 ---------------------------------------------------------------------------------------------
+
+import { run as runFilter, archId, numbers } from "./seccomp.js";
+test("X-1, X-2: the filter refuses x32 numbers, io_uring and the new mount API, and allows ordinary calls, on both architectures", () => {
+  for (const arch of ["x64", "arm64"]) {
+    const f = filter(arch), id = archId(arch), nr = numbers(arch);
+    for (const [name, n] of Object.entries(nr)) {
+      assert.equal(runFilter(f, id, n), "refuse", `${arch} ${name}`);
+      assert.equal(runFilter(f, id, n | 0x40000000), "refuse", `${arch} ${name} with the x32 bit`);
+    }
+    for (const n of arch === "x64" ? [0, 1, 2, 3, 39, 57, 59, 202, 231, 257] : [63, 64, 93, 172, 56, 220]) assert.equal(runFilter(f, id, n), "allow", `${arch} ordinary ${n}`);
+    assert.equal(runFilter(f, id, 0x40000000 | 1), "refuse", "any x32 number");
+    assert.equal(runFilter(f, 0x40000003, 1), "refuse", "another architecture");
+    for (const name of ["io_uring_setup", "io_uring_enter", "io_uring_register", "fsopen", "fsmount", "mount_setattr", "chroot", "kcmp", "fanotify_init"]) assert.ok(name in nr, name);
+  }
+  assert.equal(filter("ia32"), null);
+});
+
+test("X-2: a CPU the filter does not cover refuses to start a session", { skip: process.platform !== "linux" }, () => {
+  const old = Object.getOwnPropertyDescriptor(process, "arch");
+  Object.defineProperty(process, "arch", { value: "riscv64" });
+  try { assert.match(unavailable("linux"), /no seccomp filter/); assert.throws(() => plan({ platform: "linux", workspace: tmp(), command: "/usr/bin/true", proxy: { port: 1, socket: "" } }), /no seccomp filter/); }
+  finally { Object.defineProperty(process, "arch", old); }
+});
+
+test("X-3: a checkpoint is never resumed without a verifier, with a bad seal, or with a manifest or transcript that is not the one sealed", async t => {
+  const sp = fakeSpace(); const a = tmp(); t.after(() => rm(a));
+  const src = path.join(a, "src"); fs.mkdirSync(path.join(src, "work", "files"), { recursive: true });
+  fs.writeFileSync(path.join(src, "work", "files", "doc.txt"), "mine");
+  const key = "k"; const crypto = await import("node:crypto");
+  const hm = s => crypto.createHmac("sha256", key).update(s).digest("hex");
+  const seal = st => ({ ...st, mac: hm(JSON.stringify(st)) });
+  const verify = st => { const { mac, ...r } = st || {}; return mac === hm(JSON.stringify(r)); };
+  const sy = createSessionSync({ space: sp.sync, session: "s1", work: path.join(src, "work"), state: path.join(src, "state"), reader: localReaderFor(path.join(src, "work")), seal });
+  await sy.line('{"type":"result"}'); assert.equal(await sy.checkpoint({ labels: { trust: "member" } }), true);
+  const dst = () => { const d = path.join(a, "d" + Math.random().toString(36).slice(2)); fs.mkdirSync(path.join(d, "work", "files"), { recursive: true }); return { work: path.join(d, "work"), state: path.join(d, "state") }; };
+  await assert.rejects(() => restore({ space: sp.sync, session: "s1", ...dst() }), /no way to verify/);
+  await assert.rejects(() => restore({ space: sp.sync, session: "s1", ...dst(), verify: () => false }), /does not verify/);
+  assert.equal((await restore({ space: sp.sync, session: "s1", ...dst(), verify })).turn, 1);
+  // the space (or someone on the way) edits the file's version in the manifest, or the transcript, under a still-valid seal
+  const cp = sp.state.checkpoints.get("s1");
+  cp.manifest["files/doc.txt"].hash = "0".repeat(64);
+  await assert.rejects(() => restore({ space: sp.sync, session: "s1", ...dst(), verify }), /does not verify/);
+  cp.manifest["files/doc.txt"].hash = (await import("node:crypto")).createHash("sha256").update("mine").digest("hex");
+  sp.state.transcript.get("s1")[0].line = '{"type":"result","forged":true}';
+  await assert.rejects(() => restore({ space: sp.sync, session: "s1", ...dst(), verify }), /does not verify/);
 });
