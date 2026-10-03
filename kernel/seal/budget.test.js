@@ -12,7 +12,7 @@ const code = f => fs.readFileSync(path.join(KERNEL, f), "utf8").split("\n").filt
 const GROUPS = {
   leases: { cap: 120, files: ["seal/leases.js"] },
   sealing: { cap: 800, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
-  door: { cap: 700, files: ["door/door.js", "seal/ledger.js"] },
+  door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
 };
 const nonTest = dir => fs.readdirSync(path.join(KERNEL, dir)).filter(f => f.endsWith(".js") && !/\.test\.js$|^testing\.js$/.test(f)).map(f => `${dir}/${f}`);

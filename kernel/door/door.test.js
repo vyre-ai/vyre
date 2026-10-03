@@ -23,7 +23,7 @@ async function world(t, over = {}) {
     const r = await sealer.api.reveal({ chain: ch, ref: ref.ref, purpose: "read", proof: alex.proof(ch, "seal.reveal", fields), ledger_key: door.ledgerKey(person(), session) });
     door.note(person(), session, r.ledger);
   };
-  return { door, call, seen, events, sealer, reveal, alex };
+  return { door, call, seen, events, sealer, reveal, alex, driver };
 }
 const refusal = p => p.then(() => null, e => (e instanceof DoorRefusal ? e.refusal : e));
 
@@ -111,4 +111,54 @@ test("property: whatever the conversation, a model never receives a value the se
     assert.ok(n >= 12 * 7 || process.env.RUNS);
   })();
   assert.ok(!JSON.stringify(w.seen).match(/\d{9}/), "no nine-digit run reached a driver");
+});
+
+// ---- streaming ----
+const streamDriver = (chunks, log = {}) => i => { log.input = i; return (async function* () { try { for (const c of chunks) { yield typeof c === "string" ? { text: c } : c; } yield { done: { usage: { input_tokens: 1, output_tokens: 1 } } }; } finally { log.closed = true; } })(); };
+const run = async (w, chunks, log = {}, extra = {}) => { w.driver.stream = streamDriver(chunks, log); const out = []; for await (const e of w.door.stream({ chain: person(), purpose: "session", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }], ...extra })) out.push(e); return out; };
+const texts = ev => ev.filter(e => e.type === "text").map(e => e.text).join("");
+
+test("stream: clean text passes through whole, the first chunk at once when no number is near, and the same checks run on the request", async t => {
+  const w = await world(t), words = "The consult is booked for Tuesday at the Harlow Legal office. ".split(" ").map(x => x + " ");
+  const ev = await run(w, words); assert.equal(texts(ev), words.join("")); assert.equal(ev.at(-1).type, "done"); assert.equal(ev[0].text, words[0], "no holdback without a number");
+  assert.equal(w.seen.length, 0, "call was never used");
+  const bad = await refusal((async () => { for await (const _ of w.door.stream({ chain: person(), purpose: "session", provider: "nope", model: "m", messages: [{ role: "user", content: "x" }] })) { /* nothing */ } })());
+  assert.equal(bad.code, "residency");
+  const log = {}; await run(w, ["ok"], log, { messages: [{ role: "user", content: "SSN 123-45-6789" }] }); assert.equal(log.input.messages[0].content, "SSN [sealed: US SSN #1]", "the prompt is sanitised as in call");
+});
+
+test("stream: a sealed-looking value split across chunks is cut before any digit of it leaves, and the upstream is stopped", async t => {
+  const w = await world(t), log = {};
+  const ev = await run(w, ["Her number is 123", "-45", "-67", "89 and that is all."], log);
+  assert.equal(ev.at(-1).type, "cut"); assert.equal(ev.at(-1).code, "sealed_shape"); assert.equal(ev.at(-1).class, "us-ssn");
+  assert.ok(!/\d/.test(texts(ev)), "no digit of the value was released: " + texts(ev)); assert.equal(log.closed, true);
+  assert.ok(w.events.some(e => e.type === "model.cut" && e.p.class === "us-ssn")); assert.ok(!JSON.stringify(w.events).includes("6789"));
+  const words = await run(w, ["one two three four five six ", "seven eight nine"]); assert.equal(words.at(-1).type, "cut", "digit words too");
+  const ok = await run(w, ["Call 415-555-0100 or see page 12 of the ", "file."]); assert.equal(ok.at(-1).type, "done"); assert.equal(texts(ok), "Call 415-555-0100 or see page 12 of the file.", "an ordinary number is released after the hold");
+});
+
+test("stream: a ledgered value split across chunks in any disguise is cut, with nothing of it released", async t => {
+  const w = await world(t); await w.reveal("123-45-6789", "s1");
+  for (const parts of [["The value is 1", "23456", "789 thanks"], ["see one two three, four five, six seven eight nine ok"], ["b64: ", Buffer.from("123456789").toString("base64").slice(0, 6), Buffer.from("123456789").toString("base64").slice(6), " end"]]) {
+    const ev = await run(w, parts, {}, { session: "s1" }); assert.equal(ev.at(-1).type, "cut", JSON.stringify(parts)); assert.equal(ev.at(-1).code, "ledger_hit");
+    assert.ok(!/6789|56789/.test(texts(ev)));
+  }
+  assert.equal((await run(w, ["nothing sensitive here, ", "just words."], {}, { session: "s1" })).at(-1).type, "done");
+});
+
+test("stream: a tool call is delivered only after its whole input is scanned, and one that carries a value is cut", async t => {
+  const w = await world(t), log = {};
+  const ok = await run(w, [{ tool_start: { id: "t1", name: "records.find" } }, { tool_delta: { id: "t1", json: '{"name":"Ja' } }, { tool_delta: { id: "t1", json: 'ne"}' } }, { tool_end: { id: "t1" } }]);
+  assert.deepEqual(ok.find(e => e.type === "tool_call"), { type: "tool_call", id: "t1", name: "records.find", input: { name: "Jane" } });
+  await w.reveal("123-45-6789", "s2");
+  const bad = await run(w, [{ tool_start: { id: "t2", name: "email.send" } }, { tool_delta: { id: "t2", json: '{"body":"ssn 123 45 ' } }, { tool_delta: { id: "t2", json: '6789"}' } }, { tool_end: { id: "t2" } }], log, { session: "s2" });
+  assert.equal(bad.find(e => e.type === "tool_call"), undefined); assert.equal(bad.at(-1).type, "cut"); assert.equal(log.closed, true);
+});
+
+test("stream: latency added per chunk is a few milliseconds and the first text is at once", async t => {
+  const w = await world(t), chunks = Array.from({ length: 300 }, (_, i) => `word${i} `);
+  const time = async (cs, extra = {}) => { w.driver.stream = streamDriver(cs); const t0 = performance.now(); let first = null, n = 0; for await (const e of w.door.stream({ chain: person(), purpose: "session", provider: "fake", model: "m", messages: [{ role: "user", content: "hi" }], ...extra })) if (e.type === "text") { first ??= performance.now() - t0; n++; } return { first, per: (performance.now() - t0) / cs.length, n }; };
+  const plain = await time(chunks); await w.reveal("123-45-6789", "s3"); const ledgered = await time(chunks, { session: "s3" }); const numbers = await time(chunks.map((c, i) => (i % 5 === 0 ? `item ${i} costs ${i * 7} dollars ` : c)));
+  console.log(`stream latency: no number ${plain.per.toFixed(2)} ms/chunk first ${plain.first.toFixed(1)} ms; ledger ${ledgered.per.toFixed(2)} ms/chunk first ${ledgered.first.toFixed(1)} ms; numbers ${numbers.per.toFixed(2)} ms/chunk first ${numbers.first.toFixed(1)} ms`);
+  assert.ok(plain.first < 50 && plain.per < 5, "plain text"); assert.ok(numbers.per < 10 && ledgered.per < 10);
 });
