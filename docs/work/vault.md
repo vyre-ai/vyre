@@ -385,3 +385,11 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
   `relay: {body}` directly. `vault.setMeta(name, changes)` re-seals with new sealed columns.
   `vault_ssh_keys` and `vault_marks` rows must be signed with `vault.sign(table, name)` after a
   direct write (tools/cli.js does); `ensureMacColumns(db)` runs after migrate.
+
+
+## Untested paths (4 Oct 2026, from the full run at bb53cc671 plus the shared-vault fix): what the skips and gaps hide
+Full vault, onboard, share, boundaries, seal and storage run on a quiet box: 589 tests, 574 passed, 14 skipped, 1 failed (a test of mine written that hour, fixed after). The 14 skips are all rigs this Linux box does not have, and each one hides a path no test has run on this branch:
+- **macOS only (9):** the real Swift helpers build and copy to a private pasteboard (1), the watch and type helpers build with swiftc (1), a build folder others can read is refused (1), the keychain helper's access list, migration of an old item and refusal of a gone build's item (3), the keychain keystore round trip and its restart (2), and the real Touch ID enclave helper (1). Untested on Linux: everything that reaches the Keychain, a Secure Enclave or a Swift helper.
+- **macOS helper surfaces (4):** copy never returns the value and lock clears it, `fill.native` hands the login to the helper, a helper's refusal comes back in its own words, and the canary comes back from `vault.reveal` only. These are the vault's native-fill checks.
+- **zbarimg (1):** QR codes read in every version and mask need `zbarimg`, which this box lacks.
+- **Gaps that are not skips:** `vault.move` and the other shared-vault paths (invite, role, remove, rotate) have no test rig for a second Vyre, so the move refusals are tested only where they fire before the rig is needed (a provider sign-in token, a live pass is read-checked, not run); the CLI `.env` rewrite and the connectors module's own writes are not covered by the write-then-refuse sweep.
