@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { cn } from "../lib/cn";
 import { Text } from "../components/Text";
@@ -89,10 +89,14 @@ function Rail(p: ShellProps) {
 
 /** A tab: icon 24, label 11 medium. The current tab is the accent, icon and label together. */
 function Tab({ it, on, onPress }: { it: NavItem | null; on: boolean; onPress: () => void }) {
+  const { color } = useUiTheme();
   if (!it) return null;
   return (
     <Pressable accessibilityRole="link" accessibilityLabel={it.label} accessibilityState={{ selected: on }} onPress={onPress} className="flex-1 items-center justify-center gap-s1" style={{ minHeight: 49 }}>
-      <Icon name={it.icon} tone={on ? "accent" : "label"} size={24} />
+      {/* Android (Material 3): the current icon sits in a 64 x 32 accent-wash pill. iOS tints the icon and label only. */}
+      <View style={Platform.OS === "android" ? { width: 64, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: on ? color["accent-wash"] : "transparent" } : null}>
+        <Icon name={it.icon} tone={on ? "accent" : "label"} size={24} />
+      </View>
       <Text medium style={{ fontSize: 11, lineHeight: 13 }} tone={on ? "accent" : "label"}>{it.label}</Text>
     </Pressable>
   );
