@@ -172,3 +172,29 @@ test("peer stream: per device, perMin new streams a minute and open at once, cou
   device.close();
   assert.ok(PEER_PER_MIN > 0);
 });
+
+test("peer stream W-3: a hook that ends or resets the stream itself, or installs no handler, frees the slot", async () => {
+  for (const hook of [
+    (s) => { s.ondata = () => {}; s.onend = () => s.end(); setTimeout(() => s.end(), 5); },
+    (s) => { setTimeout(() => s.reset("done"), 5); },
+    (s) => { s.onend = undefined; s.onreset = undefined; },
+  ]) {
+    const { device } = await peerWorld({ accept: hook });
+    for (let i = 0; i < 12; i++) {
+      const s = device.open({ peer: "wink", space: "harlow" });
+      assert.equal((await answer(s)).status, 200, `open ${i}`);
+      await new Promise(r => setTimeout(r, 20));
+      try { s.end(); } catch {}
+      await new Promise(r => setTimeout(r, 10));
+    }
+    device.close();
+  }
+});
+
+test("peer stream W-3b: allow() is asked about this device", async () => {
+  const asked = [];
+  const { device } = await peerWorld({ allow: id => { asked.push(id); return id === "srv1"; } });
+  assert.equal((await answer(device.open({ peer: "wink", space: "harlow" }))).status, 200);
+  assert.deepEqual(asked, ["srv1"]);
+  device.close();
+});
