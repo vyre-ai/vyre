@@ -1,142 +1,110 @@
-import { test, before, after } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { conformance, SUITE_TYPES } from "../conformance-suite.js";
-import { TwentyStore } from "./driver.js";
+import { conformance, CONTACT } from "../../kernel/conformance/suite.js";
+import { mintUuid } from "../../kernel/core/ids.js";
+import { createTwentyStore } from "./store.js";
 import { TwentyClient } from "./client.js";
 import { FakeTwenty } from "./testing/fake-twenty.js";
-import { planType, toFilter, toOrderBy, toInput } from "./translate.js";
+import { specific } from "./specific-suite.js";
+import { planType, toFilter, toOrderBy, toInput, fromRow, selection, checkData } from "./plan.js";
 
 const dirs = [];
 const tmp = () => { const d = fs.mkdtempSync(path.join(SCRATCH, "tw-")); dirs.push(d); return d; };
-after(() => { for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }); });
+const fake = await new FakeTwenty().start();
+after(async () => { await fake.stop(); for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }); });
 
-/** One Twenty-backed store over a fake Twenty. */
-async function boot({ dir = tmp(), secret = crypto.randomBytes(16).toString("hex"), fake } = {}) {
-  fake ??= await new FakeTwenty().start();
+/** A store over the shared fake Twenty, fresh state each time. */
+async function boot({ dir = tmp(), secret = crypto.randomBytes(16).toString("hex"), keep = false } = {}) {
+  if (!keep) fake.reset();
   const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
-  const store = new TwentyStore({ client, space: "harlow", dir, webhookSecret: secret, graceMs: 0 });
+  const store = createTwentyStore({ client, space: "harlow", dir, webhookSecret: secret, graceMs: 0 });
   fake.deliver = async (payload, headers, raw) => { await store.handleWebhook(Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])), raw); };
-  return { fake, store, client, dir, secret };
+  return { store, client, dir, secret };
 }
 
-const harness = {
+// ---- the kernel's conformance suite: the definition of a store ---------------------------------
+conformance(async () => { const b = await boot(); await b.store.registerWebhook("fn:store"); return b.store; }, { test, assert }, "twenty (fake twenty)");
+
+// ---- what only this store has to prove ---------------------------------------------------------
+specific("twenty (fake twenty)", { test }, { assert }, {
   async make() {
-    const b = await boot();
-    await b.store.define({ types: SUITE_TYPES });
-    await b.store.registerWebhook("fn:store");
-    return {
-      store: b.store,
-      behind: async (type, id, patch) => { const p = b.store.plan(type); b.fake.behind(p.singular, id, Object.fromEntries(Object.entries(patch).map(([k, v]) => [p.byVyre.get(k).twenty, v && typeof v === "object" && "amount" in v ? { amountMicros: v.amount * 1e6, currencyCode: v.currency } : v]))); },
-      touch: async (type, id) => b.fake.touch(b.store.plan(type).singular, id),
-      cleanup: async () => b.fake.stop(),
-    };
+    const b = await boot(); await b.store.registerWebhook("fn:store");
+    const behind = async (type, id, patch) => { const p = b.store.plans.get(type); fake.behind(p.singular, id, toInput(p, patch)); };
+    return { store: b.store, behind, touch: async (type, id) => fake.touch(b.store.plans.get(type).singular, id), wire: () => JSON.stringify(fake.requests), cleanup: async () => {} };
   },
-  async empty(types) { const b = await boot(); await b.store.define({ types }); return { store: b.store, cleanup: async () => b.fake.stop() }; },
-};
-conformance("twenty store (fake twenty)", { test, before, after }, { assert }, harness);
-
-test("the driver sends our id to Twenty unchanged, and refuses a UUID version Twenty would refuse", async () => {
-  const b = await boot(); await b.store.define({ types: SUITE_TYPES });
-  const seen = b.fake.requests.filter((r) => r.op === "Create_widget");
-  const rec = await b.store.create("widget", { fields: { title: "x" } });
-  const sent = b.fake.requests.filter((r) => r.op === "Create_widget").at(-1);
-  assert.equal(sent.variables.d.id, rec.id);
-  assert.match(rec.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4/);
-  await assert.rejects(b.store.create("widget", { id: "01a101b0-a370-7000-b5d3-0f0df5924247", fields: { title: "v7" } }), { code: "invalid" });
-  assert.equal(seen.length, 0);
-  await b.fake.stop();
 });
 
-test("the sealed placeholder is all Twenty ever receives", async () => {
-  const b = await boot(); await b.store.define({ types: SUITE_TYPES });
-  await b.store.create("widget", { fields: { title: "s", secret: "[sealed]" } });
-  await assert.rejects(b.store.create("widget", { fields: { title: "s", secret: "123-45-6789" } }), { code: "sealed_value" });
-  const wire = JSON.stringify(b.fake.requests);
-  assert.ok(!wire.includes("123-45-6789"));
-  assert.ok(wire.includes("[sealed]"));
-  await b.fake.stop();
+test("what Twenty is sent for a sealed field is the reference and nothing else", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  await b.store.create("contact", mintUuid(), { name: "Ref", ssn: { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 } });
+  const create = fake.requests.filter((r) => r.op === "Create_contact").at(-1).variables.d;
+  assert.deepEqual(create.ssn, { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 });
+  assert.equal(create.vyreVersion, 1);
 });
 
-test("update is a compare-and-set on updatedAt and sends nothing when the version is stale", async () => {
-  const b = await boot(); await b.store.define({ types: SUITE_TYPES });
-  const rec = await b.store.create("widget", { fields: { title: "cas", qty: 1 } });
-  b.fake.behind("widget", rec.id, { qty: 9 });
-  await assert.rejects(b.store.update("widget", rec.id, { qty: 2 }, rec.version), { code: "conflict" });
-  assert.equal(b.fake.rows.get("widget").get(rec.id).qty, 9);
-  await b.fake.stop();
+test("the store sends our id unchanged and a refused UUID never reaches Twenty", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  const id = mintUuid(); await b.store.create("contact", id, { name: "x" });
+  assert.equal(fake.requests.filter((r) => r.op === "Create_contact").at(-1).variables.d.id, id);
+  const n = fake.requests.length;
+  await assert.rejects(b.store.create("contact", "01a101b0-a370-7000-b5d3-0f0df5924247", { name: "v7" }), { code: "invalid" });
+  assert.equal(fake.requests.length, n, "refused before any request");
 });
 
-test("a rate limit is retried, then reported plainly", async () => {
-  const b = await boot(); await b.store.define({ types: SUITE_TYPES });
-  b.fake.limit = 0;
-  await assert.rejects(b.store.get("widget", crypto.randomUUID()), { code: "rate_limited" });
-  b.fake.limit = Infinity; b.fake.served = 0;
-  assert.equal(await b.store.get("widget", crypto.randomUUID()), null);
-  await b.fake.stop();
+test("a rate limit is retried, then reported as unavailable", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  fake.limit = 0;
+  await assert.rejects(b.store.get("contact", mintUuid()), { code: "unavailable" });
+  fake.limit = Infinity; fake.served = 0;
+  assert.equal(await b.store.get("contact", mintUuid()), null);
 });
 
-test("Twenty unreachable is 'unavailable', not a crash", async () => {
-  const b = await boot(); await b.store.define({ types: SUITE_TYPES });
-  await b.fake.stop();
-  await assert.rejects(b.store.get("widget", crypto.randomUUID()), { code: "unavailable" });
-  assert.equal((await b.store.health()).ok, false);
-});
-
-test("webhook: a bad signature, a replayed nonce and a stale timestamp are not changes", async () => {
-  const b = await boot(); await b.store.define({ types: SUITE_TYPES });
-  const rec = await b.store.create("widget", { fields: { title: "hook" } });
-  const payload = { eventName: "widget.updated", objectMetadata: { nameSingular: "widget" }, record: { ...b.fake.rows.get("widget").get(rec.id), updatedAt: "2030-01-01T00:00:00.000Z", name: "changed" }, updatedFields: ["name"] };
-  const raw = JSON.stringify(payload);
-  const sign = (ts, secret = b.secret) => crypto.createHmac("sha256", secret).update(`${ts}:${raw}`).digest("hex");
-  const now = String(Date.now());
-  assert.equal((await b.store.handleWebhook({ "x-twenty-webhook-timestamp": now, "x-twenty-webhook-signature": sign(now, "wrong") }, raw)).status, 401);
-  const old = String(Date.now() - 3_600_000);
-  assert.equal((await b.store.handleWebhook({ "x-twenty-webhook-timestamp": old, "x-twenty-webhook-signature": sign(old) }, raw)).status, 401);
-  assert.equal(b.store.changes(0).changes.length, 0);
-  const ok = { "x-twenty-webhook-timestamp": now, "x-twenty-webhook-signature": sign(now), "x-twenty-webhook-nonce": "n1" };
-  assert.deepEqual(await b.store.handleWebhook(ok, raw), { status: 200, recorded: 1 });
-  assert.deepEqual(await b.store.handleWebhook(ok, raw), { status: 200, recorded: 0 }, "a replay is ignored");
-  const c = b.store.changes(0).changes;
-  assert.equal(c.length, 1);
-  assert.equal(c[0].source, "twenty");
-  assert.equal(c[0].after.title, "changed");
-  assert.equal(c[0].before.title, "hook");
-  assert.equal(b.store.feed.rejected, 2);
-  assert.equal((await b.store.handleWebhook({}, "not json")).status, 400);
-  await b.fake.stop();
-});
-
-test("state survives a restart: types, snapshots and the change log", async () => {
+test("state survives a restart: types, snapshots, versions and the change log", async () => {
   const dir = tmp();
-  const a = await boot({ dir }); await a.store.define({ types: SUITE_TYPES });
+  const a = await boot({ dir }); await a.store.define({ add_types: [CONTACT] });
   await a.store.registerWebhook("fn:store");
-  const rec = await a.store.create("widget", { fields: { title: "persist", qty: 3 } });
-  a.fake.behind("widget", rec.id, { qty: 4 });
-  await new Promise((r) => setTimeout(r, 100));
-  assert.equal(a.store.changes(0).changes.length, 1);
-  const b = await boot({ dir, fake: a.fake, secret: a.secret });
-  assert.ok(b.store.plans.has("widget"), "types reload");
-  assert.equal(b.store.snapshots.get("widget", rec.id).fields.title, "persist");
-  assert.equal(b.store.changes(0).changes.length, 1, "the change log reloads");
-  assert.equal(b.store.feed.seq, 1);
-  await a.fake.stop();
+  const id = mintUuid();
+  await a.store.create("contact", id, { name: "Persist", age: 3 });
+  fake.behind("contact", id, { age: 4 });
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal((await a.store.changes(null, 100)).entries.filter((e) => e.source === "twenty").length, 1);
+  const b = await boot({ dir, keep: true, secret: a.secret });
+  assert.ok(b.store.plans.has("contact"), "types reload");
+  assert.equal(b.store.snaps.get("contact", id).data.name, "Persist");
+  const log = (await b.store.changes(null, 100)).entries;
+  assert.deepEqual(log.map((e) => e.kind), ["created", "updated"]);
+  const c2 = await b.store.update("contact", id, { age: 5 }, 2);
+  assert.equal(c2.version, 3);
+  assert.equal((await b.store.changes(null, 100)).entries.length, 3, "the cursor keeps counting after a restart");
 });
 
-test("translate: names, reserved words, filters and orderBy", () => {
-  const plan = planType(SUITE_TYPES[0]);
-  assert.equal(plan.singular, "widget"); assert.equal(plan.plural, "widgets");
-  assert.equal(plan.byVyre.get("title").twenty, "name");
-  assert.deepEqual(toFilter(plan, { kind: "Beta", qty: { gt: 1 } }), { and: [{ kind: { eq: "BETA" } }, { qty: { gt: 1 } }] });
-  assert.deepEqual(toFilter(plan, { price: { gte: 2.5 } }), { price: { amountMicros: { gte: 2_500_000 } } });
-  assert.deepEqual(toFilter(plan, { updatedAt: { gt: "2026-01-01T00:00:00.000Z" } }), { updatedAt: { gt: "2026-01-01T00:00:00.000Z" } });
-  assert.deepEqual(toOrderBy(plan, [{ field: "price", dir: "desc" }]), [{ price: { amountMicros: "DescNullsLast" } }]);
-  assert.deepEqual(toInput(plan, { status: "Active" }), { status: "ACTIVE" });
-  assert.throws(() => planType({ name: "person", fields: [{ name: "t", kind: "text" }] }), { code: "name_reserved" });
-  assert.throws(() => planType({ name: "thing", fields: [{ name: "t", kind: "text" }, { name: "position", kind: "number" }] }), { code: "name_reserved" });
-  assert.throws(() => planType({ name: "thing", fields: [{ name: "t", kind: "text" }, { name: "full_name", kind: "text" }, { name: "fullName", kind: "text" }] }), /same Twenty name/);
-  assert.throws(() => toFilter(plan, { secret: "x" }), { code: "invalid" });
+test("plan: names, reserved words, filters, order and values", () => {
+  const p = planType(CONTACT);
+  assert.equal(p.singular, "contact"); assert.equal(p.plural, "contacts");
+  assert.equal(p.byVyre.get("name").twenty, "name");
+  assert.equal(planType({ name: "match", label: "Match", fields: [{ name: "t", kind: "text", label: "T" }] }).plural, "matches");
+  assert.equal(planType({ name: "address", label: "A", fields: [{ name: "t", kind: "text", label: "T" }] }).singular, "addressCustom");
+  assert.equal(planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "address", kind: "address", label: "A" }] }).byVyre.get("address").twenty, "addressCustom");
+  assert.throws(() => planType({ name: "person", label: "P", fields: [] }), /standard object/);
+  assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "position", kind: "number", label: "P" }] }), /collides/);
+  assert.throws(() => planType({ name: "thing", label: "T", fields: [{ name: "t", kind: "text", label: "T" }, { name: "c", kind: "choice", label: "C", options: ["a b", "A-B"] }] }), /distinct/);
+  assert.deepEqual(toFilter(p, { and: [{ field: "status", op: "eq", value: "open" }, { field: "age", op: "gt", value: 20 }] }), { and: [{ status: { eq: "OPEN" } }, { age: { gt: 20 } }] });
+  assert.deepEqual(toFilter(p, { field: "fee", op: "gte", value: { amount: 2.5, currency: "USD" } }), { fee: { amountMicros: { gte: 2_500_000 } } });
+  assert.deepEqual(toFilter(p, { field: "tags", op: "contains", value: "vip" }), { tags: { containsAny: ["VIP"] } });
+  assert.deepEqual(toFilter(p, { field: "name", op: "contains", value: "50%" }), { name: { ilike: "%50\\%%" } });
+  assert.deepEqual(toFilter(p, { field: "updated_at", op: "gt", value: 1_790_000_000_000 }), { updatedAt: { gt: new Date(1_790_000_000_000).toISOString() } });
+  assert.throws(() => toFilter(p, { field: "ssn", op: "is_null" }), /sealed/);
+  assert.throws(() => toFilter(p, { field: "nope", op: "eq", value: 1 }), { code: "unknown_field" });
+  assert.deepEqual(toOrderBy(p, [{ field: "fee", dir: "desc" }]), [{ fee: { amountMicros: "DescNullsLast" } }, { id: "AscNullsFirst" }]);
+  assert.deepEqual(toInput(p, { status: "open", tags: ["vip", "lead"], fee: { amount: 1.5, currency: "USD" }, age: null }), { status: "OPEN", tags: ["VIP", "LEAD"], fee: { amountMicros: 1_500_000, currencyCode: "USD" }, age: null });
+  const rec = fromRow(p, { id: "i", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", deletedAt: null, vyreVersion: 3, name: "Jane", age: null, tags: ["LEAD"], status: "CLOSED", fee: { amountMicros: 250_000_000, currencyCode: "USD" }, born: "1980-02-03", ssn: null });
+  assert.deepEqual(rec.data, { name: "Jane", tags: ["lead"], status: "closed", fee: { amount: 250, currency: "USD" }, born: "1980-02-03" });
+  assert.equal(rec.version, 3);
+  assert.equal(fromRow(p, { id: "i", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", name: "" }).version, 1, "a row Twenty made itself starts at version 1");
+  assert.equal(checkData(p, { name: "x", born: "1980-02-03T10:00:00Z" })?.code, "invalid");
+  assert.match(selection(p), /fee \{ amountMicros currencyCode \}/);
 });

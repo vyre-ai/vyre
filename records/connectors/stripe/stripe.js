@@ -76,7 +76,7 @@ export function normalize(ev) {
 
 /**
  * The webhook handler. Returns what to answer Stripe; Stripe retries anything that is not 2xx.
- * @param {{ secret: string, gateway: { emit: Function, query: Function, create: Function }, kit: any, allowLive?: boolean,
+ * @param {{ secret: string, gateway: { emit: Function, find: Function, create: Function, urn?: Function }, kit: any, allowLive?: boolean,
  *   now?: () => number, onRejected?: (reason: string) => void }} o
  */
 export function createStripeHandler(o) {

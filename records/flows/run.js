@@ -4,7 +4,7 @@
 // what the Estate planning kit's flow uses (find, with by, set, createIfMissing and as) and refuses
 // every other verb loudly. It adds no permission, log or data path: it calls the gateway it is given.
 
-/** @typedef {{ query: (type: string, q: any) => Promise<{ rows: any[] }>, create: (type: string, r: { fields: Record<string, any> }) => Promise<any> }} FlowGateway */
+/** @typedef {{ find: (type: string, by: Record<string, any>) => Promise<any | null>, create: (type: string, fields: Record<string, any>) => Promise<any>, urn?: (type: string, id: string) => string }} FlowGateway */
 
 /**
  * Resolve {{path}} templates. A string that is exactly one template keeps the value's type (a number
@@ -27,8 +27,8 @@ function lookup(ctx, p) {
   for (const k of p.split(".")) { if (cur === null || cur === undefined || typeof cur !== "object" || k === "__proto__" || k === "constructor") return null; cur = cur[k]; }
   return cur === undefined ? null : cur;
 }
-/** A record as steps see it: its fields at the top, plus id. @param {any} rec */
-const view = (rec) => ({ id: rec.id, ...rec.fields });
+/** A record as steps see it: its fields at the top, plus id and urn. @param {any} rec @param {string} type @param {FlowGateway} gw */
+const view = (rec, type, gw) => ({ ...rec.data, id: rec.id, urn: gw.urn ? gw.urn(type, rec.id) : null });
 
 /**
  * @param {any} flow a stored flow from a kit
@@ -44,19 +44,14 @@ export async function runFlow(flow, event, gateway) {
     const type = s.find;
     const by = resolve(s.by ?? {}, ctx);
     const usable = Object.entries(by).filter(([, v]) => v !== null && v !== "");
-    /** @type {any} */ let rec = null;
-    if (usable.length) { const r = await gateway.query(type, { filter: Object.fromEntries(usable), page: { limit: 1 } }); rec = r.rows[0] ?? null; }
+    /** @type {any} */ let rec = usable.length ? await gateway.find(type, Object.fromEntries(usable)) : null;
     let created = false;
     if (!rec && s.createIfMissing) {
       const fields = { ...Object.fromEntries(usable), ...Object.fromEntries(Object.entries(resolve(s.set ?? {}, ctx)).filter(([, v]) => v !== null && v !== "")) };
-      try { rec = await gateway.create(type, { fields }); created = true; }
-      catch (e) {
-        // a unique field refused a duplicate: another delivery got there first, so take its record
-        if (/** @type {any} */ (e)?.code === "id_exists" && usable.length) { const r = await gateway.query(type, { filter: Object.fromEntries(usable), page: { limit: 1 } }); rec = r.rows[0] ?? null; }
-        if (!rec) throw e;
-      }
+      rec = await gateway.create(type, fields);
+      created = true;
     }
-    if (s.as) ctx[s.as] = rec ? view(rec) : null;
+    if (s.as) ctx[s.as] = rec ? view(rec, type, gateway) : null;
     steps.push({ step: i + 1, type, found: !!rec && !created, created, id: rec?.id ?? null });
   }
   return { steps, context: ctx };

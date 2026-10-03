@@ -61,14 +61,15 @@ export class FakeTwenty {
     if (op.startsWith("Boot_")) return this.#boot(op, query);
     switch (op) {
       case "Health": return { objects: { totalCount: this.objects.size } };
-      case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
+      case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
       case "CreateObj": {
         const o = v.i.object;
         if (this.objects.has(o.nameSingular)) throw new GqlError("An object with that name already exists");
-        const obj = { id: crypto.randomUUID(), nameSingular: o.nameSingular, namePlural: o.namePlural, fields: new Map([["name", { id: crypto.randomUUID(), name: "name", type: "TEXT", options: null, isActive: true }]]) };
+        const obj = { id: crypto.randomUUID(), nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: new Map([["name", { id: crypto.randomUUID(), name: "name", type: "TEXT", options: null, isActive: true }]]) };
         this.objects.set(o.nameSingular, obj); this.rows.set(o.nameSingular, new Map());
         return { createOneObject: { id: obj.id, nameSingular: obj.nameSingular } };
       }
+      case "UpdObj": { const o = [...this.objects.values()].find((x) => x.id === v.i.id); if (!o) throw new GqlError("Object not found", "NOT_FOUND"); Object.assign(o, v.i.update); return { updateOneObject: { id: o.id } }; }
       case "CreateField": {
         const f = v.i.field; const obj = [...this.objects.values()].find((o) => o.id === f.objectMetadataId);
         if (!obj) throw new GqlError("Object not found", "NOT_FOUND");
@@ -119,6 +120,9 @@ export class FakeTwenty {
       if (f.type === "NUMBER" && typeof val !== "number") throw new GqlError("Float cannot represent non numeric value");
       if (f.type === "TEXT" && typeof val !== "string") throw new GqlError("String cannot represent a non string value");
       if (f.type === "BOOLEAN" && typeof val !== "boolean") throw new GqlError("Boolean cannot represent a non boolean value");
+      if (f.type === "MULTI_SELECT" && (!Array.isArray(val) || val.some((x) => !(f.options ?? []).some((/** @type {any} */ o) => o.value === x)))) throw new GqlError("Value does not exist in the multi select");
+      if (f.type === "RATING" && !/^RATING_[1-5]$/.test(String(val))) throw new GqlError("Not a rating");
+      if (f.type === "CURRENCY" && (typeof val !== "object" || typeof val.amountMicros !== "number")) throw new GqlError("Not a currency");
     }
   }
 
@@ -129,9 +133,12 @@ export class FakeTwenty {
       const { obj, rows } = this.#objByPlural(name);
       let list = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
       list = this.#sort(obj, list, v.o);
-      const start = v.after ? Number(Buffer.from(v.after, "base64").toString()) : 0; const first = v.first ?? 60;
+      // a keyset cursor: the id of the last row served; the next page is what sorts after it
+      let start = 0;
+      if (v.after) { const lastId = Buffer.from(v.after, "base64").toString(); const i = list.findIndex((r) => r.id === lastId); if (i < 0) throw new GqlError("Invalid cursor"); start = i + 1; }
+      const first = v.first ?? 60;
       const page = list.slice(start, start + first);
-      return { [name]: { edges: page.map((r) => ({ node: r })), pageInfo: { hasNextPage: start + first < list.length, endCursor: start + first < list.length ? Buffer.from(String(start + first)).toString("base64") : null }, totalCount: list.length } };
+      return { [name]: { edges: page.map((r) => ({ node: r })), pageInfo: { hasNextPage: start + first < list.length, endCursor: page.length ? Buffer.from(page[page.length - 1].id).toString("base64") : null }, totalCount: list.length } };
     }
     if (kind === "Agg") {
       const { rows } = this.#objByPlural(name);
@@ -189,7 +196,8 @@ export class FakeTwenty {
       case "eq": return a === b || (a && b && typeof a === "string" && typeof b === "string" && a.slice(0, 23) === b.slice(0, 23) && /T/.test(a)) ;
       case "neq": return a !== b;
       case "in": return b.includes(a);
-      case "is": return b === "NULL" ? a == null : a != null;
+      case "is": return b === "NULL" ? a == null || (Array.isArray(a) && a.length === 0) : a != null && !(Array.isArray(a) && a.length === 0);
+      case "containsAny": return Array.isArray(a) && b.some((/** @type {any} */ x) => a.includes(x));
       case "ilike": { if (a == null) return false; const re = new RegExp("^" + String(b).replace(/[.*+?^${}()|[\]]/g, "\\$&").replace(/\\\\([%_])/g, "\u0001$1").replace(/%/g, ".*").replace(/_/g, ".").replace(/\u0001(.)/g, "$1") + "$", "i"); return re.test(String(a)); }
       case "gt": return a != null && this.#cmp(a, b) > 0;
       case "gte": return a != null && this.#cmp(a, b) >= 0;
@@ -224,7 +232,9 @@ export class FakeTwenty {
     }
   }
 
-  // ---- test hooks ----------------------------------------------------------------------------
+  // ---- test hooks
+  /** Forget every object, row and webhook: a fresh Twenty, same server and key. */
+  reset() { this.objects.clear(); this.rows.clear(); this.hooks = []; this.requests = []; this.limit = Infinity; this.served = 0; }
   /** Change a row inside Twenty, bypassing the driver. Fields use Twenty's names. */
   behind(singular, id, patch) { const r = this.rows.get(singular)?.get(id); if (!r) throw new Error("no row"); Object.assign(r, patch, { updatedAt: this.#now(), updatedBy: { source: "EMAIL", name: "sync" } }); this.#emit(singular, "updated", r, Object.keys(patch)); }
   /** Change a field the language does not declare. */

@@ -10,21 +10,21 @@ export const SDK_VERSION = 1;
 const NAME_RE = /^[a-z][a-z0-9_]*$/;
 const KIT_ID_RE = /^[a-z][a-z0-9-]*$/;
 
-export const FIELD_KINDS = ["text", "number", "money", "date", "datetime", "boolean", "choice", "person", "link", "file", "address", "phones", "emails", "richtext", "actor", "sealed"];
-const COMMON = ["label", "description", "required"];
-/** Options each field kind accepts, besides the common ones. */
-const FIELD_OPTS = {
-  text: ["maxLength", "unique", "default"], number: ["min", "max", "integer", "default"], money: ["currency"], date: [], datetime: [],
-  boolean: ["default"], choice: ["options", "default"], person: ["multiple"], link: ["to", "many"], file: ["multiple"], address: [],
-  phones: [], emails: [], richtext: [], actor: [], sealed: ["class", "level"],
-};
-export const SEAL_CLASSES = ["us-ssn", "bank-account", "card-number", "tax-id", "passport", "secret", "free"];
-export const SEAL_LEVELS = ["model", "model-and-people"];
-export const TASK_HOW = ["assistant", "tailor", "person", "deterministic"];
+import { FIELD_KINDS as KERNEL_KINDS, SEAL_CLASSES as KERNEL_SEAL_CLASSES, TASK_HOW as KERNEL_TASK_HOW, TASK_OUTPUT_KINDS as KERNEL_OUTPUT_KINDS } from "../../kernel/contracts/index.js";
+
+/** The kinds a definition file may call, one per kernel field kind. `stage` is made with defineStage. */
+export const FIELD_KINDS = KERNEL_KINDS.filter((k) => k !== "stage");
+export const SEAL_CLASSES = KERNEL_SEAL_CLASSES;
+export const SEAL_LEVELS = ["ai", "human"];
+export const TASK_HOW = KERNEL_TASK_HOW;
+export const TASK_OUTPUT_KINDS = KERNEL_OUTPUT_KINDS;
 export const FLOW_VERBS = ["find", "create", "update", "remove", "decide", "repeat", "wait", "ask", "assign", "call", "stage", "agent", "classify", "http"];
 export const ROLE_KINDS = ["teammate", "role"];
 export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 export const VIEW_TYPES = ["list", "board", "calendar", "page", "dashboard"];
+const COMMON = ["label", "description", "required"];
+/** Options each field kind takes besides the common ones. Exactly what the kernel's FieldDefinition can say. */
+const FIELD_OPTS = { choice: [], multi_choice: [], ref: ["to"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
 
 /** @param {string} path @param {string} msg */
 const bad = (path, msg) => { throw new LanguageError("invalid_definition", msg, { path }); };
@@ -50,45 +50,51 @@ const strList = (v, path, max = 100) => { if (!Array.isArray(v) || v.length > ma
 const expr = (v, path) => { const s = str(v, path, { max: 2000 }); try { parseExpr(/** @type {string} */ (s)); } catch (e) { bad(path, /** @type {Error} */ (e).message); } return s; };
 /** Copy defined keys in the given order. @param {Record<string, any>} o @param {string[]} order */
 const ordered = (o, order) => { /** @type {Record<string, any>} */ const out = {}; for (const k of order) if (o[k] !== undefined) out[k] = o[k]; return out; };
+/** "full_name" -> "Full name" */
+export const labelOf = (/** @type {string} */ n) => { const w = n.replace(/_/g, " "); return w[0].toUpperCase() + w.slice(1); };
 
 /** @param {string} kind */
 function fieldBuilder(kind) {
   return (/** @type {any[]} */ ...args) => {
     let main, opts;
-    if (kind === "choice") { main = args[0]; opts = args[1] ?? {}; if (!Array.isArray(main)) bad("defineField.choice", "Give the list of choices first"); }
+    if (kind === "choice" || kind === "multi_choice") { main = args[0]; opts = args[1] ?? {}; if (!Array.isArray(main)) bad(`defineField.${kind}`, "Give the list of options first"); }
     else { opts = args[0] ?? {}; }
-    onlyKeys(opts, [...COMMON, ...FIELD_OPTS[kind]], `defineField.${kind}`);
-    const f = { kind, label: opts.label, description: opts.description, required: opts.required };
-    if (f.label !== undefined) str(f.label, `defineField.${kind}.label`, { max: 120 });
-    if (f.description !== undefined) str(f.description, `defineField.${kind}.description`);
-    if (f.required !== undefined) bool(f.required, `defineField.${kind}.required`);
-    switch (kind) {
-      case "choice": f.options = strList(main, "defineField.choice options", 200); if (!f.options.length) bad("defineField.choice", "A choice needs at least one option"); if (new Set(f.options).size !== f.options.length) bad("defineField.choice", "Choices must be different"); if (opts.default !== undefined) { if (!f.options.includes(opts.default)) bad("defineField.choice.default", "The default must be one of the choices"); f.default = opts.default; } break;
-      case "link": f.to = name(opts.to, "defineField.link.to"); if (opts.many !== undefined) f.many = bool(opts.many, "defineField.link.many"); break;
-      case "sealed": if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`); f.class = opts.class; if (opts.level !== undefined) { if (!SEAL_LEVELS.includes(opts.level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`); f.level = opts.level; } break;
-      case "text": if (opts.maxLength !== undefined) { if (!Number.isInteger(opts.maxLength) || opts.maxLength < 1 || opts.maxLength > 100000) bad("defineField.text.maxLength", "A whole number from 1 to 100000"); f.maxLength = opts.maxLength; } if (opts.unique !== undefined) f.unique = bool(opts.unique, "defineField.text.unique"); if (opts.default !== undefined) f.default = str(opts.default, "defineField.text.default"); break;
-      case "number": for (const k of ["min", "max"]) if (opts[k] !== undefined) { if (typeof opts[k] !== "number") bad(`defineField.number.${k}`, "Expected a number"); f[k] = opts[k]; } if (opts.integer !== undefined) f.integer = bool(opts.integer, "defineField.number.integer"); if (opts.default !== undefined) { if (typeof opts.default !== "number") bad("defineField.number.default", "Expected a number"); f.default = opts.default; } break;
-      case "money": if (opts.currency !== undefined) { if (!/^[A-Z]{3}$/.test(opts.currency)) bad("defineField.money.currency", "A three-letter currency code such as USD"); f.currency = opts.currency; } break;
-      case "boolean": if (opts.default !== undefined) f.default = bool(opts.default, "defineField.boolean.default"); break;
-      case "person": case "file": if (opts.multiple !== undefined) f.multiple = bool(opts.multiple, `defineField.${kind}.multiple`); break;
-      default: break;
+    if (kind === "link" && opts.to !== undefined) bad("defineField.link", "A link is a web address. A link to another record is defineField.ref({ to: \"type\" })");
+    onlyKeys(opts, [...COMMON, ...(FIELD_OPTS[kind] ?? [])], `defineField.${kind}`);
+    /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`) };
+    if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
+    if (kind === "ref") f.to = name(opts.to, "defineField.ref.to");
+    if (kind === "sealed") {
+      if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`);
+      const level = opts.level ?? "ai"; if (!SEAL_LEVELS.includes(level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`);
+      f.seal = ordered({ level, class: opts.class, reveal_roles: opts.reveal_roles === undefined ? undefined : strList(opts.reveal_roles, "defineField.sealed.reveal_roles", 20), hint_allowed: opts.hint_allowed === undefined ? undefined : bool(opts.hint_allowed, "defineField.sealed.hint_allowed") }, ["level", "class", "reveal_roles", "hint_allowed"]);
     }
-    return { $: "field", ...ordered(f, ["kind", "label", "description", "required", "options", "default", "to", "many", "class", "level", "maxLength", "unique", "min", "max", "integer", "currency", "multiple"]) };
+    return { $: "field", ...ordered(f, ["kind", "label", "description", "required", "options", "to", "seal"]) };
   };
 }
 const defineField = Object.fromEntries(FIELD_KINDS.map((k) => [k, fieldBuilder(k)]));
 
-/** @param {any} t task input */
+const UNITS = { h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+/** "2d" -> ms, and back to the largest exact unit. */
+export const offsetToMs = (/** @type {string} */ s) => Number(s.slice(0, -1)) * /** @type {any} */ (UNITS)[s.slice(-1)];
+export const msToOffset = (/** @type {number} */ ms) => (ms % UNITS.w === 0 ? `${ms / UNITS.w}w` : ms % UNITS.d === 0 ? `${ms / UNITS.d}d` : `${ms / UNITS.h}h`);
+
+/** @param {any} t task input: the kernel's TaskTemplateDef, with dependsOn and dueOffset for the two snake_case names */
 function defineTask(t) {
-  onlyKeys(t, ["title", "doer", "checker", "how", "output", "template", "dependsOn", "dueOffset", "required", "description"], "defineTask");
-  const out = { title: str(t.title, "defineTask.title", { max: 200 }), doer: str(t.doer, "defineTask.doer", { max: 100 }), checker: t.checker === undefined ? undefined : str(t.checker, "defineTask.checker", { max: 100 }), how: t.how, output: t.output, template: t.template === undefined ? undefined : name(t.template, "defineTask.template"), dependsOn: t.dependsOn === undefined ? undefined : strList(t.dependsOn, "defineTask.dependsOn", 50), dueOffset: t.dueOffset, required: t.required, description: t.description === undefined ? undefined : str(t.description, "defineTask.description") };
-  if (!/^(teammate|role|person|assistant|actor):[a-z][a-z0-9_.-]*$/.test(out.doer) && out.doer !== "creator" && out.doer !== "owner") bad("defineTask.doer", 'A doer looks like "teammate:research", "role:attorney", "person:alex", "creator" or "owner"');
-  if (out.checker !== undefined && !/^(teammate|role|person|assistant|actor):[a-z][a-z0-9_.-]*$/.test(out.checker) && out.checker !== "owner") bad("defineTask.checker", 'A checker looks like "role:attorney" or "person:alex"');
+  onlyKeys(t, ["title", "doer", "checker", "how", "output", "template", "dependsOn", "dueOffset", "required"], "defineTask");
+  const out = { title: str(t.title, "defineTask.title", { max: 200 }), doer: str(t.doer, "defineTask.doer", { max: 100 }), checker: t.checker === undefined ? undefined : str(t.checker, "defineTask.checker", { max: 100 }), output: t.output, how: t.how, template: t.template === undefined ? undefined : name(t.template, "defineTask.template"), depends_on: t.dependsOn === undefined ? undefined : strList(t.dependsOn, "defineTask.dependsOn", 50), due_offset_ms: /** @type {number | undefined} */ (undefined), required: t.required };
+  const who = /^(teammate|role|person|assistant|actor):[a-z][a-z0-9_.-]*$/;
+  if (!who.test(out.doer) && out.doer !== "creator" && out.doer !== "owner") bad("defineTask.doer", 'A doer looks like "teammate:research", "role:attorney", "person:alex", "creator" or "owner"');
+  if (out.checker !== undefined && !who.test(out.checker) && out.checker !== "owner") bad("defineTask.checker", 'A checker looks like "role:attorney" or "person:alex"');
   if (out.how !== undefined && !TASK_HOW.includes(out.how)) bad("defineTask.how", `How must be one of ${TASK_HOW.join(", ")}`);
-  if (out.output !== undefined) { onlyKeys(out.output, ["fields", "note", "sent", "decision", "file"], "defineTask.output"); const o = out.output; if (o.fields !== undefined) strList(o.fields, "defineTask.output.fields", 50); for (const k of ["note", "decision", "file"]) if (o[k] !== undefined) bool(o[k], `defineTask.output.${k}`); if (o.sent !== undefined && !["email", "message", "letter"].includes(o.sent)) bad("defineTask.output.sent", "sent is email, message or letter"); out.output = ordered(o, ["fields", "note", "sent", "decision", "file"]); }
-  if (out.dueOffset !== undefined && !/^\d+[hdw]$/.test(out.dueOffset)) bad("defineTask.dueOffset", 'A due offset looks like "2d", "48h" or "1w"');
+  onlyKeys(out.output, ["kind", "target"], "defineTask.output");
+  if (!TASK_OUTPUT_KINDS.includes(out.output.kind)) bad("defineTask.output.kind", `kind must be one of ${TASK_OUTPUT_KINDS.join(", ")}`);
+  if (out.output.target !== undefined && typeof out.output.target !== "string" && !(Array.isArray(out.output.target))) bad("defineTask.output.target", "target is a name or a list of names");
+  if (Array.isArray(out.output.target)) strList(out.output.target, "defineTask.output.target", 50);
+  out.output = ordered(out.output, ["kind", "target"]);
+  if (t.dueOffset !== undefined) { if (typeof t.dueOffset !== "string" || !/^\d+[hdw]$/.test(t.dueOffset)) bad("defineTask.dueOffset", 'A due offset looks like "2d", "48h" or "1w"'); out.due_offset_ms = offsetToMs(t.dueOffset); }
   if (out.required !== undefined) bool(out.required, "defineTask.required");
-  return { $: "task", ...ordered(out, ["title", "description", "doer", "checker", "how", "output", "template", "dependsOn", "dueOffset", "required"]) };
+  return { $: "task", ...ordered(out, ["title", "doer", "checker", "output", "how", "template", "depends_on", "due_offset_ms", "required"]) };
 }
 
 /** @param {any[]} stages @param {any} [opts] */
@@ -97,46 +103,43 @@ function defineStage(stages, opts = {}) {
   onlyKeys(opts, ["label", "description"], "defineStage");
   const seen = new Set();
   /** @type {any[]} */ const list = [];
+  const titlesBefore = (/** @type {string} */ title) => list.some((s) => (s.tasks ?? []).some((/** @type {any} */ t) => t.title === title));
   stages.forEach((s, i) => {
     const path = `defineStage[${i}]`;
     if (typeof s === "string") { str(s, path, { max: 80 }); if (seen.has(s)) bad(path, `Two stages are named ${s}`); seen.add(s); list.push({ name: s }); return; }
-    onlyKeys(s, ["name", "tasks", "enter", "description"], path);
+    onlyKeys(s, ["name", "tasks"], path);
     const nm = str(s.name, `${path}.name`, { max: 80 }); if (seen.has(nm)) bad(path, `Two stages are named ${nm}`); seen.add(nm);
     const tasks = s.tasks === undefined ? undefined : (Array.isArray(s.tasks) ? s.tasks.map((t, j) => { if (!isObj(t) || t.$ !== "task") bad(`${path}.tasks[${j}]`, "Each entry in tasks must be a defineTask(...) call"); const { $, ...rest } = t; return rest; }) : bad(`${path}.tasks`, "tasks must be a list"));
-    if (tasks) { const titles = new Set(); for (const t of tasks) { if (titles.has(t.title)) bad(`${path}.tasks`, `Two tasks in ${nm} are titled ${t.title}`); titles.add(t.title); for (const d of t.dependsOn ?? []) if (!titles.has(d) && !stagesBeforeHaveTitle(list, d)) bad(`${path}.tasks`, `Task "${t.title}" depends on "${d}", which is not an earlier task in this or a previous stage`); } }
-    list.push(ordered({ name: nm, description: s.description === undefined ? undefined : str(s.description, `${path}.description`), enter: s.enter === undefined ? undefined : expr(s.enter, `${path}.enter`), tasks: tasks && tasks.length ? tasks : undefined }, ["name", "description", "enter", "tasks"]));
+    if (tasks) { const titles = new Set(); for (const t of tasks) { if (titles.has(t.title)) bad(`${path}.tasks`, `Two tasks in ${nm} are titled ${t.title}`); titles.add(t.title); for (const d of t.depends_on ?? []) if (!titles.has(d) && !titlesBefore(d)) bad(`${path}.tasks`, `Task "${t.title}" depends on "${d}", which is not an earlier task in this or a previous stage`); } }
+    list.push(ordered({ name: nm, tasks: tasks && tasks.length ? tasks : undefined }, ["name", "tasks"]));
   });
-  return { $: "field", ...ordered({ kind: "stage", label: opts.label, description: opts.description, stages: list }, ["kind", "label", "description", "stages"]) };
+  return { $: "stage", label: opts.label === undefined ? undefined : str(opts.label, "defineStage.label", { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, "defineStage.description"), stages: list };
 }
-/** @param {any[]} done @param {string} title */
-const stagesBeforeHaveTitle = (done, title) => done.some((s) => (s.tasks ?? []).some((/** @type {any} */ t) => t.title === title));
 
 function defineRule(r) {
-  onlyKeys(r, ["name", "require", "message", "compute", "into"], "defineRule");
-  if ((r.require === undefined) === (r.compute === undefined)) bad("defineRule", "A rule has either require (a condition) or compute (with into: the field to fill)");
-  const out = { name: r.name === undefined ? undefined : name(r.name, "defineRule.name"), require: r.require === undefined ? undefined : expr(r.require, "defineRule.require"), message: r.message === undefined ? undefined : str(r.message, "defineRule.message", { max: 300 }), compute: r.compute === undefined ? undefined : expr(r.compute, "defineRule.compute"), into: r.into === undefined ? undefined : name(r.into, "defineRule.into") };
-  if (out.compute !== undefined && out.into === undefined) bad("defineRule", "A computed rule needs into: the field it fills");
-  return { $: "rule", ...ordered(out, ["name", "require", "message", "compute", "into"]) };
+  onlyKeys(r, ["name", "require"], "defineRule");
+  const out = { name: r.name === undefined ? undefined : name(r.name, "defineRule.name"), require: expr(r.require, "defineRule.require") };
+  return { $: "rule", ...ordered(out, ["name", "require"]) };
 }
 
+/** A type is the kernel's TypeDefinition: fields (a stage field among them), stages with their task templates, rules. */
 function defineType(t) {
-  onlyKeys(t, ["name", "label", "plural", "icon", "description", "fields", "rules", "title"], "defineType");
+  onlyKeys(t, ["name", "label", "icon", "fields", "rules"], "defineType");
   const nm = name(t.name, "defineType.name");
   if (!isObj(t.fields) || !Object.keys(t.fields).length) bad(`defineType(${nm}).fields`, "A type needs at least one field");
   if (Object.keys(t.fields).length > 200) bad(`defineType(${nm}).fields`, "A type has at most 200 fields");
-  const fields = [];
-  let stages = 0;
+  const fields = []; /** @type {any} */ let stageDef = null;
   for (const [k, v] of Object.entries(t.fields)) {
     name(k, `defineType(${nm}).fields.${k}`);
-    if (!isObj(v) || v.$ !== "field") bad(`defineType(${nm}).fields.${k}`, "Each field must be a defineField.<kind>(...) or defineStage(...) call");
-    const { $, ...rest } = v; if (rest.kind === "stage") stages++;
-    fields.push({ name: k, ...rest });
+    if (!isObj(v) || (v.$ !== "field" && v.$ !== "stage")) bad(`defineType(${nm}).fields.${k}`, "Each field must be a defineField.<kind>(...) or defineStage(...) call");
+    if (v.$ === "stage") {
+      if (stageDef) bad(`defineType(${nm})`, "A type has at most one stage field");
+      stageDef = v;
+      fields.push(ordered({ name: k, kind: "stage", label: v.label ?? labelOf(k), description: v.description, options: v.stages.map((/** @type {any} */ s) => s.name) }, ["name", "kind", "label", "description", "options"]));
+    } else { const { $, ...rest } = v; fields.push({ name: k, ...ordered({ ...rest, label: rest.label ?? labelOf(k) }, ["kind", "label", "description", "required", "options", "to", "seal"]) }); }
   }
-  if (stages > 1) bad(`defineType(${nm})`, "A type has at most one stage field");
   const rules = (t.rules ?? []).map((/** @type {any} */ r, /** @type {number} */ i) => { if (!isObj(r) || r.$ !== "rule") bad(`defineType(${nm}).rules[${i}]`, "Each entry in rules must be a defineRule(...) call"); const { $, ...rest } = r; return rest; });
-  const title = t.title === undefined ? undefined : name(t.title, `defineType(${nm}).title`);
-  if (title && !fields.some((f) => f.name === title && ["text"].includes(f.kind))) bad(`defineType(${nm}).title`, "title must name a text field of this type");
-  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? undefined : str(t.label, "defineType.label", { max: 120 }), plural: t.plural === undefined ? undefined : str(t.plural, "defineType.plural", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), description: t.description === undefined ? undefined : str(t.description, "defineType.description"), title, fields, rules: rules.length ? rules : undefined }, ["name", "label", "plural", "icon", "description", "title", "fields", "rules"]) };
+  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), fields, stages: stageDef ? stageDef.stages : undefined, rules: rules.length ? rules : undefined }, ["name", "label", "icon", "fields", "stages", "rules"]) };
 }
 
 function defineTemplate(t) {
@@ -220,9 +223,6 @@ function defineKit(k) {
 /** The table the evaluator calls into. Exactly these names are callable from a definition file. */
 export const SDK = Object.freeze({
   defineKit, defineType, defineStage, defineTask, defineTemplate, defineRule, defineRole, defineFlow, defineView, defineCodeStep,
-  "defineField.text": defineField.text, "defineField.number": defineField.number, "defineField.money": defineField.money, "defineField.date": defineField.date,
-  "defineField.datetime": defineField.datetime, "defineField.boolean": defineField.boolean, "defineField.choice": defineField.choice, "defineField.person": defineField.person,
-  "defineField.link": defineField.link, "defineField.file": defineField.file, "defineField.address": defineField.address, "defineField.phones": defineField.phones,
-  "defineField.emails": defineField.emails, "defineField.richtext": defineField.richtext, "defineField.actor": defineField.actor, "defineField.sealed": defineField.sealed,
+  ...Object.fromEntries(FIELD_KINDS.map((k) => [`defineField.${k}`, defineField[k]])),
 });
 export { NAME_RE };

@@ -12,10 +12,13 @@ test("the estate planning kit compiles to the stored form", () => {
   assert.equal(kit.id, "estate-planning");
   assert.deepEqual(kit.types.map((t) => t.name), ["contact", "matter"]);
   const ssn = kit.types[0].fields.find((f) => f.name === "ssn");
-  assert.deepEqual(ssn, { name: "ssn", kind: "sealed", label: "Social Security number", description: ssn.description, class: "us-ssn" });
+  assert.deepEqual(ssn, { name: "ssn", kind: "sealed", label: "Social Security number", description: ssn.description, seal: { level: "ai", class: "us-ssn" } });
   const stage = kit.types[1].fields.find((f) => f.kind === "stage");
-  assert.deepEqual(stage.stages.map((s) => s.name), ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
-  assert.equal(stage.stages[0].tasks.length, 2);
+  assert.deepEqual(stage.options, ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
+  assert.deepEqual(kit.types[1].stages.map((s) => s.name), stage.options, "the stage field and the type's stages are one list");
+  assert.equal(kit.types[1].stages[0].tasks.length, 2);
+  const welcome = kit.types[1].stages[0].tasks[1];
+  assert.deepEqual(welcome, { title: "Welcome email", doer: "teammate:intake", checker: "role:attorney", output: { kind: "sent", target: "email" }, how: "tailor", template: "welcome", depends_on: ["Research the client"], due_offset_ms: 86_400_000 });
   assert.deepEqual(kit.roles.map((r) => [r.name, r.kind]), [["research", "teammate"], ["intake", "teammate"], ["attorney", "role"]]);
   assert.equal(kit.templates[0].name, "welcome");
   assert.equal(kit.flows[0].on.event, "payment.received");
@@ -85,12 +88,13 @@ test("a hostile file cannot hold the daemon: the worker parse enforces the limit
 });
 
 test("kit checks: references, sealed fields and expressions", () => {
-  fails(kitOf("", 't: defineField.link({ to: "ghost" })'), "invalid_definition", /ghost/);
-  fails(kitOf("", 'a: defineField.sealed({ class: "us-ssn" }), b: defineField.text()').replace("includes: [A]", "includes: [A, R]").replace("export default", `export const R = defineRule({ require: "a == 'x'" });\nexport default`), "invalid_definition");
+  fails(kitOf("", 't: defineField.ref({ to: "ghost" })'), "invalid_definition", /ghost/);
+  fails(kitOf("", 't: defineField.link({ to: "a" })'), "invalid_definition", /defineField\.ref/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { s: defineField.sealed({ class: "us-ssn" }) }, rules: [defineRule({ require: "s == 'x'" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /sealed and cannot be used/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text() }, rules: [defineRule({ require: "nope == 1" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /not a field/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text(), s: defineField.sealed({ class: "us-ssn" }) } });\nexport const T = defineTemplate({ name: "t", kind: "email", body: "SSN {{a.s}}" });\nexport default defineKit({ id: "k", version: 1, includes: [A, T] });`), "invalid_definition", /sealed:/);
-  fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text(), st: defineStage(["x", "y"]) } });\nexport const R = defineRole({ name: "r", kind: "teammate", grants: [] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`).replace('["x", "y"]', '[{ name: "x", tasks: [defineTask({ title: "t1", doer: "teammate:ghost" })] }, "y"]'), "invalid_definition", /teammate role/);
+  fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text(), st: defineStage([{ name: "x", tasks: [defineTask({ title: "t1", doer: "teammate:ghost", output: { kind: "note" } })] }, "y"]) } });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /teammate role/);
+  fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text(), s: defineField.sealed({ class: "us-ssn" }), st: defineStage([{ name: "x", tasks: [defineTask({ title: "t1", doer: "person:alex", output: { kind: "fields", target: ["s"] } })] }, "y"]) } });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /sealed field/);
 });
 
 test("builder checks give the author a path and a plain sentence", () => {
@@ -98,6 +102,8 @@ test("builder checks give the author a path and a plain sentence", () => {
   fails(kitOf("", 't: defineField.text({ colour: 1 })'), "invalid_definition", /Unknown option "colour"/);
   fails(kitOf("", 't: defineField.choice(["a", "a"])'), "invalid_definition", /different/);
   fails(kitOf("", 't: defineField.sealed({ class: "nope" })'), "invalid_definition", /Class must be/);
+  fails(kitOf("", 't: defineField.sealed({ class: "us-ssn", level: "robot" })'), "invalid_definition", /Level must be/);
+  fails(kitOf("", 't: defineField.text({ default: "x" })'), "invalid_definition", /Unknown option "default"/);
   fails(kitOf("", 'a: defineStage(["x"])'), "invalid_definition", /2 to 40/);
   fails(kitOf("", 'a: defineStage(["x", "x"])'), "invalid_definition", /Two stages/);
 });

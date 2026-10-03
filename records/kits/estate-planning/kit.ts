@@ -8,9 +8,7 @@ import { defineKit, defineType, defineField, defineStage, defineTask, defineRule
 export const Contact = defineType({
   name: "contact",
   label: "Contact",
-  plural: "Contacts",
   icon: "IconUser",
-  title: "full_name",
   fields: {
     full_name: defineField.text({ label: "Full name", required: true }),
     email: defineField.text({ label: "Email" }),
@@ -18,26 +16,24 @@ export const Contact = defineType({
     date_of_birth: defineField.date({ label: "Date of birth" }),
     address: defineField.address({ label: "Address" }),
     ssn: defineField.sealed({ class: "us-ssn", label: "Social Security number", description: "Never shown to a model. A model sees only that a valid one is on file." }),
-    stripe_customer: defineField.text({ label: "Stripe customer", unique: true }),
+    stripe_customer: defineField.text({ label: "Stripe customer" }),
   },
 });
 
 export const Matter = defineType({
   name: "matter",
   label: "Matter",
-  plural: "Matters",
   icon: "IconBriefcase",
-  title: "title",
   fields: {
     title: defineField.text({ label: "Title", required: true }),
-    client: defineField.link({ to: "contact", label: "Client" }),
+    client: defineField.ref({ to: "contact", label: "Client" }),
     plan: defineField.choice(["Will", "Trust", "Both"], { label: "Plan" }),
-    fee: defineField.money({ label: "Fee", currency: "USD" }),
-    engagement_signed: defineField.boolean({ label: "Engagement letter signed", default: false }),
+    fee: defineField.money({ label: "Fee" }),
+    engagement_signed: defineField.boolean({ label: "Engagement letter signed" }),
     practice_area: defineField.text({ label: "Practice area" }),
-    household_size: defineField.number({ label: "Household size", integer: true, min: 1 }),
+    household_size: defineField.number({ label: "Household size" }),
     decision_maker: defineField.text({ label: "Decision maker" }),
-    stripe_payment: defineField.text({ label: "Stripe payment", unique: true }),
+    stripe_payment: defineField.text({ label: "Stripe payment" }),
     stage: defineStage([
       {
         name: "Intake",
@@ -46,7 +42,7 @@ export const Matter = defineType({
             title: "Research the client",
             doer: "teammate:research",
             how: "assistant",
-            output: { fields: ["practice_area", "household_size", "decision_maker"], note: true },
+            output: { kind: "fields", target: ["practice_area", "household_size", "decision_maker"] },
             dueOffset: "1d",
           }),
           defineTask({
@@ -55,7 +51,7 @@ export const Matter = defineType({
             checker: "role:attorney",
             how: "tailor",
             template: "welcome",
-            output: { sent: "email" },
+            output: { kind: "sent", target: "email" },
             dependsOn: ["Research the client"],
             dueOffset: "1d",
           }),
@@ -64,29 +60,28 @@ export const Matter = defineType({
       {
         name: "Engagement",
         tasks: [
-          defineTask({ title: "Engagement letter signed", doer: "role:attorney", output: { decision: true }, dueOffset: "3d" }),
+          defineTask({ title: "Engagement letter signed", doer: "role:attorney", output: { kind: "decision" }, dueOffset: "3d" }),
         ],
       },
       {
         name: "Drafting",
-        enter: "engagement_signed == true",
         tasks: [
-          defineTask({ title: "Draft the documents", doer: "role:attorney", output: { file: true }, dueOffset: "1w" }),
-          defineTask({ title: "Client review call", doer: "role:attorney", output: { note: true }, dependsOn: ["Draft the documents"], dueOffset: "2w" }),
+          defineTask({ title: "Draft the documents", doer: "role:attorney", output: { kind: "file" }, dueOffset: "1w" }),
+          defineTask({ title: "Client review call", doer: "role:attorney", output: { kind: "note" }, dependsOn: ["Draft the documents"], dueOffset: "2w" }),
         ],
       },
       {
         name: "Signing",
-        tasks: [defineTask({ title: "Signing ceremony", doer: "role:attorney", output: { decision: true }, dueOffset: "3w" })],
+        tasks: [defineTask({ title: "Signing ceremony", doer: "role:attorney", output: { kind: "decision" }, dueOffset: "3w" })],
       },
       {
         name: "Funding",
-        tasks: [defineTask({ title: "Fund the trust and retitle assets", doer: "role:attorney", output: { note: true }, dueOffset: "5w", required: false })],
+        tasks: [defineTask({ title: "Fund the trust and retitle assets", doer: "role:attorney", output: { kind: "note" }, dueOffset: "5w", required: false })],
       },
       "Closed",
     ], { label: "Stage" }),
   },
-  rules: [defineRule({ name: "signed_before_drafting", require: "stage < 'Drafting' or engagement_signed == true", message: "The engagement letter must be signed before drafting starts." })],
+  rules: [defineRule({ name: "signed_before_drafting", require: "stage < 'Drafting' or engagement_signed == true" })],
 });
 
 export const Welcome = defineTemplate({
@@ -130,7 +125,7 @@ export const OnPayment = defineFlow({
   on: { event: "payment.received" },
   steps: [
     { find: "contact", by: { stripe_customer: "{{event.customer}}" }, createIfMissing: true, set: { full_name: "{{event.name}}", email: "{{event.email}}", stripe_customer: "{{event.customer}}" }, as: "client" },
-    { find: "matter", by: { stripe_payment: "{{event.payment}}" }, createIfMissing: true, set: { title: "Estate plan for {{client.full_name}}", client: "{{client.id}}", stripe_payment: "{{event.payment}}", fee: "{{event.amount}}", stage: "Intake" }, as: "matter" },
+    { find: "matter", by: { stripe_payment: "{{event.payment}}" }, createIfMissing: true, set: { title: "Estate plan for {{client.full_name}}", client: "{{client.urn}}", stripe_payment: "{{event.payment}}", fee: "{{event.amount}}", stage: "Intake" }, as: "matter" },
   ],
 });
 

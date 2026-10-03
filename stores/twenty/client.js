@@ -2,7 +2,11 @@
 // A small GraphQL client for one Twenty workspace. One key, held only here. Retries the rate
 // limit with a short backoff; maps Twenty's errors onto the store's typed errors.
 
-import { StoreError } from "../contract.js";
+/** An error from talking to Twenty. The store turns these into the kernel's store errors. */
+export class StoreError extends Error {
+  /** @param {"not_found" | "invalid" | "id_exists" | "unavailable" | "rate_limited"} code @param {string} message @param {Record<string, any>} [detail] */
+  constructor(code, message, detail = {}) { super(message); this.name = "StoreError"; this.code = code; this.detail = detail; }
+}
 
 /**
  * @typedef {{ url: string, key: () => string, fetch?: typeof fetch, retries?: number, hostHeader?: string,

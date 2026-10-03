@@ -1,12 +1,14 @@
 // @ts-check
-// The gateway-side snapshot of every record version the store has seen (spec 3.3 rule 3). Twenty's
-// webhook carries no "before", so a change made inside Twenty gets its before from here. Append-only
-// lines on disk, last write wins on load, compacted when it has grown to twice the live size.
+// The gateway-side snapshot of the latest version of every record the store has written or read
+// (spec 3.3 rule 3). Twenty's webhook carries no "before", so a change made inside Twenty gets its
+// before from here, and an edit made behind our back is noticed because the record's updatedAt no
+// longer matches the one recorded for its version. Append-only lines on disk, last write wins on load,
+// compacted when the file has grown to twice the live size.
 
 import fs from "node:fs";
 import path from "node:path";
 
-/** @typedef {{ version: string, hash: string, fields: Record<string, any> }} Snap */
+/** @typedef {{ version: number, updatedAt: string, data: Record<string, any> }} Snap */
 export class SnapshotStore {
   /** @param {string | null} file */
   constructor(file) {
@@ -20,12 +22,11 @@ export class SnapshotStore {
       }
     }
   }
-  /** @param {string} type @param {string} id */ static key(type, id) { return `${type}/${id}`; }
   /** @param {string} type @param {string} id @returns {Snap | undefined} */
-  get(type, id) { return this.map.get(SnapshotStore.key(type, id)); }
+  get(type, id) { return this.map.get(`${type}/${id}`); }
   /** @param {string} type @param {string} id @param {Snap | null} snap */
   set(type, id, snap) {
-    const k = SnapshotStore.key(type, id);
+    const k = `${type}/${id}`;
     if (snap === null) this.map.delete(k); else this.map.set(k, snap);
     if (this.file) {
       fs.mkdirSync(path.dirname(this.file), { recursive: true, mode: 0o700 });

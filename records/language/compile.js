@@ -85,15 +85,12 @@ export function checkKit(kit) {
     for (const f of t.fields) {
       if (fieldNames.has(f.name)) err(`type ${t.name}`, `Field "${f.name}" appears twice`);
       fieldNames.add(f.name);
-      if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Links to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
+      if (f.kind === "ref" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
     }
-    for (const [i, r] of (t.rules ?? []).entries()) {
-      if (r.require) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
-      if (r.compute) { checkExpr(`type ${t.name}.rules[${i}]`, r.compute, t); const into = t.fields.find((/** @type {any} */ f) => f.name === r.into); if (!into) err(`type ${t.name}.rules[${i}]`, `into names "${r.into}", which is not a field`); if (into.kind === "sealed") err(`type ${t.name}.rules[${i}]`, "A computed rule cannot fill a sealed field"); }
-    }
-    const stage = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
-    for (const s of stage?.stages ?? []) {
-      if (s.enter) checkExpr(`type ${t.name} stage ${s.name}`, s.enter, t);
+    for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
+    const stageField = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    if (stageField && JSON.stringify((t.stages ?? []).map((/** @type {any} */ s) => s.name)) !== JSON.stringify(stageField.options)) err(`type ${t.name}`, "The stage field's options and the stages must be the same list");
+    for (const s of t.stages ?? []) {
       for (const task of s.tasks ?? []) {
         const at = `type ${t.name} stage ${s.name} task "${task.title}"`;
         for (const who of [task.doer, task.checker].filter(Boolean)) {
@@ -102,7 +99,7 @@ export function checkKit(kit) {
           else if (k === "role" && !roleNames.has(nm) && !CORE_ROLES.includes(nm)) err(at, `${who} is not a role defined in this kit`);
         }
         if (task.template && !templateNames.has(task.template)) err(at, `Uses template "${task.template}", which is not in this kit`);
-        for (const fn of task.output?.fields ?? []) { const f = t.fields.find((/** @type {any} */ x) => x.name === fn); if (!f) err(at, `Output names "${fn}", which is not a field of ${t.name}`); }
+        if (task.output.kind === "fields") for (const fn of [].concat(task.output.target ?? [])) { const f = t.fields.find((/** @type {any} */ x) => x.name === fn); if (!f) err(at, `Output names "${fn}", which is not a field of ${t.name}`); if (f.kind === "sealed") err(at, `Output names the sealed field "${fn}"`); }
       }
     }
   }

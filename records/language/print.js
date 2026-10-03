@@ -4,6 +4,7 @@
 // Not preserved: comments, layout, constant names and any computed code (spec 5.6).
 
 import { LanguageError } from "./errors.js";
+import { labelOf, msToOffset } from "./sdk.js";
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** @param {string} s */
@@ -36,31 +37,38 @@ function lit(v, d) {
 }
 const key = (k) => (IDENT.test(k) ? k : q(k));
 
-/** @param {any} f field (stored) @param {number} d */
-function field(f, d) {
+/** @param {any} f field (stored) @param {number} d @param {any} t the type, for its stages */
+function field(f, d, t) {
   const { name, kind, ...rest } = f;
-  if (kind === "stage") return stage(f, d);
-  if (kind === "choice") { const { options, ...o } = rest; return `defineField.choice(${lit(options, d)}${Object.keys(o).length ? ", " + lit(o, d) : ""})`; }
-  return `defineField.${kind}(${Object.keys(rest).length ? lit(rest, d) : ""})`;
+  if (kind === "stage") return stage(f, d, t);
+  if (kind === "choice" || kind === "multi_choice") { const { options, ...o } = rest; const o2 = labelless(name, o); return `defineField.${kind}(${lit(options, d)}${Object.keys(o2).length ? ", " + lit(o2, d) : ""})`; }
+  if (kind === "sealed") { const { seal, ...o } = rest; const o2 = { ...labelless(name, o), class: seal.class, ...(seal.level !== "ai" ? { level: seal.level } : {}), ...(seal.reveal_roles ? { reveal_roles: seal.reveal_roles } : {}), ...(seal.hint_allowed !== undefined ? { hint_allowed: seal.hint_allowed } : {}) }; return `defineField.sealed(${lit(o2, d)})`; }
+  const o = labelless(name, rest);
+  return `defineField.${kind}(${Object.keys(o).length ? lit(o, d) : ""})`;
 }
-function stage(f, d) {
-  const { stages, name, kind, ...opts } = f;
-  const items = stages.map((/** @type {any} */ s) => {
-    const keys = Object.keys(s);
-    if (keys.length === 1) return pad(d + 1) + q(s.name);
-    const { tasks, ...rest } = s;
-    const parts = Object.entries(rest).map(([k, x]) => `${pad(d + 2)}${key(k)}: ${lit(x, d + 2)}`);
-    if (tasks) parts.push(`${pad(d + 2)}tasks: [\n${tasks.map((/** @type {any} */ t) => pad(d + 3) + "defineTask(" + lit(t, d + 3) + ")").join(",\n")},\n${pad(d + 2)}]`);
-    return `${pad(d + 1)}{\n${parts.join(",\n")},\n${pad(d + 1)}}`;
+/** The label is left out when it is the default made from the name. @param {string} name @param {any} o */
+function labelless(name, o) { const { label, ...r } = o; return label !== undefined && label !== labelOf(name) ? { label, ...r } : r; }
+/** @param {any} f @param {number} d @param {any} t */
+function stage(f, d, t) {
+  const opts = labelless(f.name, { label: f.label, ...(f.description ? { description: f.description } : {}) });
+  const items = (t.stages ?? []).map((/** @type {any} */ s) => {
+    if (!s.tasks) return pad(d + 1) + q(s.name);
+    return `${pad(d + 1)}{\n${pad(d + 2)}name: ${q(s.name)},\n${pad(d + 2)}tasks: [\n${s.tasks.map((/** @type {any} */ tk) => pad(d + 3) + "defineTask(" + lit(taskOut(tk), d + 3) + ")").join(",\n")},\n${pad(d + 2)}],\n${pad(d + 1)}}`;
   });
   return `defineStage([\n${items.join(",\n")},\n${pad(d)}]${Object.keys(opts).length ? ", " + lit(opts, d) : ""})`;
+}
+/** A stored task template back to the SDK's names. @param {any} t */
+function taskOut(t) {
+  const { depends_on, due_offset_ms, ...rest } = t;
+  return { ...rest, ...(depends_on ? { dependsOn: depends_on } : {}), ...(due_offset_ms !== undefined ? { dueOffset: msToOffset(due_offset_ms) } : {}) };
 }
 
 /** @param {any} t */
 function type(t) {
-  const { fields, rules, ...head } = t;
-  const parts = Object.entries(head).map(([k, x]) => `  ${key(k)}: ${lit(x, 1)}`);
-  parts.push("  fields: {\n" + fields.map((/** @type {any} */ f) => `    ${key(f.name)}: ${field(f, 2)}`).join(",\n") + ",\n  }");
+  const { fields, stages, rules, ...head } = t;
+  const h = Object.entries(head).filter(([k, v]) => !(k === "label" && v === labelOf(t.name)));
+  const parts = h.map(([k, x]) => `  ${key(k)}: ${lit(x, 1)}`);
+  parts.push("  fields: {\n" + fields.map((/** @type {any} */ f) => `    ${key(f.name)}: ${field(f, 2, t)}`).join(",\n") + ",\n  }");
   if (rules?.length) parts.push("  rules: [\n" + rules.map((/** @type {any} */ r) => `    defineRule(${lit(r, 2)})`).join(",\n") + ",\n  ]");
   return "defineType({\n" + parts.join(",\n") + ",\n})";
 }
