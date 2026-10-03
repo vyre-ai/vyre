@@ -10,11 +10,13 @@ async function kitWorld() {
   const w = await world();
   w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
   const created = [];
-  const kits = new KitManager({ kernel: w.kernel, runner: w.runner, store: new MemoryKitStore(), catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x) }, clock: () => w.clock.t, installerRole: () => "admin",
+  const kits = new KitManager({ kernel: w.kernel, runner: w.runner, store: new MemoryKitStore(), catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x), forDoer: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, clock: () => w.clock.t, installerRole: () => "admin",
     ports: { teammates: { create: async (c, t) => created.push(t), remove: async (c, n) => { const i = created.findIndex(x => x.name === n); if (i >= 0) created.splice(i, 1); } } } });
   const caller = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
-  w.kernel.subs.add(e => { void kits.onEvent(e); });
-  return { w, kits, caller, created };
+  w.offs.push(w.kernel.onEvent(e => { void kits.onEvent(e); }, "kits"));
+  // removing a Kit is an admin act: a person's own chain (the real kernel does not give it to an automation's)
+  const person = w.kernel.as ? w.kernel.as(ALEX) : caller;
+  return { w, kits, caller, person, created };
 }
 
 test("kits: the card says everything the Kit adds, and what could surprise", async () => {
@@ -22,7 +24,7 @@ test("kits: the card says everything the Kit adds, and what could surprise", asy
   w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
   const card = installCard(estateKit(2), w.cat);
   assert.equal(card.ok, true, JSON.stringify(card.errors));
-  assert.deepEqual(card.adds.types.map(t => [t.name, t.fields, t.sealed]), [["estate_matter", 4, ["ssn"]]]);
+  assert.deepEqual(card.adds.types.map(t => [t.name, t.fields, t.sealed]), [["estate-matter", 4, ["ssn"]]]);
   assert.deepEqual(card.adds.types[0].stages[0].tasks.map(t => [t.title, t.doer, t.checker, t.output]), [["Research the client", "teammate:research", null, "fields"], ["Welcome email", "teammate:intake", "role:attorney", "sent"]]);
   assert.deepEqual(card.adds.templates[0].slots, ["ssn"]);
   assert.equal(card.adds.teammates[0].trust, "external");
@@ -50,23 +52,25 @@ test("kits: installing makes a card and a task, changes nothing until a person a
   const { w, kits, caller, created } = await kitWorld();
   const p = await kits.propose(estateKit(1), ALEX, caller);
   assert.equal(p.ok, true);
+  await settle(w);
   const task = w.kernel.tasks.find(t => t.id === p.task);
-  assert.equal(task.source, "kit_install");
-  assert.equal(task.doer.id, "per_alex");
+  assert.equal(task.source, "manual", "a task a Kit makes is a plain asked task: the kernel keeps its own sources for itself");
+  assert.equal(task.form.kind, "kit_install");
+  assert.deepEqual([task.doer.id, task.checker.id], ["flows", "per_alex"], "the Flows service asks, the approver checks");
   assert.equal(task.form.card.kit.id, "estate-planning");
-  assert.equal(w.kernel.tables.get("estate_matter"), undefined, "nothing was defined yet");
+  assert.equal(w.kernel.tables.get("estate-matter"), undefined, "nothing was defined yet");
   assert.equal((await w.runner.listRuns()).length, 0);
   w.kernel.completeTask(p.task, { outcome: "approved" });
   await settle(w); await new Promise(r => setImmediate(r)); await settle(w);
-  assert.ok(w.kernel.defines.some(d => (d.add_types || []).some(t => t.name === "estate_matter")));
+  assert.ok(w.kernel.defines.some(d => (d.add_types || []).some(t => t.name === "estate-matter")));
   assert.equal(mine(w, "template").length, 1);
-  assert.equal(mine(w, "def_role").length, 1);
+  assert.equal(mine(w, "def-role").length, 1);
   assert.deepEqual(created.map(t => t.name), ["research", "intake"]);
   assert.equal((await kits.list())[0].status, "installed");
   // the Kit's Flow is live: a payment makes an estate matter
   w.kernel.inbound("payment.received", { client: "Kit client" });
   await settle(w);
-  assert.equal(mine(w, "estate_matter")[0].data.client, "Kit client");
+  assert.equal(mine(w, "estate-matter")[0].data.client, "Kit client");
   // the same version cannot be installed twice
   const again = await kits.propose(estateKit(1), ALEX, caller);
   assert.equal(again.ok, false);
@@ -118,33 +122,35 @@ test("kits: an update that drops a part removes it, and names the removals and f
 });
 
 test("kits: removing a Kit stops its Flows, deletes its definitions, keeps types that hold data, and never deletes data", async () => {
-  const { w, kits, caller, created } = await kitWorld();
+  const { w, kits, caller, person, created } = await kitWorld();
   const p = await kits.propose(estateKit(1), ALEX, caller);
   w.kernel.completeTask(p.task, { outcome: "approved" });
   await settle(w); await settle(w);
   w.kernel.inbound("payment.received", { client: "Keeps" });
   await settle(w);
-  assert.equal(mine(w, "estate_matter").length, 1);
+  assert.equal(mine(w, "estate-matter").length, 1);
   const flowId = Object.values((await kits.store.get("estate-planning")).flows)[0];
-  const r = await kits.remove("estate-planning", ALEX, caller);
-  assert.deepEqual(r.types_kept, ["estate_matter"]);
-  assert.match(r.note, /Kept estate_matter: they still hold records/);
+  const r = await kits.remove("estate-planning", ALEX, person);
+  assert.deepEqual(r.types_kept, ["estate-matter"]);
+  assert.match(r.note, /Kept estate-matter: they still hold records/);
   assert.equal((await w.store.flowRow(flowId)).status, "disabled");
+  await w.kernel.idle?.();
   assert.equal(mine(w, "template").filter(t => !t.deleted_at).length, 0);
   assert.deepEqual(created, []);
-  assert.equal(mine(w, "estate_matter").length, 1, "the matter is still there");
+  assert.equal(mine(w, "estate-matter").length, 1, "the matter is still there");
   w.kernel.inbound("payment.received", { client: "After" });
   await settle(w);
-  assert.equal(mine(w, "estate_matter").length, 1, "the stopped Flow does nothing");
+  assert.equal(mine(w, "estate-matter").length, 1, "the stopped Flow does nothing");
   assert.equal((await kits.list())[0].status, "removed");
   // an empty type is removed with the Kit
   const second = await kitWorld();
   const p2 = await second.kits.propose(estateKit(1), ALEX, second.caller);
   second.w.kernel.completeTask(p2.task, { outcome: "approved" });
   await settle(second.w); await settle(second.w);
-  const r2 = await second.kits.remove("estate-planning", ALEX, second.caller);
-  assert.deepEqual(r2.types_removed, ["estate_matter"]);
-  assert.equal(second.w.kernel.tables.get("estate_matter"), undefined);
+  const r2 = await second.kits.remove("estate-planning", ALEX, second.person);
+  assert.deepEqual(r2.types_removed, ["estate-matter"]);
+  await second.w.kernel.idle?.();
+  assert.equal(second.w.kernel.tables.get("estate-matter"), undefined);
 });
 
 test("kits: removing needs the right to, and a Kit that is not installed is not found", async () => {
@@ -156,4 +162,27 @@ test("kits: removing needs the right to, and a Kit that is not installed is not 
   w.kernel.rules.push({ match: i => i.action === "kits.remove", effect: "ask", reason: "needs_approval" });
   await assert.rejects(() => kits.remove("estate-planning", ALEX, caller), /needs a person's yes/);
   assert.equal(kitParts(estateKit(1)).length, 6);
+});
+
+test("kits: the installed Kits and waiting proposals are records, so they survive a restart on the real kernel", async () => {
+  const w = await world();
+  const { RecordsKitStore } = await import("./kits.js");
+  const sys = w.kernel.sysChain();
+  const store = new RecordsKitStore({ kernel: w.kernel, chain: sys });
+  await store.define();
+  const mk = s => new KitManager({ kernel: w.kernel, runner: w.runner, store: s, catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x), forDoer: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, clock: () => w.clock.t, installerRole: () => "admin",
+    ports: { teammates: { create: async () => {}, remove: async () => {} } } });
+  const kits = mk(store);
+  const caller = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
+  w.offs.push(w.kernel.onEvent(e => { void kits.onEvent(e); }, "kits-records"));
+  const p = await kits.propose(estateKit(1), ALEX, caller);
+  assert.equal(p.ok, true);
+  // a restart: a new manager on a new store object over the same kernel finds the proposal and the approval installs it
+  const after = mk(new RecordsKitStore({ kernel: w.kernel, chain: sys }));
+  assert.equal((await after.store.proposalByTask(p.task)).kit.id, "estate-planning");
+  await w.kernel.completeTask(p.task, { outcome: "approved" });
+  await after.onEvent({ type: "task.completed", subject: `vyre://${SPACE}/task/${p.task}`, data: {} });
+  const listed = await new RecordsKitStore({ kernel: w.kernel, chain: sys }).list();
+  assert.deepEqual(listed.map(r => [r.kit_id, r.status]), [["estate-planning", "installed"]]);
+  assert.equal(await after.store.proposalByTask(p.task), null, "the proposal is gone once it is installed");
 });
