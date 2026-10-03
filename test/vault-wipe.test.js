@@ -7,7 +7,7 @@ import path from "node:path";
 import { open, migrate } from "../core/store/index.js";
 import { Vault, MIGRATIONS } from "../core/vault/vault.js";
 import { acquire } from "../core/daemon/lock.js";
-import { wipeHome } from "../lib/vault-wipe.js";
+import { wipeHome, vaultHolds } from "../lib/vault-wipe.js";
 import { startSealer } from "../kernel/seal/client.js";
 import { SCRATCH } from "./scratch.mjs";
 
@@ -66,6 +66,19 @@ test("wipeHome never reports success while a key survives: a keychain keystore w
   let called = 0; fs.rmSync(path.join(r.seal, "values", "x.json")); fs.writeFileSync(path.join(r.seal, "master.key"), "00".repeat(32));
   const out = await wipeHome({ home: r.home, keystore: "keychain", destroyKeychain: () => { called++; } });
   assert.equal(called, 1); assert.equal(out.vault.keychain_destroyed, true);
+});
+
+test("vaultHolds answers exactly false when the home is empty, true with an item or a sealed value, and true when it cannot tell", async t => {
+  const r = await rig(t);
+  assert.equal(vaultHolds({ home: r.home }), true, "a vault item");
+  await wipeHome({ home: r.home });
+  assert.equal(vaultHolds({ home: r.home }), false);
+  fs.mkdirSync(path.join(r.seal, "values"), { recursive: true }); fs.writeFileSync(path.join(r.seal, "values", "seal_anchor0000000000000000.json"), "{}");
+  assert.equal(vaultHolds({ home: r.home }), false, "bookkeeping is not data");
+  fs.writeFileSync(path.join(r.seal, "values", "seal_abcdefghijklmnopqrstuv.json"), "{}");
+  assert.equal(vaultHolds({ home: r.home }), true, "a sealed value");
+  fs.writeFileSync(r.dbp, "not a database");
+  assert.equal(vaultHolds({ home: r.home }), true, "unreadable counts as holding");
 });
 
 test("nothing in the daemon, a module, the kernel or a tool reaches the wipe: no file but the host CLI's imports it, and no tool is named wipe", () => {

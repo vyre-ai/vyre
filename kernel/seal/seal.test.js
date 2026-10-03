@@ -457,7 +457,7 @@ const FIRST = { module: "memory", first_party: true };
 test("seal.detect: yes or no for one candidate, first-party modules only, rate limited, nothing returned but the answer", async t => {
   const { s } = await setup(t);
   await put(s, "123-45-6789");
-  const ask = (value, over = {}) => s.detectValue({ chain: person(), caller: FIRST, value, ...over });
+  const ask = (value, over = {}) => s.detectValue({ chain: person(), caller: FIRST, value, canRead: async () => true, ...over });
   const yes = await ask("123 45 6789");
   assert.deepEqual(Object.keys(yes).sort(), ["event", "match"]);
   assert.equal(yes.match, true);
@@ -490,4 +490,26 @@ test("reset with wipe (host, daemon stopped): the master key goes first, the fol
   assert.notEqual((await s.spaceKey.pub({ chain: person() })).pub, pub1, "a new Space checkpoint key");
   assert.equal((await put(s, "123-45-6789", { unique: true })).ref.present, true, "the old value is not remembered as a duplicate");
   assert.equal(diskHolds(dir, "123-45-6789"), null);
+});
+
+test("seal.detect (SD-1, SD-2): a value sealed only in a record the person cannot read answers no, canRead is required, and the day counts survive a restart", async t => {
+  const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
+  let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  await enrolDevice(s, signer("per_alex"));
+  const OTHER = "vyre://spc_testspace0001/contact/c_other";
+  await put(s, "123-45-6789");                                        // in REC
+  await put(s, "321-54-9876", { record: OTHER });                     // only in OTHER
+  const ask = (value, canRead) => s.detectValue({ chain: person(), caller: FIRST, value, canRead });
+  const readsRec = async r => r === REC;
+  assert.equal((await ask("123-45-6789", readsRec)).match, true);
+  assert.equal((await ask("321-54-9876", readsRec)).match, false, "sealed only where the person cannot read: no");
+  assert.equal((await ask("321-54-9876", async () => true)).match, true);
+  assert.equal(await code(s.detectValue({ chain: person(), caller: FIRST, value: "123-45-6789" })), "bad_input");
+  // The same value in both records: one the person reads is enough.
+  await put(s, "123-45-6789", { record: OTHER });
+  assert.equal((await ask("123-45-6789", async r => r === OTHER)).match, true);
+  assert.equal((await ask("999-88-7777", async () => true)).event.count, 5, "five answered today for this module");
+  // A restart does not give the day back.
+  await s.close(); s = mk();
+  assert.equal((await s.detectValue({ chain: person(), caller: FIRST, value: "111-22-3333", canRead: async () => true })).event.count, 6);
 });

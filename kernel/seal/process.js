@@ -170,17 +170,20 @@ export class Sealer {
     need(!ctx.model_originated, "human_only");
     need(typeof r.value === "string" && r.value.length <= MAX_VALUE && compact(r.value).length >= MATCH_MIN, "bad_input");
     const t = this.now(), day = Math.floor(t / 86_400_000), mk = `${ctx.space}\0${c.module}`, sk = `${ctx.space}\0*`;
+    // The per-day counts are sealed on disk, so a restart does not reset a limit; the per-minute window is memory only (a restart gives at most one minute's worth back).
+    const saved = this.store.matchRead();
+    const days = saved && saved.day === day ? saved.counts : {};
     const m = this.matches || (this.matches = new Map());
-    const slot = k => { const x = m.get(k); return x && x.day === day ? x : { day, count: 0, hits: [] }; };
-    const mod = slot(mk), sp = slot(sk);
-    mod.hits = mod.hits.filter(x => x > t - 60_000);
-    need(mod.hits.length < MATCH_PER_MIN && mod.count < MATCH_PER_DAY && sp.count < MATCH_SPACE_PER_DAY, "rate_limited");
-    mod.hits.push(t); mod.count++; sp.count++; m.set(mk, mod); m.set(sk, sp);
+    const hits = (m.get(mk) || []).filter(x => x > t - 60_000);
+    need(hits.length < MATCH_PER_MIN && (days[mk] || 0) < MATCH_PER_DAY && (days[sk] || 0) < MATCH_SPACE_PER_DAY, "rate_limited");
+    hits.push(t); m.set(mk, hits); days[mk] = (days[mk] || 0) + 1; days[sk] = (days[sk] || 0) + 1;
+    this.store.matchWrite({ day, counts: days });
     const cv = compact(r.value), all = this.store.metas("values", ctx.space), pairs = new Set(all.map(x => `${x.field}\0${x.class}`));
-    const blinds = new Set(all.map(x => x.blind));
-    let yes = false;
-    for (const pr of pairs) { const [field, cls] = pr.split("\0"); if (blinds.has(this.store.blind(ctx.space, field, cls, cv))) yes = true; }
-    return { match: yes, event: { type: "seal.detect", module: c.module, count: mod.count } };
+    // The records whose sealed fields hold this value. The kernel's side filters them by what the person may read and returns only the yes or no; they never leave the kernel.
+    const records = new Set();
+    for (const pr of pairs) { const [field, cls] = pr.split("\0"); const b = this.store.blind(ctx.space, field, cls, cv); for (const x of all) if (x.field === field && x.class === cls && x.blind === b) records.add(x.record); }
+    const yes = records.size > 0;
+    return { match: yes, records: [...records], event: { type: "seal.detect", module: c.module, count: days[mk] } };
   }
   drop(r) { const ctx = this.ctxOf(r.ctx); this.open(ctx, r.ref); return { dropped: this.store.drop("values", r.ref) }; }
 
