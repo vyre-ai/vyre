@@ -73,7 +73,7 @@ export function containsDims(parent, child, since = () => 0, riskOf = () => unde
   const pw = pc.when || {}, cw = cc.when || {};
   if (pw.not_before !== undefined && (cw.not_before === undefined || cw.not_before < pw.not_before)) return false;
   if (pw.expires !== undefined && (cw.expires === undefined || cw.expires > pw.expires)) return false;
-  if (pw.schedule !== undefined && cw.schedule !== pw.schedule) return false;
+  if (pw.schedule !== undefined && !sameJson(cw.schedule, pw.schedule)) return false;
   // how: presence at least as strict, the same approver and, if the parent says once, once
   if (!onlyKeys(pc.how, new Set(["presence", "approval"])) || !onlyKeys(cc.how, new Set(["presence", "approval"]))) return false;
   const rank = (/** @type {any} */ x) => (x === undefined ? 0 : PRESENCE_RANK[/** @type {'none'} */ (x)]);
