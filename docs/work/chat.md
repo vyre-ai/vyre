@@ -1,5 +1,50 @@
 # chat
 
+## 0.3 (chat teammate, 3 Oct 2026): world-class chat on every device
+
+Branch work/chat-03 (work/chat is the 0.2 chat branch, kept untouched) · Worktree ../vyre-chat-03 · ADR 0052 (claimed) · Spec: team/0.3/DESIGN-chat.md
+Base: main + origin/work/kernel (kernel/contracts) + origin/work/ui (@vyre/ui at apps/app/ui). Contracts files taken from work/kernel.
+
+### Scope
+1. The stream: one typed, resumable session stream (core/stream).
+2. Steer, stop, edit and retry, branch; the composer never disables.
+3. The terminal on every device (core/term attach; desktop pane, phone full screen with accessory row; typed commands recorded in the session).
+4. Chat screen + composer in apps/app on @vyre/ui; native result components; inline approvals.
+5. Performance, measured: first token <= 300 ms from emit, resume <= 1 s, 60 fps on a 10,000-message thread.
+
+### Design (fixed before the work is split)
+**Stream frame.** Every frame is a projection of the kernel EventEnvelope (kernel/contracts/event.d.ts): `{ v:1, id (uuid), cur (int, per-session, gapless from 1, the cursor), session, turn, type, time, corr (turn id), data }`.
+`type` is `session.<kind>` ("noun.past-verb" is for log events; a stream frame is not hash-chained, deltas are too frequent for the log; `toEnvelope(frame, ctx)` lifts any frame into a real envelope when it must be logged, e.g. tool.finished, ask, file-change, terminal.command). Kinds and `data`:
+- `text-delta` { message, index, text } and `text-done` { message }
+- `tool-started` { tool_id, tool, kind, summary }, `tool-progress` { tool_id, text? , pct? }, `tool-finished` { tool_id, ok, result: Block }
+- `term-chunk` { term, offset, b64 } (byte offsets from core/term/ring.js; offsets make terminal resume exact)
+- `term-command` { term, command } (what the person typed; recorded in the session, the assistant sees it)
+- `file-changed` { path, op: create|edit|delete, diff? }
+- `ask` { ask_id, kind: permission|question|approval, task? , ... } and `ask-answered`
+- `user-message` { message, text, state: sent|queued|picked-up, queued_at? }
+- `status` { state: starting|working|asking|waiting|paused|stopped|finished|failed, turn?, stopping? }
+- `reset` { reason }: the cursor is older than the log holds; the client reads a snapshot, then resumes from `snapshot.cur`.
+**Block** (what a tool result becomes; never raw JSON): `{ block: "terminal"|"diff"|"files"|"record"|"task"|"draft"|"flow-change"|"answer"|"screen"|"text", ...props }`. Unknown tools degrade to `text` (a short summary), never a JSON dump.
+**Resume.** A client holds `cur`. Subscribe(from=cur) replays frames cur+1.. in order, then goes live with no gap and no repeat (the server replays and joins the live fan-out in one tick; the client drops any `cur <= last`). Over the direct connection and over the relay it is the same call: the transport is a duplex of JSON frames; the relay forwards bytes. A frame is never required to be acked; the client's `last` is the only state.
+**Steer.** A message sent while working is `user-message{state:queued}`, then `picked-up` at the next safe point (between tool calls or turns, never mid-tool). Never disabled, never lost on a stop or restart.
+**Not doing:** a second stream per device, per-provider frame shapes, client-side ack/retransmit protocol, polling faster than 60 s, JSON dumps in the UI.
+
+### Done
+Worktree made, kernel and ui merged (d16c0fee4).
+
+### Doing
+Dispatching four tasks: (A) core/stream protocol + log + server + resumable client + kill/resume tests; (B) steer/stop/edit-retry/branch on the existing switchboard; (C) terminal on every device; (D) chat screen + composer + blocks + performance, mock session shots at 390 and 1280.
+
+### Next
+Collect the four, merge, run tests on testbox, report the first milestone to team-lead.
+
+### Needs from others
+native-core owns @vyre/ui (apps/app/ui): chat-only components go under apps/app/src/chat, anything shared is asked for in team/0.2/CHAT.md.
+
+---
+
+# chat (0.2 history)
+
 Branch: work/chat · Worktree: ../vyre-chat · ADR 0024 · Owner session: chat (lead of the chat team)
 
 ## Scope
