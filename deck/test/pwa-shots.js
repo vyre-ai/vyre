@@ -163,7 +163,7 @@ const SCREENS = [
       if (document.querySelectorAll('.pager .pager-slot').length !== 4) throw new Error('the pager still has a fifth page');` },
 ];
 
-// The Deck v2 passes, for showing the user the real thing (the sample world's data): Now, Chat, a thread, Projects, a project, Planner, Settings > Devices, in both
+// The Deck v2 passes, for showing the user the real thing (the sample world's data): Now, Chat, a thread, Projects, a project, Planner, Settings > Devices, Agents, an agent, Memory, Vault, Drive, Settings and Appearance, in both
 // themes. Run with ONLY="^v2-" and DESKTOP=1440x900 for the laptop and the phone together.
 for (const [theme, suffix] of [[undefined, ""], ["paper", "-paper"]]) {
   const t = theme ? { theme } : {};
@@ -174,7 +174,14 @@ for (const [theme, suffix] of [[undefined, ""], ["paper", "-paper"]]) {
     { name: "v2-projects" + suffix, path: "/projects", wait: 3000, ...t },
     { name: "v2-project" + suffix, path: "/projects/harlow-legal", shell: "pushed", wait: 3000, ...t },
     { name: "v2-planner" + suffix, path: "/planner", shell: "pushed", wait: 3000, ...t },
-    { name: "v2-devices" + suffix, path: "/settings#devices", shell: "pushed", wait: 3500, ...t });
+    { name: "v2-devices" + suffix, path: "/settings#devices", shell: "pushed", wait: 3500, ...t },
+    { name: "v2-agents" + suffix, path: "/agents", wait: 3000, ...t },
+    { name: "v2-agent" + suffix, path: "/agents/kit", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-memory" + suffix, path: "/memory", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-vault" + suffix, path: "/vault", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-drive" + suffix, path: "/files", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-settings" + suffix, path: "/settings", shell: "pushed", wait: 3000, ...t },
+    { name: "v2-appearance" + suffix, path: "/settings#appearance", shell: "pushed", wait: 3000, ...t });
 }
 
 let failed = 0;
