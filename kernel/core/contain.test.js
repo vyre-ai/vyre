@@ -132,3 +132,14 @@ test("a stored child found wider than its parent at boot is cut to its parent's 
   assert.ok(k.log.read({ type: "grant.narrowed" }).some(e => e.data.why === "wider than its parent" && e.data.grant.id === c.id), "the cut is a logged event");
   assert.deepEqual(await k.grants.containmentPass(), { clamped: 0, revoked: 0 }, "and it is not cut twice");
 });
+
+test("CN-1: a schedule is compared by value, not by identity: a value-equal clone is contained, and a boot pass does not re-cut it", async () => {
+  const sched = () => ({ days: ["mon"], from: "09:00", to: "10:00" });
+  const parent = grant({}, { when: { schedule: sched() } });
+  const same = child(parent, {}, { when: { schedule: sched() } });
+  assert.equal(containsDims(parent, same, () => 0, riskOf), true, "a clone with the same fields");
+  assert.equal(containsDims(parent, child(parent, {}, { when: { schedule: { ...sched(), to: "10:30" } } }), () => 0, riskOf), false, "a different one");
+  const cut = clampTo(parent, child(parent, { actions: ["records.read", "records.remove"] }, { when: { schedule: sched() } }), () => 0, riskOf);
+  assert.deepEqual(cut.conditions.when.schedule, sched());
+  assert.equal(containsDims(parent, cut, () => 0, riskOf), true);
+});
