@@ -1,5 +1,5 @@
 # Scores a model's fit for the native assistant: five real Vyre tasks on the real kernel gateway and the generated tool surface
-# (core/assistant/native/eval). Manual only: never on a pull request, push or schedule. It runs in the protected environment `eval`
+# (scripts/eval/assistant-fit). Manual only: never on a pull request, push or schedule. It runs in the protected environment `eval`
 # (a required reviewer approves each run), whose secret OPENROUTER_EVAL_KEY is a key with its own hard limit at OpenRouter.
 # The run's own budget is a hard stop of $5 (the eval refuses the next model call when its worst case would pass the cap and scores
 # the rest as skipped). Before any call the job reads the key's usage (GET /api/v1/key) and prints it before and after, so the real
@@ -56,7 +56,7 @@ jobs:
           echo "key usage before: $before"
           if [ "$before" = "unreadable" ]; then echo "cannot read the key's usage: not running"; exit 1; fi
           mkdir -p "$RUNNER_TEMP/fit"
-          nice -n 10 node core/assistant/native/eval/run.js --model "$MODEL" --yes --budget "$BUDGET" --out "$RUNNER_TEMP/fit" | tee "$RUNNER_TEMP/fit/summary.txt"
+          nice -n 10 node scripts/eval/assistant-fit/run.js --model "$MODEL" --yes --budget "$BUDGET" --out "$RUNNER_TEMP/fit" | tee "$RUNNER_TEMP/fit/summary.txt"
           code=${PIPESTATUS[0]}
           after=$(usage)
           echo "key usage after: $after"

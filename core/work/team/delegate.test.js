@@ -1,7 +1,7 @@
 // @ts-check
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFakeKernel } from "../../test/fake-kernel.js";
+import { createFakeKernel } from "../../../test/fake-kernel.js";
 import { delegateGrants, recheckParent, taskChainActors, chainIncludesAssigner, obligationsFrom, hasOutwardPower } from "./delegate.js";
 
 const P1 = "vyre://spc_test/project/p1";

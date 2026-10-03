@@ -1,7 +1,7 @@
 // @ts-check
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createFakeKernel } from "../../test/fake-kernel.js";
+import { createFakeKernel } from "../../../test/fake-kernel.js";
 import { createDoingLine, lineOf } from "./doing.js";
 
 const tool = (name, summary) => ({ type: "thread.tool", data: { name, summary } });

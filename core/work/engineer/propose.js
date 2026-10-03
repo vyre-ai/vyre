@@ -3,8 +3,8 @@
 // proposal with a diff. The model sees placeholders only (the inference door enforces it; the prompt is also built from the gateway's model view),
 // everything it writes is labelled model-drafted, and nothing here applies anything.
 
-import { joinLabels, externalLabels } from "../../lib/labels.js";
-import { modelView } from "../../lib/sealed.js";
+import { joinLabels, externalLabels } from "../../../lib/labels.js";
+import { modelView } from "../../../lib/sealed.js";
 import { declarativeGuard } from "./guard.js";
 import { runSimulation } from "./simulate.js";
 import { outwardSteps } from "./card.js";
