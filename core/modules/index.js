@@ -490,6 +490,8 @@ export class Registry {
 
   /** Vyre's own: shipped in the repo, or in a firstPartyRoots folder an in-process caller named. @param {string} dir */
   isFirstParty(dir) {
+    // With a signed-release check wired (kernel/modules/firstparty.js, from the kernel boot) a module is first party only by signature: not by where it sits and not by its name.
+    if (this.deps.firstPartyCheck) return this.deps.firstPartyCheck(dir) === true;
     return firstParty(dir) || inRoots(dir, this.firstPartyRoots);
   }
 

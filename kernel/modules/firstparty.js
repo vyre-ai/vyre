@@ -29,13 +29,40 @@ export function signModule(dir, releasePrivateKey) {
   return sig;
 }
 
-/** @param {{ releaseKey: crypto.KeyObject | string }} cfg the pinned release public key @returns {(dir: string) => boolean} */
+const semver = (/** @type {string} */ v) => String(v).split(".").map(x => Number.parseInt(x, 10) || 0);
+const atLeast = (/** @type {string} */ v, /** @type {string} */ min) => { const a = semver(v), b = semver(min); for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); } return true; };
+
+/** The release signs the lowest version of each module it still accepts as first party, so an older, validly signed copy stops being first party (K-1). @param {Record<string, string>} minimums @param {crypto.KeyObject} releasePrivateKey */
+export function signMinimums(minimums, releasePrivateKey) {
+  const body = JSON.stringify(Object.fromEntries(Object.entries(minimums).sort()));
+  return { body, sig: crypto.sign(null, Buffer.from("vyre-module-minimums-v1\n" + body), releasePrivateKey).toString("base64url") };
+}
+/** @param {{ body: string, sig: string }} doc @param {crypto.KeyObject | string} releaseKey @returns {Record<string, string> | null} null when the signature does not verify */
+export function verifyMinimums(doc, releaseKey) {
+  try {
+    const key = typeof releaseKey === "string" ? crypto.createPublicKey(releaseKey) : releaseKey;
+    return crypto.verify(null, Buffer.from("vyre-module-minimums-v1\n" + doc.body), key, Buffer.from(doc.sig, "base64url")) ? JSON.parse(doc.body) : null;
+  } catch { return null; }
+}
+
+/**
+ * @param {{ releaseKey: crypto.KeyObject | string, minimums?: Record<string, string> | null }} cfg the pinned release public key, and the release-signed minimum versions
+ *   (already verified with `verifyMinimums`); a module below its minimum is not first party, however well it is signed
+ * @returns {(dir: string) => boolean}
+ */
 export function createFirstPartyCheck(cfg) {
   const key = typeof cfg.releaseKey === "string" ? crypto.createPublicKey(cfg.releaseKey) : cfg.releaseKey;
   return dir => {
     try {
       const sig = fs.readFileSync(path.join(dir, SIG), "utf8").trim();
-      return crypto.verify(null, Buffer.from(treeHash(dir)), key, Buffer.from(sig, "base64url"));
+      if (!crypto.verify(null, Buffer.from(treeHash(dir)), key, Buffer.from(sig, "base64url"))) return false;
+      if (cfg.minimums) {
+        // The version read is the one inside the signed tree, so it cannot be edited without breaking the signature.
+        const m = JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8"));
+        const min = cfg.minimums[m.name];
+        if (min === undefined || !atLeast(String(m.version), min)) return false;
+      }
+      return true;
     } catch { return false; }
   };
 }

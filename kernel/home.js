@@ -9,6 +9,10 @@ import { bootKernel } from "./boot.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
+import { createFirstPartyCheck, verifyMinimums } from "./modules/firstparty.js";
+
+/** The release-signed minimum versions kept beside the pinned key, or null when absent or not signed by that key. */
+function readMinimums(dir, releaseFile) { try { return verifyMinimums(JSON.parse(fs.readFileSync(path.join(dir, "minimums.json"), "utf8")), fs.readFileSync(releaseFile, "utf8")); } catch { return null; } }
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const rand32 = (/** @type {number} */ n) => Array.from(crypto.randomBytes(n), b => B32[b & 31]).join("");
@@ -37,14 +41,18 @@ export function homeIdentity(root) {
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);
   const k = bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, key: id.key, sealer: cfg.sealer, door: cfg.door });
+  const releaseFile = path.join(id.dir, "release.pub");
+  // A pinned release key turns first party into a signature check (and a minimum version, if the release signed minimums); without one the registry keeps its path rule
+  // and the flip is not safe (team/0.3/KERNEL-default-on.md).
+  const firstPartyCheck = cfg.firstPartyCheck || (fs.existsSync(releaseFile) ? createFirstPartyCheck({ releaseKey: fs.readFileSync(releaseFile, "utf8"), minimums: readMinimums(id.dir, releaseFile) }) : null);
   /** @type {any} */ let host;
   const egress = createEgress({ space: id.space, log: k.log, chains: k.chains, hostsOf: (/** @type {string} */ n) => host && host.hostsOf(n) });
   const supervisor = createSupervisor({ egress });
   const proof = await supervisor.selfTest();
   (cfg.log || (() => {}))(proof.ok ? `kernel: module sandbox proved (${proof.mechanism})` : `kernel: no module sandbox here (${proof.why}); modules from outside Vyre will not run`);
-  host = createModuleHost({ space: id.space, supervisor, isFirstParty: cfg.isFirstParty, log: k.log, chains: k.chains });
+  host = createModuleHost({ space: id.space, supervisor, isFirstParty: firstPartyCheck || cfg.isFirstParty, log: k.log, chains: k.chains });
   const approvalsFile = path.join(id.dir, "module-approvals.json");
   /** The hosts a person approved on a module's install card, kept by name. */
   const approvals = cfg.approvals || ((/** @type {string} */ name) => { try { return JSON.parse(fs.readFileSync(approvalsFile, "utf8"))[name] || []; } catch { return []; } });
-  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); } });
+  return Object.freeze({ ...k, id: { space: id.space, owner: id.owner }, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await supervisor.stopAll(); } });
 }

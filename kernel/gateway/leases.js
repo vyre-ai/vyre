@@ -31,7 +31,7 @@ export function createLeases(cfg) {
   grantsStore.onRevoke(async (/** @type {any} */ e, /** @type {any} */ by) => {
     const devices = e.device ? [e.device] : [...new Set([...info.values()].filter(x => x.member === e.member).map(x => x.device))];
     if (!by || !isChain(by)) return;
-    for (const device of devices) { try { await sealer.lease.revoke({ chain: by, space: cfg.space, device }); } catch { /* the next renewal re-checks and revokes */ } }
+    for (const device of devices) { try { await sealer.lease.revoke({ chain: by, space: cfg.space, member: e.member, device }); } catch { /* the next renewal re-checks and revokes */ } }
     for (const [id, x] of [...info]) if (x.member === e.member && (!e.device || x.device === e.device)) info.delete(id);
   });
 
@@ -51,11 +51,18 @@ export function createLeases(cfg) {
       if (!l || l.member !== p.id) throw new KernelError("unknown_lease", "no such lease");
       return run(() => sealer.lease.renew({ chain, id: i.id, allowed: allowedFor(l.member, l.device, l.device_key) }));
     },
-    /** Reinstating a revoked device is an admin's act, with their fresh presence proof. */
-    async reinstate(chain, /** @type {{ device: string, proof: any }} */ i) {
+    /** Revoke a member's lease on a computer: only that member, or an owner or an admin, may; another member naming the same device id cannot (L-5). */
+    async revoke(chain, /** @type {{ member: string, device: string }} */ i) {
+      const p = person(chain);
+      if (p.id !== i.member && !grantsStore.isAdmin(p)) throw new KernelError("not_allowed", "only that member, or an owner or an admin, revokes a computer's lease");
+      for (const [id, x] of [...info]) if (x.member === i.member && x.device === i.device) info.delete(id);
+      return run(() => sealer.lease.revoke({ chain, space: cfg.space, member: i.member, device: i.device }));
+    },
+    /** Reinstating a revoked device is an admin's act, with their fresh presence proof, for that member's computer. */
+    async reinstate(chain, /** @type {{ member: string, device: string, proof: any }} */ i) {
       const p = person(chain);
       if (!grantsStore.isAdmin(p)) throw new KernelError("not_allowed", "only an owner or an admin reinstates a revoked computer");
-      return run(() => sealer.lease.reinstate({ chain, device: i.device, proof: i.proof }));
+      return run(() => sealer.lease.reinstate({ chain, member: i.member, device: i.device, proof: i.proof }));
     },
     /** The platform maps a session to the lease it runs under. */
     bind(/** @type {string} */ session, /** @type {string} */ id) { sessions.set(String(session), String(id)); },
