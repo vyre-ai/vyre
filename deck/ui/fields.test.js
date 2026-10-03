@@ -33,7 +33,7 @@ const settle = () => new Promise(r => setTimeout(r, 0));
 const byText = (/** @type {any} */ root, /** @type {string} */ sel, /** @type {string} */ t) => /** @type {any[]} */ ([...$$(root, sel)]).find(e => text(e).includes(t));
 
 test("fields: there are exactly twenty kinds, each with a display and an edit renderer", () => {
-  assert.deepEqual(KINDS.map(k => k[0]), ["text", "rich_text", "number", "money", "boolean", "date", "datetime", "choice", "multi_choice", "rating", "link", "ref", "actor", "file", "address",
+  assert.deepEqual(KINDS.map(k => k[0]), ["text", "rich_text", "number", "money", "boolean", "date", "datetime", "choice", "multi_choice", "rating", "url", "link", "actor", "file", "address",
     "phones", "emails", "urls", "stage", "sealed"]);
   for (const [kind] of KINDS) {
     const d = { name: "x", label: "Field", kind, options: ["Client", "Vendor", "Trust", "Will", "Intake", "Drafting"], to: "contact" };
@@ -67,7 +67,7 @@ test("fields: display formats", () => {
   assert.equal(d("stage", "Drafting", { options: ["Intake", "Drafting", "Closed"] }), "Drafting");
   assert.equal(d("actor", sample.actor), "Chris Park");
   assert.equal(d("link", { urn: JANE }), "Jane Doe");
-  assert.equal(d("ref", { urn: JANE }), "Jane Doe");
+  assert.equal(d("link", { urn: JANE }), "Jane Doe");
   assert.equal(d("address", sample.address), "18 Larkin St, San Francisco, CA 94109");
   assert.equal(d("phones", ["+1 415 555 0142", "+1 415 555 0199"]), "+1 415 555 0142, +1 415 555 0199");
   assert.equal(d("file", sample.file), "Intake questionnaire.pdf");

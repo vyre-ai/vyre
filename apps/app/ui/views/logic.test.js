@@ -71,7 +71,7 @@ test("How this page is made names the definition and says no screen was written"
   assert.match(t, /No screen was written for matters/);
   const r = describeDef(def("contact"), "record");
   assert.match(r, /ssn sealed \(sealed\)/);
-  assert.match(r, /matter ref matter/);
+  assert.match(r, /matter link matter/);
 });
 
 test("Seal for all names how many records have a value", () => {

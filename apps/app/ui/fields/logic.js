@@ -205,6 +205,7 @@ const refSort = (/** @type {any} */ v, /** @type {any} */ ctx) => (isEmpty(v) ? 
 /** @type {Record<string, { label: string, ops: { id: string, label: string, operand: string }[], test: (op: string, a: any, v: any, ctx?: any) => boolean, sort: (v: any, ctx?: any) => string | number | null }>} */
 export const KIND_LOGIC = {
   text: { label: "Text", ops: textOps, test: textTest, sort: lower },
+  url: { label: "Web address", ops: containsOps, test: textTest, sort: lower },
   rich_text: { label: "Rich text", ops: containsOps, test: textTest, sort: lower },
   number: { label: "Number", ops: numOps, test: numTest, sort: numOf },
   money: { label: "Money", ops: numOps, test: numTest, sort: numOf },
