@@ -179,3 +179,30 @@ test("chats and their changes survive a rebuild from the sealed log, and a token
   assert.deepEqual([...C.read(bob, c.id).people].sort(), [BOB, CAROL]);
   assert.equal((await stream.audienceFor({})).size, 2);
 });
+
+test("room canRead: records, tasks, team members and playbooks are judged by every person's own reach; no one is named", async () => {
+  const { k, owner, g, bob, carol } = await rig();
+  const stream = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  const exp = Date.now() + 3_600_000;
+  const urn = (type, id) => `vyre://${SPACE}/${type}/${id}`;
+  const room = async (scope) => {
+    const r = { person: CAROL, role: "temp", scope: scope.map(t => urn(t, "*")), expires: exp };
+    await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${CAROL}`) });
+    const chat = await k.gateway.grants.chats.create(bob, { people: [CAROL] });
+    const t = await k.surfaces.open(bob, { chat: chat.id });
+    k.bindCalls(() => ({ token: t.token }));
+    return stream.audienceFor({});
+  };
+  // carol (temp) reaches only tasks: bob reads everything, so the room reads tasks and nothing else
+  let r = await room(["task"]);
+  assert.equal(r.size, 2);
+  assert.equal(await r.canRead(urn("task", "t1")), true);
+  for (const type of ["team_member", "playbook", "contact"]) assert.equal(await r.canRead(urn(type, "x1")), false, type);
+  // carol reaches only team members and playbooks
+  r = await room(["team_member", "playbook"]);
+  assert.equal(await r.canRead(urn("team_member", "m1")), true);
+  assert.equal(await r.canRead(urn("playbook", "p1")), true);
+  assert.equal(await r.canRead(urn("task", "t1")), false);
+  assert.equal(JSON.stringify(Object.keys(r).sort()), JSON.stringify(["canRead", "group", "read", "size"]));
+  void carol;
+});
