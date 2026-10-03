@@ -24,6 +24,27 @@ export async function sealerKey(sealer, kernelChain) {
   return { key_id, pub, sign: async bytes => (await sealer.spaceKey.sign({ chain: kernelChain, bytes })).signature };
 }
 
+const REVOKE_TAG = "vyre-space-key-revoked-v1\n";
+/** The bytes an owner's device signs to revoke the Space's checkpoint key. Any owner may. @param {{ space: string, key_id: string, ts: number }} r */
+export const revocationBytes = r => enc.encode(REVOKE_TAG + chain.canonical({ space: r.space, key_id: r.key_id, ts: r.ts }));
+
+/** @param {{ space: string, key_id: string }} key @param {{ by: string, via: string, ts: number, sign: (b: Uint8Array) => Promise<Uint8Array> }} owner */
+export async function revokeKey(key, owner) {
+  const body = { space: key.space, key_id: key.key_id, ts: owner.ts };
+  return { ...body, by: owner.by, via: owner.via, sig: chain.b64u(await owner.sign(revocationBytes(body))) };
+}
+
+/** Check a revocation against the Space's identity chain, the same way an endorsement is checked. @param {any[]} spaceOps @param {any} r @param {{ resolve: any, now?: number }} ctx */
+export async function verifyRevocation(spaceOps, r, ctx) {
+  try {
+    const state = await chain.stateAt(spaceOps, r.ts, { now: ctx.now ?? Date.now(), resolve: ctx.resolve });
+    if (!state || state.kind !== "space" || state.id !== r.space) throw new Error("not this Space");
+    const { pub } = await chain.signerKey(state, r.by, r.via, r.ts, { resolve: ctx.resolve });
+    if (!(await chain.verifyWith(pub, revocationBytes(r), r.sig))) throw new Error("bad signature");
+  } catch (err) { throw new KernelError("bad_revocation", "that is not an owner's revocation of the Space key", String(err && /** @type {any} */ (err).message)); }
+  return { space: r.space, key_id: r.key_id };
+}
+
 /** The public key object for a base64 SPKI. @param {string} pub */
 export const publicKeyOf = pub => crypto.createPublicKey({ key: Buffer.from(pub, "base64"), format: "der", type: "spki" });
 

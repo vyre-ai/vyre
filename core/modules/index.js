@@ -620,7 +620,7 @@ export class Registry {
       // supervisor (no network, no files beyond its folder, no child process), its tools call into it, and it has no ctx: only its tool handlers
       // and the egress proxy. Without the supervisor the host refuses and the module fails to start. Off until the kernel default-on path.
       if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
-        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m });
+        await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [] });
         const ctx = this.context(m);
         for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input) => this.deps.moduleHost.call(m.name, e.name, input) });
         rec.handle = { stop: () => this.deps.moduleHost.uninstall(m.name) };

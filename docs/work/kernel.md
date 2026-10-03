@@ -92,3 +92,28 @@ Done, pushed to origin/work/kernel (f43c4e570 and later):
 - **Endorsement:** an owner's device signs `{ space, key_id, pub, ts }` (`endorse`, kernel/audit/key.js). The endorsement is kept as an event; a device accepts the key only after `verifyEndorsement` checks it against the Space's own identity chain: the owner is on the Space's list at that time, the signing device is on that owner's own list as it stood then, and the signature covers exactly this key. The home cannot swap the key under the devices.
 - **Holding:** the owners' devices hold the checkpoints (`createDeviceCheckpoints`, `compareCheckpoints`). `gateway.audit.verify` takes the endorsed public key.
 - Not built here: the owners' signer UI that produces the endorsement (windows or native), and rotation (a new endorsement with a later ts supersedes; old checkpoints stay valid under their own key id).
+
+## First-party modules (plan, 3 Oct) and what was built first
+The planner, goals, watchers and waiting cannot move onto the gateway until the daemon has a kernel to move onto, and a kernel needs a durable log and store. Built now, in this order, each tested:
+1. `kernel/store/sqlite.js`: the reference store written through to the home's SQLite; the same conformance suite defines it (suite revision 3, passes).
+2. `kernel/store/sqlite-log.js`: the hash-chained log made durable (events, salts, cursors; an event is written before it counts as appended; a row edited on disk fails `verify`).
+3. `kernel/boot.js` (`bootKernel`): the durable log and store, the grants store rebuilt from the log (first start makes the owner, a restart rebuilds), limits, tasks and the gateway. Nothing calls it yet; the daemon calls it when the kernel is on.
+4. Then, one commit each, behaviour unchanged (module tests plus the golden set):
+   - **waiting** (reads asks, drafts, reminders, pairing; owns nothing): reads through `gateway.tasks.list` and events instead of four tools.
+   - **goals** (`goals_items` with milestones): a `goal` type with a `milestones` field; create, update and state change go through `records.*`; events become `goal.created` etc. from the gateway.
+   - **watchers** (wake rules): a `watch` type; the runtime keeps reading events through `gateway.events` (authorized, field-cut).
+   - **planner** (`planner_items`, firings, calendar cache): `reminder`, `firing` and `calendar_event` types; scheduling (`next_fire`) stays in the module and is an indexed query over the store.
+   - Migration for each: read the old rows, create records, write a marker; the old tables stay one release for rollback.
+5. Needs from others: a decision that a module's rows may live in the kernel store (grants then apply to them); the daemon wiring behind `VYRE_KERNEL=1`; the planner's firing rate (a `rate` window per grant is not the place for it: the scheduler stays in the module).
+
+## Key custody correction (3 Oct, reviewer-2 A-1, lead's ruling)
+- The Space ROOT key (it controls the owners list) lives only on the owners' devices. The home holds a DELEGATED checkpoint key (made and held by the sealing process, never returned), endorsed by an owner's device through the Space's identity chain and revocable by any owner (`revokeKey`, `verifyRevocation`, `createDeviceCheckpoints().revoke`). A home that is rolled back cannot re-sign a rewritten history under a revoked key, and cannot sign an endorsement at all.
+- Owners' devices hold and compare checkpoints and apply a staleness rule: no newer checkpoint for three intervals (by the device's own clock at receipt) is reported as stale. `latest()` verifies the signature.
+
+## K6 round 2 (reviewer-2 K5-K6.md)
+- DNS rebinding: the default fetch connects to the address the proxy checked (`pinnedFetch`: a lookup that returns the pinned address, the real name kept for TLS and Host) and re-checks the connected socket's remote address before the request is written.
+- `privateAddress` works on bytes: every textual form, IPv4-mapped (dotted and hex), compatible, NAT64, 6to4, Teredo, documentation, unique-local, link-local, multicast and the IPv4 ranges including 198.18.0.0/15 and the documentation blocks.
+- The self-test proves 13 attempts (network, write, read outside, child process, worker, /etc/passwd, /proc/self/environ, process listing, root listing, signal to a sibling, DNS, dlopen, environment).
+- The macOS profile is deny-default (run in the test user before it counts; if Node cannot start under it the self-test fails and modules are refused).
+- Install card: `installCard` shows the hosts and the covert-channel warning; `install` needs the person's `approved_hosts` to equal the declared hosts; shared-suffix wildcards are refused. A module's entry cannot leave its folder; a heap cap is set.
+- First party is a signature: `createFirstPartyCheck` (module.sig over the folder hash by the pinned release key; an edit, an added file or a symlink makes it not first party). The registry must pass this as `isFirstParty`; that wiring and a release that signs its modules are the platform and launch items on KERNEL-default-on.md.

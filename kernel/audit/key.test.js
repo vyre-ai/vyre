@@ -79,3 +79,35 @@ test("the key id the sealing process reports is the one the endorsement check re
   const k = await sealerKey(s, person("per_alex"));
   assert.equal(crypto.createHash("sha256").update(Buffer.from(k.pub, "base64")).digest("hex").slice(0, 16), k.key_id);
 });
+
+import { revokeKey, verifyRevocation } from "./key.js";
+test("any owner revokes the checkpoint key through the chain; a device then refuses it, and notices a home gone quiet", async () => {
+  const w = await world();
+  const k = crypto.generateKeyPairSync("ed25519");
+  const spki = k.publicKey.export({ type: "spki", format: "der" }).toString("base64");
+  const kid = crypto.createHash("sha256").update(Buffer.from(spki, "base64")).digest("hex").slice(0, 16);
+  const ctx = { resolve: w.resolve, now: T0 + 10 * H };
+  const rev = await revokeKey({ space: w.spaceId, key_id: kid }, { by: w.alex.state.id, via: w.phone.eid, ts: T0 + 3 * H, sign: w.phone.sign });
+  assert.deepEqual(await verifyRevocation(w.space, rev, ctx), { space: w.spaceId, key_id: kid });
+  const stranger = await key("stranger");
+  const forged = await revokeKey({ space: w.spaceId, key_id: kid }, { by: w.alex.state.id, via: stranger.eid, ts: T0 + 3 * H, sign: stranger.sign });
+  await assert.rejects(() => verifyRevocation(w.space, forged, ctx), { code: "bad_revocation" });
+  // the device: a checkpoint under a revoked key is refused, and a held one goes stale by the device's own clock
+  let now = 1_000_000;
+  const log = createEventLog({ space: w.spaceId, clock: () => now });
+  const kc = createChainBuilder({ space: w.spaceId, owner: "per_o", owner_uid: 1, key: Buffer.alloc(32, 3) });
+  log.append(kc.fromFacts({ kind: "module", module: "x", first_party: true }), { type: "note.added", sv: 1, subject: `vyre://${w.spaceId}/note/1`, data: {} });
+  const { ed25519Signer } = await import("./index.js");
+  const cp = await createCheckpointer({ space: w.spaceId, log, chains: kc, sign: ed25519Signer(k.privateKey), key_id: kid, clock: () => now, publicKey: k.publicKey }).sign();
+  const dev = createDeviceCheckpoints({ space: w.spaceId, publicKey: k.publicKey, clock: () => now });
+  assert.equal(dev.staleness().stale, true, "nothing held yet");
+  assert.deepEqual(dev.accept(cp), { ok: true });
+  assert.equal(dev.staleness().stale, false);
+  now += 31 * 60_000;
+  assert.equal(dev.staleness().stale, true, "no newer checkpoint for three intervals");
+  dev.revoke(kid);
+  assert.deepEqual(dev.accept({ ...cp, seq: cp.seq + 1 }), { ok: false, why: "key_revoked" });
+  // latest() skips an event that is not a verifying checkpoint
+  log.append(kc.fromFacts({ kind: "module", module: "x", first_party: true }), { type: "checkpoint.signed", sv: 1, subject: `vyre://${w.spaceId}/audit/log`, data: { checkpoint: { ...cp, seq: 99, hash: "forged", signature: "AAAA" } } });
+  assert.equal(createCheckpointer({ space: w.spaceId, log, chains: kc, sign: () => "", key_id: kid, publicKey: k.publicKey }).latest().seq, cp.seq);
+});

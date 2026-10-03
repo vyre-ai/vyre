@@ -24,7 +24,7 @@ async function boot(t, deps) {
   writeModule(root, "notes", manifest, src);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
-  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, ...deps });
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, moduleApprovals: () => ["api.example.com"], ...deps });
   await reg.start(discover([root]), { role: "local" });
   return reg;
 }
