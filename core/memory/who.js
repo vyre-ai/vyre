@@ -10,7 +10,7 @@ import { PERSON_SURFACES } from "../presence/index.js";
 export const OWNER_SURFACES = PERSON_SURFACES;
 
 /**
- * @typedef {{ ownerSurface: boolean, device: boolean, nodeDevice: boolean, signedIn: boolean, ownSession: boolean, agent: string|null, module: { name: string, firstParty: boolean }|null, capsule?: boolean }} Who
+ * @typedef {{ ownerSurface: boolean, device: boolean, nodeDevice: boolean, signedIn: boolean, ownSession: boolean, agent: string|null, acting: { kind: string, id: string }|null, module: { name: string, firstParty: boolean }|null, capsule?: boolean }} Who
  * ownerSurface: the person (the home's owner) at cli, local, deck or the Capsule. device: the owner on another paired or signed-in device; nodeDevice: one that arrived over the Wink node
  * path (what `tailnet:<login>` was). signedIn: their passkey session on it. RULING (6 Oct): an owner's own device reads memory as the owner only when signed in, over Wink or the relay
  * alike (`nodeDevice` is kept as a fact, but no longer decides); an unsigned device, a device that is not the owner's and any agent hop read nothing personal.
@@ -31,13 +31,19 @@ export const current = () => whoStore.getStore();
 export function whoOfChain(chain, surface = null) {
   const hops = chain.hops;
   const first = hops[0];
-  // ANY agent hop first (MA-2): a chain with an agent in it is never the person at a surface, whatever its first hop or any facts beside it say.
-  const agentHop = hops.slice(1).find((/** @type {any} */ h) => h.actor.kind === "agent");
-  const agent = agentHop ? String(agentHop.actor.id) : null;
-  const sf = !agent && surface && surface.hops && surface.hops[0] ? surface.hops[0] : (!agent && first.entered_by === "surface" ? first : null);
+  const after = hops.slice(1);
+  // MA-6: ANY hop after the person that is not another person (an agent, a Flow's automation, a module's service) means this is not the person acting: never an owner surface,
+  // device or signed-in device, whatever facts ride beside the chain.
+  const notPerson = after.some((/** @type {any} */ h) => h.actor.kind !== "person");
+  // MA-7: the NARROWEST agent wins: any named agent beats the assistant (the assistant's reach is the wider one), so `[person, assistant, kit]` and `[person, kit, assistant]` both read as kit.
+  const names = after.filter((/** @type {any} */ h) => h.actor.kind === "agent").map((/** @type {any} */ h) => String(h.actor.id));
+  const agent = names.find((/** @type {string} */ n) => n !== "assistant") ?? (names.length ? "assistant" : null);
+  const actingHop = after.find((/** @type {any} */ h) => h.actor.kind === "automation" || h.actor.kind === "service");
+  const acting = actingHop ? { kind: String(actingHop.actor.kind), id: String(actingHop.actor.id) } : null;
+  const sf = !notPerson && surface && surface.hops && surface.hops[0] ? surface.hops[0] : (!notPerson && first.entered_by === "surface" ? first : null);
   const sv = sf ? sf.via || {} : {};
   const onSurface = Boolean(sf) && sf.entered_by === "surface";
-  // The person's own session: a session token with no agent beside them, or with the assistant (the person's own Claude, which the kernel's token chain shows as
+  // The person's own session: a session token with nobody beside them, or exactly the assistant (the person's own Claude, which the kernel's token chain shows as
   // [person, agent:assistant]; no chain fact tells a thread from a named agent, so `assistant` is the one name that stands for it). Never read off a label.
   const ownSession = first.entered_by === "session" && (hops.length === 1 || (hops.length === 2 && agent === "assistant"));
   return {
@@ -47,11 +53,12 @@ export function whoOfChain(chain, surface = null) {
     signedIn: onSurface && Boolean(sv.device) && Boolean(sv.session),
     ownSession,
     agent,
+    acting,
     module: null,
   };
 }
 
 /** A first-party module's own call: not a person, not an agent. @param {string} caller @returns {Who} */
-export const whoOfModule = caller => ({ ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, module: { name: String(caller).slice(7), firstParty: true } });
+export const whoOfModule = caller => ({ ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: { name: String(caller).slice(7), firstParty: true } });
 /** The Capsule, the named exception until platform wires its signature check into the daemon's facts: the owner's own surface. @returns {Who} */
-export const whoOfCapsule = () => ({ ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, module: null, capsule: true });
+export const whoOfCapsule = () => ({ ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null, capsule: true });

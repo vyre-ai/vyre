@@ -271,6 +271,8 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
       const shipped = meta.firstParty === true;
       return { kind: "module", name, r, you: false, limited: !shipped, forced: !shipped };
     }
+    // A Flow step or a module acting for the approver is neither the person nor an agent: its writes are limited and attributed to it (MA-6).
+    { const w = whoNow(); if (w && w.acting) return { kind: "module", name: w.acting.id, r: await reach(undefined, c), you: false, limited: true, forced: true }; }
     if (personWrites(c, meta)) return { kind: "person", name: "you", r: { all: true }, you: true, limited: false, forced: false };
     if (ownSession(c)) return { kind: "person", name: "session", r: { all: true }, you: true, limited: false, forced: false };
     if ((whoNow() ? Boolean(whoNow()?.device) : /^(?:tailnet:|device:)/.test(c))) throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });

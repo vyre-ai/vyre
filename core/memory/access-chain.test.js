@@ -98,8 +98,8 @@ test("who.js reads the chain's facts and nothing else", async () => {
   const rig = await createRig({ agents: ["kit"] });
   const h = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
   const w = async meta => whoOfChain(await h.chain(meta));
-  assert.deepEqual(await w({ kernelFacts: socket("deck") }), { ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, module: null });
-  assert.deepEqual(await w({ kernelFacts: socket("mobile") }), { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, module: null }, "mobile is not an owner surface, as before");
+  assert.deepEqual(await w({ kernelFacts: socket("deck") }), { ownerSurface: true, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null });
+  assert.deepEqual(await w({ kernelFacts: socket("mobile") }), { ownerSurface: false, device: false, nodeDevice: false, signedIn: false, ownSession: false, agent: null, acting: null, module: null }, "mobile is not an owner surface, as before");
   assert.deepEqual([(await w({ kernelFacts: device("s1") })).signedIn, (await w({ kernelFacts: device("s1") })).nodeDevice, (await w({ kernelFacts: device("s1", "relay") })).nodeDevice], [true, true, false], "a Wink device reads like tailnet: did, a relay device like device: did");
   assert.equal((await w({ kernelFacts: device() })).signedIn, false);
   const own = (await rig.k.surfaces.open(rig.person("per_alex"), {})).token, ag = (await rig.k.surfaces.open(rig.person("per_alex"), { agent: "kit" })).token;
@@ -163,4 +163,31 @@ test("RULING 6 Oct: an owner's own device reads personal memory as the owner whe
   // and the person-only writes still need the sign-in, as before
   const un = await on.can("device:abcdefghijklmnop", { kernelFacts: device(undefined, "relay") });
   assert.deepEqual([un.correct, un.write], ["person_session_required", "person_session_required"]);
+});
+
+test("MA-6 and MA-7: a Flow's automation or a module's service after the person is never the person; the narrowest agent wins", async t => {
+  const rig = await createRig({ agents: ["kit", "assistant"] });
+  const handle = rig.k.kernelFor({ name: "memory", needs: { kernel: { membership: true } } });
+  const deck = await handle.chain({ kernelFacts: socket("deck") });
+  const flow = rig.k.chains.forFlow({ flow: "welcome", approver: deck, run: "run_1" });
+  const svc = rig.k.chains.appendService(deck, "stream", true);
+  for (const [name, chain] of [["automation", flow], ["service", svc]]) {
+    const w = whoOfChain(chain, deck);
+    assert.deepEqual([w.ownerSurface, w.device, w.signedIn, w.ownSession, w.agent], [false, false, false, false, null], `${name} beside the person at the deck`);
+    assert.equal(w.acting.id, name === "automation" ? "welcome" : "stream");
+  }
+  // MA-7: the first agent does not win; any named agent beats the assistant, in either order
+  const agent = id => ({ actor: { kind: "agent", id, space: rig.space }, via: { session: "s" }, entered_by: "session" });
+  const person = { actor: { kind: "person", id: "per_alex", space: rig.space }, via: { session: "s" }, entered_by: "session" };
+  for (const order of [["assistant", "kit"], ["kit", "assistant"]]) assert.equal(whoOfChain({ hops: [person, ...order.map(agent)] }).agent, "kit", order.join());
+  assert.equal(whoOfChain({ hops: [person, agent("assistant")] }).agent, "assistant");
+  assert.equal(whoOfChain({ hops: [person, agent("assistant"), agent("kit")] }).ownSession, false, "a named agent acting through the assistant is not the person's own session");
+  // end to end: memory gets that chain from the kernel's handle
+  const as = chain => ({ ...handle, chain: async () => chain });
+  for (const [name, chain] of [["automation", flow], ["service", svc]]) {
+    const on = await boot(t, { kernel: as(chain) });
+    const r = await on.can("module:flows", { firstParty: true });
+    assert.deepEqual([r.graph, r.corrections, r.me, r.correct, r.site], ["denied", "denied", "denied", "denied", "denied"], `${name}: ${JSON.stringify(r)}`);
+    assert.equal(r.write, "denied", "it may not write into the person's own room ('you'): its writes are limited and attributed to it, never the person's");
+  }
 });
