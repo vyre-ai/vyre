@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(daemon): stages made of tasks are live. The daemon passes `onStageEnter` and `stageTasks` (kernel/flows/stages.js) into the home's kernel, so entering a stage creates its tasks in the kernel's own task store (never a record in Twenty) and finished tasks move the record on; stage errors reach the log. Personal Space only for now (hosted Spaces get the same hook when each has its own catalog).
 - feat(kernel): the record store is pluggable per Space: `bootKernel` takes `store`, `bootHomeKernel` and the Spaces registry take `storeFor(space, dir)` (records' stores/twenty/space-store.js, selected by `VYRE_STORE`: sqlite by default, auto or twenty for the Space's own Twenty); taken from work/records f2459542f instead of a parallel edit.
 - feat(kernel): `ctx.kernel.presence` (begin, enrol, sync, recover) carries windows' recovery evidence to the sealing process, so a person with no presence key left gets a new first key after recovering the identity (step 14); the process checks the chain, the pin and the bar itself.
 - chore: the daemon to core/sessions edge for the session credential maker is frozen in the boundaries test and docs.
