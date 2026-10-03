@@ -11,6 +11,7 @@
 //   - Giving access needs a person; taking it away never does. An agent's grants and passes
 //     wait as pending until someone approves them.
 
+import { BUILD_KIND } from "../../lib/build-kind.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -196,6 +197,8 @@ const isShared = cls => String(cls || "").startsWith("shared:");
 export { KINDS };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MODULE = /^[a-z][a-z0-9-]{1,40}$/;
+/** Is this a module name a grant may name? (index.js checks every grant on a put BEFORE anything is written.) */
+export const validModuleName = /** @param {unknown} m */ m => typeof m === "string" && MODULE.test(m);
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/;
 const MAX_VALUE = 64 * 1024;
 const IDENTITY = "identity";
@@ -312,7 +315,7 @@ export class Vault {
    *   testKdf: tests only, a cheap password KDF (`{ kdf: "argon2id", m, t, p }`) used for a new
    *   account and allowed on unlock. Nothing outside a test passes it; the defaults never drop.
    */
-  constructor({ db, dir, config, emit, log = () => {}, testKdf = null, clock = Date.now }) {
+  constructor({ db, dir, config, emit, log = () => {}, testKdf = null, clock = Date.now, buildKind = BUILD_KIND }) {
     this.db = db; this.dir = dir; this.log = log;
     /** Set by sync (devices.js): told of every event, so a local write can be pushed. */
     /** @type {((type: string, payload: any) => void) | null} */ this.onEmit = null;
@@ -368,7 +371,8 @@ export class Vault {
     // vyre.run/cap/vault for the item (ADR 0014, part 7). Only whois carries caps, so under any
     // other identity every relayed request is refused. The grant narrows; it never stands in for a pass.
     // vault.launcherOnly: once the session launcher reads the sign-in tokens through the credentials port, no module may be granted them. On by default now that sessions reads through the port and onboard no longer attaches grants (`vault.launcherOnly: false` turns it off).
-    this.launcherOnly = opts.launcherOnly !== false;
+    // `launcherOnly: false` is honoured only in a development build (lib/build-kind.js): a packaged release always has it on, whatever a config file says (reviewer-2 VP-6).
+    this.launcherOnly = opts.launcherOnly !== false || buildKind !== "development";
     this.relayGrants = opts.relay && opts.relay.grants === "require" ? "require" : "off";
     /** What each login's node carried at its last relay contact since start: { caps, node, at }. Never decides access. */
     /** @type {Map<string, { caps: Record<string, any[]>, node: string, at: number }>} */ this.seenCaps = new Map();

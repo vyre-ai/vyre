@@ -76,3 +76,28 @@ test("launcherOnly (on by default): onboard stores the token without grants, no 
   await off.reg("vault.provider.set", { provider: "claude", token: tok }, "cli");
   assert.ok(!(await off.reg("vault.grant", { name: "claude-setup-token", module: "agents" }, "cli")).error, "with launcherOnly false a grant is allowed again");
 });
+
+test("VP-5: every grant on a put is checked before anything is written: a refused grant leaves no new item and no changed value", async t => {
+  const { reg } = await daemon(t), mod = "module:onboard";
+  const bad = { grants: ["bad name!"] };
+  const r = await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("new"), ...bad }, mod); assert.ok(r.error, "an invalid grant is refused");
+  assert.equal((await reg("vault.list", {}, "cli")).data.items.some(i => i.name === "onboard.thing"), false, "no item was made");
+  assert.ok(!(await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("first"), grants: ["agents"] }, mod)).error);
+  const audits = async () => ((await reg("vault.audit", { name: "onboard.thing" }, "cli")).data?.rows ?? (await reg("vault.audit", {}, "cli")).data ?? []);
+  const before = JSON.stringify(await audits());
+  assert.ok((await reg("vault.put", { name: "onboard.thing", kind: "secret", value: fake("second"), ...bad }, mod)).error, "refused on an existing item too");
+  assert.equal(JSON.stringify(await audits()), before, "the refused call wrote nothing: no second put in the audit");
+  for (const g of ["../x", "", 5, "UPPER"]) assert.ok((await reg("vault.put", { name: "onboard.other", kind: "secret", value: fake("z"), grants: [g] }, mod)).error, String(g));
+});
+
+test("VP-6: a packaged build keeps launcherOnly on whatever config.json says; a development build honours false", async t => {
+  const { Vault, MIGRATIONS } = await import("./vault.js"), { open, migrate } = await import("../store/index.js"), { SCRATCH } = await import("../../test/scratch.mjs");
+  const mk = (buildKind, vault) => {
+    const home = fs.mkdtempSync(path.join(SCRATCH, "vyre-vp6-")), db = open(path.join(home, "vyre.db")); migrate(db, "vault", MIGRATIONS);
+    t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
+    return new Vault({ db, dir: path.join(home, "vault"), config: { name: "box", vault: { keystore: "file", ...vault } }, emit: () => {}, log: () => {}, buildKind });
+  };
+  assert.equal(mk("release", { launcherOnly: false }).launcherOnly, true, "a release ignores false");
+  assert.equal(mk("development", { launcherOnly: false }).launcherOnly, false, "a development tree honours it");
+  assert.equal(mk("development", {}).launcherOnly, true); assert.equal(mk("release", {}).launcherOnly, true);
+});
