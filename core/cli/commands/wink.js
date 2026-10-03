@@ -12,9 +12,9 @@ import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { out, dim, bold } from "../style.js";
 import { json, emit, fail, failTool, usage, EXIT } from "../kit.js";
-import { newCode, beginInput } from "../../wink/reset.js";
+import { newCode, beginInput } from "../../../lib/wink-reset.js";
 
-const USAGE = "vyre wink reset --begin | --confirm <code> [--json]";
+const USAGE = "vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]";
 
 /** @returns {{ call: typeof call, ensureUp: typeof ensureUp, isTTY: boolean, write: (s: string) => void, ask: (q: string) => Promise<string>, newCode: () => string }} */
 export const realDeps = () => ({
@@ -26,6 +26,7 @@ export const realDeps = () => ({
 
 /** @param {string[]} args @param {ReturnType<typeof realDeps>} [deps] */
 export async function run(args, deps = realDeps()) {
+  if (args[0] === "confirm") return confirmPairing(args.slice(1), deps);
   const flags = args.filter(a => a.startsWith("--") && a !== "--json");
   const pos = args.filter(a => !a.startsWith("--"));
   const begin = flags.includes("--begin"), confirm = flags.includes("--confirm");
@@ -54,10 +55,45 @@ export async function run(args, deps = realDeps()) {
   return 0;
 }
 
+/**
+ * `vyre wink confirm`: answer the pairing question of this server on its own terminal. Shows who is asking and the three-word choices, sends the pick.
+ * @param {string[]} args @param {ReturnType<typeof realDeps>} deps
+ */
+async function confirmPairing(args, deps) {
+  const no = args.includes("--no");
+  if (args.filter(a => a !== "--json" && a !== "--no").length) return usage("vyre wink confirm takes only --no", USAGE);
+  if (!deps.isTTY) return fail("this needs a person at a terminal on the server", { code: "no_terminal", exit: EXIT.PRESENCE, next: "run it in your own terminal on the server" });
+  const r0 = await deps.ensureUp();
+  if (!r0.ok) return fail("vyred did not start", { code: "unreachable", exit: 5, next: `its output is in ${r0.log}` });
+  const q = await deps.call("wink.server.pairing", {});
+  if (q.error) return failTool(q.error);
+  if (!q.data || !q.data.asking) { out("  Nobody is asking to pair this server right now."); return 0; }
+  const choices = Array.isArray(q.data.choices) ? q.data.choices : [];
+  const shown = choices.map((/** @type {any} */ c, /** @type {number} */ i) => `${i + 1}) ${Array.isArray(c) ? c.join(" ") : String(c)}`);
+  let input = /** @type {any} */ ({ yes: false });
+  if (!no) {
+    out(`  ${q.data.name || "A device"} is asking to pair this server. Pick the three words its screen shows, or type 0 to refuse:`);
+    for (const l of shown) out(`    ${l}`);
+    const a = (await deps.ask("  Your pick (1, 2, 3 or 0): ")).trim();
+    const n = Number(a);
+    if (a !== "0" && !(Number.isInteger(n) && n >= 1 && n <= choices.length)) return usage("pick 1, 2, 3, or 0 to refuse", USAGE);
+    if (n !== 0) input = { yes: true, pick: n };
+  }
+  const r = await deps.call("wink.server.pair.answer", input);
+  if (r.error) return failTool(r.error);
+  const d = r.data || {};
+  if (json()) return emit(d, { kind: "card", title: "Pairing answered", state: d.yes ? "ok" : "warn", fields: [{ label: "Answer", value: d.yes ? "yes" : "no" }] });
+  if (!d.answered) out("  Nobody is asking any more (the time ran out).");
+  else if (d.yes) out(`  ${bold("Yes")}: ${d.name || "the device"} is being added.`);
+  else out(d.reason ? `  No. ${d.reason}` : "  No. Nothing was added.");
+  return 0;
+}
+
 export default {
   name: "wink", order: 47, usage: USAGE,
   verbs: [
     { verb: "reset", summary: "free this server so it can be added again (two steps, at its own terminal)", usage: "--begin | --confirm <code>", person: true },
+    { verb: "confirm", summary: "answer the pairing question of this server (at its own terminal)", usage: "[--no]", person: true },
   ],
   summary: "free a server that still belongs to an app you no longer have",
   help: "vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.",

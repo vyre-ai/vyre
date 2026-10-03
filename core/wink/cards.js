@@ -89,10 +89,10 @@ const WORDS = {
   relayOld: () => "The relay is out of date and refused this. It needs updating before pairing can work. Nothing was lost.",
   codeExpired: () => "That code ran out. Start again from the server.",
   alreadyPaired: (/** @type {any} */ v) => `${clean(v && v.name, "That server")} is already added. Run wink.remove for it first, then pair it again.`,
-  serverOwned: (/** @type {any} */ v) => `This server already belongs to ${clean(v && v.owner, "someone")}. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget, or free it there with wink.server.reset.`,
-  stillOwned: (/** @type {any} */ v) => { const who = clean(v && v.owner, ""); return `This server still belongs to ${who || "someone"}. Remove it from ${who || "that app"} first, or reset it on the server itself (wink.server.reset).`; },
-  releaseDenied: (/** @type {any} */ v) => `Only the app that owns this server can let it go, and this is not that app. It belongs to ${clean(v && v.owner, "someone")}. Remove it there, or reset it on the server itself (wink.server.reset).`,
-  resetOnServer: () => "A server is reset from the server itself, not from another device. Run wink.server.reset on the server.",
+  serverOwned: (/** @type {any} */ v) => `This server already belongs to ${clean(v && v.owner, "someone")}. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget, or free it there with vyre wink reset --begin.`,
+  stillOwned: (/** @type {any} */ v) => { const who = clean(v && v.owner, ""); return `This server still belongs to ${who || "someone"}. Remove it from ${who || "that app"} first, or reset it on the server itself (run vyre wink reset --begin in a terminal there).`; },
+  releaseDenied: (/** @type {any} */ v) => `Only the app that owns this server can let it go, and this is not that app. It belongs to ${clean(v && v.owner, "someone")}. Remove it there, or reset it on the server itself (run vyre wink reset --begin in a terminal there).`,
+  resetOnServer: () => "A server is reset from the server itself, not from another device. Run vyre wink reset --begin in a terminal on the server.",
   resetFingerprint: () => "That is not this server's fingerprint. Run vyre wink reset again and type the one it shows.",
   resetNeedsYou: () => "Resetting a server needs you at the server: confirm it there, or on a server with no passkey run vyre wink reset.",
   codeMatched: () => "The code matched. The app is finishing the pairing and will say whether it worked.",
@@ -153,8 +153,8 @@ export function removed(i) {
   if (i.what === "member") return `${clean(i.member, "This person")} is no longer in ${clean(i.space, "your space")}.`;
   if (i.what === "leave") return `You left ${clean(i.space, "your space")}.`;
   if (i.release === "released") return `Removed ${name}. It let go of its owner and can be added again.`;
-  if (i.release === "pending") return `Removed ${name}. It could not be reached, so it will be told to let go the next time it connects. To add it again at once, run wink.server.reset on the server.`;
-  if (i.release === "gaveup") return `Removed ${name}. The server never confirmed that it let go, so Vyre stopped asking after 30 days. To add it again, run wink.server.reset on the server.`;
-  if (i.release === "refused" || i.release === "unknown") return `Removed ${name}. It could not be told to let go. To add it again, run wink.server.reset on the server.`;
+  if (i.release === "pending") return `Removed ${name}. It could not be reached, so it will be told to let go the next time it connects. To add it again at once, run vyre wink reset --begin in a terminal on the server.`;
+  if (i.release === "gaveup") return `Removed ${name}. The server never confirmed that it let go, so Vyre stopped asking after 30 days. To add it again, run vyre wink reset --begin in a terminal on the server.`;
+  if (i.release === "refused" || i.release === "unknown") return `Removed ${name}. It could not be told to let go. To add it again, run vyre wink reset --begin in a terminal on the server.`;
   return `Removed ${name}.`;
 }

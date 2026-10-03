@@ -16,37 +16,19 @@
 // box's own unix user, can still begin and confirm: that is the limit of any local trust, and it is why the code is single-use and the attempts are capped.
 
 import crypto from "node:crypto";
+import { normalise, newCode, codeHash, beginInput } from "../../lib/wink-reset.js";
+
+export { normalise, newCode, codeHash, beginInput };
 
 export const CODE_LIFE_MS = 5 * 60_000;
 export const MAX_WRONG = 5;
 export const LOCK_MS = 60 * 60_000;
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
 
-/** The code as typed, without dashes, spaces or case. @param {any} s */
-export const normalise = s => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-
-/** A fresh one-time code, like K7QM-4P2X (40 bits). Made by the CLI, never by the daemon. @param {(n: number) => Buffer} [rand] */
-export function newCode(rand = crypto.randomBytes) {
-  const b = rand(8);
-  let s = "";
-  for (let i = 0; i < 8; i++) s += ALPHABET[b[i] % 32];
-  return `${s.slice(0, 4)}-${s.slice(4)}`;
-}
-
-/** The hash the daemon keeps for a code. @param {string} code @param {string} saltHex */
-export const codeHash = (code, saltHex) => crypto.scryptSync(normalise(code), Buffer.from(saltHex, "hex"), 32, { N: 16384, r: 8, p: 1 }).toString("hex");
-
-/** What a person at the CLI sends to begin: a fresh salt and the hash. The code itself stays with the caller. @param {string} code */
-export function beginInput(code) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  return { salt, hash: codeHash(code, salt) };
-}
-
-/** The card the previous owner's devices get. @param {number} at */
+/** The code as typed, without dashes, spaces or case {number} at */
 export const resetCard = at => ({ title: "This server was reset", text: `This server was reset from its console at ${new Date(at).toISOString().slice(0, 16).replace("T", " ")} UTC.` });
 
 /**
