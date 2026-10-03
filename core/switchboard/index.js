@@ -896,12 +896,15 @@ export class Switchboard {
   async openSocket(id, rec) {
     if (!this.deps.threadSocket || this.socks.has(id)) return;
     try {
-      const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, pids: async () => {
+      // The session's kernel credential (core/sessions/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
+      const ks = this.deps.kernelSession ? await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec }).catch(() => null) : null;
+      const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, ...(ks ? { kernelToken: ks.token } : {}), pids: async () => {
         const st = this.live.get(id);
         const g = st && st.group;
         return { pids: [st && st.proc && st.proc.pid, g && g.pid].filter(Boolean), pgids: g && g.pgid ? [g.pgid] : [], sids: g && g.sid ? [g.sid] : [] };
       } });
-      if (sock) this.socks.set(id, sock);
+      if (sock) this.socks.set(id, ks ? { ...sock, close: async () => { await ks.end().catch(() => {}); await sock.close(); } } : sock);
+      else if (ks) await ks.end().catch(() => {});
     } catch (e) {
       this.deps.log(`threads: no socket for ${id.slice(0, 8)} (${/** @type {Error} */ (e).message}); its Vyre tools will not answer`);
     }

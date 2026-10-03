@@ -42,7 +42,7 @@ const send = (res, status, body) => { res.writeHead(status, { "content-type": "a
  * Open one session's socket.
  * @param {{ handler: (policy: any) => (req: any, res: any, caller: string, peer?: any) => Promise<void>,
  *   thread: string, agent?: string|null, pids: () => Promise<{ pids: number[], pgids?: number[], sids?: number[] }>,
- *   dir?: string, mode?: number, look?: (pid: number) => any, log?: (m: string) => void }} o
+ *   kernelToken?: () => string | undefined, dir?: string, mode?: number, look?: (pid: number) => any, log?: (m: string) => void }} o
  * @returns {Promise<{ path: string, close: () => Promise<void> }>}
  */
 export async function openThreadSocket(o) {
@@ -65,6 +65,10 @@ export async function openThreadSocket(o) {
       if (!pid || !belongs(pid, await o.pids(), o.look)) return send(res, 403, { error: { code: "denied", message: "this socket is one session's, and the caller is not in it" } });
       // The kind of client (its MCP server or its hooks) is the one thing the call may say.
       const kind = String(req.headers["x-vyre-caller"] || "").startsWith("harness") ? "harness" : "mcp";
+      // The session's kernel credential (core/sessions/kernel-session.js): set here from what vyred holds for this session, never from the client. Whatever the client sent is dropped.
+      delete req.headers["x-vyre-kernel-session"];
+      const kernelToken = o.kernelToken ? o.kernelToken() : undefined;
+      if (kernelToken) req.headers["x-vyre-kernel-session"] = kernelToken;
       await route(req, res, `${kind}:${who}`);
     } catch (e) { if (!res.headersSent) send(res, 500, { error: { code: "internal", message: /** @type {Error} */ (e).message } }); }
   });
