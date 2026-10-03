@@ -760,6 +760,55 @@ test("paired session on the real kernel: pair, pick, start-paired, then memory.g
   assert.equal((await read({ person: { id: sessionId } })).error?.code, "denied", "a removed device reads nothing");
 });
 
+
+/** A paired phone with a live person session on the real kernel, and the call a daemon makes for it. */
+async function pairedOnKernel(t) {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const w = await world(t, { kernel: true });
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ks = keystore(t);
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
+  const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's iPhone");
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  await until(async () => relayHas(w, paired.device));
+  const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = (await over(c, "presence.person.pair-challenge", {})).body.data.challenge;
+  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${paired.device}\n${ch}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const started = await over(c, "presence.person.start-paired", { sig });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  const sessionId = started.body.data.id, label = `device:${paired.device}`;
+  const read = async (via = { person: { id: sessionId } }) => {
+    const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
+  };
+  assert.ok(!(await read()).error, "the paired session reads memory with no prompt");
+  const live = async () => { const x = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; return (x.sessions || x).some(y => y.id === sessionId); };
+  assert.equal(await live(), true);
+  return { w, paired, sessionId, read, live };
+}
+
+test("paired session ends, on the real kernel: a revoked session id is gone at once", async t => {
+  const { w, sessionId, live } = await pairedOnKernel(t);
+  assert.equal((await w.d.registry.call("presence.person.revoke", { id: sessionId }, "cli", PROOF)).data.revoked, sessionId);
+  assert.equal(await live(), false, "a revoked session is gone from presence, so the daemon verifies nothing for it");
+});
+
+test("paired session ends, on the real kernel: sign-out-everywhere (wink asks presence to end every paired session) ends the session, and only module:wink may ask", async t => {
+  const a = await pairedOnKernel(t);
+  assert.ok((await a.w.d.registry.call("presence.person.end-paired", {}, "cli", PROOF)).error, "only module:wink may end paired sessions");
+  assert.equal(await a.live(), true, "a refused end changed nothing");
+  const ended = await a.w.d.registry.call("presence.person.end-paired", {}, "module:wink");
+  assert.ok(ended.data.ended >= 1, JSON.stringify(ended));
+  assert.equal(await a.live(), false, "after sign-out-everywhere the session is gone");
+});
+
 test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {
   const w = await world(t);
   const open = (await w.call("wink.phone.open", {})).data;
