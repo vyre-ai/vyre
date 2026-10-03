@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ui: base components
+
+- `deck/ui/components/index.js` is final: button (primary, secondary, ghost, danger, hold with a 700 ms press-and-hold), icon button, chip (plus a `space` tone), field (text, number, date, email, phone, password, textarea, with help and error), switch, segmented (wraps, never scrolls, keeps focus), tabs (arrow keys, one tab stop), row (a link, a pressable row that may hold its own buttons, or plain; tone edges), card, ask card, banner, menu (keyboard, kept in the window, focus returns), table (becomes rows on a phone), stage steps, timeline item, and empty and error states drawn by `js/states.js`. Avatars, `skeleton` and `loading` are re-exported. Signatures are unchanged; the options added are optional.
+- `deck/css/ui.css`: every `ui-*` class from tokens alone, with hover (pointer only), pressed, focus-visible, disabled and loading, 44 px targets on a phone, and reduced motion.
+- `deck/js/icons.js` gains `info` and `alert` (the banner marks).
+- `/u/appearance` (`deck/views/ui-appearance.js`): the scope control, accent swatches and custom hex with the contrast refusal note, row tint, density, font, corners, "Showing now", and every base component drawn live through `ui/theme.js`. It restores the root's theme when the person leaves.
+- `deck/ui/lab/lab-components.js`: lab scenarios for every component and state. `deck/ui/tokens-only.test.js`: fails a colour literal, a raw font size or a raw radius in `css/ui.css` and `css/ui-*.css`, and a hex colour in any `deck/ui` script but `tokens-v3.js` and `theme.js`. `deck/ui/components/components.test.js`: 17 tests in the fake DOM.
+
 #### ui: tokens v3, the theme resolver and the UI contracts (work/ui, step 1)
 
 - `lib/theme/tokens.json` gains a `v3` group (what a space and a person may configure: the five accents with dark and paper values, density, font, corner steps, the component and field-kind lists). `scripts/gen-tokens` writes `deck/css/tokens-v3.css` (space, radii, density, font and corners as root attributes; with none set every value equals v2) and `deck/ui/tokens-v3.js`.
