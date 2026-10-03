@@ -17,7 +17,7 @@ const EXEMPT = {
   "github.project.detect": "github checks the grant itself (inGrant, core/github)",
   "github.project.of": "github checks the grant itself (inGrant, core/github)",
 };
-const PERSON = new Set(["cli", "local", "deck", "capsule", "module", "tailnet", "link", "mobile"]);
+const PERSON = new Set(["cli", "local", "deck", "capsule", "module", "tailnet", "device", "space", "agent", "link", "mobile"]);
 
 test("project grants: every agent-reachable tool with a project, projects or cwd input declares projectArg or cwdArg", () => {
   const h = harvest({});

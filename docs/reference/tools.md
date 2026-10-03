@@ -818,14 +818,14 @@ What an action does: { v: 1, kind: "done" | "held" | "needs" | "error" | "view" 
   - `front` object
   - `id` string
   - `q` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
 
 ### `capsule.commands`
 
 Every command the running modules declare for the Capsule, titles and keywords only: [{ module, id, title, keywords, alias, icon, root, arg, taggable, firstParty, hash }]. Sorted by title. An added module's commands carry firstParty false, and the Capsule marks its rows "from <module>"; its root is off until the person turns it on.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
 
 ### `capsule.report`
 
@@ -863,7 +863,7 @@ One frame for a command: { v: 1, kind: "list" | "detail" | "form" | "error" | "n
   - `id` string
   - `q` string
   - `view` one of "list", "detail", "form"
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
 
 ## chrome
 
@@ -1729,7 +1729,7 @@ Where the user is now: the newest project, cwd, thread, app, window and url acro
 - Input:
   - `parts` list of "screen": Extra parts: screen.
   - `surface` string: Only this surface's own report (its view, thread and project), not the merge across surfaces.
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `module`, `space`, `tailnet`
 
 ### `context.report`
 
@@ -1747,7 +1747,7 @@ Say where the user is on this surface: the project, folder (cwd), thread, front 
   - `url` string or null: The page open in a browser. Its query and fragment are dropped.
   - `view` string or null: The module or view the person is in on this surface: planner, vault, chat, glass. Tips and ranking read it.
   - `window` string or null: The front window's title.
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `module`, `space`, `tailnet`
 
 ## events
 
@@ -1944,7 +1944,7 @@ Bring a file from the box to this Mac (source box), saved under Vyre's folder. C
   - `length` integer
   - `offset` integer
   - `source` "mac" or "box"
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ### `files.mentions.resolve`
 
@@ -1963,7 +1963,7 @@ Files on the box's VyreDrive shares whose name matches what you typed after #, f
 - Input:
   - `limit` integer
   - `q` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
 
 ### `files.preview`
 
@@ -1973,7 +1973,7 @@ A look inside one file: the start of a text file, or a small image. Other kinds 
   - `path` string, required
   - `max` integer
   - `source` "mac" or "box"
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ### `files.receive`
 
@@ -2002,7 +2002,7 @@ Find files by name or content on this machine and, from the Mac, on the box too.
   - `kinds` list of one of "folder", "text", "code", "image", "pdf", "doc", "audio", "video", "archive", "other"
   - `limit` integer
   - `where` one of "all", "here", "box"
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ### `files.send`
 
@@ -2020,7 +2020,7 @@ Size, dates and kind of one file or folder, on this machine or the box.
 - Input:
   - `path` string, required
   - `source` "mac" or "box"
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ## flows
 
@@ -2030,7 +2030,7 @@ Approve one version of a Flow, by its hash: a person, in their own name, and onl
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 - Needs a person present.
 
 ### `flows.card`
@@ -2039,7 +2039,7 @@ The approval card for a Flow version: what it can do, what it needs, what change
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.code`
 
@@ -2047,7 +2047,7 @@ A Flow as code you can read and edit.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.compile-text`
 
@@ -2055,7 +2055,7 @@ Check text as a Flow without storing it.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.define`
 
@@ -2063,7 +2063,7 @@ Write a Flow, as text or in its stored form. Nothing runs until a person approve
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.get`
 
@@ -2071,7 +2071,7 @@ One Flow version as stored.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.graph`
 
@@ -2079,7 +2079,7 @@ A Flow as a graph for the canvas.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.kit.card`
 
@@ -2087,7 +2087,7 @@ The install card for a Kit.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.kit.list`
 
@@ -2095,7 +2095,7 @@ The Kits of a Space.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.kit.propose`
 
@@ -2103,7 +2103,7 @@ Propose a Kit for approval: its types, templates, roles and Flows. A person's ow
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.kit.remove`
 
@@ -2111,7 +2111,7 @@ Remove a Kit. A person's own.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.list`
 
@@ -2119,7 +2119,7 @@ The Flows of a Space.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.pause`
 
@@ -2127,7 +2127,7 @@ Pause a Flow. A person's own.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.resume`
 
@@ -2135,7 +2135,7 @@ Resume a paused Flow. A person's own.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.retry`
 
@@ -2143,7 +2143,7 @@ Retry a failed run. A person's own.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.run`
 
@@ -2151,7 +2151,7 @@ One run: its trigger, its steps, what it did.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.runs`
 
@@ -2159,7 +2159,7 @@ Recent runs of a Flow, newest first.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.simulate`
 
@@ -2167,7 +2167,7 @@ Replay recent events through a Flow without doing anything.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ### `flows.start`
 
@@ -2175,7 +2175,7 @@ Start a Flow now, with an input.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
 
 ## gate
 
@@ -2187,7 +2187,7 @@ The user approves a held item, optionally with edits (the whole content as it sh
   - `id` string, required
   - `by` string
   - `edited` object
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 - Needs a person present.
 
 ### `gate.get`
@@ -2196,7 +2196,7 @@ One item in full: the draft, what was finally sent, and what the user changed.
 
 - Input:
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `module`, `space`, `tailnet`
 
 ### `gate.held`
 
@@ -2227,7 +2227,7 @@ The user discards a held item. Nothing is sent.
   - `id` string, required
   - `by` string
   - `reason` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `gate.request`
 
@@ -2254,7 +2254,7 @@ The user changes a held item without sending it: the content as it should go out
   - `edited` object, required
   - `id` string, required
   - `by` string
-- Callers: `cli`, `local`, `module`, `tailnet`
+- Callers: `cli`, `device`, `local`, `module`, `tailnet`
 
 ### `gate.route`
 
@@ -3596,7 +3596,7 @@ A paired companion core checks in, proving its own key: { token } signed for thi
 
 - Input:
   - `token` string, required
-- Callers: `tailnet`
+- Callers: `agent`, `device`, `space`, `tailnet`
 - Registered only on the box.
 
 ### `link.companion.list`
@@ -3616,7 +3616,7 @@ A paired desktop app asks the box to accept its local core as a companion: { cor
   - `nonce` string, required
   - `ts` number, required
   - `name` string
-- Callers: `deck`, `tailnet`
+- Callers: `agent`, `deck`, `device`, `space`, `tailnet`
 - Needs a person present.
 - Registered only on the box.
 
@@ -4580,7 +4580,7 @@ Keep something learned while working, in a project's memory, at once: { kind: fa
   - `subject` string
   - `thread` string
   - `untrusted` boolean
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ### `memory.write.forget`
 
@@ -4589,7 +4589,7 @@ Forget a memory write: with project, only its link there (the row goes with its 
 - Input:
   - `id` string, required
   - `project` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ### `memory.write.restore`
 
@@ -4598,7 +4598,7 @@ Undo a forget: with project, that link; without, every link (the person's own su
 - Input:
   - `id` string, required
   - `project` string
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ### `memory.writes`
 
@@ -4609,7 +4609,7 @@ What agents, modules, watchers and the person wrote to memory, newest first, wit
   - `limit` integer
   - `project` string
   - `state` one of "live", "forgotten", "all"
-- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `space`, `tailnet`
 
 ## mentions
 
@@ -4618,7 +4618,7 @@ What agents, modules, watchers and the person wrote to memory, newest first, wit
 The kinds the # picker offers: { kinds: [{ kind, label, icon, module }] }, in draw order.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
 
 ### `mentions.resolve`
 
@@ -4639,7 +4639,7 @@ Names matching what was typed, grouped by kind: { groups: [{ kind, label, icon, 
   - `kinds` list of string
   - `limit` integer
   - `q` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
 
 ## names
 
@@ -5653,14 +5653,14 @@ One site's stage, address, secrets by name, domains and approver. Also says whet
 The devices that get notifications: id, label, push service, when added, last delivered. Never the endpoint or keys.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.key`
 
 The public key a browser subscribes with (applicationServerKey, base64url).
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.receipt`
 
@@ -5668,7 +5668,7 @@ A device showed a test notification: post back its receipt. Known once, for 10 m
 
 - Input:
   - `receipt` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.seen`
 
@@ -5679,7 +5679,7 @@ A person is using this screen: call it when the screen is shown, when it is hidd
   - `standalone` boolean
   - `surface` string
   - `visible` boolean
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.settings`
 
@@ -5689,7 +5689,7 @@ Quiet hours ({start: "22:00", end: "07:00", timezone?}, or null for none), which
   - `kinds` object
   - `planner_label` boolean
   - `quiet` object or null
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.subscribe`
 
@@ -5698,7 +5698,7 @@ Keep this browser's PushSubscription, so the moments you are needed reach this d
 - Input:
   - `subscription` object, required
   - `label` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.test`
 
@@ -5707,7 +5707,7 @@ Send a test notification to every device, or one. Ignores quiet hours. receipt: 
 - Input:
   - `device` string
   - `receipt` boolean
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `push.unsubscribe`
 
@@ -5716,7 +5716,7 @@ Forget a device: by its id, or by the subscription's endpoint.
 - Input:
   - `device` string
   - `endpoint` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ## recall
 
@@ -6187,7 +6187,7 @@ Which build of the hosted web app this box trusts: its release, the content-addr
 The SHA-256 of the owner's Android release certificate, made on first use. `vyre phone add` pins it.
 
 - Input: none
-- Callers: `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `releases.sign`
 
@@ -7224,7 +7224,7 @@ Raise a provider's daily cap (provider: all is the cap over every provider toget
   - `off` boolean
   - `provider` string
   - `to` number
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `spend.record`
 
@@ -7441,7 +7441,7 @@ Give up on an open upload before it finishes: drops its temp file and its slot, 
 - Input:
   - `upload` string, required
   - `companion` string
-- Callers: `tailnet`
+- Callers: `agent`, `device`, `space`, `tailnet`
 - Registered only on the box.
 
 ### `sync.upload.chunk`
@@ -7453,7 +7453,7 @@ One chunk of an upload's bytes, at an exact offset. Internal: the daemon's own r
   - `offset` number, required
   - `upload` string, required
   - `companion` string
-- Callers: `tailnet`
+- Callers: `agent`, `device`, `space`, `tailnet`
 - Registered only on the box.
 
 ### `sync.upload.finish`
@@ -7464,7 +7464,7 @@ Verify and land a finished upload: checks its hash, scrubs it for secrets, and r
   - `hash` string, required
   - `upload` string, required
   - `companion` string
-- Callers: `tailnet`
+- Callers: `agent`, `device`, `space`, `tailnet`
 - Registered only on the box.
 
 ### `sync.upload.plan`
@@ -7477,7 +7477,7 @@ For a paired peer's own connection: which of its files are new, changed, already
     - `hash` string, required
     - `path` string, required
   - `companion` string
-- Callers: `tailnet`
+- Callers: `agent`, `device`, `space`, `tailnet`
 - Registered only on the box.
 
 ### `sync.upload.start`
@@ -7489,7 +7489,7 @@ Start (or resume) sending one file: offset is 0 for new, or how many bytes the b
   - `hash` string, required
   - `path` string, required
   - `companion` string
-- Callers: `tailnet`
+- Callers: `agent`, `device`, `space`, `tailnet`
 - Registered only on the box.
 
 ## system
@@ -7886,7 +7886,7 @@ Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code 
   - `message` string
   - `scope` "project": With always: allow this tool from now on in the thread's project only (the ask's always_project).
   - `surface` string
-- Callers: `capsule`, `cli`, `deck`, `link:box`, `local`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `link:box`, `local`, `module`, `tailnet`
 - Needs a person present.
 
 ### `threads.archive`
@@ -8793,7 +8793,7 @@ Connections the caller's surface may use: {surface, connections: [{id, source, r
   - `caller` string
   - `capability` string
   - `surface` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `vault.connections.register`
 
@@ -8858,7 +8858,7 @@ Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Nev
   - `name` string
   - `session` string
   - `version` integer
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 - Needs a person present.
 
 ### `vault.credential.tokens`
@@ -9207,7 +9207,7 @@ Names, kinds and bound hosts of the vault items a person may tag with #, for pic
   - `kind` string
   - `limit` integer
   - `q` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `vault.kit`
 
@@ -9300,7 +9300,7 @@ The # picker's vault items: id and name are the item name, hint says the kind an
 - Input:
   - `limit` integer
   - `q` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `vault.migrate-key`
 
@@ -9560,7 +9560,7 @@ Show one field of an item to the person, on their own device. Hide it again afte
   - `field` string
   - `session` string
   - `version` integer
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 - Needs a person present.
 
 ### `vault.revert`
@@ -9700,7 +9700,7 @@ Unlock the vault in the Deck, the Capsule or the extension for a while. Returns 
   - `surface` one of "deck", "capsule", "extension", required
   - `confirm` boolean
   - `ttl_s` integer
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 - Needs a person present.
 
 ### `vault.session.status`
@@ -9709,7 +9709,7 @@ Whether a session is unlocked, until when, and for which surface.
 
 - Input:
   - `session` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `vault.ssh.add`
 
@@ -9783,7 +9783,7 @@ The current one-time code for a login with a TOTP seed.
   - `id` string
   - `name` string
   - `session` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 - Needs a person present.
 
 ### `vault.unlock`
