@@ -22,7 +22,7 @@ const model = () => k.chains.fromFacts({ kind: "socket", surface: "mcp", uid: pr
 const R = k.gateway.records;
 try {
   await R.define(owner(), { add_types: [CONTACT] });
-  const c = await R.create(owner(), "contact", { name: "Pat Harlow", email: "pat@example.test" });
+  const c = await R.create(owner(), "contact", { name: "Pat Harlow" });
   const put = await k.gateway.seal.put({ chain: owner(), record: c.urn, field: "ssn", class: "us-ssn", value: "123-45-6789" });
   const u = await R.update(owner(), "contact", c.id, { ssn: put.ref }, c.version);
   const asOwner = await R.get(owner(), "contact", c.id);
