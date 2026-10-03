@@ -154,3 +154,18 @@ test("KS-1: person-only tools are refused on an unnamed thread's socket, and the
   }
   assert.equal(seen.length, before, "none of them reached vyred's handler");
 });
+
+test("KS-4: when renewal fails and the old token has run out, the socket's function answers nothing, so the call is refused", async t => {
+  const { k, bob, group } = await rig(t);
+  let T = Date.now();
+  const failing = { surfaces: { open: (...a) => (T > 0 && failing.down ? Promise.reject(new Error("kernel down")) : k.surfaces.open(...a)), revoke: s => k.surfaces.revoke(s) } };
+  const ks = createKernelSessions({ kernel: failing, ttlMs: 10 * 60_000, renewBeforeMs: 5 * 60_000, clock: () => T });
+  const s = await ks.open({ chain: bob, chat: group.id });
+  const tok = ks.tokenFor(s.id);
+  assert.ok(await tok());
+  failing.down = true;
+  T += 6 * 60_000;
+  assert.ok(await tok(), "renewal failed but the old token still has life: it is kept");
+  T += 5 * 60_000;
+  assert.equal(await tok(), undefined, "past its life with no renewal: nothing");
+});

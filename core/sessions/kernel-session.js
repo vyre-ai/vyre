@@ -13,6 +13,9 @@
 // This is half of the boundary: it keeps the credential out of the session's reach. It is not a boundary until the sandbox rules (D-1 to D-3) keep the session off vyred's main
 // socket, which carries no stamping. Every token has a model hop (an unnamed thread runs as the default assistant), and a long thread's token is renewed before it runs out.
 //
+// Setup: the default assistant ("assistant", or cfg.defaultAgent) must be an actor of the Space, added once at setup (grants.addActor). Without it every kernel call from an
+// unnamed thread is not_a_member: it fails closed, it never runs as the person.
+//
 //   const ks = createKernelSessions({ kernel });
 //   const s = await ks.open({ chain: personChain, chat, agent, thread });    // { id, expires }: no token
 //   openThreadSocket({ ..., kernelToken: ks.tokenFor(s.id) });               // vyred's side only
@@ -55,7 +58,9 @@ export function createKernelSessions(cfg) {
         cur.renewing = cur.renewing || mint(e.q).then(k => { const live = tokens.get(id); if (live) { cfg.kernel.surfaces.revoke(live.session); tokens.set(id, { token: k.token, session: k.session, expires: k.expires, q: live.q }); } else cfg.kernel.surfaces.revoke(k.session); }).catch(() => {}).finally(() => { cur.renewing = null; });
         await cur.renewing;
       }
-      return tokens.get(id)?.token;
+      // Past its life (a failed renewal left the old token and it has expired): answer nothing, so the socket refuses the call rather than send it unstamped.
+      const cur = tokens.get(id);
+      return cur && cur.expires > clock() ? cur.token : undefined;
     },
     /** End the session now: the kernel stops honouring its token and the function above answers nothing. Safe to call twice. */
     async end(/** @type {string} */ id) {
