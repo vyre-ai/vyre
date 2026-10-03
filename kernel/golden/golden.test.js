@@ -40,3 +40,8 @@ test("the matrix lists are unique and the world ids are stable", () => {
   assert.equal(new Set(CALLERS.map(c => c.id)).size, CALLERS.length);
   assert.deepEqual(WORLDS.map(w => w.id), ["bare", "person", "person+proof", "person+proof+said", "named"]);
 });
+
+test("K2b: with the kernel retrofit deciding the gates, every decision is the same as today's, cell for cell", () => {
+  const d = diff(load(), record({ gates: true }));
+  assert.deepEqual(d.slice(0, 20), [], `${d.length} decisions changed under the kernel gates`);
+});
