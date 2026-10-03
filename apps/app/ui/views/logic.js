@@ -1,5 +1,5 @@
 // @vyre/ui/views/logic: the pure half of the generated views (ui-primitives.md section 5), ported from deck/ui/views.js onto the kernel's shapes
-// (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what "How this page is made" says, what Seal-for-all
+// (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
 import { viewDefOf } from "../../../../deck/ui/view-defs.js";
 import { eventLine } from "../../../../deck/ui/kernel-view.js";
@@ -91,19 +91,6 @@ export function rowsByDay(rows, dateName, ym) {
 }
 
 // ------------------------------------------------------------------------------------------------------------------------------------ record page
-
-/** What the "How this page is made" disclosure shows: the definition that drew the page. @param {any} def @param {"list"|"board"|"calendar"|"record"} kind @param {any} [vd] */
-export function describeDef(def, kind, vd = viewDefOf(def)) {
-  const fieldsLine = def.fields.map((/** @type {any} */ f) => `${f.name} ${f.kind}${(f.kind === "link" || f.kind === "ref") && f.to ? " " + f.to : ""}${f.kind === "stage" ? `[${optionsOf(f).join(", ")}]` : ""}${f.kind === "choice" && f.options ? `[${f.options.join(", ")}]` : ""}${isSealedField(f) ? " (sealed)" : ""}`).join("\n    ");
-  /** @type {Record<string, string>} */
-  const lines = {
-    list: vd.list ? `view "${vd.plural} list" of ${def.name}\n  columns: ${vd.list.columns.join(", ")}${vd.list.sort ? `\n  sort: ${vd.list.sort}` : ""}` : "",
-    board: vd.board ? `view "${vd.plural} board" of ${def.name}\n  group by: ${vd.board.groupBy}\n  card: ${vd.board.card.join(", ")}` : "",
-    calendar: vd.calendar ? `view "${vd.plural} calendar" of ${def.name}\n  date: ${vd.calendar.date}` : "",
-    record: `view "${def.name} page" of ${def.name}\n  fields, in order:\n    ${fieldsLine}\n  also: timeline, linked records, files`,
-  };
-  return `${lines[kind]}\n\nNo screen was written for ${lc(vd.plural)}. The renderers read the type's fields.`;
-}
 
 /** The confirm for "Seal this field for all <type>": it names how many records have a value. @param {any} def @param {any} f @param {any[]} pool @param {any} [vd] */
 export function sealSpec(def, f, pool, vd = viewDefOf(def)) {

@@ -73,7 +73,7 @@ public static class VyreSandbox {
         bool exempt = false;
         for (int i = 2; i < a.Length; i++) {
           if (a[i] == "--grant" && i + 1 < a.Length) { var kv = a[++i].Split(new[] { '=' }, 2); Exec("icacls.exe", "\"" + kv[0] + "\" /grant \"*" + sid + ":(OI)(CI)" + kv[1] + "\" /T /C /Q"); }
-          else if (a[i] == "--traverse" && i + 1 < a.Length) { Exec("icacls.exe", "\"" + a[++i] + "\" /grant \"*" + sid + ":(X)\" /C /Q"); }   // folder only, no inheritance: lets the container walk through it
+          else if (a[i] == "--traverse" && i + 1 < a.Length) { Exec("icacls.exe", "\"" + a[++i] + "\" /grant \"*" + sid + ":(X,RA)\" /C /Q"); }   // folder only, no inheritance: lets the container walk through it
           else if (a[i] == "--exempt") exempt = Exec("CheckNetIsolation.exe", "LoopbackExempt -a -p=" + sid) == 0;
         }
         Console.WriteLine("sid=" + sid + " exempt=" + (exempt ? "yes" : "no"));

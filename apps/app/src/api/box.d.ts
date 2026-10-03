@@ -9,6 +9,10 @@ export function boxName(): string;
 export function connect(): Promise<Client>;
 /** Every event from the box; onReset hears a stream.reset (reload the view). Returns the unsubscribe. */
 export function listen(onEvent: (e: BoxEvent) => void, onReset?: (e: BoxEvent) => void): () => void;
+/** The box's origin (scheme, host, port) when it is reached directly; "" when only the relay reaches it. */
+export function boxOrigin(): string;
+/** A WebSocket on whichever path answers (direct or relay): same call for both. It does not move; on close, open another. */
+export function socket(path: string): Promise<WebSocket>;
 /** A read, now, never queued. */
 export function call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string }): Promise<Result<T>>;
 /** A write through the outbox: shown as sending at once, gone on the box's answer. */

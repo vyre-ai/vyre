@@ -60,3 +60,14 @@ test("runner module: ports without a device key are refused", async t => {
   const r = await s.call("runner.place", { space: "harlow" });
   assert.match(JSON.stringify(r), /device key/);
 });
+
+test("runner module: an assistant's claim on the CLI is refused for start, stop, lock and move, and the person's own CLI is not", async t => {
+  const sp = fakeSpace();
+  const s = await boot(t, { device: "dev_kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), spec: async () => ({}) });
+  for (const [tool, input] of [["runner.start", { space: "harlow", session: "s1" }], ["runner.stop", { space: "harlow", session: "s1" }], ["runner.lock", { space: "harlow" }], ["runner.move", { space: "harlow", session: "s1" }]]) {
+    const agent = await s.d.registry.call(tool, input, "cli:agent:kit");
+    assert.match(JSON.stringify(agent), /not the person|denied/, `${tool} refused for an assistant's CLI claim`);
+    const own = await s.d.registry.call(tool, input, "cli");
+    assert.ok(!/not the person/.test(JSON.stringify(own)), `${tool} is not refused for the person's own CLI`);
+  }
+});

@@ -35,7 +35,13 @@ const MAX_HEAD = 16 * 1024;
 // (Noise static key, checked by the box before this bridge exists); `allow()` says that device may
 // open peer streams in this space; the head's space must be this box's space; and each device is
 // held to PEER_PER_MIN new peer streams a minute and PEER_OPEN open at once, counted per device
-// across all its channels, so reconnecting does not reset the count.
+// across all its channels, so reconnecting does not reset the count (a box restart does).
+//
+// peers = { space, allow(deviceId), accept, shared? }. allow(deviceId) is SYNCHRONOUS and must return
+// exactly true (anything else, or a throw, is a refusal); the Wink module's per-device cache
+// `wink.peer.allow` has this shape. Rate and slots interplay: PEER_PER_MIN (30) bounds opens in any
+// minute, PEER_OPEN (8) bounds streams open at once; a stream that closes frees its slot at once but
+// still counts toward the minute's rate, so ten quick sequential sessions all pass.
 export const PEER_PER_MIN = 30;
 export const PEER_OPEN = 8;
 /** @type {Map<string, { stamps: number[], open: number }>} */

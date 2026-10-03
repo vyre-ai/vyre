@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, Meter, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, Meter, Segmented, Sheet, Text, showToast, markRef } from "@vyre/ui";
 import { Page } from "../shell/Page";
 import { useSettings } from "./state";
 import { BUDGET_STEPS, budgetLine, money, overLine, usedPercent, usedShare } from "./logic.js";
@@ -19,7 +19,7 @@ export function AiScreen() {
             {i ? <Divider /> : null}
             <View className="gap-s2 p-s3">
               <View className="flex-row items-center gap-s3">
-                <Avatar name={a.name} family="agent" size="lg" />
+                <Avatar of={markRef("agent", a.name)} size={40} />
                 <View className="min-w-0 flex-1 gap-s1">
                   <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{a.on ? <Chip tone="ok">{a.plan}</Chip> : <Chip>Not connected</Chip>}</View>
                   <Text size="caption" tone="label">{a.on ? budgetLine(a) : a.note}</Text>

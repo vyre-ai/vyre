@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, showToast } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Switch, Text, showToast, markRef } from "@vyre/ui";
 import { Page } from "../shell/Page";
 import { CUSTOMIZE_SPACES } from "./data";
 import { useTypes } from "./state";
@@ -22,7 +22,7 @@ export function CustomizeScreen() {
         {list.map((t, i) => (
           <View key={t.id}>
             {i ? <Divider /> : null}
-            <Row lead={<Avatar name={t.plural} family="project" tint />} title={t.plural} sub={typeLine(t)} end={t.kit ? <Chip>Kit</Chip> : undefined} onPress={() => router.push(`/u/settings/customize/${t.id}` as never)} />
+            <Row lead={<Avatar of={markRef("project", t.plural, t.id)} />} title={t.plural} sub={typeLine(t)} end={t.kit ? <Chip>Kit</Chip> : undefined} onPress={() => router.push(`/u/settings/customize/${t.id}` as never)} />
           </View>
         ))}
       </Card>

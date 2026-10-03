@@ -4,7 +4,7 @@
 // The runner's real ports, made from the kernel's own pieces (the module gets these from its host; tests pass fakes of the same shape):
 //   sealer    the sealing client (kernel/seal/client.js): sealer.lease.issue / renew, called as a person's chain
 //   offers    gateway.grants.offers (kernel/grants): active({ member, device }) and onRevoke(fn)
-//   credentialFor  vault's leasedUse(...) (kernel/seal/uses.js), already bound to the session -> lease map and the core vault's resolver
+//   credentialFor  vault's leasedUse(...): ({ session, route, method, path }); the Space maps the request to a credential (leases.bind), the runner never names one
 //   deviceId  () => the id of THIS computer's device key, read from the surfaces (R-13): the lease and the offer are for this machine,
 //             never a name a caller supplied
 //   spec      ({ space, session }) => { command, args, env, routes, readOnly, labels }: the space's own definition of the session

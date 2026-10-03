@@ -22,6 +22,7 @@ import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, tic
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
+import { peersFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
 import { agentClaim, ownerDevice } from "../modules/index.js";
@@ -480,7 +481,8 @@ export default {
       // The tailnet key is answered here, before vyred's router ever sees the request, so it is
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
-      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
+      const peers = peersFor(ctx);
+      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
@@ -547,6 +549,23 @@ export default {
           devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null,
           // This machine's own tailnet join as another box's desktop (ADR 0046), when it is one.
           ...(mine ? { tailnet: mine.tailnet || { state: "pending" } } : {}) };
+      },
+    });
+
+    // The same switch for the Wink module, after it has verified an instruction signed by the owner's device key (wink.relay.apply): a headless
+    // box has no presence, so the app proves the owner and the box takes the signed word.
+    ctx.tool("relay.apply", {
+      description: "Turn the relay on at a signed instruction from the owner's app. Only the wink module calls it, after verifying the signature.",
+      input: obj({ url: str }),
+      run: async (input, meta = {}) => {
+        if (meta.caller !== "module:wink") throw fail("denied", "relay.apply is for the wink module");
+        const url = input.url ? String(input.url) : settings().url;
+        if (!/^wss?:\/\/[^\s/]+/.test(url)) throw fail("bad_input", "url must be a ws:// or wss:// address");
+        if (url !== settings().url) stopLink();
+        await keys.ready();
+        save({ enabled: true, url });
+        startLink();
+        return { enabled: true, url };
       },
     });
 
@@ -951,9 +970,11 @@ export default {
       description: "Close a paired device's connections and refuse it from now on, for a module that has just removed it for the owner.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta = {}) => {
-        if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module closes a paired device's connections"), { code: "denied" });
+        // Only the first-party Wink module may cut a device off; the device must be paired to this box and not already removed.
+        if (meta.caller !== "module:wink") throw fail("denied", "relay.devices.drop is for the wink module");
         const id = String(input.id);
-        return { closed: forget(id, "removed"), id };
+        if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
+        return { closed: true, id };
       },
     });
 

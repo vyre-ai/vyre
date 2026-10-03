@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Card, Row, Switch, Text, showToast, type IconName } from "@vyre/ui";
+import { Avatar, Card, Row, Switch, Text, showToast, type IconName, IconTile } from "@vyre/ui";
 import { Page } from "../shell/Page";
 import { useDevices } from "./state";
 
@@ -19,7 +19,7 @@ export function WinkHome() {
       <View className="flex-row flex-wrap gap-s3">
         {VERBS.map((v) => (
           <Card key={v.id} className="min-w-menu flex-1 gap-s2">
-            <Row lead={<Avatar name={v.title} family="device" size="lg" icon={v.icon} />} title={v.title} onPress={() => router.push(v.href as never)} className="px-0" />
+            <Row lead={<IconTile name={v.icon} size={40} />} title={v.title} onPress={() => router.push(v.href as never)} className="px-0" />
             <Text tone="muted">{v.body}</Text>
           </Card>
         ))}

@@ -26,6 +26,7 @@ import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
+import { createKernelMembers } from "./kernel-members-compat.js";
 import {
   MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
 } from "./store.js";
@@ -128,8 +129,14 @@ export default {
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
-    const gate = async (spaceId, action = "views.read") => {
+    const gate = async (spaceId, action = "views.read", meta) => {
       const s = me();
+      if (kernelHandle(spaceId)) {
+        // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
+        const m = await membershipOf(spaceId, /** @type {string} */ (s.id), meta).catch(() => null);
+        if (!m) throw refuse("You are not a member of this space.", "not_a_member");
+        return s;
+      }
       const d = await authorize({ chain: personChain({ space: spaceId, person: /** @type {string} */ (s.id) }), action });
       if (d.effect !== "allow") throw refuse(REASONS[d.reason] || "You cannot do that here.", d.reason === "not_a_member" ? "not_a_member" : "forbidden");
       return s;
@@ -145,6 +152,20 @@ export default {
     /** The creator, or an owner of a space that exists. */
     const ownsFlow = (/** @type {any} */ row, /** @type {any} */ s) => row.createdBy === s.id || mstore.get(row.id, s.id)?.role === "owner";
     const mine = (/** @type {any} */ ref) => { const s = me(); const row = spaceOf(ref); if (!ownsFlow(row, s)) throw refuse("That space is not yours to run.", "forbidden"); return { s, row }; };
+
+    // ---- the Space's own kernel decides roles and memberships when it hosts or can reach one (ctx.kernel.for(space)): nothing here is then an authority ----
+    const K = ctx.kernel && typeof ctx.kernel.for === "function" ? ctx.kernel : null;
+    const kernelHandle = (/** @type {string} */ id) => { if (!K) return null; try { return K.for(id) || null; } catch { return null; } };
+    const kctxOf = async (/** @type {any} */ meta) => ({ chain: await K.chain(meta), proof: K.proofFrom(meta) });
+    /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
+    const members = async (id, meta) => {
+      const h = kernelHandle(id);
+      if (!h) return membersFor(id);
+      const k = await kctxOf(meta);
+      return createKernelMembers({ space: id, handle: h, now, displayNames: rnames.load(id), reader: () => k });
+    };
+    /** A person's role in a space from the place that decides it. @param {string} id @param {string} person @param {any} [meta] */
+    const membershipOf = async (id, person, meta) => (kernelHandle(id) ? (await (await members(id, meta)).get(person)) : mstore.get(id, person)) || null;
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
     /** @type {Map<string, any>} */ const memberSvc = new Map();
@@ -198,6 +219,7 @@ export default {
       if (!r.ok) throw refuse(`That name could not be verified: ${r.why}.`, r.code || "unverified");
       if (r.kind !== "person") throw refuse("That name does not belong to a person.", "not_found");
       await kv.put(pinKey, r.pin);
+      await kv.put(`person-name/${r.id}`, label);
       return r.id;
     };
 
@@ -207,13 +229,13 @@ export default {
      * person through this device. A newcomer device cannot change owners, so a refusal leaves a warning on the space and nothing else changes.
      * @param {any} row @param {string} [hint] the name of a person just added, so their entry can be found by name
      */
-    const syncOwners = async (row, hint) => {
+    const syncOwners = async (row, hint, meta) => {
       const c = await chainOf(row.id);
       if (!c) return;
       try {
         const t = now();
         let { state } = await stateOfSpace(row.id);
-        const rows = await membersFor(row.id).list();
+        const rows = await (await members(row.id, meta)).list();
         const owners = new Set(rows.filter((/** @type {any} */ r) => r.role === "owner" && !(r.expires && r.expires <= t)).map((/** @type {any} */ r) => r.person));
         let ops = c.ops;
         for (const id of owners) {
@@ -505,24 +527,25 @@ export default {
         return sync(spaceId, view);
       });
 
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each.", obj(), async () => {
+    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
-      return spaces.all().flatMap(row => {
-        const m = mstore.get(row.id, /** @type {string} */ (s.id));
+      const rows = [];
+      for (const row of spaces.all()) rows.push({ row, m: await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null) });
+      return rows.flatMap(({ row, m }) => {
         if (!m && row.createdBy !== s.id) return [];
         return [{ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt }];
       });
     });
 
-    tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async i => {
+    tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = me();
-      if (row.createdBy !== s.id) await gate(row.id);
-      const m = membersFor(row.id);
+      if (row.createdBy !== s.id) await gate(row.id, undefined, meta);
+      const m = await members(row.id, meta);
       const all = await m.list();
       return {
         id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, aliases: row.aliases, workspaceId: row.workspaceId,
-        warnings: [...row.warnings, ...(await m.warnings())], members: all.length, owners: await m.ownerCount(), role: (mstore.get(row.id, /** @type {string} */ (s.id)) || {}).role || null,
+        warnings: [...row.warnings, ...(await m.warnings())], members: all.length, owners: await m.ownerCount(), role: ((await membershipOf(row.id, /** @type {string} */ (s.id), meta)) || {}).role || null,
         roleNames: m.getDisplayNames(), createdAt: row.createdAt,
       };
     });
@@ -590,49 +613,49 @@ export default {
     // 3. members
     const out = (/** @type {any} */ r) => JSON.parse(JSON.stringify(r));
     const ownerGrant = (/** @type {any} */ i) => Boolean(i && i.role === "owner");
-    tool("spaces.members.list", "Everyone in a space with their role, scope and end date, and any warnings (such as a single owner).", obj({ space: str }, ["space"]), async i => {
+    tool("spaces.members.list", "Everyone in a space with their role, scope and end date, and any warnings (such as a single owner).", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
-      await gate(row.id);
-      const m = membersFor(row.id);
+      await gate(row.id, undefined, meta);
+      const m = await members(row.id, meta);
       return { space: row.id, members: out((await m.list()).map((/** @type {any} */ r) => ({ ...r, role_label: m.roleLabel(r.role) }))), warnings: await m.warnings() };
     });
     tool("spaces.members.add", "Add a person (their per_ id or their Vyre name) with a role. A temp member needs scope and an end date. Making an owner needs the person's approval on their device.",
       obj({ space: str, person: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" } }, ["space", "person", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
-        const s = await gate(row.id);
-        const r = out(await membersFor(row.id).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
-        if (i.role === "owner") await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""));
+        const s = await gate(row.id, undefined, meta);
+        const r = out(await (await members(row.id, meta)).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        if (i.role === "owner") await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
     tool("spaces.members.set-role", "Change a person's role. Making someone an owner needs the person's approval on their device.",
       obj({ space: str, person: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" } }, ["space", "person", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
-        const s = await gate(row.id);
-        const r = out(await membersFor(row.id).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
-        await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""));
+        const s = await gate(row.id, undefined, meta);
+        const r = out(await (await members(row.id, meta)).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
-    tool("spaces.members.remove", "Remove a person from a space. A space always keeps at least one owner.", obj({ space: str, person: str }, ["space", "person"]), async i => {
+    tool("spaces.members.remove", "Remove a person from a space. A space always keeps at least one owner.", obj({ space: str, person: str }, ["space", "person"]), async (i, meta) => {
       const row = spaceOf(i.space);
-      const s = await gate(row.id);
-      const r = out(await membersFor(row.id).removeMember({ actor: s.id, person: await personRef(i.person) }));
-      await syncOwners(row);
+      const s = await gate(row.id, undefined, meta);
+      const r = out(await (await members(row.id, meta)).removeMember({ actor: s.id, person: await personRef(i.person) }));
+      await syncOwners(row, undefined, meta);
       return r;
     });
     tool("spaces.members.extend", "Give a temp member a later end date. This is a grant change, so it needs the person's approval on their device.",
       obj({ space: str, person: str, expires: { type: "number" } }, ["space", "person", "expires"]), async (i, meta) => {
         const row = spaceOf(i.space);
-        const s = await gate(row.id);
-        return out(await membersFor(row.id).extendTemp({ actor: s.id, person: await personRef(i.person), newExpires: i.expires, presence: meta.presence }));
+        const s = await gate(row.id, undefined, meta);
+        return out(await (await members(row.id, meta)).extendTemp({ actor: s.id, person: await personRef(i.person), newExpires: i.expires, presence: meta.presence }));
       }, { presence: { summary: (/** @type {any} */ i) => `Extend ${i && i.person}'s access to ${i && i.space}` } });
     tool("spaces.members.transfer", "Hand a space to another member. The old owner becomes an admin (or the role you name). Needs the person's approval on their device.",
       obj({ space: str, to: str, demoteTo: { type: "string", enum: ["admin", "manager", "member"] } }, ["space", "to"]), async (i, meta) => {
         const row = spaceOf(i.space);
-        const s = await gate(row.id);
-        const r = out(await membersFor(row.id).transferOwnership({ actor: s.id, to: await personRef(i.to), demoteTo: i.demoteTo, presence: meta.presence }));
-        await syncOwners(row, PERSON_RE.test(String(i.to)) ? undefined : String(i.to).toLowerCase().replace(/\.vyre\.run$/, ""));
+        const s = await gate(row.id, undefined, meta);
+        const r = out(await (await members(row.id, meta)).transferOwnership({ actor: s.id, to: await personRef(i.to), demoteTo: i.demoteTo, presence: meta.presence }));
+        await syncOwners(row, PERSON_RE.test(String(i.to)) ? undefined : String(i.to).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Transfer ${i && i.space} to ${i && i.to}` } });
     tool("spaces.roles.names", "Read the display names of the five roles, or rename one (owner or admin). The ids never change.",
@@ -760,6 +783,26 @@ export default {
     tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
       const p = String(i.person);
       return { spaces: spaces.all().filter(r => r.status === "done" && (mstore.get(r.id, p) || r.createdBy === p)).map(r => ({ space: r.id, name: r.name, color: null, link: `https://${r.name}` })) };
+    }, { internal: true });
+
+    // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
+    // call, never cached: a device the person removed is gone at its next call), and `spaces.people` the candidates to look at. kernel/remote/person-of.js asks both.
+    tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => {
+      const id = String(i.person);
+      const mineId = identity.status();
+      const name = mineId.exists && mineId.id === id ? mineId.name : /** @type {string|null} */ (await kv.get(`person-name/${id}`));
+      if (!name) return { entries: [] };
+      const pinKey = `person-pin/${name}`;
+      let r;
+      try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
+      if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
+      await kv.put(pinKey, r.pin);
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind })) };
+    }, { internal: true });
+    tool("spaces.people", "The people of a space that hold an identity this device knows: its members and the person of a pending invite. For the transport's personOf.", obj({ space: str }, ["space"]), async (i, meta) => {
+      const row = spaceOf(i.space);
+      const list = await (await members(row.id, meta)).list().catch(() => []);
+      return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
     }, { internal: true });
 
     // 5b. the compute grant pair: the space allows its work on members' computers, the member accepts, and it covers only their own sessions on their own machine

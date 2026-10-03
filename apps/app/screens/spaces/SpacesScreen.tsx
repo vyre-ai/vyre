@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Segmented, Sheet, Text, showToast, markRef, spaceRef } from "@vyre/ui";
 import { Group, Page } from "../shell/Page";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useSpaces } from "../shell/state";
@@ -35,7 +35,7 @@ export function SpacesScreen() {
       <View className="flex-row flex-wrap gap-s3">
         {SPACES.map((s) => (
           <Card key={s.id} className="min-w-menu flex-1 gap-s3">
-            <Row lead={<Avatar name={s.name} family="space" size="lg" tint />} title={s.name} sub={s.address} className="px-0" />
+            <Row lead={<Avatar of={spaceRef(s.name)} size={56} />} title={s.name} sub={s.address} className="px-0" />
             <Text tone="muted">{`You are ${s.role === "owner" ? "an owner" : "an admin"}. Lives on ${s.home}.`}</Text>
             <View className="flex-row"><Button size="sm" label="Open" onPress={() => { setShowing(s.id); router.push("/u/now" as never); }} /></View>
           </Card>
@@ -49,14 +49,14 @@ export function SpacesScreen() {
             return (
               <View key={m.id}>
                 {i ? <Divider /> : null}
-                <Row lead={<Avatar name={m.name} />} title={m.name}
+                <Row lead={<Avatar of={markRef("person", m.name, m.id)} />} title={m.name}
                   sub={m.role === "temp" ? tempLine(m) : roleLabel(m.role)}
                   onPress={can ? () => open(m) : undefined}
                   end={<>{m.role === "temp" ? <Button size="sm" kind={endingSoon(m) ? "primary" : "secondary"} label="Extend" onPress={() => setSheet({ kind: "extend", id: m.id })} /> : null}<RoleChip role={m.role} /></>} />
               </View>
             );
           })}
-          {TEAM.map((t) => <View key={t.id}><Divider /><Row lead={<Avatar name={t.name} family="assistant" />} title={t.name} sub={t.sub} /></View>)}
+          {TEAM.map((t) => <View key={t.id}><Divider /><Row lead={<Avatar of={markRef(t.id === "juno" || t.name === "juno" ? "assistant" : "teammate", t.name, t.id)} />} title={t.name} sub={t.sub} /></View>)}
         </Card>
         <View className="flex-row flex-wrap gap-s2">
           <Button kind="primary" size="sm" icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />

@@ -22,8 +22,8 @@ import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
 import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
-import { ago, assistantNote, describeDef, filesOf, initialsOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
-import { HowMade, type RecordsWorld } from "./shared";
+import { ago, assistantNote, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
+import type { RecordsWorld } from "./shared";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -130,7 +130,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
         {related.length ? related.map((l, i) => (
           <View key={l.urn}>
             {i > 0 ? <Divider /> : null}
-            <Row lead={<Avatar name={l.type === "contact" ? initialsOf(l.title) || l.title : l.title} family={l.type === "contact" ? "person" : "project"} />} title={l.title} sub={l.type[0].toUpperCase() + l.type.slice(1)} onPress={() => onOpen(l.urn)} />
+            <Row lead={<Avatar of={{ kind: l.type === "contact" ? "person" : "project", id: l.urn, name: l.title }} />} title={l.title} sub={l.type[0].toUpperCase() + l.type.slice(1)} onPress={() => onOpen(l.urn)} />
           </View>
         )) : <View className="px-s4 pb-s4"><Text tone="label">Nothing linked.</Text></View>}
       </Card>
@@ -160,7 +160,6 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
         </Banner>
       ) : null}
       <View className={cn("gap-s4", !phone && "flex-row items-start")}>{main}{side}</View>
-      <HowMade text={describeDef(def, "record", vd)} />
 
       <Sheet open={!!confirm} onClose={() => setConfirm(null)} title={confirm ? sealSpec(def, confirm.f, pool, vd).title : undefined}>
         <Text tone="muted">{confirm ? sealSpec(def, confirm.f, pool, vd).body : ""}</Text>

@@ -7,7 +7,7 @@ export function Page({ title, sub, back, actions, children }: { title: string; s
   const router = useRouter();
   return (
     <ScrollView className="flex-1" contentContainerClassName="w-full max-w-page gap-s4 self-center p-s4 pb-s12">
-      {back ? <View className="flex-row"><Button kind="ghost" size="sm" label="Back" onPress={() => router.push(back as never)} /></View> : null}
+      {back ? <View className="flex-row"><Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => router.push(back as never)} /></View> : null}
       <View className="flex-row flex-wrap items-end gap-s3">
         <View className="min-w-menu flex-1 gap-s1">
           <Text size="page" strong>{title}</Text>

@@ -83,6 +83,18 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.retarget",
+        "reach": "person"
+      },
+      {
+        "name": "wink.device.key",
+        "reach": "person"
+      },
+      {
+        "name": "wink.relay.apply",
+        "reach": "person"
+      },
+      {
         "name": "wink.phone.open",
         "reach": "person"
       },
@@ -123,6 +135,10 @@
         "reach": "person"
       },
       {
+        "name": "wink.server.handover",
+        "reach": "modules"
+      },
+      {
         "name": "wink.peer.allow",
         "reach": "modules"
       },
@@ -159,7 +175,8 @@
       "storage.paired",
       "storage.removed",
       "storage.unreachable",
-      "wink.peer-bound"
+      "wink.peer-bound",
+      "wink.relay-applied"
     ],
     "on": [
       "relay.code-asked",

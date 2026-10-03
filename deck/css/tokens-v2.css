@@ -34,7 +34,9 @@
   --sans: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
   --fs-caption: 12px; --lh-caption: 16px;
+  --fs-secondary: 13px; --lh-secondary: 18px;
   --fs-body: 14px; --lh-body: 20px;
+  --fs-headline: 15px; --lh-headline: 20px;
   --fs-read: 15px; --lh-read: 23px;
   --fs-title: 18px; --lh-title: 24px;
   --fs-page: 24px; --lh-page: 30px;
@@ -43,7 +45,7 @@
   /* space: a 4 grid */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
   /* shape */
-  --r-chip: 6px; --r-field: 10px; --r-button: 10px; --r-button-touch: 12px; --r-row: 10px; --r-card: 14px; --r-card-phone: 14px; --r-sheet: 20px; --r-full: 999px;
+  --r-chip: 6px; --r-field: 10px; --r-button: 10px; --r-button-touch: 12px; --r-row: 10px; --r-card: 14px; --r-card-phone: 16px; --r-card-hero: 16px; --r-card-hero-phone: 20px; --r-sheet: 20px; --r-full: 999px;
   /* elevation: three levels, nothing else casts a shadow */
   --elev-1: 0 1px 0 var(--edge-top) inset, 0 1px 2px rgba(0,0,0,.35);
   --elev-2: 0 1px 0 var(--edge-top) inset, 0 8px 24px -8px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.35);
@@ -86,12 +88,12 @@
   --code-bg: #EFEBE2;
   --scrim: rgba(20,19,17,.32);
   --elev-1: 0 1px 0 var(--edge-top) inset, 0 1px 2px rgba(20,19,17,.08);
-  --elev-2: 0 1px 0 var(--edge-top) inset, 0 8px 24px -8px rgba(20,19,17,.22), 0 2px 6px rgba(20,19,17,.1);
-  --elev-3: 0 1px 0 var(--edge-top) inset, 0 28px 64px -20px rgba(20,19,17,.3), 0 6px 18px rgba(20,19,17,.12);
+  --elev-2: 0 1px 0 var(--edge-top) inset, 0 8px 24px -8px rgba(20,19,17,.18), 0 2px 6px rgba(20,19,17,.08);
+  --elev-3: 0 28px 64px -20px rgba(20,19,17,.28), 0 6px 18px rgba(20,19,17,.10);
   color-scheme: light;
 }
 
 /* Phone: larger body, read and title, 44 px controls and 64 px rows (design-system.md, type table). */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
-  :root { --fs-body: 16px; --lh-body: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 26px; --fs-page: 28px; --lh-page: 34px; --control: 44px; --control-sm: 36px; --row-h: 64px; }
+  :root { --fs-secondary: 15px; --lh-secondary: 20px; --fs-body: 16px; --lh-body: 22px; --fs-headline: 17px; --lh-headline: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 25px; --fs-page: 28px; --lh-page: 34px; --fs-display: 34px; --lh-display: 41px; --control: 44px; --control-sm: 36px; --row-h: 64px; }
 }

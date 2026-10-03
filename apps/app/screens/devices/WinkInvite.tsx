@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View } from "react-native";
-import { Avatar, Button, Card, Chip, Field, Ring, Text, showToast } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Field, Ring, Text, showToast, spaceRef } from "@vyre/ui";
 import { Page } from "../shell/Page";
 
 const CAN = [["Intake", true], ["Billing", true], ["Admin", false]] as const;
@@ -31,7 +31,7 @@ export function WinkInvite() {
       ) : step === 2 ? (
         <Card className="max-w-read gap-s3">
           <Text size="caption" strong tone="label">What they see</Text>
-          <View className="flex-row items-center gap-s3"><Avatar name="Harlow Legal" family="space" size="lg" tint /><View><Text strong>Join Harlow Legal</Text><Text size="caption" tone="label">Chris invited you to work in Harlow Legal's space.</Text></View></View>
+          <View className="flex-row items-center gap-s3"><Avatar of={spaceRef("Harlow Legal")} size={56} /><View><Text strong>Join Harlow Legal</Text><Text size="caption" tone="label">Chris invited you to work in Harlow Legal's space.</Text></View></View>
           <Text tone="muted">Allows: read and add to Intake and Billing. Not: admin.</Text>
           <Text tone="muted">Harlow Legal will see which of your devices touch its data. Nothing else on your devices, your Mine space or your other spaces.</Text>
           <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Join Harlow Legal" onPress={() => setStep(3)} /><Button kind="ghost" size="sm" label="Not now" onPress={() => setStep(0)} /></View>

@@ -1,26 +1,35 @@
 import { useRef, useState } from "react";
-import { Animated, Easing, Pressable, View, ActivityIndicator } from "react-native";
+import { Animated, Easing, View } from "react-native";
 import { cva } from "class-variance-authority";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
 import { Icon, type IconName } from "./Icon";
 import { useUiTheme } from "../theme";
+import { PressableScale } from "../motion/PressableScale";
+import { Pulse } from "../motion/Pulse";
+import { haptic } from "../motion/haptics";
 import { tokens } from "../../src/theme/tokens";
 
 const button = cva("flex-row items-center justify-center gap-s2 rounded-button border overflow-hidden", {
   variants: {
     kind: {
       primary: "bg-primary border-transparent",
-      secondary: "bg-surface-3 border-edge-strong",
+      // Secondary is ghost on desktop (an outline, no fill) and a surface-3 fill on a phone (ui-review Global 6); `phone` picks.
+      secondary: "bg-transparent border-edge-strong",
       ghost: "bg-transparent border-transparent",
       danger: "bg-err-wash border-transparent",
       hold: "bg-err-wash border-transparent",
     },
     size: { md: "h-control px-s4", sm: "h-control-sm px-s3" },
     disabled: { true: "opacity-45", false: "" },
+    phone: { true: "", false: "" },
   },
-  defaultVariants: { kind: "secondary", size: "md", disabled: false },
+  compoundVariants: [{ kind: "secondary", phone: true, class: "bg-surface-3 border-transparent" }],
+  defaultVariants: { kind: "secondary", size: "md", disabled: false, phone: false },
 });
+
+/** The button label: 15 medium (ui-review Global 6), on every platform. */
+const LABEL = { fontSize: 15, lineHeight: 20 } as const;
 
 const ink: Record<string, string> = { primary: "inverse", secondary: "default", ghost: "muted", danger: "err", hold: "err" };
 
@@ -39,12 +48,11 @@ export type ButtonProps = {
 
 /** Button: one primary per surface. "hold" carries the count of what goes and fires after a held press (tokens.v2.motion.hold). */
 export function Button({ label, kind = "secondary", size = "md", icon, onPress, disabled, loading, accessibilityLabel, className }: ButtonProps) {
-  const { color } = useUiTheme();
+  const { color, phone } = useUiTheme();
   const hold = kind === "hold";
   const fill = useRef(new Animated.Value(0)).current;
   const [holding, setHolding] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inkColor = kind === "primary" ? color["primary-ink"] : kind === "danger" || hold ? color.err : kind === "ghost" ? color["text-2"] : color.text;
   const stop = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
@@ -55,10 +63,11 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
     if (disabled || loading || timer.current) return;
     setHolding(true);
     Animated.timing(fill, { toValue: 1, duration: tokens.v2.motion.hold, easing: Easing.linear, useNativeDriver: false }).start();
-    timer.current = setTimeout(() => { timer.current = null; setHolding(false); fill.setValue(0); onPress?.(); }, tokens.v2.motion.hold);
+    timer.current = setTimeout(() => { timer.current = null; setHolding(false); fill.setValue(0); haptic.warn(); onPress?.(); }, tokens.v2.motion.hold);
   };
   return (
-    <Pressable
+    <PressableScale
+      depth={hold ? 1 : 0.97}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityHint={hold ? "Hold to confirm" : undefined}
@@ -67,36 +76,35 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       onPress={hold ? undefined : onPress}
       onPressIn={hold ? start : undefined}
       onPressOut={hold ? stop : undefined}
-      className={cn(button({ kind, size, disabled: !!disabled }), className)}
-      style={({ pressed, hovered }: any) => (pressed && !hold ? { opacity: 0.85 } : hovered && !disabled ? { opacity: 0.92 } : undefined)}
+      className={cn(button({ kind, size, disabled: !!disabled, phone }), className)}
+      pressedStyle={hold ? undefined : { opacity: 0.85 }}
+      hoverStyle={{ opacity: 0.92 }}
     >
       {hold ? (
         <Animated.View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, bottom: 0, backgroundColor: color["err-wash"], width: fill.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }) }} />
       ) : null}
-      {loading ? <ActivityIndicator size="small" color={inkColor} /> : icon ? <Icon name={icon} tone={kind === "primary" ? "primary-ink" : kind === "danger" || hold ? "err" : "text"} /> : null}
-      {label !== undefined ? (
-        <Text strong size={size === "sm" ? "caption" : "body"} tone={ink[kind] as any} style={{ opacity: loading ? 0.75 : 1 }}>
-          {label}
-        </Text>
-      ) : null}
-      <View />
-    </Pressable>
+      <Pulse active={!!loading}>
+        {icon ? <Icon name={icon} tone={kind === "primary" ? "primary-ink" : kind === "danger" || hold ? "err" : "text"} /> : null}
+        {label !== undefined ? <Text medium style={size === "sm" ? undefined : LABEL} size={size === "sm" ? "secondary" : "body"} tone={ink[kind] as any}>{label}</Text> : null}
+      </Pulse>
+    </PressableScale>
   );
 }
 
 /** A square button for an icon. Always named. 36 (control) or 44 (touch). */
 export function IconButton({ icon, label, onPress, kind = "ghost", touch }: { icon: IconName; label: string; onPress?: () => void; kind?: "ghost" | "secondary" | "primary"; touch?: boolean }) {
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
       // @ts-expect-error web-only prop: the tooltip
       title={label}
       className={cn("items-center justify-center rounded-button border", touch ? "h-touch w-touch" : "h-control w-control", kind === "primary" ? "bg-primary border-transparent" : kind === "secondary" ? "bg-surface-3 border-edge-strong" : "bg-transparent border-transparent")}
-      style={({ pressed, hovered }: any) => (pressed ? { opacity: 0.8 } : hovered ? { opacity: 0.9 } : undefined)}
+      pressedStyle={{ opacity: 0.8 }}
+      hoverStyle={{ opacity: 0.9 }}
     >
       <Icon name={icon} size={20} tone={kind === "primary" ? "primary-ink" : "text-2"} />
-    </Pressable>
+    </PressableScale>
   );
 }

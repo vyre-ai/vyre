@@ -58,7 +58,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false } = {}) {
+async function device(t, { records = false, kernelFor = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -76,7 +76,7 @@ async function device(t, { records = false } = {}) {
   const logs = [];
   const seen = [];
   events.on("*", e => seen.push(e));
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence) });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox", names: { directory: "http://127.0.0.1:1" } }, paths: p, log: m => logs.push(String(m)), presence: /** @type {any} */ (presence), ...(kernelFor ? { kernelFor } : {}) });
   await reg.start(found, { role: "box" });
   let stopped = false;
   t.after(async () => { if (stopped) return; stopped = true; await reg.stop(); db.close(); });
@@ -733,4 +733,48 @@ test("the compute grant pair through the tools: the space allows, the member acc
   const other = await d.ok("spaces.compute.may-run", { space, session: { owner: alex.id }, machine: { owner: "per_" + "k".repeat(26) } }, "module:scheduler");
   assert.equal(other.allow, false);
   assert.deepEqual(d.of("compute.member-accepted").map(e => e.person), [alex.id]);
+});
+
+
+test("kernel mode: roles and members are the Space kernel's, through the tools, with the kernel's proofs and refusals (a real kernel, in memory)", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa";
+  /** @type {any} */ let K = null, handle = null;
+  const used = new Set();
+  const presenceK = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "bad_proof") };
+  // The module reaches the one real kernel for any space id it asks about (the routing is the only fake: the kernel itself is real).
+  const real = m => (handle ||= K.kernelFor(m));
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain() });
+  const d = await device(t, { kernelFor });
+  const alex = await d.ok("spaces.identity.create", { name: "alex" });
+  K = await createKernel({ space: KSPACE, owner: alex.id, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: presenceK, hasPresenceSession: () => true });
+  const ownerChain = K.chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  const { token } = await K.surfaces.open(ownerChain);
+  const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  const space = s.space;
+  const sign = (call, ...a) => ({ payload_hash: proofRequest(KSPACE, call, ...a).payload_hash, nonce: Math.random().toString(36) });
+  const KIT = "per_" + "k".repeat(26);
+  // no proof: the kernel says the change needs the person's approval, in the module's words
+  const bare = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
+  assert.equal(bare.error?.code, "needs_presence", JSON.stringify(bare.error));
+  // with the kernel's proof it goes through, and the list is the kernel's
+  const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token, kernel_proof: sign("setRole", { person: KIT, role: "member" }) });
+  assert.ok(!added.error, JSON.stringify(added.error));
+  const listed = await d.ok("spaces.members.list", { space }, "cli", { token });
+  assert.deepEqual(listed.members.map(m => [m.person, m.role]).sort(), [[alex.id, "owner"], [KIT, "member"]].sort());
+  // a role the kernel refuses (a member cannot be made owner by... the owner can; a temp needs a scope) comes back as the module's code
+  const temp = await d.call("spaces.members.set-role", { space, person: KIT, role: "temp" }, "cli", { token, kernel_proof: sign("setRole", { person: KIT, role: "temp" }) });
+  assert.equal(temp.error?.code, "bad_scope", JSON.stringify(temp.error));
+  const gone = await d.call("spaces.members.remove", { space, person: KIT }, "cli", { token, kernel_proof: sign("removeMember", { person: KIT }) });
+  assert.ok(!gone.error, JSON.stringify(gone.error));
+  assert.deepEqual((await d.ok("spaces.members.list", { space }, "cli", { token })).members.map(m => m.person), [alex.id]);
+  // the last owner stays: the kernel's rule, as last_owner
+  const last = await d.call("spaces.members.remove", { space, person: alex.id }, "cli", { token, kernel_proof: sign("removeMember", { person: alex.id }) });
+  assert.equal(last.error?.code, "last_owner", JSON.stringify(last.error));
+  // spaces.get and spaces.list read the role from the kernel
+  assert.equal((await d.ok("spaces.get", { space }, "cli", { token })).role, "owner");
+  assert.equal((await d.ok("spaces.list", {}, "cli", { token })).find(x => x.id === space).role, "owner");
 });
