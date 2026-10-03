@@ -80,7 +80,12 @@ export function createDoor({ sealer, drivers, sinks, residency = () => null, bud
         out = await driver.call({ ...input, chain: undefined, messages });
         content = await scan(chain, session, String(out.content ?? ""), { ...input, session });
         for (const t of out.tool_calls ?? []) await scan(chain, session, JSON.stringify(t.input ?? null), { ...input, session });
-      } catch (e) { if (budget.release) budget.release(input); else budget.settle?.(input, { cost_micro: 0 }); throw e; }
+      } catch (e) {
+        // A call the provider never answered spends nothing; one it answered before a scan refused it cost what it cost (the usage it reported).
+        if (out) budget.settle?.(input, out.usage);
+        else if (budget.release) budget.release(input); else budget.settle?.(input, { cost_micro: 0 });
+        throw e;
+      }
       budget.settle?.(input, out.usage);
       if (!input.session) await this.endSession(chain, session);
       return { ...out, id: out.id ?? crypto.randomUUID(), content };

@@ -18,7 +18,8 @@ export function mechanism(platform = process.platform) {
   return null;
 }
 
-const NODE_FLAGS = ["--permission"];
+// A memory cap for the module's own heap; CPU time is bounded by the supervisor, which kills a call that runs too long.
+const NODE_FLAGS = ["--permission", "--max-old-space-size=192"];
 
 /**
  * @param {{ platform?: NodeJS.Platform, execPath?: string, dir: string, args?: string[], entry: string, script?: string }} o dir: the module's folder (read only); entry: the module file inside it
@@ -26,6 +27,8 @@ const NODE_FLAGS = ["--permission"];
  */
 export function sandboxCommand(o) {
   const platform = o.platform || process.platform, execPath = o.execPath || process.execPath;
+  // The entry stays inside the module's folder: no `..`, no absolute path, no backslash, nothing that resolves outside it.
+  if (typeof o.entry !== "string" || !o.entry || path.isAbsolute(o.entry) || o.entry.split(/[\\/]/).includes("..") || o.entry.includes("\\") || o.entry.includes("\0")) throw new Error("bad module entry");
   const mech = mechanism(platform);
   if (!mech) return null;
   const real = fs.realpathSync(execPath), nodePrefix = path.dirname(path.dirname(real));
@@ -42,12 +45,16 @@ export function sandboxCommand(o) {
       real, ...NODE_FLAGS, "--allow-fs-read=/module", "--allow-fs-read=/vyre", "/vyre/main.js", ...(o.args || []),
     ] };
   }
-  // macOS: deny the network and every write outright, deny reads of the user's folders, allow the module's own folder and the system.
-  const home = process.env.HOME ? fs.realpathSync(process.env.HOME) : "/Users";
+  // macOS: deny by default. Allowed: running the one Node binary, reading the module's own folder, Node's own tree and the system libraries and frameworks
+  // it links, a few harmless device nodes, and the two sysctls Node reads at start. No network, no write, no other file, no signal to another process, no
+  // mach service, no other sysctl. If this profile is too tight for Node to start, the self-test fails and the module is refused: never loosen it silently.
+  const sub = (/** @type {string} */ p) => `(subpath ${JSON.stringify(p)})`;
   const profile = [
-    "(version 1)", "(allow default)", "(deny network*)", "(deny file-write*)",
-    `(deny file-read* (subpath ${JSON.stringify(home)}))`, '(deny file-read* (subpath "/Volumes"))',
-    `(allow file-read* (subpath ${JSON.stringify(dir)}) (subpath ${JSON.stringify(nodePrefix)}) (literal ${JSON.stringify(child)}))`,
+    "(version 1)", "(deny default)", "(deny network*)", "(deny file-write*)", "(deny signal)", "(deny mach-lookup)",
+    `(allow process-exec (literal ${JSON.stringify(real)}))`,
+    "(allow process-fork)", "(allow sysctl-read (sysctl-name \"hw.ncpu\" \"hw.availcpu\" \"hw.memsize\" \"hw.pagesize\" \"kern.osrelease\" \"kern.ostype\"))",
+    `(allow file-read* ${sub(dir)} ${sub(nodePrefix)} ${sub(path.dirname(child))} ${sub("/usr/lib")} ${sub("/System/Library")} ${sub("/private/var/db/dyld")} (literal "/dev/null") (literal "/dev/urandom") (literal "/dev/random") (literal "/"))`,
+    "(allow signal (target self))",
   ].join("\n");
   return { mechanism: mech, cmd: "/usr/bin/sandbox-exec", args: ["-p", profile, real, ...NODE_FLAGS, `--allow-fs-read=${dir}`, `--allow-fs-read=${path.dirname(child)}`, child, ...(o.args || [])] };
 }

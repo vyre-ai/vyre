@@ -31,7 +31,7 @@ const P = {
 
 function rig() {
   const log = createEventLog({ space: SPACE, clock });
-  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5) });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence });
   const store = createMemoryStore({ clock });
   const gw = createGateway({ space: SPACE, store, log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
   gs.bootstrap({ owner: OWNER });
@@ -183,17 +183,17 @@ test("offers: the compute pair needs both sides, only for that member's own comp
   const events = [];
   const off = g.offers.onRevoke(e => events.push(e));
   const mkO = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
-  const q = { member: BOB, device: "dev_laptop" };
+  const q = { member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" };
   assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false });
   // the member cannot allow it for the Space; an admin cannot accept for the member
   await assert.rejects(() => mkO(personChain(BOB), { side: "space_allows", member: BOB }), { code: "not_allowed" });
-  await assert.rejects(() => mkO(personChain(ALICE), { side: "member_accepts", member: BOB, device: "dev_laptop" }), { code: "not_allowed" });
+  await assert.rejects(() => mkO(personChain(ALICE), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }), { code: "not_allowed" });
   const allow = await mkO(personChain(ALICE), { side: "space_allows", member: BOB });
   assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: false }, "one side is not enough");
-  const accept = await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  const accept = await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
   assert.deepEqual(g.offers.active(q), { spaceAllows: true, memberAccepts: true });
   assert.deepEqual(g.offers.active({ member: BOB, device: "dev_other" }), { spaceAllows: true, memberAccepts: false }, "acceptance is per computer");
-  assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
+  assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop", device_key: "KEY_LAPTOP" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
   // the member withdraws: told at once; an admin cannot withdraw the member's acceptance
   const un = id => ({ presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
   await assert.rejects(() => g.offers.unoffer(personChain(ALICE), accept.id, un(accept.id)), { code: "not_allowed" });
@@ -201,7 +201,7 @@ test("offers: the compute pair needs both sides, only for that member's own comp
   assert.deepEqual(events.map(e => [e.side, e.reason]), [["member_accepts", "withdrawn"]]);
   assert.equal(g.offers.active(q).memberAccepts, false);
   // the Space's side: a role change tells the runner too, and a non-member has no offer in effect
-  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" });
+  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
   await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
   assert.ok(events.some(e => e.reason === "role_changed"));
   await g.offers.unoffer(personChain(ALICE), allow.id, un(allow.id));
@@ -229,7 +229,7 @@ test("G-3: removing a member takes their grants and offers with them, tells the 
   await g.setRole(owner(), { person: ALICE, role: "admin" }, P.role({ person: ALICE, role: "admin" }));
   const told = [];
   g.offers.onRevoke(e => told.push(e.reason));
-  const o = { side: "member_accepts", member: BOB, device: "dev_laptop" };
+  const o = { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" };
   await g.offers.offer(personChain(BOB), o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
   const rm = m => g.removeMember(owner(), m, P.role({ remove: m.person }));
   await assert.rejects(() => g.removeMember(owner(), { person: OWNER }, P.role({ remove: OWNER })), { code: "not_allowed" }, "the last owner stays");
@@ -237,7 +237,7 @@ test("G-3: removing a member takes their grants and offers with them, tells the 
   const r = await rm({ person: BOB });
   assert.ok(r.grants_revoked >= 1);
   assert.equal(gs.roleOf(actor("person", BOB)), null);
-  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop" }).memberAccepts, false);
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" }).memberAccepts, false);
   assert.deepEqual(told, ["removed"]);
   assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.subject.actor && x.subject.actor.id === BOB), []);
   gs.rebuild();
@@ -256,11 +256,119 @@ test("G-2: an event's before and after are cut to the fields the chain may see, 
   const ev = (await gw.events.read(kit, { type: "contact.created" }))[0];
   assert.deepEqual(Object.keys(ev.data.after), ["name"]);
   assert.deepEqual(ev.data.changed, ["name"]);
-  assert.ok(!JSON.stringify(ev).includes("41"));
+  assert.ok(!/"age"/.test(JSON.stringify(ev.data)) && !/"status"/.test(JSON.stringify(ev.data)), "the cut fields are not in the diff at all");
   const seen = [];
   gw.events.subscribe(kit, "w", { type: "contact.created" }, e => { seen.push(e); });
-  await new Promise(r => setTimeout(r, 20));
-  assert.ok(seen.length >= 1 && seen.every(e => !JSON.stringify(e).includes("41")));
+  for (let i = 0; i < 200 && !seen.length; i++) await new Promise(r => setTimeout(r, 10));
+  assert.ok(seen.length >= 1 && seen.every(e => !/"age"/.test(JSON.stringify(e.data))));
   const full = (await gw.events.read(owner(), { type: "contact.created" }))[0];
   assert.equal(full.data.after.age, 41, "the owner sees the whole diff");
+});
+
+
+test("G-1b: a genuine event appended again does not bring back a revoked grant or a removed member (the MAC binds the position)", async () => {
+  const { g, gs, log } = rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const i = input();
+  const made = await g.create(owner(), i, P.create(i));
+  await g.revoke(owner(), made.id, "gone", P.revoke(made.id, "gone"));
+  await g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB }));
+  assert.equal(gs.roleOf(actor("person", BOB)), null);
+  // copy the genuine, validly sealed events and append them again with a chain that has log access
+  const replay = chains.fromFacts({ kind: "module", module: "grants", first_party: true });
+  for (const e of log.read({}).filter(x => x.type === "grant.created" || x.type === "member.set")) log.append(replay, { type: e.type, sv: 1, subject: e.subject, data: e.data });
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", BOB)), null, "the removed person stays removed");
+  assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.id === made.id), [], "the revoked grant stays revoked");
+  assert.equal(gs.roleOf(actor("person", OWNER)), "owner");
+});
+
+test("G-4: an acceptance is bound to the computer's key; a second machine naming the same id, or no key, does not claim it", async () => {
+  const { g } = rig();
+  await g.setRole(owner(), { person: BOB, role: "member" }, P.role({ person: BOB, role: "member" }));
+  const mkO = (chain, o) => g.offers.offer(chain, o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
+  await mkO(owner(), { side: "space_allows", member: BOB });
+  await assert.rejects(() => mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop" }), { code: "bad_input" }, "an acceptance names its computer's key");
+  await mkO(personChain(BOB), { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_A" });
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_A" }).memberAccepts, true);
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false, "another machine, same id");
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop" }).memberAccepts, false, "a bare id is not enough");
+});
+
+
+const inviteProof = (action, input, resource) => proof(action, input, resource);
+test("invites: an admin approves once; the invitee accepts alone with their own proof; single use, exact contents, expiry, and a second confirmation for admin and owner", async () => {
+  const { g, gs, log } = rig();
+  const inv = async (chain, i) => g.invites.create(chain, i, { presence: inviteProof("grants.invite", i, `vyre://${SPACE}/invite/new`) });
+  const guest = who => chains.fromFacts({ kind: "invitee", person: who, vouched: true });
+  const acceptP = (i, who) => ({ op: "grant.accept", fields: { invite: i.id, hash: i.hash, person: who }, n: Math.random() });
+  const seen = i => ({ role: i.role, scope: i.scope, expires: i.expires, invitee: i.invitee });
+  // an invite for a member
+  const i1 = await inv(owner(), { role: "member" });
+  assert.equal(i1.status, "pending");
+  assert.equal(gs.roleOf(actor("person", BOB)), null);
+  await assert.rejects(() => g.invites.accept(guest(BOB), i1.id, { seen: seen(i1), proof: {} }), { code: "needs_presence" }, "no proof of their own");
+  await assert.rejects(() => g.invites.accept(guest(BOB), i1.id, { seen: { ...seen(i1), role: "admin" }, proof: acceptP(i1, BOB) }), { code: "contents_differ" }, "not what was approved");
+  const done = await g.invites.accept(guest(BOB), i1.id, { seen: seen(i1), proof: acceptP(i1, BOB) });
+  assert.equal(done.membership.role, "member");
+  assert.equal(gs.roleOf(actor("person", BOB)), "member", "applied with no admin present");
+  await assert.rejects(() => g.invites.accept(guest("per_carol"), i1.id, { seen: seen(i1), proof: acceptP(i1, "per_carol") }), { code: "not_found" }, "single use");
+  // a named invitee, and expiry
+  const i2 = await inv(owner(), { role: "member", invitee: "per_dave" });
+  await assert.rejects(() => g.invites.accept(guest("per_carol"), i2.id, { seen: seen(i2), proof: acceptP(i2, "per_carol") }), { code: "not_found" });
+  const i3 = await inv(owner(), { role: "member", valid_ms: 1000 });
+  T += 5000;
+  await assert.rejects(() => g.invites.accept(guest("per_erin"), i3.id, { seen: seen(i3), proof: acceptP(i3, "per_erin") }), { code: "expired" });
+  // an admin invite stays pending until the inviter confirms the fingerprint words
+  const i4 = await inv(owner(), { role: "admin" });
+  assert.equal(i4.needs_confirm, true);
+  await assert.rejects(() => g.invites.accept(guest("per_frank"), i4.id, { seen: seen(i4), proof: acceptP(i4, "per_frank") }), { code: "needs_confirmation" });
+  await g.invites.confirm(owner(), i4.id, { words: "amber tiger" }, { presence: inviteProof("grants.invite", { confirm: i4.id, words: "amber tiger" }, `vyre://${SPACE}/invite/${i4.id}`) });
+  assert.equal((await g.invites.accept(guest("per_frank"), i4.id, { seen: seen(i4), proof: acceptP(i4, "per_frank") })).membership.role, "admin");
+  // a member cannot invite anyone, an admin cannot invite an admin
+  await assert.rejects(() => inv(personChain(BOB), { role: "member" }), e => ["not_found", "not_allowed"].includes(e.code));
+  await assert.rejects(() => inv(personChain("per_frank"), { role: "admin" }), { code: "not_allowed" });
+  // an invitee chain that is not accepting anything finds nothing
+  await assert.rejects(() => g.list(guest("per_zed")), { code: "not_found" });
+  // survives a rebuild: used stays used, memberships stay
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", BOB)), "member");
+  await assert.rejects(() => g.invites.accept(guest("per_gina"), i1.id, { seen: seen(i1), proof: acceptP(i1, "per_gina") }), { code: "not_found" });
+  assert.ok(log.read({ type: "invite.created" }).length >= 4);
+});
+
+test("expiry sweep: expired grants and temp memberships are revoked by the kernel itself, only ever reducing power, and the runner is told", async () => {
+  const { g, gs } = rig();
+  const exp = T + 60_000;
+  const role = { person: "per_temp", role: "temp", scope: [`vyre://${SPACE}/contact/c1`], expires: exp };
+  await g.setRole(owner(), role, P.role(role));
+  const told = [];
+  g.offers.onRevoke(e => told.push(e.reason));
+  const withExp = input({ subject: { kind: "actor", actor: actor("person", ALICE) }, conditions: { when: { expires: exp } } });
+  await g.create(owner(), withExp, P.create(withExp));
+  assert.deepEqual(gs.sweep(), { revoked: 0, removed: 0 }, "nothing expired yet");
+  T = exp + 10;
+  const r = gs.sweep();
+  assert.ok(r.revoked >= 2 && r.removed === 1, JSON.stringify(r));
+  assert.equal(gs.roleOf(actor("person", "per_temp")), null);
+  assert.deepEqual((await g.list(owner(), { status: "active" })).filter(x => x.conditions.when && x.conditions.when.expires === exp), []);
+  assert.deepEqual(gs.sweep(), { revoked: 0, removed: 0 }, "idempotent");
+  gs.rebuild();
+  assert.equal(gs.roleOf(actor("person", "per_temp")), null);
+});
+
+test("installModule: a first-party module becomes a service actor with exactly the actions its manifest declared, kernel-only and idempotent", async () => {
+  const { gs, gw } = rig();
+  await gw.records.define(owner(), { add_types: [CONTACT] });
+  const svc = () => gw.serviceChain("goals");
+  assert.equal(await gw.records.get(svc(), "contact", "0190c3f2-1111-4abc-8def-000000000000"), null, "no membership, no access");
+  gs.installModule("goals", { actions: ["records.read", "records.create"], prefixes: ["contact/*"] });
+  const c = await gw.records.create(svc(), "contact", { name: "From the module" });
+  assert.equal(c.data.name, "From the module");
+  await assert.rejects(() => gw.records.update(svc(), "contact", c.id, { age: 1 }, 1), { code: "not_found" }, "only what it declared");
+  const before = (await gw.grants.list(owner())).length;
+  gs.installModule("goals", { actions: ["records.read", "records.create"], prefixes: ["contact/*"] });
+  assert.equal((await gw.grants.list(owner())).length, before, "idempotent");
+  gs.rebuild();
+  assert.ok(await gw.records.get(svc(), "contact", c.id));
 });

@@ -6,7 +6,10 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import { sandboxCommand, mechanism } from "./sandbox.js";
 import { createEgress, privateAddress } from "./egress.js";
 import { createSupervisor } from "./supervisor.js";
-import { createModuleHost } from "./host.js";
+import { createModuleHost, wildcardOk, SHARED_SUFFIXES } from "./host.js";
+import { createFirstPartyCheck, signModule, treeHash } from "./firstparty.js";
+import { pinnedFetch, ipBytes } from "./egress.js";
+import crypto from "node:crypto";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -31,7 +34,8 @@ test("egress: https only, declared hosts only, never a private address, checked 
   assert.equal((await e.request("crm-sync", "https://img.cdn.example.com/a")).status, 200, "a declared wildcard");
   assert.equal(await code(e.request("crm-sync", "https://cdn.example.com/")), "egress_refused", "the bare domain is not the wildcard");
   assert.equal(await code(e.request("crm-sync", "https://user:pw@api.example.com/")), "egress_refused");
-  for (const bad of ["127.0.0.1", "10.0.0.5", "192.168.1.1", "169.254.169.254", "172.16.0.1", "::1", "fd00::1", "::ffff:127.0.0.1", "100.64.0.1", "0.0.0.0"]) assert.equal(privateAddress(bad), true, bad);
+  for (const bad of ["127.0.0.1", "10.0.0.5", "192.168.1.1", "169.254.169.254", "172.16.0.1", "::1", "fd00::1", "::ffff:127.0.0.1", "100.64.0.1", "0.0.0.0", "::ffff:7f00:1", "::ffff:a00:1", "64:ff9b::7f00:1", "::127.0.0.1", "2002:7f00:1::", "2001:0:4136:e378:8000:63bf:3fff:fdd2", "198.18.0.1", "192.0.2.1", "203.0.113.9", "255.255.255.255", "fe80::1", "ff02::1", "::"]) assert.equal(privateAddress(bad), true, bad);
+  for (const ok of ["93.184.216.34", "8.8.8.8", "2606:4700::1111", "::ffff:5db8:d822", "2a00:1450:4001::200e"]) assert.equal(privateAddress(ok), false, ok);
   assert.equal(privateAddress("93.184.216.34"), false);
   const rebind = createEgress({ space: SPACE, hostsOf: () => ["rebind.example.com", "meta.example.com", "127.0.0.1"], resolve: async h => (h === "rebind.example.com" ? ["127.0.0.1"] : ["169.254.169.254"]), fetchImpl: async () => { throw new Error("must not be reached"); } });
   assert.equal(await code(rebind.request("m", "https://rebind.example.com/")), "egress_refused", "a name that resolves to loopback");
@@ -87,7 +91,7 @@ test("supervisor: the self-test sees network, writes, outside reads, child proce
   const s = createSupervisor();
   assert.equal(s.available(), false, "not available before it has proved itself");
   const p = await s.selfTest();
-  assert.deepEqual([p.ok, p.results], [true, { network: "blocked", write_module: "blocked", read_outside: "blocked", child_process: "blocked", worker: "blocked" }]);
+  assert.deepEqual([p.ok, Object.values(p.results).every(v => v === "blocked"), Object.keys(p.results).length], [true, true, 13]);
   assert.equal(s.available(), true);
 });
 
@@ -112,7 +116,7 @@ test("a sandboxed module runs, answers, can only reach declared hosts through th
   await supervisor.selfTest();
   t.after(() => supervisor.stopAll());
   h2 = createModuleHost({ space: SPACE, log, chains, isFirstParty: () => false, supervisor });
-  assert.deepEqual(await h2.install({ name: "crm-sync", dir, entry: "entry.js", manifest: { needs: { egress: ["api.example.com"] } } }), { name: "crm-sync", mode: "sandboxed" });
+  assert.deepEqual(await h2.install({ name: "crm-sync", dir, entry: "entry.js", manifest: { needs: { egress: ["api.example.com"] } } }, { approved_hosts: ["api.example.com"] }), { name: "crm-sync", mode: "sandboxed" });
   assert.deepEqual(await h2.call("crm-sync", "ping", { n: 41 }), { pong: 42 });
   const via = await h2.call("crm-sync", "fetch", { url: "https://api.example.com/v1" });
   assert.equal(via.body, "hello");
@@ -121,4 +125,88 @@ test("a sandboxed module runs, answers, can only reach declared hosts through th
   for (const m of ["readEtc", "writeHere", "socket", "child"]) await assert.rejects(() => h2.call("crm-sync", m, {}), /./, m);
   assert.deepEqual((await h2.call("crm-sync", "env", {})).split(",").filter(k => !["PATH", "VYRE_MODULE_ENTRY", "PWD"].includes(k)), [], "no ambient environment: no keys, no tokens");
   await assert.rejects(() => h2.call("crm-sync", "nope", {}), /./);
+});
+
+
+test("egress: the default fetch connects to the address that was checked, whatever the name resolves to later, and re-checks the connected socket", async () => {
+  let opts, destroyed = null;
+  const fakeRequest = (o, cb) => {
+    opts = o;
+    const req = { on(ev, f) { if (ev === "socket") setImmediate(() => f({ connecting: false, remoteAddress: "127.0.0.1" })); return req; }, write() {}, end() {}, destroy(e) { destroyed = e; } };
+    return req;
+  };
+  const f = pinnedFetch({ request: fakeRequest });
+  f("https://api.example.com/x", { method: "GET", headers: {}, pinned: "93.184.216.34" }).catch(() => {});
+  await new Promise(r => setTimeout(r, 20));
+  // the lookup the request uses returns the pinned address for ANY name, so a second DNS answer is never consulted
+  const got = await new Promise(res => opts.lookup("api.example.com", {}, (e, a, fam) => res([a, fam])));
+  assert.deepEqual(got, ["93.184.216.34", 4]);
+  const all = await new Promise(res => opts.lookup("rebind.example.com", { all: true }, (e, a) => res(a)));
+  assert.deepEqual(all, [{ address: "93.184.216.34", family: 4 }]);
+  assert.equal(opts.servername, "api.example.com", "TLS and Host keep the real name");
+  assert.ok(destroyed && /not checked/.test(destroyed.message), "a socket that connected to loopback is destroyed before the request is written");
+  assert.deepEqual([...ipBytes("::ffff:7f00:1").slice(10)], [255, 255, 127, 0, 0, 1]);
+});
+
+test("host: needs.egress is shown on a card and approved; shared-suffix wildcards are refused; the entry stays inside the module folder", async () => {
+  const log = createEventLog({ space: SPACE, clock });
+  const fake = { available: () => true, start: async () => ({ call: async () => 1, stop: async () => {} }) };
+  const host = createModuleHost({ space: SPACE, supervisor: fake, isFirstParty: () => false, log, chains });
+  const dir = tmp("mod4");
+  const m = hosts => ({ name: "crm-sync", dir, entry: "entry.js", manifest: { needs: { egress: hosts } } });
+  const card = host.installCard(m(["api.example.com", "*.cdn.example.com"]));
+  assert.deepEqual(card.egress_hosts, ["api.example.com", "*.cdn.example.com"]);
+  assert.match(card.warning, /send anything it can read/);
+  await assert.rejects(() => host.install(m(["api.example.com"])), { code: "needs_approval" }, "no card, no install");
+  await assert.rejects(() => host.install(m(["api.example.com"]), { approved_hosts: ["other.example.com"] }), { code: "needs_approval" }, "the person approved other hosts");
+  assert.equal((await host.install(m(["api.example.com"]), { approved_hosts: ["api.example.com"] })).mode, "sandboxed");
+  for (const w of ["*.github.io", "*.herokuapp.com", "*.s3.amazonaws.com", "*.vercel.app", "*.com", "*.co.uk", "*.foo.herokuapp.com"]) assert.equal(wildcardOk(w), false, w);
+  assert.equal(wildcardOk("*.cdn.example.com"), true);
+  assert.ok(SHARED_SUFFIXES.includes("github.io"));
+  await assert.rejects(() => host.install(m(["*.github.io"]), { approved_hosts: ["*.github.io"] }), { code: "bad_input" });
+  assert.throws(() => sandboxCommand({ dir, entry: "../escape.js", platform: "linux" }), /bad module entry/);
+  assert.throws(() => sandboxCommand({ dir, entry: "/etc/passwd", platform: "linux" }), /bad module entry/);
+});
+
+test("first party is a signature over the folder's contents by the pinned release key, never a path or a name", () => {
+  const dir = tmp("fp");
+  fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "email" }));
+  fs.writeFileSync(path.join(dir, "index.js"), "export default {};");
+  const release = crypto.generateKeyPairSync("ed25519");
+  const check = createFirstPartyCheck({ releaseKey: release.publicKey });
+  assert.equal(check(dir), false, "unsigned");
+  signModule(dir, release.privateKey);
+  assert.equal(check(dir), true);
+  fs.writeFileSync(path.join(dir, "index.js"), "export default { evil: true };");
+  assert.equal(check(dir), false, "an edited file");
+  signModule(dir, release.privateKey);
+  fs.writeFileSync(path.join(dir, "extra.js"), "1");
+  assert.equal(check(dir), false, "an added file");
+  fs.rmSync(path.join(dir, "extra.js"));
+  assert.equal(check(dir), true);
+  assert.equal(createFirstPartyCheck({ releaseKey: crypto.generateKeyPairSync("ed25519").publicKey })(dir), false, "another key's signature");
+  fs.symlinkSync("/etc/passwd", path.join(dir, "link"));
+  assert.equal(check(dir), false, "a symlink is refused outright");
+  assert.ok(treeHash);
+});
+
+test("K-1: a release-signed minimum version makes an older signed copy not first party; first party is judged at every load", async () => {
+  const { signMinimums, verifyMinimums } = await import("./firstparty.js");
+  const release = crypto.generateKeyPairSync("ed25519");
+  const mk = version => { const dir = tmp("fpv"); fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "email", version })); fs.writeFileSync(path.join(dir, "index.js"), "export default {};"); signModule(dir, release.privateKey); return dir; };
+  const doc = signMinimums({ email: "0.3.0" }, release.privateKey);
+  const minimums = verifyMinimums(doc, release.publicKey);
+  assert.deepEqual(minimums, { email: "0.3.0" });
+  assert.equal(verifyMinimums({ ...doc, body: JSON.stringify({ email: "0.0.1" }) }, release.publicKey), null, "edited minimums do not verify");
+  const check = createFirstPartyCheck({ releaseKey: release.publicKey, minimums });
+  assert.equal(check(mk("0.3.0")), true);
+  assert.equal(check(mk("0.4.2")), true);
+  assert.equal(check(mk("0.2.9")), false, "validly signed, but older than the minimum");
+  const unlisted = tmp("fpu"); fs.writeFileSync(path.join(unlisted, "module.json"), JSON.stringify({ name: "other", version: "9.0.0" })); signModule(unlisted, release.privateKey);
+  assert.equal(check(unlisted), false, "a module the release did not list is not first party");
+  // judged at every load: edit the folder after install and the next load says no
+  const d = mk("0.5.0");
+  assert.equal(check(d), true);
+  fs.appendFileSync(path.join(d, "index.js"), "\n// tampered");
+  assert.equal(check(d), false);
 });
