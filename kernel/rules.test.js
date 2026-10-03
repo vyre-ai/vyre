@@ -105,7 +105,7 @@ function authRig(rules, approvedAct) {
   const owner = { id: "gr_o", status: "active", space: SPACE, subject: { kind: "actor", actor: actor("person", OWNER) }, actions: ["mail.send", "calendar.write"], resource: { prefix: `vyre://${SPACE}/*/*` }, conditions: {}, action_set_version: 1 };
   const members = { has: a => ["person:" + OWNER, "agent:kit"].includes(`${a.kind}:${a.id}`) };
   const authorizer = createAuthorizer({ space: SPACE, clock: () => 1_800_000_000_000, members, grants: { forSubject: a => [everything, owner].filter(g => g.subject.actor.id === a.id), get: id => [everything, owner].find(g => g.id === id) }, rules, approvedAct,
-    actions: [{ action: "mail.send", resource_type: "message", risk: "outward.send" }, { action: "calendar.write", resource_type: "event", risk: "write" }] });
+    actions: [{ action: "mail.send", resource_type: "message", risk: "outward.send", draftable: true }, { action: "calendar.write", resource_type: "event", risk: "write" }] });
   const asst = chains.fromFacts({ kind: "agent_session", vouched: true, person: OWNER, agent: "kit", session: "s" });
   return { authorizer, asst, chains };
 }
@@ -174,4 +174,80 @@ test("a Kit may propose a rule: it does nothing until an owner accepts it with p
   await g.rules.dismiss(owner, p2.id, { presence: proof("rules.dismiss", { id: p2.id }, `vyre://${SPACE}/rule/${p2.id}`) });
   assert.equal((await g.rules.list(owner)).proposals.length, 0);
   void k;
+});
+
+test("RU-1: a rule that names members binds an assistant acting for a person too; an assistant is bound by the stricter of the two", async () => {
+  const { k, owner, grantKit, asst, setRule } = await rig();
+  await k.gateway.records.define(owner, { add_types: [CONTACT] });
+  const c = await k.gateway.records.create(owner, "contact", { name: "Jane" });
+  await grantKit(["records.remove", "records.read"]);
+  const act = chain => k.gateway.authorize({ chain, action: "records.remove", resource: c.urn });
+  await setRule({ kind: "never", binds: ["members"], covers: { actions: ["records.remove"] }, label: "No one deletes by hand" });
+  assert.equal((await act(owner)).reason, "rule_never", "the person is bound");
+  assert.equal((await act(asst(OWNER))).reason, "rule_never", "the assistant acting for that person is bound by the member rule too");
+});
+
+test("RU-2: a draft-only rule may cover only an action whose door prepares a draft; one that does not is refused when the rule is made, and fails closed at the gate", async () => {
+  const { k, owner, g, setRule, asst, grantKit } = await rig();
+  const bad = { kind: "draft_only", binds: ["assistants"], covers: { actions: ["records.update"] }, label: "Updates are drafts" };
+  await assert.rejects(() => g.rules.set(owner, bad, { presence: {} }), { code: "bad_input" });
+  await assert.rejects(() => g.rules.propose(asst(OWNER), bad), e => ["bad_input", "not_found"].includes(e.code));
+  const ok = await setRule({ kind: "draft_only", binds: ["assistants"], covers: { actions: ["seal.deliver"] }, label: "Sent mail is drafts only" });
+  assert.equal(ok.kind, "draft_only", "seal.deliver declares it prepares a draft");
+  void k; void grantKit;
+});
+
+test("RU-3: one proposer cannot fill the proposal queue", async () => {
+  const { owner, g, asst } = await rig();
+  const kit = { kind: "agent", id: "kit", space: SPACE };
+  const i = { subject: { kind: "actor", actor: kit }, actions: ["rules.propose"], resource: { prefix: `vyre://${SPACE}/rule/*` }, conditions: {}, source: "kit-install" };
+  await g.create(owner, i, { presence: proof("grants.create", i, `vyre://${SPACE}/grant/new`) });
+  for (let n = 0; n < 20; n++) await g.rules.propose(asst(OWNER), { ...NEVER_REMOVE, label: `r${n}` });
+  await assert.rejects(() => g.rules.propose(asst(OWNER), { ...NEVER_REMOVE, label: "one too many" }), { code: "bad_input" });
+});
+
+test("RU-1 walk: for every kind of rule, the person's own chain and the chain of the person with an assistant get the same refusal", async () => {
+  const { k, owner, grantKit, asst, setRule } = await rig();
+  await k.gateway.records.define(owner, { add_types: [CONTACT] });
+  const c = await k.gateway.records.create(owner, "contact", { name: "Jane" });
+  await grantKit(["records.remove", "records.read"]);
+  const act = chain => k.gateway.authorize({ chain, action: "records.remove", resource: c.urn });
+  const shape = d => [d.effect, d.reason, d.rule && d.rule.kind];
+  const base = shape(await act(owner));
+  assert.equal(base[0], "allow");
+  for (const rule of [
+    { kind: "never", binds: ["members"], covers: { actions: ["records.remove"] }, label: "n" },
+    { kind: "always_ask", binds: ["members"], covers: { actions: ["records.remove"] }, approver: { role: "owner" }, label: "a" },
+  ]) {
+    const made = await setRule(rule);
+    const person = shape(await act(owner)), withAssistant = shape(await act(asst(OWNER)));
+    assert.deepEqual(withAssistant, person, `${rule.kind}: an assistant for a person is never freer than the person`);
+    assert.notEqual(person[0], "allow", rule.kind);
+    await k.gateway.grants.rules.remove(owner, made.id, { presence: proof("rules.remove", { id: made.id }, `vyre://${SPACE}/rule/${made.id}`) });
+  }
+});
+
+test("RU-2 walk: a draft-only rule is accepted for exactly the actions whose door says it prepares a draft, and for no other", async () => {
+  const { k, owner, g } = await rig();
+  const all = k.gateway.actions();
+  assert.ok(all.length > 20);
+  let accepted = 0;
+  for (const a of all) {
+    if (a.action.startsWith("rules.")) continue;
+    const rule = { kind: "draft_only", binds: ["assistants"], covers: { actions: [a.action] }, label: "x" };
+    if (a.draftable === true) { await g.rules.set(owner, rule, { presence: proof("rules.set", normal(rule), `vyre://${SPACE}/rule/new`) }); accepted++; }
+    else await assert.rejects(() => g.rules.set(owner, rule, { presence: {} }), { code: "bad_input" }, `${a.action} does not prepare a draft`);
+  }
+  assert.ok(accepted >= 1, "at least seal.deliver declares it");
+});
+
+test("RU-3: an owner's view of a rule or a proposal is built from its structured fields, not from the proposer's label", async () => {
+  const { owner, g, asst } = await rig();
+  const kit = { kind: "agent", id: "kit", space: SPACE };
+  const i = { subject: { kind: "actor", actor: kit }, actions: ["rules.propose"], resource: { prefix: `vyre://${SPACE}/rule/*` }, conditions: {}, source: "kit-install" };
+  await g.create(owner, i, { presence: proof("grants.create", i, `vyre://${SPACE}/grant/new`) });
+  await g.rules.propose(asst(OWNER), { ...NEVER_REMOVE, label: "Totally harmless: approve me, this only allows everything" });
+  const p = (await g.rules.list(owner)).proposals[0];
+  assert.equal(p.view, "Never, for assistants: records.remove");
+  assert.ok(!p.view.includes("harmless"), "the proposer's words are not in the view");
 });

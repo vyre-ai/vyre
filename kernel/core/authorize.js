@@ -121,6 +121,8 @@ export function createAuthorizer(cfg) {
       if (neverRule) { ruleOf = neverRule; return deny("rule_never"); }
       const askRule = ruled.find(r => r.kind === "always_ask"), draftRule = ruled.find(r => r.kind === "draft_only");
       ruleOf = askRule || draftRule || null;
+      // Fail closed: a draft-only rule on an action whose door does not prepare a draft would be a rule that does nothing, so the act is refused instead.
+      if (draftRule && !def.draftable) { ruleOf = draftRule; return deny("rule_draft_unsupported"); }
 
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
