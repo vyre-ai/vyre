@@ -29,6 +29,11 @@ jobs:
         env:
           VYRE_NO_WATCHDOG: ""
         run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js
+      - name: real commands through the sandbox network (git clone, npm ci, pip install, git over ssh, refusals)
+        if: always()
+        run: |
+          node scripts/runner-net-real.mjs home 2>&1 | tee net-home.txt
+          node scripts/runner-net-real.mjs lent 2>&1 | tee net-lent.txt
       - name: the real claude inside the home sandbox (does it start with every write denied?)
         if: always()
         run: |
@@ -50,4 +55,6 @@ jobs:
           path: |
             perf-mac.json
             fs-formats.json
+            net-home.txt
+            net-lent.txt
 

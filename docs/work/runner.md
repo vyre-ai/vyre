@@ -95,3 +95,16 @@ Two honest limits of an open internet in a session: it can send the project's da
 - Lent: `runner.start` takes the Space's `network` ("provider", the default, or "internet" from the lender's connection). With "internet" the session gets the same HTTPS_PROXY. The Space's choice, shown in the lender text: with "internet" the traffic leaves from the lender's address.
 - Still to prove: a real `git clone https://`, `npm ci` and `pip install` through it, on a hosted Mac and a test box.
 - MEASURED on a test box (scripts/runner-net-proof.mjs, Linux home sandbox with the internet-mode proxy): `git clone https://github.com/...` works; python urllib over https (pypi.org) and plain http both work; loopback, 10.0.0.1 and the cloud metadata address are all refused (403). The proxy answers 407 first because libcurl (git, npm) sends the proxy password only after that challenge. `npm ci` and `pip install` themselves are still not run.
+
+### Real commands through the internet mode (4 Oct, testbox3 Linux; macOS runs are in the hosted workflow artifacts net-home.txt and net-lent.txt)
+`node scripts/runner-net-real.mjs home|lent`. Output, Linux home sandbox (proxy internet mode):
+```
+== git clone https           README                      (cloned octocat/Hello-World)
+== npm ci                    is-odd installed: true      (project with a lockfile, made outside the sandbox)
+== pip install (venv)        Successfully installed six-1.16.0 / six 1.16.0
+== git over ssh (port 22)    git@github.com: Permission denied (publickey).   (tunnel reached; no key in the sandbox, by design)
+== refusals                  127.0.0.1, 10.0.0.1, this machine's LAN address, 169.254.169.254, [::1], [fd00::1]: all HTTP 403
+```
+Linux lent sandbox (runner.start, encrypted workspace, default network): the same five results, plus the tunnels the proxy logged (destination and byte counts only): github.com:443 in 5664 out 1400, registry.npmjs.org:443 in 306605 out 2600, files.pythonhosted.org:443 in 19245 out 1806, pypi.org:443 in 12097 out 1205.
+Setting: LENT_NETWORK_DEFAULT = "internet" (runner.js, one constant); the Space says `network: "provider"` or `"internet"`; the lender's cap `lenderCap: "provider"` always wins (effectiveNetwork, tested). Lender line (LENDER_NETWORK_LINE, in status notices): "Sessions you lend can reach the internet from your connection. Sites see your address. You can limit them to the assistant's provider and the space."
+Ports: CONNECT to any port except the mail ports 25, 465, 587. git over ssh uses GIT_SSH_COMMAND with a ProxyCommand (core/runner/proxycmd.js). A one-line /etc/passwd for the sandbox user is bound on Linux because ssh needs it.
