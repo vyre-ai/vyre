@@ -235,3 +235,88 @@ test("a retry of the same message id while the first is still being written is o
   assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.type === "session.user-message").length, 1);
   assert.equal(w.kernelMsgs().length, 1, "the kernel was asked once");
 });
+
+const FEE = { block: "field", name: "fee", label: "Fee", kind: "money", value: { amount: 4200, currency: "USD" } };
+/** Make kit's next thread event come out as exactly these specs (the adapter itself never builds a field block today). */
+const stand = (/** @type {any} */ w, /** @type {string} */ chat) => { const m = w.stream().groups.member(chat, "assistant:kit"); m.ad = { event: () => [{ kind: "text-delta", data: { message: "mx", index: 0, text: "The fee is on the card." } }, { kind: "text-done", data: { message: "mx", blocks: [{ block: "text", text: "see below" }, FEE] } }] }; };
+
+test("a room of more than one person: an assistant's field value is dropped (against the kernel's own room view); in a chat of one it stays", async t => {
+  const w = await world(t);
+  const R = w.k.gateway.records;
+  await R.define(w.chains.owner, { add_types: [CONTACT] });
+  const rec = await R.create(w.chains.owner, "contact", { name: "Jane", fee: { amount: 4200, currency: "USD" }, ssn: { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 } });
+  const urn = `vyre://${SPACE}/contact/${rec.id}`;
+  const room = await asked(w);
+  stand(w, room.chat.id);
+  w.events.emit("threads", "thread.text", { message: "go" }, { thread: room.thread });
+  await w.idle();
+  const f = w.frames(room.chat.id);
+  assert.ok(f.some((/** @type {any} */ x) => x.type === "session.text-done" && x.author === "assistant:kit"), "the reply itself is shown");
+  assert.ok(!JSON.stringify(f).includes("4200"), "no field value reached the group's log");
+  assert.deepEqual(f.find((/** @type {any} */ x) => x.type === "session.text-done").data.blocks, [{ block: "text", text: "see below" }]);
+  // the kernel's room view for the same chat: more than one person, and a sealed field is never a value for the room
+  const tok = (await w.k.surfaces.open(w.chains.bob, { chat: room.chat.id })).token;
+  w.k.bindCalls(() => ({ token: tok }));
+  const view = await w.k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } }).audienceFor();
+  w.k.bindCalls(currentCall);
+  assert.equal(view.group, true, "the kernel agrees this is a room");
+  const seen = await view.read(urn, ["ssn"]);
+  assert.ok(seen === null || seen.restricted.includes("ssn"), "a sealed field is never a value for the room");
+  // one person and an assistant: the same reply keeps the card
+  const solo = await w.C.create(w.chains.bob, { assistants: ["kit"] });
+  ok(await w.as("bob")("stream.send", { session: solo.id, text: "fee?", to: ["assistant:kit"], cwd: "/tmp" }));
+  await w.idle();
+  const th2 = w.threads().started.at(-1).id;
+  stand(w, solo.id);
+  w.events.emit("threads", "thread.text", { message: "go" }, { thread: th2 });
+  await w.idle();
+  const solo1 = w.frames(solo.id).find((/** @type {any} */ x) => x.type === "session.text-done");
+  assert.deepEqual(solo1.data.blocks.map((/** @type {any} */ b) => b.block), ["text", "field"]);
+});
+
+test("a cited field is the kernel's own records.get for the viewer: a value, the sealed chip with no ref, a chip for a field the kernel hides or that does not exist", async t => {
+  const w = await world(t);
+  const R = w.k.gateway.records;
+  await R.define(w.chains.owner, { add_types: [CONTACT] });
+  const rec = await R.create(w.chains.owner, "contact", { name: "Jane", fee: { amount: 4200, currency: "USD" }, ssn: { sealed: "ssn", ref: "sv_SECRET", present: true, valid_format: true, set_at: 1, hint: "6789" } });
+  const urn = `vyre://${SPACE}/contact/${rec.id}`;
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["kit"] });
+  ok(await w.as("bob")("stream.send", { session: chat.id, text: "go", to: [] }));
+  const log = w.stream().logs.get(chat.id);
+  const cite = (/** @type {string} */ field) => ({ block: "field-ref", record: urn, field, label: field });
+  log.append("text-done", { message: "m9", blocks: [cite("name"), cite("fee"), cite("ssn"), cite("nonesuch"), { block: "field-ref", record: `vyre://${SPACE}/contact/nonexistent`, field: "name", label: "gone" }] }, { author: "assistant:kit", acts_for: `person:${BOB}`, message: "m9" });
+  /** @type {any[]} */ const got = [];
+  const c = connect({ open: async ({ from }) => { const o = ok(await w.as("bob")("stream.open", { session: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
+  t.after(() => c.close());
+  const end = Date.now() + 5000;
+  while (!got.some(f => f.type === "session.text-done" && f.data.message === "m9") && Date.now() < end) await tick(10);
+  const blocks = got.find(f => f.type === "session.text-done" && f.data.message === "m9").data.blocks;
+  const wire = JSON.stringify(got);
+  assert.ok(!wire.includes("sv_SECRET") && !wire.includes("6789"), "a sealed value or its ref never reaches the wire");
+  const by = (/** @type {string} */ n) => blocks.find((/** @type {any} */ b) => b.name === n);
+  // every block is a field block, never a ref and never a leak
+  assert.ok(blocks.every((/** @type {any} */ b) => b.block === "field"));
+  assert.equal(by("ssn").placeholder, true);
+  assert.equal(by("nonesuch").placeholder, true);
+  assert.equal(blocks[4].placeholder, true, "a record the kernel does not return is a chip");
+  assert.equal(by("name").value, "Jane", "bob's own authority gave the value");
+  assert.deepEqual(by("fee").value, { amount: 4200, currency: "USD" });
+  assert.equal(by("fee").kind, "money");
+  assert.equal(by("ssn").kind, "sealed");
+});
+
+test("after a restart the assistant has no session token: its reply waits, shows nothing, and is written when the asker next opens the chat", async t => {
+  const w = await world(t);
+  const { chat, thread } = await asked(w);
+  const m = w.stream().groups.member(chat.id, "assistant:kit");
+  m.tokens = new Map(); // what a restart forgets
+  w.say(thread, "m1", "waiting for you");
+  await tick(80); // not idle(): the assistant's queue is waiting for a session, on purpose
+  assert.equal(w.frames(chat.id).filter((/** @type {any} */ f) => f.author === "assistant:kit").length, 0, "nothing is shown without a kernel session");
+  assert.equal(w.kernelMsgs().length, 1);
+  ok(await w.as("bob")("stream.open", { session: chat.id }));
+  await tick(50);
+  await w.idle();
+  assert.ok(w.frames(chat.id).some((/** @type {any} */ f) => f.type === "session.text-done" && f.author === "assistant:kit"));
+  assert.equal(w.kernelMsgs().length, 2);
+});

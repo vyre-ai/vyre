@@ -569,6 +569,8 @@ export function createGroups({ ctx, logs, db, now = Date.now }) {
       await Promise.all(ms.map(catchUp));
       for (const row of q.outOpen.all()) void schedule(row);
     },
+    /** An assistant's member row, so a test can stand in for its adapter (tests only). @param {string} grp @param {string} who */
+    member: (grp, who) => group(grp).bots.get(who) || null,
     /** Wait for every delivery in flight (tests). */
     async idle() {
       for (let n = 0; n < 3; n++) await Promise.all([...groups.values()].flatMap(g => [...g.bots.values()].flatMap(m => [m.q, m.pq || Promise.resolve()])));
