@@ -26,3 +26,8 @@ Branch: work/kernel · Worktree: ../vyre-kernel · Owner session: platform
 
 - kernel/core: ids, canonical, urn, errors, chain, authorize, events, core.test.js (31 tests).
 - Decisions: unknown action is `deny unknown_action` (fail closed, no grant can name it). Outward and approver asks stay `ask` until K4 records an approval. Presence is met only by a held session or a verifier the K4 signer supplies; without one a claim counts for nothing. Rate limits and residency conditions are not evaluated yet (K2 meters, K3 residency).
+
+## K2a done
+
+- kernel/store (memory, query, values), kernel/conformance (suite, memory test with 5 broken-store checks), kernel/gateway (records, index).
+- Decisions: a deny on read is `null`, on write `not_found` with the true code in `hidden_reason` and an `access.denied` event. Query returns the store's page filtered by the gateway (short pages allowed, up to 10 store pages to find a visible row); totals are computed by the gateway over allowed rows only. An `unavailable` store answer leaves the intent open for `recover()`; definite refusals close it as compensated.
