@@ -26,7 +26,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "walk-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` },
     modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const lines = /** @type {string[]} */ ([]);
-  const d = await start({ root, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const as = (/** @type {string} */ caller) => (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller });
   const deck = as("deck");
@@ -35,7 +35,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
 
   // Step 2: claim an identity. The recovery code comes back once.
   const made = await deck("spaces.identity.create", { name: "alex" });
-  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.ok(!made.error, JSON.stringify(made.error) + " " + lines.filter(l => /spaces|fail/i.test(l)).join(" ; ").slice(0, 1500));
   assert.match(made.data.recoveryCode, /^[a-z2-7-]{32}$/);
   assert.equal(made.data.name, "alex.vyre.run");
   const alexId = made.data.id;
@@ -67,12 +67,19 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
     "bridges.merge.links": { person: alexId },
     "bridges.kit.plan": { person: alexId, space, kit: {} },
   };
-  for (const label of ["cli", "mcp", "mcp:thread:fake", "tailnet-guest:mallory@example.com", "anonymous", "harness"]) {
+  for (const label of ["mcp", "mcp:thread:fake", "tailnet-guest:mallory@example.com", "anonymous", "harness"]) {
     for (const [tool, input] of Object.entries(inputs)) {
       const r = await as(label)(tool, input);
-      assert.ok(r.error, `${tool} as ${label} must be refused, got ${JSON.stringify(r.data).slice(0, 120)}`);
+      assert.ok(r.error, `${tool} as ${label} must be refused, got ${String(JSON.stringify(r)).slice(0, 200)}`);
       assert.ok(!JSON.stringify(r).includes("Harlow Legal"), `${tool} as ${label} leaked`);
     }
+  }
+  // cli is the person's own surface on their own computer (the socket is owner-only): it IS the member, so its own call works and naming anyone else is refused.
+  const ownCli = await as("cli")("bridges.merge.links", { person: alexId });
+  assert.ok(!ownCli.error, JSON.stringify(ownCli.error));
+  for (const [tool, input] of Object.entries(inputs)) {
+    const r = await as("cli")(tool, { ...input, person: "per_" + "z".repeat(26) });
+    assert.ok(r.error, `${tool} as cli naming another person must be refused`);
   }
   const own = await deck("bridges.merge.links", { person: alexId });
   assert.ok(!own.error, JSON.stringify(own.error));
