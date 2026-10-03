@@ -63,7 +63,9 @@ async function world(t) {
 
   /** Start the stream the way the daemon does: the Registry is handed the seam as deps.kernelThreads, over a createKernelSessions that has the kernel's chats and the durable turns. */
   async function boot(/** @type {{ personChainFor?: (p: string) => Promise<any>, timeoutMs?: number }} */ o = {}) {
-    const ks = createKernelSessions({ kernel: k, turns, chats: /** @type {any} */ (k.kernelFor({ name: "kernel-sessions" })).chats });
+    // the kernel's chats as the seam holds them, with the turn-begin counted: a turn must begin exactly once, when its session opens
+    const kc = /** @type {any} */ (k.kernelFor({ name: "kernel-sessions" })).chats;
+    const ks = createKernelSessions({ kernel: k, turns, chats: Object.freeze({ ...kc, beginTurn: async (/** @type {string} */ tok) => { seamCalls.push("BEGIN"); return kc.beginTurn(tok); } }) });
     const db = open(p.db);
     const events = new Events(db);
     const reg = new Registry({ db, events, config: { role: "box", stream: { resumeWaitSeconds: o.timeoutMs ? o.timeoutMs / 1000 : 60 }, sessions: { install: false }, transcripts: [] }, paths: p, handler: () => (/** @type {any} */ _q, /** @type {any} */ r) => { r.writeHead(404); r.end(); }, log: process.env.E2E_DEBUG ? (/** @type {string} */ m) => console.error("LOG", m) : () => {}, kernelFor });
@@ -103,7 +105,7 @@ async function world(t) {
   }
   /** A daemon that dies mid-turn: what kill -9 leaves is the durable turn store as it was (a graceful stop ends each session, which forgets its turn, so put them back). */
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
-  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, C: g.chats };
+  return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
 }
 const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
@@ -130,9 +132,9 @@ test("a person sends, the real Switchboard's reply streams through the seam's ha
   await sleep(150);
   assert.ok(!ada.frames.some(f => f.type === "session.text-delta" && String(f.data.text).includes("SECRET")), "ada, who joined mid-reply, got none of it");
   assert.ok(!ada.frames.some(f => f.type === "session.text-done"), "nor its end");
-  const mine = w.seamCalls.filter(c => c.startsWith(`${kit}:`));
-  assert.equal(mine[0], `${kit}:beginTurn`, "the turn began before the reply opened");
-  assert.ok(mine.includes(`${kit}:appendOpen`));
+  assert.equal(w.seamCalls.filter(c => c === "BEGIN").length, 1, "the turn began at the kernel exactly once, when its session opened");
+  assert.ok(w.seamCalls.indexOf("BEGIN") < w.seamCalls.indexOf(`${kit}:appendOpen`), "and before the reply opened");
+  assert.ok(!w.seamCalls.includes(`${kit}:beginTurn`), "the stream does not begin it again itself");
   const kernelLog = w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened");
   assert.ok(kernelLog.some((/** @type {any} */ e) => e.data.by.agent === "assistant"), "the kernel recorded the assistant's reply, opened under the assistant's own session");
   await b.stop();
@@ -200,7 +202,7 @@ test("a restart in the middle of a turn: the seam reopens the person's session, 
   assert.ok(!again.error, again.error && again.error.message);
   await until(() => /after the restart/.test(textOf(bob.frames)), "the reply after the restart", 20_000);
   assert.ok(!bob.frames.some(f => f.type === "session.status" && f.data.state === "failed"), "nothing says it could not resume");
-  assert.equal(w.seamCalls.filter(c => c === `${kit}:beginTurn`).length >= 2, true, "each turn began at the kernel");
+  assert.equal(w.seamCalls.filter(c => c === "BEGIN").length >= 2, true, "each turn began at the kernel");
 });
 
 test("a restart where the person can no longer be reopened: the turn is given up, the room is told, and a late reply from the real Switchboard is dropped", async t => {
@@ -224,4 +226,112 @@ test("a restart where the person can no longer be reopened: the turn is given up
   await until(async () => (await b2.reg.call("threads.get", { thread: kit, limit: 500 }, "cli")).data.events.some((/** @type {any} */ e) => e.type === "thread.text" && e.payload && e.payload.done && /NEVERSHOWN/.test(String(e.payload.text))), "the late reply from the Switchboard", 20_000);
   await sleep(200);
   assert.ok(!JSON.stringify(bob.frames).includes("NEVERSHOWN"));
+});
+
+// ---- task V: a second person speaks while a turn runs (the stream owns the queue; reviewer SS-1 and SS-2) ----------------------------------------------------------------------------
+
+/** The person a live kernel session of the seam is for. @param {any} w @param {any} b @param {string} id */
+const personOfSession = async (w, b, id) => (await w.k.surfaces.verify(await b.ks.tokenFor(id)())).person;
+const userMsgs = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.user-message").map(f => String(f.data.text));
+const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, string>} */ const by = new Map(); const done = new Set(); for (const f of frames) { if ((f.type !== "session.text-delta" && f.type !== "session.text-done") || f.data.reasoning) continue; const id = String(f.data.message); if (f.type === "session.text-delta") by.set(id, (by.get(id) || "") + f.data.text); else done.add(id); } return [...by].filter(([id]) => done.has(id)).map(([, t]) => t); };
+const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && e.data.by.agent === "assistant").map((/** @type {any} */ e) => e.data.by.person);
+
+test("V1: an admin speaks mid-turn: the member's turn keeps the member's session and stays refused, the admin's words are written at once and get their own turn under the admin after it", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  // carol asks (she also writes `as` and `asker` naming bob: the author is the chain the call was made under, never the input)
+  const first = await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work, as: `person:${BOB}`, asker: BOB });
+  assert.ok(!first.error, first.error && first.error.message);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "carol's turn to be running");
+  const [sid] = b.ks.list();
+  assert.equal(await personOfSession(w, b, sid), CAROL, "the running turn is under carol's session");
+  const grant = async () => { const tok = await b.ks.tokenFor(sid)(); const ch = await w.k.surfaces.chainFor(tok); return w.k.gateway.grants.setRole(ch, { person: ADA, role: "manager" }).then(() => "allowed", (/** @type {any} */ e) => e.code); };
+  const before = await grant();
+  assert.notEqual(before, "allowed", "an action carol's turn may not do is refused");
+  // the admin speaks while carol's turn runs
+  const second = await b.as("bob")("stream.send", { session: chat.id, text: "ok, continue", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!second.error, second.error && second.error.message);
+  await until(() => userMsgs(watcher.frames).includes("ok, continue"), "the admin's own words in the chat");
+  assert.equal(w.asked.length, 1, "...while the admin has no turn yet");
+  const user = watcher.frames.find(f => f.type === "session.user-message" && f.data.text === LONG);
+  assert.equal(user.author, `person:${CAROL}`, "carol's message is carol's, not bob's");
+  await sleep(200);
+  assert.equal(await personOfSession(w, b, sid), CAROL, "the running turn still holds carol's session after the admin spoke");
+  assert.equal(b.ks.list().length, 1, "no second session was opened mid-turn");
+  assert.equal(await grant(), before, "and what was refused stays refused");
+  assert.deepEqual(w.asked.map(a => a.asker), [CAROL], "the Switchboard has been asked for carol's session only");
+  await until(() => repliesOf(watcher.frames).includes("echo: ok, continue"), "the admin's turn", 30_000);
+  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB], "bob's turn opened under bob, after carol's");
+  assert.deepEqual(opened(w), [CAROL, BOB], "the kernel recorded each reply under its own asker, in order");
+  assert.equal(repliesOf(watcher.frames).filter(r => /ok, continue/.test(r)).length, 1, "and the admin's words were answered once");
+  assert.ok(!repliesOf(watcher.frames).some(r => r.includes("SECRET") && r.includes("ok, continue")), "never merged into carol's turn");
+});
+
+test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  assert.ok(!(await b.as("bob")("stream.send", { session: chat.id, text: "B-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("ada")("stream.send", { session: chat.id, text: "A-ONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => userMsgs(watcher.frames).length >= 3, "both words in the chat");
+  assert.deepEqual(userMsgs(watcher.frames).slice(1), ["B-ONE", "A-ONE"], "both are in the chat at once, in arrival order");
+  assert.equal(w.asked.length, 1, "neither has a turn yet");
+  await until(() => repliesOf(watcher.frames).length >= 3, "all three replies", 40_000);
+  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB, ADA], "three turns, one per message, in arrival order");
+  assert.deepEqual(opened(w), [CAROL, BOB, ADA]);
+  const rs = repliesOf(watcher.frames);
+  assert.deepEqual(rs.slice(1), ["echo: B-ONE", "echo: A-ONE"], "never merged into one turn");
+});
+
+test("V3: a send refused as busy is held and sent again once, when the turn ends: no polling", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { session: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  // the stream's own knowledge of the running turn is stale (as after a restart): only the Switchboard's own refusal tells it
+  const m = b.stream().groups.member(chat.id, "assistant:assistant");
+  m.running = false;
+  /** @type {{ at: number, code: string | null }[]} */ const sends = [];
+  const real = b.reg.call.bind(b.reg);
+  b.reg.call = async (/** @type {any} */ ...a) => { const r = await real(...a); if (a[0] === "threads.send" && /BUSYONE/.test(String(a[1] && a[1].text))) sends.push({ at: Date.now(), code: r.error ? r.error.code : null }); return r; };
+  assert.ok(!(await b.as("bob")("stream.send", { session: chat.id, text: "BUSYONE", to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => sends.length >= 1, "the first attempt");
+  assert.equal(sends[0].code, "busy", "the real Switchboard refused it while carol's turn ran");
+  const ended = () => repliesOf(watcher.frames).length >= 1;
+  await sleep(400);
+  assert.equal(sends.length, 1, "nothing asked again while the turn runs (no polling)");
+  assert.equal(ended(), false, "carol's turn is still running");
+  await until(() => repliesOf(watcher.frames).includes("echo: BUSYONE"), "the held message's turn", 40_000);
+  assert.equal(sends.length, 2, "exactly one retry, on the turn's end");
+  assert.equal(sends[1].code, null);
+  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB]);
+});
+
+const LONGER = "SECRET " + Array(3000).fill("word").join(" "); // a reply that is still arriving for several seconds: the daemon is crashed while it runs
+test("V4: a restart with a waiting turn keeps it, in order, and sends it under its own asker", async t => {
+  const w = await world(t);
+  const b1 = await w.boot();
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const watch1 = await b1.watch("bob", chat.id);
+  assert.ok(!(await b1.as("carol")("stream.send", { session: chat.id, text: LONGER, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watch1.frames).includes("SECRET"), "the running turn");
+  assert.ok(!(await b1.as("bob")("stream.send", { session: chat.id, text: "WAITING-B", to: ["assistant:assistant"], cwd: w.work })).error);
+  const rows = () => { const db = open(w.paths.db); try { return db.prepare("SELECT who, asker, text FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid").all(); } finally { db.close(); } };
+  assert.deepEqual(rows().map((/** @type {any} */ r) => r.text), ["WAITING-B"], "the waiting turn is in the outbox (carol's was handed over)");
+  await w.crash(b1);
+  assert.equal(rows().length, 1, "the restart lost nothing");
+  const b2 = await w.boot();
+  t.after(() => b2.stop().catch(() => {}));
+  const watch2 = await b2.watch("bob", chat.id);
+  await until(() => repliesOf(watch2.frames).includes("echo: WAITING-B"), "the waiting turn after the restart", 40_000);
+  // (the restarted Switchboard may open the thread's session more than once for one send: what matters is whose it is)
+  assert.ok(w.asked.length >= 2 && w.asked.slice(1).every(a => a.asker === BOB), "after the restart every session was opened for bob, who asked the waiting turn: " + JSON.stringify(w.asked));
+  assert.equal(repliesOf(watch2.frames).filter(r => r === "echo: WAITING-B").length, 1);
 });
