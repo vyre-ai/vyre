@@ -68,9 +68,9 @@ function readLine(sock, timeoutMs) {
 
 /**
  * @param {{ root: string, forwarderBin?: string, spawn?: typeof nodeSpawn, log?: (m: string) => void, graceMs?: number, retryMs?: number,
- *   device?: { id: string, shared: (box: string) => Promise<Buffer> | Buffer },
+ *   device?: { id: string, sign: (message: Buffer) => Promise<string> | string },
  *   relayPeer?: (space: string) => Promise<import("./peer-wire.js").Pipe>, probeMs?: number, raceMs?: number, pingMs?: number, probeWaitMs?: number }} deps
- *   device: this machine's identity and its static DH with a home (the proof on the direct path).
+ *   device: this machine's eid on the owner's identity list and a signer with the key on that entry (the proof on the direct path; peer-wire.js).
  *   relayPeer: opens a `peer` stream to the home through the relay and returns it as a pipe (the relay client's channel.open({peer: "wink", space})).
  */
 export function createHost(deps) {
@@ -83,7 +83,7 @@ export function createHost(deps) {
   const probeWait = deps.probeWaitMs ?? 2000;
   const spawnFn = deps.spawn || nodeSpawn;
   fs.mkdirSync(deps.root, { recursive: true, mode: 0o700 });
-  /** @type {Map<string, { spec: SpaceSpec, dir: string, proc: any, up: NodeUp | null, door: any, serve: any }>} */
+  /** @type {Map<string, { spec: SpaceSpec, dir: string, proc: any, up: NodeUp | null, door: any, serve: any, identity?: any, onSession?: any }>} */
   const spaces = new Map();
   /** @type {Set<SpaceLink>} */
   const links = new Set();
@@ -143,19 +143,22 @@ export function createHost(deps) {
    * must prove the device key; relay peers come from the bridge's peer stream (acceptRelay) already
    * authenticated by the channel. `serve(caller, tool, input)` is the registry (ctx.call as that caller).
    *
-   * With `peers` (the Wink module's `peers`, core/wink/pairing.js) the host uses the module's own admission: `peers.shared(device, nodeKey, stableId)` answers
-   * the secret, and `peers.serve(serve)` wraps the dispatcher. A direct call reaches the wrapper with `{ nodeKey, stableId }` of the connection that
-   * just proved the device secret, and that is the only thing the module ever binds to the device; a relay call carries no node key and binds nothing.
-   * `relayServe` is the relay door's own dispatcher (the chain can then record "relay" as the path); without it relay peers share `serve`. It is wrapped by
-   * peers.serve too, which binds nothing for a call with no proof.
+   * `identity.entry(eid)` is the live identity list (the chain through the identity module; a fake in tests): the key a direct peer must prove is the key on
+   * its entry, and every call on a direct or relay session re-reads the entry first, so a removed device is refused at once. The caller is `device:<eid>` on both paths.
+   * `peers.serve(serve)` still wraps the dispatcher: a direct call reaches the wrapper with `{ nodeKey, stableId }` of the connection that just proved the device key,
+   * and a relay call carries no node key and binds nothing. `relayServe` is the relay door's own dispatcher (the chain can then record "relay" as the path).
    * @param {string} id
-   * @param {{ relayServe?: (caller: string, tool: string, input: any) => Promise<any>, shared?: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null, serve: (caller: string, tool: string, input: any) => Promise<any>,
-   *   peers?: { shared: (deviceId: string, nodeKey: string, stableId?: string) => Buffer | null, serve: (inner: any) => (caller: string, tool: string, input: any, proof?: { nodeKey?: string, stableId?: string }) => Promise<any> } }} o
+   * `onSession(caller, session)` is told of each admitted peer session (direct or relay): the home calls back on a connection a drive's device holds open
+   * (that device sits behind its own router; the home never dials it). `session.call(tool, input, opt)` is the same call the device could make.
+   * @param {{ onSession?: (caller: string, session: any) => void, relayServe?: (caller: string, tool: string, input: any) => Promise<any>, identity: { entry: import("./peer-wire.js").EntryPort }, serve: (caller: string, tool: string, input: any) => Promise<any>,
+   *   peers?: { serve: (inner: any) => (caller: string, tool: string, input: any, proof?: { nodeKey?: string, stableId?: string }) => Promise<any> } }} o
    */
   async function serveHome(id, o) {
     const sp = spaces.get(id);
     if (!sp) throw err("not_found", `no space ${id}`);
+    sp.identity = o.identity || null;
     const wrapped = o.peers ? o.peers.serve(o.serve) : null;
+    sp.onSession = o.onSession || null;
     sp.serve = { serve: wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => wrapped(c, t, i) : o.serve };
     const relayWrapped = o.relayServe ? (o.peers ? o.peers.serve(o.relayServe) : o.relayServe) : null;
     sp.serve.relay = relayWrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => relayWrapped(c, t, i) : sp.serve.serve;
@@ -164,10 +167,10 @@ export function createHost(deps) {
       onRefuse: why => log(`wink ${id}: refused a peer: ${why}`),
       onPeer: (conn, who) => {
         if (who.via !== "direct") { conn.destroy(); log(`wink ${id}: a relay-form header on the node door was refused`); return; }
-        const shared = o.peers ? (/** @type {string} */ d, /** @type {string} */ k) => /** @type {any} */ (o.peers).shared(d, k, who.stableId) : o.shared;
         const serve = wrapped ? (/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => wrapped(c, t, i, { nodeKey: who.nodeKey, stableId: who.stableId }) : o.serve;
-        if (!shared) { conn.destroy(); return; }
-        admitPeer(socketPipe(conn), { id: { nodeKey: who.nodeKey }, box: sp.spec.box, shared, serve })
+        if (!o.identity || typeof o.identity.entry !== "function") { conn.destroy(); return; }
+        admitPeer(socketPipe(conn), { id: { nodeKey: who.nodeKey }, box: sp.spec.box, entry: o.identity.entry, serve })
+          .then(({ session, caller }) => { if (o.onSession) o.onSession(caller, session); })
           .catch(e => log(`wink ${id}: peer not admitted: ${e.message}`));
         conn.resume();
       } });
@@ -179,12 +182,18 @@ export function createHost(deps) {
       const sp = spaces.get(id);
       if (!sp?.serve) { stream.reset("no peer service"); return; }
       const caller = `device:${who.deviceId}`;
-      peerSession(streamPipe(stream), { first: 2, serve: (tool, input) => sp.serve.relay(caller, tool, input) });
+      const session = peerSession(streamPipe(stream), { first: 2, serve: async (tool, input) => {
+        // the entry is read again on every call: a device removed after the stream opened is refused at once, whatever the sync allow cache says
+        const e = sp.identity ? await sp.identity.entry(who.deviceId) : null;
+        if (!e || e.eid !== who.deviceId || e.kind !== "device") { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
+        return sp.serve.relay(caller, tool, input);
+      } });
+      if (sp.onSession) try { sp.onSession(caller, session); } catch { /* the listener must not break the stream */ }
     };
   }
 
   /** Dial the home through this space's node. @param {string} id @param {string} addr @param {number} [timeoutMs] */
-  async function dialDirect(id, addr, timeoutMs = 35_000) {
+  async function dialDirect(id, addr, timeoutMs = 35_000, serve = undefined) {
     const sp = spaces.get(id);
     if (!sp?.up) throw err("unavailable", "this space's node is not running");
     const dev = deps.device;
@@ -201,24 +210,25 @@ export function createHost(deps) {
     } catch (e) { sock.destroy(); throw e; }
     if (rest.length) sock.unshift(rest);
     sock.resume();
-    return joinPeer(socketPipe(sock), { device: dev.id, nodeKey: sp.up.nodeKey, shared: dev.shared });
+    return joinPeer(socketPipe(sock), { device: dev.id, nodeKey: sp.up.nodeKey, sign: dev.sign, ...(serve ? { serve } : {}) });
   }
 
   /**
    * A channel to a space's home, over whichever path is up. `dial` overrides how the direct path
    * is made (tests, or a different transport).
    * @param {string} id
-   * @param {{ dial?: () => Promise<any>, relay?: () => Promise<any> }} [o]
+   * `serve(tool, input)` answers calls the home makes back on this connection (a drive's device holds one open for the home's storage frames).
+   * @param {{ dial?: () => Promise<any>, relay?: () => Promise<any>, serve?: (tool: string, input: any) => Promise<any> }} [o]
    * @returns {SpaceLink}
    */
   function connect(id, o = {}) {
     const sp = spaces.get(id);
     if (!sp) throw err("not_found", `no space ${id}`);
-    const direct = o.dial || (() => { if (!sp.spec.peerAddr) throw err("unavailable", "the home's address is not known"); return dialDirect(id, sp.spec.peerAddr); });
+    const direct = o.dial || (() => { if (!sp.spec.peerAddr) throw err("unavailable", "the home's address is not known"); return dialDirect(id, sp.spec.peerAddr, undefined, o.serve); });
     const relay = o.relay || (async () => {
       if (!deps.relayPeer) throw err("unavailable", "no relay path is configured");
       const pipe = await deps.relayPeer(id);
-      return peerSession(pipe, { first: 1 });
+      return peerSession(pipe, { first: 1, ...(o.serve ? { serve: o.serve } : {}) });
     });
     /** @type {{ direct: any, relay: any }} */
     const sess = { direct: null, relay: null };

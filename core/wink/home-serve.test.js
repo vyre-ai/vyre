@@ -2,6 +2,7 @@
 // homeServe: the home's peer door dispatcher (kernel-2's ask). A joined device calls through a real admitPeer/joinPeer pair over a loopback pipe; the
 // kernel's withKernelCall is wrapped INSIDE homeServe so the proven node key reaches Wink first. peer-cache: the sync allow over wink.peer.allow.
 
+import crypto from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "node:net";
@@ -57,9 +58,10 @@ test("homeServe: a peer's call reaches the registry as device:<id>, kernel.call 
     personOf: (device, space) => (device === "srv1" ? "per_alex" : null),
   }));
   // the host's own composition: direct peers pass the node key the connection proved
-  const home = admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", shared: (d, nk) => p.peers.shared(d, nk, "stable-x"), serve: (c, tool, input) => serve(c, tool, input, { nodeKey: NK, stableId: "stable-x" }) });
-  const secret = Buffer.from(p.peers.secretFor("srv1"), "base64url");
-  const session = await joinPeer(socketPipe(a), { device: "srv1", nodeKey: NK, shared: () => secret });
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const home = admitPeer(socketPipe(b), { id: { nodeKey: NK }, box: "box1", entry: eid => (eid === "srv1" ? { eid, kind: "device", pub } : null), serve: (c, tool, input) => serve(c, tool, input, { nodeKey: NK, stableId: "stable-x" }) });
+  const session = await joinPeer(socketPipe(a), { device: "srv1", nodeKey: NK, sign: m => crypto.sign(null, m, kp.privateKey).toString("base64url") });
   await home;
   assert.deepEqual(await session.call("about.text", { q: 1 }), { tool: "about.text", input: { q: 1 } });
   assert.deepEqual(seen[0], ["device:srv1", "about.text"]);
@@ -68,7 +70,6 @@ test("homeServe: a peer's call reaches the registry as device:<id>, kernel.call 
   assert.deepEqual(served[0][1], { device_key_id: "srv1", person: "per_alex", path: "wink" });
   const gone = await session.call("kernel.call", { v: 1, space: "nowhere", id: "r2", call: "members.list", args: {} });
   assert.equal(gone.ok, false, "a refusal is data, not a wire error");
-  assert.equal(p.devices.get("srv1").nodeKey, NK, "the proven key was bound by the wrapper's first call");
   session.close();
 });
 
@@ -93,6 +94,19 @@ test("peer-cache: a sync allow over wink.peer.allow, a removal answers no at onc
   assert.equal(c.allow("srv1"), false, "removal answers no before the refresh returns");
   await c.refresh("srv1");
   assert.equal(c.allow("srv1"), false);
+  // the identity port as the source: a removal event answers no at once, a list change answers no for everything until re-read
+  const ids = new Set(["e1", "e2"]);
+  const ic = createPeerAllowCache({ events, has: async eid => ids.has(eid) });
+  await ic.refresh("e1"); await ic.refresh("e2");
+  assert.equal(ic.allow("e1"), true);
+  ids.delete("e1");
+  handlers.get("identity.entry-removed")({ payload: { eid: "e1" } });
+  assert.equal(ic.allow("e1"), false, "removed entry: no before the refresh");
+  handlers.get("identity.changed")({});
+  assert.equal(ic.allow("e2"), false, "a list change: no until read again");
+  await new Promise(r => setImmediate(r)); await ic.refresh("e2");
+  assert.equal(ic.allow("e2"), true);
+  ic.stop();
   const bad = createPeerAllowCache({ events, call: async () => { throw new Error("down"); } });
   await bad.refresh("x");
   assert.equal(bad.allow("x"), false, "a failed call is a no");
