@@ -1,0 +1,143 @@
+// @ts-check
+// Definition text -> stored form. Parse (source only), evaluate the SDK calls (pure data), then
+// check the whole kit against itself. The stored form is JSON and is the source of truth.
+
+import { parse, parseSafely } from "./parse.js";
+import { SDK, SDK_VERSION } from "./sdk.js";
+import { LanguageError } from "./errors.js";
+import { parseExpr, exprNames } from "./expr.js";
+import { print } from "./print.js";
+
+/** Types a Kit may link to without defining them: the core record types every Space has. */
+export const CORE_TYPES = Object.freeze(["person", "task", "note", "file"]);
+/** Roles every Space has. */
+export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
+
+/**
+ * @typedef {{ kind: "kit", sdk: number, id: string, version: number, label?: string, description?: string,
+ *   types: any[], templates: any[], roles: any[], flows: any[], views: any[], codeSteps: any[] }} StoredKit
+ */
+
+/** @param {import("./parse.js").Program} program @returns {StoredKit} */
+export function evaluate(program) {
+  const imported = new Set(program.imports);
+  /** @type {Map<string, any>} */ const env = new Map();
+  /** @param {import("./parse.js").Node} n @returns {any} */
+  const ev = (n) => {
+    switch (n.type) {
+      case "Str": case "Num": case "Bool": return n.value;
+      case "Null": return null;
+      case "Array": return n.items.map(ev);
+      case "Object": { /** @type {Record<string, any>} */ const o = {}; for (const p of n.props) { if (Object.prototype.hasOwnProperty.call(o, p.key)) throw new LanguageError("invalid_definition", `The key "${p.key}" appears twice`, { line: p.line, col: p.col }); o[p.key] = ev(p.value); } return o; }
+      case "Ref": { if (!env.has(n.name)) throw new LanguageError("unknown_reference", `"${n.name}" is not defined above this line`, { line: n.line, col: n.col }); return env.get(n.name); }
+      case "Call": {
+        const root = n.callee.split(".")[0];
+        if (!imported.has(root)) throw new LanguageError("unknown_function", `"${root}" is not imported from @vyre/sdk`, { line: n.line, col: n.col });
+        const fn = Object.prototype.hasOwnProperty.call(SDK, n.callee) ? /** @type {any} */ (SDK)[n.callee] : undefined;
+        if (!fn) throw new LanguageError("unknown_function", `"${n.callee}" is not part of the SDK`, { line: n.line, col: n.col });
+        const args = n.args.map(ev);
+        try { return fn(...args); } catch (e) { if (e instanceof LanguageError && e.line === undefined) throw new LanguageError(e.code, e.message.replace(/ \(at .*\)$/, "") + ` [${e.path ?? n.callee}]`, { line: n.line, col: n.col }); throw e; }
+      }
+    }
+  };
+  for (const c of program.consts) { if (env.has(c.name)) throw new LanguageError("invalid_definition", `"${c.name}" is defined twice`, { line: c.value.line, col: c.value.col }); env.set(c.name, ev(c.value)); }
+  if (!program.defaultExport) throw new LanguageError("missing_kit", "The file must end with export default defineKit({ ... })");
+  const kit = ev(program.defaultExport);
+  if (!kit || kit.$ !== "kit") throw new LanguageError("missing_kit", "The default export must be a defineKit({ ... }) call", { line: program.defaultExport.line, col: program.defaultExport.col });
+
+  /** @type {StoredKit} */
+  const out = { kind: "kit", sdk: SDK_VERSION, id: kit.id, version: kit.version, ...(kit.label ? { label: kit.label } : {}), ...(kit.description ? { description: kit.description } : {}), types: [], templates: [], roles: [], flows: [], views: [], codeSteps: [] };
+  const bucket = { type: "types", template: "templates", role: "roles", flow: "flows", view: "views", code: "codeSteps" };
+  const seen = new Set();
+  for (const d of kit.includes) {
+    if (!d || typeof d !== "object" || !(d.$ in bucket)) throw new LanguageError("invalid_definition", "defineKit.includes may list only definitions made with the SDK", { path: "defineKit.includes" });
+    if (d.$ === "kit") throw new LanguageError("invalid_definition", "A kit cannot include another kit yet", { path: "defineKit.includes" });
+    const key = `${d.$}:${d.name}`;
+    if (seen.has(key)) throw new LanguageError("invalid_definition", `${d.$} "${d.name}" is included twice`, { path: "defineKit.includes" });
+    seen.add(key);
+    const { $, ...rest } = d;
+    /** @type {any} */ (out)[/** @type {any} */ (bucket)[d.$]].push(rest);
+  }
+  return checkKit(out);
+}
+
+/**
+ * Cross-checks inside one kit: references resolve, expressions name real fields, sealed fields stay
+ * out of expressions and merge fields. Returns the kit.
+ * @param {StoredKit} kit @returns {StoredKit}
+ */
+export function checkKit(kit) {
+  const err = (path, msg) => { throw new LanguageError("invalid_definition", msg, { path }); };
+  const typeNames = new Set(kit.types.map((t) => t.name));
+  const roleNames = new Map(kit.roles.map((r) => [r.name, r]));
+  const templateNames = new Set(kit.templates.map((t) => t.name));
+  const sealedNames = new Set(kit.types.flatMap((t) => t.fields.filter((/** @type {any} */ f) => f.kind === "sealed").map((/** @type {any} */ f) => f.name)));
+  /** @param {string} path @param {string} src @param {any} type */
+  const checkExpr = (path, src, type) => {
+    for (const nm of exprNames(parseExpr(src))) {
+      const f = type.fields.find((/** @type {any} */ x) => x.name === nm);
+      if (!f) err(path, `The expression names "${nm}", which is not a field of ${type.name}`);
+      if (f.kind === "sealed") err(path, `The field "${nm}" is sealed and cannot be used in an expression`);
+    }
+  };
+  for (const t of kit.types) {
+    const fieldNames = new Set();
+    for (const f of t.fields) {
+      if (fieldNames.has(f.name)) err(`type ${t.name}`, `Field "${f.name}" appears twice`);
+      fieldNames.add(f.name);
+      if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Links to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
+    }
+    for (const [i, r] of (t.rules ?? []).entries()) {
+      if (r.require) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
+      if (r.compute) { checkExpr(`type ${t.name}.rules[${i}]`, r.compute, t); const into = t.fields.find((/** @type {any} */ f) => f.name === r.into); if (!into) err(`type ${t.name}.rules[${i}]`, `into names "${r.into}", which is not a field`); if (into.kind === "sealed") err(`type ${t.name}.rules[${i}]`, "A computed rule cannot fill a sealed field"); }
+    }
+    const stage = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    for (const s of stage?.stages ?? []) {
+      if (s.enter) checkExpr(`type ${t.name} stage ${s.name}`, s.enter, t);
+      for (const task of s.tasks ?? []) {
+        const at = `type ${t.name} stage ${s.name} task "${task.title}"`;
+        for (const who of [task.doer, task.checker].filter(Boolean)) {
+          const [k, nm] = String(who).split(":");
+          if (k === "teammate") { const r = roleNames.get(nm); if (!r || r.kind !== "teammate") err(at, `${who} is not a teammate role defined in this kit`); }
+          else if (k === "role" && !roleNames.has(nm) && !CORE_ROLES.includes(nm)) err(at, `${who} is not a role defined in this kit`);
+        }
+        if (task.template && !templateNames.has(task.template)) err(at, `Uses template "${task.template}", which is not in this kit`);
+        for (const fn of task.output?.fields ?? []) { const f = t.fields.find((/** @type {any} */ x) => x.name === fn); if (!f) err(at, `Output names "${fn}", which is not a field of ${t.name}`); }
+      }
+    }
+  }
+  for (const r of kit.roles) for (const [i, g] of r.grants.entries()) {
+    const target = g.read ?? g.write ?? g.create ?? g.remove; const [tn, fn] = target.split(".");
+    const t = kit.types.find((x) => x.name === tn);
+    if (!t && !CORE_TYPES.includes(tn)) err(`role ${r.name}.grants[${i}]`, `${tn} is not a type in this kit or a core type`);
+    if (t && fn && fn !== "*" && !t.fields.some((/** @type {any} */ f) => f.name === fn)) err(`role ${r.name}.grants[${i}]`, `${tn} has no field "${fn}"`);
+    if (t && g.where) checkExpr(`role ${r.name}.grants[${i}]`, g.where, t);
+  }
+  for (const tpl of kit.templates) for (const text of [tpl.subject ?? "", tpl.body]) for (const m of text.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g)) {
+    const path = m[1]; const last = path.replace(/^sealed:/, "").split(".").pop() ?? "";
+    if (!path.startsWith("sealed:") && sealedNames.has(last)) err(`template ${tpl.name}`, `{{${path}}} reads a sealed field; write {{sealed:${path}}} so the value is filled by Vyre and never shown to a model`);
+  }
+  for (const v of kit.views) {
+    const t = kit.types.find((x) => x.name === v.of); if (!t) err(`view ${v.name}`, `${v.of} is not a type in this kit`);
+    if (v.groupBy) { const f = t.fields.find((/** @type {any} */ x) => x.name === v.groupBy); if (!f || !["stage", "choice"].includes(f.kind)) err(`view ${v.name}`, "groupBy must be a stage or choice field"); }
+    if (v.dateField) { const f = t.fields.find((/** @type {any} */ x) => x.name === v.dateField); if (!f || !["date", "datetime"].includes(f.kind)) err(`view ${v.name}`, "dateField must be a date field"); }
+    if (v.filter) checkExpr(`view ${v.name}`, v.filter, t);
+  }
+  for (const fl of kit.flows) {
+    const walk = (/** @type {any} */ o) => { if (o && typeof o === "object") for (const [k, x] of Object.entries(o)) { if ((k === "create" || k === "find" || k === "update" || k === "remove") && typeof x === "string" && !typeNames.has(x) && !CORE_TYPES.includes(x)) err(`flow ${fl.name}`, `Step uses type "${x}", which is not in this kit or a core type`); if (k === "template" && typeof x === "string" && !templateNames.has(x)) err(`flow ${fl.name}`, `Step uses template "${x}", which is not in this kit`); walk(x); } };
+    walk(fl.steps);
+  }
+  return kit;
+}
+
+/** @param {string} source @returns {StoredKit} */
+export function compile(source) { return evaluate(parse(source)); }
+/** Same, with the parse in a worker that has a memory ceiling and a time limit. @param {string} source */
+export async function compileSafely(source) { return evaluate(await parseSafely(source)); }
+
+/**
+ * Check a stored kit that did not come from text (the visual builder): print it and compile the
+ * text, so one set of rules judges both forms. Returns the canonical stored form.
+ * @param {any} stored
+ */
+export function validateStored(stored) { return compile(print(stored)); }
