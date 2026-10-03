@@ -22,7 +22,7 @@ const DEFAULT_PRICE = { in: 15, out: 75 };
 const estimateInput = m => Math.ceil(JSON.stringify(m).length / 4);
 
 /**
- * @param {{ adapter: Adapter, kernelFixture?: () => ReturnType<typeof buildFixture>, budgetUsd?: number, tasks?: typeof TASKS, prices?: Record<string, { in: number, out: number }>, maxSteps?: number }} o
+ * @param {{ adapter: Adapter, kernelFixture?: () => ReturnType<typeof buildFixture>|any, budgetUsd?: number, tasks?: typeof TASKS, prices?: Record<string, { in: number, out: number }>, maxSteps?: number }} o
  * @returns {Promise<FitResult>}
  */
 export async function evaluateModel({ adapter, kernelFixture = buildFixture, budgetUsd = 5, tasks = TASKS, prices = {}, maxSteps = MAX_STEPS }) {
@@ -33,7 +33,7 @@ export async function evaluateModel({ adapter, kernelFixture = buildFixture, bud
 
   for (const task of tasks) {
     if (partial) { results.push({ id: task.id, title: task.title, score: null, max: PER_TASK, notes: ["not run: the budget was reached"], calls: 0, cost_usd: 0, state: "skipped_budget" }); continue; }
-    const fx = kernelFixture();
+    const fx = await kernelFixture();
     /** @type {Message[]} */ const messages = [{ role: "system", content: fx.system }, { role: "user", content: task.prompt }];
     let taskCost = 0, stopped = false, steps = 0;
     for (; steps < maxSteps; steps++) {
