@@ -12,7 +12,7 @@ import { createSqliteEventLog } from "./store/sqlite-log.js";
 export async function bootKernel(cfg) {
   const { db, ...rest } = cfg;
   const log = createSqliteEventLog({ db, space: cfg.space, clock: cfg.clock });
-  // The record store is the home's SQLite unless the caller brings the Space's own (the per-Space Twenty, records/space-store.js).
-  const store = rest.store || createSqliteStore({ db, clock: cfg.clock });
+  // a store the caller made (a Space on Twenty, stores/twenty/space-store.js) replaces the SQLite one
+  const store = cfg.store || createSqliteStore({ db, clock: cfg.clock });
   return await createKernel({ ...rest, log, store });
 }

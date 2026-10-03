@@ -175,19 +175,20 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
-    // The record store: the home's SQLite by default; with VYRE_RECORDS_STORE=twenty each Space's records live in its own Twenty (records/space-store.js), provisioned on first use.
-    // Needs Docker on the machine (see that file for what runs as root). The reach, memory profile and gateway container are the operator's: VYRE_TWENTY_REACH (alias or ip),
-    // VYRE_TWENTY_MEMORY (small or standard), VYRE_GATEWAY_CONTAINER (the container to attach to a Space's network), VYRE_TWENTY_SUBNET (to write its firewall rules).
-    /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
-    if (process.env.VYRE_RECORDS_STORE === "twenty") {
-      const { spaceStoreFactory } = await import("../../records/space-store.js");
-      storeFor = spaceStoreFactory({ home: root, log,
-        ...(process.env.VYRE_TWENTY_REACH === "ip" ? { reach: /** @type {"ip"} */ ("ip") } : {}),
-        ...(process.env.VYRE_TWENTY_MEMORY === "standard" ? { memory: /** @type {"standard"} */ ("standard") } : {}),
-        ...(process.env.VYRE_GATEWAY_CONTAINER ? { gatewayContainer: process.env.VYRE_GATEWAY_CONTAINER } : {}),
-        ...(process.env.VYRE_TWENTY_SUBNET ? { subnet: process.env.VYRE_TWENTY_SUBNET } : {}) });
+    // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
+    // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
+    /** @type {any} */ let stages = null;
+    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir),
+      onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []) });
+    {
+      const { createStages } = await import("../../kernel/flows/stages.js");
+      const sh = kernel.kernelFor({ name: "stages", needs: { kernel: { actions: ["tasks.request", "tasks.read", "records.read", "records.update"], prefixes: ["*/*"] } } });
+      const owner = () => kernel.chains.fromFacts({ kind: "session_person", person: kernel.id.owner, session: "stages", vouched: true });
+      stages = createStages({ kernel: { ask: sh.tasks, records: sh.records }, hook: true, emit: (/** @type {string} */ type, /** @type {any} */ data) => { if (type === "stage.error") log(`stages: ${JSON.stringify(data)}`); },
+        catalog: async () => ({ space: kernel.id.space, types: Object.fromEntries((await kernel.store.types()).map((/** @type {any} */ t) => [t.name, t])) }),
+        chain: () => kernel.chains.appendService(owner(), "stages", true) });
+      kernel.log.subscribe("stages", {}, (/** @type {any} */ e) => stages.onEvent(e));
     }
-    kernel = await bootHomeKernel({ db, root, log, isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}) });
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (core/sessions/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread

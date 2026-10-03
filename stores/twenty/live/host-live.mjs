@@ -36,10 +36,7 @@ const tkit = Date.now(); const inst = await host.installKit(kit); lap(`kit insta
 const c = host.ownerChain();
 const sam = await host.kernel.records.create(c, "contact", { full_name: "Pat Harlow", email: "pat@example.test", ssn: { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
 const up = await host.kernel.records.update(c, "contact", sam.id, { phone: "555 0100" }, sam.version);
-const owner = { actor: { kind: "person", id: "per_owner", space: spaceId } };
-const task = await host.kernel.records.create(c, "task", { title: "Research the client", record: { urn: sam.urn }, doer: { actor: { kind: "agent", id: "research", space: spaceId } }, checker: owner, output_kind: "fields", output_target: "practice_area", how: "assistant", state: "ready", assigned_by: owner });
-const back = await host.kernel.records.get(c, "task", task.id);
-console.log(`kernel.records: contact v${sam.version} -> v${up.version}; task state=${back.data.state} doer=${back.data.doer.actor.id}; log verify=${host.log.verify().ok}`);
+console.log(`kernel.records: contact v${sam.version} -> v${up.version}; log verify=${host.log.verify().ok}`);
 const denied = await host.kernel.records.get(host.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 1, pid: 1, inside_model_process: true }), "contact", sam.id).then((r) => (r ? "SEEN" : "absent"), (e) => `refused:${e.code}`);
 console.log("a model chain with no grant ->", denied);
 
@@ -79,8 +76,8 @@ const r = await restoreSpace({ home, space: moved, from: b.dir, reach: "ip", log
 lap(`restored as ${moved} in ${r.seconds}s (backup + restore ${((Date.now() - tb) / 1000).toFixed(1)}s)`);
 const store2 = mkStore(r, moved);
 await store2.define({ add_types: [...(await Promise.all([]))] }).catch(() => {});
-const n2 = (await store2.query("contact", { page: { limit: 200 } })).rows.length, m2 = (await store2.query("matter", { page: { limit: 10 } })).rows.length, t2 = await store2.get("task", task.id);
-console.log(`moved Space reads back: ${n2} contacts, ${m2} matters, task state=${t2?.data.state}, same key=${fs.readFileSync(r.keyFile, "utf8") === fs.readFileSync(p.keyFile, "utf8")}`);
+const n2 = (await store2.query("contact", { page: { limit: 200 } })).rows.length, m2 = (await store2.query("matter", { page: { limit: 10 } })).rows.length;
+console.log(`moved Space reads back: ${n2} contacts, ${m2} matters, same key=${fs.readFileSync(r.keyFile, "utf8") === fs.readFileSync(p.keyFile, "utf8")}`);
 console.log("moved Space memory:\n  " + stats(moved));
 
 if (keep !== "keep") {

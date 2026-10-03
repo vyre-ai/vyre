@@ -1,0 +1,78 @@
+# What the iOS app looks like on a simulator, on a hosted Mac (never on a person's computer): `expo prebuild` for iOS, a
+# simulator build with no signing, then Now, a record and the chat through their vyre:// links; screenshots and a short
+# screen recording are the artifact. Manual: a macOS run costs ten times a Linux one. Nothing here touches signing or TestFlight.
+name: ios-app-capture
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-app-capture-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  capture:
+    runs-on: macos-latest
+    timeout-minutes: 70
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Newest Xcode
+        run: |
+          x=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] && sudo xcode-select -s "$x"
+          xcodebuild -version
+      - run: npx expo prebuild -p ios --clean
+      - name: Build for the simulator (Release: the bundle is inside the app; no signing)
+        run: |
+          ws=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$ws" .xcworkspace)
+          set -o pipefail
+          xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/dd \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build 2>&1 | tee xcodebuild.log | tail -40
+      - name: Boot an iPhone simulator, install, open the screens
+        run: |
+          set -u
+          out=capture-ios; mkdir -p "$out"
+          app=$(find ios/dd/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          echo "app: $app"
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          for runtime in sorted((r for r in devs if "iOS" in r), reverse=True):
+              for d in devs[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit()
+          ')
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          xcrun simctl launch "$udid" sh.vyre.app || true
+          sleep 20
+          shot() { xcrun simctl openurl "$udid" "$2"; sleep "$3"; xcrun simctl io "$udid" screenshot "$out/$1.png"; echo "$1: $2"; }
+          shot now "vyre://u/now" 12
+          shot record "vyre://u/record/01a05a43-fc00-4f98-ad05-d023d68e45fe" 10
+          shot chat "vyre://chat-demo?at=4200&hold=1" 10
+          shot now-again "vyre://u/now" 8
+          xcrun simctl io "$udid" recordVideo --codec h264 "$out/now.mov" & rec=$!
+          sleep 8
+          kill -INT "$rec"; wait "$rec" || true
+          xcrun simctl spawn "$udid" log show --last 5m --predicate 'process == "Vyre"' --style compact > "$out/log.txt" 2>&1 || true
+          xcrun simctl shutdown all || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-capture-${{ github.sha }}
+          path: |
+            apps/app/capture-ios/
+            apps/app/xcodebuild.log
+          retention-days: 14
