@@ -544,14 +544,74 @@ export default {
         return sync(spaceId, view);
       });
 
+    // ---- "setup in progress": the steps after the space has its home (look, members, connectors, the first Kit) are done on the device where the person started. The state is kept here, beside the
+    // space's row, and read with the space (spaces.get, spaces.list). No secret, code, key or token is ever in it: only the shape below is kept, and anything else is dropped. ----
+    const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+    const SETUP_WHERE = ["server", "vps", "here"];
+    const text = (/** @type {any} */ v, /** @type {number} */ n) => (typeof v === "string" ? v.trim().slice(0, n) : null) || null;
+    /** The device a call comes from, as the person sees it. A paired device's name is the home's own row; this computer is "this computer". @param {any} meta */
+    const callerDevice = async meta => {
+      const f = meta && meta.kernelFacts;
+      if (f && f.kind === "device" && typeof f.device_key_id === "string") {
+        const r = await ctx.call("relay.device.info", { id: f.device_key_id }).catch(() => null);
+        return { id: f.device_key_id, name: text(r && r.data && r.data.name, 60) || "your device" };
+      }
+      const st = me();
+      return { id: /** @type {string} */ (st.keyId), name: "this computer" };
+    };
+    const setupOf = async (/** @type {string} */ id) => /** @type {any} */ (await kv.get(`setup/${id}`)) || null;
+    /** What the screens read. @param {any} row @param {any} s */
+    const setupView = async (row, s) => (ownsFlow(row, s) ? setupOf(row.id) : null);
+    /** @param {any} i the person's input @param {any} device @param {any} [prev] @param {number} at */
+    const cleanSetup = (i, device, prev, at) => {
+      if (!i || typeof i !== "object" || Array.isArray(i)) throw refuse("That is not a setup state.", "bad_input");
+      if (!SETUP_STEPS.includes(i.step)) throw refuse(`Setup is at one of: ${SETUP_STEPS.join(", ")}.`, "bad_input");
+      if (i.where !== undefined && i.where !== null && !SETUP_WHERE.includes(i.where)) throw refuse("Where is server, vps or here.", "bad_input");
+      const picks = i.picks && typeof i.picks === "object" ? i.picks : {};
+      const connectors = Array.isArray(picks.connectors) ? picks.connectors.filter((/** @type {any} */ c) => typeof c === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(c)).slice(0, 50) : [];
+      const kit = typeof picks.kit === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(picks.kit) ? picks.kit : null;
+      return { step: i.step, device, started: prev ? prev.started : at, updated: at, name: text(i.name, 80), address: text(i.address, 120), look: text(i.look, 80), where: i.where || null, picks: { connectors, kit } };
+    };
+    tool("spaces.setup.save", "Keep where setup has got to for a space you are setting up (one of look, members, connectors, kit), so another device can carry on. Send setup: null when the last step is done. Only the device setup is on may save; no secret, code or key is kept.",
+      obj({ space: str, setup: { type: ["object", "null"] } }, ["space", "setup"]), async (i, meta) => {
+        const { row } = mine(i.space);
+        const cur = await setupOf(row.id);
+        const device = await callerDevice(meta);
+        if (i.setup === null) {
+          if (cur && cur.device.id !== device.id) throw refuse(`Setup is in progress on your ${cur.device.name}.`, "setup_elsewhere");
+          if (cur) await kv.delete(`setup/${row.id}`);
+          return { space: row.id, setup: null };
+        }
+        if (cur && cur.device.id !== device.id) throw refuse(`Setup is in progress on your ${cur.device.name}. Continue here to take it over.`, "setup_elsewhere");
+        const next = cleanSetup(i.setup, cur ? cur.device : device, cur, now());
+        await kv.put(`setup/${row.id}`, next);
+        return { space: row.id, setup: next };
+      });
+    tool("spaces.setup.claim", "Continue setting up a space on this device: setup moves here from the device it was on, and the state comes back. Only the person who is setting it up can do this.",
+      obj({ space: str }, ["space"]), async (i, meta) => {
+        const { row } = mine(i.space);
+        const cur = await setupOf(row.id);
+        if (!cur) throw refuse("Nothing is being set up for that space.", "no_setup");
+        const device = await callerDevice(meta);
+        if (cur.device.id === device.id) return { space: row.id, setup: cur, moved: false };
+        const next = { ...cur, device, updated: now() };
+        await kv.put(`setup/${row.id}`, next);
+        emit("space.setup-moved", { space: row.id });
+        return { space: row.id, setup: next, moved: true, from: cur.device };
+      });
+
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
       const rows = [];
       for (const row of spaces.all()) rows.push({ row, m: await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null) });
-      return rows.flatMap(({ row, m }) => {
-        if (!m && row.createdBy !== s.id) return [];
-        return [{ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt }];
-      });
+      const out = [];
+      for (const { row, m } of rows) {
+        if (!m && row.createdBy !== s.id) continue;
+        // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
+        if (row.status !== "done") continue;
+        out.push({ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
+      }
+      return out;
     });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
@@ -563,7 +623,7 @@ export default {
       return {
         id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, aliases: row.aliases, workspaceId: row.workspaceId,
         warnings: [...row.warnings, ...(await m.warnings())], members: all.length, owners: await m.ownerCount(), role: ((await membershipOf(row.id, /** @type {string} */ (s.id), meta)) || {}).role || null,
-        roleNames: m.getDisplayNames(), createdAt: row.createdAt,
+        roleNames: m.getDisplayNames(), createdAt: row.createdAt, setup: await setupView(row, s),
       };
     });
 
@@ -587,7 +647,7 @@ export default {
       obj({ space: str, vpsToken: str }, ["space"]), async i => {
         const { row } = mine(i.space);
         const r = await flow.cancel(row.id, i.vpsToken ? { vpsToken: String(i.vpsToken) } : {});
-        if (r.cancelled) spaces.patch(row.id, { status: "cancelled" }, now());
+        if (r.cancelled) { spaces.patch(row.id, { status: "cancelled" }, now()); await kv.delete(`setup/${row.id}`); }
         return { ...r, space: row.id };
       });
 

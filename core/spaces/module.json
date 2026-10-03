@@ -86,6 +86,14 @@
     "reach": "person"
    },
    {
+    "name": "spaces.setup.save",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.setup.claim",
+    "reach": "person"
+   },
+   {
     "name": "spaces.resume",
     "reach": "person"
    },
@@ -244,6 +252,7 @@
    "space.vps-created",
    "space.vps-destroyed",
    "space.warning",
+   "space.setup-moved",
    "member.added",
    "member.role-changed",
    "member.removed",
