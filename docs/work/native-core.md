@@ -1,5 +1,13 @@
 # native-core
 
+## Chrome control status (4 Oct, for the user)
+Read from the code, CI runs and the extension logs (read only); I drove no browser.
+1. Works today: on the person's own Chrome, Vyre for Chrome (local/hands-chrome-mac, standalone package) reads and acts through its extension: tabs, snapshot, click, fill, eval, network, API-first reads, parallel tabs, held sends that wait for the person's approval. The real-Chrome job (real extension, real package over MCP) was green on runners at run 36971024945 (2 Oct, work/022-parallel-tabs). On the server, an agent's Chrome inside its computer (core/computers, hands-chrome over a pipe, Glass to watch and take over) ran end to end on a throwaway stack on 27 Sep.
+2. Flaky or unproven: GoHighLevel flows. In the only real session (30 Sep, macOS, a GoHighLevel account) 42 evals and reads worked, but chrome.ghl create-workflow failed at "click Create Workflow", and two held sends timed out unanswered at 300 s; the early calls hit no_extension (extension not yet connected) and one blind refusal on a browser page. Labels and flows are unverified on a live account (docs/work/capsule-sight.md item 6).
+3. Last tested: by the person on 30 Sep (Chrome on macOS, session log 14:03 to 17:57 UTC). Since then only runner CI (2 Oct, Linux headless) ran it; the five later sessions in the logs started and stopped with no calls. Nothing since 1 Oct touched the Mac.
+4. Not built or not seen: Chrome through Lumen on the person's computer has not been run by anyone in these logs; no live GHL acceptance run; the guided load-unpacked install screen; a server Chrome logged in to a real account (logins from the vault); Windows registry install on a real Windows machine.
+5. Verdict: ready to try on read and fill work in the person's own Chrome, not ready to trust for unattended GHL automation. The next step is one supervised GHL run by the person, with chrome_snapshot before each step, so the failing step "click Create Workflow" is fixed against the live page.
+
 ## Scope
 Own the NATIVE CORE milestone end to end: chat on the Claude Agent SDK that feels as native and
 smooth as the Claude Code terminal (and Paseo), plus complete Settings at account and project level.
