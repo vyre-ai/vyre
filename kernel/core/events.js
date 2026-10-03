@@ -12,7 +12,7 @@ import { REDACTION_ORDER } from "../contracts/index.js";
 import { KernelError } from "./errors.js";
 
 const okVis = (/** @type {any} */ v) => ["space", "actor", "subject", "owner"].includes(v) || (typeof v === "string" && /^members:.+/.test(v));
-const TYPE = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
+const TYPE = /^[a-z][a-z0-9_-]*\.[a-z][a-z0-9-]*$/;
 export const genesis = (/** @type {string} */ space) => sha256(`vyre-genesis:${space}`);
 
 /** The envelope's hash input: everything but `data` (replaced by `commit`, already present), `hash` and `sig`. */
