@@ -8,6 +8,7 @@ import { FilterPills } from "../components/FilterPills";
 import { Row } from "../components/Row";
 import { Text } from "../components/Text";
 import { ActorMark } from "./ActorMark";
+import { spaceRef } from "../marks/useMark";
 import { Section } from "./Section";
 import { TaskCard } from "./TaskCard";
 import { nowModel, nameOf, recordTitle, spaceName, whenLabel, workingLine, who, type World } from "./model";
@@ -27,7 +28,7 @@ export function NowView({ world, onAction, onOpen, notice }: { world: World; onA
   const m = nowModel(world, scope);
   const showSpace = scope === "all";
   const openSwipe = (t: any): SwipeSet => ({ trailing: [{ id: "open", label: "Open", icon: "chev-r", tone: "plain", haptic: "selection", onPress: () => onOpen(t) }] });
-  const spaceOf = (t: any) => (showSpace ? <Chip tone="space">{spaceName(world, t.space)}</Chip> : null);
+  const spaceBadge = (t: any) => (showSpace && spaceName(world, t.space) ? spaceRef(spaceName(world, t.space), t.space) : undefined);
 
   const needs = (
     <Section title="Needs you" count={m.needs.length}>
@@ -42,7 +43,7 @@ export function NowView({ world, onAction, onOpen, notice }: { world: World; onA
           {m.working.map((t, i) => (
             <View key={t.id}>
               {i > 0 ? <Divider /> : null}
-              <Row lead={<ActorMark who={who(world, aid(t.doer))} />} title={recordTitle(world, world.records.get(t.record))} sub={workingLine(world, t)} end={spaceOf(t)} onPress={() => onOpen(t)} swipe={openSwipe(t)} />
+              <Row lead={<ActorMark who={who(world, aid(t.doer))} space={spaceBadge(t)} />} title={recordTitle(world, world.records.get(t.record))} sub={workingLine(world, t)} onPress={() => onOpen(t)} swipe={openSwipe(t)} />
             </View>
           ))}
         </Card>

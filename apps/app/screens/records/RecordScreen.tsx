@@ -22,7 +22,7 @@ export function RecordScreen({ id }: { id: string }) {
     <LargeTitleScreen title={titleOf(def, rec)} own onRefresh={reload}>
       <Appear index={0}>
         <View className="flex-row items-center gap-s3">
-          <Button size="sm" kind="ghost" label={"‹ Back"} accessibilityLabel="Back" onPress={back} />
+          <Button size="sm" kind="ghost" icon="chevron-left" label="Back" onPress={back} />
         </View>
       </Appear>
       <Appear index={1}>

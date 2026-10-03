@@ -8,7 +8,7 @@
     "web": "expo start --web",
     "export:web": "node scripts/term-assets.mjs && expo export -p web && node scripts/precache.mjs",
     "typecheck": "tsc --noEmit",
-    "icons": "node scripts/gen-icons.mjs",
+    "icons": "node scripts/gen-ui-icons.mjs",
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\" \"ui/**/*.test.js\" \"screens/**/*.test.js\"",
     "lint:ui": "node scripts/check-ui-imports.mjs"
   },

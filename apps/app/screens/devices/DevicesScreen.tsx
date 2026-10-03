@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, Row, Switch, Text, showToast, markRef } from "@vyre/ui";
 import { Group, Page } from "../shell/Page";
 import { SPACE_NAMES } from "./data";
 import { useDevices } from "./state";
@@ -19,7 +19,7 @@ export function DevicesScreen() {
           {devices.map((d, i) => (
             <View key={d.id}>
               {i ? <Divider /> : null}
-              <Row lead={<Avatar name={d.name} family="device" size="lg" icon={d.device === "phone" ? "phone" : d.device === "server" ? "box" : "laptop"} />} title={deviceLine(d.name, (devSpaces[d.id] ?? []).map((s) => SPACE_NAMES[s] ?? s))}
+              <Row lead={<Avatar of={{ ...markRef("device", d.name, d.id), device: d.device }} size={40} />} title={deviceLine(d.name, (devSpaces[d.id] ?? []).map((s) => SPACE_NAMES[s] ?? s))}
                 sub={`Last used ${d.last}`} onPress={() => router.push(`/u/settings/device/${d.id}` as never)}
                 end={<Chip>{d.device === "phone" ? "Phone" : d.device === "server" ? "Server" : "Computer"}</Chip>} />
             </View>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Divider, EmptyState, Segmented, Text, showToast } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Divider, EmptyState, Segmented, Text, showToast, markRef, IconTile } from "@vyre/ui";
 import { Page } from "../shell/Page";
 import { ACCESS_FILTERS, glyph } from "./data";
 import { useDevices } from "./state";
@@ -23,7 +23,7 @@ export function AccessScreen() {
             {i ? <Divider /> : null}
             <View className="gap-s2 p-s3">
               <View className="flex-row items-center gap-s3">
-                <Avatar name={a.name} family={a.family} size="lg" icon={glyph(a)} />
+                {a.kind === "Kit" || a.kind === "Flow" ? <IconTile name={glyph(a) ?? "kits"} size={40} /> : <Avatar of={{ ...markRef(a.family, a.name, a.id), device: a.device }} size={40} />}
                 <View className="min-w-0 flex-1 gap-s1">
                   <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text><Chip>{a.kind}</Chip></View>
                   <Text tone="muted">{a.allows}</Text>

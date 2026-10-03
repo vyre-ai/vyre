@@ -5,6 +5,8 @@ import { cn } from "../lib/cn";
 import { Text } from "../components/Text";
 import { Icon, type IconName } from "../components/Icon";
 import { Avatar } from "../components/Avatar";
+import { SpaceSwitcherTitle } from "../components/SpaceSwitcherTitle";
+import { markRef, spaceRef } from "../marks/useMark";
 import { Chip } from "../components/Chip";
 import { Menu } from "../components/Menu";
 import { Row } from "../components/Row";
@@ -26,22 +28,8 @@ export type ShellProps = NavDef & {
   children: React.ReactNode;
 };
 
-function SpaceSwitcher({ spaces, space, onSpace, compact }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
-  const cur = spaces.find((s) => s.id === space) ?? spaces[0];
-  const all = cur.id === "all";
-  return (
-    <Menu
-      trigger={
-        <Pressable accessibilityRole="button" accessibilityLabel={`Space: ${cur.name}. Switch space`}
-          className={cn("min-h-control flex-row items-center gap-s3 rounded-row border border-edge bg-surface-2 px-s3", compact ? "self-start" : "w-full")}>
-          <Avatar name={cur.name} family="space" size="sm" tint={!all} />
-          <Text strong numberOfLines={1} className={compact ? "" : "flex-1"}>{cur.name}</Text>
-          <Icon name="more" tone="label" />
-        </Pressable>
-      }
-      items={spaces.map((s) => ({ label: s.id === space ? `${s.name} (showing)` : s.name, onPress: () => onSpace(s.id) }))}
-    />
-  );
+function SpaceSwitcher({ spaces, space, onSpace }: Pick<ShellProps, "spaces" | "space" | "onSpace"> & { compact?: boolean }) {
+  return <SpaceSwitcherTitle spaces={spaces} space={space} onSpace={onSpace} />;
 }
 
 function RailItem({ it, on, onPress }: { it: NavItem; on: boolean; onPress: () => void }) {
@@ -78,7 +66,7 @@ function Rail(p: ShellProps) {
       <View className="gap-s1">
         {p.bottom.map((it) => <RailItem key={it.id} it={it} on={cur === it.id} onPress={go(it)} />)}
         <View className="mt-s2 flex-row items-center gap-s3 border-t border-edge px-s2 pt-s3">
-          <Avatar name={p.user.name} />
+          <Avatar of={markRef("person", p.user.name)} size={32} />
           <View className="min-w-0 flex-1"><Text strong numberOfLines={1}>{p.user.name}</Text>{p.user.sub ? <Text size="caption" tone="label" numberOfLines={1}>{p.user.sub}</Text> : null}</View>
         </View>
       </View>

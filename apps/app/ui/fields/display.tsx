@@ -2,7 +2,7 @@ import { Pressable, View } from "react-native";
 import { Text } from "../components/Text";
 import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
-import { Avatar, type AvatarFamily } from "../components/Avatar";
+import { Avatar, type AvatarKind } from "../components/Avatar";
 import { addrText, actorIdOf, fmtDate, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
 import type { ViewProps } from "./types";
 
@@ -10,7 +10,7 @@ const Empty = () => <Text tone="faint">Empty</Text>;
 const str = (v: any) => (typeof v === "object" && v ? String(v.name ?? v.title ?? "") : String(v ?? ""));
 const TABULAR = { fontVariant: ["tabular-nums" as const] };
 
-export const familyOf = (f?: string): AvatarFamily => (f === "assistant" ? "assistant" : f === "teammate" ? "teammate" : f === "service" ? "agent" : "person");
+export const familyOf = (f?: string): AvatarKind => (f === "assistant" ? "assistant" : f === "teammate" ? "teammate" : f === "service" ? "agent" : "person");
 
 export function TextView({ p }: ViewProps) {
   return isEmpty(p.value) ? <Empty /> : <Text numberOfLines={p.mode === "compact" ? 1 : undefined}>{str(p.value)}</Text>;
@@ -97,7 +97,7 @@ export function ActorView({ p, env }: ViewProps) {
   const name = a ? a.name : p.value?.actor?.name || id;
   return (
     <View className="flex-row items-center gap-s2">
-      <Avatar name={name} family={familyOf(a?.family)} size="sm" />
+      <Avatar of={{ kind: familyOf(a?.family), id: id || name, name, seed: a?.seed }} size={24} />
       <Text numberOfLines={1} className="min-w-0 flex-shrink">{name}</Text>
     </View>
   );

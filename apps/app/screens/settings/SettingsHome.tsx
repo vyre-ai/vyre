@@ -1,6 +1,6 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Card, Divider, Row, type IconName } from "@vyre/ui";
+import { Card, Divider, IconTile, Row, type IconName } from "@vyre/ui";
 import { Group, Page } from "../shell/Page";
 import { useSpaces } from "../shell/state";
 import { loadShell } from "../shell/data";
@@ -19,7 +19,7 @@ export function SettingsHome() {
         <Group key={g.title} title={g.title}>
           <Card flush>
             {g.rows.map(([t, sub, href, icon], i) => (
-              <View key={href}>{i ? <Divider /> : null}<Row lead={<Avatar name={t} family="device" icon={icon as IconName} />} title={t} sub={sub} onPress={() => router.push(href as never)} /></View>
+              <View key={href}>{i ? <Divider /> : null}<Row lead={<IconTile name={icon as IconName} />} title={t} sub={sub} onPress={() => router.push(href as never)} /></View>
             ))}
           </Card>
         </Group>

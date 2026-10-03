@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AskCard, Avatar, Button, Card, Chip, Divider, EmptyState, Row, Tabs, Text, showToast } from "@vyre/ui";
+import { AskCard, Avatar, Button, Card, Chip, Divider, EmptyState, Row, Tabs, Text, showToast, markRef } from "@vyre/ui";
 import { Block, FaceIdSheet, IconTile, Page, SpaceChip } from "../places/Page";
 import { useScope } from "../places/scope";
 import { driveRepo, EDITORS, PROJECTS, type DriveFile, type Link } from "./data";
@@ -26,7 +26,7 @@ export default function DriveScreen() {
   const target = files.find((f) => f.id === (linkFor ?? face?.id));
 
   const linkAsk = target && linkFor ? (
-    <AskCard lead={<Avatar name="kit" family="assistant" />} title={`Share ${target.name} with a link?`}
+    <AskCard lead={<Avatar of={markRef("assistant", "kit")} size={40} />} title={`Share ${target.name} with a link?`}
       why={`Anyone with the link can read it for ${LINK_DAYS} days. It is not sealed, so it can leave. You can revoke the link at any time.`}
       actions={[{ label: "Create link with Face ID", kind: "primary", icon: "faceid", onPress: () => setFace({ kind: "link", id: target.id }) }, { label: "Not now", kind: "ghost", onPress: () => setLinkFor(null) }]} />
   ) : null;

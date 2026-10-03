@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, showToast } from "@vyre/ui";
+import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, showToast, markRef } from "@vyre/ui";
 import { Block, FaceIdSheet, Page, Section } from "../places/Page";
 import { flowsRepo, type Def } from "./data";
 import { useFlowsState } from "./store";
@@ -41,7 +41,7 @@ export default function FlowScreen() {
       </Banner>
       {waitingAsk ? (
         <Section title="Run 41, Doe estate plan">
-          <AskCard lead={<Avatar name="chris" />} title="Approve the engagement letter, Doe estate plan"
+          <AskCard lead={<Avatar of={markRef("person", "Chris Park")} size={40} />} title="Approve the engagement letter, Doe estate plan"
             why="Run 41 is paused at step 1. The letter was written by kit and checked against the intake facts. Nothing is sent until you approve."
             actions={[{ label: "Approve with Face ID", kind: "primary", icon: "faceid", onPress: () => setFace(true) }, { label: "Read the letter", onPress: () => showToast("Opened the letter.") }, { label: "Not now", kind: "ghost", onPress: () => showToast("Declined. The run stops and nothing is sent.") }]} />
         </Section>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Button, Card, Chip, Ring, Row, Text, type IconName } from "@vyre/ui";
+import { Avatar, Button, Card, Chip, Ring, Row, Text, type IconName, IconTile } from "@vyre/ui";
 import { Page } from "../shell/Page";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { useDevices } from "./state";
@@ -39,7 +39,7 @@ export function WinkAdd() {
     return (
       <Page title="Add a device" sub="What are you adding?" back="/u/wink">
         <Card flush>
-          {KINDS.map((k, i) => <View key={k.id}>{i ? <View className="h-px bg-edge" /> : null}<Row lead={<Avatar name={k.title} family="device" size="lg" icon={k.icon} />} title={k.title} sub={k.body} onPress={() => setKind(k.id)} /></View>)}
+          {KINDS.map((k, i) => <View key={k.id}>{i ? <View className="h-px bg-edge" /> : null}<Row lead={<IconTile name={k.icon} size={40} />} title={k.title} sub={k.body} onPress={() => setKind(k.id)} /></View>)}
         </Card>
       </Page>
     );
@@ -88,7 +88,7 @@ export function WinkAdd() {
       <View className="flex-row flex-wrap gap-s3">{left}{right}</View>
       <Text tone="muted" className="text-center">{stepWords(kind, step, fallback)}</Text>
       <View className="flex-row flex-wrap justify-center gap-s2">
-        <Button kind="ghost" size="sm" label="Back" onPress={reset} />
+        <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={reset} />
         {step > 0 && !done ? <Button kind="ghost" size="sm" label="Start over" onPress={() => { setStep(0); setWrong(false); }} /> : null}
         {fallback ? <Button kind="ghost" size="sm" label="Use the scan instead" onPress={() => { setFb(false); setStep(0); }} /> : null}
       </View>

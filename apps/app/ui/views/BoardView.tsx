@@ -6,8 +6,8 @@ import { Card } from "../components/Card";
 import { Text } from "../components/Text";
 import { EmptyState } from "../components/States";
 import type { FieldEnv } from "../fields/types";
-import { boardColumns, columnOf, describeDef, titleOf, viewDefOf } from "./logic.js";
-import { HowMade, TitleCell, fieldNode } from "./shared";
+import { boardColumns, columnOf, titleOf, viewDefOf } from "./logic.js";
+import { TitleCell, fieldNode } from "./shared";
 
 /** The board: columns by a choice or stage field (they stack on a phone), a card per row, and a card moves by drag on the web or by its menu elsewhere. */
 export function BoardView({ def, rows, env, onOpen, onMove }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; onMove?: (rec: any, to: string) => void }) {
@@ -36,7 +36,6 @@ export function BoardView({ def, rows, env, onOpen, onMove }: { def: any; rows: 
           </PressableScale>
         )}
       />
-      <HowMade text={describeDef(def, "board", vd)} />
     </View>
   );
 }

@@ -18,8 +18,8 @@ export function Row({ lead, title, sub, end, onPress, selected, className, acces
     <>
       {lead ? <View className="flex-none flex-row items-center">{lead}</View> : null}
       <View className="min-w-0 flex-1">
-        {typeof title === "string" ? <Text strong numberOfLines={1}>{title}</Text> : title}
-        {sub ? (typeof sub === "string" ? <Text size="caption" tone="label" numberOfLines={1}>{sub}</Text> : sub) : null}
+        {typeof title === "string" ? <Text strong size="headline" numberOfLines={1}>{title}</Text> : title}
+        {sub ? (typeof sub === "string" ? <Text size="secondary" tone="label" numberOfLines={1}>{sub}</Text> : sub) : null}
       </View>
       {end ? <View className="flex-none flex-row items-center gap-s2">{end}</View> : null}
     </>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AskCard } from "../components/AskCard";
 import { Field } from "../components/Field";
 import { ActorMark } from "./ActorMark";
+import { spaceRef } from "../marks/useMark";
 import { cardFor, who, type World } from "./model";
 import { swipeActions } from "../motion/logic.js";
 import type { SwipeAction } from "../motion/SwipeActions";
@@ -12,6 +13,7 @@ import type { SwipeAction } from "../motion/SwipeActions";
  */
 export function TaskCard({ world, task, showSpace, onAction, onOpen }: { world: World; task: any; showSpace?: boolean; onAction: (id: string, input?: string) => void; onOpen: () => void }) {
   const m = cardFor(world, task, { showSpace });
+  const spTag = m.tags.find((t) => t.kind === "space");
   const [value, setValue] = useState("");
   const sw = swipeActions(m.actions.map((a) => a.id));
   const bind = (list: typeof sw.leading): SwipeAction[] => list.map((a) => ({ ...a, onPress: () => (a.id === "open" ? onOpen() : onAction(a.id)) }) as SwipeAction);
@@ -19,10 +21,10 @@ export function TaskCard({ world, task, showSpace, onAction, onOpen }: { world: 
     <AskCard
       swipe={{ leading: bind(sw.leading), trailing: bind(sw.trailing) }}
       needsYou={false}
-      lead={<ActorMark who={who(world, m.lead)} />}
+      lead={<ActorMark who={who(world, m.lead)} size={40} space={spTag ? spaceRef(spTag.text) : undefined} />}
       title={m.title}
       why={m.why}
-      tags={m.tags.map((t) => ({ text: t.text, tone: (t.kind === "space" ? "space" : t.tone) as never }))}
+      tags={m.tags.filter((t) => t.kind !== "space").slice(0, 2).map((t) => ({ text: t.text, tone: t.tone as never }))}
       onTitlePress={onOpen}
       actions={m.actions.map((a) => ({ label: a.label, kind: a.kind, icon: a.icon as never, onPress: () => (a.id === "open" ? onOpen() : onAction(a.id, value)) }))}
     >

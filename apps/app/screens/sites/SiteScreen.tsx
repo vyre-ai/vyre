@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, StageSteps, Switch, Tabs, Text, showToast } from "@vyre/ui";
+import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, StageSteps, Switch, Tabs, Text, showToast, markRef } from "@vyre/ui";
 import { Block, FaceIdSheet, Note, Page, Section, SpaceChip } from "../places/Page";
 import { sitesRepo, type Site } from "./data";
 import { useSites } from "./store";
@@ -41,7 +41,7 @@ export default function SiteScreen() {
           </Card>
         ) : null}
         {waitingOnYou(s) && pre ? (
-          <AskCard lead={<Avatar name="kit" family="assistant" />} title={`Go live with ${s.name} ${pre.v}?`}
+          <AskCard lead={<Avatar of={markRef("assistant", "kit")} size={40} />} title={`Go live with ${s.name} ${pre.v}?`}
             why={`It goes live now at ${s.dom.name}.${live ? ` Rolling back to ${live.v} is one tap.` : ""}`}
             actions={[{ label: "Go live with Face ID", kind: "primary", icon: "faceid", onPress: () => setFace({ kind: "live" }) }, { label: "Not now", kind: "ghost", onPress: () => showToast("Kept in preview.") }]} />
         ) : pre ? <Banner>Waiting for checks to finish before it can ask you.</Banner> : <Banner>{`Nothing waiting. ${live?.v ?? "No version"} is live.`}</Banner>}

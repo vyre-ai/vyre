@@ -2,7 +2,7 @@
 // resolver, shared) picks the accent, scheme, density, font and corners and checks contrast; themeVars turns the result into custom properties;
 // the provider writes them on its root view with NativeWind's vars(), so every component restyles with no code of its own.
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { StyleSheet, useColorScheme, useWindowDimensions, View } from "react-native";
+import { Platform, StyleSheet, useColorScheme, useWindowDimensions, View } from "react-native";
 import { vars } from "nativewind";
 import { resolveTheme } from "../../../deck/ui/theme.js";
 import { create } from "zustand";
@@ -39,7 +39,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const phone = width < PHONE_MAX;
   const ctx = useMemo<Ctx>(() => {
     const resolved: Resolved = resolveTheme({ space, person, system });
-    const map: Record<string, string | number> = themeVars(resolved, { phone });
+    // The font is the platform's own (SF, Roboto, Inter on the web) until a space or a person picks one.
+    if (!space.font && !person.font) resolved.font = "system";
+    const map: Record<string, string | number> = themeVars(resolved, { phone, os: Platform.OS });
     const color: Record<string, string> = {};
     for (const [k, v] of Object.entries(map)) if (typeof v === "string") color[k.slice(2)] = v;
     return { resolved, phone, color, map };
