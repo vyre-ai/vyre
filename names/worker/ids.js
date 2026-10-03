@@ -46,12 +46,8 @@ const enc = new TextEncoder();
 const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
-/** The bytes an entry signs over a sealed record. @param {{ name: string, id: string, by: string, via?: string, ts: number|string, sealedHash: string, vseq?: number, vhead?: string }} m */
-export const recordMessage = m => enc.encode(`${RECORD_TAG}\n${m.name}\n${m.id}\n${m.by}\n${m.via || "-"}\n${m.vseq ?? "-"}:${m.vhead || "-"}\n${m.ts}\n${m.sealedHash}`);
-/** What an own domain's TXT carries, signed by an entry. */
-export const aliasMessage = m => enc.encode(`${ALIAS_TAG}\n${m.name}\n${m.domain}\n${m.id}`);
-/** A signed act that is not a chain op: clearing an alias, releasing a name. @param {{ action: string, name: string, domain?: string, ts: number|string }} m */
-export const actMessage = m => enc.encode(`${ACT_TAG}\n${m.action}\n${m.name}\n${m.domain || "-"}\n${m.ts}`);
+export { recordMessage, aliasMessage, actMessage } from "./id-messages.js";
+import { recordMessage, aliasMessage } from "./id-messages.js";
 
 /** A hostname the directory will accept as an alias: letters, digits, dashes, at least two labels, no IP, nothing under vyre.run. @param {unknown} raw */
 export function aliasDomain(raw) {

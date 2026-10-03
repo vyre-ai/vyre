@@ -393,6 +393,66 @@
    "module": "files",
    "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
   },
+  "flows.card": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.code": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.compile-text": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.define": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.get": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.graph": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.card": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.list": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.propose": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.list": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.retry": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.run": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.runs": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.simulate": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.start": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
   "gate.approve": {
    "module": "gate",
    "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller; presence proof required"

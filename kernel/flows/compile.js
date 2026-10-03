@@ -17,7 +17,7 @@ import { parse, roots, stepRefs } from "./expr.js";
  *   roles?: readonly string[],
  *   teammates?: readonly string[],
  *   templates?: readonly string[],
- *   connectors?: Record<string, { allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[] }>,
+ *   connectors?: Record<string, { allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[], draft?: { method?: string, path: string } }>,
  * }} Catalog
  */
 

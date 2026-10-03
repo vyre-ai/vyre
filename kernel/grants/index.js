@@ -31,6 +31,7 @@ export const GRANT_ACTIONS = Object.freeze([
 export const DEFAULT_ASSISTANT = "assistant";
 const SUBJECT_KINDS = new Set(["actor", "role", "group"]);
 const MAX_DEPTH = 3;
+const HISTORY = 1000;
 const freeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) freeze(v); } return o; };
 const actorKey = (/** @type {any} */ a) => `${a.kind}:${a.id}`;
 const sameActor = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && a.id === b.id && a.space === b.space;
@@ -354,6 +355,22 @@ export function createGrantsStore(cfg) {
     },
 
     /**
+     * Take an actor (an assistant, a service) out of the Space: an owner's or admin's act with the person's presence. It stops being a member, so nothing it holds is honoured and
+     * a chain that carries it is refused. For the default assistant this is the Space's off switch: unnamed chats then say plainly that no assistant is available.
+     * @param {any} chain @param {{ kind: string, id: string, space: string }} actor @param {{ presence?: any }} [o]
+     */
+    async removeActor(chain, actor, o = {}) {
+      const issuer = person(chain);
+      if (!actor || !["agent", "service", "automation"].includes(actor.kind) || actor.space !== cfg.space || typeof actor.id !== "string") throw new KernelError("bad_input", "an actor needs a kind, an id and this Space");
+      const d = await gate(chain, "grants.role", urn("member", actor.id), { remove_actor: actor }, o.presence);
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin removes an actor");
+      if (!actors.has(actorKey(actor))) throw new KernelError("not_found", "no such actor");
+      actors.delete(actorKey(actor));
+      await note(chain, "actor.removed", urn("member", actor.id), { actor }, d.decision);
+      return true;
+    },
+
+    /**
      * One side of the compute pair (DESIGN-wink 7): the Space allows its work to run on a member's computer (an owner or admin, for a member of this
      * Space; `device` null covers any of that member's computers), or the member accepts it for one of their own computers (the member's own act).
      * Both must be active for `offers.active` to say yes, and it covers only that member's own sessions on that member's own machine.
@@ -530,7 +547,7 @@ export function createGrantsStore(cfg) {
     // assistant writes (every person in the room, asker included), and who may change the list (a person in it). Every call here takes a kernel-built chain.
     /** @param {any} chain @param {{ people?: string[], assistants?: string[], id?: string }} [o] */
     async chatCreate(chain, o = {}) {
-      if (chain && chain.viewer === true) throw new KernelError("chain_not_person", "a viewer chain changes nothing");
+      if (chain && (chain.viewer === true || chain.delegated === true)) throw new KernelError("chain_not_person", "only a person acting directly starts a chat: a viewer or a session's chain does not");
       const p = person(chain);
       if (!memberOk(p)) throw new KernelError("not_a_member", "only a member starts a chat");
       const people = [...new Set([p.id, ...(Array.isArray(o.people) ? o.people.map(String) : [])])];
@@ -540,14 +557,14 @@ export function createGrantsStore(cfg) {
       if (people.length > 100 || assistants.length > 20) throw new KernelError("bad_input", "too many in one chat");
       const id = o.id === undefined ? `chat_${mintUuid(clock())}` : String(o.id);
       if (!/^chat_[A-Za-z0-9_-]{4,64}$/.test(id) || chats.has(id)) throw new KernelError("bad_input", "a chat id is new and shaped chat_...");
-      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock() });
+      const rec = freeze({ id, space: cfg.space, people, assistants, made_by: p.id, at: clock(), ver: 1, h: [{ ver: 1, people: [...people] }] });
       chats.set(id, rec);
       await note(chain, "chat.created", urn("chat", id), { chat: rec }, null);
       return rec;
     },
     /** Add or remove people and assistants. Only a person in the chat does it; nobody else, an owner or admin included. @param {any} chain @param {string} id @param {{ add_people?: string[], remove_people?: string[], add_assistants?: string[], remove_assistants?: string[] }} change */
     async chatChange(chain, id, change = {}) {
-      if (chain && chain.viewer === true) throw new KernelError("chain_not_person", "a viewer chain changes nothing");
+      if (chain && (chain.viewer === true || chain.delegated === true)) throw new KernelError("chain_not_person", "only a person acting directly, in the chat, changes who is in it: a viewer or a session's chain does not");
       const p = person(chain);
       const c = chats.get(String(id));
       if (!c || !c.people.includes(p.id) || !memberOk(p)) throw new KernelError("not_found", "no such chat");
@@ -557,9 +574,13 @@ export function createGrantsStore(cfg) {
       for (const x of change.add_assistants || []) { if (!memberOk({ kind: "agent", id: String(x), space: cfg.space })) throw new KernelError("bad_input", "an assistant in a chat belongs to the Space"); assistants.add(String(x)); }
       for (const x of change.remove_assistants || []) assistants.delete(String(x));
       if (!people.size || people.size > 100 || assistants.size > 20) throw new KernelError("bad_input", "a chat keeps at least one person");
-      const n = freeze({ ...c, people: [...people], assistants: [...assistants] });
+      // The room's version moves on every change, and the people at each version are kept: a message belongs to the version it was written under and is delivered only to the
+      // people who were in the room then (the kernel answers "may this person receive it"; the stream never decides).
+      const ver = (c.ver || 1) + 1;
+      const joined = [...people].filter(x => !c.people.includes(x)), left = c.people.filter(x => !people.has(x));
+      const n = freeze({ ...c, people: [...people], assistants: [...assistants], ver, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver, people: [...people] }].slice(-HISTORY) });
       chats.set(c.id, n);
-      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants }, null);
+      await note(chain, "chat.changed", urn("chat", c.id), { id: c.id, people: n.people, assistants: n.assistants, ver, joined, left }, null);
       return n;
     },
     /**
@@ -588,6 +609,17 @@ export function createGrantsStore(cfg) {
       const c = chats.get(String(id));
       return c ? c.people.filter((/** @type {string} */ x) => memberOk({ kind: "person", id: x, space: cfg.space })) : null;
     },
+    /** The room's current membership version. @param {string} id @returns {{ ver: number } | null} */
+    chatVersion(id) { const c = chats.get(String(id)); return c ? { ver: c.ver || 1 } : null; },
+    /** Who was in the room at a version (the latest recorded version at or before it), or null when that version is older than the history kept. Kernel-internal. @param {string} id @param {number} ver @returns {string[] | null} */
+    chatPeopleAt(id, ver) {
+      const c = chats.get(String(id));
+      const h = c && (c.h || [{ ver: c.ver || 1, people: c.people }]);
+      if (!h || !h.length || !(ver >= h[0].ver)) return null;
+      let at = h[0];
+      for (const x of h) if (x.ver <= ver) at = x;
+      return [...at.people];
+    },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
     /**
@@ -608,6 +640,10 @@ export function createGrantsStore(cfg) {
      * @returns {Promise<{ legacy: number, migrated: boolean }>}
      */
     async rebuild() {
+      const keep = capture();
+      try { return await api.rebuildFromLog(); } catch (e) { restore(keep); throw e; }
+    },
+    async rebuildFromLog() {
       grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear();
       gseq = 0; gprev = "genesis";
       const evs = cfg.log.read({}).filter((/** @type {any} */ e) => e.data && typeof e.data === "object" && (LEGACY_RE.test(e.type) || e.type === "owner.changed" || e.type === "grants.snapshot"));
@@ -635,10 +671,11 @@ export function createGrantsStore(cfg) {
         else if (e.type === "invite.used") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, status: "used", used_by: d.by })); }
         else if (e.type === "invite.confirmed") { const v = invites.get(d.id); if (v) invites.set(d.id, freeze({ ...v, confirmed: true })); }
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
+        else if (e.type === "actor.removed") actors.delete(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
         else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
-        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants] })); }
+        else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY) })); }
       };
       if (snap) {
         const st = snap.core.state;
@@ -671,6 +708,38 @@ export function createGrantsStore(cfg) {
       return { legacy: legacyCount, migrated };
     },
   };
+
+  /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
+  const capture = () => ({ grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), gseq, gprev });
+  const restore = (/** @type {any} */ c) => {
+    grants.clear(); for (const [k, v] of c.grants) grants.set(k, v);
+    memberships.clear(); for (const [k, v] of c.memberships) memberships.set(k, v);
+    actors.clear(); for (const v of c.actors) actors.add(v);
+    offers.clear(); for (const [k, v] of c.offers) offers.set(k, v);
+    invites.clear(); for (const [k, v] of c.invites) invites.set(k, v);
+    chats.clear(); for (const [k, v] of c.chats) chats.set(k, v);
+    gseq = c.gseq; gprev = c.gprev;
+  };
+  // One pattern for every state-changing call (reviewer-2's R4): the calls run one at a time, and a call that fails while writing its sealed event (the sealing process died,
+  // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
+  // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
+  let lock = Promise.resolve();
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange"]) {
+    const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
+    /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
+      const run = async () => {
+        const before = capture();
+        try { return await f(...a); } catch (e) {
+          // A failure while writing: put the store back from the log; if the log cannot be read either, put back the state this call started from, never an empty store.
+          if (!(e instanceof KernelError)) { try { await api.rebuild(); } catch { restore(before); } }
+          throw e;
+        }
+      };
+      const p = lock.then(run, run);
+      lock = p.then(() => {}, () => {});
+      return p;
+    };
+  }
 
   return Object.freeze({
     ...api, provider, members, isAdmin, roleOf,

@@ -16,7 +16,8 @@ import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
 import { createFirstPartyCheck, acceptMinimums, verifyMinimums } from "./modules/firstparty.js";
 import { RELEASE_KEY } from "../lib/release-sig.js";
-import { devSwitch } from "./devbuild.js";
+import { devSwitch, PKG_ROOT } from "./devbuild.js";
+import { readReleaseList, verifyRawList, createListCheck } from "./modules/release-list.js";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 const rand32 = (/** @type {number} */ n) => Array.from(crypto.randomBytes(n), b => B32[b & 31]).join("");
@@ -37,7 +38,7 @@ export function homeIdentity(root) {
 
 /**
  * @param {{ releaseKey?: any, pathRule?: boolean, fileKey?: boolean, db: import("node:sqlite").DatabaseSync, root: string, log?: (m: string) => void, isFirstParty: (dir: string) => boolean,
- *   approvals?: (name: string) => string[], sealer?: any, door?: any, onStageEnter?: any, stageTasks?: any, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
+ *   approvals?: (name: string) => string[], sealer?: any, door?: any, packageRoot?: string, onStageEnter?: any, stageTasks?: any, stageFactory?: (space: string, kernel: any, meta: any) => Promise<any> | any, forwardCredential?: (q: any) => Promise<any>, storeFor?: (space: string, meta: any) => Promise<any> | any }} cfg
  */
 export async function bootHomeKernel(cfg) {
   const id = homeIdentity(cfg.root);
@@ -57,7 +58,7 @@ export async function bootHomeKernel(cfg) {
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
-  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(personalStore ? { store: personalStore } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  const k = await bootKernel({ db: cfg.db, space: id.space, owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
@@ -87,7 +88,27 @@ export async function bootHomeKernel(cfg) {
         if (d) { minimums = d.minimums; if (!seen || d.counter > seen.counter) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { ...note, data: { counter: d.counter, minimums: d.minimums, doc: { body: doc.body, sig: doc.sig } } }); }
         else if (seen) log("kernel: the minimum-versions document is older than one already accepted, or does not verify; the last accepted one stays in force");
       } catch { if (seen) log("kernel: no readable minimum-versions document; the last accepted one stays in force"); }
-      firstPartyCheck = createFirstPartyCheck({ releaseKey: cfg.releaseKey || RELEASE_KEY, minimums });
+      const perModule = createFirstPartyCheck({ releaseKey: relKey, minimums });
+      // The release's signed list of first-party modules (kernel/modules/release-list.js): SHA256SUMS signed by the release key lists modules.json, which names every shipped module's
+      // tree. The highest counter accepted, with the signed material that carried it, is kept in the sealed log and re-verified here, so a rollback or a missing file never relaxes it.
+      /** @type {{ counter: number, modules: Record<string, any> } | null} */ let accepted = null;
+      for (const e of k.log.read({ type: "kernel.modules-list" })) {
+        const v = e.data ? verifyRawList(e.data.raw, relKey) : null;
+        if (!v) { log("kernel: a kernel.modules-list event does not carry a list the release key signed; ignored"); continue; }
+        if (!accepted || v.counter > accepted.counter) accepted = v;
+      }
+      const root = cfg.packageRoot || PKG_ROOT;
+      const cur = readReleaseList(root, relKey);
+      let active = accepted;
+      if (cur.ok) {
+        if (!accepted || cur.counter >= accepted.counter) {
+          active = { counter: cur.counter, modules: cur.modules };
+          if (!accepted || cur.counter > accepted.counter) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
+        } else log(`kernel: this build's module list (counter ${cur.counter}) is older than one already accepted (${accepted.counter}); the accepted one stays in force`);
+      } else if (accepted) log(`kernel: ${cur.why}; the last accepted module list stays in force`);
+      else log(`kernel: no first-party module list (${cur.why}); only a module carrying its own signature is first party`);
+      const listCheck = active ? createListCheck(active, log) : null;
+      firstPartyCheck = listCheck ? (/** @type {string} */ dir) => perModule(dir) || listCheck(dir) : perModule;
     }
   }
   /** @type {any} */ let host;
@@ -102,7 +123,7 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
   await spaces.start();
   return Object.freeze({ ...k, spaces, id: { space: id.space, owner: id.owner }, kernelFor: k.kernelFor, firstPartyCheck, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }
